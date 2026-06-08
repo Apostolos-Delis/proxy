@@ -86,7 +86,7 @@ export class LlmClassifier {
 
 function classifierRequest(model: string, view: unknown) {
   const instruction =
-    "Classify the coding-agent request. Return only JSON matching the requested schema.";
+    "Classify the coding-agent request. Use input_* and extracted_hints as the latest user intent. full_input_* is envelope size for context/cost only; do not choose hard or deep solely because the envelope is large or tools are present. Simple status/list/format/read-only shell requests should route fast. Return only JSON matching the requested schema.";
 
   return {
     model,

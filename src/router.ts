@@ -44,11 +44,15 @@ export class RoutingService {
         requestedModel: context.requestedModel,
         inputChars: context.inputChars,
         estimatedInputTokens: context.estimatedInputTokens,
+        routingInputSource: context.routingInputSource,
+        routingInputChars: context.routingInputChars,
+        routingEstimatedInputTokens: context.routingEstimatedInputTokens,
         hasTools: context.hasTools,
         toolCount: context.toolCount,
         hasPreviousResponseId: context.hasPreviousResponseId,
         hasImages: context.hasImages,
-        extractedHints: context.extractedHints
+        extractedHints: context.extractedHints,
+        routingExtractedHints: context.routingExtractedHints
       }
     });
 

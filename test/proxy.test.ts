@@ -29,6 +29,7 @@ describe("prompt proxy", () => {
         ANTHROPIC_BASE_URL: anthropic.url,
         CLASSIFIER_PROVIDER: "openai",
         CLASSIFIER_MODEL: "route-classifier-cheap",
+        CLASSIFIER_ALLOW_REDACTED_EXCERPT: "false",
         LOG_LEVEL: "fatal"
       })
     );
@@ -144,6 +145,89 @@ describe("prompt proxy", () => {
     expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
     expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("low");
     expect(providerCall).toBeTruthy();
+  });
+
+  it("classifies the latest user message instead of the full Codex envelope", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({
+      classifierOutput: {
+        complexity: "simple",
+        risk: [],
+        recommended_route: "fast",
+        can_use_fast_model: true,
+        needs_deep_reasoning: false,
+        reason_codes: ["latest_user_intent_simple"],
+        confidence: 0.86
+      }
+    });
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        CLASSIFIER_ALLOW_REDACTED_EXCERPT: "true",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        instructions: "security migration concurrency failing test production ".repeat(200),
+        input: [
+          {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "debug the production auth migration" }]
+          },
+          {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "I will inspect it." }]
+          },
+          {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "git status" }]
+          }
+        ],
+        tools: [{ type: "function", name: "shell" }],
+        stream: true
+      })
+    });
+    await response.text();
+
+    const classifierCall = openai.records.find((record) => record.body.model === "route-classifier-cheap");
+    const classifierInput = JSON.parse(classifierCall?.body.input);
+    const providerCall = openai.records.find((record) => record.body.model === "gpt-5.4-mini");
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    const contextEvent = events.find((event: any) => event.eventType === "routing.context_built");
+    await app.close();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
+    expect(providerCall).toBeTruthy();
+    expect(classifierInput.routing_basis).toBe("latest_user_message");
+    expect(classifierInput.content_mode).toBe("redacted_excerpt");
+    expect(classifierInput.input_excerpt).toBe("git status");
+    expect(classifierInput.input_chars).toBe("git status".length);
+    expect(classifierInput.full_input_chars).toBeGreaterThan(10_000);
+    expect(classifierInput.extracted_hints).toEqual([]);
+    expect(contextEvent.payload.routingInputChars).toBe("git status".length);
+    expect(contextEvent.payload.inputChars).toBeGreaterThan(10_000);
   });
 
   it("does not forward decoded upstream content encoding", async () => {

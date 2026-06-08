@@ -14,25 +14,33 @@ const hintPatterns: [string, RegExp][] = [
 
 export function buildOpenAIContext(body: unknown, headers: Record<string, string | undefined>): RouteContext {
   const request = isRecord(body) ? body : {};
-  const text = [
+  const fullText = [
     stringifyText(request.instructions),
     stringifyText(request.input),
     stringifyText(request.metadata)
   ].join("\n");
+  const latestUserText = latestOpenAIUserText(request.input);
+  const routingInput = routingInputFrom(latestUserText, fullText);
   const tools = Array.isArray(request.tools) ? request.tools : [];
   const requestedModel = typeof request.model === "string" ? request.model : "router-auto";
 
   return {
     surface: "openai-responses",
     requestedModel,
-    inputChars: text.length,
-    inputHash: sha256(text),
-    estimatedInputTokens: roughTokenEstimate(text.length),
+    inputChars: fullText.length,
+    inputHash: sha256(fullText),
+    estimatedInputTokens: roughTokenEstimate(fullText.length),
+    routingInputSource: routingInput.source,
+    routingInputText: routingInput.text,
+    routingInputChars: routingInput.text.length,
+    routingInputHash: sha256(routingInput.text),
+    routingEstimatedInputTokens: roughTokenEstimate(routingInput.text.length),
     hasTools: tools.length > 0,
     toolCount: tools.length,
     hasPreviousResponseId: typeof request.previous_response_id === "string",
     hasImages: hasImageInput(request.input),
-    extractedHints: extractHints(text),
+    extractedHints: extractHints(fullText),
+    routingExtractedHints: extractHints(routingInput.text),
     sessionId: headers["x-codex-session-id"],
     userId: headers["x-prompt-proxy-user-id"] ?? headers["x-user-id"],
     teamId: headers["x-prompt-proxy-team-id"] ?? headers["x-team-id"],
@@ -42,25 +50,33 @@ export function buildOpenAIContext(body: unknown, headers: Record<string, string
 
 export function buildAnthropicContext(body: unknown, headers: Record<string, string | undefined>): RouteContext {
   const request = isRecord(body) ? body : {};
-  const text = [
+  const fullText = [
     stringifyText(request.system),
     stringifyText(request.messages),
     stringifyText(request.metadata)
   ].join("\n");
+  const latestUserText = latestAnthropicUserText(request.messages);
+  const routingInput = routingInputFrom(latestUserText, fullText);
   const tools = Array.isArray(request.tools) ? request.tools : [];
   const requestedModel = typeof request.model === "string" ? request.model : "claude-router-auto";
 
   return {
     surface: "anthropic-messages",
     requestedModel,
-    inputChars: text.length,
-    inputHash: sha256(text),
-    estimatedInputTokens: roughTokenEstimate(text.length),
+    inputChars: fullText.length,
+    inputHash: sha256(fullText),
+    estimatedInputTokens: roughTokenEstimate(fullText.length),
+    routingInputSource: routingInput.source,
+    routingInputText: routingInput.text,
+    routingInputChars: routingInput.text.length,
+    routingInputHash: sha256(routingInput.text),
+    routingEstimatedInputTokens: roughTokenEstimate(routingInput.text.length),
     hasTools: tools.length > 0,
     toolCount: tools.length,
     hasPreviousResponseId: false,
     hasImages: hasImageInput(request.messages),
-    extractedHints: extractHints(text),
+    extractedHints: extractHints(fullText),
+    routingExtractedHints: extractHints(routingInput.text),
     sessionId: headers["x-claude-code-session-id"],
     userId: headers["x-prompt-proxy-user-id"] ?? headers["x-user-id"],
     teamId: headers["x-prompt-proxy-team-id"] ?? headers["x-team-id"],
@@ -74,18 +90,76 @@ export function classifierView(context: RouteContext, allowExcerpt: boolean, sou
     requested_model: context.requestedModel,
     content_mode: allowExcerpt ? "redacted_excerpt" : "features_only",
     redaction_state: "redacted",
-    input_excerpt: allowExcerpt ? redactExcerpt(sourceText ?? "") : null,
-    input_hash: context.inputHash,
-    input_chars: context.inputChars,
-    estimated_input_tokens: context.estimatedInputTokens,
+    routing_basis: context.routingInputSource,
+    input_excerpt: allowExcerpt ? redactExcerpt(sourceText ?? context.routingInputText) : null,
+    input_hash: context.routingInputHash,
+    input_chars: context.routingInputChars,
+    estimated_input_tokens: context.routingEstimatedInputTokens,
+    full_input_hash: context.inputHash,
+    full_input_chars: context.inputChars,
+    full_estimated_input_tokens: context.estimatedInputTokens,
     has_tools: context.hasTools,
     tool_count: context.toolCount,
     has_previous_response_id: context.hasPreviousResponseId,
     has_images: context.hasImages,
-    extracted_hints: context.extractedHints,
+    extracted_hints: context.routingExtractedHints,
     session_route: null,
     explicit_alias: context.explicitAlias ?? null
   };
+}
+
+function routingInputFrom(latestUserText: string | undefined, fullText: string) {
+  const text = latestUserText?.trim();
+  if (text) {
+    return {
+      source: "latest_user_message" as const,
+      text
+    };
+  }
+  return {
+    source: "full_request" as const,
+    text: fullText
+  };
+}
+
+function latestOpenAIUserText(input: unknown): string | undefined {
+  if (typeof input === "string") return input;
+  if (!Array.isArray(input)) return undefined;
+
+  for (let index = input.length - 1; index >= 0; index -= 1) {
+    const item = input[index];
+    if (!isRecord(item)) continue;
+    if (item.role !== "user") continue;
+    const text = textContent(item.content ?? item.text ?? item.input);
+    if (text.trim()) return text;
+  }
+  return undefined;
+}
+
+function latestAnthropicUserText(messages: unknown): string | undefined {
+  if (!Array.isArray(messages)) return undefined;
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!isRecord(message) || message.role !== "user") continue;
+    const text = textContent(message.content);
+    if (text.trim()) return text;
+  }
+  return undefined;
+}
+
+function textContent(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(textContent).join("\n");
+  if (isRecord(value)) {
+    if (typeof value.text === "string") return value.text;
+    if (typeof value.content === "string") return value.content;
+    if (Array.isArray(value.content)) return textContent(value.content);
+    return stringifyText(value);
+  }
+  return stableJson(value);
 }
 
 function stringifyText(value: unknown): string {
