@@ -226,6 +226,9 @@ describe("prompt proxy", () => {
     expect(classifierInput.input_chars).toBe("git status".length);
     expect(classifierInput.full_input_chars).toBeGreaterThan(10_000);
     expect(classifierInput.extracted_hints).toEqual([]);
+    expect(classifierCall?.body.instructions).toContain("System design");
+    expect(classifierCall?.body.instructions).toContain("must route deep");
+    expect(classifierCall?.body.instructions).toContain("needs_deep_reasoning=true");
     expect(contextEvent.payload.routingInputChars).toBe("git status".length);
     expect(contextEvent.payload.inputChars).toBeGreaterThan(10_000);
   });
