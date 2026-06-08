@@ -91,6 +91,9 @@ const configSchema = z.object({
   MODEL_COSTS_JSON: modelCostsSchema,
   ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.55),
   EVENT_STORE_PATH: z.string().optional(),
+  DATABASE_URL: z.string().optional(),
+  DEFAULT_ORGANIZATION_ID: z.string().min(1).default("local"),
+  ADMIN_CORS_ORIGIN: z.string().default("http://127.0.0.1:5173,http://localhost:5173"),
   LOG_LEVEL: z.string().default("info")
 });
 
@@ -130,6 +133,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     modelCosts: parsed.MODEL_COSTS_JSON,
     routeQualityLowConfidenceThreshold: parsed.ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD,
     eventStorePath: parsed.EVENT_STORE_PATH,
+    databaseUrl: parsed.DATABASE_URL,
+    defaultOrganizationId: parsed.DEFAULT_ORGANIZATION_ID,
+    adminCorsOrigins: parsed.ADMIN_CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean),
     logLevel: parsed.LOG_LEVEL
   };
 }

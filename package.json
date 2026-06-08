@@ -3,23 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.27.0",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "tsx src/server.ts",
-    "smoke:harnesses": "tsx scripts/smoke-harnesses.ts",
-    "smoke": "tsx scripts/smoke-proxy.ts",
-    "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "fastify": "^5.6.2",
-    "pino": "^10.1.0",
-    "ws": "^8.21.0",
-    "zod": "^4.1.13"
+    "dev": "pnpm --filter @prompt-proxy/proxy dev",
+    "dev:proxy": "pnpm --filter @prompt-proxy/proxy dev",
+    "dev:web": "pnpm --filter @prompt-proxy/web dev",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter @prompt-proxy/db migrate",
+    "smoke": "pnpm --filter @prompt-proxy/proxy smoke",
+    "smoke:harnesses": "pnpm --filter @prompt-proxy/proxy smoke:harnesses",
+    "test": "pnpm --filter @prompt-proxy/db test && pnpm --filter @prompt-proxy/proxy test",
+    "typecheck": "tsc -b",
+    "build": "tsc -b && pnpm --filter @prompt-proxy/web build"
   },
   "devDependencies": {
     "@types/node": "^25.0.2",
-    "@types/ws": "^8.18.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.15"

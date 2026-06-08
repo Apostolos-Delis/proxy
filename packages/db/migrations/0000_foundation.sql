@@ -1,0 +1,319 @@
+CREATE TABLE organizations (
+  id text PRIMARY KEY,
+  slug text NOT NULL,
+  name text NOT NULL,
+  settings jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX organizations_slug_idx ON organizations (slug);
+
+CREATE TABLE users (
+  id text PRIMARY KEY,
+  email text,
+  name text,
+  external_id text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX users_email_idx ON users (email);
+CREATE UNIQUE INDEX users_external_id_idx ON users (external_id);
+
+CREATE TABLE organization_members (
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role text NOT NULL,
+  status text NOT NULL DEFAULT 'active',
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT organization_members_pk PRIMARY KEY (organization_id, user_id)
+);
+
+CREATE INDEX organization_members_user_id_idx ON organization_members (user_id);
+
+CREATE TABLE api_keys (
+  id text PRIMARY KEY,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id text REFERENCES users(id) ON DELETE SET NULL,
+  key_hash text NOT NULL,
+  name text NOT NULL,
+  scopes jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  expires_at timestamp with time zone,
+  revoked_at timestamp with time zone,
+  last_used_at timestamp with time zone
+);
+
+CREATE UNIQUE INDEX api_keys_hash_idx ON api_keys (key_hash);
+CREATE INDEX api_keys_organization_id_idx ON api_keys (organization_id);
+
+CREATE TABLE organization_settings (
+  organization_id text PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+  prompt_capture_mode text NOT NULL DEFAULT 'hash_only',
+  retention_days integer NOT NULL DEFAULT 30,
+  max_route text,
+  settings jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE user_settings (
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  preferred_route text,
+  max_reasoning_effort text,
+  settings jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_settings_pk PRIMARY KEY (organization_id, user_id)
+);
+
+CREATE TABLE provider_accounts (
+  id text PRIMARY KEY,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  provider text NOT NULL,
+  name text NOT NULL,
+  secret_ref text,
+  status text NOT NULL DEFAULT 'active',
+  settings jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX provider_accounts_org_provider_name_idx ON provider_accounts (organization_id, provider, name);
+CREATE INDEX provider_accounts_organization_id_idx ON provider_accounts (organization_id);
+
+CREATE TABLE model_catalog (
+  id text PRIMARY KEY,
+  organization_id text REFERENCES organizations(id) ON DELETE CASCADE,
+  provider text NOT NULL,
+  model text NOT NULL,
+  route text,
+  capabilities jsonb NOT NULL DEFAULT '{}'::jsonb,
+  pricing jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX model_catalog_org_provider_model_idx ON model_catalog (organization_id, provider, model);
+CREATE INDEX model_catalog_route_idx ON model_catalog (organization_id, route);
+
+CREATE TABLE route_policies (
+  id text PRIMARY KEY,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  classifier_model text NOT NULL,
+  classifier_prompt_version text NOT NULL,
+  policy jsonb NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX route_policies_org_name_idx ON route_policies (organization_id, name);
+CREATE INDEX route_policies_organization_id_idx ON route_policies (organization_id);
+
+CREATE TABLE agent_sessions (
+  id text PRIMARY KEY,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id text REFERENCES users(id) ON DELETE SET NULL,
+  surface text NOT NULL,
+  external_session_id text,
+  current_route text,
+  request_count integer NOT NULL DEFAULT 0,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  started_at timestamp with time zone NOT NULL DEFAULT now(),
+  ended_at timestamp with time zone,
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX agent_sessions_org_surface_external_idx ON agent_sessions (organization_id, surface, external_session_id);
+CREATE INDEX agent_sessions_organization_id_idx ON agent_sessions (organization_id);
+CREATE INDEX agent_sessions_user_id_idx ON agent_sessions (organization_id, user_id);
+
+CREATE TABLE turns (
+  id text PRIMARY KEY,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  session_id text REFERENCES agent_sessions(id) ON DELETE SET NULL,
+  user_id text REFERENCES users(id) ON DELETE SET NULL,
+  external_turn_id text,
+  status text NOT NULL DEFAULT 'received',
+  started_at timestamp with time zone NOT NULL DEFAULT now(),
+  completed_at timestamp with time zone
+);
+
+CREATE INDEX turns_organization_id_idx ON turns (organization_id);
+CREATE INDEX turns_session_id_idx ON turns (session_id);
+
+CREATE TABLE requests (
+  id text PRIMARY KEY,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id text REFERENCES users(id) ON DELETE SET NULL,
+  session_id text REFERENCES agent_sessions(id) ON DELETE SET NULL,
+  turn_id text REFERENCES turns(id) ON DELETE SET NULL,
+  surface text NOT NULL,
+  idempotency_key text NOT NULL,
+  requested_model text NOT NULL,
+  input_hash text NOT NULL,
+  input_chars integer NOT NULL DEFAULT 0,
+  estimated_input_tokens integer,
+  routing_input_hash text,
+  routing_input_chars integer,
+  routing_estimated_input_tokens integer,
+  status text NOT NULL DEFAULT 'received',
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  completed_at timestamp with time zone
+);
+
+CREATE UNIQUE INDEX requests_org_idempotency_idx ON requests (organization_id, idempotency_key);
+CREATE INDEX requests_organization_created_idx ON requests (organization_id, created_at);
+CREATE INDEX requests_session_id_idx ON requests (session_id);
+CREATE INDEX requests_user_id_idx ON requests (organization_id, user_id);
+
+CREATE TABLE route_decisions (
+  id text PRIMARY KEY,
+  request_id text NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  requested_model text NOT NULL,
+  classifier_route text,
+  final_route text,
+  selected_provider text,
+  selected_model text,
+  reasoning_effort text,
+  verbosity text,
+  confidence_basis_points integer,
+  reason_codes jsonb NOT NULL DEFAULT '[]'::jsonb,
+  guardrail_actions jsonb NOT NULL DEFAULT '[]'::jsonb,
+  budget_checks jsonb NOT NULL DEFAULT '[]'::jsonb,
+  classifier jsonb NOT NULL DEFAULT '{}'::jsonb,
+  policy_version text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX route_decisions_request_id_idx ON route_decisions (request_id);
+CREATE INDEX route_decisions_organization_id_idx ON route_decisions (organization_id);
+CREATE INDEX route_decisions_final_route_idx ON route_decisions (organization_id, final_route);
+
+CREATE TABLE provider_attempts (
+  id text PRIMARY KEY,
+  request_id text NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  surface text NOT NULL,
+  provider text NOT NULL,
+  model text NOT NULL,
+  upstream_request_id text,
+  terminal_status text NOT NULL DEFAULT 'pending',
+  status_code integer,
+  error text,
+  usage jsonb NOT NULL DEFAULT '{}'::jsonb,
+  started_at timestamp with time zone NOT NULL DEFAULT now(),
+  first_byte_at timestamp with time zone,
+  completed_at timestamp with time zone
+);
+
+CREATE INDEX provider_attempts_request_id_idx ON provider_attempts (request_id);
+CREATE INDEX provider_attempts_organization_id_idx ON provider_attempts (organization_id);
+CREATE INDEX provider_attempts_model_idx ON provider_attempts (organization_id, provider, model);
+
+CREATE TABLE usage_ledger (
+  id text PRIMARY KEY,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id text REFERENCES users(id) ON DELETE SET NULL,
+  session_id text REFERENCES agent_sessions(id) ON DELETE SET NULL,
+  request_id text NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+  provider_attempt_id text NOT NULL REFERENCES provider_attempts(id) ON DELETE CASCADE,
+  provider text NOT NULL,
+  model text NOT NULL,
+  route text,
+  input_tokens integer NOT NULL DEFAULT 0,
+  cached_input_tokens integer NOT NULL DEFAULT 0,
+  output_tokens integer NOT NULL DEFAULT 0,
+  reasoning_tokens integer NOT NULL DEFAULT 0,
+  total_tokens integer NOT NULL DEFAULT 0,
+  input_cost_micros integer NOT NULL DEFAULT 0,
+  output_cost_micros integer NOT NULL DEFAULT 0,
+  total_cost_micros integer NOT NULL DEFAULT 0,
+  usage jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX usage_ledger_provider_attempt_idx ON usage_ledger (provider_attempt_id);
+CREATE INDEX usage_ledger_org_created_idx ON usage_ledger (organization_id, created_at);
+CREATE INDEX usage_ledger_user_created_idx ON usage_ledger (organization_id, user_id, created_at);
+CREATE INDEX usage_ledger_model_idx ON usage_ledger (organization_id, provider, model);
+
+CREATE TABLE prompt_artifacts (
+  id text PRIMARY KEY,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  request_id text NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+  kind text NOT NULL,
+  storage_mode text NOT NULL,
+  content_hash text NOT NULL,
+  redacted_text text,
+  encrypted_blob_ref text,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  expires_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE INDEX prompt_artifacts_request_id_idx ON prompt_artifacts (request_id);
+CREATE INDEX prompt_artifacts_org_created_idx ON prompt_artifacts (organization_id, created_at);
+CREATE INDEX prompt_artifacts_content_hash_idx ON prompt_artifacts (organization_id, content_hash);
+
+CREATE TABLE events (
+  id text PRIMARY KEY,
+  sequence integer NOT NULL,
+  schema_version integer NOT NULL,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  scope_type text NOT NULL,
+  scope_id text NOT NULL,
+  session_id text,
+  turn_id text,
+  parent_event_id text,
+  causation_id text,
+  correlation_id text,
+  idempotency_key text,
+  actor_type text NOT NULL,
+  actor_id text NOT NULL,
+  producer text NOT NULL,
+  event_type text NOT NULL,
+  payload_hash text NOT NULL,
+  sensitivity text NOT NULL,
+  redaction_state text NOT NULL,
+  payload jsonb NOT NULL,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL
+);
+
+CREATE UNIQUE INDEX events_scope_sequence_idx ON events (organization_id, scope_type, scope_id, sequence);
+CREATE INDEX events_organization_created_idx ON events (organization_id, created_at);
+CREATE INDEX events_scope_created_idx ON events (organization_id, scope_type, scope_id, created_at);
+CREATE INDEX events_event_type_idx ON events (organization_id, event_type);
+CREATE INDEX events_correlation_id_idx ON events (organization_id, correlation_id);
+CREATE INDEX events_idempotency_key_idx ON events (organization_id, idempotency_key);
+
+CREATE TABLE event_outbox (
+  id text PRIMARY KEY,
+  event_id text NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  status text NOT NULL DEFAULT 'queued',
+  attempts integer NOT NULL DEFAULT 0,
+  available_at timestamp with time zone NOT NULL DEFAULT now(),
+  locked_at timestamp with time zone,
+  error text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE INDEX event_outbox_status_available_idx ON event_outbox (status, available_at);
+CREATE INDEX event_outbox_event_id_idx ON event_outbox (event_id);
+
+CREATE TABLE projection_cursors (
+  projection_name text NOT NULL,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  cursor_event_id text,
+  cursor_sequence integer,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT projection_cursors_pk PRIMARY KEY (projection_name, organization_id)
+);

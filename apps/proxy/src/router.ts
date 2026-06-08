@@ -41,9 +41,11 @@ export class RoutingService {
       payload: {
         surface: context.surface,
         requestedModel: context.requestedModel,
+        inputHash: context.inputHash,
         inputChars: context.inputChars,
         estimatedInputTokens: context.estimatedInputTokens,
         routingInputSource: context.routingInputSource,
+        routingInputHash: context.routingInputHash,
         routingInputChars: context.routingInputChars,
         routingEstimatedInputTokens: context.routingEstimatedInputTokens,
         hasTools: context.hasTools,
@@ -114,7 +116,10 @@ export class RoutingService {
         idempotencyKey,
         producer: "prompt-proxy.session",
         eventType: "session.route_memory_recorded",
-        payload: jsonPayload(decision.session) as JsonObject
+        payload: jsonPayload({
+          ...decision.session,
+          surface: context.surface
+        }) as JsonObject
       });
     }
 

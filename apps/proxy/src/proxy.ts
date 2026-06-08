@@ -6,7 +6,7 @@ import {
   jsonPayload,
   type EventService,
   type ProviderAttemptStore,
-  type RequestStateStore
+  type RequestStateStoreLike
 } from "./events.js";
 import { SseObserver } from "./sseObserver.js";
 import type { JsonObject, Provider, RouteDecision, Surface } from "./types.js";
@@ -16,7 +16,7 @@ export class ProviderProxy implements ProviderAdapter {
     private readonly config: AppConfig,
     private readonly events: EventService,
     private readonly attempts: ProviderAttemptStore,
-    private readonly requestStates: RequestStateStore
+    private readonly requestStates: RequestStateStoreLike
   ) {}
 
   async forward(input: ProviderForwardInput) {
@@ -66,12 +66,13 @@ export class ProviderProxy implements ProviderAdapter {
       producer: "prompt-proxy.provider",
       eventType: "provider.request_started",
       payload: {
+        surface: input.surface,
         provider: input.provider,
         model: selectedModel,
         providerAttemptId: attempt.id
       }
     });
-    this.requestStates.markProviderPending(input.idempotencyKey, attempt.id);
+    await this.requestStates.markProviderPending(input.idempotencyKey, attempt.id);
 
     const abortController = new AbortController();
     let streamCompleted = false;
@@ -91,26 +92,16 @@ export class ProviderProxy implements ProviderAdapter {
     } catch (error) {
       input.reply.raw.off("close", abortUpstream);
       const aborted = abortController.signal.aborted;
+      await this.appendTerminal(input, attempt.id, aborted ? "cancelled" : "failed", undefined, 0, {
+        error: error instanceof Error ? error.message : "Provider request failed."
+      });
       this.attempts.update(attempt.id, {
         terminalStatus: aborted ? "cancelled" : "failed",
         error: error instanceof Error ? error.message : "Provider request failed."
       });
-      this.requestStates.finish(input.idempotencyKey, aborted ? "cancelled" : "failed", {
+      await this.requestStates.finish(input.idempotencyKey, aborted ? "cancelled" : "failed", {
         providerAttemptId: attempt.id,
         error: error instanceof Error ? error.message : "Provider request failed."
-      });
-      await this.events.append({
-        scopeType: "request",
-        scopeId: input.requestId,
-        correlationId: input.requestId,
-        idempotencyKey: input.idempotencyKey,
-        producer: "prompt-proxy.provider",
-        eventType: aborted ? "provider.stream_cancelled" : "provider.response_failed",
-        payload: {
-          provider: input.provider,
-          providerAttemptId: attempt.id,
-          error: error instanceof Error ? error.message : "Provider request failed."
-        }
       });
       throw error;
     }
@@ -133,15 +124,15 @@ export class ProviderProxy implements ProviderAdapter {
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
 
+      await this.appendTerminal(input, attempt.id, status, usage, upstream.status);
       this.attempts.update(attempt.id, {
         terminalStatus: status,
         usage: usage === undefined ? undefined : jsonPayload(usage)
       });
-      this.requestStates.finish(input.idempotencyKey, status, {
+      await this.requestStates.finish(input.idempotencyKey, status, {
         providerAttemptId: attempt.id,
         usage: usage === undefined ? undefined : jsonPayload(usage)
       });
-      await this.appendTerminal(input, attempt.id, status, usage, upstream.status);
       input.reply.send(text);
       return;
     }
@@ -155,6 +146,7 @@ export class ProviderProxy implements ProviderAdapter {
       eventType: "provider.stream_started",
       payload: {
         provider: input.provider,
+        surface: input.surface,
         providerAttemptId: attempt.id
       }
     });
@@ -170,57 +162,61 @@ export class ProviderProxy implements ProviderAdapter {
     let completed = false;
 
     try {
-      for await (const chunk of upstream.body) {
-        const bytes = chunk instanceof Uint8Array ? chunk : Buffer.from(chunk);
-        observer.observe(bytes);
-        if (!input.reply.raw.write(bytes)) {
-          await onceDrain(input.reply.raw);
+      let observation: ReturnType<SseObserver["finish"]>;
+      let status: "completed" | "failed";
+      try {
+        for await (const chunk of upstream.body) {
+          const bytes = chunk instanceof Uint8Array ? chunk : Buffer.from(chunk);
+          observer.observe(bytes);
+          if (!input.reply.raw.write(bytes)) {
+            await onceDrain(input.reply.raw);
+          }
         }
+        completed = true;
+        observation = observer.finish();
+        status = observation.status === "failed" ? "failed" : "completed";
+        streamCompleted = true;
+        input.reply.raw.off("close", abortUpstream);
+      } catch (error) {
+        const observation = observer.finish("cancelled");
+        const message = error instanceof Error ? error.message : "Stream failed.";
+        const aborted = abortController.signal.aborted;
+        await this.appendTerminal(
+          input,
+          attempt.id,
+          aborted ? "cancelled" : "failed",
+          observation.usage,
+          upstream.status,
+          {
+            ...observation,
+            error: message
+          }
+        );
+        this.attempts.update(attempt.id, {
+          terminalStatus: aborted ? "cancelled" : "failed",
+          usage: observation.usage,
+          error: message
+        });
+        await this.requestStates.finish(input.idempotencyKey, aborted ? "cancelled" : "failed", {
+          providerAttemptId: attempt.id,
+          usage: observation.usage,
+          error: message
+        });
+        throw error;
       }
-      completed = true;
-      const observation = observer.finish();
-      const status = observation.status === "failed" ? "failed" : "completed";
-      streamCompleted = true;
-      input.reply.raw.off("close", abortUpstream);
+      await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, observation);
       this.attempts.update(attempt.id, {
         terminalStatus: status,
         usage: observation.usage,
         upstreamRequestId: observation.upstreamResponseId,
         error: observation.error
       });
-      this.requestStates.finish(input.idempotencyKey, status, {
+      await this.requestStates.finish(input.idempotencyKey, status, {
         providerAttemptId: attempt.id,
         usage: observation.usage,
         upstreamRequestId: observation.upstreamResponseId,
         error: observation.error
       });
-      await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, observation);
-    } catch (error) {
-      const observation = observer.finish("cancelled");
-      const message = error instanceof Error ? error.message : "Stream failed.";
-      const aborted = abortController.signal.aborted;
-      this.attempts.update(attempt.id, {
-        terminalStatus: aborted ? "cancelled" : "failed",
-        usage: observation.usage,
-        error: message
-      });
-      this.requestStates.finish(input.idempotencyKey, aborted ? "cancelled" : "failed", {
-        providerAttemptId: attempt.id,
-        usage: observation.usage,
-        error: message
-      });
-      await this.appendTerminal(
-        input,
-        attempt.id,
-        aborted ? "cancelled" : "failed",
-        observation.usage,
-        upstream.status,
-        {
-          ...observation,
-          error: message
-        }
-      );
-      throw error;
     } finally {
       input.reply.raw.off("close", abortUpstream);
       input.reply.raw.end();
@@ -244,6 +240,7 @@ export class ProviderProxy implements ProviderAdapter {
     input: {
       requestId: string;
       idempotencyKey: string;
+      surface: Surface;
       provider: Provider;
       decision: RouteDecision;
     },
@@ -253,21 +250,28 @@ export class ProviderProxy implements ProviderAdapter {
     upstreamStatus: number,
     metadata: unknown = {}
   ) {
+    const metadataPayload = jsonPayload(metadata) as JsonObject;
+    const payload: JsonObject = {
+      provider: input.provider,
+      surface: input.surface,
+      selectedModel: input.decision.selectedModel ?? "unknown",
+      providerAttemptId,
+      terminalStatus: status,
+      upstreamStatus,
+      usage: usage === undefined ? null : jsonPayload(usage)
+    };
+    const error = terminalError(metadataPayload);
+    if (error) payload.error = error;
+
     await this.events.append({
       scopeType: "request",
       scopeId: input.requestId,
       correlationId: input.requestId,
       idempotencyKey: input.idempotencyKey,
       producer: "prompt-proxy.provider",
-      eventType: status === "completed" ? "provider.response_completed" : "provider.response_failed",
-      payload: {
-        provider: input.provider,
-        selectedModel: input.decision.selectedModel ?? "unknown",
-        providerAttemptId,
-        upstreamStatus,
-        usage: usage === undefined ? null : jsonPayload(usage)
-      },
-      metadata: jsonPayload(metadata) as JsonObject
+      eventType: terminalEventType(status),
+      payload,
+      metadata: metadataPayload
     });
 
     if (usage !== undefined) {
@@ -318,6 +322,19 @@ export class ProviderProxy implements ProviderAdapter {
     copyIfPresent(incoming, headers, "tracestate");
     return headers;
   }
+}
+
+function terminalEventType(status: "completed" | "failed" | "cancelled") {
+  if (status === "completed") return "provider.response_completed";
+  if (status === "cancelled") return "provider.response_cancelled";
+  return "provider.response_failed";
+}
+
+function terminalError(metadata: JsonObject) {
+  const error = metadata.error;
+  if (typeof error === "string") return error;
+  if (error === undefined || error === null) return undefined;
+  return JSON.stringify(error);
 }
 
 function copyResponseHeaders(upstream: Response, reply: FastifyReply) {

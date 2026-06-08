@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": ["node"],
+    "composite": true
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "vitest.config.ts"],
+  "exclude": ["dist", "node_modules"],
+  "references": [
+    { "path": "../../packages/db" },
+    { "path": "../../packages/schema" }
+  ]
+}

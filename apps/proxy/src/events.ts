@@ -42,6 +42,10 @@ export type OutboxItem = {
   error?: string;
 };
 
+export type PersistentEventSink = {
+  append(event: ProxyEvent, outbox: OutboxItem): Promise<void>;
+};
+
 export type AppendEventInput = {
   tenantId?: string;
   scopeType: string;
@@ -68,12 +72,15 @@ export class EventService {
 
   constructor(
     private readonly filePath?: string,
-    private readonly outboxHandler?: (event: ProxyEvent) => Promise<void>
+    private readonly outboxHandler?: (event: ProxyEvent) => Promise<void>,
+    private readonly persistentSink?: PersistentEventSink,
+    private readonly defaultTenantId = "local"
   ) {}
 
   async append(input: AppendEventInput) {
     const scopeKey = `${input.scopeType}:${input.scopeId}`;
-    const sequence = (this.sequences.get(scopeKey) ?? 0) + 1;
+    const previousSequence = this.sequences.get(scopeKey) ?? 0;
+    const sequence = previousSequence + 1;
     this.sequences.set(scopeKey, sequence);
 
     const payload = input.payload ?? {};
@@ -81,7 +88,7 @@ export class EventService {
       eventId: createId("event"),
       sequence,
       schemaVersion: 1,
-      tenantId: input.tenantId ?? "local",
+      tenantId: input.tenantId ?? this.defaultTenantId,
       scopeType: input.scopeType,
       scopeId: input.scopeId,
       sessionId: input.sessionId,
@@ -101,8 +108,25 @@ export class EventService {
       createdAt: new Date().toISOString()
     });
 
+    const outboxItem: OutboxItem = { outboxId: createId("outbox"), eventId: event.eventId, status: "queued" };
+
+    try {
+      if (this.persistentSink) {
+        await this.persistentSink.append(event, outboxItem);
+      }
+    } catch (error) {
+      if (this.sequences.get(scopeKey) === sequence) {
+        if (previousSequence === 0) {
+          this.sequences.delete(scopeKey);
+        } else {
+          this.sequences.set(scopeKey, previousSequence);
+        }
+      }
+      throw error;
+    }
+
     this.events.push(event);
-    this.outbox.push({ outboxId: createId("outbox"), eventId: event.eventId, status: "queued" });
+    this.outbox.push(outboxItem);
 
     if (this.filePath) {
       await mkdir(dirname(this.filePath), { recursive: true });
@@ -189,6 +213,7 @@ export class ProviderAttemptStore {
 
 export type RequestState = {
   idempotencyKey: string;
+  requestId?: string;
   status: "classifying" | "provider_pending" | "completed" | "failed" | "cancelled";
   providerAttemptId?: string;
   usage?: JsonValue;
@@ -196,15 +221,27 @@ export type RequestState = {
   error?: string;
 };
 
+export type RequestStateGate = {
+  state: RequestState;
+  duplicate: boolean;
+};
+
+export type RequestStateStoreLike = {
+  begin(idempotencyKey: string, requestId?: string, context?: unknown): RequestStateGate | Promise<RequestStateGate>;
+  markProviderPending(idempotencyKey: string, providerAttemptId: string): RequestState | undefined | Promise<RequestState | undefined>;
+  finish(idempotencyKey: string, status: RequestState["status"], patch?: Partial<RequestState>): RequestState | undefined | Promise<RequestState | undefined>;
+};
+
 export class RequestStateStore {
   private readonly states = new Map<string, RequestState>();
 
-  begin(idempotencyKey: string) {
+  begin(idempotencyKey: string, requestId?: string) {
     const existing = this.states.get(idempotencyKey);
     if (existing) return { state: existing, duplicate: true };
 
     const state: RequestState = {
       idempotencyKey,
+      requestId,
       status: "classifying"
     };
     this.states.set(idempotencyKey, state);

@@ -2,12 +2,19 @@
 
 - [Model routing proxy design](docs/model-routing-proxy.md)
 - [Implementation tickets](docs/implementation-tickets.md)
+- [Future: GEPA-inspired prompt optimization](docs/future/gepa-prompt-optimization.md)
 
 ## Development
 
 ```shell
-npm install
-npm run dev
+pnpm install
+pnpm dev:proxy
+```
+
+The web console runs separately:
+
+```shell
+pnpm dev:web
 ```
 
 The proxy exposes:
@@ -27,6 +34,26 @@ Authenticated debug endpoints expose route evidence during local development:
 - `GET /_debug/sessions`
 - `GET /_debug/projections`
 - `GET /_debug/route-quality`
+
+Admin endpoints power the web console:
+
+- `GET /admin/overview`
+- `GET /admin/requests`
+- `GET /admin/requests/:requestId`
+- `GET /admin/settings`
+
+## Persistence
+
+The repo includes a Drizzle/Postgres persistence layer in `packages/db`.
+
+```shell
+cp .env.example .env
+pnpm db:up
+pnpm db:migrate
+pnpm dev:proxy
+```
+
+When `DATABASE_URL` is set, appended proxy events also persist durable current-state rows for requests, route decisions, provider attempts, usage, sessions, prompt artifacts, events, and outbox items.
 
 ## Local Harnesses
 
@@ -58,11 +85,11 @@ Useful optional controls include `BUDGET_MAX_ROUTE`, `BUDGET_MAX_ESTIMATED_INPUT
 ## Verification
 
 ```shell
-npm run typecheck
-npm test
-npm run smoke
-npm run smoke:harnesses
-npm run build
+pnpm typecheck
+pnpm test
+pnpm smoke
+pnpm smoke:harnesses
+pnpm build
 ```
 
 `npm run smoke` starts mock OpenAI and Anthropic upstreams, sends Codex-shaped and Claude Code-shaped requests through the proxy, and verifies that both are routed.
