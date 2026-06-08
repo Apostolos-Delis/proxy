@@ -27,8 +27,10 @@ describe("prompt proxy", () => {
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
         ANTHROPIC_BASE_URL: anthropic.url,
+        OPENAI_HARD_MODEL: "gpt-routed-hard-test",
         CLASSIFIER_PROVIDER: "openai",
         CLASSIFIER_MODEL: "route-classifier-cheap",
+        CLASSIFIER_ALLOW_REDACTED_EXCERPT: "false",
         LOG_LEVEL: "fatal"
       })
     );
@@ -46,7 +48,7 @@ describe("prompt proxy", () => {
         traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "gpt-5.5",
         input: "fix the failing auth test and find root cause",
         tools: [{ type: "function", name: "shell" }],
         previous_response_id: "resp_previous",
@@ -59,10 +61,11 @@ describe("prompt proxy", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
     expect(body).toContain("response.completed");
 
     const classifierCall = openai.records.find((record) => record.body.model === "route-classifier-cheap");
-    const providerCall = openai.records.find((record) => record.body.model === "gpt-5.5");
+    const providerCall = openai.records.find((record) => record.body.model === "gpt-routed-hard-test");
 
     expect(classifierCall).toBeTruthy();
     expect(classifierCall?.body.input).toContain('"content_mode":"features_only"');
@@ -76,6 +79,7 @@ describe("prompt proxy", () => {
     expect(providerCall?.headers.traceparent).toBe("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00");
     expect(providerCall?.body.reasoning.effort).toBe("high");
     expect(providerCall?.body.text.verbosity).toBe("medium");
+    expect(providerCall?.body.model).not.toBe("gpt-5.5");
     expect(providerCall?.body.previous_response_id).toBe("resp_previous");
     expect(providerCall?.body.include).toEqual(["reasoning.encrypted_content"]);
 
@@ -91,6 +95,183 @@ describe("prompt proxy", () => {
     expect(events.map((event: any) => event.eventType)).toContain("routing.decision_recorded");
     expect(events.map((event: any) => event.eventType)).toContain("usage.recorded");
     expect(sessions).toHaveLength(0);
+  });
+
+  it("parses classifier output from Responses content items", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({
+      classifierResponsesShape: true,
+      classifierOutput: {
+        complexity: "simple",
+        risk: [],
+        recommended_route: "fast",
+        can_use_fast_model: true,
+        needs_deep_reasoning: false,
+        reason_codes: ["simple_request"],
+        confidence: 0.8
+      }
+    });
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "format the answer",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const providerCall = openai.records.find((record) => record.body.model === "gpt-5.4-mini");
+    await app.close();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("low");
+    expect(providerCall).toBeTruthy();
+  });
+
+  it("classifies the latest user message instead of the full Codex envelope", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({
+      classifierOutput: {
+        complexity: "simple",
+        risk: [],
+        recommended_route: "fast",
+        can_use_fast_model: true,
+        needs_deep_reasoning: false,
+        reason_codes: ["latest_user_intent_simple"],
+        confidence: 0.86
+      }
+    });
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        CLASSIFIER_ALLOW_REDACTED_EXCERPT: "true",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        instructions: "security migration concurrency failing test production ".repeat(200),
+        input: [
+          {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "debug the production auth migration" }]
+          },
+          {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "I will inspect it." }]
+          },
+          {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "git status" }]
+          }
+        ],
+        tools: [{ type: "function", name: "shell" }],
+        stream: true
+      })
+    });
+    await response.text();
+
+    const classifierCall = openai.records.find((record) => record.body.model === "route-classifier-cheap");
+    const classifierInput = JSON.parse(classifierCall?.body.input);
+    const providerCall = openai.records.find((record) => record.body.model === "gpt-5.4-mini");
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    const contextEvent = events.find((event: any) => event.eventType === "routing.context_built");
+    await app.close();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
+    expect(providerCall).toBeTruthy();
+    expect(classifierInput.routing_basis).toBe("latest_user_message");
+    expect(classifierInput.content_mode).toBe("redacted_excerpt");
+    expect(classifierInput.input_excerpt).toBe("git status");
+    expect(classifierInput.input_chars).toBe("git status".length);
+    expect(classifierInput.full_input_chars).toBeGreaterThan(10_000);
+    expect(classifierInput.extracted_hints).toEqual([]);
+    expect(classifierCall?.body.instructions).toContain("System design");
+    expect(classifierCall?.body.instructions).toContain("must route deep");
+    expect(classifierCall?.body.instructions).toContain("needs_deep_reasoning=true");
+    expect(contextEvent.payload.routingInputChars).toBe("git status".length);
+    expect(contextEvent.payload.inputChars).toBeGreaterThan(10_000);
+  });
+
+  it("does not forward decoded upstream content encoding", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({ compressedJsonProvider: true });
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-fast",
+        input: "format the answer",
+        stream: false
+      })
+    });
+    const body = await response.json();
+    await app.close();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-encoding")).toBeNull();
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("low");
+    expect(body.id).toBe("resp_mock");
   });
 
   it("routes Claude Code-style Anthropic Messages requests through the classifier", async () => {
@@ -137,6 +318,7 @@ describe("prompt proxy", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
     expect(body).toContain("message_stop");
 
     const providerCall = anthropic.records.find((record) => record.path === "/messages");
@@ -201,7 +383,7 @@ describe("prompt proxy", () => {
     expect(openai.records).toHaveLength(0);
   });
 
-  it("rejects non-router token counting models without classifier or upstream spend", async () => {
+  it("routes non-router token counting models without classifier spend", async () => {
     const config = loadConfig({
         ...process.env,
         PROMPT_PROXY_TOKEN: "proxy-token",
@@ -209,6 +391,7 @@ describe("prompt proxy", () => {
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
         ANTHROPIC_BASE_URL: anthropic.url,
+        ANTHROPIC_HARD_MODEL: "claude-routed-hard-test",
         CLASSIFIER_PROVIDER: "openai",
         CLASSIFIER_MODEL: "route-classifier-cheap",
         LOG_LEVEL: "fatal"
@@ -228,13 +411,15 @@ describe("prompt proxy", () => {
         messages: [{ role: "user", content: "debug auth" }]
       })
     });
-    const body = await response.json();
+    await response.json();
     await app.close();
 
-    expect(response.status).toBe(400);
-    expect(body.error).toBe("request_model_must_be_router_alias");
+    const providerCall = anthropic.records.find((record) => record.path === "/messages/count_tokens");
+    expect(response.status).toBe(200);
+    expect(providerCall?.body.model).toBe("claude-routed-hard-test");
+    expect(providerCall?.body.model).not.toBe("claude-sonnet-4-5");
     expect(openai.records).toHaveLength(0);
-    expect(anthropic.records).toHaveLength(0);
+    expect(anthropic.records).toHaveLength(1);
   });
 
 

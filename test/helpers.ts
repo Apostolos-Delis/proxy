@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { AddressInfo } from "node:net";
+import { gzipSync } from "node:zlib";
 
 import type { buildServer } from "../src/server.js";
 
@@ -21,6 +22,8 @@ export async function startOpenAIMock(
     invalidClassifier?: boolean;
     classifierOutput?: Record<string, unknown>;
     classifierOutputs?: Record<string, unknown>[];
+    classifierResponsesShape?: boolean;
+    compressedJsonProvider?: boolean;
     slowProvider?: boolean;
   } = {}
 ): Promise<MockServer> {
@@ -36,21 +39,53 @@ export async function startOpenAIMock(
 
     if (body.model === "route-classifier-cheap") {
       const classifierOutput = classifierOutputs.shift() ?? options.classifierOutput;
-      sendJson(response, {
-        output_text: options.invalidClassifier
-          ? JSON.stringify({ nope: true })
-          : JSON.stringify(
-              classifierOutput ?? {
-                complexity: "hard",
-                risk: ["auth", "failing_test"],
-                recommended_route: "hard",
-                can_use_fast_model: false,
-                needs_deep_reasoning: false,
-                reason_codes: ["auth_risk", "failing_test", "tools_present"],
-                confidence: 0.82
-              }
-            )
+      const outputText = options.invalidClassifier
+        ? JSON.stringify({ nope: true })
+        : JSON.stringify(
+            classifierOutput ?? {
+              complexity: "hard",
+              risk: ["auth", "failing_test"],
+              recommended_route: "hard",
+              can_use_fast_model: false,
+              needs_deep_reasoning: false,
+              reason_codes: ["auth_risk", "failing_test", "tools_present"],
+              confidence: 0.82
+            }
+          );
+      if (options.classifierResponsesShape) {
+        sendJson(response, {
+          output: [
+            { id: "rs_mock", type: "reasoning", content: [], summary: [] },
+            {
+              id: "msg_mock",
+              type: "message",
+              status: "completed",
+              role: "assistant",
+              content: [{ type: "output_text", annotations: [], logprobs: [], text: outputText }]
+            }
+          ]
+        });
+        return;
+      }
+      sendJson(response, { output_text: outputText });
+      return;
+    }
+
+    if (options.compressedJsonProvider) {
+      const payload = JSON.stringify({
+        id: "resp_mock",
+        status: "completed",
+        usage: {
+          input_tokens: 100,
+          output_tokens: 20,
+          output_tokens_details: { reasoning_tokens: 5 }
+        }
       });
+      response.writeHead(200, {
+        "content-type": "application/json",
+        "content-encoding": "gzip"
+      });
+      response.end(gzipSync(payload));
       return;
     }
 

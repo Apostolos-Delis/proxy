@@ -86,7 +86,14 @@ export class LlmClassifier {
 
 function classifierRequest(model: string, view: unknown) {
   const instruction =
-    "Classify the coding-agent request. Return only JSON matching the requested schema.";
+    [
+      "Classify the coding-agent request.",
+      "Use input_* and extracted_hints as the latest user intent.",
+      "full_input_* is envelope size for context/cost only; do not choose hard or deep solely because the envelope is large or tools are present.",
+      "Simple status/list/format/read-only shell requests should route fast.",
+      "System design, architecture planning, architecture reviews, database/schema/storage design, event-driven architecture, provider abstractions, organization-wide data collection, prompt/session storage, analytics pipelines, privacy/security/compliance/retention/access-control design, and cost-governance strategy must route deep with needs_deep_reasoning=true.",
+      "Return only JSON matching the requested schema."
+    ].join(" ");
 
   return {
     model,
@@ -129,25 +136,24 @@ function extractStructuredOutput(json: unknown): unknown {
   if (isRecord(json.output_parsed)) return json.output_parsed;
   if (typeof json.output_text === "string") return parseJson(json.output_text);
 
-  const content = findTextContent(json);
+  const content = findOutputText(json.output);
   return content ? parseJson(content) : undefined;
 }
 
-function findTextContent(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
+function findOutputText(value: unknown): string | undefined {
   if (Array.isArray(value)) {
     for (const item of value) {
-      const found = findTextContent(item);
+      const found = findOutputText(item);
       if (found) return found;
     }
   }
   if (isRecord(value)) {
-    if (typeof value.text === "string") return value.text;
-    if (typeof value.content === "string") return value.content;
-    for (const item of Object.values(value)) {
-      const found = findTextContent(item);
-      if (found) return found;
-    }
+    if (
+      (value.type === "output_text" || value.type === "text") &&
+      typeof value.text === "string"
+    ) return value.text;
+    if (Array.isArray(value.content)) return findOutputText(value.content);
+    if (Array.isArray(value.output)) return findOutputText(value.output);
   }
   return undefined;
 }
