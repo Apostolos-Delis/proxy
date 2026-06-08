@@ -8,6 +8,9 @@
 
 ```shell
 pnpm install
+pnpm db:up
+pnpm db:migrate
+pnpm db:seed
 pnpm dev:proxy
 ```
 
@@ -50,10 +53,13 @@ The repo includes a Drizzle/Postgres persistence layer in `packages/db`.
 cp .env.example .env
 pnpm db:up
 pnpm db:migrate
+pnpm db:seed
 pnpm dev:proxy
 ```
 
 When `DATABASE_URL` is set, appended proxy events also persist durable current-state rows for requests, route decisions, provider attempts, usage, sessions, prompt artifacts, events, and outbox items.
+
+`pnpm db:seed` is idempotent. It creates the default organization from `DEFAULT_ORGANIZATION_ID`, a local seed user from `SEED_USER_*`, provider account placeholders that reference env secrets, a default route policy, and model catalog rows from the configured route models.
 
 ## Local Harnesses
 
