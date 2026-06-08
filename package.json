@@ -11,6 +11,7 @@
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:migrate": "pnpm --filter @prompt-proxy/db migrate",
+    "db:seed": "pnpm --filter @prompt-proxy/db seed",
     "smoke": "pnpm --filter @prompt-proxy/proxy smoke",
     "smoke:harnesses": "pnpm --filter @prompt-proxy/proxy smoke:harnesses",
     "test": "pnpm --filter @prompt-proxy/db test && pnpm --filter @prompt-proxy/proxy test",
