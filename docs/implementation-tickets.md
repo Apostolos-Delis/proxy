@@ -111,7 +111,7 @@ Dependencies: PP-006.
 
 ### PP-008: Build Route Context Extraction
 
-Extract the routing features needed by classifier and guardrails without storing raw prompts.
+Extract the routing features needed by classifier and guardrails without storing raw prompts in route events or classifier payloads.
 
 Acceptance criteria:
 
@@ -296,7 +296,7 @@ Acceptance criteria:
 - Report calls where a cheaper route likely would have worked.
 - Report calls where cheap routing caused retries or repair turns.
 - Report sessions where classifier confidence was low.
-- Reports do not require raw prompt storage.
+- Reports can run from route, usage, and event metadata without reading raw prompt text.
 
 Dependencies: PP-014, PP-019.
 

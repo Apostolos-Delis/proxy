@@ -116,10 +116,10 @@ RTK findings:
 
 Fia findings:
 
-- Fia uses typed, scoped event envelopes with sequence numbers, actor, producer, causation/correlation IDs, payload hashes, sensitivity, and redaction state. Prompt-proxy should adopt the same shape so route decisions are replayable without storing raw prompts.
+- Fia uses typed, scoped event envelopes with sequence numbers, actor, producer, causation/correlation IDs, payload hashes, sensitivity, and redaction state. Prompt-proxy should adopt the same shape so route decisions are replayable without putting raw prompts in events.
 - Fia is event-driven without being strict pure event sourcing. It keeps current-state tables for resume/read efficiency and uses events for durable transitions, replay, debugging, and future automation.
 - Fia appends events and outbox records in the same transaction, with expected-sequence conflict handling per scope. Prompt-proxy should use the same pattern for request, session, route, and provider scopes.
-- Fia treats large or sensitive model inputs, chunks, and outputs as artifact references. Prompt-proxy should not put raw prompts, tool outputs, or SSE chunks in normal event payloads.
+- Fia treats large or sensitive model inputs, chunks, and outputs as artifact references. Prompt-proxy should not put raw prompts, tool outputs, or SSE chunks in normal event payloads; prompt text belongs in `prompt_artifacts` when capture is enabled.
 
 Trace findings:
 
@@ -236,7 +236,7 @@ High-volume stream chunks should not be persisted by default. For normal operati
 Default event payloads should be safe for audit and analytics:
 
 - Store request size, feature flags, route reasons, selected model, selected effort, estimated cost, latency, status, and upstream request IDs.
-- Store prompt hashes and body hashes, not raw prompt text.
+- Store prompt hashes and body hashes in events, not raw prompt text. Captured prompt text belongs in `prompt_artifacts`.
 - Store tool count and tool categories, not full tool schemas by default.
 - Store response usage and cost estimates when available.
 - Store full request/response bodies only as opt-in encrypted artifacts with retention and access controls.
@@ -1093,7 +1093,7 @@ Memory retrieval policy:
 Controls and evals:
 
 - Require opt-in policy for rewrite or memory injection modes.
-- Record rewrite inputs, policy version, redaction state, and output hashes without storing sensitive raw prompts by default.
+- Record rewrite inputs, policy version, redaction state, and output hashes without putting sensitive raw prompts in events.
 - Evaluate cost, completion quality, repair-turn rate, and user override rate before rollout.
 - Keep a no-rewrite replay path so route-quality reports can compare rewritten and preserved prompts.
 
