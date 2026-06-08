@@ -164,6 +164,30 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     }
     return detail;
   });
+  app.get("/admin/usage", async (request) => {
+    requireAuth(request.headers, config.proxyToken);
+    if (persistence) return persistence.adminQueries.usage(usageFilters(request.query));
+    return {
+      groupBy: "route",
+      data: [],
+      totals: {
+        key: "total",
+        requestCount: 0,
+        failedRequests: 0,
+        retriedRequests: 0,
+        failureRate: 0,
+        retryRate: 0,
+        usage: {
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 0
+        },
+        cost: { selected: 0, baseline: 0, savings: 0 }
+      }
+    };
+  });
   app.get("/admin/settings", async (request) => {
     requireAuth(request.headers, config.proxyToken);
     return {
@@ -383,6 +407,17 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   });
 
   return app;
+}
+
+function usageFilters(query: unknown) {
+  const record = query && typeof query === "object" && !Array.isArray(query)
+    ? query as Record<string, unknown>
+    : {};
+  return {
+    groupBy: stringParam(record.groupBy ?? record.group_by),
+    start: stringParam(record.start ?? record.startDate),
+    end: stringParam(record.end ?? record.endDate)
+  };
 }
 
 function promptFilters(query: unknown) {

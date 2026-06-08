@@ -6,12 +6,17 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  agentSessions,
   createPgliteDatabase,
   events,
   organizationSettings,
   organizations,
   promptArtifacts,
-  requests
+  providerAttempts,
+  requests,
+  routeDecisions,
+  users,
+  usageLedger
 } from "@prompt-proxy/db";
 
 import { buildModelCatalog } from "../src/catalog.js";
@@ -404,6 +409,97 @@ describe("prompt artifact capture", () => {
     expect(crossOrg.status).toBe(404);
   });
 
+  it("serves persisted usage analytics with grouping and time filters", async () => {
+    const fixture = await captureFixture("org_usage_admin");
+    const inside = new Date("2026-06-08T12:00:00.000Z");
+    const outside = new Date("2026-06-01T12:00:00.000Z");
+
+    await fixture.db.insert(users).values([
+      { id: "user_a" },
+      { id: "user_b" },
+      { id: "user_old" }
+    ]);
+    await fixture.db.insert(agentSessions).values([
+      {
+        id: "session_a",
+        organizationId: "org_usage_admin",
+        userId: "user_a",
+        surface: "openai-responses"
+      },
+      {
+        id: "session_b",
+        organizationId: "org_usage_admin",
+        userId: "user_b",
+        surface: "anthropic-messages"
+      },
+      {
+        id: "session_old",
+        organizationId: "org_usage_admin",
+        userId: "user_old",
+        surface: "openai-responses"
+      }
+    ]);
+    await fixture.db.insert(requests).values([
+      usageRequest("usage_request_fast", "org_usage_admin", "user_a", "session_a", "openai-responses", inside),
+      usageRequest("usage_request_hard", "org_usage_admin", "user_b", "session_b", "anthropic-messages", inside),
+      usageRequest("usage_request_old", "org_usage_admin", "user_old", "session_old", "openai-responses", outside)
+    ]);
+    await fixture.db.insert(routeDecisions).values([
+      usageDecision("usage_decision_fast", "usage_request_fast", "org_usage_admin", "fast", "openai", "gpt-fast"),
+      usageDecision("usage_decision_hard", "usage_request_hard", "org_usage_admin", "hard", "anthropic", "claude-hard"),
+      usageDecision("usage_decision_old", "usage_request_old", "org_usage_admin", "fast", "openai", "gpt-old")
+    ]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("usage_attempt_fast", "usage_request_fast", "org_usage_admin", "openai-responses", "openai", "gpt-fast", "completed", inside),
+      usageAttempt("usage_attempt_hard_old", "usage_request_hard", "org_usage_admin", "anthropic-messages", "anthropic", "claude-hard", "failed", new Date("2026-06-08T12:00:01.000Z")),
+      usageAttempt("usage_attempt_hard_new", "usage_request_hard", "org_usage_admin", "anthropic-messages", "anthropic", "claude-hard", "failed", new Date("2026-06-08T12:00:02.000Z")),
+      usageAttempt("usage_attempt_old", "usage_request_old", "org_usage_admin", "openai-responses", "openai", "gpt-old", "completed", outside)
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      usageRow("usage_fast", "usage_request_fast", "usage_attempt_fast", "org_usage_admin", "openai", "gpt-fast", "fast", 100, 25, 1000),
+      usageRow("usage_hard_retry", "usage_request_hard", "usage_attempt_hard_old", "org_usage_admin", "anthropic", "claude-hard", "hard", 10, 5, 500),
+      usageRow("usage_hard", "usage_request_hard", "usage_attempt_hard_new", "org_usage_admin", "anthropic", "claude-hard", "hard", 200, 50, 3000),
+      usageRow("usage_old", "usage_request_old", "usage_attempt_old", "org_usage_admin", "openai", "gpt-old", "fast", 999, 999, 9999)
+    ]);
+
+    const modelUsage = await fetch(
+      `${fixture.proxyUrl}/admin/usage?groupBy=model&start=2026-06-08T00:00:00.000Z&end=2026-06-09T00:00:00.000Z`,
+      { headers: { authorization: "Bearer proxy-token" } }
+    ).then((item) => item.json());
+    const supportedGroups = await Promise.all(
+      ["user", "provider", "model", "route", "surface", "session"].map((groupBy) =>
+        fetch(`${fixture.proxyUrl}/admin/usage?groupBy=${groupBy}`, {
+          headers: { authorization: "Bearer proxy-token" }
+        }).then((item) => item.json()))
+    );
+    const hardGroup = modelUsage.data.find((item: any) => item.key === "claude-hard");
+
+    expect(modelUsage.groupBy).toBe("model");
+    expect(modelUsage.totals.requestCount).toBe(2);
+    expect(modelUsage.totals.usage.inputTokens).toBe(310);
+    expect(modelUsage.totals.usage.outputTokens).toBe(80);
+    expect(modelUsage.totals.cost.selected).toBeCloseTo(0.0045);
+    expect(modelUsage.totals.failedRequests).toBe(1);
+    expect(modelUsage.totals.retriedRequests).toBe(1);
+    expect(modelUsage.totals.failureRate).toBe(0.5);
+    expect(modelUsage.totals.retryRate).toBe(0.5);
+    expect(modelUsage.data.map((item: any) => item.key)).not.toContain("gpt-old");
+    expect(hardGroup).toEqual(expect.objectContaining({
+      key: "claude-hard",
+      requestCount: 1,
+      failedRequests: 1,
+      retriedRequests: 1
+    }));
+    expect(supportedGroups.map((item: any) => item.groupBy)).toEqual([
+      "user",
+      "provider",
+      "model",
+      "route",
+      "surface",
+      "session"
+    ]);
+  });
+
   async function captureFixture(
     organizationId: string,
     promptCaptureMode: "hash_only" | "raw_text" = "raw_text",
@@ -448,6 +544,99 @@ describe("prompt artifact capture", () => {
     return { db, proxyUrl };
   }
 });
+
+function usageRequest(
+  id: string,
+  organizationId: string,
+  userId: string,
+  sessionId: string,
+  surface: "openai-responses" | "anthropic-messages",
+  createdAt: Date
+) {
+  return {
+    id,
+    organizationId,
+    userId,
+    sessionId,
+    surface,
+    idempotencyKey: `idem_${id}`,
+    requestedModel: "router-auto",
+    inputHash: `sha256:${id}`,
+    inputChars: 10,
+    status: "completed" as const,
+    createdAt
+  };
+}
+
+function usageDecision(
+  id: string,
+  requestId: string,
+  organizationId: string,
+  finalRoute: "fast" | "hard",
+  selectedProvider: "openai" | "anthropic",
+  selectedModel: string
+) {
+  return {
+    id,
+    requestId,
+    organizationId,
+    requestedModel: "router-auto",
+    finalRoute,
+    selectedProvider,
+    selectedModel,
+    policyVersion: "test"
+  };
+}
+
+function usageAttempt(
+  id: string,
+  requestId: string,
+  organizationId: string,
+  surface: "openai-responses" | "anthropic-messages",
+  provider: "openai" | "anthropic",
+  model: string,
+  terminalStatus: "completed" | "failed",
+  startedAt: Date
+) {
+  return {
+    id,
+    requestId,
+    organizationId,
+    surface,
+    provider,
+    model,
+    terminalStatus,
+    startedAt,
+    completedAt: startedAt
+  };
+}
+
+function usageRow(
+  id: string,
+  requestId: string,
+  providerAttemptId: string,
+  organizationId: string,
+  provider: "openai" | "anthropic",
+  model: string,
+  route: "fast" | "hard",
+  inputTokens: number,
+  outputTokens: number,
+  totalCostMicros: number
+) {
+  return {
+    id,
+    organizationId,
+    requestId,
+    providerAttemptId,
+    provider,
+    model,
+    route,
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+    totalCostMicros
+  };
+}
 
 function eventPayloadText(rows: Array<typeof events.$inferSelect>) {
   return rows.map((row) => JSON.stringify(row.payload)).join("\n");
