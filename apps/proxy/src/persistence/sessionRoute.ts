@@ -16,6 +16,10 @@ export async function persistSessionRoute(tx: PromptProxyTransaction, event: {
   const surface = surfaceValue(payload.surface) ?? "openai-responses";
   const userId = stringValue(payload.userId);
   const route = routeValue(payload.currentRoute);
+  const metadata = {
+    ...payload,
+    sessionIdentity: sessionId ? "harness" : "request_fallback"
+  };
   const dbSessionId = await ensureSession(tx, {
     organizationId: event.tenantId,
     surface,
@@ -28,7 +32,7 @@ export async function persistSessionRoute(tx: PromptProxyTransaction, event: {
     .update(agentSessions)
     .set({
       currentRoute: route,
-      metadata: payload,
+      metadata,
       updatedAt: new Date(event.createdAt)
     })
     .where(eq(agentSessions.id, dbSessionId));

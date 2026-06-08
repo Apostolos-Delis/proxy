@@ -370,6 +370,8 @@ These tickets extend the routing MVP into organization-wide prompt storage, usag
 
 ### PP-025: Resolve Proxy Requests Through API Keys
 
+Status: implemented in the current MVP.
+
 Replace global-token request ownership with API-key-backed organization and user identity.
 
 Acceptance criteria:
@@ -384,6 +386,8 @@ Acceptance criteria:
 Dependencies: PP-002, PP-004.
 
 ### PP-026: Normalize Durable Session Identity
+
+Status: implemented in the current MVP.
 
 Make every stored request replayable by attaching it to either a real harness session or an explicit request-scoped fallback session.
 

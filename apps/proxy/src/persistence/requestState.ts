@@ -44,6 +44,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
         organizationId,
         surface: routeContext?.surface,
         sessionId: routeContext?.sessionId,
+        requestId,
         userId: routeContext?.userId
       });
       await ensureUser(tx, routeContext?.userId);
@@ -172,6 +173,7 @@ export async function persistRequestReceived(tx: PromptProxyTransaction, event: 
     organizationId: event.tenantId,
     surface,
     sessionId,
+    requestId: event.scopeId,
     userId
   });
 

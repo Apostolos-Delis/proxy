@@ -80,12 +80,23 @@ export async function ensureSession(tx: PromptProxyTransaction, input: {
   organizationId: string;
   surface: Surface | undefined;
   sessionId: string | undefined;
+  requestId?: string;
   userId: string | undefined;
   route?: RouteName;
 }) {
-  if (!input.sessionId || !input.surface) return undefined;
-  const id = sessionRowId(input.organizationId, input.surface, input.sessionId);
+  if (!input.surface) return undefined;
+  const externalSessionId = input.sessionId ?? (input.requestId ? `request:${input.requestId}` : undefined);
+  if (!externalSessionId) return undefined;
+  const id = sessionRowId(input.organizationId, input.surface, externalSessionId);
+  const metadata = {
+    sessionIdentity: input.sessionId ? "harness" : "request_fallback"
+  };
   await ensureUser(tx, input.userId);
+  const updateValues: Partial<typeof agentSessions.$inferInsert> = {
+    userId: input.userId,
+    updatedAt: new Date()
+  };
+  if (input.route) updateValues.currentRoute = input.route;
   await tx
     .insert(agentSessions)
     .values({
@@ -93,16 +104,13 @@ export async function ensureSession(tx: PromptProxyTransaction, input: {
       organizationId: input.organizationId,
       userId: input.userId,
       surface: input.surface,
-      externalSessionId: input.sessionId,
-      currentRoute: input.route
+      externalSessionId,
+      currentRoute: input.route,
+      metadata
     })
     .onConflictDoUpdate({
       target: [agentSessions.organizationId, agentSessions.surface, agentSessions.externalSessionId],
-      set: {
-        userId: input.userId,
-        currentRoute: input.route,
-        updatedAt: new Date()
-      }
+      set: updateValues
     });
   return id;
 }
