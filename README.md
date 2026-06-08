@@ -2,6 +2,7 @@
 
 - [Model routing proxy design](docs/model-routing-proxy.md)
 - [Implementation tickets](docs/implementation-tickets.md)
+- [Future: GEPA-inspired prompt optimization](docs/future/gepa-prompt-optimization.md)
 
 ## Development
 
