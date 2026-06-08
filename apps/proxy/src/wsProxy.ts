@@ -14,6 +14,7 @@ import {
 } from "./auth.js";
 import type { AppConfig } from "./config.js";
 import { jsonPayload, type EventService, type ProviderAttemptStore, type RequestStateStoreLike } from "./events.js";
+import type { PromptArtifactStore } from "./persistence/promptArtifacts.js";
 import type { RoutingService } from "./router.js";
 import type { JsonObject, RouteDecision, RouteName } from "./types.js";
 import { createId, headerValue, idempotencyFrom, isRecord, lowerHeaders } from "./util.js";
@@ -32,7 +33,8 @@ export class WebSocketRoutingProxy {
     private readonly routing: RoutingService,
     private readonly events: EventService,
     private readonly attempts: ProviderAttemptStore,
-    private readonly requestStates: RequestStateStoreLike
+    private readonly requestStates: RequestStateStoreLike,
+    private readonly promptArtifacts?: PromptArtifactStore
   ) {}
 
   register(server: Server) {
@@ -177,6 +179,12 @@ export class WebSocketRoutingProxy {
       payload: requestReceivedPayload("openai-responses", context, rawContext, identity, {
         transport: "websocket"
       })
+    });
+    await this.promptArtifacts?.capture({
+      organizationId: identity.organizationId,
+      requestId,
+      surface: openAIResponsesSurface.surface,
+      body: routeBody
     });
 
     const decision = await this.routing.decide({
