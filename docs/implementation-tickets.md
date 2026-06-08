@@ -437,6 +437,8 @@ Dependencies: PP-025, PP-027.
 
 ### PP-029: Record Prompt Capture Events
 
+Status: implemented in the current MVP.
+
 Add small lifecycle events that link request timelines to prompt artifacts without duplicating prompt text.
 
 Acceptance criteria:
