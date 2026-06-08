@@ -122,6 +122,9 @@ export class ProviderProxy implements ProviderAdapter {
     input.reply.code(upstream.status);
     input.reply.header("x-prompt-proxy-model", selectedModel);
     input.reply.header("x-prompt-proxy-route", input.decision.finalRoute ?? "");
+    if (input.decision.reasoningEffort) {
+      input.reply.header("x-prompt-proxy-reasoning-effort", input.decision.reasoningEffort);
+    }
 
     if (!isSse || !upstream.body) {
       const text = await upstream.text();
@@ -160,6 +163,9 @@ export class ProviderProxy implements ProviderAdapter {
     input.reply.raw.statusCode = upstream.status;
     input.reply.raw.setHeader("x-prompt-proxy-model", selectedModel);
     input.reply.raw.setHeader("x-prompt-proxy-route", input.decision.finalRoute ?? "");
+    if (input.decision.reasoningEffort) {
+      input.reply.raw.setHeader("x-prompt-proxy-reasoning-effort", input.decision.reasoningEffort);
+    }
     const observer = new SseObserver();
     let completed = false;
 
@@ -324,6 +330,7 @@ function copyResponseHeaders(upstream: Response, reply: FastifyReply) {
 
 const hopByHopHeaders = new Set([
   "connection",
+  "content-encoding",
   "content-length",
   "keep-alive",
   "proxy-authenticate",

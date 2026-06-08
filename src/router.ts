@@ -1,5 +1,4 @@
 import {
-  isAutoAlias,
   modelForRoute,
   nearestReasoningEffort,
   routeOrder,
@@ -44,11 +43,15 @@ export class RoutingService {
         requestedModel: context.requestedModel,
         inputChars: context.inputChars,
         estimatedInputTokens: context.estimatedInputTokens,
+        routingInputSource: context.routingInputSource,
+        routingInputChars: context.routingInputChars,
+        routingEstimatedInputTokens: context.routingEstimatedInputTokens,
         hasTools: context.hasTools,
         toolCount: context.toolCount,
         hasPreviousResponseId: context.hasPreviousResponseId,
         hasImages: context.hasImages,
-        extractedHints: context.extractedHints
+        extractedHints: context.extractedHints,
+        routingExtractedHints: context.routingExtractedHints
       }
     });
 
@@ -71,13 +74,13 @@ export class RoutingService {
     }
 
     const explicit = context.explicitAlias;
-    const classification = explicit ? undefined : await this.classifyAuto(requestId, context, idempotencyKey);
-    const requestedRoute = explicit ?? classification?.output.recommended_route;
-
-    if (!requestedRoute) {
-      const rejected = this.reject(context, "request_model_must_be_router_alias");
-      await this.recordDecision(requestId, idempotencyKey, rejected);
-      return rejected;
+    let classification: ClassificationResult | undefined;
+    let requestedRoute: RouteName;
+    if (explicit) {
+      requestedRoute = explicit;
+    } else {
+      classification = await this.classify(requestId, context, idempotencyKey);
+      requestedRoute = classification.output.recommended_route;
     }
 
     const decision = this.resolveRoute(context, requestedRoute, classification);
@@ -153,10 +156,6 @@ export class RoutingService {
   }
 
   tokenCountDecision(context: RouteContext): RouteDecision {
-    if (!context.explicitAlias && !isAutoAlias(context.surface, context.requestedModel)) {
-      return this.reject(context, "request_model_must_be_router_alias");
-    }
-
     let finalRoute = context.explicitAlias ?? "hard";
     const guardrailActions: string[] = [];
     let model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
@@ -203,15 +202,11 @@ export class RoutingService {
     return request;
   }
 
-  private async classifyAuto(
+  private async classify(
     requestId: string,
     context: RouteContext,
     idempotencyKey: string
   ) {
-    if (!isAutoAlias(context.surface, context.requestedModel)) {
-      return undefined;
-    }
-
     try {
       const result = await this.classifier.classify(context);
       await this.events.append({

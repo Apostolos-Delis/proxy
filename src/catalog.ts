@@ -98,11 +98,6 @@ export const anthropicAliases = new Map<string, RouteName>([
   ["anthropic-router-deep", "deep"]
 ]);
 
-export function isAutoAlias(surface: Surface, model: string) {
-  if (surface === "openai-responses") return model === "router-auto";
-  return model === "claude-router-auto" || model === "anthropic-router-auto";
-}
-
 export function explicitAlias(surface: Surface, model: string): RouteName | undefined {
   if (surface === "openai-responses") return openaiAliases.get(model);
   return anthropicAliases.get(model);

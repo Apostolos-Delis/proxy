@@ -97,6 +97,7 @@ Codex findings:
 - Codex uses a per-turn sticky routing header, `x-codex-turn-state`, received from the server and replayed for subsequent requests in the same turn. The proxy must preserve this header in both directions.
 - Codex has explicit stream failure categories for failed SSE connection, mid-turn disconnect, and too many failed attempts. The proxy should not hide or normalize those failures into generic JSON errors.
 - Codex already has model metadata concepts for supported reasoning efforts, default reasoning effort, verbosity support, input modalities, service tiers, API support, and nearest-effort migration.
+- Codex and Conductor may still send ordinary upstream model names such as `gpt-5.5`. The proxy should record that value as a client hint for observability, then route non-alias requests through auto classification instead of rejecting or honoring the requested upstream model.
 
 Claude Code findings:
 
@@ -366,7 +367,7 @@ Returns service readiness. This should not call upstream providers.
 
 ### `GET /v1/models`
 
-Returns router aliases that clients can select.
+Returns router aliases that clients can select for explicit control. Clients may also send ordinary provider model names; the proxy records them as hints and still applies auto routing.
 
 ```json
 {
@@ -387,7 +388,7 @@ Request flow:
 1. Parse the JSON body.
 2. Build a `RouteContext`.
 3. Run compatibility and budget gates.
-4. Classify `router-auto` requests with the configured cheap classifier model.
+4. Classify non-explicit requests with the configured cheap classifier model.
 5. Choose the final route.
 6. Rewrite only routing fields.
 7. Forward the request upstream.
@@ -529,15 +530,15 @@ Cost fields can start as `0.0` or omitted for local development, but the structu
 
 ## Routing Policy
 
-Use a cheap LLM classifier for `router-auto`. Do not add a separate rule-based complexity scorer. The classifier is the classification layer; router code only enforces compatibility, budget, explicit aliases, retries, and failure behavior.
+Use a cheap LLM classifier for all non-explicit requests. Do not add a separate rule-based complexity scorer. The classifier is the classification layer; router code only enforces compatibility, budget, explicit aliases, retries, and failure behavior.
 
 The route pipeline should be:
 
 ```text
 extract request features
--> apply explicit alias overrides
 -> apply hard compatibility and budget gates
--> run cheap structured classifier for router-auto
+-> detect explicit alias overrides
+-> run cheap structured classifier when no explicit route was requested
 -> retry classifier when structured output fails
 -> apply budget/session policy
 -> resolve final route from classifier recommendation and guardrails
@@ -591,7 +592,7 @@ The classifier prompt should be small and structured. It receives a redacted rou
 ```json
 {
   "surface": "openai-responses",
-  "requested_model": "router-auto",
+  "requested_model": "gpt-5.5",
   "content_mode": "features_only",
   "redaction_state": "redacted",
   "input_excerpt": null,
@@ -637,6 +638,7 @@ The final route resolver applies non-classification guardrails after classifier 
 - If the classifier selects an incompatible route, escalate to the smallest compatible route.
 - If the classifier selects a route over budget, apply budget policy.
 - If the user selected `router-fast`, `router-balanced`, `router-hard`, or `router-deep`, treat that alias as an explicit override unless incompatible.
+- If the client selected an ordinary upstream model, treat it as auto-routed input. Record the requested model, but do not honor it as the selected upstream model.
 - If classifier confidence is low, preserve the classifier recommendation but record the low confidence in the route decision event.
 
 Capability checks should run before cost optimization. If the chosen model does not support a requested feature, escalate to the smallest compatible route.
@@ -677,6 +679,8 @@ The service should also support explicit aliases:
 - `router-balanced`: force the balanced route unless incompatible.
 - `router-hard`: force the hard route unless incompatible.
 - `router-deep`: force the deep route unless incompatible.
+
+Any non-alias model name should behave like `router-auto`. This lets harnesses with fixed model pickers point at the proxy without bypassing routing.
 
 ## Session Behavior
 

@@ -53,11 +53,17 @@ export type RouteContext = {
   inputChars: number;
   inputHash: string;
   estimatedInputTokens: number;
+  routingInputSource: "latest_user_message" | "full_request";
+  routingInputText: string;
+  routingInputChars: number;
+  routingInputHash: string;
+  routingEstimatedInputTokens: number;
   hasTools: boolean;
   toolCount: number;
   hasPreviousResponseId: boolean;
   hasImages: boolean;
   extractedHints: string[];
+  routingExtractedHints: string[];
   sessionId?: string;
   userId?: string;
   teamId?: string;
