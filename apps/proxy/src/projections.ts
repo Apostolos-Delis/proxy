@@ -37,9 +37,7 @@ export class ProjectionService {
     }
 
     for (const event of events) {
-      if (event.eventType !== "provider.response_completed" && event.eventType !== "provider.response_failed") {
-        continue;
-      }
+      if (!isTerminalProviderEvent(event.eventType)) continue;
 
       const decision = decisions.get(event.scopeId);
       const context = contexts.get(event.scopeId);
@@ -65,7 +63,7 @@ export class ProjectionService {
         requestedModel,
         finalRoute,
         selectedModel,
-        terminalStatus: event.eventType === "provider.response_completed" ? "completed" : "failed",
+        terminalStatus: terminalStatus(event),
         inputChars: numberValue(context?.inputChars),
         usage,
         latencyMs: elapsedMs(starts.get(event.scopeId), event.createdAt),
@@ -99,6 +97,7 @@ export class ProjectionService {
     for (const event of events) {
       if (event.eventType === "routing.context_built") contexts.set(event.scopeId, event.payload as JsonObject);
       if (event.eventType === "provider.response_failed") terminals.set(event.scopeId, "failed");
+      if (event.eventType === "provider.response_cancelled") terminals.set(event.scopeId, "cancelled");
     }
 
     for (const event of events) {
@@ -174,6 +173,24 @@ export class ProjectionService {
       lowConfidence
     };
   }
+}
+
+function isTerminalProviderEvent(eventType: string) {
+  return (
+    eventType === "provider.response_completed" ||
+    eventType === "provider.response_failed" ||
+    eventType === "provider.response_cancelled"
+  );
+}
+
+function terminalStatus(event: ProxyEvent) {
+  const payloadStatus = (event.payload as JsonObject).terminalStatus;
+  if (payloadStatus === "completed" || payloadStatus === "failed" || payloadStatus === "cancelled") {
+    return payloadStatus;
+  }
+  if (event.eventType === "provider.response_completed") return "completed";
+  if (event.eventType === "provider.response_cancelled") return "cancelled";
+  return "failed";
 }
 
 function normalizeUsage(value: JsonValue | undefined): UsageSummary {

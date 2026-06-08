@@ -1,11 +1,13 @@
+import cors from "@fastify/cors";
 import Fastify, { type FastifyReply } from "fastify";
 
 import { anthropicMessagesSurface, openAIResponsesSurface } from "./adapters.js";
 import { loadConfig, type AppConfig } from "./config.js";
 import { buildModelCatalog } from "./catalog.js";
 import { LlmClassifier } from "./classifier.js";
-import { EventService, ProviderAttemptStore, RequestStateStore } from "./events.js";
+import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStateGate } from "./events.js";
 import { BudgetService, SessionRouteStore } from "./policy.js";
+import { createPostgresPersistence } from "./persistence/index.js";
 import { ProjectionService } from "./projections.js";
 import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
@@ -18,9 +20,21 @@ export function buildServer(config: AppConfig = loadConfig()) {
     logger: { level: config.logLevel },
     bodyLimit: 1024 * 1024 * 50
   });
-  const events = new EventService(config.eventStorePath);
+  void app.register(cors, {
+    origin: config.adminCorsOrigins,
+    credentials: true
+  });
+  const persistence = config.databaseUrl
+    ? createPostgresPersistence(config.databaseUrl, modelCatalog, config)
+    : undefined;
+  const events = new EventService(
+    config.eventStorePath,
+    undefined,
+    persistence?.eventSink,
+    config.defaultOrganizationId
+  );
   const attempts = new ProviderAttemptStore();
-  const requestStates = new RequestStateStore();
+  const requestStates = persistence?.requestStates ?? new RequestStateStore();
   const budget = new BudgetService(config);
   const sessions = new SessionRouteStore();
   const classifier = new LlmClassifier(config);
@@ -29,11 +43,6 @@ export function buildServer(config: AppConfig = loadConfig()) {
   const wsProxy = new WebSocketRoutingProxy(config, routing, events, attempts, requestStates);
   const projections = new ProjectionService(modelCatalog, config);
   wsProxy.register(app.server);
-
-  app.decorate("events", events);
-  app.decorate("attempts", attempts);
-  app.decorate("requestStates", requestStates);
-  app.decorate("sessions", sessions);
 
   app.get("/healthz", async () => ({ status: "ok" }));
 
@@ -77,17 +86,78 @@ export function buildServer(config: AppConfig = loadConfig()) {
     requireAuth(request.headers, config.proxyToken);
     return projections.routeQuality(events.listEvents());
   });
+  app.get("/admin/overview", async (request) => {
+    requireAuth(request.headers, config.proxyToken);
+    if (persistence) return persistence.adminQueries.overview();
+    const allEvents = events.listEvents();
+    const usage = projections.usage(allEvents);
+    const routeQuality = projections.routeQuality(allEvents);
+    return {
+      organizationId: config.defaultOrganizationId,
+      eventCount: allEvents.length,
+      requestCount: usage.requests.length,
+      totals: usage.totals,
+      cost: usage.cost,
+      routeQuality: {
+        lowConfidenceCount: routeQuality.lowConfidence.length,
+        cheaperLikelyWouldWorkCount: routeQuality.cheaperLikelyWouldWork.length,
+        cheapCausedRetriesOrRepairsCount: routeQuality.cheapCausedRetriesOrRepairs.length
+      }
+    };
+  });
+  app.get("/admin/requests", async (request) => {
+    requireAuth(request.headers, config.proxyToken);
+    if (persistence) return persistence.adminQueries.requests();
+    return {
+      data: [...projections.usage(events.listEvents()).requests].reverse()
+    };
+  });
+  app.get("/admin/requests/:requestId", async (request) => {
+    requireAuth(request.headers, config.proxyToken);
+    const params = request.params as { requestId?: string };
+    const requestId = params.requestId;
+    if (!requestId) return { request: null, events: [] };
+    if (persistence) return persistence.adminQueries.requestDetail(requestId);
+    const allEvents = events.listEvents();
+    const requestSummary = projections.usage(allEvents).requests.find((item) => item.requestId === requestId);
+    return {
+      request: requestSummary ?? null,
+      events: allEvents.filter((event) => event.scopeId === requestId || event.correlationId === requestId)
+    };
+  });
+  app.get("/admin/settings", async (request) => {
+    requireAuth(request.headers, config.proxyToken);
+    return {
+      organizationId: config.defaultOrganizationId,
+      databaseEnabled: Boolean(config.databaseUrl),
+      classifier: {
+        provider: config.classifierProvider,
+        model: config.classifierModel,
+        timeoutMs: config.classifierTimeoutMs,
+        maxAttempts: config.classifierMaxAttempts,
+        contentMode: config.classifierAllowRedactedExcerpt ? "redacted_excerpt" : "features_only"
+      },
+      budgets: {
+        maxEstimatedInputTokens: config.budgetMaxEstimatedInputTokens ?? null,
+        warningEstimatedInputTokens: config.budgetWarningEstimatedInputTokens ?? null,
+        maxRoute: config.budgetMaxRoute ?? null
+      },
+      routePolicyTrust: config.routePolicyTrust
+    };
+  });
 
   app.post("/v1/responses", async (request, reply) => {
     requireAuth(request.headers, config.proxyToken);
-    const requestId = createId("request");
     const idempotencyKey = idempotencyFrom(
       openAIResponsesSurface.createOperation,
       request.body,
       request.headers
     );
-    if (sendDuplicateRequest(requestStates, idempotencyKey, reply)) return;
     const context = openAIResponsesSurface.buildContext(request.body, lowerHeaders(request.headers));
+    const proposedRequestId = createId("request");
+    const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
+    if (sendDuplicateRequest(gate, reply)) return;
+    const requestId = gate.state.requestId ?? proposedRequestId;
 
     try {
       await events.append({
@@ -99,6 +169,9 @@ export function buildServer(config: AppConfig = loadConfig()) {
         eventType: "proxy.request_received",
         payload: {
           surface: "openai-responses",
+          sessionId: context.sessionId ?? null,
+          userId: context.userId ?? null,
+          teamId: context.teamId ?? null,
           requestedModel: context.requestedModel,
           inputHash: context.inputHash,
           inputChars: context.inputChars
@@ -112,7 +185,7 @@ export function buildServer(config: AppConfig = loadConfig()) {
         idempotencyKey
       });
       if (decision.outcome === "reject") {
-        requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+        await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
         reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
         return;
       }
@@ -128,7 +201,7 @@ export function buildServer(config: AppConfig = loadConfig()) {
         reply
       });
     } catch (error) {
-      requestStates.finish(idempotencyKey, "failed", {
+      await requestStates.finish(idempotencyKey, "failed", {
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
@@ -137,14 +210,16 @@ export function buildServer(config: AppConfig = loadConfig()) {
 
   app.post("/v1/messages", async (request, reply) => {
     requireAuth(request.headers, config.proxyToken);
-    const requestId = createId("request");
     const idempotencyKey = idempotencyFrom(
       anthropicMessagesSurface.createOperation,
       request.body,
       request.headers
     );
-    if (sendDuplicateRequest(requestStates, idempotencyKey, reply)) return;
     const context = anthropicMessagesSurface.buildContext(request.body, lowerHeaders(request.headers));
+    const proposedRequestId = createId("request");
+    const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
+    if (sendDuplicateRequest(gate, reply)) return;
+    const requestId = gate.state.requestId ?? proposedRequestId;
 
     try {
       await events.append({
@@ -157,6 +232,9 @@ export function buildServer(config: AppConfig = loadConfig()) {
         eventType: "proxy.request_received",
         payload: {
           surface: "anthropic-messages",
+          sessionId: context.sessionId ?? null,
+          userId: context.userId ?? null,
+          teamId: context.teamId ?? null,
           requestedModel: context.requestedModel,
           inputHash: context.inputHash,
           inputChars: context.inputChars
@@ -170,7 +248,7 @@ export function buildServer(config: AppConfig = loadConfig()) {
         idempotencyKey
       });
       if (decision.outcome === "reject") {
-        requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+        await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
         reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
         return;
       }
@@ -186,7 +264,7 @@ export function buildServer(config: AppConfig = loadConfig()) {
         reply
       });
     } catch (error) {
-      requestStates.finish(idempotencyKey, "failed", {
+      await requestStates.finish(idempotencyKey, "failed", {
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
@@ -195,18 +273,20 @@ export function buildServer(config: AppConfig = loadConfig()) {
 
   app.post("/v1/messages/count_tokens", async (request, reply) => {
     requireAuth(request.headers, config.proxyToken);
-    const requestId = createId("request");
     const idempotencyKey = idempotencyFrom(
       anthropicMessagesSurface.countTokensOperation ?? anthropicMessagesSurface.createOperation,
       request.body,
       request.headers
     );
-    if (sendDuplicateRequest(requestStates, idempotencyKey, reply)) return;
     const context = anthropicMessagesSurface.buildContext(request.body, lowerHeaders(request.headers));
+    const proposedRequestId = createId("request");
+    const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
+    if (sendDuplicateRequest(gate, reply)) return;
+    const requestId = gate.state.requestId ?? proposedRequestId;
     try {
       const decision = routing.tokenCountDecision(context);
       if (decision.outcome === "reject") {
-        requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+        await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
         reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
         return;
       }
@@ -223,7 +303,7 @@ export function buildServer(config: AppConfig = loadConfig()) {
         path: "/messages/count_tokens"
       });
     } catch (error) {
-      requestStates.finish(idempotencyKey, "failed", {
+      await requestStates.finish(idempotencyKey, "failed", {
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
@@ -245,11 +325,9 @@ function requireAuth(headers: Record<string, unknown>, token: string) {
 }
 
 function sendDuplicateRequest(
-  requestStates: RequestStateStore,
-  idempotencyKey: string,
+  gate: RequestStateGate,
   reply: FastifyReply
 ) {
-  const gate = requestStates.begin(idempotencyKey);
   if (!gate.duplicate) return false;
 
   if (gate.state.status === "classifying" || gate.state.status === "provider_pending") {

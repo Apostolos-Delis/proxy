@@ -1,0 +1,70 @@
+# Prompt Proxy
+
+Prompt Proxy is an OpenAI/Anthropic-compatible model routing gateway with durable event and usage capture. The repo is organized for agentic engineering: durable decisions live in docs, transport boundaries stay thin, and provider-specific behavior stays behind adapters.
+
+## Repository Map
+
+- `apps/proxy/` is the Fastify proxy for Codex, Claude Code, and other harnesses.
+- `apps/web/` is the TanStack operations console.
+- `packages/db/` owns Drizzle schema, migrations, and database client helpers.
+- `packages/schema/` owns shared enum-like constants and cross-package types.
+- `docs/` owns architecture notes, scope plans, and future work.
+
+## Architecture Rules
+
+- The proxy route handlers are transport boundaries. They may authenticate, parse request envelopes, and call services/helpers, but should not accumulate business logic.
+- Provider-specific code belongs in provider adapters or proxy forwarding code. Do not leak provider-specific request fields into shared policy/data-model code unless the field is stored as provider metadata.
+- Every durable table and event must be scoped by `organization_id` or the in-memory equivalent `tenantId`.
+- Events are the audit and projection backbone. Current-state tables exist for efficient queries and constraints.
+- When persistence is enabled, write the event row, outbox row, and matching current-state mutation in the same database transaction.
+- Event creation flows through `EventService`. Do not append directly to `packages/db` tables from transport handlers.
+- The routing classifier is an LLM call with structured output and retry. Do not add deterministic routing fallback logic.
+- Raw prompts must only be stored through `prompt_artifacts` and must follow org retention/redaction settings. Default to hashes/redacted artifacts, not raw prompt persistence.
+- API keys must be stored as hashes, never as raw tokens.
+- Provider keys should be represented as secret references or encrypted material, not plain text rows.
+
+## Frontend Rules
+
+- `apps/web` uses TanStack Router, TanStack Query, and TanStack Table.
+- Do not introduce a competing router, data-fetching library, or global state layer without updating this file and the architecture docs.
+- Do not call `useEffect` directly. Use TanStack Query for data fetching, inline derivation for derived state, event handlers for user actions, and a `key` reset for prop-driven resets.
+- Use shared components only when duplication becomes real. Keep the first dashboard screens simple and operational.
+- UI should be dense, quiet, and scan-friendly. This is an internal operations console, not a landing page.
+
+## Database Rules
+
+- Drizzle schema lives in `packages/db/src/schema.ts`.
+- SQL migrations live in `packages/db/migrations/`.
+- Add migrations in the same change as schema changes.
+- Prefer explicit indexes for org-scoped list/detail queries.
+- Use `pnpm db:migrate` to apply migrations against `DATABASE_URL`.
+- Local tests may use in-memory stores, but production persistence requires Postgres.
+
+## Commands
+
+```bash
+pnpm install
+pnpm dev:proxy
+pnpm dev:web
+pnpm db:migrate
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm smoke
+pnpm smoke:harnesses
+```
+
+## Documentation Rules
+
+- Link new durable docs from `docs/index.md`.
+- Product behavior changes should update `README.md` or the relevant feature/scope doc.
+- Event shape, database, persistence, or dashboard changes should update `docs/scopes/persistence-admin-v1/PLAN.md`.
+- Future prompt optimization ideas belong under `docs/future/`.
+
+## Working Style
+
+- Keep diffs scoped.
+- Do not add premature abstractions.
+- Fix root causes, not symptoms.
+- Let tooling handle formatting.
+- Before committing, run the narrowest meaningful validation and report exactly what passed or failed.

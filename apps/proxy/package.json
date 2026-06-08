@@ -1,0 +1,35 @@
+{
+  "name": "@prompt-proxy/proxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/server.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx --env-file-if-exists=../../.env src/server.ts",
+    "smoke:harnesses": "tsx --env-file-if-exists=../../.env scripts/smoke-harnesses.ts",
+    "smoke": "tsx --env-file-if-exists=../../.env scripts/smoke-proxy.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@prompt-proxy/db": "workspace:*",
+    "@prompt-proxy/schema": "workspace:*",
+    "drizzle-orm": "0.45.2",
+    "fastify": "^5.6.2",
+    "pino": "^10.1.0",
+    "ws": "^8.21.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.4.5",
+    "@types/node": "^25.0.2",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  }
+}

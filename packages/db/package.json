@@ -1,0 +1,28 @@
+{
+  "name": "@prompt-proxy/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./migrations": "./src/migrate-runner.ts",
+    "./test": "./src/test.ts"
+  },
+  "scripts": {
+    "migrate": "node --env-file-if-exists=../../.env --import tsx src/migrate.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.4.5",
+    "@prompt-proxy/schema": "workspace:*",
+    "drizzle-orm": "0.45.2",
+    "postgres": "3.4.7",
+    "tsx": "^4.21.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.31.10",
+    "vitest": "^4.0.15"
+  }
+}

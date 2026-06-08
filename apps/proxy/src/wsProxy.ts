@@ -5,7 +5,7 @@ import WebSocket, { WebSocketServer, type RawData } from "ws";
 
 import { openAIResponsesSurface } from "./adapters.js";
 import type { AppConfig } from "./config.js";
-import { jsonPayload, type EventService, type ProviderAttemptStore, type RequestStateStore } from "./events.js";
+import { jsonPayload, type EventService, type ProviderAttemptStore, type RequestStateStoreLike } from "./events.js";
 import type { RoutingService } from "./router.js";
 import type { JsonObject, RouteDecision, RouteName } from "./types.js";
 import { createId, headerValue, idempotencyFrom, isRecord, lowerHeaders } from "./util.js";
@@ -23,7 +23,7 @@ export class WebSocketRoutingProxy {
     private readonly routing: RoutingService,
     private readonly events: EventService,
     private readonly attempts: ProviderAttemptStore,
-    private readonly requestStates: RequestStateStore
+    private readonly requestStates: RequestStateStoreLike
   ) {}
 
   register(server: Server) {
@@ -143,8 +143,11 @@ export class WebSocketRoutingProxy {
       routeBody,
       headers
     );
-    this.requestStates.begin(idempotencyKey);
     const context = openAIResponsesSurface.buildContext(routeBody, headers);
+    const gate = await this.requestStates.begin(idempotencyKey, requestId, context);
+    if (gate.duplicate && (gate.state.status === "classifying" || gate.state.status === "provider_pending")) {
+      throw new Error("duplicate_websocket_request_active");
+    }
 
     await this.events.append({
       scopeType: "request",
@@ -157,6 +160,9 @@ export class WebSocketRoutingProxy {
       payload: {
         surface: "openai-responses",
         transport: "websocket",
+        sessionId: context.sessionId ?? null,
+        userId: context.userId ?? null,
+        teamId: context.teamId ?? null,
         requestedModel: context.requestedModel,
         inputHash: context.inputHash,
         inputChars: context.inputChars
@@ -170,7 +176,7 @@ export class WebSocketRoutingProxy {
       idempotencyKey
     });
     if (decision.outcome === "reject") {
-      this.requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+      await this.requestStates.finish(idempotencyKey, "failed", { error: decision.error });
       throw new Error(decision.error ?? "websocket_request_rejected");
     }
 
@@ -183,7 +189,7 @@ export class WebSocketRoutingProxy {
     });
     if (!attempt) throw new Error("duplicate_websocket_request");
 
-    this.requestStates.markProviderPending(idempotencyKey, attempt.id);
+    await this.requestStates.markProviderPending(idempotencyKey, attempt.id);
     await this.events.append({
       scopeType: "request",
       scopeId: requestId,
@@ -193,6 +199,7 @@ export class WebSocketRoutingProxy {
       producer: "prompt-proxy.provider",
       eventType: "provider.request_started",
       payload: {
+        surface: openAIResponsesSurface.surface,
         provider: openAIResponsesSurface.provider,
         transport: "websocket",
         model: decision.selectedModel ?? "unknown",
@@ -208,6 +215,7 @@ export class WebSocketRoutingProxy {
       producer: "prompt-proxy.provider",
       eventType: "provider.stream_started",
       payload: {
+        surface: openAIResponsesSurface.surface,
         provider: openAIResponsesSurface.provider,
         transport: "websocket",
         providerAttemptId: attempt.id
@@ -257,31 +265,28 @@ export class WebSocketRoutingProxy {
     usage: unknown,
     metadata: unknown
   ) {
-    this.attempts.update(activeRequest.providerAttemptId, {
-      terminalStatus: status,
-      usage: usage === undefined ? undefined : jsonPayload(usage),
-      error: status === "completed" ? undefined : JSON.stringify(metadata)
-    });
-    this.requestStates.finish(activeRequest.idempotencyKey, status, {
+    const metadataPayload = jsonPayload(metadata) as JsonObject;
+    const error = status === "completed" ? undefined : terminalError(metadataPayload);
+    const payload: JsonObject = {
+      surface: openAIResponsesSurface.surface,
+      provider: openAIResponsesSurface.provider,
+      selectedModel: activeRequest.decision.selectedModel ?? "unknown",
       providerAttemptId: activeRequest.providerAttemptId,
-      usage: usage === undefined ? undefined : jsonPayload(usage),
-      error: status === "completed" ? undefined : JSON.stringify(metadata)
-    });
+      terminalStatus: status,
+      upstreamStatus: status === "completed" ? 200 : 0,
+      usage: usage === undefined ? null : jsonPayload(usage)
+    };
+    if (error) payload.error = error;
+
     await this.events.append({
       scopeType: "request",
       scopeId: activeRequest.requestId,
       correlationId: activeRequest.requestId,
       idempotencyKey: activeRequest.idempotencyKey,
       producer: "prompt-proxy.provider",
-      eventType: status === "completed" ? "provider.response_completed" : "provider.response_failed",
-      payload: {
-        provider: openAIResponsesSurface.provider,
-        selectedModel: activeRequest.decision.selectedModel ?? "unknown",
-        providerAttemptId: activeRequest.providerAttemptId,
-        upstreamStatus: status === "completed" ? 200 : 0,
-        usage: usage === undefined ? null : jsonPayload(usage)
-      },
-      metadata: jsonPayload(metadata) as JsonObject
+      eventType: terminalEventType(status),
+      payload,
+      metadata: metadataPayload
     });
     if (usage !== undefined) {
       await this.events.append({
@@ -297,6 +302,16 @@ export class WebSocketRoutingProxy {
         }
       });
     }
+    this.attempts.update(activeRequest.providerAttemptId, {
+      terminalStatus: status,
+      usage: usage === undefined ? undefined : jsonPayload(usage),
+      error
+    });
+    await this.requestStates.finish(activeRequest.idempotencyKey, status, {
+      providerAttemptId: activeRequest.providerAttemptId,
+      usage: usage === undefined ? undefined : jsonPayload(usage),
+      error
+    });
   }
 
   private openAIWebSocketUrl() {
@@ -321,6 +336,19 @@ export class WebSocketRoutingProxy {
     copyIfPresent(incoming, headers, "x-client-request-id");
     return headers;
   }
+}
+
+function terminalEventType(status: "completed" | "failed" | "cancelled") {
+  if (status === "completed") return "provider.response_completed";
+  if (status === "cancelled") return "provider.response_cancelled";
+  return "provider.response_failed";
+}
+
+function terminalError(metadata: JsonObject) {
+  const error = metadata.error;
+  if (typeof error === "string") return error;
+  if (error === undefined || error === null) return undefined;
+  return JSON.stringify(error);
 }
 
 function pinnedRouteBody(body: unknown, connectionRoute: RouteName | undefined) {
