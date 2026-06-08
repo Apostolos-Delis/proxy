@@ -59,6 +59,7 @@ describe("prompt proxy", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
     expect(body).toContain("response.completed");
 
     const classifierCall = openai.records.find((record) => record.body.model === "route-classifier-cheap");
@@ -91,6 +92,97 @@ describe("prompt proxy", () => {
     expect(events.map((event: any) => event.eventType)).toContain("routing.decision_recorded");
     expect(events.map((event: any) => event.eventType)).toContain("usage.recorded");
     expect(sessions).toHaveLength(0);
+  });
+
+  it("parses classifier output from Responses content items", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({
+      classifierResponsesShape: true,
+      classifierOutput: {
+        complexity: "simple",
+        risk: [],
+        recommended_route: "fast",
+        can_use_fast_model: true,
+        needs_deep_reasoning: false,
+        reason_codes: ["simple_request"],
+        confidence: 0.8
+      }
+    });
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "format the answer",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const providerCall = openai.records.find((record) => record.body.model === "gpt-5.4-mini");
+    await app.close();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("low");
+    expect(providerCall).toBeTruthy();
+  });
+
+  it("does not forward decoded upstream content encoding", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({ compressedJsonProvider: true });
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-fast",
+        input: "format the answer",
+        stream: false
+      })
+    });
+    const body = await response.json();
+    await app.close();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-encoding")).toBeNull();
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("low");
+    expect(body.id).toBe("resp_mock");
   });
 
   it("routes Claude Code-style Anthropic Messages requests through the classifier", async () => {
@@ -137,6 +229,7 @@ describe("prompt proxy", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
     expect(body).toContain("message_stop");
 
     const providerCall = anthropic.records.find((record) => record.path === "/messages");

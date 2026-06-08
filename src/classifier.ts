@@ -129,25 +129,24 @@ function extractStructuredOutput(json: unknown): unknown {
   if (isRecord(json.output_parsed)) return json.output_parsed;
   if (typeof json.output_text === "string") return parseJson(json.output_text);
 
-  const content = findTextContent(json);
+  const content = findOutputText(json.output);
   return content ? parseJson(content) : undefined;
 }
 
-function findTextContent(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
+function findOutputText(value: unknown): string | undefined {
   if (Array.isArray(value)) {
     for (const item of value) {
-      const found = findTextContent(item);
+      const found = findOutputText(item);
       if (found) return found;
     }
   }
   if (isRecord(value)) {
-    if (typeof value.text === "string") return value.text;
-    if (typeof value.content === "string") return value.content;
-    for (const item of Object.values(value)) {
-      const found = findTextContent(item);
-      if (found) return found;
-    }
+    if (
+      (value.type === "output_text" || value.type === "text") &&
+      typeof value.text === "string"
+    ) return value.text;
+    if (Array.isArray(value.content)) return findOutputText(value.content);
+    if (Array.isArray(value.output)) return findOutputText(value.output);
   }
   return undefined;
 }
