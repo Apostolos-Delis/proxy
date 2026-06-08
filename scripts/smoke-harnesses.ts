@@ -5,6 +5,8 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { AddressInfo } from "node:net";
 import { join } from "node:path";
 
+import { WebSocketServer } from "ws";
+
 import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
 
@@ -68,6 +70,7 @@ async function runCodex(proxyUrl: string) {
       `base_url = "${proxyUrl}/v1"`,
       'env_key = "PROMPT_PROXY_TOKEN"',
       'wire_api = "responses"',
+      "supports_websockets = true",
       ""
     ].join("\n")
   );
@@ -139,6 +142,7 @@ function runCommand(command: string, args: string[], env: Record<string, string>
 }
 
 async function mockOpenAI(records: Recorded[]) {
+  const wss = new WebSocketServer({ noServer: true });
   const server = createServer(async (request, response) => {
     const body = await readJson(request);
     records.push({ path: request.url ?? "", body });
@@ -186,6 +190,45 @@ async function mockOpenAI(records: Recorded[]) {
       }
     });
     response.end();
+  });
+
+  server.on("upgrade", (request, socket, head) => {
+    if (request.url !== "/responses") {
+      socket.destroy();
+      return;
+    }
+    wss.handleUpgrade(request, socket, head, (client) => {
+      client.on("message", (data) => {
+        const body = JSON.parse(String(data));
+        records.push({ path: request.url ?? "", body });
+        client.send(JSON.stringify({
+          type: "response.created",
+          response: { id: "resp_cli_smoke" }
+        }));
+        client.send(JSON.stringify({
+          type: "response.output_item.done",
+          item: {
+            type: "message",
+            role: "assistant",
+            id: "msg_cli_smoke",
+            content: [{ type: "output_text", text: "OK" }]
+          }
+        }));
+        client.send(JSON.stringify({
+          type: "response.completed",
+          response: {
+            id: "resp_cli_smoke",
+            usage: {
+              input_tokens: 10,
+              input_tokens_details: { cached_tokens: 0 },
+              output_tokens: 1,
+              output_tokens_details: { reasoning_tokens: 0 },
+              total_tokens: 11
+            }
+          }
+        }));
+      });
+    });
   });
 
   return listen(server);

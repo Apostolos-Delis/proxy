@@ -9,7 +9,8 @@ import { BudgetService, SessionRouteStore } from "./policy.js";
 import { ProjectionService } from "./projections.js";
 import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
-import { createId, sha256, stableJson } from "./util.js";
+import { createId, headerValue, idempotencyFrom, lowerHeaders } from "./util.js";
+import { WebSocketRoutingProxy } from "./wsProxy.js";
 
 export function buildServer(config: AppConfig = loadConfig()) {
   const modelCatalog = buildModelCatalog(config);
@@ -25,7 +26,9 @@ export function buildServer(config: AppConfig = loadConfig()) {
   const classifier = new LlmClassifier(config);
   const routing = new RoutingService(config, classifier, events, modelCatalog, budget, sessions);
   const proxy = new ProviderProxy(config, events, attempts, requestStates);
+  const wsProxy = new WebSocketRoutingProxy(config, routing, events, attempts, requestStates);
   const projections = new ProjectionService(modelCatalog, config);
+  wsProxy.register(app.server);
 
   app.decorate("events", events);
   app.decorate("attempts", attempts);
@@ -231,22 +234,14 @@ export function buildServer(config: AppConfig = loadConfig()) {
 }
 
 function requireAuth(headers: Record<string, unknown>, token: string) {
-  const auth = String(headers.authorization ?? "");
+  const auth = headerValue(headers, "authorization") ?? "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : auth;
-  const apiKey = String(headers["x-api-key"] ?? "");
+  const apiKey = headerValue(headers, "x-api-key") ?? "";
   if (bearer !== token && apiKey !== token) {
     const error = new Error("Unauthorized");
     (error as Error & { statusCode: number }).statusCode = 401;
     throw error;
   }
-}
-
-function lowerHeaders(headers: Record<string, unknown>) {
-  const result: Record<string, string | undefined> = {};
-  for (const [key, value] of Object.entries(headers)) {
-    if (typeof value === "string") result[key.toLowerCase()] = value;
-  }
-  return result;
 }
 
 function sendDuplicateRequest(
@@ -274,29 +269,6 @@ function sendDuplicateRequest(
     error: gate.state.error ?? null
   });
   return true;
-}
-
-function idempotencyFrom(
-  surface: string,
-  body: unknown,
-  headers: Record<string, unknown>
-) {
-  const explicit =
-    headers["idempotency-key"] ??
-    headers["x-request-id"] ??
-    headers["X-Request-Id"];
-
-  if (typeof explicit === "string" && explicit.length > 0) {
-    return sha256(`${surface}:explicit:${explicit}`);
-  }
-  const stableHeader = [
-    headers["x-codex-turn-state"],
-    headers["x-claude-code-session-id"],
-    headers["x-claude-code-agent-id"]
-  ]
-    .filter((value): value is string => typeof value === "string")
-    .join(":");
-  return sha256(`${surface}:${stableHeader}:${stableJson(body)}`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
