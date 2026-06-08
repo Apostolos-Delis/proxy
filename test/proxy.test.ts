@@ -1,0 +1,996 @@
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { buildServer } from "../src/server.js";
+import { loadConfig } from "../src/config.js";
+import { listen, startAnthropicMock, startOpenAIMock, type MockServer } from "./helpers.js";
+
+describe("prompt proxy", () => {
+  let openai: MockServer;
+  let anthropic: MockServer;
+
+  beforeEach(async () => {
+    openai = await startOpenAIMock();
+    anthropic = await startAnthropicMock();
+  });
+
+  afterEach(async () => {
+    await openai.close();
+    await anthropic.close();
+  });
+
+  it("routes Codex-style OpenAI Responses requests through the classifier", async () => {
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "x-codex-turn-state": "turn-state-1",
+        "x-codex-turn-metadata": "turn-metadata-1",
+        "x-openai-subagent": "reviewer",
+        "x-request-id": "request-id-1",
+        traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "fix the failing auth test and find root cause",
+        tools: [{ type: "function", name: "shell" }],
+        previous_response_id: "resp_previous",
+        stream: true,
+        include: ["reasoning.encrypted_content"]
+      })
+    });
+
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(body).toContain("response.completed");
+
+    const classifierCall = openai.records.find((record) => record.body.model === "route-classifier-cheap");
+    const providerCall = openai.records.find((record) => record.body.model === "gpt-5.5");
+
+    expect(classifierCall).toBeTruthy();
+    expect(classifierCall?.body.input).toContain('"content_mode":"features_only"');
+    expect(classifierCall?.body.input).toContain('"input_excerpt":null');
+    expect(providerCall).toBeTruthy();
+    expect(providerCall?.headers.authorization).toBe("Bearer openai-upstream-key");
+    expect(providerCall?.headers["x-codex-turn-state"]).toBe("turn-state-1");
+    expect(providerCall?.headers["x-codex-turn-metadata"]).toBe("turn-metadata-1");
+    expect(providerCall?.headers["x-openai-subagent"]).toBe("reviewer");
+    expect(providerCall?.headers["x-request-id"]).toBe("request-id-1");
+    expect(providerCall?.headers.traceparent).toBe("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00");
+    expect(providerCall?.body.reasoning.effort).toBe("high");
+    expect(providerCall?.body.text.verbosity).toBe("medium");
+    expect(providerCall?.body.previous_response_id).toBe("resp_previous");
+    expect(providerCall?.body.include).toEqual(["reasoning.encrypted_content"]);
+
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    const sessions = await fetch(`${proxyUrl}/_debug/sessions`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    await app.close();
+
+    expect(events.map((event: any) => event.eventType)).toContain("routing.classification_recorded");
+    expect(events.map((event: any) => event.eventType)).toContain("routing.decision_recorded");
+    expect(events.map((event: any) => event.eventType)).toContain("usage.recorded");
+    expect(sessions).toHaveLength(0);
+  });
+
+  it("routes Claude Code-style Anthropic Messages requests through the classifier", async () => {
+    const config = loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      });
+    const app = buildServer(config);
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "x-api-key": "proxy-token",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "x-claude-code-session-id": "claude-session-1",
+        "x-claude-code-agent-id": "claude-agent-1",
+        "x-claude-code-parent-agent-id": "claude-parent-1"
+      },
+      body: JSON.stringify({
+        model: "claude-router-auto",
+        system: "You are Claude Code.",
+        messages: [
+          {
+            role: "user",
+            content: "debug this flaky auth regression and find root cause"
+          }
+        ],
+        tools: [{ name: "bash", input_schema: { type: "object" } }],
+        stream: true,
+        max_tokens: 4096
+      })
+    });
+
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(body).toContain("message_stop");
+
+    const providerCall = anthropic.records.find((record) => record.path === "/messages");
+    expect(providerCall).toBeTruthy();
+    expect(providerCall?.headers["x-api-key"]).toBe("anthropic-upstream-key");
+    expect(providerCall?.headers["x-claude-code-session-id"]).toBe("claude-session-1");
+    expect(providerCall?.headers["x-claude-code-agent-id"]).toBe("claude-agent-1");
+    expect(providerCall?.headers["x-claude-code-parent-agent-id"]).toBe("claude-parent-1");
+    expect(providerCall?.body.model).toBe(config.anthropicHardModel);
+    expect(providerCall?.body.output_config.effort).toBe("high");
+    expect(providerCall?.body.thinking.type).toBe("adaptive");
+    expect(providerCall?.body.tools).toHaveLength(1);
+
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { "x-api-key": "proxy-token" }
+    }).then((item) => item.json());
+    await app.close();
+
+    const usageEvent = events.find((event: any) => event.eventType === "usage.recorded");
+    expect(usageEvent.payload.usage.input_tokens).toBe(120);
+    expect(usageEvent.payload.usage.output_tokens).toBe(30);
+  });
+
+  it("rewrites Claude Code token counting aliases before forwarding upstream", async () => {
+    const config = loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        ANTHROPIC_BALANCED_MODEL: "claude-balanced-count-test",
+        ANTHROPIC_HARD_MODEL: "claude-hard-count-test",
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      });
+    const app = buildServer(config);
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/messages/count_tokens`, {
+      method: "POST",
+      headers: {
+        "x-api-key": "proxy-token",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-router-auto",
+        messages: [{ role: "user", content: "debug auth" }]
+      })
+    });
+
+    await app.close();
+
+    expect(response.status).toBe(200);
+    const providerCall = anthropic.records.find((record) => record.path === "/messages/count_tokens");
+    expect(providerCall?.body.model).toBe(config.anthropicHardModel);
+    expect(providerCall?.body.model).toBe("claude-hard-count-test");
+    expect(providerCall?.body.model).not.toBe("claude-router-auto");
+    expect(providerCall?.body.output_config).toBeUndefined();
+    expect(openai.records).toHaveLength(0);
+  });
+
+  it("rejects non-router token counting models without classifier or upstream spend", async () => {
+    const config = loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      });
+    const app = buildServer(config);
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/messages/count_tokens`, {
+      method: "POST",
+      headers: {
+        "x-api-key": "proxy-token",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        messages: [{ role: "user", content: "debug auth" }]
+      })
+    });
+    const body = await response.json();
+    await app.close();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("request_model_must_be_router_alias");
+    expect(openai.records).toHaveLength(0);
+    expect(anthropic.records).toHaveLength(0);
+  });
+
+
+  it("uses configured Anthropic upstream model IDs", async () => {
+    const config = loadConfig({
+      ...process.env,
+      PROMPT_PROXY_TOKEN: "proxy-token",
+      OPENAI_API_KEY: "openai-upstream-key",
+      ANTHROPIC_API_KEY: "anthropic-upstream-key",
+      OPENAI_BASE_URL: openai.url,
+      ANTHROPIC_BASE_URL: anthropic.url,
+      ANTHROPIC_HARD_MODEL: "claude-custom-hard-test",
+      CLASSIFIER_PROVIDER: "openai",
+      CLASSIFIER_MODEL: "route-classifier-cheap",
+      LOG_LEVEL: "fatal"
+    });
+    const app = buildServer(config);
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "x-api-key": "proxy-token",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-router-auto",
+        messages: [{ role: "user", content: "debug auth" }],
+        stream: true,
+        max_tokens: 1024
+      })
+    });
+
+    await response.text();
+    await app.close();
+
+    const providerCall = anthropic.records.find((record) => record.path === "/messages");
+    expect(providerCall?.body.model).toBe("claude-custom-hard-test");
+  });
+
+  it("enforces classifier safety fields before selecting the final route", async () => {
+    const safetyOpenAI = await startOpenAIMock({
+      classifierOutput: {
+        complexity: "simple",
+        risk: [],
+        recommended_route: "fast",
+        can_use_fast_model: false,
+        needs_deep_reasoning: true,
+        reason_codes: ["contradictory_classifier"],
+        confidence: 0.9
+      }
+    });
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: safetyOpenAI.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "simple but contradictory classifier output",
+        stream: true
+      })
+    });
+
+    await response.text();
+    await app.close();
+    await safetyOpenAI.close();
+
+    const providerCall = safetyOpenAI.records.find((record) => record.body.model === "gpt-5.5-pro");
+    expect(providerCall).toBeTruthy();
+  });
+
+  it("fails before provider spend when classifier structured output fails", async () => {
+    const failingOpenAI = await startOpenAIMock({ invalidClassifier: true });
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: failingOpenAI.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        CLASSIFIER_MAX_ATTEMPTS: "2",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "fix this",
+        stream: false
+      })
+    });
+
+    await app.close();
+    await failingOpenAI.close();
+
+    expect(response.status).toBe(500);
+    expect(failingOpenAI.records).toHaveLength(2);
+  });
+
+  it("aborts upstream streaming when the client cancels", async () => {
+    const slowOpenAI = await startOpenAIMock({ slowProvider: true });
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: slowOpenAI.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+    const controller = new AbortController();
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug auth",
+        stream: true
+      }),
+      signal: controller.signal
+    });
+
+    const reader = response.body?.getReader();
+    expect(reader).toBeTruthy();
+    await reader?.read();
+    controller.abort();
+    await slowOpenAI.providerClosed;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    const attempts = await fetch(`${proxyUrl}/_debug/provider-attempts`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+
+    await app.close();
+    await slowOpenAI.close();
+
+    expect(attempts[0].terminalStatus).toBe("cancelled");
+  });
+
+  it("returns completed duplicate requests before classifier spend", async () => {
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+    const requestBody = {
+      model: "router-auto",
+      input: "fix duplicate request",
+      stream: true
+    };
+
+    const first = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "idempotency-key": "idem-1"
+      },
+      body: JSON.stringify(requestBody)
+    });
+    await first.text();
+
+    const second = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "idempotency-key": "idem-1"
+      },
+      body: JSON.stringify(requestBody)
+    });
+    const duplicate = await second.json();
+    await app.close();
+
+    expect(duplicate.duplicate).toBe(true);
+    expect(openai.records).toHaveLength(2);
+    expect(openai.records.filter((record) => record.body.model === "route-classifier-cheap")).toHaveLength(1);
+  });
+
+  it("does not collide idempotency between Anthropic messages and token counting", async () => {
+    const config = loadConfig({
+      ...process.env,
+      PROMPT_PROXY_TOKEN: "proxy-token",
+      OPENAI_API_KEY: "openai-upstream-key",
+      ANTHROPIC_API_KEY: "anthropic-upstream-key",
+      OPENAI_BASE_URL: openai.url,
+      ANTHROPIC_BASE_URL: anthropic.url,
+      CLASSIFIER_PROVIDER: "openai",
+      CLASSIFIER_MODEL: "route-classifier-cheap",
+      LOG_LEVEL: "fatal"
+    });
+    const app = buildServer(config);
+    const proxyUrl = await listen(app);
+    const body = {
+      model: "claude-router-auto",
+      messages: [{ role: "user", content: "debug auth" }],
+      stream: true,
+      max_tokens: 1024
+    };
+
+    const countTokens = await fetch(`${proxyUrl}/v1/messages/count_tokens`, {
+      method: "POST",
+      headers: {
+        "x-api-key": "proxy-token",
+        "content-type": "application/json",
+        "idempotency-key": "same-explicit-key"
+      },
+      body: JSON.stringify(body)
+    });
+    await countTokens.text();
+
+    const messages = await fetch(`${proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "x-api-key": "proxy-token",
+        "content-type": "application/json",
+        "idempotency-key": "same-explicit-key"
+      },
+      body: JSON.stringify(body)
+    });
+    await messages.text();
+    await app.close();
+
+    expect(anthropic.records.some((record) => record.path === "/messages/count_tokens")).toBe(true);
+    expect(anthropic.records.some((record) => record.path === "/messages")).toBe(true);
+  });
+
+  it("keeps configured model catalogs isolated between live servers", async () => {
+    const firstConfig = loadConfig({
+      ...process.env,
+      PROMPT_PROXY_TOKEN: "proxy-token",
+      OPENAI_API_KEY: "openai-upstream-key",
+      ANTHROPIC_API_KEY: "anthropic-upstream-key",
+      OPENAI_BASE_URL: openai.url,
+      ANTHROPIC_BASE_URL: anthropic.url,
+      ANTHROPIC_HARD_MODEL: "claude-hard-first-test",
+      CLASSIFIER_PROVIDER: "openai",
+      CLASSIFIER_MODEL: "route-classifier-cheap",
+      LOG_LEVEL: "fatal"
+    });
+    const secondConfig = loadConfig({
+      ...process.env,
+      PROMPT_PROXY_TOKEN: "proxy-token",
+      OPENAI_API_KEY: "openai-upstream-key",
+      ANTHROPIC_API_KEY: "anthropic-upstream-key",
+      OPENAI_BASE_URL: openai.url,
+      ANTHROPIC_BASE_URL: anthropic.url,
+      ANTHROPIC_HARD_MODEL: "claude-hard-second-test",
+      CLASSIFIER_PROVIDER: "openai",
+      CLASSIFIER_MODEL: "route-classifier-cheap",
+      LOG_LEVEL: "fatal"
+    });
+    const firstApp = buildServer(firstConfig);
+    const secondApp = buildServer(secondConfig);
+    const firstUrl = await listen(firstApp);
+    const secondUrl = await listen(secondApp);
+
+    const secondResponse = await fetch(`${secondUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "x-api-key": "proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "claude-router-auto",
+        messages: [{ role: "user", content: "debug auth" }],
+        stream: true,
+        max_tokens: 1024
+      })
+    });
+    await secondResponse.text();
+
+    const firstResponse = await fetch(`${firstUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "x-api-key": "proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "claude-router-auto",
+        messages: [{ role: "user", content: "debug auth" }],
+        stream: true,
+        max_tokens: 1024
+      })
+    });
+    await firstResponse.text();
+
+    await firstApp.close();
+    await secondApp.close();
+
+    expect(secondResponse.headers.get("x-prompt-proxy-model")).toBe("claude-hard-second-test");
+    expect(firstResponse.headers.get("x-prompt-proxy-model")).toBe("claude-hard-first-test");
+    expect(anthropic.records.some((record) => record.body.model === "claude-hard-first-test")).toBe(true);
+    expect(anthropic.records.some((record) => record.body.model === "claude-hard-second-test")).toBe(true);
+  });
+
+  it("rejects over-budget requests before classifier spend", async () => {
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        BUDGET_MAX_ESTIMATED_INPUT_TOKENS: "1",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "this request is intentionally too large for the tiny budget",
+        stream: true
+      })
+    });
+
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    await app.close();
+
+    expect(response.status).toBe(429);
+    expect(openai.records).toHaveLength(0);
+    expect(events.map((event: any) => event.eventType)).toContain("budget.checked");
+    const decisionEvent = events.find((event: any) => event.eventType === "routing.decision_recorded");
+    expect(decisionEvent.payload.budgetChecks[0].status).toBe("reject");
+  });
+
+  it("emits budget warnings and route-limit rejections before provider spend", async () => {
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        BUDGET_WARNING_ESTIMATED_INPUT_TOKENS: "1",
+        BUDGET_MAX_ROUTE: "balanced",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug auth regression",
+        stream: true
+      })
+    });
+
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    await app.close();
+
+    expect(response.status).toBe(429);
+    expect(openai.records.filter((record) => record.body.model === "route-classifier-cheap")).toHaveLength(1);
+    expect(openai.records.filter((record) => record.body.model === "gpt-5.5")).toHaveLength(0);
+    expect(events.map((event: any) => event.eventType)).toContain("budget.warning_emitted");
+  });
+
+  it("does not mutate session route memory when a budget check rejects", async () => {
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        BUDGET_MAX_ROUTE: "balanced",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "x-codex-session-id": "budget-reject-session"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug auth regression",
+        stream: true
+      })
+    });
+
+    const sessions = await fetch(`${proxyUrl}/_debug/sessions`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    await app.close();
+
+    expect(response.status).toBe(429);
+    expect(sessions).toHaveLength(0);
+  });
+
+  it("applies user and team budget controls before classifier spend", async () => {
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        BUDGET_USER_ESTIMATED_INPUT_LIMITS: JSON.stringify({ "user-1": 1 }),
+        BUDGET_TEAM_ESTIMATED_INPUT_LIMITS: JSON.stringify({ "team-1": 1 }),
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const userResponse = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "x-prompt-proxy-user-id": "user-1"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "user budget should reject this request",
+        stream: true
+      })
+    });
+
+    const teamResponse = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "x-prompt-proxy-team-id": "team-1"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "team budget should reject this request",
+        stream: true
+      })
+    });
+
+    await app.close();
+
+    expect(userResponse.status).toBe(429);
+    expect(teamResponse.status).toBe(429);
+    expect(openai.records).toHaveLength(0);
+  });
+
+  it("keeps a stronger session route instead of downgrading on later auto requests", async () => {
+    const sessionOpenAI = await startOpenAIMock({
+      classifierOutputs: [
+        {
+          complexity: "hard",
+          risk: ["auth"],
+          recommended_route: "hard",
+          can_use_fast_model: false,
+          needs_deep_reasoning: false,
+          reason_codes: ["auth_risk"],
+          confidence: 0.9
+        },
+        {
+          complexity: "simple",
+          risk: [],
+          recommended_route: "fast",
+          can_use_fast_model: true,
+          needs_deep_reasoning: false,
+          reason_codes: ["simple_followup"],
+          confidence: 0.95
+        }
+      ]
+    });
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: sessionOpenAI.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const first = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "x-codex-session-id": "session-route-1"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug auth regression",
+        stream: true
+      })
+    });
+    await first.text();
+
+    const second = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "x-codex-session-id": "session-route-1"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "format the answer",
+        stream: true
+      })
+    });
+    await second.text();
+
+    const sessions = await fetch(`${proxyUrl}/_debug/sessions`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    await app.close();
+    await sessionOpenAI.close();
+
+    expect(first.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(second.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(sessions[0].currentRoute).toBe("hard");
+    expect(events.map((event: any) => event.eventType)).toContain("session.route_memory_recorded");
+  });
+
+  it("scopes session route memory by user and team", async () => {
+    const scopedOpenAI = await startOpenAIMock({
+      classifierOutputs: [
+        {
+          complexity: "hard",
+          risk: ["auth"],
+          recommended_route: "hard",
+          can_use_fast_model: false,
+          needs_deep_reasoning: false,
+          reason_codes: ["auth_risk"],
+          confidence: 0.9
+        },
+        {
+          complexity: "simple",
+          risk: [],
+          recommended_route: "fast",
+          can_use_fast_model: true,
+          needs_deep_reasoning: false,
+          reason_codes: ["simple_followup"],
+          confidence: 0.95
+        }
+      ]
+    });
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: scopedOpenAI.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const first = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "x-codex-session-id": "shared-session-id",
+        "x-prompt-proxy-user-id": "c",
+        "x-prompt-proxy-team-id": "a:b"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug auth regression",
+        stream: true
+      })
+    });
+    await first.text();
+
+    const second = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "x-codex-session-id": "shared-session-id",
+        "x-prompt-proxy-user-id": "b:c",
+        "x-prompt-proxy-team-id": "a"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "format the answer",
+        stream: true
+      })
+    });
+    await second.text();
+
+    const sessions = await fetch(`${proxyUrl}/_debug/sessions`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    await app.close();
+    await scopedOpenAI.close();
+
+    expect(first.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(second.headers.get("x-prompt-proxy-route")).toBe("fast");
+    expect(sessions).toHaveLength(2);
+    const sessionEvents = events.filter((event: any) => event.eventType === "session.route_memory_recorded");
+    expect(new Set(sessionEvents.map((event: any) => event.scopeId)).size).toBe(2);
+  });
+
+  it("builds usage, cost, savings, and route-quality projections from events", async () => {
+    const qualityOpenAI = await startOpenAIMock({
+      classifierOutput: {
+        complexity: "hard",
+        risk: [],
+        recommended_route: "hard",
+        can_use_fast_model: true,
+        needs_deep_reasoning: false,
+        reason_codes: ["low_confidence"],
+        confidence: 0.4
+      }
+    });
+    const app = buildServer(
+      loadConfig({
+        ...process.env,
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: qualityOpenAI.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        MODEL_COSTS_JSON: JSON.stringify({
+          "gpt-5.4": { inputCostPerMtok: 1, outputCostPerMtok: 2 },
+          "gpt-5.5": { inputCostPerMtok: 3, outputCostPerMtok: 4 }
+        }),
+        ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD: "0.55",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "small request with uncertain route",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const projections = await fetch(`${proxyUrl}/_debug/projections`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    const routeQuality = await fetch(`${proxyUrl}/_debug/route-quality`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    await app.close();
+    await qualityOpenAI.close();
+
+    expect(projections.totals.inputTokens).toBe(100);
+    expect(projections.totals.outputTokens).toBe(20);
+    expect(projections.cost.selected).toBeGreaterThan(0);
+    expect(projections.requests[0].savings).toBeLessThan(0);
+    expect(routeQuality.lowConfidence).toHaveLength(1);
+  });
+
+  it("parses boolean env values without enabling excerpts accidentally", () => {
+    expect(loadConfig({ CLASSIFIER_ALLOW_REDACTED_EXCERPT: "false" }).classifierAllowRedactedExcerpt).toBe(false);
+    expect(loadConfig({ CLASSIFIER_ALLOW_REDACTED_EXCERPT: "0" }).classifierAllowRedactedExcerpt).toBe(false);
+    expect(loadConfig({}).classifierAllowRedactedExcerpt).toBe(false);
+    expect(loadConfig({ CLASSIFIER_ALLOW_REDACTED_EXCERPT: "true" }).classifierAllowRedactedExcerpt).toBe(true);
+  });
+});
