@@ -11,6 +11,7 @@ const defaultDatabaseUrl = `postgres://prompt_proxy:prompt_proxy@localhost:${env
 env.POSTGRES_PORT ??= "55432";
 env.DATABASE_URL ??= defaultDatabaseUrl;
 env.PROMPT_PROXY_TOKEN ??= "dev-proxy-token";
+env.ALLOW_DEV_PROXY_TOKEN_FALLBACK ??= "true";
 env.DEFAULT_ORGANIZATION_ID ??= "local";
 const databaseUrl = env.DATABASE_URL;
 const proxyUrl = `http://127.0.0.1:${env.PORT ?? "8787"}`;

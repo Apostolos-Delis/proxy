@@ -2,6 +2,13 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyReply } from "fastify";
 
 import { anthropicMessagesSurface, openAIResponsesSurface } from "./adapters.js";
+import {
+  actorForIdentity,
+  contextForIdentity,
+  ProxyAuthService,
+  requestReceivedPayload,
+  scopedIdempotencyKey
+} from "./auth.js";
 import { loadConfig, type AppConfig } from "./config.js";
 import { buildModelCatalog } from "./catalog.js";
 import { LlmClassifier } from "./classifier.js";
@@ -33,6 +40,7 @@ export function buildServer(config: AppConfig = loadConfig()) {
     persistence?.eventSink,
     config.defaultOrganizationId
   );
+  const auth = new ProxyAuthService(config, persistence?.apiKeys);
   const attempts = new ProviderAttemptStore();
   const requestStates = persistence?.requestStates ?? new RequestStateStore();
   const budget = new BudgetService(config);
@@ -40,7 +48,7 @@ export function buildServer(config: AppConfig = loadConfig()) {
   const classifier = new LlmClassifier(config);
   const routing = new RoutingService(config, classifier, events, modelCatalog, budget, sessions);
   const proxy = new ProviderProxy(config, events, attempts, requestStates);
-  const wsProxy = new WebSocketRoutingProxy(config, routing, events, attempts, requestStates);
+  const wsProxy = new WebSocketRoutingProxy(config, auth, routing, events, attempts, requestStates);
   const projections = new ProjectionService(modelCatalog, config);
   wsProxy.register(app.server);
 
@@ -147,13 +155,14 @@ export function buildServer(config: AppConfig = loadConfig()) {
   });
 
   app.post("/v1/responses", async (request, reply) => {
-    requireAuth(request.headers, config.proxyToken);
-    const idempotencyKey = idempotencyFrom(
+    const identity = await auth.resolve(request.headers);
+    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, idempotencyFrom(
       openAIResponsesSurface.createOperation,
       request.body,
       request.headers
-    );
-    const context = openAIResponsesSurface.buildContext(request.body, lowerHeaders(request.headers));
+    ));
+    const rawContext = openAIResponsesSurface.buildContext(request.body, lowerHeaders(request.headers));
+    const context = contextForIdentity(rawContext, identity);
     const proposedRequestId = createId("request");
     const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
     if (sendDuplicateRequest(gate, reply)) return;
@@ -161,21 +170,15 @@ export function buildServer(config: AppConfig = loadConfig()) {
 
     try {
       await events.append({
+        tenantId: identity.organizationId,
         scopeType: "request",
         scopeId: requestId,
         correlationId: requestId,
         idempotencyKey,
+        actor: actorForIdentity(identity),
         producer: "prompt-proxy.surface.openai-responses",
         eventType: "proxy.request_received",
-        payload: {
-          surface: "openai-responses",
-          sessionId: context.sessionId ?? null,
-          userId: context.userId ?? null,
-          teamId: context.teamId ?? null,
-          requestedModel: context.requestedModel,
-          inputHash: context.inputHash,
-          inputChars: context.inputChars
-        }
+        payload: requestReceivedPayload("openai-responses", context, rawContext, identity)
       });
 
       const decision = await routing.decide({
@@ -209,13 +212,14 @@ export function buildServer(config: AppConfig = loadConfig()) {
   });
 
   app.post("/v1/messages", async (request, reply) => {
-    requireAuth(request.headers, config.proxyToken);
-    const idempotencyKey = idempotencyFrom(
+    const identity = await auth.resolve(request.headers);
+    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, idempotencyFrom(
       anthropicMessagesSurface.createOperation,
       request.body,
       request.headers
-    );
-    const context = anthropicMessagesSurface.buildContext(request.body, lowerHeaders(request.headers));
+    ));
+    const rawContext = anthropicMessagesSurface.buildContext(request.body, lowerHeaders(request.headers));
+    const context = contextForIdentity(rawContext, identity);
     const proposedRequestId = createId("request");
     const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
     if (sendDuplicateRequest(gate, reply)) return;
@@ -223,22 +227,16 @@ export function buildServer(config: AppConfig = loadConfig()) {
 
     try {
       await events.append({
+        tenantId: identity.organizationId,
         scopeType: "request",
         scopeId: requestId,
         sessionId: context.sessionId,
         correlationId: requestId,
         idempotencyKey,
+        actor: actorForIdentity(identity),
         producer: "prompt-proxy.surface.anthropic-messages",
         eventType: "proxy.request_received",
-        payload: {
-          surface: "anthropic-messages",
-          sessionId: context.sessionId ?? null,
-          userId: context.userId ?? null,
-          teamId: context.teamId ?? null,
-          requestedModel: context.requestedModel,
-          inputHash: context.inputHash,
-          inputChars: context.inputChars
-        }
+        payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
       });
 
       const decision = await routing.decide({
@@ -272,18 +270,31 @@ export function buildServer(config: AppConfig = loadConfig()) {
   });
 
   app.post("/v1/messages/count_tokens", async (request, reply) => {
-    requireAuth(request.headers, config.proxyToken);
-    const idempotencyKey = idempotencyFrom(
+    const identity = await auth.resolve(request.headers);
+    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, idempotencyFrom(
       anthropicMessagesSurface.countTokensOperation ?? anthropicMessagesSurface.createOperation,
       request.body,
       request.headers
-    );
-    const context = anthropicMessagesSurface.buildContext(request.body, lowerHeaders(request.headers));
+    ));
+    const rawContext = anthropicMessagesSurface.buildContext(request.body, lowerHeaders(request.headers));
+    const context = contextForIdentity(rawContext, identity);
     const proposedRequestId = createId("request");
     const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
     if (sendDuplicateRequest(gate, reply)) return;
     const requestId = gate.state.requestId ?? proposedRequestId;
     try {
+      await events.append({
+        tenantId: identity.organizationId,
+        scopeType: "request",
+        scopeId: requestId,
+        sessionId: context.sessionId,
+        correlationId: requestId,
+        idempotencyKey,
+        actor: actorForIdentity(identity),
+        producer: "prompt-proxy.surface.anthropic-messages",
+        eventType: "proxy.request_received",
+        payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
+      });
       const decision = routing.tokenCountDecision(context);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });

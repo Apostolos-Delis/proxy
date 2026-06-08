@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   agentSessions,
+  apiKeys,
   createPgliteDatabase,
   events,
   organizations,
@@ -21,6 +22,7 @@ import { loadConfig } from "../src/config.js";
 import { EventService } from "../src/events.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
 import type { RouteContext } from "../src/types.js";
+import { sha256 } from "../src/util.js";
 
 describe("postgres persistence", () => {
   let client: PGlite | undefined;
@@ -246,6 +248,52 @@ describe("postgres persistence", () => {
     const requestRows = await fixture.db.select().from(requests).where(eq(requests.id, "request_terminal"));
 
     expect(requestRows[0]?.status).toBe("provider_pending");
+  });
+
+  it("resolves active api keys by hash and records last use", async () => {
+    const fixture = await persistenceFixture("org_api_key");
+    await fixture.db.insert(organizations).values({
+      id: "org_api_key",
+      slug: "org_api_key",
+      name: "org_api_key"
+    }).onConflictDoNothing();
+    await fixture.db.insert(apiKeys).values({
+      id: "api_key_1",
+      organizationId: "org_api_key",
+      keyHash: sha256("secret-token"),
+      name: "Local Proxy Key",
+      scopes: ["proxy"]
+    });
+
+    const identity = await fixture.persistence.apiKeys.resolve("secret-token", new Date("2026-06-08T00:00:00.000Z"));
+    const rows = await fixture.db.select().from(apiKeys).where(eq(apiKeys.id, "api_key_1"));
+
+    expect(identity).toEqual({
+      apiKeyId: "api_key_1",
+      organizationId: "org_api_key",
+      userId: undefined,
+      scopes: ["proxy"]
+    });
+    expect(rows[0]?.lastUsedAt?.toISOString()).toBe("2026-06-08T00:00:00.000Z");
+    await expect(fixture.persistence.apiKeys.resolve("wrong-token")).resolves.toBeUndefined();
+  });
+
+  it("uses route context organization for request idempotency", async () => {
+    const fixture = await persistenceFixture("org_default");
+    const first = await fixture.persistence.requestStates.begin("idem_shared", "request_a", {
+      ...routeContext(),
+      organizationId: "org_a"
+    });
+    const second = await fixture.persistence.requestStates.begin("idem_shared", "request_b", {
+      ...routeContext(),
+      organizationId: "org_b"
+    });
+
+    const requestRows = await fixture.db.select().from(requests).where(eq(requests.id, "request_b"));
+
+    expect(first.duplicate).toBe(false);
+    expect(second.duplicate).toBe(false);
+    expect(requestRows[0]?.organizationId).toBe("org_b");
   });
 
   it("admin overview counts beyond the request page size", async () => {

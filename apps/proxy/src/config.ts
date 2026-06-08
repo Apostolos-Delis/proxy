@@ -93,6 +93,7 @@ const configSchema = z.object({
   EVENT_STORE_PATH: z.string().optional(),
   DATABASE_URL: z.string().optional(),
   DEFAULT_ORGANIZATION_ID: z.string().min(1).default("local"),
+  ALLOW_DEV_PROXY_TOKEN_FALLBACK: booleanEnvSchema,
   ADMIN_CORS_ORIGIN: z.string().default("http://127.0.0.1:5173,http://localhost:5173"),
   LOG_LEVEL: z.string().default("info")
 });
@@ -135,6 +136,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     eventStorePath: parsed.EVENT_STORE_PATH,
     databaseUrl: parsed.DATABASE_URL,
     defaultOrganizationId: parsed.DEFAULT_ORGANIZATION_ID,
+    allowDevProxyTokenFallback: parsed.ALLOW_DEV_PROXY_TOKEN_FALLBACK || !parsed.DATABASE_URL,
     adminCorsOrigins: parsed.ADMIN_CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean),
     logLevel: parsed.LOG_LEVEL
   };

@@ -5,6 +5,41 @@ import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
 import { listen, startAnthropicMock, startOpenAIMock, type MockServer } from "./helpers.js";
 
+function testEnv(overrides: NodeJS.ProcessEnv = {}) {
+  return {
+    ...process.env,
+    DATABASE_URL: "",
+    EVENT_STORE_PATH: "",
+    PROMPT_PROXY_TOKEN: "proxy-token",
+    OPENAI_API_KEY: "openai-upstream-key",
+    OPENAI_BASE_URL: "http://127.0.0.1",
+    OPENAI_FAST_MODEL: "gpt-5.4-mini",
+    OPENAI_BALANCED_MODEL: "gpt-5.4",
+    OPENAI_HARD_MODEL: "gpt-5.5",
+    OPENAI_DEEP_MODEL: "gpt-5.5-pro",
+    ANTHROPIC_API_KEY: "anthropic-upstream-key",
+    ANTHROPIC_BASE_URL: "http://127.0.0.1",
+    ANTHROPIC_FAST_MODEL: "claude-haiku-4-5",
+    ANTHROPIC_BALANCED_MODEL: "claude-sonnet-4-5",
+    ANTHROPIC_HARD_MODEL: "claude-sonnet-4-5",
+    ANTHROPIC_DEEP_MODEL: "claude-opus-4-5",
+    CLASSIFIER_PROVIDER: "openai",
+    CLASSIFIER_MODEL: "route-classifier-cheap",
+    CLASSIFIER_ALLOW_REDACTED_EXCERPT: "false",
+    BUDGET_MAX_ESTIMATED_INPUT_TOKENS: "",
+    BUDGET_WARNING_ESTIMATED_INPUT_TOKENS: "",
+    BUDGET_MAX_ROUTE: "",
+    BUDGET_USER_ESTIMATED_INPUT_LIMITS: "",
+    BUDGET_TEAM_ESTIMATED_INPUT_LIMITS: "",
+    BUDGET_ROUTE_ESTIMATED_INPUT_LIMITS: "",
+    MODEL_COSTS_JSON: "",
+    ROUTE_POLICY_SOURCE: "central",
+    ROUTE_POLICY_JSON: "",
+    TRUSTED_REPO_POLICY_HASH: "",
+    ...overrides
+  };
+}
+
 describe("prompt proxy", () => {
   let openai: MockServer;
   let anthropic: MockServer;
@@ -22,7 +57,7 @@ describe("prompt proxy", () => {
   it("routes Codex-style OpenAI Responses requests through the classifier", async () => {
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -101,7 +136,7 @@ describe("prompt proxy", () => {
   it("routes Codex WebSocket requests and pins previous response continuations", async () => {
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -174,7 +209,7 @@ describe("prompt proxy", () => {
     });
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -225,7 +260,7 @@ describe("prompt proxy", () => {
     });
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -301,7 +336,7 @@ describe("prompt proxy", () => {
     openai = await startOpenAIMock({ compressedJsonProvider: true });
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -337,7 +372,7 @@ describe("prompt proxy", () => {
 
   it("routes Claude Code-style Anthropic Messages requests through the classifier", async () => {
     const config = loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -405,7 +440,7 @@ describe("prompt proxy", () => {
 
   it("rewrites Claude Code token counting aliases before forwarding upstream", async () => {
     const config = loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -446,7 +481,7 @@ describe("prompt proxy", () => {
 
   it("routes non-router token counting models without classifier spend", async () => {
     const config = loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -486,7 +521,7 @@ describe("prompt proxy", () => {
 
   it("uses configured Anthropic upstream model IDs", async () => {
     const config = loadConfig({
-      ...process.env,
+      ...testEnv(),
       PROMPT_PROXY_TOKEN: "proxy-token",
       OPENAI_API_KEY: "openai-upstream-key",
       ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -536,7 +571,7 @@ describe("prompt proxy", () => {
     });
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -574,7 +609,7 @@ describe("prompt proxy", () => {
     const failingOpenAI = await startOpenAIMock({ invalidClassifier: true });
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -612,7 +647,7 @@ describe("prompt proxy", () => {
     const slowOpenAI = await startOpenAIMock({ slowProvider: true });
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -660,7 +695,7 @@ describe("prompt proxy", () => {
   it("returns completed duplicate requests before classifier spend", async () => {
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -708,7 +743,7 @@ describe("prompt proxy", () => {
 
   it("does not collide idempotency between Anthropic messages and token counting", async () => {
     const config = loadConfig({
-      ...process.env,
+      ...testEnv(),
       PROMPT_PROXY_TOKEN: "proxy-token",
       OPENAI_API_KEY: "openai-upstream-key",
       ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -756,7 +791,7 @@ describe("prompt proxy", () => {
 
   it("keeps configured model catalogs isolated between live servers", async () => {
     const firstConfig = loadConfig({
-      ...process.env,
+      ...testEnv(),
       PROMPT_PROXY_TOKEN: "proxy-token",
       OPENAI_API_KEY: "openai-upstream-key",
       ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -768,7 +803,7 @@ describe("prompt proxy", () => {
       LOG_LEVEL: "fatal"
     });
     const secondConfig = loadConfig({
-      ...process.env,
+      ...testEnv(),
       PROMPT_PROXY_TOKEN: "proxy-token",
       OPENAI_API_KEY: "openai-upstream-key",
       ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -826,7 +861,7 @@ describe("prompt proxy", () => {
   it("rejects over-budget requests before classifier spend", async () => {
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -868,7 +903,7 @@ describe("prompt proxy", () => {
   it("emits budget warnings and route-limit rejections before provider spend", async () => {
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -910,7 +945,7 @@ describe("prompt proxy", () => {
   it("does not mutate session route memory when a budget check rejects", async () => {
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -950,7 +985,7 @@ describe("prompt proxy", () => {
   it("applies user and team budget controls before classifier spend", async () => {
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -1025,7 +1060,7 @@ describe("prompt proxy", () => {
     });
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -1108,7 +1143,7 @@ describe("prompt proxy", () => {
     });
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -1185,7 +1220,7 @@ describe("prompt proxy", () => {
     });
     const app = buildServer(
       loadConfig({
-        ...process.env,
+        ...testEnv(),
         PROMPT_PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
