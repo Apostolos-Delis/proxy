@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.27.0",
   "scripts": {
     "dev": "pnpm --filter @prompt-proxy/proxy dev",
+    "dev:local": "node ./scripts/dev-local.mjs",
     "dev:proxy": "pnpm --filter @prompt-proxy/proxy dev",
     "dev:web": "pnpm --filter @prompt-proxy/web dev",
     "db:up": "docker compose up -d postgres",

@@ -8,15 +8,21 @@
 
 ```shell
 pnpm install
-pnpm db:up
-pnpm db:migrate
-pnpm db:seed
-pnpm dev:proxy
+pnpm dev:local
 ```
 
-The web console runs separately:
+`pnpm dev:local` starts a local Prompt Proxy workspace:
+
+- Creates `.env` from `.env.example` if needed.
+- Creates or reuses local Postgres from `DATABASE_URL`; the default Compose port is `55432` to avoid colliding with system Postgres.
+- Runs migrations and seeds baseline organization/user/provider data.
+- Starts the proxy on `http://127.0.0.1:8787`.
+- Starts the web console on `http://127.0.0.1:5173`.
+
+The proxy and web console can also run separately:
 
 ```shell
+pnpm dev:proxy
 pnpm dev:web
 ```
 
@@ -54,7 +60,7 @@ cp .env.example .env
 pnpm db:up
 pnpm db:migrate
 pnpm db:seed
-pnpm dev:proxy
+pnpm dev:local
 ```
 
 When `DATABASE_URL` is set, appended proxy events also persist durable current-state rows for requests, route decisions, provider attempts, usage, sessions, prompt artifacts, events, and outbox items.
