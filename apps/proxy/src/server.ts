@@ -144,6 +144,26 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       events: allEvents.filter((event) => event.scopeId === requestId || event.correlationId === requestId)
     };
   });
+  app.get("/admin/prompts", async (request) => {
+    requireAuth(request.headers, config.proxyToken);
+    if (persistence) return persistence.adminQueries.prompts(promptFilters(request.query));
+    return { data: [], pagination: { limit: 50, offset: 0, count: 0 } };
+  });
+  app.get("/admin/prompts/:artifactId", async (request, reply) => {
+    requireAuth(request.headers, config.proxyToken);
+    const params = request.params as { artifactId?: string };
+    const artifactId = params.artifactId;
+    if (!artifactId || !persistence) {
+      reply.code(404).send({ error: "prompt_artifact_not_found" });
+      return;
+    }
+    const detail = await persistence.adminQueries.promptDetail(artifactId);
+    if (!detail) {
+      reply.code(404).send({ error: "prompt_artifact_not_found" });
+      return;
+    }
+    return detail;
+  });
   app.get("/admin/settings", async (request) => {
     requireAuth(request.headers, config.proxyToken);
     return {
@@ -363,6 +383,33 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   });
 
   return app;
+}
+
+function promptFilters(query: unknown) {
+  const record = query && typeof query === "object" && !Array.isArray(query)
+    ? query as Record<string, unknown>
+    : {};
+  return {
+    limit: numberParam(record.limit),
+    offset: numberParam(record.offset),
+    userId: stringParam(record.userId ?? record.user),
+    surface: stringParam(record.surface),
+    route: stringParam(record.route),
+    model: stringParam(record.model),
+    start: stringParam(record.start ?? record.startDate),
+    end: stringParam(record.end ?? record.endDate)
+  };
+}
+
+function stringParam(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function numberParam(value: unknown) {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function requireAuth(headers: Record<string, unknown>, token: string) {

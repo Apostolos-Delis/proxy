@@ -453,6 +453,8 @@ Dependencies: PP-028.
 
 ### PP-030: Add Prompt Artifact Admin APIs
 
+Status: implemented in the current MVP.
+
 Expose org-scoped prompt list and prompt detail endpoints backed by Postgres.
 
 Acceptance criteria:
