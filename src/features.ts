@@ -41,7 +41,7 @@ export function buildOpenAIContext(body: unknown, headers: Record<string, string
     hasImages: hasImageInput(request.input),
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
-    sessionId: headers["x-codex-session-id"],
+    sessionId: headers["x-codex-session-id"] ?? headers.session_id ?? headers["x-client-request-id"],
     userId: headers["x-prompt-proxy-user-id"] ?? headers["x-user-id"],
     teamId: headers["x-prompt-proxy-team-id"] ?? headers["x-team-id"],
     explicitAlias: explicitAlias("openai-responses", requestedModel)

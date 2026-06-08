@@ -15,6 +15,7 @@ The proxy exposes:
 - `GET /healthz`
 - `GET /v1/models`
 - `POST /v1/responses` for Codex/OpenAI Responses
+- `WS /v1/responses` for Codex/OpenAI Responses continuations
 - `POST /v1/messages` for Claude Code/Anthropic Messages
 - `POST /v1/messages/count_tokens` for Claude Code token counting
 
@@ -40,6 +41,7 @@ name = "Prompt Proxy"
 base_url = "http://127.0.0.1:8787/v1"
 env_key = "PROMPT_PROXY_TOKEN"
 wire_api = "responses"
+supports_websockets = true
 ```
 
 Claude Code:

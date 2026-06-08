@@ -446,6 +446,7 @@ name = "Prompt Proxy"
 base_url = "http://127.0.0.1:8787/v1"
 env_key = "PROMPT_PROXY_TOKEN"
 wire_api = "responses"
+supports_websockets = true
 ```
 
 For a local prototype using the built-in OpenAI provider:
@@ -456,10 +457,12 @@ openai_base_url = "http://127.0.0.1:8787/v1"
 ```
 
 The proxy should accept Codex's request as-is, authenticate the caller, replace upstream auth with `OPENAI_API_KEY`, and forward to `https://api.openai.com/v1/responses`.
+For Codex efficiency, the custom provider should opt into Responses WebSockets. Without that, Codex falls back to HTTP replay and large sessions repeatedly send the full context, which defeats RTK's local token-saving guidance.
 
 Codex-specific compatibility requirements:
 
 - The client base URL already includes `/v1`; the surface adapter should handle `POST /v1/responses` and forward to the upstream `/v1/responses`.
+- Support `WS /v1/responses`, preserve `previous_response_id`, and pin continuations to the same proxy route for the connection.
 - Preserve `x-codex-turn-state` exactly. It is a sticky per-turn routing token and must not leak across unrelated turns.
 - Preserve `x-codex-turn-metadata` as observability metadata, not as prompt-visible input.
 - Do not remove `include: ["reasoning.encrypted_content"]` when reasoning is active.
@@ -903,6 +906,8 @@ Unit tests:
 Integration tests with mocked upstream:
 
 - Non-streaming `/v1/responses` passthrough.
+- WebSocket `/v1/responses` passthrough.
+- WebSocket continuations preserve `previous_response_id` and stay pinned to the established route.
 - Streaming SSE passthrough.
 - Client cancellation aborts upstream.
 - Upstream errors return correctly.

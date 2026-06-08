@@ -2,6 +2,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
 
+import { WebSocketServer } from "ws";
+
 import type { buildServer } from "../src/server.js";
 
 export type RecordedRequest = {
@@ -29,6 +31,8 @@ export async function startOpenAIMock(
 ): Promise<MockServer> {
   const records: RecordedRequest[] = [];
   const classifierOutputs = [...(options.classifierOutputs ?? [])];
+  const wss = new WebSocketServer({ noServer: true });
+  let wsResponseCount = 0;
   let resolveProviderClosed: (() => void) | undefined;
   const providerClosed = new Promise<void>((resolve) => {
     resolveProviderClosed = resolve;
@@ -109,6 +113,37 @@ export async function startOpenAIMock(
       })}\n\n`
     );
     response.end();
+  });
+
+  server.on("upgrade", (request, socket, head) => {
+    if (request.url !== "/responses") {
+      socket.destroy();
+      return;
+    }
+    wss.handleUpgrade(request, socket, head, (client) => {
+      client.on("message", (data) => {
+        const body = JSON.parse(String(data));
+        records.push({ path: request.url ?? "", headers: request.headers, body });
+        wsResponseCount += 1;
+        const id = `resp_ws_${wsResponseCount}`;
+        client.send(JSON.stringify({
+          type: "response.created",
+          response: { id, model: body.model }
+        }));
+        client.send(JSON.stringify({
+          type: "response.completed",
+          response: {
+            id,
+            model: body.model,
+            usage: {
+              input_tokens: 100,
+              output_tokens: 20,
+              output_tokens_details: { reasoning_tokens: 5 }
+            }
+          }
+        }));
+      });
+    });
   });
 
   return { ...(await listenMock(server, records)), providerClosed };
