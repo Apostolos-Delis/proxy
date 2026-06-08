@@ -27,6 +27,7 @@ describe("prompt proxy", () => {
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
         ANTHROPIC_BASE_URL: anthropic.url,
+        OPENAI_HARD_MODEL: "gpt-routed-hard-test",
         CLASSIFIER_PROVIDER: "openai",
         CLASSIFIER_MODEL: "route-classifier-cheap",
         CLASSIFIER_ALLOW_REDACTED_EXCERPT: "false",
@@ -47,7 +48,7 @@ describe("prompt proxy", () => {
         traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "gpt-5.5",
         input: "fix the failing auth test and find root cause",
         tools: [{ type: "function", name: "shell" }],
         previous_response_id: "resp_previous",
@@ -64,7 +65,7 @@ describe("prompt proxy", () => {
     expect(body).toContain("response.completed");
 
     const classifierCall = openai.records.find((record) => record.body.model === "route-classifier-cheap");
-    const providerCall = openai.records.find((record) => record.body.model === "gpt-5.5");
+    const providerCall = openai.records.find((record) => record.body.model === "gpt-routed-hard-test");
 
     expect(classifierCall).toBeTruthy();
     expect(classifierCall?.body.input).toContain('"content_mode":"features_only"');
@@ -78,6 +79,7 @@ describe("prompt proxy", () => {
     expect(providerCall?.headers.traceparent).toBe("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00");
     expect(providerCall?.body.reasoning.effort).toBe("high");
     expect(providerCall?.body.text.verbosity).toBe("medium");
+    expect(providerCall?.body.model).not.toBe("gpt-5.5");
     expect(providerCall?.body.previous_response_id).toBe("resp_previous");
     expect(providerCall?.body.include).toEqual(["reasoning.encrypted_content"]);
 
@@ -381,7 +383,7 @@ describe("prompt proxy", () => {
     expect(openai.records).toHaveLength(0);
   });
 
-  it("rejects non-router token counting models without classifier or upstream spend", async () => {
+  it("routes non-router token counting models without classifier spend", async () => {
     const config = loadConfig({
         ...process.env,
         PROMPT_PROXY_TOKEN: "proxy-token",
@@ -389,6 +391,7 @@ describe("prompt proxy", () => {
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
         ANTHROPIC_BASE_URL: anthropic.url,
+        ANTHROPIC_HARD_MODEL: "claude-routed-hard-test",
         CLASSIFIER_PROVIDER: "openai",
         CLASSIFIER_MODEL: "route-classifier-cheap",
         LOG_LEVEL: "fatal"
@@ -408,13 +411,15 @@ describe("prompt proxy", () => {
         messages: [{ role: "user", content: "debug auth" }]
       })
     });
-    const body = await response.json();
+    await response.json();
     await app.close();
 
-    expect(response.status).toBe(400);
-    expect(body.error).toBe("request_model_must_be_router_alias");
+    const providerCall = anthropic.records.find((record) => record.path === "/messages/count_tokens");
+    expect(response.status).toBe(200);
+    expect(providerCall?.body.model).toBe("claude-routed-hard-test");
+    expect(providerCall?.body.model).not.toBe("claude-sonnet-4-5");
     expect(openai.records).toHaveLength(0);
-    expect(anthropic.records).toHaveLength(0);
+    expect(anthropic.records).toHaveLength(1);
   });
 
 

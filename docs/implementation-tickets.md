@@ -47,6 +47,7 @@ Acceptance criteria:
 
 - Catalog defines OpenAI models, capabilities, supported reasoning efforts, verbosity support, context window, and cost fields.
 - Route config defines `router-fast`, `router-balanced`, `router-hard`, `router-deep`, and `router-auto`.
+- Non-alias provider model names are recorded as client hints and treated as auto-routed requests.
 - Unsupported model/route config fails startup validation.
 - Capability lookup is available to the routing service.
 
@@ -86,8 +87,9 @@ Expose the Codex-facing OpenAI Responses-compatible endpoints.
 
 Acceptance criteria:
 
-- `GET /v1/models` returns router aliases.
+- `GET /v1/models` returns router aliases clients can choose for explicit routing.
 - `POST /v1/responses` accepts Codex Responses request bodies.
+- `POST /v1/responses` treats non-alias model names as auto-routed requests.
 - Request parsing preserves all unknown protocol fields.
 - `x-codex-turn-state`, `x-codex-turn-metadata`, `x-openai-subagent`, request IDs, and trace headers are preserved where safe.
 
@@ -144,6 +146,7 @@ Acceptance criteria:
 - Free-form classifier text is invalid.
 - Invalid output, timeout, or transport failure retries within `max_attempts`.
 - Exhausted attempts append `routing.classification_failed` and return a router error before upstream provider spend.
+- Non-explicit requests are classified even when the client sent an ordinary upstream model name.
 - Valid output emits `routing.classification_recorded`.
 
 Dependencies: PP-003, PP-004, PP-009.
