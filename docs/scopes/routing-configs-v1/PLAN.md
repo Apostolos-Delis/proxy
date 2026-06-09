@@ -25,14 +25,14 @@ provider_accounts     upstream provider secret references
 model_catalog         provider/model metadata
 routing_configs       durable routing config identities
 routing_config_versions immutable config JSON snapshots
-route_policies        legacy early policy placeholder, kept only until hard cutover
+route_policies        legacy early policy placeholder, superseded by routing configs
 organization_settings org-level defaults
 route_decisions       selected route/model audit rows
 requests              request current-state rows
 events                durable event log
 ```
 
-Routing is still mostly driven by environment config and process-global settings:
+Environment variables still seed local defaults:
 
 ```text
 OPENAI_FAST_MODEL
@@ -68,7 +68,9 @@ Runtime resolution:
 ```text
 incoming API key
   -> api key identity
-  -> key routing config
+  -> api_keys.routing_config_id
+  -> organization_settings.default_routing_config_id
+  -> seeded default routing config
   -> active config version
   -> classifier prompt/model
   -> route tier config
@@ -283,13 +285,13 @@ resolveForApiKey(identity)
   -> return config plus id/version/hash
 ```
 
-Cache resolved configs in-process by:
+V1 currently resolves routing configs from Postgres on each request. Add an in-process cache only after profiling shows resolver overhead is material. If caching is added, key it by:
 
 ```text
 organization_id + routing_config_id + active_version_id
 ```
 
-Keep TTL short in V1, such as 30 seconds, or invalidate on admin mutation.
+Keep TTL short, such as 30 seconds, or invalidate on admin mutation. Do not let cache freshness weaken API-key assignment changes.
 
 ### Classifier
 
@@ -409,11 +411,10 @@ routing_config.created
 routing_config.version_created
 routing_config.version_activated
 routing_config.archived
-api_key.routing_config_assigned
-routing.config_resolved
+routing_config.api_key_assignment_changed
 ```
 
-`routing.config_resolved` should not include full config JSON. Include:
+Route-decision events and request rows carry the resolved config snapshot. Do not include full config JSON in per-request events. Include:
 
 ```text
 routing_config_id
@@ -465,7 +466,7 @@ If no explicit routing config exists for an API key, local/dev should still rout
 
 ## Implementation Tickets
 
-Detailed implementation tickets live in [TICKETS.md](TICKETS.md).
+Detailed implementation tickets live in [TICKETS.md](TICKETS.md). Operator setup, assignment, and verification steps live in [../../runbooks/routing-configs.md](../../runbooks/routing-configs.md).
 
 Recommended delivery order:
 

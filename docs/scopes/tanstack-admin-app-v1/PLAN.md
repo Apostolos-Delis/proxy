@@ -57,6 +57,9 @@ The existing app exposes:
 /sessions/:sessionId session replay
 /requests            request table
 /requests/:requestId request detail and event timeline
+/routing-configs     routing config table
+/routing-configs/:configId routing config detail
+/api-keys            API key table and routing assignment
 /settings            settings
 ```
 
@@ -98,6 +101,9 @@ Do not copy direct `useEffect` patterns. Use TanStack Router loaders, TanStack Q
 /sessions/:sessionId      session replay timeline
 /requests                 request table
 /requests/:requestId      request detail
+/routing-configs          routing config table
+/routing-configs/:configId routing config detail
+/api-keys                 API key table and routing assignment
 /prompts                  prompt artifacts
 /prompts/:artifactId      prompt detail
 /settings                 org settings and policy
@@ -117,6 +123,8 @@ Investigate
   Users
 
 Configure
+  Routing configs
+  API keys
   Settings
 ```
 

@@ -72,9 +72,11 @@ The request path should stay synchronous where the harness requires a response, 
 ```text
 HTTP surface adapter
   -> auth and request parsing
+  -> API key identity and organization scope
+  -> API key routing config assignment or organization default
   -> routing service
   -> event store: proxy.request_received
-  -> routing config and compatibility gates
+  -> routing config schema parse and compatibility gates
   -> event store: routing.decision_recorded
   -> provider service
   -> event store: provider.request_started
@@ -474,7 +476,7 @@ Codex-specific compatibility requirements:
 
 ## Initial Routing Config
 
-Routes should be configuration, not code. A starting config:
+Routes are persisted configuration, not process-global code or ad hoc JSON env. A starting seeded config:
 
 ```yaml
 routes:
@@ -500,6 +502,33 @@ routes:
 ```
 
 Codex-specific models such as `gpt-5.1-codex-mini` and `gpt-5.2-codex` should be evaluated, but not assumed. A cheaper model is only cheaper if it avoids extra repair turns.
+
+## Persisted Runtime Resolution
+
+With persistence enabled, every request resolves one routing config version before classifier spend:
+
+```text
+authenticated API key
+  -> api_keys.routing_config_id
+  -> organization_settings.default_routing_config_id
+  -> seeded default ${organization_id}:routing-config:default
+  -> active routing_config_versions row
+  -> shared routing config schema parse
+  -> classifier and provider route settings
+```
+
+Environment variables still seed local defaults, provider base URLs, and model names. They do not replace the persisted runtime config once a database-backed proxy is running. Do not use `ROUTE_POLICY_JSON` as an operator control for persisted routing.
+
+The resolved snapshot is stored with request and route-decision records:
+
+```text
+routing_config_id
+routing_config_version_id
+routing_config_version
+routing_config_hash
+```
+
+This snapshot is the audit handle for explaining why Codex, Claude Code, or another harness received a selected model and reasoning setting.
 
 ## Model Catalog
 

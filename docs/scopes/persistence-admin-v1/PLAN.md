@@ -84,6 +84,15 @@ GET /admin/overview
 GET /admin/requests
 GET /admin/requests/:requestId
 GET /admin/settings
+GET /admin/routing-configs
+GET /admin/routing-configs/:configId
+POST /admin/routing-configs
+POST /admin/routing-configs/:configId/versions
+POST /admin/routing-configs/:configId/versions/:versionId/activate
+POST /admin/routing-configs/:configId/archive
+GET /admin/api-keys
+GET /admin/api-keys/:apiKeyId
+PATCH /admin/api-keys/:apiKeyId/routing-config
 ```
 
 ## Environment

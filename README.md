@@ -2,6 +2,7 @@
 
 - [Model routing proxy design](docs/model-routing-proxy.md)
 - [Implementation tickets](docs/implementation-tickets.md)
+- [Routing configs runbook](docs/runbooks/routing-configs.md)
 - [Future: GEPA-inspired prompt optimization](docs/future/gepa-prompt-optimization.md)
 
 ## Development
@@ -63,6 +64,15 @@ Cookie-authenticated admin endpoints power the web console:
 - `GET /admin/sessions/:sessionId`
 - `GET /admin/settings`
 - `PATCH /admin/settings/prompt-capture`
+- `GET /admin/routing-configs`
+- `POST /admin/routing-configs`
+- `GET /admin/routing-configs/:configId`
+- `POST /admin/routing-configs/:configId/versions`
+- `POST /admin/routing-configs/:configId/versions/:versionId/activate`
+- `POST /admin/routing-configs/:configId/archive`
+- `GET /admin/api-keys`
+- `GET /admin/api-keys/:apiKeyId`
+- `PATCH /admin/api-keys/:apiKeyId/routing-config`
 
 ## Persistence
 
@@ -79,6 +89,19 @@ pnpm dev:local
 When `DATABASE_URL` is set, appended proxy events also persist durable current-state rows for requests, route decisions, provider attempts, usage, sessions, prompt artifacts, events, and outbox items.
 
 `pnpm db:seed` is idempotent. It creates the default organization from `DEFAULT_ORGANIZATION_ID`, a local seed user from `SEED_USER_*`, provider account placeholders that reference env secrets, a legacy route policy placeholder, model catalog rows, a default routing config with immutable v1, and a local API key assigned to that config. Use a distinct `PROMPT_PROXY_TOKEN` when seeding multiple organizations in the same database.
+
+## Routing Configs
+
+Runtime model routing resolves from persisted, API-key-bound routing configs. Environment variables such as `OPENAI_FAST_MODEL`, `ANTHROPIC_HARD_MODEL`, and `CLASSIFIER_MODEL` seed local defaults, but persisted runtime requests do not read `ROUTE_POLICY_JSON`.
+
+Config precedence for each request:
+
+1. authenticated API key assignment
+2. organization default routing config
+3. seeded default routing config
+4. active immutable config version
+
+The selected config id, version id, version number, and config hash are stored on request and route-decision rows. Use the web console API-key screen or `PATCH /admin/api-keys/:apiKeyId/routing-config` to assign a config. See the [routing configs runbook](docs/runbooks/routing-configs.md) for local setup, assignment commands, and troubleshooting.
 
 ## Local Harnesses
 
