@@ -44,10 +44,9 @@ ANTHROPIC_BALANCED_MODEL
 ANTHROPIC_HARD_MODEL
 ANTHROPIC_DEEP_MODEL
 CLASSIFIER_MODEL
-ROUTE_POLICY_JSON          legacy runtime routing input until RC-010 removes it
 ```
 
-API key resolution currently returns organization, user, and scopes. It does not return a routing config.
+Runtime routing now resolves from persisted routing configs assigned to API keys or organization defaults.
 
 ## Product Model
 

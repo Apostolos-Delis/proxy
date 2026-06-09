@@ -2,37 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import { loadConfig } from "../src/config.js";
 import { EventService } from "../src/events.js";
-import { sha256 } from "../src/util.js";
 
 describe("config and events", () => {
-  it("trust-gates local route policy and validates route-budget keys", () => {
-    const rawPolicy = JSON.stringify({ budgetMaxRoute: "deep" });
-    const untrusted = loadConfig({
+  it("ignores legacy route policy JSON and validates direct route-budget keys", () => {
+    const config = loadConfig({
       ROUTE_POLICY_SOURCE: "repo",
-      ROUTE_POLICY_JSON: rawPolicy,
-      BUDGET_MAX_ROUTE: "balanced"
-    });
-    const trusted = loadConfig({
-      ROUTE_POLICY_SOURCE: "repo",
-      ROUTE_POLICY_JSON: rawPolicy,
-      TRUSTED_REPO_POLICY_HASH: sha256(rawPolicy),
+      ROUTE_POLICY_JSON: JSON.stringify({ budgetMaxRoute: "deep" }),
+      TRUSTED_REPO_POLICY_HASH: "sha256:legacy",
       BUDGET_MAX_ROUTE: "balanced"
     });
 
-    expect(untrusted.budgetMaxRoute).toBe("balanced");
-    expect(untrusted.routePolicyTrust.trusted).toBe(false);
-    expect(trusted.budgetMaxRoute).toBe("deep");
-    expect(trusted.routePolicyTrust.trusted).toBe(true);
+    expect(config.budgetMaxRoute).toBe("balanced");
+    expect("routePolicyTrust" in config).toBe(false);
     expect(() =>
       loadConfig({
         BUDGET_ROUTE_ESTIMATED_INPUT_LIMITS: JSON.stringify({ hrad: 1 })
-      })
-    ).toThrow();
-    expect(() =>
-      loadConfig({
-        ROUTE_POLICY_SOURCE: "repo",
-        ROUTE_POLICY_JSON: JSON.stringify({ budgetMaxRout: "deep" }),
-        TRUSTED_REPO_POLICY_HASH: sha256(JSON.stringify({ budgetMaxRout: "deep" }))
       })
     ).toThrow();
   });
