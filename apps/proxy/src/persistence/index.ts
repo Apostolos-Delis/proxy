@@ -9,6 +9,7 @@ import type { AppConfig } from "../config.js";
 import { AdminQueryService, type AdminQueryConfig } from "./adminQueries.js";
 import { DatabaseEventSink } from "./eventSink.js";
 import { ApiKeyIdentityStore } from "./identity.js";
+import { PromptArtifactStore } from "./promptArtifacts.js";
 import { PersistentRequestStateStore } from "./requestState.js";
 
 export function createPostgresPersistence(databaseUrl: string, catalog: ModelCatalog, config: AppConfig) {
@@ -25,6 +26,7 @@ export function createDatabasePersistence(
   return {
     apiKeys: new ApiKeyIdentityStore(db),
     eventSink: new DatabaseEventSink(transactional, catalog, useAdvisoryLocks),
+    promptArtifacts: new PromptArtifactStore(transactional, db),
     requestStates: new PersistentRequestStateStore(transactional, db, config.defaultOrganizationId),
     adminQueries: new AdminQueryService(db, catalog, config)
   };

@@ -420,6 +420,8 @@ Dependencies: PP-004.
 
 ### PP-028: Capture Prompt Artifacts At Surface Boundaries
 
+Status: implemented in the current MVP.
+
 Extract prompt artifacts before request rewrite so organization analytics can inspect the user-visible input that arrived at the proxy.
 
 Acceptance criteria:

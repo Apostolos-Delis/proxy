@@ -21,7 +21,9 @@ import { RoutingService } from "./router.js";
 import { createId, headerValue, idempotencyFrom, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
 
-export function buildServer(config: AppConfig = loadConfig()) {
+type AppPersistence = ReturnType<typeof createPostgresPersistence>;
+
+export function buildServer(config: AppConfig = loadConfig(), options: { persistence?: AppPersistence } = {}) {
   const modelCatalog = buildModelCatalog(config);
   const app = Fastify({
     logger: { level: config.logLevel },
@@ -31,9 +33,9 @@ export function buildServer(config: AppConfig = loadConfig()) {
     origin: config.adminCorsOrigins,
     credentials: true
   });
-  const persistence = config.databaseUrl
+  const persistence = options.persistence ?? (config.databaseUrl
     ? createPostgresPersistence(config.databaseUrl, modelCatalog, config)
-    : undefined;
+    : undefined);
   const events = new EventService(
     config.eventStorePath,
     undefined,
@@ -48,7 +50,15 @@ export function buildServer(config: AppConfig = loadConfig()) {
   const classifier = new LlmClassifier(config);
   const routing = new RoutingService(config, classifier, events, modelCatalog, budget, sessions);
   const proxy = new ProviderProxy(config, events, attempts, requestStates);
-  const wsProxy = new WebSocketRoutingProxy(config, auth, routing, events, attempts, requestStates);
+  const wsProxy = new WebSocketRoutingProxy(
+    config,
+    auth,
+    routing,
+    events,
+    attempts,
+    requestStates,
+    persistence?.promptArtifacts
+  );
   const projections = new ProjectionService(modelCatalog, config);
   wsProxy.register(app.server);
 
@@ -180,6 +190,12 @@ export function buildServer(config: AppConfig = loadConfig()) {
         eventType: "proxy.request_received",
         payload: requestReceivedPayload("openai-responses", context, rawContext, identity)
       });
+      await persistence?.promptArtifacts.capture({
+        organizationId: identity.organizationId,
+        requestId,
+        surface: openAIResponsesSurface.surface,
+        body: request.body
+      });
 
       const decision = await routing.decide({
         requestId,
@@ -237,6 +253,12 @@ export function buildServer(config: AppConfig = loadConfig()) {
         producer: "prompt-proxy.surface.anthropic-messages",
         eventType: "proxy.request_received",
         payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
+      });
+      await persistence?.promptArtifacts.capture({
+        organizationId: identity.organizationId,
+        requestId,
+        surface: anthropicMessagesSurface.surface,
+        body: request.body
       });
 
       const decision = await routing.decide({
