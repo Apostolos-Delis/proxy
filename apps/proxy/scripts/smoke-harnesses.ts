@@ -21,6 +21,8 @@ const openai = await mockOpenAI(openaiRecords);
 const anthropic = await mockAnthropic(anthropicRecords);
 const config = loadConfig({
     ...process.env,
+    DATABASE_URL: "",
+    EVENT_STORE_PATH: "",
     PROMPT_PROXY_TOKEN: "proxy-token",
     OPENAI_API_KEY: "openai-upstream-key",
     ANTHROPIC_API_KEY: "anthropic-upstream-key",
@@ -38,7 +40,16 @@ try {
     return `http://127.0.0.1:${address.port}`;
   });
 
-  await runCodex(proxyUrl);
+  try {
+    await runCodex(proxyUrl);
+  } catch (error) {
+    const events = await debugJson(proxyUrl, "/_debug/events");
+    const attempts = await debugJson(proxyUrl, "/_debug/provider-attempts");
+    throw new Error(
+      `Codex CLI smoke failed. openai_records=${JSON.stringify(openaiRecords)} events=${JSON.stringify(events)} attempts=${JSON.stringify(attempts)}`,
+      { cause: error }
+    );
+  }
   await runClaude(proxyUrl);
 
   if (!openaiRecords.some((record) => record.body.model === "gpt-5.5")) {
@@ -56,6 +67,14 @@ try {
   await anthropic.close();
 }
 
+async function debugJson(proxyUrl: string, path: string) {
+  const response = await fetch(`${proxyUrl}${path}`, {
+    headers: { authorization: "Bearer proxy-token" }
+  });
+  if (!response.ok) return { status: response.status, body: await response.text() };
+  return response.json();
+}
+
 async function runCodex(proxyUrl: string) {
   const codexHome = await mkdtemp(join(tmpdir(), "prompt-proxy-codex-"));
   const workdir = await mkdtemp(join(tmpdir(), "prompt-proxy-workdir-"));
@@ -70,7 +89,10 @@ async function runCodex(proxyUrl: string) {
       `base_url = "${proxyUrl}/v1"`,
       'env_key = "PROMPT_PROXY_TOKEN"',
       'wire_api = "responses"',
-      "supports_websockets = true",
+      "supports_websockets = false",
+      "request_max_retries = 0",
+      "stream_max_retries = 0",
+      'env_http_headers = { authorization = "PROMPT_PROXY_AUTHORIZATION" }',
       ""
     ].join("\n")
   );
@@ -84,7 +106,8 @@ async function runCodex(proxyUrl: string) {
     "Reply with the exact text OK. Do not call tools."
   ], {
     CODEX_HOME: codexHome,
-    PROMPT_PROXY_TOKEN: "proxy-token"
+    PROMPT_PROXY_TOKEN: "proxy-token",
+    PROMPT_PROXY_AUTHORIZATION: "Bearer proxy-token"
   });
 }
 

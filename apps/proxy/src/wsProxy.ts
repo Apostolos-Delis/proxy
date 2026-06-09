@@ -3,7 +3,7 @@ import type { Duplex } from "node:stream";
 
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
-import { openAIResponsesSurface } from "./adapters.js";
+import { openAIResponsesSurface, rewriteSurfaceRequest } from "./adapters.js";
 import {
   actorForIdentity,
   contextForIdentity,
@@ -254,7 +254,7 @@ export class WebSocketRoutingProxy {
     });
 
     return {
-      body: this.routing.rewrite(routeBody, decision),
+      body: rewriteSurfaceRequest(routeBody, decision),
       decision,
       activeRequest: {
         requestId,
