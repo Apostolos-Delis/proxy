@@ -1,4 +1,4 @@
-import { index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import type {
   EventOutboxStatus,
@@ -7,6 +7,7 @@ import type {
   Provider,
   ProviderAttemptStatus,
   RequestStatus,
+  RoutingConfig,
   RouteName,
   Surface
 } from "@prompt-proxy/schema";
@@ -84,6 +85,72 @@ export const userSessions = pgTable(
   ]
 );
 
+export const routingConfigs = pgTable(
+  "routing_configs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    description: text("description"),
+    status: text("status").notNull().default("active"),
+    activeVersionId: text("active_version_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("routing_configs_org_id_idx").on(table.organizationId, table.id),
+    uniqueIndex("routing_configs_org_slug_idx").on(table.organizationId, table.slug),
+    index("routing_configs_organization_id_idx").on(table.organizationId),
+    index("routing_configs_active_version_idx").on(table.organizationId, table.activeVersionId),
+    foreignKey({
+      name: "routing_configs_active_version_fk",
+      columns: [table.organizationId, table.id, table.activeVersionId],
+      foreignColumns: [
+        routingConfigVersions.organizationId,
+        routingConfigVersions.routingConfigId,
+        routingConfigVersions.id
+      ]
+    })
+  ]
+);
+
+export const routingConfigVersions = pgTable(
+  "routing_config_versions",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    routingConfigId: text("routing_config_id").notNull(),
+    version: integer("version").notNull(),
+    configHash: text("config_hash").notNull(),
+    config: jsonb("config").$type<RoutingConfig>().notNull(),
+    status: text("status").notNull().default("draft"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    archivedAt: timestamp("archived_at", { withTimezone: true })
+  },
+  (table) => [
+    uniqueIndex("routing_config_versions_config_version_idx").on(
+      table.organizationId,
+      table.routingConfigId,
+      table.version
+    ),
+    uniqueIndex("routing_config_versions_config_id_idx").on(table.organizationId, table.routingConfigId, table.id),
+    uniqueIndex("routing_config_versions_org_hash_idx").on(table.organizationId, table.configHash),
+    index("routing_config_versions_config_idx").on(table.organizationId, table.routingConfigId),
+    foreignKey({
+      name: "routing_config_versions_config_fk",
+      columns: [table.organizationId, table.routingConfigId],
+      foreignColumns: [routingConfigs.organizationId, routingConfigs.id]
+    }).onDelete("cascade")
+  ]
+);
+
 export const apiKeys = pgTable(
   "api_keys",
   {
@@ -94,6 +161,7 @@ export const apiKeys = pgTable(
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     keyHash: text("key_hash").notNull(),
     name: text("name").notNull(),
+    routingConfigId: text("routing_config_id"),
     scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
@@ -102,7 +170,13 @@ export const apiKeys = pgTable(
   },
   (table) => [
     uniqueIndex("api_keys_hash_idx").on(table.keyHash),
-    index("api_keys_organization_id_idx").on(table.organizationId)
+    index("api_keys_organization_id_idx").on(table.organizationId),
+    index("api_keys_routing_config_idx").on(table.organizationId, table.routingConfigId),
+    foreignKey({
+      name: "api_keys_routing_config_fk",
+      columns: [table.organizationId, table.routingConfigId],
+      foreignColumns: [routingConfigs.organizationId, routingConfigs.id]
+    })
   ]
 );
 
@@ -113,10 +187,17 @@ export const organizationSettings = pgTable("organization_settings", {
   promptCaptureMode: text("prompt_capture_mode").$type<PromptCaptureMode>().notNull().default("raw_text"),
   retentionDays: integer("retention_days").notNull().default(30),
   maxRoute: text("max_route").$type<RouteName>(),
+  defaultRoutingConfigId: text("default_routing_config_id"),
   settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
-});
+}, (table) => [
+  foreignKey({
+    name: "organization_settings_default_routing_config_fk",
+    columns: [table.organizationId, table.defaultRoutingConfigId],
+    foreignColumns: [routingConfigs.organizationId, routingConfigs.id]
+  })
+]);
 
 export const userSettings = pgTable(
   "user_settings",
@@ -261,6 +342,9 @@ export const requests = pgTable(
     routingInputHash: text("routing_input_hash"),
     routingInputChars: integer("routing_input_chars"),
     routingEstimatedInputTokens: integer("routing_estimated_input_tokens"),
+    routingConfigId: text("routing_config_id"),
+    routingConfigVersionId: text("routing_config_version_id"),
+    routingConfigHash: text("routing_config_hash"),
     status: text("status").$type<RequestStatus>().notNull().default("received"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -270,7 +354,8 @@ export const requests = pgTable(
     uniqueIndex("requests_org_idempotency_idx").on(table.organizationId, table.idempotencyKey),
     index("requests_organization_created_idx").on(table.organizationId, table.createdAt),
     index("requests_session_id_idx").on(table.sessionId),
-    index("requests_user_id_idx").on(table.organizationId, table.userId)
+    index("requests_user_id_idx").on(table.organizationId, table.userId),
+    index("requests_routing_config_idx").on(table.organizationId, table.routingConfigId)
   ]
 );
 
@@ -291,6 +376,9 @@ export const routeDecisions = pgTable(
     selectedModel: text("selected_model"),
     reasoningEffort: text("reasoning_effort"),
     verbosity: text("verbosity"),
+    routingConfigId: text("routing_config_id"),
+    routingConfigVersionId: text("routing_config_version_id"),
+    routingConfigHash: text("routing_config_hash"),
     confidence: integer("confidence_basis_points"),
     reasonCodes: jsonb("reason_codes").$type<string[]>().notNull().default([]),
     guardrailActions: jsonb("guardrail_actions").$type<string[]>().notNull().default([]),
@@ -302,7 +390,8 @@ export const routeDecisions = pgTable(
   (table) => [
     uniqueIndex("route_decisions_request_id_idx").on(table.requestId),
     index("route_decisions_organization_id_idx").on(table.organizationId),
-    index("route_decisions_final_route_idx").on(table.organizationId, table.finalRoute)
+    index("route_decisions_final_route_idx").on(table.organizationId, table.finalRoute),
+    index("route_decisions_routing_config_idx").on(table.organizationId, table.routingConfigId)
   ]
 );
 

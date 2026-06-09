@@ -49,30 +49,79 @@ CREATE UNIQUE INDEX user_sessions_token_hash_idx ON user_sessions (session_token
 CREATE INDEX user_sessions_organization_user_idx ON user_sessions (organization_id, user_id);
 CREATE INDEX user_sessions_expires_at_idx ON user_sessions (expires_at);
 
+CREATE TABLE routing_configs (
+  id text PRIMARY KEY,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  slug text NOT NULL,
+  description text,
+  status text NOT NULL DEFAULT 'active',
+  active_version_id text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX routing_configs_org_id_idx ON routing_configs (organization_id, id);
+CREATE UNIQUE INDEX routing_configs_org_slug_idx ON routing_configs (organization_id, slug);
+CREATE INDEX routing_configs_organization_id_idx ON routing_configs (organization_id);
+CREATE INDEX routing_configs_active_version_idx ON routing_configs (organization_id, active_version_id);
+
+CREATE TABLE routing_config_versions (
+  id text PRIMARY KEY,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  routing_config_id text NOT NULL,
+  version integer NOT NULL,
+  config_hash text NOT NULL,
+  config jsonb NOT NULL,
+  status text NOT NULL DEFAULT 'draft',
+  created_by_user_id text REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  activated_at timestamp with time zone,
+  archived_at timestamp with time zone,
+  CONSTRAINT routing_config_versions_config_fk FOREIGN KEY (organization_id, routing_config_id)
+    REFERENCES routing_configs(organization_id, id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX routing_config_versions_config_version_idx ON routing_config_versions (organization_id, routing_config_id, version);
+CREATE UNIQUE INDEX routing_config_versions_config_id_idx ON routing_config_versions (organization_id, routing_config_id, id);
+CREATE UNIQUE INDEX routing_config_versions_org_hash_idx ON routing_config_versions (organization_id, config_hash);
+CREATE INDEX routing_config_versions_config_idx ON routing_config_versions (organization_id, routing_config_id);
+
+ALTER TABLE routing_configs
+  ADD CONSTRAINT routing_configs_active_version_fk FOREIGN KEY (organization_id, id, active_version_id)
+  REFERENCES routing_config_versions(organization_id, routing_config_id, id);
+
 CREATE TABLE api_keys (
   id text PRIMARY KEY,
   organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   user_id text REFERENCES users(id) ON DELETE SET NULL,
   key_hash text NOT NULL,
   name text NOT NULL,
+  routing_config_id text,
   scopes jsonb NOT NULL DEFAULT '[]'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   expires_at timestamp with time zone,
   revoked_at timestamp with time zone,
-  last_used_at timestamp with time zone
+  last_used_at timestamp with time zone,
+  CONSTRAINT api_keys_routing_config_fk FOREIGN KEY (organization_id, routing_config_id)
+    REFERENCES routing_configs(organization_id, id)
 );
 
 CREATE UNIQUE INDEX api_keys_hash_idx ON api_keys (key_hash);
 CREATE INDEX api_keys_organization_id_idx ON api_keys (organization_id);
+CREATE INDEX api_keys_routing_config_idx ON api_keys (organization_id, routing_config_id);
 
 CREATE TABLE organization_settings (
   organization_id text PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
   prompt_capture_mode text NOT NULL DEFAULT 'raw_text',
   retention_days integer NOT NULL DEFAULT 30,
   max_route text,
+  default_routing_config_id text,
   settings jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now()
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT organization_settings_default_routing_config_fk FOREIGN KEY (organization_id, default_routing_config_id)
+    REFERENCES routing_configs(organization_id, id)
 );
 
 CREATE TABLE user_settings (
@@ -177,6 +226,9 @@ CREATE TABLE requests (
   routing_input_hash text,
   routing_input_chars integer,
   routing_estimated_input_tokens integer,
+  routing_config_id text,
+  routing_config_version_id text,
+  routing_config_hash text,
   status text NOT NULL DEFAULT 'received',
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -187,6 +239,7 @@ CREATE UNIQUE INDEX requests_org_idempotency_idx ON requests (organization_id, i
 CREATE INDEX requests_organization_created_idx ON requests (organization_id, created_at);
 CREATE INDEX requests_session_id_idx ON requests (session_id);
 CREATE INDEX requests_user_id_idx ON requests (organization_id, user_id);
+CREATE INDEX requests_routing_config_idx ON requests (organization_id, routing_config_id);
 
 CREATE TABLE route_decisions (
   id text PRIMARY KEY,
@@ -199,6 +252,9 @@ CREATE TABLE route_decisions (
   selected_model text,
   reasoning_effort text,
   verbosity text,
+  routing_config_id text,
+  routing_config_version_id text,
+  routing_config_hash text,
   confidence_basis_points integer,
   reason_codes jsonb NOT NULL DEFAULT '[]'::jsonb,
   guardrail_actions jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -211,6 +267,7 @@ CREATE TABLE route_decisions (
 CREATE UNIQUE INDEX route_decisions_request_id_idx ON route_decisions (request_id);
 CREATE INDEX route_decisions_organization_id_idx ON route_decisions (organization_id);
 CREATE INDEX route_decisions_final_route_idx ON route_decisions (organization_id, final_route);
+CREATE INDEX route_decisions_routing_config_idx ON route_decisions (organization_id, routing_config_id);
 
 CREATE TABLE provider_attempts (
   id text PRIMARY KEY,
