@@ -261,6 +261,77 @@
   margin-top: 16px;
 }
 
+.routing-snapshot-panel {
+  min-height: 100%;
+}
+
+.snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.snapshot-datum {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+}
+
+.snapshot-datum span,
+.snapshot-datum strong {
+  display: block;
+  min-width: 0;
+}
+
+.snapshot-datum > span {
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+
+.snapshot-datum strong {
+  margin-top: 7px;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snapshot-foot {
+  margin-top: 14px;
+}
+
+.snapshot-config-link {
+  color: var(--accent-2);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.routing-config-micro {
+  display: block;
+  margin-top: 5px;
+  color: var(--fg-faint);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.routing-config-micro a,
+.routing-config-micro span {
+  display: block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routing-config-micro a {
+  color: var(--accent-2);
+}
+
 .raw-panel pre,
 .code-panel pre {
   max-height: 520px;

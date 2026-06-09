@@ -127,12 +127,36 @@ describe("admin prompt APIs", () => {
       provider: "openai",
       selectedModel: "gpt-5.5"
     }));
+    expect(latestUser.routingConfig).toEqual(expect.objectContaining({
+      configId: "org_prompt_admin:routing-config:default",
+      configName: "Default routing config",
+      version: 1,
+      configHash: expect.stringMatching(/^[a-f0-9]{64}$/)
+    }));
+    expect(latestUser.classifier).toEqual(expect.objectContaining({
+      model: "route-classifier-cheap"
+    }));
     expect(detail.artifact.rawText).toBe("Investigate prompt admin APIs.");
+    expect(detail.artifact.routingConfig).toEqual(expect.objectContaining({
+      configId: "org_prompt_admin:routing-config:default",
+      configName: "Default routing config",
+      version: 1,
+      configHash: expect.stringMatching(/^[a-f0-9]{64}$/)
+    }));
+    expect(detail.artifact.classifier).toEqual(expect.objectContaining({
+      provider: "openai",
+      model: "route-classifier-cheap"
+    }));
     expect(detail.request).toEqual(expect.objectContaining({
       requestId: latestUser.requestId,
       provider: "openai",
       selectedModel: "gpt-5.5",
       finalRoute: "hard"
+    }));
+    expect(detail.request.routingConfig).toEqual(expect.objectContaining({
+      configId: "org_prompt_admin:routing-config:default",
+      configName: "Default routing config",
+      version: 1
     }));
     expect(detail.events.map((event: any) => event.eventType)).toContain("prompt_artifacts.captured");
     expect(crossOrg.status).toBe(404);

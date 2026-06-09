@@ -182,8 +182,9 @@ export class AdminQueryService {
 
   async prompts(filters: PromptListFilters = {}) {
     const rows = await this.promptRows(filters);
+    const data = await this.addRoutingConfigNames(rows.map((row) => promptSummary(row)));
     return {
-      data: rows.map((row) => promptSummary(row)),
+      data,
       pagination: {
         limit: promptLimit(filters.limit),
         offset: promptOffset(filters.offset),
@@ -273,12 +274,14 @@ export class AdminQueryService {
     const requestIds = requestRows.map((request) => request.id);
     const userRows = session.userId ? await this.userRowsForOrg([session.userId]) : new Map<string, UserRow>();
     const detailRows = await this.sessionDetailRows(sessionId, requestIds);
+    const promptArtifactSummaries = await this.addRoutingConfigNames(detailRows.prompts.map((row) => promptDetail(row)));
+    const routeDecisionSummaries = await this.addRoutingConfigNames(detailRows.routeDecisions.map(routeDecisionSummary));
     return {
       session: sessionSummary(session, requestSummaries),
       user: session.userId ? userRows.get(session.userId) ?? null : null,
       requests: requestSummaries,
-      promptArtifacts: detailRows.prompts.map((row) => promptDetail(row)),
-      routeDecisions: detailRows.routeDecisions.map(routeDecisionSummary),
+      promptArtifacts: promptArtifactSummaries,
+      routeDecisions: routeDecisionSummaries,
       providerAttempts: detailRows.providerAttempts.map(providerAttemptSummary),
       usageLedger: detailRows.usageLedger.map(usageLedgerSummary),
       events: detailRows.events.map(eventSummary)
@@ -289,10 +292,18 @@ export class AdminQueryService {
     const [row] = await this.db
       .select({
         artifact: promptArtifacts,
-        request: requests
+        request: requests,
+        decision: routeDecisions
       })
       .from(promptArtifacts)
-      .innerJoin(requests, eq(requests.id, promptArtifacts.requestId))
+      .innerJoin(requests, and(
+        eq(requests.id, promptArtifacts.requestId),
+        eq(requests.organizationId, promptArtifacts.organizationId)
+      ))
+      .leftJoin(routeDecisions, and(
+        eq(routeDecisions.requestId, requests.id),
+        eq(routeDecisions.organizationId, requests.organizationId)
+      ))
       .where(and(
         eq(promptArtifacts.organizationId, this.config.defaultOrganizationId),
         eq(requests.organizationId, this.config.defaultOrganizationId),
@@ -303,9 +314,10 @@ export class AdminQueryService {
 
     const [request] = await this.summarizeRequests([row.request]);
     const requestEvents = await this.eventsForRequest(row.request.id);
+    const [artifact] = await this.addRoutingConfigNames([promptDetail(row)]);
 
     return {
-      artifact: promptDetail(row),
+      artifact,
       request: request ?? null,
       events: requestEvents
     };
@@ -516,7 +528,7 @@ export class AdminQueryService {
       ? new Map<string, UsageAggregate>()
       : new Map(usageRows.map((usage) => [usage.providerAttemptId, usageAggregateForRow(usage)]));
 
-    return requestRows.map((request) => {
+    const summaries = requestRows.map((request) => {
       const attempt = attemptsByRequest.get(request.id) ?? null;
       return requestSummary({
         request,
@@ -528,6 +540,30 @@ export class AdminQueryService {
         attemptCount: attemptCountsByRequest.get(request.id) ?? 0
       }, this.catalog);
     });
+    return this.addRoutingConfigNames(summaries);
+  }
+
+  private async addRoutingConfigNames<T extends { routingConfig: ReturnType<typeof routingConfigSummary> }>(summaries: T[]) {
+    const configIds = [...new Set(summaries.flatMap((summary) => summary.routingConfig ? [summary.routingConfig.configId] : []))];
+    if (configIds.length === 0) return summaries;
+
+    const rows = await this.db
+      .select({
+        id: routingConfigs.id,
+        name: routingConfigs.name
+      })
+      .from(routingConfigs)
+      .where(and(
+        eq(routingConfigs.organizationId, this.config.defaultOrganizationId),
+        inArray(routingConfigs.id, configIds)
+      ));
+    const names = new Map(rows.map((row) => [row.id, row.name]));
+    for (const summary of summaries) {
+      if (summary.routingConfig) {
+        summary.routingConfig.configName = names.get(summary.routingConfig.configId) ?? null;
+      }
+    }
+    return summaries;
   }
 
   private async eventCount() {
@@ -585,8 +621,14 @@ export class AdminQueryService {
         eq(requests.id, promptArtifacts.requestId),
         eq(requests.organizationId, promptArtifacts.organizationId)
       ))
-      .leftJoin(routeDecisions, eq(routeDecisions.requestId, requests.id))
-      .leftJoin(usageLedger, eq(usageLedger.requestId, requests.id))
+      .leftJoin(routeDecisions, and(
+        eq(routeDecisions.requestId, requests.id),
+        eq(routeDecisions.organizationId, requests.organizationId)
+      ))
+      .leftJoin(usageLedger, and(
+        eq(usageLedger.requestId, requests.id),
+        eq(usageLedger.organizationId, requests.organizationId)
+      ))
       .where(and(...conditions))
       .orderBy(desc(promptArtifacts.createdAt))
       .limit(promptLimit(filters.limit))
@@ -772,6 +814,7 @@ function promptSummary(row: PromptRow) {
     provider: row.decision?.selectedProvider ?? row.usage?.provider ?? undefined,
     selectedModel: row.decision?.selectedModel ?? undefined,
     routingConfig: routingConfigSummary(row.decision ?? row.request),
+    classifier: row.decision?.classifier ?? undefined,
     cost: {
       selected: (row.usage?.totalCostMicros ?? 0) / 1_000_000
     },
@@ -779,13 +822,13 @@ function promptSummary(row: PromptRow) {
   };
 }
 
-function promptDetail(row: Pick<PromptRow, "artifact" | "request">) {
+function promptDetail(row: Pick<PromptRow, "artifact" | "request"> & Partial<Pick<PromptRow, "decision" | "usage">>) {
   return {
     ...promptSummary({
       artifact: row.artifact,
       request: row.request,
-      decision: null,
-      usage: null
+      decision: row.decision ?? null,
+      usage: row.usage ?? null
     }),
     rawText: row.artifact.rawText ?? null,
     redactedText: row.artifact.redactedText ?? null,
@@ -851,6 +894,7 @@ function requestSummary(row: {
     provider: row.decision?.selectedProvider ?? row.attempt?.provider ?? undefined,
     selectedModel,
     routingConfig: routingConfigSummary(row.decision ?? row.request),
+    classifier: row.decision?.classifier ?? undefined,
     terminalStatus: row.attempt?.terminalStatus ?? row.request.status,
     inputChars: row.request.inputChars,
     usage,

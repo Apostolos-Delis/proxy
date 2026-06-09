@@ -677,6 +677,12 @@ describe("postgres persistence", () => {
       slug: "org_admin_retry",
       name: "org_admin_retry"
     }).onConflictDoNothing();
+    await fixture.db.insert(routingConfigs).values({
+      id: "routing_config_retry",
+      organizationId: "org_admin_retry",
+      name: "Retry routing config",
+      slug: "retry-routing-config"
+    });
     await fixture.db.insert(requests).values({
       id: "request_retry",
       organizationId: "org_admin_retry",
@@ -760,6 +766,7 @@ describe("postgres persistence", () => {
     expect(requestsPage.data[0]?.usage.totalTokens).toBe(9);
     expect(requestsPage.data[0]?.routingConfig).toEqual({
       configId: "routing_config_retry",
+      configName: "Retry routing config",
       versionId: "routing_config_retry:v2",
       version: 2,
       configHash: "sha256:routing-config-retry"
@@ -767,6 +774,7 @@ describe("postgres persistence", () => {
     expect(detail.request?.terminalStatus).toBe("completed");
     expect(detail.request?.routingConfig).toEqual({
       configId: "routing_config_retry",
+      configName: "Retry routing config",
       versionId: "routing_config_retry:v2",
       version: 2,
       configHash: "sha256:routing-config-retry"

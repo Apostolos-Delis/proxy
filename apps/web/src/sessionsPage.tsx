@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { type SessionDetail, type SessionSummary, fetchSessionDetail, fetchSessions } from "./api";
 import { compactCounts, compactId, dominantKey, formatCompact, formatDateTime, formatMoney } from "./format";
+import { routingDecisionSubtitle } from "./routingSnapshot";
 import { CodePill, DataTable, GlassCard, JsonPanel, PageState, PageTitle, RouteBadge, StatusBadge } from "./ui";
 
 type ReplayRow = {
@@ -117,7 +118,7 @@ function replayRows(detail: SessionDetail) {
       id: `decision:${decision.id}`,
       kind: "route",
       title: `Route ${decision.finalRoute ?? "unknown"}`,
-      subtitle: decision.selectedModel ?? decision.requestedModel,
+      subtitle: routingDecisionSubtitle(decision),
       createdAt: decision.createdAt
     })),
     ...detail.providerAttempts.map((attempt) => ({

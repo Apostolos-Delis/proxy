@@ -1,8 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
-import { type PromptSummary, fetchPromptDetail, fetchPrompts } from "./api";
+import { type PromptSummary, type RequestSummary, fetchPromptDetail, fetchPrompts } from "./api";
 import { compactId, formatDateTime, formatMoney } from "./format";
+import { RoutingConfigMicro, RoutingSnapshotPanel } from "./routingSnapshot";
 import { CodePill, DataTable, GlassCard, JsonPanel, PageState, PageTitle, RawTextPanel, RouteBadge, Timeline } from "./ui";
 
 export function PromptsPage() {
@@ -42,11 +43,15 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
 
   const artifact = query.data.artifact;
   const rawText = artifact.rawText ?? artifact.redactedText ?? "No raw prompt stored.";
+  const snapshot = promptSnapshot(artifact, query.data.request);
   return (
     <div className="page page-enter">
       <PageTitle title="Prompt detail" subtitle={compactId(artifact.artifactId, 18)} />
       <div className="detail-grid">
         <RawTextPanel title="Raw prompt" value={rawText} />
+        <RoutingSnapshotPanel value={snapshot} />
+      </div>
+      <div className="detail-grid">
         <JsonPanel title="Context" value={{
           requestId: artifact.requestId,
           userId: artifact.userId,
@@ -57,6 +62,8 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
           chars: artifact.chars,
           tokenEstimate: artifact.tokenEstimate,
           selectedModel: artifact.selectedModel,
+          routingConfig: artifact.routingConfig,
+          classifier: artifact.classifier,
           request: query.data.request
         }} />
       </div>
@@ -78,9 +85,23 @@ function PromptRow({ prompt }: { prompt: PromptSummary }) {
       <td><CodePill value={prompt.sessionId ?? "unknown"} /></td>
       <td>{prompt.surface}</td>
       <td><RouteBadge route={prompt.finalRoute} /></td>
-      <td><span className="mono">{prompt.selectedModel ?? "unknown"}</span></td>
+      <td>
+        <span className="mono">{prompt.selectedModel ?? "unknown"}</span>
+        <RoutingConfigMicro snapshot={prompt.routingConfig} />
+      </td>
       <td className="mono">{formatMoney(prompt.cost.selected)}</td>
       <td>{formatDateTime(prompt.createdAt)}</td>
     </tr>
   );
+}
+
+function promptSnapshot(artifact: PromptSummary, request: RequestSummary | null) {
+  return {
+    finalRoute: artifact.finalRoute ?? request?.finalRoute,
+    selectedModel: artifact.selectedModel ?? request?.selectedModel,
+    provider: artifact.provider ?? request?.provider,
+    requestedModel: request?.requestedModel,
+    routingConfig: artifact.routingConfig ?? request?.routingConfig,
+    classifier: artifact.classifier ?? request?.classifier
+  };
 }
