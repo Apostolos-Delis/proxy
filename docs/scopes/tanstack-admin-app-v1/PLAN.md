@@ -51,6 +51,8 @@ The existing app exposes:
 /usage               usage analytics
 /prompts             prompt table
 /prompts/:artifactId prompt detail
+/sessions            session table
+/sessions/:sessionId session replay
 /requests            request table
 /requests/:requestId request detail and event timeline
 /settings            settings

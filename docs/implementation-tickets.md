@@ -535,6 +535,8 @@ Dependencies: PP-030, PP-031, PP-033.
 
 ### PP-035: Build Session Replay
 
+Status: implemented in the current MVP.
+
 Create a chronological investigation view for all observable proxy activity in a session.
 
 Acceptance criteria:

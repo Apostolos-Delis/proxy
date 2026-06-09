@@ -17,6 +17,7 @@ import {
 } from "./api";
 import { LoginPage, requireAuth, type RouterContext } from "./auth";
 import { PromptDetailPage, PromptsPage } from "./promptsPage";
+import { SessionDetailPage, SessionsPage } from "./sessionsPage";
 import { AppShell } from "./shell";
 import { Header, JsonPanel, Metric, PageState, Quality, Timeline, formatMoney } from "./ui";
 import { UsagePage } from "./usagePage";
@@ -66,6 +67,20 @@ const promptDetailRoute = createRoute({
   component: PromptDetailRoutePage
 });
 
+const sessionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/sessions",
+  beforeLoad: requireAuth,
+  component: SessionsPage
+});
+
+const sessionDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/sessions/$sessionId",
+  beforeLoad: requireAuth,
+  component: SessionDetailRoutePage
+});
+
 const requestDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/requests/$requestId",
@@ -86,6 +101,8 @@ const routeTree = rootRoute.addChildren([
   usageRoute,
   promptsRoute,
   promptDetailRoute,
+  sessionsRoute,
+  sessionDetailRoute,
   requestsRoute,
   requestDetailRoute,
   settingsRoute
@@ -250,6 +267,11 @@ function RequestDetailPage() {
 function PromptDetailRoutePage() {
   const { artifactId } = promptDetailRoute.useParams();
   return <PromptDetailPage artifactId={artifactId} />;
+}
+
+function SessionDetailRoutePage() {
+  const { sessionId } = sessionDetailRoute.useParams();
+  return <SessionDetailPage sessionId={sessionId} />;
 }
 
 function SettingsPage() {

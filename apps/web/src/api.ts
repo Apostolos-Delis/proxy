@@ -131,6 +131,77 @@ export type PromptDetail = {
   events: ProxyEvent[];
 };
 
+export type SessionSummary = {
+  sessionId: string;
+  organizationId: string;
+  userId?: string;
+  surface: string;
+  externalSessionId?: string;
+  currentRoute?: string;
+  sessionIdentity?: string;
+  requestCount: number;
+  routeChanges: number;
+  modelMix: Record<string, number>;
+  routeMix: Record<string, number>;
+  terminalStatusSummary: Record<string, number>;
+  usage: Overview["totals"];
+  cost: Overview["cost"];
+  recentActivity: string | null;
+  startedAt: string;
+  endedAt?: string;
+  updatedAt: string;
+};
+
+export type ProviderAttempt = {
+  id: string;
+  requestId: string;
+  surface: string;
+  provider: string;
+  model: string;
+  terminalStatus: string;
+  statusCode?: number;
+  error?: string;
+  startedAt: string;
+  firstByteAt?: string;
+  completedAt?: string;
+};
+
+export type UsageLedgerRow = {
+  id: string;
+  requestId: string;
+  providerAttemptId: string;
+  provider: string;
+  model: string;
+  route?: string;
+  totalTokens: number;
+  totalCostMicros: number;
+  createdAt: string;
+};
+
+export type RouteDecision = {
+  id: string;
+  requestId: string;
+  requestedModel: string;
+  classifierRoute?: string;
+  finalRoute?: string;
+  selectedProvider?: string;
+  selectedModel?: string;
+  confidence: number | null;
+  reasonCodes: string[];
+  createdAt: string;
+};
+
+export type SessionDetail = {
+  session: SessionSummary;
+  user: Record<string, unknown> | null;
+  requests: RequestSummary[];
+  promptArtifacts: PromptDetail["artifact"][];
+  routeDecisions: RouteDecision[];
+  providerAttempts: ProviderAttempt[];
+  usageLedger: UsageLedgerRow[];
+  events: ProxyEvent[];
+};
+
 export type Settings = {
   organizationId: string;
   databaseEnabled: boolean;
@@ -165,6 +236,14 @@ export async function fetchPrompts() {
 
 export async function fetchPromptDetail(artifactId: string) {
   return fetchJson<PromptDetail>(`/admin/prompts/${encodeURIComponent(artifactId)}`);
+}
+
+export async function fetchSessions() {
+  return fetchJson<{ data: SessionSummary[] }>("/admin/sessions");
+}
+
+export async function fetchSessionDetail(sessionId: string) {
+  return fetchJson<SessionDetail>(`/admin/sessions/${encodeURIComponent(sessionId)}`);
 }
 
 export async function fetchMe() {

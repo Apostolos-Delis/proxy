@@ -399,6 +399,39 @@ th {
   font-size: 13px;
 }
 
+.replay-timeline {
+  display: grid;
+  gap: 8px;
+}
+
+.replay-row {
+  align-items: center;
+  background: #f6f7f4;
+  border-radius: 8px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.replay-row div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.replay-row strong,
+.replay-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.replay-row span,
+.replay-row time {
+  color: #68736e;
+  font-size: 13px;
+}
+
 .json-panel pre {
   background: #17211d;
   border-radius: 8px;
