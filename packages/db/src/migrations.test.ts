@@ -14,8 +14,21 @@ describe("database migrations", () => {
 
     await client.exec(migration);
     const result = await client.query("select count(*)::int as count from organizations");
+    const columns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'prompt_artifacts'
+        and column_name in ('raw_text', 'token_estimate', 'source_role', 'source_index')
+      order by column_name
+    `);
     await client.close();
 
     expect(result.rows[0]).toEqual({ count: 0 });
+    expect(columns.rows.map((row) => row.column_name)).toEqual([
+      "raw_text",
+      "source_index",
+      "source_role",
+      "token_estimate"
+    ]);
   });
 });

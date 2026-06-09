@@ -359,8 +359,12 @@ export const promptArtifacts = pgTable(
       .notNull()
       .references(() => requests.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
-    storageMode: text("storage_mode").notNull(),
+    storageMode: text("storage_mode").$type<PromptCaptureMode>().notNull(),
     contentHash: text("content_hash").notNull(),
+    rawText: text("raw_text"),
+    tokenEstimate: integer("token_estimate"),
+    sourceRole: text("source_role"),
+    sourceIndex: integer("source_index"),
     redactedText: text("redacted_text"),
     encryptedBlobRef: text("encrypted_blob_ref"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),

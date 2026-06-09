@@ -403,6 +403,8 @@ Dependencies: PP-019, PP-025.
 
 ### PP-027: Extend Prompt Artifact Storage For V1 Raw Text
 
+Status: implemented in the current MVP.
+
 Add the schema fields needed to store prompt text directly for the prototype while preserving the hash-based artifact model.
 
 Acceptance criteria:

@@ -41,6 +41,7 @@ export const PROVIDER_ATTEMPT_STATUSES = {
 export const PROMPT_CAPTURE_MODES = {
   NONE: "none",
   HASH_ONLY: "hash_only",
+  RAW_TEXT: "raw_text",
   REDACTED: "redacted",
   ENCRYPTED_RAW: "encrypted_raw"
 } as const;
