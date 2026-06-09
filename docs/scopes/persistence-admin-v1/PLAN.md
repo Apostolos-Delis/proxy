@@ -41,7 +41,9 @@ organization_settings
 user_settings
 provider_accounts
 model_catalog
-route_policies
+routing_configs
+routing_config_versions
+route_policies            legacy placeholder, superseded by routing configs
 agent_sessions
 turns
 requests

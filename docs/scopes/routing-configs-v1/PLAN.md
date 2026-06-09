@@ -23,7 +23,9 @@ The repo already has several related pieces:
 api_keys              caller identity and owner
 provider_accounts     upstream provider secret references
 model_catalog         provider/model metadata
-route_policies        early policy placeholder
+routing_configs       durable routing config identities
+routing_config_versions immutable config JSON snapshots
+route_policies        legacy early policy placeholder, kept only until hard cutover
 organization_settings org-level defaults
 route_decisions       selected route/model audit rows
 requests              request current-state rows
@@ -42,7 +44,7 @@ ANTHROPIC_BALANCED_MODEL
 ANTHROPIC_HARD_MODEL
 ANTHROPIC_DEEP_MODEL
 CLASSIFIER_MODEL
-ROUTE_POLICY_JSON
+ROUTE_POLICY_JSON          legacy runtime routing input until RC-010 removes it
 ```
 
 API key resolution currently returns organization, user, and scopes. It does not return a routing config.
@@ -86,9 +88,9 @@ V1 should not add user/repo override precedence. API-key binding is the first du
 
 ## Hard Cutover
 
-Do not keep `route_policies` and `routing_configs` as two competing configuration concepts.
+Do not keep legacy `route_policies` and `routing_configs` as two competing configuration concepts.
 
-V1 should replace the existing `route_policies` concept with `routing_configs` and `routing_config_versions`. Existing route-policy behavior can be represented as the seeded default routing config. New route decision rows should reference routing config version snapshots, not process-global env policy.
+V1 should replace the existing legacy `route_policies` concept with `routing_configs` and `routing_config_versions`. Existing legacy behavior can be represented as the seeded default routing config. New route decision rows should reference routing config version snapshots, not process-global env settings.
 
 Environment variables can remain as local seed inputs, but runtime routing should resolve from the active routing config once persistence is enabled.
 
@@ -181,7 +183,7 @@ Draft shape:
 {
   "schemaVersion": 1,
   "displayName": "Codex cost saver",
-  "description": "Default coding-agent cost routing policy",
+  "description": "Default coding-agent cost routing config",
   "classifier": {
     "provider": "openai",
     "model": "gpt-5-nano-2025-08-07",
