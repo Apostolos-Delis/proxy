@@ -10,6 +10,7 @@ import {
   requests,
   routeDecisions,
   routingConfigs,
+  routingConfigVersions,
   users as usersTable,
   usageLedger,
   type PromptProxyDbSession
@@ -132,6 +133,50 @@ export class AdminQueryService {
 
     return {
       data: rows.map(apiKeySummary)
+    };
+  }
+
+  async routingConfigs() {
+    const configRows = await this.db
+      .select()
+      .from(routingConfigs)
+      .where(eq(routingConfigs.organizationId, this.config.defaultOrganizationId))
+      .orderBy(desc(routingConfigs.updatedAt));
+    const activeVersions = await this.activeRoutingConfigVersions(configRows);
+    const assignedKeyCounts = await this.routingConfigApiKeyCounts(configRows.map((row) => row.id));
+
+    return {
+      data: configRows.map((row) =>
+        routingConfigListSummary(row, activeVersions.get(row.activeVersionId ?? ""), assignedKeyCounts.get(row.id) ?? 0)
+      )
+    };
+  }
+
+  async routingConfigDetail(configId: string) {
+    const [config] = await this.db
+      .select()
+      .from(routingConfigs)
+      .where(and(
+        eq(routingConfigs.organizationId, this.config.defaultOrganizationId),
+        eq(routingConfigs.id, configId)
+      ))
+      .limit(1);
+    if (!config) return null;
+
+    const versions = await this.db
+      .select()
+      .from(routingConfigVersions)
+      .where(and(
+        eq(routingConfigVersions.organizationId, this.config.defaultOrganizationId),
+        eq(routingConfigVersions.routingConfigId, config.id)
+      ))
+      .orderBy(desc(routingConfigVersions.version));
+    const activeVersion = versions.find((version) => version.id === config.activeVersionId);
+    const assignedKeyCounts = await this.routingConfigApiKeyCounts([config.id]);
+
+    return {
+      config: routingConfigListSummary(config, activeVersion, assignedKeyCounts.get(config.id) ?? 0),
+      versions: versions.map((version) => routingConfigVersionDetail(version, version.id === config.activeVersionId))
     };
   }
 
@@ -484,6 +529,37 @@ export class AdminQueryService {
     return Number(row?.count ?? 0);
   }
 
+  private async activeRoutingConfigVersions(configRows: RoutingConfigRow[]) {
+    const versionIds = configRows.flatMap((row) => row.activeVersionId ? [row.activeVersionId] : []);
+    if (versionIds.length === 0) return new Map<string, RoutingConfigVersionRow>();
+
+    const rows = await this.db
+      .select()
+      .from(routingConfigVersions)
+      .where(and(
+        eq(routingConfigVersions.organizationId, this.config.defaultOrganizationId),
+        inArray(routingConfigVersions.id, versionIds)
+      ));
+    return new Map(rows.map((row) => [row.id, row]));
+  }
+
+  private async routingConfigApiKeyCounts(configIds: string[]) {
+    if (configIds.length === 0) return new Map<string, number>();
+
+    const rows = await this.db
+      .select({ routingConfigId: apiKeys.routingConfigId })
+      .from(apiKeys)
+      .where(and(
+        eq(apiKeys.organizationId, this.config.defaultOrganizationId),
+        inArray(apiKeys.routingConfigId, configIds)
+      ));
+    return rows.reduce((counts, row) => {
+      if (!row.routingConfigId) return counts;
+      counts.set(row.routingConfigId, (counts.get(row.routingConfigId) ?? 0) + 1);
+      return counts;
+    }, new Map<string, number>());
+  }
+
   private async promptRows(filters: PromptListFilters) {
     const conditions = promptConditions(this.config.defaultOrganizationId, filters);
     return this.db
@@ -558,6 +634,8 @@ type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
 type UsageLedgerRow = typeof usageLedger.$inferSelect;
 type SessionRow = typeof agentSessions.$inferSelect;
 type UserRow = typeof usersTable.$inferSelect;
+type RoutingConfigRow = typeof routingConfigs.$inferSelect;
+type RoutingConfigVersionRow = typeof routingConfigVersions.$inferSelect;
 type ApiKeySummaryRow = {
   id: string;
   organizationId: string;
@@ -572,6 +650,49 @@ type ApiKeySummaryRow = {
   routingConfigName: string | null;
   routingConfigStatus: string | null;
 };
+
+function routingConfigListSummary(
+  row: RoutingConfigRow,
+  activeVersion: RoutingConfigVersionRow | undefined,
+  assignedApiKeyCount: number
+) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    name: row.name,
+    slug: row.slug,
+    description: row.description ?? null,
+    status: row.status,
+    activeVersionId: row.activeVersionId ?? null,
+    activeVersion: activeVersion ? routingConfigVersionSummary(activeVersion, true) : null,
+    assignedApiKeyCount,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+
+function routingConfigVersionSummary(row: RoutingConfigVersionRow, active: boolean) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    routingConfigId: row.routingConfigId,
+    version: row.version,
+    configHash: row.configHash,
+    status: row.status,
+    active,
+    createdByUserId: row.createdByUserId ?? null,
+    createdAt: row.createdAt.toISOString(),
+    activatedAt: row.activatedAt?.toISOString() ?? null,
+    archivedAt: row.archivedAt?.toISOString() ?? null
+  };
+}
+
+function routingConfigVersionDetail(row: RoutingConfigVersionRow, active: boolean) {
+  return {
+    ...routingConfigVersionSummary(row, active),
+    config: row.config
+  };
+}
 type PromptRow = {
   artifact: typeof promptArtifacts.$inferSelect;
   request: typeof requests.$inferSelect;

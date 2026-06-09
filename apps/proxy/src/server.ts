@@ -169,6 +169,26 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     if (!persistence) throw notFound("api_keys_not_found");
     return persistence.adminQueries.apiKeys();
   });
+  app.get("/admin/routing-configs", async (request) => {
+    await adminAuth.resolve(request.headers);
+    if (!persistence) return { data: [] };
+    return persistence.adminQueries.routingConfigs();
+  });
+  app.get("/admin/routing-configs/:configId", async (request, reply) => {
+    await adminAuth.resolve(request.headers);
+    const params = request.params as { configId?: string };
+    const configId = params.configId;
+    if (!configId || !persistence) {
+      reply.code(404).send({ error: "routing_config_not_found" });
+      return;
+    }
+    const detail = await persistence.adminQueries.routingConfigDetail(configId);
+    if (!detail) {
+      reply.code(404).send({ error: "routing_config_not_found" });
+      return;
+    }
+    return detail;
+  });
   app.get("/admin/requests/:requestId", async (request) => {
     await adminAuth.resolve(request.headers);
     const params = request.params as { requestId?: string };
