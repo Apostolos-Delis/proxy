@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
@@ -54,14 +55,14 @@ describe("database migrations", () => {
       select column_name
       from information_schema.columns
       where table_name = 'requests'
-        and column_name in ('routing_config_id', 'routing_config_version_id', 'routing_config_hash')
+        and column_name in ('routing_config_id', 'routing_config_version_id', 'routing_config_version', 'routing_config_hash')
       order by column_name
     `);
     const decisionRoutingColumns = await client.query<{ column_name: string }>(`
       select column_name
       from information_schema.columns
       where table_name = 'route_decisions'
-        and column_name in ('routing_config_id', 'routing_config_version_id', 'routing_config_hash')
+        and column_name in ('routing_config_id', 'routing_config_version_id', 'routing_config_version', 'routing_config_hash')
       order by column_name
     `);
     const auditColumns = await client.query<{ column_name: string }>(`
@@ -105,11 +106,13 @@ describe("database migrations", () => {
     expect(requestRoutingColumns.rows.map((row) => row.column_name)).toEqual([
       "routing_config_hash",
       "routing_config_id",
+      "routing_config_version",
       "routing_config_version_id"
     ]);
     expect(decisionRoutingColumns.rows.map((row) => row.column_name)).toEqual([
       "routing_config_hash",
       "routing_config_id",
+      "routing_config_version",
       "routing_config_version_id"
     ]);
     expect(auditColumns.rows.map((row) => row.column_name)).toEqual([
@@ -218,11 +221,13 @@ describe("database migrations", () => {
 
 async function migratedClient() {
   const client = new PGlite();
-  const migration = await readFile(
-    fileURLToPath(new URL("../migrations/0000_foundation.sql", import.meta.url)),
-    "utf8"
-  );
+  const migrationsDir = fileURLToPath(new URL("../migrations", import.meta.url));
+  const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
 
-  await client.exec(migration);
+  for (const file of files) {
+    const migration = await readFile(join(migrationsDir, file), "utf8");
+    await client.exec(migration);
+  }
+
   return client;
 }

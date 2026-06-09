@@ -21,6 +21,7 @@ export function routeDecisionSummary(row: typeof routeDecisions.$inferSelect) {
     selectedModel: row.selectedModel ?? undefined,
     reasoningEffort: row.reasoningEffort ?? undefined,
     verbosity: row.verbosity ?? undefined,
+    routingConfig: routingConfigSummary(row),
     confidence: row.confidence,
     reasonCodes: row.reasonCodes,
     guardrailActions: row.guardrailActions,
@@ -28,6 +29,21 @@ export function routeDecisionSummary(row: typeof routeDecisions.$inferSelect) {
     classifier: row.classifier,
     policyVersion: row.policyVersion,
     createdAt: row.createdAt.toISOString()
+  };
+}
+
+export function routingConfigSummary(row: {
+  routingConfigId: string | null;
+  routingConfigVersionId: string | null;
+  routingConfigVersion: number | null;
+  routingConfigHash: string | null;
+}) {
+  if (!row.routingConfigId) return null;
+  return {
+    configId: row.routingConfigId,
+    versionId: row.routingConfigVersionId,
+    version: row.routingConfigVersion,
+    configHash: row.routingConfigHash
   };
 }
 

@@ -109,7 +109,14 @@ describe("postgres persistence", () => {
         estimatedInputTokens: 100,
         routingInputHash: "sha256:routing",
         routingInputChars: 200,
-        routingEstimatedInputTokens: 50
+        routingEstimatedInputTokens: 50,
+        routingConfig: {
+          configId: "routing_config_test",
+          configName: "Test routing config",
+          versionId: "routing_config_test:v3",
+          version: 3,
+          configHash: "sha256:routing-config-test"
+        }
       }
     });
     await eventService.append({
@@ -131,6 +138,13 @@ describe("postgres persistence", () => {
         guardrailActions: [],
         reasonCodes: ["test"],
         classifier: { confidence: 0.8 },
+        routingConfig: {
+          configId: "routing_config_test",
+          configName: "Test routing config",
+          versionId: "routing_config_test:v3",
+          version: 3,
+          configHash: "sha256:routing-config-test"
+        },
         policyVersion: "test"
       }
     });
@@ -176,7 +190,15 @@ describe("postgres persistence", () => {
     const eventRows = await fixture.db.select().from(events).where(eq(events.scopeId, "request_cost"));
 
     expect(requestRows[0]?.status).toBe("completed");
+    expect(requestRows[0]?.routingConfigId).toBe("routing_config_test");
+    expect(requestRows[0]?.routingConfigVersionId).toBe("routing_config_test:v3");
+    expect(requestRows[0]?.routingConfigVersion).toBe(3);
+    expect(requestRows[0]?.routingConfigHash).toBe("sha256:routing-config-test");
     expect(decisionRows[0]?.finalRoute).toBe("hard");
+    expect(decisionRows[0]?.routingConfigId).toBe("routing_config_test");
+    expect(decisionRows[0]?.routingConfigVersionId).toBe("routing_config_test:v3");
+    expect(decisionRows[0]?.routingConfigVersion).toBe(3);
+    expect(decisionRows[0]?.routingConfigHash).toBe("sha256:routing-config-test");
     expect(attemptRows[0]?.terminalStatus).toBe("completed");
     expect(usageRows[0]?.totalTokens).toBe(120);
     expect(usageRows[0]?.totalCostMicros).toBe(400);
@@ -663,7 +685,25 @@ describe("postgres persistence", () => {
       requestedModel: "router-auto",
       inputHash: "sha256:retry",
       inputChars: 10,
+      routingConfigId: "routing_config_retry",
+      routingConfigVersionId: "routing_config_retry:v2",
+      routingConfigVersion: 2,
+      routingConfigHash: "sha256:routing-config-retry",
       status: "completed"
+    });
+    await fixture.db.insert(routeDecisions).values({
+      id: "decision_retry",
+      requestId: "request_retry",
+      organizationId: "org_admin_retry",
+      requestedModel: "router-auto",
+      finalRoute: "hard",
+      selectedProvider: "openai",
+      selectedModel: "gpt-routed-hard-test",
+      routingConfigId: "routing_config_retry",
+      routingConfigVersionId: "routing_config_retry:v2",
+      routingConfigVersion: 2,
+      routingConfigHash: "sha256:routing-config-retry",
+      policyVersion: "test"
     });
     await fixture.db.insert(providerAttempts).values([
       {
@@ -718,7 +758,19 @@ describe("postgres persistence", () => {
     expect(requestsPage.data).toHaveLength(1);
     expect(requestsPage.data[0]?.terminalStatus).toBe("completed");
     expect(requestsPage.data[0]?.usage.totalTokens).toBe(9);
+    expect(requestsPage.data[0]?.routingConfig).toEqual({
+      configId: "routing_config_retry",
+      versionId: "routing_config_retry:v2",
+      version: 2,
+      configHash: "sha256:routing-config-retry"
+    });
     expect(detail.request?.terminalStatus).toBe("completed");
+    expect(detail.request?.routingConfig).toEqual({
+      configId: "routing_config_retry",
+      versionId: "routing_config_retry:v2",
+      version: 2,
+      configHash: "sha256:routing-config-retry"
+    });
   });
 
   it("keeps identical external session ids separate by organization", async () => {

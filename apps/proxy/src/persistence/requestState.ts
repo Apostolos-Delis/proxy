@@ -13,7 +13,7 @@ import { jsonPayload, type RequestState, type RequestStateGate, type RequestStat
 import type { RouteContext } from "../types.js";
 import { createId } from "../util.js";
 import { ensureOrganization, ensureSession, ensureUser } from "./identity.js";
-import { numberValue, stringValue, surfaceValue } from "./values.js";
+import { numberValue, routingConfigSnapshotValue, stringValue, surfaceValue } from "./values.js";
 
 export class PersistentRequestStateStore implements RequestStateStoreLike {
   constructor(
@@ -209,6 +209,7 @@ export async function persistRoutingContext(tx: PromptProxyTransaction, event: {
   payload: Record<string, unknown>;
 }) {
   const payload = event.payload;
+  const routingConfig = routingConfigSnapshotValue(payload.routingConfig);
   await tx
     .update(requests)
     .set({
@@ -216,6 +217,10 @@ export async function persistRoutingContext(tx: PromptProxyTransaction, event: {
       routingInputHash: stringValue(payload.routingInputHash),
       routingInputChars: numberValue(payload.routingInputChars),
       routingEstimatedInputTokens: numberValue(payload.routingEstimatedInputTokens),
+      routingConfigId: routingConfig?.configId,
+      routingConfigVersionId: routingConfig?.versionId,
+      routingConfigVersion: routingConfig?.version,
+      routingConfigHash: routingConfig?.configHash,
       status: "classifying",
       metadata: payload
     })
