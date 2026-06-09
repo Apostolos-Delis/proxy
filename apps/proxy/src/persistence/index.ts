@@ -13,6 +13,7 @@ import { ApiKeyIdentityStore } from "./identity.js";
 import { PromptAccessAuditStore } from "./promptAccessAudit.js";
 import { PromptArtifactStore } from "./promptArtifacts.js";
 import { PersistentRequestStateStore } from "./requestState.js";
+import { RoutingConfigResolver } from "./routingConfig.js";
 
 export function createPostgresPersistence(databaseUrl: string, catalog: ModelCatalog, config: AppConfig) {
   return createDatabasePersistence(createPostgresDatabase(databaseUrl), catalog, config, true);
@@ -32,6 +33,7 @@ export function createDatabasePersistence(
     promptAccessAudit: new PromptAccessAuditStore(db),
     promptArtifacts: new PromptArtifactStore(transactional, db),
     requestStates: new PersistentRequestStateStore(transactional, db, config.defaultOrganizationId),
+    routingConfigs: new RoutingConfigResolver(db),
     adminQueries: new AdminQueryService(db, catalog, config)
   };
 }

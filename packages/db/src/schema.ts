@@ -1,4 +1,4 @@
-import { foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, type PgTableExtraConfigValue } from "drizzle-orm/pg-core";
 
 import type {
   EventOutboxStatus,
@@ -100,7 +100,7 @@ export const routingConfigs = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
-  (table) => [
+  (table): PgTableExtraConfigValue[] => [
     uniqueIndex("routing_configs_org_id_idx").on(table.organizationId, table.id),
     uniqueIndex("routing_configs_org_slug_idx").on(table.organizationId, table.slug),
     index("routing_configs_organization_id_idx").on(table.organizationId),
@@ -134,7 +134,7 @@ export const routingConfigVersions = pgTable(
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     archivedAt: timestamp("archived_at", { withTimezone: true })
   },
-  (table) => [
+  (table): PgTableExtraConfigValue[] => [
     uniqueIndex("routing_config_versions_config_version_idx").on(
       table.organizationId,
       table.routingConfigId,

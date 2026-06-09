@@ -117,9 +117,18 @@ export type RouteDecision = {
     confidence: number;
     recommendedRoute: RouteName;
   };
+  routingConfig?: RoutingConfigSnapshot;
   policyVersion: string;
   error?: string;
   errorStatus?: number;
+};
+
+export type RoutingConfigSnapshot = {
+  configId: string;
+  configName: string;
+  versionId: string;
+  version: number;
+  configHash: string;
 };
 
 export type ProviderAttempt = {

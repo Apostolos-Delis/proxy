@@ -15,7 +15,9 @@ import {
   providerAttempts,
   requests,
   routeDecisions,
+  organizationSettings,
   routingConfigs,
+  routingConfigVersions,
   usageLedger
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
@@ -331,6 +333,122 @@ describe("postgres persistence", () => {
       scopes: ["proxy", "admin", "harness_identity"],
       routingConfigId: "org_seed_identity:routing-config:default"
     }));
+  });
+
+  it("resolves routing configs by API key assignment before org defaults", async () => {
+    const fixture = await persistenceFixture("org_assigned_config");
+    await seedDatabase(fixture.db, seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_assigned_config",
+      SEED_USER_ID: "seed_config_user",
+      PROMPT_PROXY_TOKEN: "seeded-config-token"
+    }));
+    const defaultVersion = await activeVersion(fixture, "org_assigned_config:routing-config:default:v1");
+    const assignedConfigId = "org_assigned_config:routing-config:assigned";
+    const assignedVersionId = `${assignedConfigId}:v1`;
+    const assignedConfig = {
+      ...defaultVersion.config,
+      displayName: "Assigned coding router"
+    };
+
+    await fixture.db.insert(routingConfigs).values({
+      id: assignedConfigId,
+      organizationId: "org_assigned_config",
+      name: "Assigned routing config",
+      slug: "assigned",
+      status: "active"
+    });
+    await fixture.db.insert(routingConfigVersions).values({
+      id: assignedVersionId,
+      organizationId: "org_assigned_config",
+      routingConfigId: assignedConfigId,
+      version: 1,
+      configHash: "sha256:assigned-config",
+      config: assignedConfig,
+      status: "active",
+      createdByUserId: "seed_config_user",
+      activatedAt: new Date("2026-06-08T00:00:00.000Z")
+    });
+    await fixture.db
+      .update(routingConfigs)
+      .set({ activeVersionId: assignedVersionId })
+      .where(eq(routingConfigs.id, assignedConfigId));
+
+    const resolved = await fixture.persistence.routingConfigs.resolve({
+      organizationId: "org_assigned_config",
+      routingConfigId: assignedConfigId
+    });
+
+    expect(resolved).toEqual(expect.objectContaining({
+      configId: assignedConfigId,
+      configName: "Assigned routing config",
+      versionId: assignedVersionId,
+      version: 1,
+      configHash: "sha256:assigned-config"
+    }));
+    expect(resolved.config.displayName).toBe("Assigned coding router");
+  });
+
+  it("falls back from org default to seeded routing config ids", async () => {
+    const fixture = await persistenceFixture("org_default_config");
+    await seedDatabase(fixture.db, seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_default_config",
+      SEED_USER_ID: "seed_default_config_user",
+      PROMPT_PROXY_TOKEN: "seeded-default-config-token"
+    }));
+
+    const orgDefault = await fixture.persistence.routingConfigs.resolve({
+      organizationId: "org_default_config",
+      routingConfigId: null
+    });
+
+    await fixture.db
+      .update(organizationSettings)
+      .set({ defaultRoutingConfigId: null })
+      .where(eq(organizationSettings.organizationId, "org_default_config"));
+    const seededDefault = await fixture.persistence.routingConfigs.resolve({
+      organizationId: "org_default_config",
+      routingConfigId: null
+    });
+
+    expect(orgDefault.configId).toBe("org_default_config:routing-config:default");
+    expect(seededDefault.configId).toBe("org_default_config:routing-config:default");
+    expect(seededDefault.versionId).toBe("org_default_config:routing-config:default:v1");
+  });
+
+  it("fails closed when the active routing config version is missing", async () => {
+    const fixture = await persistenceFixture("org_missing_active_config");
+    await seedDatabase(fixture.db, seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_missing_active_config",
+      SEED_USER_ID: "seed_missing_active_user",
+      PROMPT_PROXY_TOKEN: "seeded-missing-active-token"
+    }));
+    await fixture.db
+      .update(routingConfigs)
+      .set({ activeVersionId: null })
+      .where(eq(routingConfigs.id, "org_missing_active_config:routing-config:default"));
+
+    await expect(fixture.persistence.routingConfigs.resolve({
+      organizationId: "org_missing_active_config",
+      routingConfigId: null
+    })).rejects.toThrow("routing_config_active_version_missing");
+  });
+
+  it("fails closed when active routing config JSON is invalid", async () => {
+    const fixture = await persistenceFixture("org_invalid_config");
+    await seedDatabase(fixture.db, seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_invalid_config",
+      SEED_USER_ID: "seed_invalid_config_user",
+      PROMPT_PROXY_TOKEN: "seeded-invalid-config-token"
+    }));
+    await fixture.db
+      .update(routingConfigVersions)
+      .set({ config: { schemaVersion: 1 } as never })
+      .where(eq(routingConfigVersions.id, "org_invalid_config:routing-config:default:v1"));
+
+    await expect(fixture.persistence.routingConfigs.resolve({
+      organizationId: "org_invalid_config",
+      routingConfigId: null
+    })).rejects.toThrow(/routing_config_invalid/);
   });
 
   it("uses route context organization for request idempotency", async () => {
@@ -666,6 +784,19 @@ describe("postgres persistence", () => {
     const catalog = buildModelCatalog(config);
     const persistence = createDatabasePersistence(db, catalog, config, false);
     return { db, config, catalog, persistence };
+  }
+
+  async function activeVersion(
+    fixture: Awaited<ReturnType<typeof persistenceFixture>>,
+    versionId: string
+  ) {
+    const [version] = await fixture.db
+      .select()
+      .from(routingConfigVersions)
+      .where(eq(routingConfigVersions.id, versionId))
+      .limit(1);
+    expect(version).toBeTruthy();
+    return version!;
   }
 });
 

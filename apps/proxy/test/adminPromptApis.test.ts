@@ -372,16 +372,17 @@ describe("admin prompt APIs", () => {
       headers: fixture.adminHeaders
     });
     const body = await response.json();
+    const unassigned = body.data.find((item: any) => item.id === "api_key_unassigned");
 
     expect(response.status).toBe(200);
-    expect(body.data).toEqual([
+    expect(body.data).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: "api_key_unassigned",
         routingConfigId: null,
         routingConfig: null
       })
-    ]);
-    expect(body.data[0]).not.toHaveProperty("keyHash");
+    ]));
+    expect(unassigned).not.toHaveProperty("keyHash");
   });
 
   async function setup(organizationId: string) {

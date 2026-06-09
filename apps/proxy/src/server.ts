@@ -17,6 +17,7 @@ import { LlmClassifier } from "./classifier.js";
 import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStateGate } from "./events.js";
 import { BudgetService, SessionRouteStore } from "./policy.js";
 import { createPostgresPersistence } from "./persistence/index.js";
+import { routingConfigSnapshot } from "./persistence/routingConfig.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
 import { ProviderProxy } from "./proxy.js";
@@ -61,7 +62,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     events,
     attempts,
     requestStates,
-    persistence?.promptArtifacts
+    persistence?.promptArtifacts,
+    persistence?.routingConfigs
   );
   const projections = new ProjectionService(modelCatalog, config);
   wsProxy.register(app.server);
@@ -351,7 +353,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         requestId,
         context,
         body: request.body,
-        idempotencyKey
+        idempotencyKey,
+        routingConfig: await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId)
       });
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
@@ -424,7 +427,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         requestId,
         context,
         body: request.body,
-        idempotencyKey
+        idempotencyKey,
+        routingConfig: await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId)
       });
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
@@ -476,7 +480,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         eventType: "proxy.request_received",
         payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
       });
-      const decision = routing.tokenCountDecision(context);
+      const routingConfig = await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId);
+      const decision = routing.tokenCountDecision(context, routingConfig);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
         reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
@@ -565,6 +570,15 @@ function promptCaptureSettings(body: unknown) {
     promptCaptureMode: promptCaptureMode as PromptCaptureMode,
     retentionDays
   };
+}
+
+async function resolveRoutingConfig(
+  persistence: AppPersistence | undefined,
+  organizationId: string,
+  routingConfigId: string | null
+) {
+  const resolved = await persistence?.routingConfigs.resolve({ organizationId, routingConfigId });
+  return resolved ? routingConfigSnapshot(resolved) : undefined;
 }
 
 function badRequest(message: string) {
