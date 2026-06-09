@@ -4,6 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
+  apiKeys,
   routingConfigs,
   routingConfigVersions,
   type PromptProxyTransaction,
@@ -22,6 +23,10 @@ const createConfigBodySchema = z.object({
 
 const createVersionBodySchema = z.object({
   config: z.unknown()
+}).strict();
+
+const assignApiKeyRoutingConfigBodySchema = z.object({
+  routingConfigId: z.string().trim().min(1).nullable()
 }).strict();
 
 export class RoutingConfigAdminError extends Error {
@@ -184,6 +189,55 @@ export class RoutingConfigAdminService {
       };
     });
   }
+
+  async assignApiKeyRoutingConfig(input: {
+    organizationId: string;
+    apiKeyId: string;
+    body: unknown;
+  }) {
+    const body = assignApiKeyRoutingConfigBodySchema.safeParse(input.body);
+    if (!body.success) throw validationError("invalid_api_key_routing_config_request", body.error);
+    const routingConfigId = body.data.routingConfigId;
+
+    return this.db.transaction(async (tx) => {
+      const [apiKey] = await tx
+        .select({
+          id: apiKeys.id,
+          routingConfigId: apiKeys.routingConfigId
+        })
+        .from(apiKeys)
+        .where(and(
+          eq(apiKeys.organizationId, input.organizationId),
+          eq(apiKeys.id, input.apiKeyId)
+        ))
+        .limit(1);
+      if (!apiKey) throw new RoutingConfigAdminError("api_key_not_found", 404);
+
+      if (routingConfigId) {
+        const configRow = await routingConfigForAssignment(tx, input.organizationId, routingConfigId);
+        if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
+        if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
+        if (configRow.status !== "active") throw new RoutingConfigAdminError("routing_config_inactive", 409);
+        if (!configRow.activeVersionId) {
+          throw new RoutingConfigAdminError("routing_config_active_version_missing", 409);
+        }
+      }
+
+      await tx
+        .update(apiKeys)
+        .set({ routingConfigId })
+        .where(and(
+          eq(apiKeys.organizationId, input.organizationId),
+          eq(apiKeys.id, input.apiKeyId)
+        ));
+
+      return {
+        apiKeyId: input.apiKeyId,
+        previousRoutingConfigId: apiKey.routingConfigId ?? null,
+        routingConfigId
+      };
+    });
+  }
 }
 
 async function lockedConfig(tx: PromptProxyTransaction, organizationId: string, configId: string) {
@@ -228,6 +282,22 @@ async function rejectDuplicateSlug(tx: PromptProxyTransaction, organizationId: s
     ))
     .limit(1);
   if (existing) throw new RoutingConfigAdminError("routing_config_slug_exists", 409);
+}
+
+async function routingConfigForAssignment(tx: PromptProxyTransaction, organizationId: string, configId: string) {
+  const [config] = await tx
+    .select({
+      id: routingConfigs.id,
+      status: routingConfigs.status,
+      activeVersionId: routingConfigs.activeVersionId
+    })
+    .from(routingConfigs)
+    .where(and(
+      eq(routingConfigs.organizationId, organizationId),
+      eq(routingConfigs.id, configId)
+    ))
+    .limit(1);
+  return config ?? null;
 }
 
 function parseRoutingConfig(value: unknown): RoutingConfig {

@@ -170,6 +170,55 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     if (!persistence) throw notFound("api_keys_not_found");
     return persistence.adminQueries.apiKeys();
   });
+  app.get("/admin/api-keys/:apiKeyId", async (request, reply) => {
+    await adminAuth.resolve(request.headers);
+    const params = request.params as { apiKeyId?: string };
+    const apiKeyId = params.apiKeyId;
+    if (!apiKeyId || !persistence) {
+      reply.code(404).send({ error: "api_key_not_found" });
+      return;
+    }
+    const detail = await persistence.adminQueries.apiKeyDetail(apiKeyId);
+    if (!detail) {
+      reply.code(404).send({ error: "api_key_not_found" });
+      return;
+    }
+    return detail;
+  });
+  app.patch("/admin/api-keys/:apiKeyId/routing-config", async (request, reply) => {
+    const identity = await adminAuth.resolve(request.headers);
+    const params = request.params as { apiKeyId?: string };
+    const apiKeyId = params.apiKeyId;
+    if (!apiKeyId || !persistence) {
+      reply.code(404).send({ error: "api_key_not_found" });
+      return;
+    }
+    try {
+      const assignment = await persistence.routingConfigAdmin.assignApiKeyRoutingConfig({
+        organizationId: identity.organizationId,
+        apiKeyId,
+        body: request.body
+      });
+      await events.append({
+        tenantId: identity.organizationId,
+        scopeType: "api_key",
+        scopeId: apiKeyId,
+        correlationId: assignment.routingConfigId ?? apiKeyId,
+        actor: { type: "user", id: identity.userId },
+        producer: "prompt-proxy.admin.api-keys",
+        eventType: "routing_config.api_key_assignment_changed",
+        payload: {
+          apiKeyId,
+          previousRoutingConfigId: assignment.previousRoutingConfigId,
+          routingConfigId: assignment.routingConfigId
+        }
+      });
+      return persistence.adminQueries.apiKeyDetail(apiKeyId);
+    } catch (error) {
+      if (sendRoutingConfigAdminError(error, reply)) return;
+      throw error;
+    }
+  });
   app.get("/admin/routing-configs", async (request) => {
     await adminAuth.resolve(request.headers);
     if (!persistence) return { data: [] };
