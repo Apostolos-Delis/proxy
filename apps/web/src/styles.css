@@ -257,6 +257,21 @@ nav a:hover {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.usage-grid,
+.detail-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.usage-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.detail-grid {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  margin-bottom: 18px;
+}
+
 .settings-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -275,6 +290,16 @@ nav a:hover {
 
 .table-panel {
   overflow: hidden;
+}
+
+.usage-table {
+  overflow: hidden;
+  padding: 0;
+}
+
+.usage-table h2 {
+  margin: 0;
+  padding: 16px 18px;
 }
 
 table {
@@ -384,6 +409,16 @@ th {
   padding: 14px;
 }
 
+.prompt-text pre {
+  background: #f6f7f4;
+  border-radius: 8px;
+  margin: 0;
+  max-height: 420px;
+  overflow: auto;
+  padding: 14px;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 900px) {
   .app {
     grid-template-columns: 1fr;
@@ -402,6 +437,8 @@ th {
   .metrics,
   .metrics.compact,
   .quality-grid,
+  .usage-grid,
+  .detail-grid,
   .settings-grid {
     grid-template-columns: 1fr;
   }

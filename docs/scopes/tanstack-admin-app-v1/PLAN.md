@@ -48,6 +48,9 @@ The existing app exposes:
 ```text
 /login
 /                    overview
+/usage               usage analytics
+/prompts             prompt table
+/prompts/:artifactId prompt detail
 /requests            request table
 /requests/:requestId request detail and event timeline
 /settings            settings
@@ -55,7 +58,7 @@ The existing app exposes:
 
 Browser auth is now cookie-based through `/api/auth/login`, `/api/auth/logout`, and `/api/auth/me`.
 
-Important gap: prompt text is not currently stored. `prompt_artifacts` is populated in `hash_only` mode with hashes and metadata. For this test project, V1 should store raw prompt text directly so the product can prove the analytics and replay workflow before adding PII filtering.
+Prompt artifacts can now store raw prompt text in `raw_text` mode for the prototype. PII filtering, redaction jobs, and encrypted raw artifact storage remain hardening work.
 
 ## Reference Patterns
 

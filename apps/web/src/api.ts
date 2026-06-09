@@ -78,6 +78,59 @@ export type RequestDetail = {
   events: ProxyEvent[];
 };
 
+export type UsageGroup = {
+  key: string;
+  requestCount: number;
+  failedRequests: number;
+  retriedRequests: number;
+  failureRate: number;
+  retryRate: number;
+  usage: Overview["totals"];
+  cost: Overview["cost"];
+};
+
+export type UsageResponse = {
+  groupBy: string;
+  data: UsageGroup[];
+  totals: UsageGroup;
+};
+
+export type PromptSummary = {
+  artifactId: string;
+  organizationId: string;
+  requestId: string;
+  sessionId?: string;
+  userId?: string;
+  surface: string;
+  kind: string;
+  storageMode: string;
+  contentHash: string;
+  sourceRole?: string;
+  sourceIndex?: number;
+  chars?: number;
+  tokenEstimate?: number;
+  preview: string | null;
+  finalRoute?: string;
+  provider?: string;
+  selectedModel?: string;
+  cost: {
+    selected: number;
+  };
+  createdAt: string;
+};
+
+export type PromptDetail = {
+  artifact: PromptSummary & {
+    rawText: string | null;
+    redactedText: string | null;
+    encryptedBlobRef: string | null;
+    metadata: Record<string, unknown>;
+    expiresAt: string | null;
+  };
+  request: RequestSummary | null;
+  events: ProxyEvent[];
+};
+
 export type Settings = {
   organizationId: string;
   databaseEnabled: boolean;
@@ -100,6 +153,18 @@ export async function fetchRequestDetail(requestId: string) {
 
 export async function fetchSettings() {
   return fetchJson<Settings>("/admin/settings");
+}
+
+export async function fetchUsage(groupBy: string) {
+  return fetchJson<UsageResponse>(`/admin/usage?groupBy=${encodeURIComponent(groupBy)}`);
+}
+
+export async function fetchPrompts() {
+  return fetchJson<{ data: PromptSummary[]; pagination: { limit: number; offset: number; count: number } }>("/admin/prompts");
+}
+
+export async function fetchPromptDetail(artifactId: string) {
+  return fetchJson<PromptDetail>(`/admin/prompts/${encodeURIComponent(artifactId)}`);
 }
 
 export async function fetchMe() {
