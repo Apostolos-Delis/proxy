@@ -518,6 +518,8 @@ Dependencies: PP-025.
 
 ### PP-034: Build Prompt And Usage Web Views
 
+Status: implemented in the current MVP.
+
 Add the first organization analytics surfaces to the TanStack admin app.
 
 Acceptance criteria:

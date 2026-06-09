@@ -1,4 +1,4 @@
-import { Link, Outlet, createRootRouteWithContext, createRoute, createRouter, useLocation } from "@tanstack/react-router";
+import { Link, createRootRouteWithContext, createRoute, createRouter } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   type ColumnDef,
@@ -6,7 +6,7 @@ import {
   getCoreRowModel,
   useReactTable
 } from "@tanstack/react-table";
-import { Activity, Coins, Database, Gauge, GitBranch, KeyRound, ListFilter, Settings as SettingsIcon } from "lucide-react";
+import { Activity, Coins, Database, Gauge, KeyRound } from "lucide-react";
 
 import {
   type RequestSummary,
@@ -15,8 +15,11 @@ import {
   fetchRequests,
   fetchSettings
 } from "./api";
-import { LoginPage, LogoutButton, requireAuth, type RouterContext } from "./auth";
+import { LoginPage, requireAuth, type RouterContext } from "./auth";
+import { PromptDetailPage, PromptsPage } from "./promptsPage";
+import { AppShell } from "./shell";
 import { Header, JsonPanel, Metric, PageState, Quality, Timeline, formatMoney } from "./ui";
+import { UsagePage } from "./usagePage";
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: AppShell
@@ -42,6 +45,27 @@ const requestsRoute = createRoute({
   component: RequestsPage
 });
 
+const usageRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/usage",
+  beforeLoad: requireAuth,
+  component: UsagePage
+});
+
+const promptsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/prompts",
+  beforeLoad: requireAuth,
+  component: PromptsPage
+});
+
+const promptDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/prompts/$artifactId",
+  beforeLoad: requireAuth,
+  component: PromptDetailRoutePage
+});
+
 const requestDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/requests/$requestId",
@@ -59,6 +83,9 @@ const settingsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
+  usageRoute,
+  promptsRoute,
+  promptDetailRoute,
   requestsRoute,
   requestDetailRoute,
   settingsRoute
@@ -74,46 +101,6 @@ declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router;
   }
-}
-
-function AppShell() {
-  const location = useLocation();
-  if (location.pathname === "/login") {
-    return (
-      <main className="login-shell">
-        <Outlet />
-      </main>
-    );
-  }
-
-  return (
-    <div className="app">
-      <aside className="sidebar">
-        <div className="brand">
-          <GitBranch size={20} />
-          <span>Prompt Proxy</span>
-        </div>
-        <nav>
-          <Link to="/" activeProps={{ className: "active" }}>
-            <Gauge size={18} />
-            Overview
-          </Link>
-          <Link to="/requests" activeProps={{ className: "active" }}>
-            <ListFilter size={18} />
-            Requests
-          </Link>
-          <Link to="/settings" activeProps={{ className: "active" }}>
-            <SettingsIcon size={18} />
-            Settings
-          </Link>
-        </nav>
-        <LogoutButton />
-      </aside>
-      <main className="main">
-        <Outlet />
-      </main>
-    </div>
-  );
 }
 
 function OverviewPage() {
@@ -258,6 +245,11 @@ function RequestDetailPage() {
       <Timeline events={query.data.events} />
     </section>
   );
+}
+
+function PromptDetailRoutePage() {
+  const { artifactId } = promptDetailRoute.useParams();
+  return <PromptDetailPage artifactId={artifactId} />;
 }
 
 function SettingsPage() {
