@@ -41,7 +41,7 @@ export async function startOpenAIMock(
     const body = await readJson(request);
     records.push({ path: request.url ?? "", headers: request.headers, body });
 
-    if (body.model === "route-classifier-cheap") {
+    if (body.model === "route-classifier-cheap" || isClassifierRequest(body)) {
       const classifierOutput = classifierOutputs.shift() ?? options.classifierOutput;
       const outputText = options.invalidClassifier
         ? JSON.stringify({ nope: true })
@@ -147,6 +147,23 @@ export async function startOpenAIMock(
   });
 
   return { ...(await listenMock(server, records)), providerClosed };
+}
+
+function isClassifierRequest(body: Record<string, unknown>) {
+  const text = body.text;
+  if (!text || typeof text !== "object" || Array.isArray(text)) return false;
+  const format = (text as Record<string, unknown>).format;
+  if (!format || typeof format !== "object" || Array.isArray(format)) return false;
+  const schema = (format as Record<string, unknown>).schema;
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return false;
+  const properties = (schema as Record<string, unknown>).properties;
+  return (format as Record<string, unknown>).type === "json_schema" &&
+    Boolean(
+      properties &&
+      typeof properties === "object" &&
+      !Array.isArray(properties) &&
+      "recommended_route" in properties
+    );
 }
 
 export async function startAnthropicMock(): Promise<MockServer> {

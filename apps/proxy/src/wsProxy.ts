@@ -373,7 +373,12 @@ export class WebSocketRoutingProxy {
       organizationId: identity.organizationId,
       routingConfigId: identity.routingConfigId
     });
-    return resolved ? routingConfigSnapshot(resolved) : undefined;
+    return resolved
+      ? {
+          snapshot: routingConfigSnapshot(resolved),
+          config: resolved.config
+        }
+      : undefined;
   }
 }
 

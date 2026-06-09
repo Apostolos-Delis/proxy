@@ -1,3 +1,5 @@
+import type { RoutingConfig } from "@prompt-proxy/schema";
+
 export type Surface = "openai-responses" | "anthropic-messages";
 
 export type Provider = "openai" | "anthropic";
@@ -112,10 +114,14 @@ export type RouteDecision = {
     action: "stored" | "upgraded" | "kept" | "explicit_override";
   };
   classifier?: {
+    provider: Provider;
     model: string;
     attempts: number;
     confidence: number;
     recommendedRoute: RouteName;
+    routingConfigId?: string;
+    routingConfigVersionId?: string;
+    routingConfigHash?: string;
   };
   routingConfig?: RoutingConfigSnapshot;
   policyVersion: string;
@@ -129,6 +135,11 @@ export type RoutingConfigSnapshot = {
   versionId: string;
   version: number;
   configHash: string;
+};
+
+export type RoutingConfigSelection = {
+  snapshot: RoutingConfigSnapshot;
+  config: RoutingConfig;
 };
 
 export type ProviderAttempt = {

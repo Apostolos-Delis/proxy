@@ -481,7 +481,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
       });
       const routingConfig = await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId);
-      const decision = routing.tokenCountDecision(context, routingConfig);
+      const decision = routing.tokenCountDecision(context, routingConfig?.snapshot);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
         reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
@@ -578,7 +578,12 @@ async function resolveRoutingConfig(
   routingConfigId: string | null
 ) {
   const resolved = await persistence?.routingConfigs.resolve({ organizationId, routingConfigId });
-  return resolved ? routingConfigSnapshot(resolved) : undefined;
+  return resolved
+    ? {
+        snapshot: routingConfigSnapshot(resolved),
+        config: resolved.config
+      }
+    : undefined;
 }
 
 function badRequest(message: string) {
