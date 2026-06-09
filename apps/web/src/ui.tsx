@@ -209,7 +209,7 @@ function routeTone(route: string) {
 function statusTone(status: string) {
   const value = status.toLowerCase();
   if (value === "completed" || value === "success" || value === "paid" || value === "active") return "success";
-  if (value === "failed" || value === "error" || value === "inactive") return "danger";
+  if (value === "failed" || value === "error" || value === "inactive" || value === "revoked" || value === "expired") return "danger";
   if (value === "pending" || value === "received" || value === "provider_pending" || value === "invited") return "warn";
   return "default";
 }
