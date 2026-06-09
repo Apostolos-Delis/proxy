@@ -207,6 +207,10 @@ export type Settings = {
   databaseEnabled: boolean;
   classifier: Record<string, unknown>;
   budgets: Record<string, unknown>;
+  promptCapture: {
+    promptCaptureMode: string;
+    retentionDays: number;
+  } | null;
   routePolicyTrust: Record<string, unknown>;
 };
 

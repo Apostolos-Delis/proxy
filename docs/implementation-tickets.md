@@ -551,6 +551,8 @@ Dependencies: PP-026, PP-032, PP-034.
 
 ### PP-036: Add Prompt Retention And Redaction Hardening
 
+Status: implemented in the current MVP.
+
 Add controls for keeping raw prompt capture safe beyond the prototype.
 
 Acceptance criteria:

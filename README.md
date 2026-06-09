@@ -61,6 +61,7 @@ Cookie-authenticated admin endpoints power the web console:
 - `GET /admin/sessions`
 - `GET /admin/sessions/:sessionId`
 - `GET /admin/settings`
+- `PATCH /admin/settings/prompt-capture`
 
 ## Persistence
 
