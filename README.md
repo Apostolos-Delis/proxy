@@ -117,6 +117,6 @@ pnpm smoke:harnesses
 pnpm build
 ```
 
-`npm run smoke` starts mock OpenAI and Anthropic upstreams, sends Codex-shaped and Claude Code-shaped requests through the proxy, and verifies that both are routed.
+`pnpm smoke` starts mock OpenAI and Anthropic upstreams, sends Codex-shaped and Claude Code-shaped requests through the proxy, verifies the seeded API key uses the default routing config, reassigns that API key to a smoke-only routing config, and verifies the next OpenAI Responses and Anthropic Messages requests use the reassigned config. Smoke failures are labeled by phase: auth, config resolution, classifier, or provider forwarding.
 
-`npm run smoke:harnesses` runs the installed `codex` and `claude` CLIs against the same mock-backed proxy and verifies that each harness is routed.
+`pnpm smoke:harnesses` runs the installed `codex` and `claude` CLIs against the same mock-backed proxy and verifies that each harness persists a hard-route decision against the seeded default routing config.

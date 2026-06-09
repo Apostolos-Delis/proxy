@@ -10,6 +10,7 @@ import { WebSocketServer } from "ws";
 import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
 import { createSmokePersistence } from "./smoke-persistence.js";
+import { assertPersistedRoutingDecision } from "./smoke-routing-assertions.js";
 
 type Recorded = {
   path: string;
@@ -28,7 +29,11 @@ const smokeEnv = {
   OPENAI_API_KEY: "openai-upstream-key",
   ANTHROPIC_API_KEY: "anthropic-upstream-key",
   OPENAI_BASE_URL: openai.url,
+  OPENAI_FAST_MODEL: "gpt-5.4-mini",
+  OPENAI_HARD_MODEL: "gpt-5.5",
   ANTHROPIC_BASE_URL: anthropic.url,
+  ANTHROPIC_FAST_MODEL: "claude-haiku-4-5",
+  ANTHROPIC_HARD_MODEL: "claude-sonnet-4-6",
   CLASSIFIER_PROVIDER: "openai",
   CLASSIFIER_MODEL: "route-classifier-cheap",
   LOG_LEVEL: "fatal"
@@ -36,6 +41,7 @@ const smokeEnv = {
 const config = loadConfig(smokeEnv);
 const smokePersistence = await createSmokePersistence(config, smokeEnv);
 const app = buildServer(config, { persistence: smokePersistence.persistence });
+const defaultRoutingConfigId = `${config.defaultOrganizationId}:routing-config:default`;
 
 try {
   const proxyUrl = await app.listen({ port: 0, host: "127.0.0.1" }).then(() => {
@@ -53,17 +59,40 @@ try {
       { cause: error }
     );
   }
-  await runClaude(proxyUrl);
+  try {
+    await runClaude(proxyUrl);
+  } catch (error) {
+    const events = await debugJson(proxyUrl, "/_debug/events");
+    const attempts = await debugJson(proxyUrl, "/_debug/provider-attempts");
+    throw new Error(
+      `Claude Code CLI smoke failed. anthropic_records=${JSON.stringify(anthropicRecords)} events=${JSON.stringify(events)} attempts=${JSON.stringify(attempts)}`,
+      { cause: error }
+    );
+  }
 
-  if (!openaiRecords.some((record) => record.body.model === "gpt-5.5")) {
+  if (!openaiRecords.some((record) => record.body.model === config.openaiHardModel)) {
     throw new Error("Codex CLI did not route to OpenAI hard model.");
   }
   if (!anthropicRecords.some((record) => record.body.model === config.anthropicHardModel)) {
     throw new Error("Claude Code CLI did not route to Anthropic hard model.");
   }
+  await assertPersistedRoutingDecision(smokePersistence.persistence, {
+    label: "Codex CLI",
+    surface: "openai-responses",
+    finalRoute: "hard",
+    selectedModel: config.openaiHardModel,
+    routingConfigId: defaultRoutingConfigId
+  });
+  await assertPersistedRoutingDecision(smokePersistence.persistence, {
+    label: "Claude Code CLI",
+    surface: "anthropic-messages",
+    finalRoute: "hard",
+    selectedModel: config.anthropicHardModel,
+    routingConfigId: defaultRoutingConfigId
+  });
 
-  console.log("codex_cli_route=hard model=gpt-5.5");
-  console.log(`claude_cli_route=hard model=${config.anthropicHardModel}`);
+  console.log(`codex_cli_route=hard model=${config.openaiHardModel} config=${defaultRoutingConfigId}`);
+  console.log(`claude_cli_route=hard model=${config.anthropicHardModel} config=${defaultRoutingConfigId}`);
 } finally {
   await app.close();
   await smokePersistence.close();
