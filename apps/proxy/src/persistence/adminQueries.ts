@@ -108,32 +108,15 @@ export class AdminQueryService {
   }
 
   async apiKeys() {
-    const rows = await this.db
-      .select({
-        id: apiKeys.id,
-        organizationId: apiKeys.organizationId,
-        userId: apiKeys.userId,
-        name: apiKeys.name,
-        scopes: apiKeys.scopes,
-        routingConfigId: apiKeys.routingConfigId,
-        createdAt: apiKeys.createdAt,
-        expiresAt: apiKeys.expiresAt,
-        revokedAt: apiKeys.revokedAt,
-        lastUsedAt: apiKeys.lastUsedAt,
-        routingConfigName: routingConfigs.name,
-        routingConfigStatus: routingConfigs.status
-      })
-      .from(apiKeys)
-      .leftJoin(routingConfigs, and(
-        eq(routingConfigs.organizationId, apiKeys.organizationId),
-        eq(routingConfigs.id, apiKeys.routingConfigId)
-      ))
-      .where(eq(apiKeys.organizationId, this.config.defaultOrganizationId))
-      .orderBy(desc(apiKeys.createdAt));
-
+    const rows = await this.apiKeyRows();
     return {
       data: rows.map(apiKeySummary)
     };
+  }
+
+  async apiKeyDetail(apiKeyId: string) {
+    const [row] = await this.apiKeyRows(apiKeyId);
+    return row ? { apiKey: apiKeySummary(row) } : null;
   }
 
   async routingConfigs() {
@@ -325,6 +308,33 @@ export class AdminQueryService {
       request: request ?? null,
       events: requestEvents
     };
+  }
+
+  private async apiKeyRows(apiKeyId?: string) {
+    const conditions = [eq(apiKeys.organizationId, this.config.defaultOrganizationId)];
+    if (apiKeyId) conditions.push(eq(apiKeys.id, apiKeyId));
+    return this.db
+      .select({
+        id: apiKeys.id,
+        organizationId: apiKeys.organizationId,
+        userId: apiKeys.userId,
+        name: apiKeys.name,
+        scopes: apiKeys.scopes,
+        routingConfigId: apiKeys.routingConfigId,
+        createdAt: apiKeys.createdAt,
+        expiresAt: apiKeys.expiresAt,
+        revokedAt: apiKeys.revokedAt,
+        lastUsedAt: apiKeys.lastUsedAt,
+        routingConfigName: routingConfigs.name,
+        routingConfigStatus: routingConfigs.status
+      })
+      .from(apiKeys)
+      .leftJoin(routingConfigs, and(
+        eq(routingConfigs.organizationId, apiKeys.organizationId),
+        eq(routingConfigs.id, apiKeys.routingConfigId)
+      ))
+      .where(and(...conditions))
+      .orderBy(desc(apiKeys.createdAt));
   }
 
   private async requestRows(limit?: number) {
