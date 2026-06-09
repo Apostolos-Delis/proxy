@@ -19,15 +19,21 @@ Prompt Proxy is an OpenAI/Anthropic-compatible model routing gateway with durabl
 - When persistence is enabled, write the event row, outbox row, and matching current-state mutation in the same database transaction.
 - Event creation flows through `EventService`. Do not append directly to `packages/db` tables from transport handlers.
 - The routing classifier is an LLM call with structured output and retry. Do not add deterministic routing fallback logic.
-- Raw prompts must only be stored through `prompt_artifacts` and must follow org retention/redaction settings. Default to hashes/redacted artifacts, not raw prompt persistence.
+- Raw prompt text is allowed for this test project, but it must only be stored through `prompt_artifacts.raw_text`. Do not put full prompt text in event payloads.
 - API keys must be stored as hashes, never as raw tokens.
 - Provider keys should be represented as secret references or encrypted material, not plain text rows.
 
 ## Frontend Rules
 
 - `apps/web` uses TanStack Router, TanStack Query, and TanStack Table.
+- Follow `docs/frontend-guidelines.md` for frontend implementation rules.
 - Do not introduce a competing router, data-fetching library, or global state layer without updating this file and the architecture docs.
 - Do not call `useEffect` directly. Use TanStack Query for data fetching, inline derivation for derived state, event handlers for user actions, and a `key` reset for prop-driven resets.
+- Keep React component files under 300 lines and individual component functions under 150 lines. Split page composition, table columns, timeline rows, inspector panes, and formatting helpers before files become hard to scan.
+- Do not manipulate the DOM directly from React components. Avoid `document.createElement`, `querySelector`, and imperative DOM injection.
+- Do not use nested ternaries. Move branching into a named helper or intermediate variables.
+- Prefer `type` aliases over `interface` for props, DTOs, and exported object shapes.
+- Keep route files thin: params, loaders, guards, and page composition only. Query shaping and DTO mapping belong in `lib/` or feature modules.
 - Use shared components only when duplication becomes real. Keep the first dashboard screens simple and operational.
 - UI should be dense, quiet, and scan-friendly. This is an internal operations console, not a landing page.
 
@@ -59,6 +65,7 @@ pnpm smoke:harnesses
 - Link new durable docs from `docs/index.md`.
 - Product behavior changes should update `README.md` or the relevant feature/scope doc.
 - Event shape, database, persistence, or dashboard changes should update `docs/scopes/persistence-admin-v1/PLAN.md`.
+- Frontend architecture or component-rule changes should update `docs/frontend-guidelines.md`.
 - Future prompt optimization ideas belong under `docs/future/`.
 
 ## Working Style
