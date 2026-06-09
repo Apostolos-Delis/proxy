@@ -321,6 +321,24 @@ export type RoutingConfigDetail = {
   versions: RoutingConfigVersionDetail[];
 };
 
+export type ApiKeySummary = {
+  id: string;
+  organizationId: string;
+  userId: string | null;
+  name: string;
+  scopes: string[];
+  routingConfigId: string | null;
+  routingConfig: {
+    id: string;
+    name: string | null;
+    status: string | null;
+  } | null;
+  createdAt: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+};
+
 export async function fetchOverview() {
   return fetchJson<Overview>("/admin/overview");
 }
@@ -335,6 +353,10 @@ export async function fetchRequestDetail(requestId: string) {
 
 export async function fetchSettings() {
   return fetchJson<Settings>("/admin/settings");
+}
+
+export async function fetchApiKeys() {
+  return fetchJson<{ data: ApiKeySummary[] }>("/admin/api-keys");
 }
 
 export async function fetchRoutingConfigs() {
@@ -356,6 +378,16 @@ export async function archiveRoutingConfig(configId: string) {
   return fetchJson<RoutingConfigDetail>(
     `/admin/routing-configs/${encodeURIComponent(configId)}/archive`,
     { method: "POST" }
+  );
+}
+
+export async function assignApiKeyRoutingConfig(apiKeyId: string, routingConfigId: string | null) {
+  return fetchJson<{ apiKey: ApiKeySummary }>(
+    `/admin/api-keys/${encodeURIComponent(apiKeyId)}/routing-config`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ routingConfigId })
+    }
   );
 }
 

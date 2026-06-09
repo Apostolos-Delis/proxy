@@ -416,6 +416,56 @@
   font-size: 12.5px;
 }
 
+.assignment-menu {
+  position: relative;
+  display: inline-block;
+  min-width: 210px;
+}
+
+.assignment-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.assignment-popover {
+  margin-top: 8px;
+  width: 280px;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--glass-strong);
+  box-shadow: var(--shadow);
+}
+
+.assignment-popover button {
+  display: block;
+  width: 100%;
+  padding: 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.assignment-popover button:hover,
+.assignment-popover button.active {
+  background: var(--glass-hover);
+  color: var(--fg);
+}
+
+.assignment-popover strong,
+.assignment-popover span {
+  display: block;
+}
+
+.assignment-popover span {
+  margin-top: 3px;
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+
 .billing-kpis {
   display: grid;
   grid-template-columns: minmax(340px, 1.3fr) minmax(260px, 0.8fr) minmax(260px, 0.8fr);
