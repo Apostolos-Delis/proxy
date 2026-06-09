@@ -49,6 +49,8 @@ Admin endpoints power the web console:
 - `GET /admin/overview`
 - `GET /admin/requests`
 - `GET /admin/requests/:requestId`
+- `GET /admin/prompts`
+- `GET /admin/prompts/:artifactId`
 - `GET /admin/settings`
 
 ## Persistence

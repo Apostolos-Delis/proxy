@@ -10,7 +10,8 @@ import {
   events,
   organizationSettings,
   organizations,
-  promptArtifacts
+  promptArtifacts,
+  requests
 } from "@prompt-proxy/db";
 
 import { buildModelCatalog } from "../src/catalog.js";
@@ -324,6 +325,83 @@ describe("prompt artifact capture", () => {
 
     expect(response.status).toBe(200);
     expect(rows.filter((row) => row.storageMode === "raw_text")).toHaveLength(0);
+  });
+
+  it("serves org-scoped prompt list and detail admin APIs", async () => {
+    const fixture = await captureFixture("org_prompt_admin");
+
+    const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "x-prompt-proxy-user-id": "user_prompt_admin"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "Investigate prompt admin APIs.",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const prompts = await fetch(
+      `${fixture.proxyUrl}/admin/prompts?userId=user_prompt_admin&surface=openai-responses&route=hard&model=gpt-5.5&limit=10&offset=0`,
+      { headers: { authorization: "Bearer proxy-token" } }
+    ).then((item) => item.json());
+    const latestUser = prompts.data.find((item: any) => item.kind === "latest_user_message");
+    const detail = await fetch(`${fixture.proxyUrl}/admin/prompts/${latestUser.artifactId}`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+
+    await fixture.db.insert(organizations).values({
+      id: "org_other",
+      slug: "org-other",
+      name: "Other Org"
+    });
+    await fixture.db.insert(requests).values({
+      id: "request_other",
+      organizationId: "org_other",
+      surface: "openai-responses",
+      idempotencyKey: "idem_other",
+      requestedModel: "router-auto",
+      inputHash: "sha256:other",
+      inputChars: 5
+    });
+    await fixture.db.insert(promptArtifacts).values({
+      id: "artifact_other",
+      organizationId: "org_other",
+      requestId: "request_other",
+      kind: "latest_user_message",
+      storageMode: "raw_text",
+      contentHash: "sha256:other",
+      rawText: "other org prompt"
+    });
+    const crossOrg = await fetch(`${fixture.proxyUrl}/admin/prompts/artifact_other`, {
+      headers: { authorization: "Bearer proxy-token" }
+    });
+
+    expect(response.status).toBe(200);
+    expect(prompts.pagination).toEqual({ limit: 10, offset: 0, count: expect.any(Number) });
+    expect(prompts.data.length).toBeGreaterThan(0);
+    expect(prompts.data.every((item: any) => item.userId === "user_prompt_admin")).toBe(true);
+    expect(latestUser).toEqual(expect.objectContaining({
+      surface: "openai-responses",
+      storageMode: "raw_text",
+      preview: "Investigate prompt admin APIs.",
+      finalRoute: "hard",
+      provider: "openai",
+      selectedModel: "gpt-5.5"
+    }));
+    expect(detail.artifact.rawText).toBe("Investigate prompt admin APIs.");
+    expect(detail.request).toEqual(expect.objectContaining({
+      requestId: latestUser.requestId,
+      provider: "openai",
+      selectedModel: "gpt-5.5",
+      finalRoute: "hard"
+    }));
+    expect(detail.events.map((event: any) => event.eventType)).toContain("prompt_artifacts.captured");
+    expect(crossOrg.status).toBe(404);
   });
 
   async function captureFixture(

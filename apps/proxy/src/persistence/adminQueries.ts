@@ -1,7 +1,8 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
 import {
   events,
+  promptArtifacts,
   providerAttempts,
   requests,
   routeDecisions,
@@ -17,6 +18,17 @@ import { routeValue, surfaceValue, usageCostMicros } from "./values.js";
 export type AdminQueryConfig = {
   defaultOrganizationId: string;
   routeQualityLowConfidenceThreshold: number;
+};
+
+export type PromptListFilters = {
+  limit?: number;
+  offset?: number;
+  userId?: string;
+  surface?: string;
+  route?: string;
+  model?: string;
+  start?: string;
+  end?: string;
 };
 
 export class AdminQueryService {
@@ -86,44 +98,47 @@ export class AdminQueryService {
       ))
       .limit(1);
     const [request] = requestRow ? await this.summarizeRequests([requestRow]) : [];
-    const requestEvents = await this.db
-      .select()
-      .from(events)
-      .where(and(
-        eq(events.organizationId, this.config.defaultOrganizationId),
-        eq(events.scopeId, requestId)
-      ))
-      .orderBy(events.sequence);
-    const correlatedEvents = await this.db
-      .select()
-      .from(events)
-      .where(and(
-        eq(events.organizationId, this.config.defaultOrganizationId),
-        eq(events.correlationId, requestId)
-      ))
-      .orderBy(events.createdAt);
-    const seen = new Set<string>();
     return {
       request: request ?? null,
-      events: [...requestEvents, ...correlatedEvents]
-        .filter((event) => {
-          if (seen.has(event.id)) return false;
-          seen.add(event.id);
-          return true;
-        })
-        .map((event) => ({
-          eventId: event.id,
-          sequence: event.sequence,
-          tenantId: event.organizationId,
-          scopeType: event.scopeType,
-          scopeId: event.scopeId,
-          correlationId: event.correlationId ?? undefined,
-          eventType: event.eventType,
-          producer: event.producer,
-          payload: event.payload as JsonObject,
-          metadata: event.metadata as JsonObject,
-          createdAt: event.createdAt.toISOString()
-        }))
+      events: await this.eventsForRequest(requestId)
+    };
+  }
+
+  async prompts(filters: PromptListFilters = {}) {
+    const rows = await this.promptRows(filters);
+    return {
+      data: rows.map((row) => promptSummary(row)),
+      pagination: {
+        limit: promptLimit(filters.limit),
+        offset: promptOffset(filters.offset),
+        count: rows.length
+      }
+    };
+  }
+
+  async promptDetail(artifactId: string) {
+    const [row] = await this.db
+      .select({
+        artifact: promptArtifacts,
+        request: requests
+      })
+      .from(promptArtifacts)
+      .innerJoin(requests, eq(requests.id, promptArtifacts.requestId))
+      .where(and(
+        eq(promptArtifacts.organizationId, this.config.defaultOrganizationId),
+        eq(requests.organizationId, this.config.defaultOrganizationId),
+        eq(promptArtifacts.id, artifactId)
+      ))
+      .limit(1);
+    if (!row) return null;
+
+    const [request] = await this.summarizeRequests([row.request]);
+    const requestEvents = await this.eventsForRequest(row.request.id);
+
+    return {
+      artifact: promptDetail(row),
+      request: request ?? null,
+      events: requestEvents
     };
   }
 
@@ -187,10 +202,164 @@ export class AdminQueryService {
       .where(eq(events.organizationId, this.config.defaultOrganizationId));
     return Number(row?.count ?? 0);
   }
+
+  private async promptRows(filters: PromptListFilters) {
+    const conditions = promptConditions(this.config.defaultOrganizationId, filters);
+    return this.db
+      .select({
+        artifact: promptArtifacts,
+        request: requests,
+        decision: routeDecisions,
+        usage: usageLedger
+      })
+      .from(promptArtifacts)
+      .innerJoin(requests, and(
+        eq(requests.id, promptArtifacts.requestId),
+        eq(requests.organizationId, promptArtifacts.organizationId)
+      ))
+      .leftJoin(routeDecisions, eq(routeDecisions.requestId, requests.id))
+      .leftJoin(usageLedger, eq(usageLedger.requestId, requests.id))
+      .where(and(...conditions))
+      .orderBy(desc(promptArtifacts.createdAt))
+      .limit(promptLimit(filters.limit))
+      .offset(promptOffset(filters.offset));
+  }
+
+  private async eventsForRequest(requestId: string) {
+    const requestEvents = await this.db
+      .select()
+      .from(events)
+      .where(and(
+        eq(events.organizationId, this.config.defaultOrganizationId),
+        eq(events.scopeId, requestId)
+      ))
+      .orderBy(events.sequence);
+    const correlatedEvents = await this.db
+      .select()
+      .from(events)
+      .where(and(
+        eq(events.organizationId, this.config.defaultOrganizationId),
+        eq(events.correlationId, requestId)
+      ))
+      .orderBy(events.createdAt);
+    const seen = new Set<string>();
+    return [...requestEvents, ...correlatedEvents]
+      .filter((event) => {
+        if (seen.has(event.id)) return false;
+        seen.add(event.id);
+        return true;
+      })
+      .map((event) => ({
+        eventId: event.id,
+        sequence: event.sequence,
+        tenantId: event.organizationId,
+        scopeType: event.scopeType,
+        scopeId: event.scopeId,
+        correlationId: event.correlationId ?? undefined,
+        eventType: event.eventType,
+        producer: event.producer,
+        payload: event.payload as JsonObject,
+        metadata: event.metadata as JsonObject,
+        createdAt: event.createdAt.toISOString()
+      }));
+  }
 }
 
 type RequestRow = typeof requests.$inferSelect;
 type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
+type PromptRow = {
+  artifact: typeof promptArtifacts.$inferSelect;
+  request: typeof requests.$inferSelect;
+  decision: typeof routeDecisions.$inferSelect | null;
+  usage: typeof usageLedger.$inferSelect | null;
+};
+
+function promptConditions(organizationId: string, filters: PromptListFilters) {
+  const conditions = [
+    eq(promptArtifacts.organizationId, organizationId),
+    eq(requests.organizationId, organizationId)
+  ];
+  if (filters.userId) conditions.push(eq(requests.userId, filters.userId));
+  const surface = surfaceValue(filters.surface);
+  if (surface) conditions.push(eq(requests.surface, surface));
+  const route = routeValue(filters.route);
+  if (route) conditions.push(eq(routeDecisions.finalRoute, route));
+  if (filters.model) conditions.push(eq(routeDecisions.selectedModel, filters.model));
+  const start = dateValue(filters.start);
+  if (start) conditions.push(gte(promptArtifacts.createdAt, start));
+  const end = dateValue(filters.end);
+  if (end) conditions.push(lte(promptArtifacts.createdAt, end));
+  return conditions;
+}
+
+function promptSummary(row: PromptRow) {
+  return {
+    artifactId: row.artifact.id,
+    organizationId: row.artifact.organizationId,
+    requestId: row.artifact.requestId,
+    sessionId: row.request.sessionId ?? undefined,
+    userId: row.request.userId ?? undefined,
+    surface: row.request.surface,
+    kind: row.artifact.kind,
+    storageMode: row.artifact.storageMode,
+    contentHash: row.artifact.contentHash,
+    sourceRole: row.artifact.sourceRole ?? undefined,
+    sourceIndex: row.artifact.sourceIndex ?? undefined,
+    chars: numberFromMetadata(row.artifact.metadata, "chars"),
+    tokenEstimate: row.artifact.tokenEstimate ?? undefined,
+    preview: promptPreview(row.artifact.rawText ?? row.artifact.redactedText),
+    finalRoute: row.decision?.finalRoute ?? undefined,
+    provider: row.decision?.selectedProvider ?? row.usage?.provider ?? undefined,
+    selectedModel: row.decision?.selectedModel ?? undefined,
+    cost: {
+      selected: (row.usage?.totalCostMicros ?? 0) / 1_000_000
+    },
+    createdAt: row.artifact.createdAt.toISOString()
+  };
+}
+
+function promptDetail(row: Pick<PromptRow, "artifact" | "request">) {
+  return {
+    ...promptSummary({
+      artifact: row.artifact,
+      request: row.request,
+      decision: null,
+      usage: null
+    }),
+    rawText: row.artifact.rawText ?? null,
+    redactedText: row.artifact.redactedText ?? null,
+    encryptedBlobRef: row.artifact.encryptedBlobRef ?? null,
+    metadata: row.artifact.metadata as JsonObject,
+    expiresAt: row.artifact.expiresAt?.toISOString() ?? null
+  };
+}
+
+function promptLimit(value: number | undefined) {
+  if (!value || !Number.isFinite(value)) return 50;
+  return Math.max(1, Math.min(200, Math.floor(value)));
+}
+
+function promptOffset(value: number | undefined) {
+  if (!value || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.floor(value));
+}
+
+function dateValue(value: string | undefined) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function promptPreview(value: string | null | undefined) {
+  if (!value) return null;
+  return value.length > 160 ? `${value.slice(0, 160)}...` : value;
+}
+
+function numberFromMetadata(metadata: unknown, key: string) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return undefined;
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "number" ? value : undefined;
+}
 
 function requestSummary(row: {
   request: RequestRow;
@@ -215,6 +384,7 @@ function requestSummary(row: {
     surface: row.request.surface,
     requestedModel: row.request.requestedModel,
     finalRoute: row.decision?.finalRoute ?? undefined,
+    provider: row.decision?.selectedProvider ?? row.attempt?.provider ?? row.usage?.provider ?? undefined,
     selectedModel,
     terminalStatus: row.attempt?.terminalStatus ?? row.request.status,
     inputChars: row.request.inputChars,
