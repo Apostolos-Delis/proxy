@@ -176,7 +176,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     return { data: [], pagination: { limit: 50, offset: 0, count: 0 } };
   });
   app.get("/admin/prompts/:artifactId", async (request, reply) => {
-    await adminAuth.resolve(request.headers);
+    const identity = await adminAuth.resolve(request.headers);
     const params = request.params as { artifactId?: string };
     const artifactId = params.artifactId;
     if (!artifactId || !persistence) {
@@ -188,6 +188,15 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       reply.code(404).send({ error: "prompt_artifact_not_found" });
       return;
     }
+    await persistence.promptAccessAudit.append({
+      organizationId: identity.organizationId,
+      artifactId: detail.artifact.artifactId,
+      requestId: detail.artifact.requestId,
+      userId: identity.userId,
+      adminSessionId: identity.sessionId,
+      route: detail.request?.finalRoute,
+      accessPath: request.url
+    });
     return detail;
   });
   app.get("/admin/usage", async (request) => {
@@ -253,6 +262,11 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       return;
     }
     return detail;
+  });
+  app.get("/admin/prompt-access-audit", async (request) => {
+    const identity = await adminAuth.resolve(request.headers);
+    if (!persistence) return { data: [] };
+    return persistence.promptAccessAudit.list(identity.organizationId);
   });
   app.patch("/admin/settings/prompt-capture", async (request) => {
     await adminAuth.resolve(request.headers);

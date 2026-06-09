@@ -55,6 +55,7 @@ Cookie-authenticated admin endpoints power the web console:
 - `GET /admin/requests/:requestId`
 - `GET /admin/prompts`
 - `GET /admin/prompts/:artifactId`
+- `GET /admin/prompt-access-audit`
 - `GET /admin/usage`
 - `GET /admin/users`
 - `GET /admin/users/:userId`

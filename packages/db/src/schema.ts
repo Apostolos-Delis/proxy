@@ -402,6 +402,32 @@ export const promptArtifacts = pgTable(
   ]
 );
 
+export const promptAccessAudit = pgTable(
+  "prompt_access_audit",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    artifactId: text("artifact_id")
+      .notNull()
+      .references(() => promptArtifacts.id, { onDelete: "cascade" }),
+    requestId: text("request_id")
+      .notNull()
+      .references(() => requests.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    adminSessionId: text("admin_session_id").references(() => userSessions.id, { onDelete: "set null" }),
+    route: text("route").$type<RouteName>(),
+    accessPath: text("access_path").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    index("prompt_access_audit_org_created_idx").on(table.organizationId, table.createdAt),
+    index("prompt_access_audit_artifact_idx").on(table.organizationId, table.artifactId),
+    index("prompt_access_audit_user_idx").on(table.organizationId, table.userId, table.createdAt)
+  ]
+);
+
 export const events = pgTable(
   "events",
   {

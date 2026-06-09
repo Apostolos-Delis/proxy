@@ -223,6 +223,7 @@ GET /admin/sessions
 GET /admin/sessions/:sessionId
 GET /admin/prompts
 GET /admin/prompts/:artifactId
+GET /admin/prompt-access-audit
 GET /admin/requests
 GET /admin/requests/:requestId
 GET /admin/settings

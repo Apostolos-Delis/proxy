@@ -567,6 +567,8 @@ Dependencies: PP-028, PP-030, PP-033.
 
 ### PP-037: Add Raw Prompt Access Auditing
 
+Status: implemented in the current MVP.
+
 Record who viewed sensitive prompt content and from where.
 
 Acceptance criteria:

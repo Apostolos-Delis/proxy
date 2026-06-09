@@ -49,6 +49,7 @@ route_decisions
 provider_attempts
 usage_ledger
 prompt_artifacts
+prompt_access_audit
 user_sessions
 events
 event_outbox

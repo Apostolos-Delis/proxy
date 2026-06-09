@@ -282,6 +282,22 @@ CREATE INDEX prompt_artifacts_request_id_idx ON prompt_artifacts (request_id);
 CREATE INDEX prompt_artifacts_org_created_idx ON prompt_artifacts (organization_id, created_at);
 CREATE INDEX prompt_artifacts_content_hash_idx ON prompt_artifacts (organization_id, content_hash);
 
+CREATE TABLE prompt_access_audit (
+  id text PRIMARY KEY,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  artifact_id text NOT NULL REFERENCES prompt_artifacts(id) ON DELETE CASCADE,
+  request_id text NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+  user_id text REFERENCES users(id) ON DELETE SET NULL,
+  admin_session_id text REFERENCES user_sessions(id) ON DELETE SET NULL,
+  route text,
+  access_path text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE INDEX prompt_access_audit_org_created_idx ON prompt_access_audit (organization_id, created_at);
+CREATE INDEX prompt_access_audit_artifact_idx ON prompt_access_audit (organization_id, artifact_id);
+CREATE INDEX prompt_access_audit_user_idx ON prompt_access_audit (organization_id, user_id, created_at);
+
 CREATE TABLE events (
   id text PRIMARY KEY,
   sequence integer NOT NULL,

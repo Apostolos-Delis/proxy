@@ -12,6 +12,7 @@ import {
   organizationMembers,
   organizationSettings,
   organizations,
+  promptAccessAudit,
   promptArtifacts,
   providerAttempts,
   requests,
@@ -387,6 +388,10 @@ describe("prompt artifact capture", () => {
       { headers: fixture.adminHeaders }
     ).then((item) => item.json());
     const latestUser = prompts.data.find((item: any) => item.kind === "latest_user_message");
+    const usageBeforeDetail = await fetch(`${fixture.proxyUrl}/admin/usage?groupBy=route`, {
+      headers: fixture.adminHeaders
+    });
+    const auditAfterListAndUsage = await fixture.db.select().from(promptAccessAudit);
     const detail = await fetch(`${fixture.proxyUrl}/admin/prompts/${latestUser.artifactId}`, {
       headers: fixture.adminHeaders
     }).then((item) => item.json());
@@ -417,8 +422,14 @@ describe("prompt artifact capture", () => {
     const crossOrg = await fetch(`${fixture.proxyUrl}/admin/prompts/artifact_other`, {
       headers: fixture.adminHeaders
     });
+    const auditRows = await fixture.db.select().from(promptAccessAudit);
+    const auditList = await fetch(`${fixture.proxyUrl}/admin/prompt-access-audit`, {
+      headers: fixture.adminHeaders
+    }).then((item) => item.json());
 
     expect(response.status).toBe(200);
+    expect(usageBeforeDetail.status).toBe(200);
+    expect(auditAfterListAndUsage).toHaveLength(0);
     expect(prompts.pagination).toEqual({ limit: 10, offset: 0, count: expect.any(Number) });
     expect(prompts.data.length).toBeGreaterThan(0);
     expect(prompts.data.every((item: any) => item.userId === "user_prompt_admin")).toBe(true);
@@ -439,6 +450,24 @@ describe("prompt artifact capture", () => {
     }));
     expect(detail.events.map((event: any) => event.eventType)).toContain("prompt_artifacts.captured");
     expect(crossOrg.status).toBe(404);
+    expect(auditRows).toEqual([
+      expect.objectContaining({
+        organizationId: "org_prompt_admin",
+        artifactId: latestUser.artifactId,
+        requestId: latestUser.requestId,
+        userId: "local-user",
+        route: "hard",
+        accessPath: `/admin/prompts/${latestUser.artifactId}`
+      })
+    ]);
+    expect(auditList.data).toEqual([
+      expect.objectContaining({
+        artifactId: latestUser.artifactId,
+        requestId: latestUser.requestId,
+        userId: "local-user",
+        route: "hard"
+      })
+    ]);
   });
 
   it("configures prompt retention and redacts expired raw artifacts", async () => {
