@@ -3,7 +3,12 @@ import Fastify, { type FastifyReply } from "fastify";
 import type { PromptCaptureMode } from "@prompt-proxy/schema";
 
 import { AdminAuthService } from "./adminAuth.js";
-import { anthropicMessagesSurface, openAIResponsesSurface } from "./adapters.js";
+import {
+  anthropicMessagesSurface,
+  openAIResponsesSurface,
+  rewriteSurfaceRequest,
+  rewriteTokenCountRequest
+} from "./adapters.js";
 import {
   actorForIdentity,
   contextForIdentity,
@@ -367,7 +372,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         surface: openAIResponsesSurface.surface,
         provider: openAIResponsesSurface.provider,
-        body: routing.rewrite(request.body, decision),
+        body: rewriteSurfaceRequest(request.body, decision),
         headers: lowerHeaders(request.headers),
         decision,
         reply
@@ -441,7 +446,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         surface: anthropicMessagesSurface.surface,
         provider: anthropicMessagesSurface.provider,
-        body: routing.rewrite(request.body, decision),
+        body: rewriteSurfaceRequest(request.body, decision),
         headers: lowerHeaders(request.headers),
         decision,
         reply
@@ -481,7 +486,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
       });
       const routingConfig = await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId);
-      const decision = routing.tokenCountDecision(context, routingConfig?.snapshot);
+      const decision = routing.tokenCountDecision(context, routingConfig);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
         reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
@@ -493,7 +498,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         surface: anthropicMessagesSurface.surface,
         provider: anthropicMessagesSurface.provider,
-        body: routing.rewriteTokenCount(request.body, decision),
+        body: rewriteTokenCountRequest(request.body, decision),
         headers: lowerHeaders(request.headers),
         decision,
         reply,

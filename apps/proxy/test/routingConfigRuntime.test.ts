@@ -9,6 +9,7 @@ import {
   routingConfigVersions
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
+import type { RoutingConfig } from "@prompt-proxy/schema";
 
 import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
@@ -145,6 +146,193 @@ describe("routing config runtime resolution", () => {
       record.body.model === "route-classifier-retry-once"
     )).toHaveLength(1);
   });
+
+  it("uses OpenAI route tier settings from the assigned routing config", async () => {
+    const organizationId = "org_config_openai_routes";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: {
+        classifierOutput: {
+          complexity: "hard",
+          risk: ["debugging"],
+          recommended_route: "hard",
+          can_use_fast_model: false,
+          needs_deep_reasoning: false,
+          reason_codes: ["config_route_test"],
+          confidence: 0.91
+        }
+      }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "assigned-openai-route-token",
+      slug: "openai-route",
+      configHash: "sha256:openai-route-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            openai: {
+              model: "gpt-config-hard",
+              reasoning: { effort: "xhigh" },
+              text: { verbosity: "high" },
+              maxOutputTokens: 1234
+            }
+          }
+        }
+      })
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer assigned-openai-route-token",
+        "content-type": "application/json",
+        "x-codex-turn-state": "turn-state-config",
+        "x-request-id": "request-id-config"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this failing test",
+        tools: [{ type: "function", name: "shell" }],
+        previous_response_id: "resp_config_previous",
+        stream: true,
+        include: ["reasoning.encrypted_content"]
+      })
+    });
+    await response.text();
+
+    const providerCall = activeFixture.openai.records.find((record) =>
+      record.body.model === "gpt-config-hard"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("xhigh");
+    expect(providerCall).toBeTruthy();
+    expect(providerCall?.body.reasoning.effort).toBe("xhigh");
+    expect(providerCall?.body.text.verbosity).toBe("high");
+    expect(providerCall?.body.max_output_tokens).toBe(1234);
+    expect(providerCall?.body.tools).toEqual([{ type: "function", name: "shell" }]);
+    expect(providerCall?.body.previous_response_id).toBe("resp_config_previous");
+    expect(providerCall?.body.include).toEqual(["reasoning.encrypted_content"]);
+    expect(providerCall?.headers["x-codex-turn-state"]).toBe("turn-state-config");
+    expect(providerCall?.headers["x-request-id"]).toBe("request-id-config");
+
+    const eventRows = await activeFixture.db.select().from(events);
+    const decision = eventRows.find((event) => event.eventType === "routing.decision_recorded");
+    expect(decision?.payload).not.toHaveProperty("providerSettings");
+  });
+
+  it("uses Anthropic route tier settings from the assigned routing config", async () => {
+    const organizationId = "org_config_anthropic_routes";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: {
+        classifierOutput: {
+          complexity: "deep",
+          risk: ["architecture"],
+          recommended_route: "deep",
+          can_use_fast_model: false,
+          needs_deep_reasoning: true,
+          reason_codes: ["deep_architecture"],
+          confidence: 0.94
+        }
+      }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "assigned-anthropic-route-token",
+      slug: "anthropic-route",
+      configHash: "sha256:anthropic-route-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          deep: {
+            ...config.routes.deep,
+            anthropic: {
+              model: "claude-config-deep",
+              thinking: { type: "adaptive", display: "summarized" },
+              output_config: { effort: "max" },
+              maxTokens: 4096
+            }
+          }
+        }
+      })
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer assigned-anthropic-route-token",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "x-claude-code-session-id": "claude-session-config"
+      },
+      body: JSON.stringify({
+        model: "claude-router-auto",
+        messages: [{ role: "user", content: "scope an event-driven system design" }],
+        tools: [{ name: "shell", input_schema: { type: "object", properties: {} } }],
+        stream: true
+      })
+    });
+    await response.text();
+
+    const providerCall = activeFixture.anthropic.records.find((record) =>
+      record.body.model === "claude-config-deep"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("deep");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("max");
+    expect(providerCall).toBeTruthy();
+    expect(providerCall?.body.thinking).toEqual({ type: "adaptive", display: "summarized" });
+    expect(providerCall?.body.output_config.effort).toBe("max");
+    expect(providerCall?.body.max_tokens).toBe(4096);
+    expect(providerCall?.body.tools).toEqual([
+      { name: "shell", input_schema: { type: "object", properties: {} } }
+    ]);
+    expect(providerCall?.headers["x-claude-code-session-id"]).toBe("claude-session-config");
+  });
+
+  it("rejects when the selected route is unavailable for the incoming surface", async () => {
+    const organizationId = "org_config_missing_surface_route";
+    activeFixture = await captureFixture(organizationId);
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "assigned-missing-surface-token",
+      slug: "missing-surface",
+      configHash: "sha256:missing-surface-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            openai: undefined
+          }
+        }
+      })
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer assigned-missing-surface-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this failing test",
+        stream: true
+      })
+    });
+    const body = await response.text();
+
+    expect(response.status).toBe(400);
+    expect(body).toContain("route_not_available_for_surface");
+    expect(activeFixture.openai.records.filter((record) =>
+      record.body.model !== "route-classifier-cheap"
+    )).toHaveLength(0);
+  });
 });
 
 async function assignClassifierConfig(
@@ -209,6 +397,60 @@ async function assignClassifierConfig(
     configId,
     versionId,
     configHash,
+    config
+  };
+}
+
+async function assignRouteConfig(
+  fixture: PromptTestFixture,
+  organizationId: string,
+  input: {
+    secret: string;
+    slug: string;
+    configHash: string;
+    configure: (config: RoutingConfig) => RoutingConfig;
+  }
+) {
+  const configId = `${organizationId}:routing-config:${input.slug}`;
+  const versionId = `${configId}:v1`;
+  const defaultVersion = await activeVersion(fixture, `${organizationId}:routing-config:default:v1`);
+  const config = input.configure(structuredClone(defaultVersion.config as RoutingConfig));
+
+  await fixture.db.insert(routingConfigs).values({
+    id: configId,
+    organizationId,
+    name: "Assigned route config",
+    slug: input.slug,
+    status: "active"
+  });
+  await fixture.db.insert(routingConfigVersions).values({
+    id: versionId,
+    organizationId,
+    routingConfigId: configId,
+    version: 1,
+    configHash: input.configHash,
+    config,
+    status: "active",
+    createdByUserId: "local-user",
+    activatedAt: new Date("2026-06-08T00:00:00.000Z")
+  });
+  await fixture.db
+    .update(routingConfigs)
+    .set({ activeVersionId: versionId })
+    .where(eq(routingConfigs.id, configId));
+  await fixture.db.insert(apiKeys).values({
+    id: `api_key_${input.slug}`,
+    organizationId,
+    keyHash: hashApiKey(input.secret),
+    name: "Assigned route key",
+    routingConfigId: configId,
+    scopes: ["proxy"]
+  });
+
+  return {
+    configId,
+    versionId,
+    configHash: input.configHash,
     config
   };
 }

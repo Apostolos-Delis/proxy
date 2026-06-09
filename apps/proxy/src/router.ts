@@ -11,8 +11,26 @@ import type { ClassificationResult, ClassifierSettings, LlmClassifier } from "./
 import { jsonPayload, type EventService } from "./events.js";
 import type { AppConfig } from "./config.js";
 import type { BudgetResult, BudgetService, SessionRouteStore } from "./policy.js";
-import type { JsonObject, RouteContext, RouteDecision, RouteName, RoutingConfigSelection, RoutingConfigSnapshot } from "./types.js";
-import { isRecord } from "./util.js";
+import type {
+  JsonObject,
+  ProviderEffort,
+  RouteContext,
+  RouteDecision,
+  RouteName,
+  RoutingConfigSelection,
+  RoutingConfigSnapshot,
+  SelectedRouteSettings,
+  Verbosity
+} from "./types.js";
+import type { AnthropicEffort, RoutingConfig } from "@prompt-proxy/schema";
+
+type ResolvedRouteSettings = {
+  selectedModel: string;
+  providerSettings: SelectedRouteSettings;
+  reasoningEffort?: ProviderEffort;
+  verbosity?: Verbosity;
+  provider: SelectedRouteSettings["provider"];
+};
 
 export class RoutingService {
   constructor(
@@ -100,7 +118,7 @@ export class RoutingService {
       context,
       requestedRoute,
       classification,
-      routingConfigSnapshot,
+      routingConfig,
       classifierSettings
     );
     if (decision.outcome === "route" && decision.finalRoute) {
@@ -146,58 +164,27 @@ export class RoutingService {
     return decision;
   }
 
-  rewrite(body: unknown, decision: RouteDecision) {
-    if (!decision.selectedModel || !decision.reasoningEffort || !decision.verbosity) {
-      throw new Error("Cannot rewrite request without a selected route.");
-    }
-
-    if (decision.surface === "openai-responses") {
-      const request = structuredClone(isRecord(body) ? body : {});
-      request.model = decision.selectedModel;
-      request.reasoning = {
-        ...(isRecord(request.reasoning) ? request.reasoning : {}),
-        effort: decision.reasoningEffort
-      };
-      request.text = {
-        ...(isRecord(request.text) ? request.text : {}),
-        verbosity: decision.verbosity
-      };
-      return request;
-    }
-
-    const request = structuredClone(isRecord(body) ? body : {});
-    request.model = decision.selectedModel;
-    request.output_config = {
-      ...(isRecord(request.output_config) ? request.output_config : {}),
-      effort: decision.reasoningEffort
-    };
-    request.thinking = {
-      ...(isRecord(request.thinking) ? request.thinking : {}),
-      type: "adaptive"
-    };
-    return request;
-  }
-
-  tokenCountDecision(context: RouteContext, routingConfig?: RoutingConfigSnapshot): RouteDecision {
+  tokenCountDecision(context: RouteContext, routingConfig?: RoutingConfigSelection): RouteDecision {
     let finalRoute = context.explicitAlias ?? "hard";
     const guardrailActions: string[] = [];
-    let model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
+    const routingConfigSnapshot = routingConfig?.snapshot;
 
-    if (!supportsSurface(model, context.surface)) {
-      const compatible = routeOrder.find((route) =>
-        supportsSurface(modelForRoute(this.modelCatalog, route, context.surface), context.surface)
-      );
-      if (!compatible) return this.reject(context, "no_compatible_route");
-      finalRoute = compatible;
-      model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
-      guardrailActions.push("surface_compatibility_escalated");
+    if (!routingConfig) {
+      let model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
+
+      if (!supportsSurface(model, context.surface)) {
+        const compatible = routeOrder.find((route) =>
+          supportsSurface(modelForRoute(this.modelCatalog, route, context.surface), context.surface)
+        );
+        if (!compatible) return this.reject(context, "no_compatible_route");
+        finalRoute = compatible;
+        model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
+        guardrailActions.push("surface_compatibility_escalated");
+      }
     }
 
-    const routeConfig = routes[finalRoute];
-    const effort = nearestReasoningEffort(
-      routeConfig.reasoningEffort,
-      model.supportedReasoningEfforts
-    );
+    const routeSettings = this.resolveProviderSettings(context, finalRoute, routingConfig?.config);
+    if (!routeSettings) return this.reject(context, "route_not_available_for_surface");
 
     return {
       outcome: "route",
@@ -205,25 +192,16 @@ export class RoutingService {
       requestedModel: context.requestedModel,
       classifierRoute: finalRoute,
       finalRoute,
-      selectedModel: model.upstreamModel,
-      provider: model.provider,
-      reasoningEffort: effort,
-      verbosity: routeConfig.verbosity,
+      selectedModel: routeSettings.selectedModel,
+      provider: routeSettings.provider,
+      reasoningEffort: routeSettings.reasoningEffort,
+      verbosity: routeSettings.verbosity,
+      providerSettings: routeSettings.providerSettings,
       guardrailActions,
       reasonCodes: ["token_count_model_resolution"],
-      routingConfig,
+      routingConfig: routingConfigSnapshot,
       policyVersion: "2026-06-08"
     };
-  }
-
-  rewriteTokenCount(body: unknown, decision: RouteDecision) {
-    if (!decision.selectedModel) {
-      throw new Error("Cannot rewrite token-count request without a selected model.");
-    }
-
-    const request = structuredClone(isRecord(body) ? body : {});
-    request.model = decision.selectedModel;
-    return request;
   }
 
   private async classify(
@@ -282,11 +260,12 @@ export class RoutingService {
     context: RouteContext,
     classifierRoute: RouteName,
     classification?: ClassificationResult,
-    routingConfig?: RoutingConfigSnapshot,
+    routingConfig?: RoutingConfigSelection,
     classifierSettings: ClassifierSettings = defaultClassifierSettings(this.config)
   ): RouteDecision {
     let finalRoute = classifierRoute;
     const guardrailActions: string[] = [];
+    const routingConfigSnapshot = routingConfig?.snapshot;
     if (classification?.output.needs_deep_reasoning && finalRoute !== "deep") {
       finalRoute = "deep";
       guardrailActions.push("classifier_deep_reasoning_escalated");
@@ -296,45 +275,39 @@ export class RoutingService {
       guardrailActions.push("classifier_fast_route_disallowed");
     }
 
-    let model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
+    if (!routingConfig) {
+      let model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
 
-    if (!supportsSurface(model, context.surface)) {
-      const compatible = routeOrder.find((route) =>
-        supportsSurface(modelForRoute(this.modelCatalog, route, context.surface), context.surface)
-      );
-      if (!compatible) return this.reject(context, "no_compatible_route");
-      finalRoute = compatible;
-      model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
-      guardrailActions.push("surface_compatibility_escalated");
-    }
+      if (!supportsSurface(model, context.surface)) {
+        const compatible = routeOrder.find((route) =>
+          supportsSurface(modelForRoute(this.modelCatalog, route, context.surface), context.surface)
+        );
+        if (!compatible) return this.reject(context, "no_compatible_route");
+        finalRoute = compatible;
+        model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
+        guardrailActions.push("surface_compatibility_escalated");
+      }
 
-    if (context.hasTools && !model.supportsTools) {
-      const compatible = routeOrder.find(
-        (route) => modelForRoute(this.modelCatalog, route, context.surface).supportsTools
-      );
-      if (!compatible) return this.reject(context, "no_tool_compatible_route");
-      finalRoute = compatible;
-      model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
-      guardrailActions.push("tool_compatibility_escalated");
+      if (context.hasTools && !model.supportsTools) {
+        const compatible = routeOrder.find(
+          (route) => modelForRoute(this.modelCatalog, route, context.surface).supportsTools
+        );
+        if (!compatible) return this.reject(context, "no_tool_compatible_route");
+        finalRoute = compatible;
+        guardrailActions.push("tool_compatibility_escalated");
+      }
     }
 
     const session = this.sessions.plan(context, finalRoute);
     if (session) {
       finalRoute = session.selectedRoute;
-      model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
       if (session.action === "kept") guardrailActions.push("session_route_kept");
       if (session.action === "upgraded") guardrailActions.push("session_route_upgraded");
       if (session.action === "explicit_override") guardrailActions.push("session_explicit_route_override");
     }
 
-    const routeConfig = routes[finalRoute];
-    const effort = nearestReasoningEffort(
-      routeConfig.reasoningEffort,
-      model.supportedReasoningEfforts
-    );
-    if (effort !== routeConfig.reasoningEffort) {
-      guardrailActions.push("reasoning_effort_clamped");
-    }
+    const routeSettings = this.resolveProviderSettings(context, finalRoute, routingConfig?.config);
+    if (!routeSettings) return this.reject(context, "route_not_available_for_surface");
 
     return {
       outcome: "route",
@@ -342,10 +315,11 @@ export class RoutingService {
       requestedModel: context.requestedModel,
       classifierRoute,
       finalRoute,
-      selectedModel: model.upstreamModel,
-      provider: model.provider,
-      reasoningEffort: effort,
-      verbosity: routeConfig.verbosity,
+      selectedModel: routeSettings.selectedModel,
+      provider: routeSettings.provider,
+      reasoningEffort: routeSettings.reasoningEffort,
+      verbosity: routeSettings.verbosity,
+      providerSettings: routeSettings.providerSettings,
       guardrailActions,
       reasonCodes: classification?.output.reason_codes ?? [`alias_${finalRoute}`],
       budgetChecks: [],
@@ -367,13 +341,82 @@ export class RoutingService {
             attempts: classification.attempts,
             confidence: classification.output.confidence,
             recommendedRoute: classification.output.recommended_route,
-            routingConfigId: routingConfig?.configId,
-            routingConfigVersionId: routingConfig?.versionId,
-            routingConfigHash: routingConfig?.configHash
+            routingConfigId: routingConfigSnapshot?.configId,
+            routingConfigVersionId: routingConfigSnapshot?.versionId,
+            routingConfigHash: routingConfigSnapshot?.configHash
           }
         : undefined,
-      routingConfig,
+      routingConfig: routingConfigSnapshot,
       policyVersion: "2026-06-08"
+    };
+  }
+
+  private resolveProviderSettings(
+    context: RouteContext,
+    route: RouteName,
+    routingConfig?: RoutingConfig
+  ): ResolvedRouteSettings | undefined {
+    if (routingConfig) {
+      const routeConfig = routingConfig.routes[route];
+      if (context.surface === "openai-responses") {
+        if (!routeConfig.openai) return undefined;
+        return {
+          selectedModel: routeConfig.openai.model,
+          provider: "openai",
+          reasoningEffort: routeConfig.openai.reasoning?.effort,
+          verbosity: routeConfig.openai.text?.verbosity,
+          providerSettings: {
+            provider: "openai",
+            model: routeConfig.openai.model,
+            openai: routeConfig.openai
+          }
+        };
+      }
+      if (!routeConfig.anthropic) return undefined;
+      return {
+        selectedModel: routeConfig.anthropic.model,
+        provider: "anthropic",
+        reasoningEffort: routeConfig.anthropic.output_config?.effort,
+        providerSettings: {
+          provider: "anthropic",
+          model: routeConfig.anthropic.model,
+          anthropic: routeConfig.anthropic
+        }
+      };
+    }
+
+    const model = modelForRoute(this.modelCatalog, route, context.surface);
+    const routeConfig = routes[route];
+    const effort = nearestReasoningEffort(
+      routeConfig.reasoningEffort,
+      model.supportedReasoningEfforts
+    );
+    const anthropicEffort: AnthropicEffort = effort === "minimal" ? "low" : effort;
+    const providerSettings = context.surface === "openai-responses"
+      ? {
+          provider: "openai" as const,
+          model: model.upstreamModel,
+          openai: {
+            model: model.upstreamModel,
+            reasoning: { effort },
+            text: { verbosity: routeConfig.verbosity }
+          }
+        }
+      : {
+          provider: "anthropic" as const,
+          model: model.upstreamModel,
+          anthropic: {
+            model: model.upstreamModel,
+            thinking: { type: "adaptive" as const },
+            output_config: { effort: anthropicEffort }
+          }
+        };
+    return {
+      selectedModel: model.upstreamModel,
+      provider: model.provider,
+      reasoningEffort: context.surface === "openai-responses" ? effort : anthropicEffort,
+      verbosity: routeConfig.verbosity,
+      providerSettings
     };
   }
 
@@ -413,6 +456,8 @@ export class RoutingService {
     idempotencyKey: string,
     decision: RouteDecision
   ) {
+    const payload = { ...decision };
+    delete payload.providerSettings;
     await this.events.append({
       scopeType: "request",
       scopeId: requestId,
@@ -420,7 +465,7 @@ export class RoutingService {
       idempotencyKey,
       producer: "prompt-proxy.routing",
       eventType: "routing.decision_recorded",
-      payload: jsonPayload(decision) as JsonObject
+      payload: jsonPayload(payload) as JsonObject
     });
   }
 

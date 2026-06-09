@@ -1,4 +1,11 @@
-import type { RoutingConfig } from "@prompt-proxy/schema";
+import type {
+  AnthropicEffort,
+  OpenAIReasoningEffort,
+  RoutingConfig,
+  RoutingConfigAnthropicRoute,
+  RoutingConfigOpenAIRoute,
+  Verbosity as RoutingVerbosity
+} from "@prompt-proxy/schema";
 
 export type Surface = "openai-responses" | "anthropic-messages";
 
@@ -6,14 +13,10 @@ export type Provider = "openai" | "anthropic";
 
 export type RouteName = "fast" | "balanced" | "hard" | "deep";
 
-export type ReasoningEffort =
-  | "minimal"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh";
+export type ReasoningEffort = OpenAIReasoningEffort;
+export type ProviderEffort = OpenAIReasoningEffort | AnthropicEffort;
 
-export type Verbosity = "low" | "medium" | "high";
+export type Verbosity = RoutingVerbosity;
 
 export type JsonValue =
   | null
@@ -99,8 +102,9 @@ export type RouteDecision = {
   finalRoute?: RouteName;
   selectedModel?: string;
   provider?: Provider;
-  reasoningEffort?: ReasoningEffort;
+  reasoningEffort?: ProviderEffort;
   verbosity?: Verbosity;
+  providerSettings?: SelectedRouteSettings;
   guardrailActions: string[];
   reasonCodes: string[];
   budgetChecks?: BudgetCheck[];
@@ -128,6 +132,18 @@ export type RouteDecision = {
   error?: string;
   errorStatus?: number;
 };
+
+export type SelectedRouteSettings =
+  | {
+      provider: "openai";
+      model: string;
+      openai: RoutingConfigOpenAIRoute;
+    }
+  | {
+      provider: "anthropic";
+      model: string;
+      anthropic: RoutingConfigAnthropicRoute;
+    };
 
 export type RoutingConfigSnapshot = {
   configId: string;
