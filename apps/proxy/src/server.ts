@@ -23,6 +23,7 @@ import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStat
 import { BudgetService, SessionRouteStore } from "./policy.js";
 import { createPostgresPersistence } from "./persistence/index.js";
 import { routingConfigSnapshot } from "./persistence/routingConfig.js";
+import { RoutingConfigAdminError } from "./persistence/routingConfigAdmin.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
 import { ProviderProxy } from "./proxy.js";
@@ -174,6 +175,22 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     if (!persistence) return { data: [] };
     return persistence.adminQueries.routingConfigs();
   });
+  app.post("/admin/routing-configs", async (request, reply) => {
+    const identity = await adminAuth.resolve(request.headers);
+    if (!persistence) throw notFound("routing_configs_not_found");
+    try {
+      const created = await persistence.routingConfigAdmin.createConfig({
+        organizationId: identity.organizationId,
+        actorUserId: identity.userId,
+        body: request.body
+      });
+      reply.code(201);
+      return persistence.adminQueries.routingConfigDetail(created.configId);
+    } catch (error) {
+      if (sendRoutingConfigAdminError(error, reply)) return;
+      throw error;
+    }
+  });
   app.get("/admin/routing-configs/:configId", async (request, reply) => {
     await adminAuth.resolve(request.headers);
     const params = request.params as { configId?: string };
@@ -188,6 +205,64 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       return;
     }
     return detail;
+  });
+  app.post("/admin/routing-configs/:configId/versions", async (request, reply) => {
+    const identity = await adminAuth.resolve(request.headers);
+    const params = request.params as { configId?: string };
+    const configId = params.configId;
+    if (!configId || !persistence) {
+      reply.code(404).send({ error: "routing_config_not_found" });
+      return;
+    }
+    try {
+      await persistence.routingConfigAdmin.createVersion({
+        organizationId: identity.organizationId,
+        actorUserId: identity.userId,
+        configId,
+        body: request.body
+      });
+      reply.code(201);
+      return persistence.adminQueries.routingConfigDetail(configId);
+    } catch (error) {
+      if (sendRoutingConfigAdminError(error, reply)) return;
+      throw error;
+    }
+  });
+  app.post("/admin/routing-configs/:configId/versions/:versionId/activate", async (request, reply) => {
+    const identity = await adminAuth.resolve(request.headers);
+    const params = request.params as { configId?: string; versionId?: string };
+    const configId = params.configId;
+    const versionId = params.versionId;
+    if (!configId || !versionId || !persistence) {
+      reply.code(404).send({ error: "routing_config_version_not_found" });
+      return;
+    }
+    try {
+      const activated = await persistence.routingConfigAdmin.activateVersion({
+        organizationId: identity.organizationId,
+        configId,
+        versionId
+      });
+      await events.append({
+        tenantId: identity.organizationId,
+        scopeType: "routing_config",
+        scopeId: configId,
+        correlationId: versionId,
+        actor: { type: "user", id: identity.userId },
+        producer: "prompt-proxy.admin.routing-configs",
+        eventType: "routing_config.version_activated",
+        payload: {
+          configId,
+          versionId,
+          version: activated.version,
+          configHash: activated.configHash
+        }
+      });
+      return persistence.adminQueries.routingConfigDetail(configId);
+    } catch (error) {
+      if (sendRoutingConfigAdminError(error, reply)) return;
+      throw error;
+    }
   });
   app.get("/admin/requests/:requestId", async (request) => {
     await adminAuth.resolve(request.headers);
@@ -614,6 +689,15 @@ function badRequest(message: string) {
   const error = new Error(message);
   (error as Error & { statusCode: number }).statusCode = 400;
   return error;
+}
+
+function sendRoutingConfigAdminError(error: unknown, reply: FastifyReply) {
+  if (!(error instanceof RoutingConfigAdminError)) return false;
+  reply.code(error.statusCode).send({
+    error: error.message,
+    issues: error.issues ?? []
+  });
+  return true;
 }
 
 function notFound(message: string) {
