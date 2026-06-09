@@ -43,7 +43,7 @@ export function scopedIdempotencyKey(organizationId: string, idempotencyKey: str
 }
 
 export function contextForIdentity(context: RouteContext, identity: RequestIdentity): RouteContext {
-  const useHarnessIdentity = identity.source === "dev_proxy_token";
+  const useHarnessIdentity = identity.source === "dev_proxy_token" || identity.scopes.includes("harness_identity");
   return {
     ...context,
     organizationId: identity.organizationId,

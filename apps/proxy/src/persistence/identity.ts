@@ -1,6 +1,7 @@
 import {
   agentSessions,
   apiKeys,
+  hashApiKey,
   organizationSettings,
   organizations,
   users,
@@ -10,7 +11,6 @@ import {
 import { eq } from "drizzle-orm";
 
 import type { RouteName, Surface } from "../types.js";
-import { sha256 } from "../util.js";
 
 export type ResolvedApiKeyIdentity = {
   apiKeyId: string;
@@ -26,7 +26,7 @@ export class ApiKeyIdentityStore {
     const [row] = await this.db
       .select()
       .from(apiKeys)
-      .where(eq(apiKeys.keyHash, sha256(secret)))
+      .where(eq(apiKeys.keyHash, hashApiKey(secret)))
       .limit(1);
 
     if (!row) return undefined;

@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./schema": "./src/schema.ts",
     "./migrations": "./src/migrate-runner.ts",
+    "./seed": "./src/seed.ts",
     "./test": "./src/test.ts"
   },
   "scripts": {
