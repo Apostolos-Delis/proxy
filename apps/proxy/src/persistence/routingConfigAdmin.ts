@@ -5,6 +5,9 @@ import { z } from "zod";
 
 import {
   apiKeys,
+  eventOutbox,
+  events,
+  organizationSettings,
   routingConfigs,
   routingConfigVersions,
   type PromptProxyTransaction,
@@ -12,7 +15,7 @@ import {
 } from "@prompt-proxy/db";
 import { routingConfigSchema, type RoutingConfig } from "@prompt-proxy/schema";
 
-import { createId } from "../util.js";
+import { createId, sha256, stableJson } from "../util.js";
 
 const createConfigBodySchema = z.object({
   name: z.string().trim().min(1),
@@ -90,6 +93,41 @@ export class RoutingConfigAdminService {
           eq(routingConfigs.organizationId, input.organizationId),
           eq(routingConfigs.id, configId)
         ));
+      await appendAdminAuditEvent(tx, {
+        organizationId: input.organizationId,
+        scopeType: "routing_config",
+        scopeId: configId,
+        correlationId: versionId,
+        actorUserId: input.actorUserId,
+        producer: "prompt-proxy.admin.routing-configs",
+        eventType: "routing_config.created",
+        payload: {
+          configId,
+          versionId,
+          version: 1,
+          configHash: hash,
+          slug,
+          status: "active"
+        },
+        createdAt: now
+      });
+      await appendAdminAuditEvent(tx, {
+        organizationId: input.organizationId,
+        scopeType: "routing_config",
+        scopeId: configId,
+        correlationId: versionId,
+        actorUserId: input.actorUserId,
+        producer: "prompt-proxy.admin.routing-configs",
+        eventType: "routing_config.version_created",
+        payload: {
+          configId,
+          versionId,
+          version: 1,
+          configHash: hash,
+          status: "active"
+        },
+        createdAt: now
+      });
       return { configId, versionId, version: 1, configHash: hash };
     });
   }
@@ -131,12 +169,30 @@ export class RoutingConfigAdminService {
           eq(routingConfigs.organizationId, input.organizationId),
           eq(routingConfigs.id, input.configId)
         ));
+      await appendAdminAuditEvent(tx, {
+        organizationId: input.organizationId,
+        scopeType: "routing_config",
+        scopeId: input.configId,
+        correlationId: versionId,
+        actorUserId: input.actorUserId,
+        producer: "prompt-proxy.admin.routing-configs",
+        eventType: "routing_config.version_created",
+        payload: {
+          configId: input.configId,
+          versionId,
+          version,
+          configHash: hash,
+          status: "draft"
+        },
+        createdAt: now
+      });
       return { configId: input.configId, versionId, version, configHash: hash };
     });
   }
 
   async activateVersion(input: {
     organizationId: string;
+    actorUserId: string;
     configId: string;
     versionId: string;
   }) {
@@ -181,6 +237,22 @@ export class RoutingConfigAdminService {
           eq(routingConfigs.organizationId, input.organizationId),
           eq(routingConfigs.id, input.configId)
         ));
+      await appendAdminAuditEvent(tx, {
+        organizationId: input.organizationId,
+        scopeType: "routing_config",
+        scopeId: input.configId,
+        correlationId: input.versionId,
+        actorUserId: input.actorUserId,
+        producer: "prompt-proxy.admin.routing-configs",
+        eventType: "routing_config.version_activated",
+        payload: {
+          configId: input.configId,
+          versionId: input.versionId,
+          version: version.version,
+          configHash: version.configHash
+        },
+        createdAt: now
+      });
       return {
         configId: input.configId,
         versionId: input.versionId,
@@ -192,6 +264,7 @@ export class RoutingConfigAdminService {
 
   async assignApiKeyRoutingConfig(input: {
     organizationId: string;
+    actorUserId: string;
     apiKeyId: string;
     body: unknown;
   }) {
@@ -213,13 +286,17 @@ export class RoutingConfigAdminService {
         .limit(1);
       if (!apiKey) throw new RoutingConfigAdminError("api_key_not_found", 404);
 
+      let targetConfig: RoutingConfigAssignmentTarget | null = null;
       if (routingConfigId) {
-        const configRow = await routingConfigForAssignment(tx, input.organizationId, routingConfigId);
-        if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
-        if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
-        if (configRow.status !== "active") throw new RoutingConfigAdminError("routing_config_inactive", 409);
-        if (!configRow.activeVersionId) {
+        targetConfig = await routingConfigForAssignment(tx, input.organizationId, routingConfigId);
+        if (!targetConfig) throw new RoutingConfigAdminError("routing_config_not_found", 404);
+        if (targetConfig.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
+        if (targetConfig.status !== "active") throw new RoutingConfigAdminError("routing_config_inactive", 409);
+        if (!targetConfig.activeVersionId) {
           throw new RoutingConfigAdminError("routing_config_active_version_missing", 409);
+        }
+        if (!targetConfig.activeVersionHash) {
+          throw new RoutingConfigAdminError("routing_config_active_version_not_found", 409);
         }
       }
 
@@ -230,11 +307,80 @@ export class RoutingConfigAdminService {
           eq(apiKeys.organizationId, input.organizationId),
           eq(apiKeys.id, input.apiKeyId)
         ));
+      await appendAdminAuditEvent(tx, {
+        organizationId: input.organizationId,
+        scopeType: "api_key",
+        scopeId: input.apiKeyId,
+        correlationId: routingConfigId ?? input.apiKeyId,
+        actorUserId: input.actorUserId,
+        producer: "prompt-proxy.admin.api-keys",
+        eventType: "routing_config.api_key_assignment_changed",
+        payload: {
+          apiKeyId: input.apiKeyId,
+          previousRoutingConfigId: apiKey.routingConfigId ?? null,
+          routingConfigId,
+          routingConfigVersionId: targetConfig?.activeVersionId ?? null,
+          routingConfigHash: targetConfig?.activeVersionHash ?? null
+        }
+      });
 
       return {
         apiKeyId: input.apiKeyId,
         previousRoutingConfigId: apiKey.routingConfigId ?? null,
         routingConfigId
+      };
+    });
+  }
+
+  async archiveConfig(input: {
+    organizationId: string;
+    actorUserId: string;
+    configId: string;
+  }) {
+    const now = new Date();
+    return this.db.transaction(async (tx) => {
+      const configRow = await lockedConfig(tx, input.organizationId, input.configId);
+      if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
+      if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
+      if (await routingConfigInUse(tx, input.organizationId, input.configId)) {
+        throw new RoutingConfigAdminError("routing_config_in_use", 409);
+      }
+      const activeVersion = configRow.activeVersionId
+        ? await routingConfigVersion(tx, input.organizationId, input.configId, configRow.activeVersionId)
+        : null;
+
+      await tx
+        .update(routingConfigs)
+        .set({
+          status: "archived",
+          updatedAt: now
+        })
+        .where(and(
+          eq(routingConfigs.organizationId, input.organizationId),
+          eq(routingConfigs.id, input.configId)
+        ));
+      await appendAdminAuditEvent(tx, {
+        organizationId: input.organizationId,
+        scopeType: "routing_config",
+        scopeId: input.configId,
+        correlationId: configRow.activeVersionId ?? input.configId,
+        actorUserId: input.actorUserId,
+        producer: "prompt-proxy.admin.routing-configs",
+        eventType: "routing_config.archived",
+        payload: {
+          configId: input.configId,
+          versionId: configRow.activeVersionId ?? null,
+          version: activeVersion?.version ?? null,
+          configHash: activeVersion?.configHash ?? null,
+          status: "archived"
+        },
+        createdAt: now
+      });
+      return {
+        configId: input.configId,
+        versionId: configRow.activeVersionId ?? null,
+        version: activeVersion?.version ?? null,
+        configHash: activeVersion?.configHash ?? null
       };
     });
   }
@@ -289,15 +435,123 @@ async function routingConfigForAssignment(tx: PromptProxyTransaction, organizati
     .select({
       id: routingConfigs.id,
       status: routingConfigs.status,
-      activeVersionId: routingConfigs.activeVersionId
+      activeVersionId: routingConfigs.activeVersionId,
+      activeVersionHash: routingConfigVersions.configHash
     })
     .from(routingConfigs)
+    .leftJoin(routingConfigVersions, and(
+      eq(routingConfigVersions.organizationId, routingConfigs.organizationId),
+      eq(routingConfigVersions.routingConfigId, routingConfigs.id),
+      eq(routingConfigVersions.id, routingConfigs.activeVersionId)
+    ))
     .where(and(
       eq(routingConfigs.organizationId, organizationId),
       eq(routingConfigs.id, configId)
     ))
     .limit(1);
   return config ?? null;
+}
+
+async function routingConfigVersion(
+  tx: PromptProxyTransaction,
+  organizationId: string,
+  configId: string,
+  versionId: string
+) {
+  const [version] = await tx
+    .select()
+    .from(routingConfigVersions)
+    .where(and(
+      eq(routingConfigVersions.organizationId, organizationId),
+      eq(routingConfigVersions.routingConfigId, configId),
+      eq(routingConfigVersions.id, versionId)
+    ))
+    .limit(1);
+  return version ?? null;
+}
+
+async function routingConfigInUse(tx: PromptProxyTransaction, organizationId: string, configId: string) {
+  const [apiKey] = await tx
+    .select({ id: apiKeys.id })
+    .from(apiKeys)
+    .where(and(
+      eq(apiKeys.organizationId, organizationId),
+      eq(apiKeys.routingConfigId, configId)
+    ))
+    .limit(1);
+  if (apiKey) return true;
+
+  const [settings] = await tx
+    .select({ organizationId: organizationSettings.organizationId })
+    .from(organizationSettings)
+    .where(and(
+      eq(organizationSettings.organizationId, organizationId),
+      eq(organizationSettings.defaultRoutingConfigId, configId)
+    ))
+    .limit(1);
+  return Boolean(settings);
+}
+
+type RoutingConfigAssignmentTarget = NonNullable<Awaited<ReturnType<typeof routingConfigForAssignment>>>;
+
+type AdminAuditEventInput = {
+  organizationId: string;
+  scopeType: string;
+  scopeId: string;
+  correlationId?: string;
+  actorUserId: string;
+  producer: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+  createdAt?: Date;
+};
+
+async function appendAdminAuditEvent(tx: PromptProxyTransaction, input: AdminAuditEventInput) {
+  const createdAt = input.createdAt ?? new Date();
+  const eventId = createId("event");
+  const payload = input.payload;
+  await tx.insert(events).values({
+    id: eventId,
+    sequence: await nextEventSequence(tx, input.organizationId, input.scopeType, input.scopeId),
+    schemaVersion: 1,
+    organizationId: input.organizationId,
+    scopeType: input.scopeType,
+    scopeId: input.scopeId,
+    correlationId: input.correlationId,
+    actorType: "user",
+    actorId: input.actorUserId,
+    producer: input.producer,
+    eventType: input.eventType,
+    payloadHash: sha256(stableJson(payload)),
+    sensitivity: "internal",
+    redactionState: "redacted",
+    payload,
+    metadata: {},
+    createdAt
+  });
+  await tx.insert(eventOutbox).values({
+    id: createId("outbox"),
+    eventId
+  });
+}
+
+async function nextEventSequence(
+  tx: PromptProxyTransaction,
+  organizationId: string,
+  scopeType: string,
+  scopeId: string
+) {
+  const [row] = await tx
+    .select({
+      sequence: sql<number>`coalesce(max(${events.sequence}), 0) + 1`
+    })
+    .from(events)
+    .where(and(
+      eq(events.organizationId, organizationId),
+      eq(events.scopeType, scopeType),
+      eq(events.scopeId, scopeId)
+    ));
+  return Number(row?.sequence ?? 1);
 }
 
 function parseRoutingConfig(value: unknown): RoutingConfig {

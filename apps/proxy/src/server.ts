@@ -194,24 +194,11 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       return;
     }
     try {
-      const assignment = await persistence.routingConfigAdmin.assignApiKeyRoutingConfig({
+      await persistence.routingConfigAdmin.assignApiKeyRoutingConfig({
         organizationId: identity.organizationId,
+        actorUserId: identity.userId,
         apiKeyId,
         body: request.body
-      });
-      await events.append({
-        tenantId: identity.organizationId,
-        scopeType: "api_key",
-        scopeId: apiKeyId,
-        correlationId: assignment.routingConfigId ?? apiKeyId,
-        actor: { type: "user", id: identity.userId },
-        producer: "prompt-proxy.admin.api-keys",
-        eventType: "routing_config.api_key_assignment_changed",
-        payload: {
-          apiKeyId,
-          previousRoutingConfigId: assignment.previousRoutingConfigId,
-          routingConfigId: assignment.routingConfigId
-        }
       });
       return persistence.adminQueries.apiKeyDetail(apiKeyId);
     } catch (error) {
@@ -287,25 +274,31 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       return;
     }
     try {
-      const activated = await persistence.routingConfigAdmin.activateVersion({
+      await persistence.routingConfigAdmin.activateVersion({
         organizationId: identity.organizationId,
+        actorUserId: identity.userId,
         configId,
         versionId
       });
-      await events.append({
-        tenantId: identity.organizationId,
-        scopeType: "routing_config",
-        scopeId: configId,
-        correlationId: versionId,
-        actor: { type: "user", id: identity.userId },
-        producer: "prompt-proxy.admin.routing-configs",
-        eventType: "routing_config.version_activated",
-        payload: {
-          configId,
-          versionId,
-          version: activated.version,
-          configHash: activated.configHash
-        }
+      return persistence.adminQueries.routingConfigDetail(configId);
+    } catch (error) {
+      if (sendRoutingConfigAdminError(error, reply)) return;
+      throw error;
+    }
+  });
+  app.post("/admin/routing-configs/:configId/archive", async (request, reply) => {
+    const identity = await adminAuth.resolve(request.headers);
+    const params = request.params as { configId?: string };
+    const configId = params.configId;
+    if (!configId || !persistence) {
+      reply.code(404).send({ error: "routing_config_not_found" });
+      return;
+    }
+    try {
+      await persistence.routingConfigAdmin.archiveConfig({
+        organizationId: identity.organizationId,
+        actorUserId: identity.userId,
+        configId
       });
       return persistence.adminQueries.routingConfigDetail(configId);
     } catch (error) {
