@@ -48,6 +48,10 @@ function testEnv(overrides: NodeJS.ProcessEnv = {}) {
     CLASSIFIER_MODEL: "route-classifier-cheap",
     MODEL_COSTS_JSON: "",
     ROUTE_POLICY_SOURCE: "central",
+    ADMIN_DEV_LOGIN_ENABLED: "true",
+    ADMIN_DEV_LOGIN_EMAIL: "local@example.com",
+    ADMIN_DEV_LOGIN_PASSWORD: "dev-password",
+    SEED_USER_ID: "local-user",
     ...overrides
   };
 }
@@ -93,7 +97,7 @@ describe("prompt artifact capture", () => {
     const captureEvent = eventRows.find((event) => event.eventType === "prompt_artifacts.captured");
     const requestDetail = captureEvent
       ? await fetch(`${fixture.proxyUrl}/admin/requests/${captureEvent.scopeId}`, {
-          headers: { authorization: "Bearer proxy-token" }
+          headers: fixture.adminHeaders
         }).then((item) => item.json())
       : undefined;
 
@@ -333,6 +337,33 @@ describe("prompt artifact capture", () => {
     expect(rows.filter((row) => row.storageMode === "raw_text")).toHaveLength(0);
   });
 
+  it("requires browser admin sessions for admin APIs", async () => {
+    const fixture = await captureFixture("org_admin_auth");
+
+    const unauthenticated = await fetch(`${fixture.proxyUrl}/admin/overview`);
+    const me = await fetch(`${fixture.proxyUrl}/api/auth/me`, {
+      headers: fixture.adminHeaders
+    }).then((item) => item.json());
+    const logout = await fetch(`${fixture.proxyUrl}/api/auth/logout`, {
+      method: "POST",
+      headers: fixture.adminHeaders
+    });
+    const afterLogout = await fetch(`${fixture.proxyUrl}/admin/overview`, {
+      headers: fixture.adminHeaders
+    });
+
+    expect(unauthenticated.status).toBe(401);
+    expect(me.user).toEqual(expect.objectContaining({
+      organizationId: "org_admin_auth",
+      userId: "local-user",
+      email: "local@example.com",
+      role: "owner"
+    }));
+    expect(logout.status).toBe(200);
+    expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(afterLogout.status).toBe(401);
+  });
+
   it("serves org-scoped prompt list and detail admin APIs", async () => {
     const fixture = await captureFixture("org_prompt_admin");
 
@@ -353,11 +384,11 @@ describe("prompt artifact capture", () => {
 
     const prompts = await fetch(
       `${fixture.proxyUrl}/admin/prompts?userId=user_prompt_admin&surface=openai-responses&route=hard&model=gpt-5.5&limit=10&offset=0`,
-      { headers: { authorization: "Bearer proxy-token" } }
+      { headers: fixture.adminHeaders }
     ).then((item) => item.json());
     const latestUser = prompts.data.find((item: any) => item.kind === "latest_user_message");
     const detail = await fetch(`${fixture.proxyUrl}/admin/prompts/${latestUser.artifactId}`, {
-      headers: { authorization: "Bearer proxy-token" }
+      headers: fixture.adminHeaders
     }).then((item) => item.json());
 
     await fixture.db.insert(organizations).values({
@@ -384,7 +415,7 @@ describe("prompt artifact capture", () => {
       rawText: "other org prompt"
     });
     const crossOrg = await fetch(`${fixture.proxyUrl}/admin/prompts/artifact_other`, {
-      headers: { authorization: "Bearer proxy-token" }
+      headers: fixture.adminHeaders
     });
 
     expect(response.status).toBe(200);
@@ -465,12 +496,12 @@ describe("prompt artifact capture", () => {
 
     const modelUsage = await fetch(
       `${fixture.proxyUrl}/admin/usage?groupBy=model&start=2026-06-08T00:00:00.000Z&end=2026-06-09T00:00:00.000Z`,
-      { headers: { authorization: "Bearer proxy-token" } }
+      { headers: fixture.adminHeaders }
     ).then((item) => item.json());
     const supportedGroups = await Promise.all(
       ["user", "provider", "model", "route", "surface", "session"].map((groupBy) =>
         fetch(`${fixture.proxyUrl}/admin/usage?groupBy=${groupBy}`, {
-          headers: { authorization: "Bearer proxy-token" }
+          headers: fixture.adminHeaders
         }).then((item) => item.json()))
     );
     const hardGroup = modelUsage.data.find((item: any) => item.key === "claude-hard");
@@ -571,25 +602,25 @@ describe("prompt artifact capture", () => {
     ]);
 
     const usersList = await fetch(`${fixture.proxyUrl}/admin/users`, {
-      headers: { authorization: "Bearer proxy-token" }
+      headers: fixture.adminHeaders
     }).then((item) => item.json());
     const userDetail = await fetch(`${fixture.proxyUrl}/admin/users/user_session_admin`, {
-      headers: { authorization: "Bearer proxy-token" }
+      headers: fixture.adminHeaders
     }).then((item) => item.json());
     const sessionsList = await fetch(`${fixture.proxyUrl}/admin/sessions`, {
-      headers: { authorization: "Bearer proxy-token" }
+      headers: fixture.adminHeaders
     }).then((item) => item.json());
     const sessionDetail = await fetch(`${fixture.proxyUrl}/admin/sessions/session_admin`, {
-      headers: { authorization: "Bearer proxy-token" }
+      headers: fixture.adminHeaders
     }).then((item) => item.json());
     const crossUser = await fetch(`${fixture.proxyUrl}/admin/users/user_other_org`, {
-      headers: { authorization: "Bearer proxy-token" }
+      headers: fixture.adminHeaders
     });
     const crossSession = await fetch(`${fixture.proxyUrl}/admin/sessions/session_other`, {
-      headers: { authorization: "Bearer proxy-token" }
+      headers: fixture.adminHeaders
     });
 
-    expect(usersList.data).toEqual([
+    expect(usersList.data).toEqual(expect.arrayContaining([
       expect.objectContaining({
         userId: "user_session_admin",
         email: "session@example.com",
@@ -602,7 +633,7 @@ describe("prompt artifact capture", () => {
         }),
         cost: expect.objectContaining({ selected: 0.004 })
       })
-    ]);
+    ]));
     expect(userDetail.user).toEqual(expect.objectContaining({
       userId: "user_session_admin",
       requestCount: 2,
@@ -677,6 +708,16 @@ describe("prompt artifact capture", () => {
       slug: organizationId,
       name: organizationId
     });
+    await db.insert(users).values({
+      id: "local-user",
+      email: "local@example.com",
+      name: "Local User"
+    });
+    await db.insert(organizationMembers).values({
+      organizationId,
+      userId: "local-user",
+      role: "owner"
+    });
     await db.insert(organizationSettings).values({
       organizationId,
       promptCaptureMode
@@ -684,9 +725,28 @@ describe("prompt artifact capture", () => {
 
     app = buildServer(config, { persistence });
     const proxyUrl = await listen(app);
-    return { db, proxyUrl };
+    return {
+      db,
+      proxyUrl,
+      adminHeaders: await loginAdmin(proxyUrl)
+    };
   }
 });
+
+async function loginAdmin(proxyUrl: string) {
+  const response = await fetch(`${proxyUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      email: "local@example.com",
+      password: "dev-password"
+    })
+  });
+  expect(response.status).toBe(200);
+  const cookie = response.headers.get("set-cookie")?.split(";")[0];
+  expect(cookie).toBeTruthy();
+  return { cookie: cookie ?? "" };
+}
 
 function usageRequest(
   id: string,

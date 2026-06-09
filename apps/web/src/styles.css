@@ -63,9 +63,110 @@ nav a:hover {
   color: #ffffff;
 }
 
+.logout-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid #3a4842;
+  border-radius: 8px;
+  color: #cbd3ce;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: auto;
+  min-height: 38px;
+}
+
+.logout-button:hover {
+  background: #26342f;
+  color: #ffffff;
+}
+
 .main {
   min-width: 0;
   padding: 30px;
+}
+
+.login-shell {
+  background: #f6f7f4;
+  min-height: 100vh;
+  padding: 30px;
+}
+
+.login-page {
+  align-items: center;
+  display: flex;
+  min-height: calc(100vh - 60px);
+}
+
+.login-panel {
+  background: #ffffff;
+  border: 1px solid #d9dfda;
+  border-radius: 8px;
+  max-width: 420px;
+  padding: 24px;
+  width: 100%;
+}
+
+.login-panel header {
+  margin-bottom: 18px;
+}
+
+.login-panel p {
+  color: #68736e;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+}
+
+.login-panel h1 {
+  font-size: 28px;
+  margin: 0;
+}
+
+.login-panel form {
+  display: grid;
+  gap: 14px;
+}
+
+.login-panel label {
+  color: #4e5a54;
+  display: grid;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 6px;
+}
+
+.login-panel input {
+  border: 1px solid #cfd7d1;
+  border-radius: 8px;
+  color: #17211d;
+  font: inherit;
+  min-height: 40px;
+  padding: 0 10px;
+}
+
+.login-panel button {
+  background: #007765;
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  min-height: 42px;
+}
+
+.login-panel button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.form-error {
+  color: #9d3218;
+  margin: 0;
 }
 
 .page-header {

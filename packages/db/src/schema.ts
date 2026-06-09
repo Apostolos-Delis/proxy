@@ -60,6 +60,30 @@ export const organizationMembers = pgTable(
   ]
 );
 
+export const userSessions = pgTable(
+  "user_sessions",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sessionTokenHash: text("session_token_hash").notNull(),
+    sessionTokenPrefix: text("session_token_prefix").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true })
+  },
+  (table) => [
+    uniqueIndex("user_sessions_token_hash_idx").on(table.sessionTokenHash),
+    index("user_sessions_organization_user_idx").on(table.organizationId, table.userId),
+    index("user_sessions_expires_at_idx").on(table.expiresAt)
+  ]
+);
+
 export const apiKeys = pgTable(
   "api_keys",
   {

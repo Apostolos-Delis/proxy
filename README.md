@@ -18,6 +18,7 @@ pnpm dev:local
 - Runs migrations and seeds baseline organization/user/provider data.
 - Starts the proxy on `http://127.0.0.1:8787`.
 - Starts the web console on `http://127.0.0.1:5173`.
+- Enables local admin login with `ADMIN_DEV_LOGIN_EMAIL` and `ADMIN_DEV_LOGIN_PASSWORD`.
 
 The proxy and web console can also run separately:
 
@@ -44,8 +45,11 @@ Authenticated debug endpoints expose route evidence during local development:
 - `GET /_debug/projections`
 - `GET /_debug/route-quality`
 
-Admin endpoints power the web console:
+Cookie-authenticated admin endpoints power the web console:
 
+- `GET /api/auth/me`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
 - `GET /admin/overview`
 - `GET /admin/requests`
 - `GET /admin/requests/:requestId`

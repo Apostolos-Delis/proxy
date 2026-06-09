@@ -33,6 +33,22 @@ CREATE TABLE organization_members (
 
 CREATE INDEX organization_members_user_id_idx ON organization_members (user_id);
 
+CREATE TABLE user_sessions (
+  id text PRIMARY KEY,
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_token_hash text NOT NULL,
+  session_token_prefix text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  expires_at timestamp with time zone NOT NULL,
+  last_seen_at timestamp with time zone,
+  revoked_at timestamp with time zone
+);
+
+CREATE UNIQUE INDEX user_sessions_token_hash_idx ON user_sessions (session_token_hash);
+CREATE INDEX user_sessions_organization_user_idx ON user_sessions (organization_id, user_id);
+CREATE INDEX user_sessions_expires_at_idx ON user_sessions (expires_at);
+
 CREATE TABLE api_keys (
   id text PRIMARY KEY,
   organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,

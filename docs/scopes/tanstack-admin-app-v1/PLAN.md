@@ -46,11 +46,14 @@ event_outbox
 The existing app exposes:
 
 ```text
+/login
 /                    overview
 /requests            request table
 /requests/:requestId request detail and event timeline
 /settings            settings
 ```
+
+Browser auth is now cookie-based through `/api/auth/login`, `/api/auth/logout`, and `/api/auth/me`.
 
 Important gap: prompt text is not currently stored. `prompt_artifacts` is populated in `hash_only` mode with hashes and metadata. For this test project, V1 should store raw prompt text directly so the product can prove the analytics and replay workflow before adding PII filtering.
 

@@ -501,6 +501,8 @@ Dependencies: PP-026, PP-031.
 
 ### PP-033: Add Browser Auth And Organization Context
 
+Status: implemented in the current MVP.
+
 Move the operations console away from static bearer-token auth.
 
 Acceptance criteria:

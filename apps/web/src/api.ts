@@ -1,5 +1,18 @@
 const apiBase = import.meta.env.VITE_PROMPT_PROXY_API_BASE ?? "http://127.0.0.1:8787";
-const apiToken = import.meta.env.VITE_PROMPT_PROXY_TOKEN ?? "dev-proxy-token";
+
+export type AuthUser = {
+  sessionId: string;
+  organizationId: string;
+  userId: string;
+  email?: string;
+  name?: string;
+  role: string;
+};
+
+export type AuthMe = {
+  user: AuthUser;
+  organizationId: string;
+};
 
 export type Overview = {
   organizationId: string;
@@ -89,10 +102,30 @@ export async function fetchSettings() {
   return fetchJson<Settings>("/admin/settings");
 }
 
-async function fetchJson<T>(path: string): Promise<T> {
+export async function fetchMe() {
+  return fetchJson<AuthMe>("/api/auth/me");
+}
+
+export async function login(email: string, password: string) {
+  return fetchJson<AuthMe>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password })
+  });
+}
+
+export async function logout() {
+  return fetchJson<{ ok: boolean }>("/api/auth/logout", {
+    method: "POST"
+  });
+}
+
+async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${apiBase}${path}`, {
+    ...init,
+    credentials: "include",
     headers: {
-      authorization: `Bearer ${apiToken}`
+      "content-type": "application/json",
+      ...init.headers
     }
   });
   if (!response.ok) {

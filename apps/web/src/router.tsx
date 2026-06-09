@@ -1,4 +1,4 @@
-import { Link, Outlet, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { Link, Outlet, createRootRouteWithContext, createRoute, createRouter, useLocation } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   type ColumnDef,
@@ -7,46 +7,57 @@ import {
   useReactTable
 } from "@tanstack/react-table";
 import { Activity, Coins, Database, Gauge, GitBranch, KeyRound, ListFilter, Settings as SettingsIcon } from "lucide-react";
-import type { ReactNode } from "react";
 
 import {
-  type ProxyEvent,
   type RequestSummary,
   fetchOverview,
   fetchRequestDetail,
   fetchRequests,
   fetchSettings
 } from "./api";
+import { LoginPage, LogoutButton, requireAuth, type RouterContext } from "./auth";
+import { Header, JsonPanel, Metric, PageState, Quality, Timeline, formatMoney } from "./ui";
 
-const rootRoute = createRootRoute({
+const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: AppShell
+});
+
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/login",
+  component: LoginPage
 });
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
+  beforeLoad: requireAuth,
   component: OverviewPage
 });
 
 const requestsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/requests",
+  beforeLoad: requireAuth,
   component: RequestsPage
 });
 
 const requestDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/requests/$requestId",
+  beforeLoad: requireAuth,
   component: RequestDetailPage
 });
 
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
+  beforeLoad: requireAuth,
   component: SettingsPage
 });
 
 const routeTree = rootRoute.addChildren([
+  loginRoute,
   indexRoute,
   requestsRoute,
   requestDetailRoute,
@@ -55,6 +66,7 @@ const routeTree = rootRoute.addChildren([
 
 export const router = createRouter({
   routeTree,
+  context: undefined!,
   scrollRestoration: true
 });
 
@@ -65,6 +77,15 @@ declare module "@tanstack/react-router" {
 }
 
 function AppShell() {
+  const location = useLocation();
+  if (location.pathname === "/login") {
+    return (
+      <main className="login-shell">
+        <Outlet />
+      </main>
+    );
+  }
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -86,6 +107,7 @@ function AppShell() {
             Settings
           </Link>
         </nav>
+        <LogoutButton />
       </aside>
       <main className="main">
         <Outlet />
@@ -256,78 +278,4 @@ function SettingsPage() {
       </div>
     </section>
   );
-}
-
-function Timeline({ events }: { events: ProxyEvent[] }) {
-  return (
-    <div className="panel">
-      <h2>Event Timeline</h2>
-      <div className="timeline">
-        {events.map((event) => (
-          <article key={event.eventId} className="timeline-row">
-            <div>
-              <strong>{event.eventType}</strong>
-              <span>{event.producer}</span>
-            </div>
-            <time>{new Date(event.createdAt).toLocaleString()}</time>
-          </article>
-        ))}
-        {events.length === 0 ? <div className="empty">No events found for this request.</div> : null}
-      </div>
-    </div>
-  );
-}
-
-function JsonPanel({ icon, title, value }: { icon: ReactNode; title: string; value: unknown }) {
-  return (
-    <div className="panel json-panel">
-      <h2>{icon}{title}</h2>
-      <pre>{JSON.stringify(value, null, 2)}</pre>
-    </div>
-  );
-}
-
-function Header({ eyebrow, title }: { eyebrow: string; title: string }) {
-  return (
-    <header className="page-header">
-      <p>{eyebrow}</p>
-      <h1>{title}</h1>
-    </header>
-  );
-}
-
-function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="metric">
-      <div className="metric-icon">{icon}</div>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function Quality({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="quality">
-      <span>{label}</span>
-      <strong>{value.toLocaleString()}</strong>
-    </div>
-  );
-}
-
-function PageState({ title, label }: { title: string; label: string }) {
-  return (
-    <section>
-      <Header eyebrow="Prompt Proxy" title={title} />
-      <div className="empty">{label}</div>
-    </section>
-  );
-}
-
-function formatMoney(value: number) {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 4
-  }).format(value);
 }

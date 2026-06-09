@@ -7,6 +7,7 @@ import {
 import type { ModelCatalog } from "../catalog.js";
 import type { AppConfig } from "../config.js";
 import { AdminQueryService, type AdminQueryConfig } from "./adminQueries.js";
+import { AdminSessionStore } from "./adminSessions.js";
 import { DatabaseEventSink } from "./eventSink.js";
 import { ApiKeyIdentityStore } from "./identity.js";
 import { PromptArtifactStore } from "./promptArtifacts.js";
@@ -25,6 +26,7 @@ export function createDatabasePersistence(
   const transactional = createTransactionalDatabase(db);
   return {
     apiKeys: new ApiKeyIdentityStore(db),
+    adminSessions: new AdminSessionStore(db),
     eventSink: new DatabaseEventSink(transactional, catalog, useAdvisoryLocks),
     promptArtifacts: new PromptArtifactStore(transactional, db),
     requestStates: new PersistentRequestStateStore(transactional, db, config.defaultOrganizationId),

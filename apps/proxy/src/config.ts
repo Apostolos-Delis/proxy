@@ -94,6 +94,12 @@ const configSchema = z.object({
   DATABASE_URL: z.string().optional(),
   DEFAULT_ORGANIZATION_ID: z.string().min(1).default("local"),
   ALLOW_DEV_PROXY_TOKEN_FALLBACK: booleanEnvSchema,
+  ADMIN_DEV_LOGIN_ENABLED: booleanEnvSchema,
+  ADMIN_DEV_LOGIN_EMAIL: z.string().email().default("local@example.com"),
+  ADMIN_DEV_LOGIN_PASSWORD: z.string().min(1).default("dev-password"),
+  ADMIN_SESSION_COOKIE_NAME: z.string().min(1).default("prompt_proxy_session"),
+  ADMIN_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 8),
+  SEED_USER_ID: z.string().min(1).default("local-user"),
   ADMIN_CORS_ORIGIN: z.string().default("http://127.0.0.1:5173,http://localhost:5173"),
   LOG_LEVEL: z.string().default("info")
 });
@@ -137,6 +143,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     databaseUrl: parsed.DATABASE_URL,
     defaultOrganizationId: parsed.DEFAULT_ORGANIZATION_ID,
     allowDevProxyTokenFallback: parsed.ALLOW_DEV_PROXY_TOKEN_FALLBACK || !parsed.DATABASE_URL,
+    adminDevLoginEnabled: parsed.ADMIN_DEV_LOGIN_ENABLED,
+    adminDevLoginEmail: parsed.ADMIN_DEV_LOGIN_EMAIL,
+    adminDevLoginPassword: parsed.ADMIN_DEV_LOGIN_PASSWORD,
+    adminSessionCookieName: parsed.ADMIN_SESSION_COOKIE_NAME,
+    adminSessionTtlSeconds: parsed.ADMIN_SESSION_TTL_SECONDS,
+    seedUserId: parsed.SEED_USER_ID,
     adminCorsOrigins: parsed.ADMIN_CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean),
     logLevel: parsed.LOG_LEVEL
   };
