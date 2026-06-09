@@ -4,6 +4,7 @@ import {
   routeDecisions,
   usageLedger
 } from "@prompt-proxy/db";
+import { ROUTE_NAMES, type RoutingConfig } from "@prompt-proxy/schema";
 
 import type { JsonObject } from "../types.js";
 
@@ -45,6 +46,20 @@ export function routingConfigSummary(row: {
     version: row.routingConfigVersion,
     configHash: row.routingConfigHash
   };
+}
+
+export function routeMatrixSummary(config: RoutingConfig) {
+  return ROUTE_NAMES.map((route) => {
+    const routeConfig = config.routes[route];
+    return {
+      route,
+      description: routeConfig.description ?? null,
+      openaiModel: routeConfig.openai?.model ?? null,
+      openaiEffort: routeConfig.openai?.reasoning?.effort ?? null,
+      anthropicModel: routeConfig.anthropic?.model ?? null,
+      anthropicEffort: routeConfig.anthropic?.output_config?.effort ?? null
+    };
+  });
 }
 
 export function providerAttemptSummary(row: ProviderAttemptRow) {

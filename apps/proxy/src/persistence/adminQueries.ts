@@ -22,6 +22,7 @@ import type { JsonObject, RouteName } from "../types.js";
 import {
   eventSummary,
   providerAttemptSummary,
+  routeMatrixSummary,
   routeDecisionSummary,
   routingConfigSummary,
   usageLedgerSummary
@@ -675,6 +676,7 @@ function routingConfigListSummary(
     status: row.status,
     activeVersionId: row.activeVersionId ?? null,
     activeVersion: activeVersion ? routingConfigVersionSummary(activeVersion, true) : null,
+    routeMatrix: activeVersion ? routeMatrixSummary(activeVersion.config) : [],
     assignedApiKeyCount,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString()

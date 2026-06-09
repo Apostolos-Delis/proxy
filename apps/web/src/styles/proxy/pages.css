@@ -349,6 +349,39 @@
   background: rgba(240, 171, 252, 0.09);
 }
 
+.routing-config-meta {
+  margin-top: 7px;
+}
+
+.routing-configs-card {
+  overflow-x: auto;
+}
+
+.route-matrix-preview {
+  display: grid;
+  gap: 7px;
+  min-width: 360px;
+}
+
+.route-matrix-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+}
+
+.route-matrix-row .faint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routing-configs-empty {
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+
 .billing-kpis {
   display: grid;
   grid-template-columns: minmax(340px, 1.3fr) minmax(260px, 0.8fr) minmax(260px, 0.8fr);
