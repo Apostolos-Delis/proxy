@@ -4,6 +4,8 @@ import { AddressInfo } from "node:net";
 import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
 import { createSmokePersistence } from "./smoke-persistence.js";
+import type { RoutingConfig } from "@prompt-proxy/schema";
+import { assertPersistedRoutingDecision } from "./smoke-routing-assertions.js";
 
 type Recorded = {
   path: string;
@@ -23,7 +25,11 @@ const smokeEnv = {
   OPENAI_API_KEY: "openai-upstream-key",
   ANTHROPIC_API_KEY: "anthropic-upstream-key",
   OPENAI_BASE_URL: openai.url,
+  OPENAI_FAST_MODEL: "gpt-5.4-mini",
+  OPENAI_HARD_MODEL: "gpt-5.5",
   ANTHROPIC_BASE_URL: anthropic.url,
+  ANTHROPIC_FAST_MODEL: "claude-haiku-4-5",
+  ANTHROPIC_HARD_MODEL: "claude-sonnet-4-6",
   CLASSIFIER_PROVIDER: "openai",
   CLASSIFIER_MODEL: "route-classifier-cheap",
   LOG_LEVEL: "error"
@@ -31,6 +37,7 @@ const smokeEnv = {
 const config = loadConfig(smokeEnv);
 const smokePersistence = await createSmokePersistence(config, smokeEnv);
 const app = buildServer(config, { persistence: smokePersistence.persistence });
+const defaultRoutingConfigId = `${config.defaultOrganizationId}:routing-config:default`;
 
 try {
   const proxyUrl = await app.listen({ port: 0, host: "127.0.0.1" }).then(() => {
@@ -38,59 +45,187 @@ try {
     return `http://127.0.0.1:${address.port}`;
   });
 
-  const codex = await fetch(`${proxyUrl}/v1/responses`, {
-    method: "POST",
-    headers: {
-      authorization: "Bearer proxy-token",
-      "content-type": "application/json",
-      "x-codex-turn-state": "smoke-codex-turn"
-    },
-    body: JSON.stringify({
-      model: "router-auto",
-      input: "fix the failing auth test and find root cause",
-      tools: [{ type: "function", name: "shell" }],
-      stream: true
-    })
-  });
-  await codex.text();
-
-  const claude = await fetch(`${proxyUrl}/v1/messages`, {
-    method: "POST",
-    headers: {
-      authorization: "Bearer proxy-token",
-      "content-type": "application/json",
-      "anthropic-version": "2023-06-01",
-      "x-claude-code-session-id": "smoke-claude-session"
-    },
-    body: JSON.stringify({
-      model: "claude-router-auto",
-      messages: [{ role: "user", content: "debug this flaky auth regression" }],
-      tools: [{ name: "bash", input_schema: { type: "object" } }],
-      stream: true,
-      max_tokens: 2048
-    })
-  });
-  await claude.text();
-
-  const codexProviderCall = openaiRecords.find((record) => record.body.model === "gpt-5.5");
-  const claudeProviderCall = anthropicRecords.find(
-    (record) => record.body.model === config.anthropicHardModel
+  await drainOk(
+    await codexRequest(proxyUrl, "smoke-codex-default", "fix the failing auth test and find root cause"),
+    "Codex default request was rejected"
+  );
+  await drainOk(
+    await claudeRequest(proxyUrl, "smoke-claude-default", "debug this flaky auth regression"),
+    "Claude default request was rejected"
   );
 
-  if (!codex.ok || !codexProviderCall) {
-    throw new Error("Codex/OpenAI Responses smoke failed.");
-  }
-  if (!claude.ok || !claudeProviderCall) {
-    throw new Error("Claude Code/Anthropic Messages smoke failed.");
-  }
+  assertClassifierCalls(2, openaiRecords);
+  assertProviderCall(openaiRecords, config.openaiHardModel, "Codex default");
+  assertProviderCall(anthropicRecords, config.anthropicHardModel, "Claude default");
+  await assertPersistedRoutingDecision(smokePersistence.persistence, {
+    label: "Codex default",
+    surface: "openai-responses",
+    finalRoute: "hard",
+    selectedModel: config.openaiHardModel,
+    routingConfigId: defaultRoutingConfigId
+  });
+  await assertPersistedRoutingDecision(smokePersistence.persistence, {
+    label: "Claude default",
+    surface: "anthropic-messages",
+    finalRoute: "hard",
+    selectedModel: config.anthropicHardModel,
+    routingConfigId: defaultRoutingConfigId
+  });
 
-  console.log("codex_route=hard model=gpt-5.5");
-  console.log(`claude_route=hard model=${config.anthropicHardModel}`);
+  const assigned = await assignSmokeRoutingConfig();
+
+  await drainOk(
+    await codexRequest(proxyUrl, "smoke-codex-assigned", "fix the failing auth test and find root cause after reassignment"),
+    "Codex reassigned request was rejected"
+  );
+  await drainOk(
+    await claudeRequest(proxyUrl, "smoke-claude-assigned", "debug this flaky auth regression after reassignment"),
+    "Claude reassigned request was rejected"
+  );
+
+  assertClassifierCalls(4, openaiRecords);
+  assertProviderCall(openaiRecords, config.openaiFastModel, "Codex reassigned");
+  assertProviderCall(anthropicRecords, config.anthropicFastModel, "Claude reassigned");
+  await assertPersistedRoutingDecision(smokePersistence.persistence, {
+    label: "Codex reassigned",
+    surface: "openai-responses",
+    finalRoute: "hard",
+    selectedModel: config.openaiFastModel,
+    routingConfigId: assigned.configId
+  });
+  await assertPersistedRoutingDecision(smokePersistence.persistence, {
+    label: "Claude reassigned",
+    surface: "anthropic-messages",
+    finalRoute: "hard",
+    selectedModel: config.anthropicFastModel,
+    routingConfigId: assigned.configId
+  });
+
+  console.log(`codex_default_route=hard model=${config.openaiHardModel} config=${defaultRoutingConfigId}`);
+  console.log(`claude_default_route=hard model=${config.anthropicHardModel} config=${defaultRoutingConfigId}`);
+  console.log(`codex_reassigned_route=hard model=${config.openaiFastModel} config=${assigned.configId}`);
+  console.log(`claude_reassigned_route=hard model=${config.anthropicFastModel} config=${assigned.configId}`);
 } finally {
   await app.close();
   await smokePersistence.close();
   await openai.close();
   await anthropic.close();
+}
+
+function codexRequest(proxyUrl: string, sessionId: string, input: string) {
+  return fetch(`${proxyUrl}/v1/responses`, {
+    method: "POST",
+    headers: {
+      authorization: "Bearer proxy-token",
+      "content-type": "application/json",
+      "x-codex-session-id": sessionId
+    },
+    body: JSON.stringify({
+      model: "router-auto",
+      input,
+      tools: [{ type: "function", name: "shell" }],
+      stream: true
+    })
+  });
+}
+
+function claudeRequest(proxyUrl: string, sessionId: string, content: string) {
+  return fetch(`${proxyUrl}/v1/messages`, {
+    method: "POST",
+    headers: {
+      authorization: "Bearer proxy-token",
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01",
+      "x-claude-code-session-id": sessionId
+    },
+    body: JSON.stringify({
+      model: "claude-router-auto",
+      messages: [{ role: "user", content }],
+      tools: [{ name: "bash", input_schema: { type: "object" } }],
+      stream: true,
+      max_tokens: 2048
+    })
+  });
+}
+
+async function drainOk(response: Response, message: string) {
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`${failurePhase(response.status, body)} failed: ${message}. status=${response.status} body=${body}`);
+  }
+}
+
+function failurePhase(status: number, body: string) {
+  if (status === 401 || status === 403) return "auth";
+  if (/routing_config|config resolution/i.test(body)) return "config resolution";
+  if (/classif/i.test(body)) return "classifier";
+  if (/provider|upstream|fetch failed|ECONNREFUSED|ETIMEDOUT/i.test(body)) return "provider forwarding";
+  return "proxy request";
+}
+
+async function assignSmokeRoutingConfig() {
+  const resolved = await smokePersistence.persistence.routingConfigs.resolve({
+    organizationId: config.defaultOrganizationId,
+    routingConfigId: defaultRoutingConfigId
+  });
+  const assignedConfig = structuredClone(resolved.config) as RoutingConfig;
+  assignedConfig.displayName = "Smoke reassigned coding router";
+  assignedConfig.description = "Smoke-only routing config that maps hard traffic to the fast model tier.";
+
+  const hard = assignedConfig.routes.hard;
+  if (!hard.openai || !hard.anthropic) {
+    throw new Error("config resolution failed: seeded hard route is missing provider settings");
+  }
+  hard.openai = {
+    ...hard.openai,
+    model: config.openaiFastModel,
+    reasoning: { effort: "low" },
+    text: { verbosity: "low" }
+  };
+  hard.anthropic = {
+    ...hard.anthropic,
+    model: config.anthropicFastModel,
+    thinking: { type: "disabled" },
+    output_config: { effort: "low" }
+  };
+
+  const created = await smokePersistence.persistence.routingConfigAdmin.createConfig({
+    organizationId: config.defaultOrganizationId,
+    actorUserId: config.seedUserId,
+    body: {
+      name: "Smoke reassigned routing config",
+      slug: "smoke-reassigned",
+      description: "Used by smoke tests to prove API-key routing assignment changes are honored.",
+      config: assignedConfig
+    }
+  });
+  await smokePersistence.persistence.routingConfigAdmin.assignApiKeyRoutingConfig({
+    organizationId: config.defaultOrganizationId,
+    actorUserId: config.seedUserId,
+    apiKeyId: `${config.defaultOrganizationId}:api-key:default`,
+    body: {
+      routingConfigId: created.configId
+    }
+  });
+  return created;
+}
+
+function assertClassifierCalls(expected: number, records: Recorded[]) {
+  const actual = records.filter((record) => record.body.model === config.classifierModel).length;
+  if (actual < expected) {
+    throw new Error(
+      `classifier failed: expected at least ${expected} classifier calls, saw ${actual}. records=${JSON.stringify(records)}`
+    );
+  }
+}
+
+function assertProviderCall(records: Recorded[], model: string, label: string) {
+  const found = records.some((record) => record.body.model === model);
+  if (!found) {
+    throw new Error(
+      `provider forwarding failed: ${label} did not send model=${model}. records=${JSON.stringify(records)}`
+    );
+  }
 }
 
 async function mockOpenAI(records: Recorded[]) {
