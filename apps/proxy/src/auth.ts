@@ -8,6 +8,7 @@ export type RequestIdentity = {
   userId?: string;
   apiKeyId?: string;
   scopes: string[];
+  routingConfigId: string | null;
   source: "api_key" | "dev_proxy_token";
 };
 
@@ -30,6 +31,7 @@ export class ProxyAuthService {
       return {
         organizationId: this.config.defaultOrganizationId,
         scopes: ["proxy"],
+        routingConfigId: null,
         source: "dev_proxy_token"
       };
     }
@@ -75,6 +77,7 @@ export function requestReceivedPayload(
     harnessTeamId: rawContext.teamId ?? null,
     authSource: identity.source,
     apiKeyId: identity.apiKeyId ?? null,
+    routingConfigId: identity.routingConfigId,
     requestedModel: context.requestedModel,
     inputHash: context.inputHash,
     inputChars: context.inputChars
@@ -87,6 +90,7 @@ function apiKeyIdentity(identity: ResolvedApiKeyIdentity): RequestIdentity {
     userId: identity.userId,
     apiKeyId: identity.apiKeyId,
     scopes: identity.scopes,
+    routingConfigId: identity.routingConfigId,
     source: "api_key"
   };
 }

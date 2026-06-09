@@ -157,6 +157,11 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       data: [...projections.usage(events.listEvents()).requests].reverse()
     };
   });
+  app.get("/admin/api-keys", async (request) => {
+    await adminAuth.resolve(request.headers);
+    if (!persistence) throw notFound("api_keys_not_found");
+    return persistence.adminQueries.apiKeys();
+  });
   app.get("/admin/requests/:requestId", async (request) => {
     await adminAuth.resolve(request.headers);
     const params = request.params as { requestId?: string };

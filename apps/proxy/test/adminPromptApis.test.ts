@@ -271,6 +271,7 @@ describe("admin prompt APIs", () => {
     expect(received?.payload).toEqual(expect.objectContaining({
       authSource: "api_key",
       apiKeyId: "api_key_owned",
+      routingConfigId: null,
       userId: "api_owner",
       teamId: null,
       harnessUserId: "spoofed_user",
@@ -309,10 +310,78 @@ describe("admin prompt APIs", () => {
     const promptForSeedUser = await fetch(`${fixture.proxyUrl}/admin/prompts?userId=local-user`, {
       headers: fixture.adminHeaders
     }).then((item) => item.json());
+    const eventRows = await fixture.db.select().from(events);
+    const received = eventRows.find((event) => event.eventType === "proxy.request_received");
 
     expect(response.status).toBe(200);
     expect(promptForHarnessUser.data).toHaveLength(1);
     expect(promptForSeedUser.data).toHaveLength(0);
+    expect(received?.payload).toEqual(expect.objectContaining({
+      authSource: "api_key",
+      apiKeyId: "org_seeded_harness_identity:api-key:default",
+      routingConfigId: "org_seeded_harness_identity:routing-config:default",
+      userId: "codex_seeded_user",
+      teamId: "codex_seeded_team"
+    }));
+  });
+
+  it("lists API key routing assignments without key hashes", async () => {
+    const fixture = await setup("org_admin_api_keys");
+    await seedDatabase(fixture.db, seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_admin_api_keys",
+      SEED_USER_ID: "local-user",
+      PROMPT_PROXY_TOKEN: "proxy-token"
+    }));
+
+    const response = await fetch(`${fixture.proxyUrl}/admin/api-keys`, {
+      headers: fixture.adminHeaders
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data).toEqual([
+      expect.objectContaining({
+        id: "org_admin_api_keys:api-key:default",
+        organizationId: "org_admin_api_keys",
+        userId: null,
+        name: "Default local API key",
+        scopes: ["proxy", "admin", "harness_identity"],
+        routingConfigId: "org_admin_api_keys:routing-config:default",
+        routingConfig: expect.objectContaining({
+          id: "org_admin_api_keys:routing-config:default",
+          name: "Default routing config",
+          status: "active"
+        })
+      })
+    ]);
+    expect(body.data[0]).not.toHaveProperty("keyHash");
+    expect(body.data[0]).not.toHaveProperty("secret");
+  });
+
+  it("lists unassigned API keys with explicit null routing assignment", async () => {
+    const fixture = await setup("org_unassigned_admin_api_keys");
+    await fixture.db.insert(apiKeys).values({
+      id: "api_key_unassigned",
+      organizationId: "org_unassigned_admin_api_keys",
+      keyHash: hashApiKey("unassigned-token"),
+      name: "Unassigned key",
+      scopes: ["proxy"]
+    });
+
+    const response = await fetch(`${fixture.proxyUrl}/admin/api-keys`, {
+      headers: fixture.adminHeaders
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data).toEqual([
+      expect.objectContaining({
+        id: "api_key_unassigned",
+        routingConfigId: null,
+        routingConfig: null
+      })
+    ]);
+    expect(body.data[0]).not.toHaveProperty("keyHash");
   });
 
   async function setup(organizationId: string) {

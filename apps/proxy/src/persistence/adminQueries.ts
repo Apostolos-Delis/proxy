@@ -2,12 +2,14 @@ import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 
 import {
   agentSessions,
+  apiKeys,
   events,
   organizationMembers,
   promptArtifacts,
   providerAttempts,
   requests,
   routeDecisions,
+  routingConfigs,
   users as usersTable,
   usageLedger,
   type PromptProxyDbSession
@@ -100,6 +102,35 @@ export class AdminQueryService {
   async requests() {
     return {
       data: await this.summarizeRequests(await this.requestRows(200))
+    };
+  }
+
+  async apiKeys() {
+    const rows = await this.db
+      .select({
+        id: apiKeys.id,
+        organizationId: apiKeys.organizationId,
+        userId: apiKeys.userId,
+        name: apiKeys.name,
+        scopes: apiKeys.scopes,
+        routingConfigId: apiKeys.routingConfigId,
+        createdAt: apiKeys.createdAt,
+        expiresAt: apiKeys.expiresAt,
+        revokedAt: apiKeys.revokedAt,
+        lastUsedAt: apiKeys.lastUsedAt,
+        routingConfigName: routingConfigs.name,
+        routingConfigStatus: routingConfigs.status
+      })
+      .from(apiKeys)
+      .leftJoin(routingConfigs, and(
+        eq(routingConfigs.organizationId, apiKeys.organizationId),
+        eq(routingConfigs.id, apiKeys.routingConfigId)
+      ))
+      .where(eq(apiKeys.organizationId, this.config.defaultOrganizationId))
+      .orderBy(desc(apiKeys.createdAt));
+
+    return {
+      data: rows.map(apiKeySummary)
     };
   }
 
@@ -526,6 +557,20 @@ type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
 type UsageLedgerRow = typeof usageLedger.$inferSelect;
 type SessionRow = typeof agentSessions.$inferSelect;
 type UserRow = typeof usersTable.$inferSelect;
+type ApiKeySummaryRow = {
+  id: string;
+  organizationId: string;
+  userId: string | null;
+  name: string;
+  scopes: string[];
+  routingConfigId: string | null;
+  createdAt: Date;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+  lastUsedAt: Date | null;
+  routingConfigName: string | null;
+  routingConfigStatus: string | null;
+};
 type PromptRow = {
   artifact: typeof promptArtifacts.$inferSelect;
   request: typeof requests.$inferSelect;
@@ -549,6 +594,28 @@ function promptConditions(organizationId: string, filters: PromptListFilters) {
   const end = dateValue(filters.end);
   if (end) conditions.push(lte(promptArtifacts.createdAt, end));
   return conditions;
+}
+
+function apiKeySummary(row: ApiKeySummaryRow) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    userId: row.userId ?? null,
+    name: row.name,
+    scopes: row.scopes,
+    routingConfigId: row.routingConfigId ?? null,
+    routingConfig: row.routingConfigId
+      ? {
+          id: row.routingConfigId,
+          name: row.routingConfigName ?? null,
+          status: row.routingConfigStatus ?? null
+        }
+      : null,
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: row.expiresAt?.toISOString() ?? null,
+    revokedAt: row.revokedAt?.toISOString() ?? null,
+    lastUsedAt: row.lastUsedAt?.toISOString() ?? null
+  };
 }
 
 function promptSummary(row: PromptRow) {

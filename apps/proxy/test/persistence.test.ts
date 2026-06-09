@@ -15,6 +15,7 @@ import {
   providerAttempts,
   requests,
   routeDecisions,
+  routingConfigs,
   usageLedger
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
@@ -274,10 +275,43 @@ describe("postgres persistence", () => {
       apiKeyId: "api_key_1",
       organizationId: "org_api_key",
       userId: undefined,
-      scopes: ["proxy"]
+      scopes: ["proxy"],
+      routingConfigId: null
     });
     expect(rows[0]?.lastUsedAt?.toISOString()).toBe("2026-06-08T00:00:00.000Z");
     await expect(fixture.persistence.apiKeys.resolve("wrong-token")).resolves.toBeUndefined();
+  });
+
+  it("resolves api key routing config assignments", async () => {
+    const fixture = await persistenceFixture("org_assigned_api_key");
+    await fixture.db.insert(organizations).values({
+      id: "org_assigned_api_key",
+      slug: "org_assigned_api_key",
+      name: "org_assigned_api_key"
+    }).onConflictDoNothing();
+    await fixture.db.insert(routingConfigs).values({
+      id: "routing_config_assigned",
+      organizationId: "org_assigned_api_key",
+      name: "Assigned config",
+      slug: "assigned",
+      status: "active"
+    });
+    await fixture.db.insert(apiKeys).values({
+      id: "api_key_assigned",
+      organizationId: "org_assigned_api_key",
+      keyHash: hashApiKey("assigned-token"),
+      name: "Assigned Proxy Key",
+      routingConfigId: "routing_config_assigned",
+      scopes: ["proxy"]
+    });
+
+    const identity = await fixture.persistence.apiKeys.resolve("assigned-token");
+
+    expect(identity).toEqual(expect.objectContaining({
+      apiKeyId: "api_key_assigned",
+      organizationId: "org_assigned_api_key",
+      routingConfigId: "routing_config_assigned"
+    }));
   });
 
   it("resolves the seeded local proxy token through the API-key identity store", async () => {
@@ -294,7 +328,8 @@ describe("postgres persistence", () => {
       apiKeyId: "org_seed_identity:api-key:default",
       organizationId: "org_seed_identity",
       userId: undefined,
-      scopes: ["proxy", "admin", "harness_identity"]
+      scopes: ["proxy", "admin", "harness_identity"],
+      routingConfigId: "org_seed_identity:routing-config:default"
     }));
   });
 
