@@ -21,6 +21,13 @@ describe("database migrations", () => {
         and column_name in ('raw_text', 'token_estimate', 'source_role', 'source_index')
       order by column_name
     `);
+    const sessionColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'user_sessions'
+        and column_name in ('organization_id', 'user_id', 'session_token_hash', 'expires_at', 'revoked_at')
+      order by column_name
+    `);
     await client.close();
 
     expect(result.rows[0]).toEqual({ count: 0 });
@@ -29,6 +36,13 @@ describe("database migrations", () => {
       "source_index",
       "source_role",
       "token_estimate"
+    ]);
+    expect(sessionColumns.rows.map((row) => row.column_name)).toEqual([
+      "expires_at",
+      "organization_id",
+      "revoked_at",
+      "session_token_hash",
+      "user_id"
     ]);
   });
 });

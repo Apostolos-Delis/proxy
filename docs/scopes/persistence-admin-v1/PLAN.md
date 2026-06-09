@@ -49,6 +49,7 @@ route_decisions
 provider_attempts
 usage_ledger
 prompt_artifacts
+user_sessions
 events
 event_outbox
 projection_cursors
@@ -72,6 +73,10 @@ Routes:
 The web app currently reads the proxy admin endpoints:
 
 ```text
+GET /api/auth/me
+POST /api/auth/login
+POST /api/auth/logout
+
 GET /admin/overview
 GET /admin/requests
 GET /admin/requests/:requestId
@@ -85,7 +90,9 @@ DATABASE_URL=postgres://prompt_proxy:prompt_proxy@localhost:5432/prompt_proxy
 DEFAULT_ORGANIZATION_ID=local
 ADMIN_CORS_ORIGIN=http://127.0.0.1:5173,http://localhost:5173
 VITE_PROMPT_PROXY_API_BASE=http://127.0.0.1:8787
-VITE_PROMPT_PROXY_TOKEN=dev-proxy-token
+ADMIN_DEV_LOGIN_ENABLED=true
+ADMIN_DEV_LOGIN_EMAIL=local@example.com
+ADMIN_DEV_LOGIN_PASSWORD=dev-password
 ```
 
 ## Follow-Up Tickets

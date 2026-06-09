@@ -11,7 +11,7 @@ const queryClient = new QueryClient();
 createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <RouterProvider router={router} context={{ queryClient }} />
     </QueryClientProvider>
   </React.StrictMode>
 );

@@ -1,6 +1,7 @@
 import cors from "@fastify/cors";
 import Fastify, { type FastifyReply } from "fastify";
 
+import { AdminAuthService } from "./adminAuth.js";
 import { anthropicMessagesSurface, openAIResponsesSurface } from "./adapters.js";
 import {
   actorForIdentity,
@@ -44,6 +45,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     config.defaultOrganizationId
   );
   const auth = new ProxyAuthService(config, persistence?.apiKeys);
+  const adminAuth = new AdminAuthService(config, persistence?.adminSessions);
   const attempts = new ProviderAttemptStore();
   const requestStates = persistence?.requestStates ?? new RequestStateStore();
   const budget = new BudgetService(config);
@@ -64,6 +66,29 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   wsProxy.register(app.server);
 
   app.get("/healthz", async () => ({ status: "ok" }));
+
+  app.post("/api/auth/login", async (request, reply) => {
+    const session = await adminAuth.login(request.body);
+    reply.header("set-cookie", adminAuth.sessionCookie(session.token, session.expiresAt));
+    return {
+      user: session.identity,
+      organizationId: session.identity.organizationId
+    };
+  });
+
+  app.post("/api/auth/logout", async (request, reply) => {
+    await adminAuth.logout(request.headers);
+    reply.header("set-cookie", adminAuth.clearCookie());
+    return { ok: true };
+  });
+
+  app.get("/api/auth/me", async (request) => {
+    const identity = await adminAuth.resolve(request.headers);
+    return {
+      user: identity,
+      organizationId: identity.organizationId
+    };
+  });
 
   app.get("/v1/models", async () => ({
     object: "list",
@@ -106,7 +131,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     return projections.routeQuality(events.listEvents());
   });
   app.get("/admin/overview", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
+    await adminAuth.resolve(request.headers);
     if (persistence) return persistence.adminQueries.overview();
     const allEvents = events.listEvents();
     const usage = projections.usage(allEvents);
@@ -125,14 +150,14 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     };
   });
   app.get("/admin/requests", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
+    await adminAuth.resolve(request.headers);
     if (persistence) return persistence.adminQueries.requests();
     return {
       data: [...projections.usage(events.listEvents()).requests].reverse()
     };
   });
   app.get("/admin/requests/:requestId", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
+    await adminAuth.resolve(request.headers);
     const params = request.params as { requestId?: string };
     const requestId = params.requestId;
     if (!requestId) return { request: null, events: [] };
@@ -145,12 +170,12 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     };
   });
   app.get("/admin/prompts", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
+    await adminAuth.resolve(request.headers);
     if (persistence) return persistence.adminQueries.prompts(promptFilters(request.query));
     return { data: [], pagination: { limit: 50, offset: 0, count: 0 } };
   });
   app.get("/admin/prompts/:artifactId", async (request, reply) => {
-    requireAuth(request.headers, config.proxyToken);
+    await adminAuth.resolve(request.headers);
     const params = request.params as { artifactId?: string };
     const artifactId = params.artifactId;
     if (!artifactId || !persistence) {
@@ -165,7 +190,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     return detail;
   });
   app.get("/admin/usage", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
+    await adminAuth.resolve(request.headers);
     if (persistence) return persistence.adminQueries.usage(usageFilters(request.query));
     return {
       groupBy: "route",
@@ -189,12 +214,12 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     };
   });
   app.get("/admin/users", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
+    await adminAuth.resolve(request.headers);
     if (persistence) return persistence.adminQueries.users();
     return { data: [] };
   });
   app.get("/admin/users/:userId", async (request, reply) => {
-    requireAuth(request.headers, config.proxyToken);
+    await adminAuth.resolve(request.headers);
     const params = request.params as { userId?: string };
     const userId = params.userId;
     if (!userId || !persistence) {
@@ -209,12 +234,12 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     return detail;
   });
   app.get("/admin/sessions", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
+    await adminAuth.resolve(request.headers);
     if (persistence) return persistence.adminQueries.sessions();
     return { data: [] };
   });
   app.get("/admin/sessions/:sessionId", async (request, reply) => {
-    requireAuth(request.headers, config.proxyToken);
+    await adminAuth.resolve(request.headers);
     const params = request.params as { sessionId?: string };
     const sessionId = params.sessionId;
     if (!sessionId || !persistence) {
@@ -229,7 +254,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     return detail;
   });
   app.get("/admin/settings", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
+    await adminAuth.resolve(request.headers);
     return {
       organizationId: config.defaultOrganizationId,
       databaseEnabled: Boolean(config.databaseUrl),
