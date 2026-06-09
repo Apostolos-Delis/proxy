@@ -1,5 +1,5 @@
 import type { ModelCatalog } from "../catalog.js";
-import type { JsonObject } from "../types.js";
+import type { JsonObject, RoutingConfigSnapshot } from "../types.js";
 import { isRecord } from "../util.js";
 
 export type NormalizedUsage = {
@@ -89,4 +89,21 @@ export function surfaceValue(value: unknown) {
 export function providerValue(value: unknown) {
   if (value === "openai" || value === "anthropic") return value;
   return undefined;
+}
+
+export function routingConfigSnapshotValue(value: unknown): RoutingConfigSnapshot | undefined {
+  const record = recordValue(value);
+  const configId = stringValue(record?.configId);
+  const configName = stringValue(record?.configName);
+  const versionId = stringValue(record?.versionId);
+  const version = numberValue(record?.version);
+  const configHash = stringValue(record?.configHash);
+  if (!configId || !configName || !versionId || version === undefined || !configHash) return undefined;
+  return {
+    configId,
+    configName,
+    versionId,
+    version,
+    configHash
+  };
 }

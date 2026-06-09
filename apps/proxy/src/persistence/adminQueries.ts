@@ -22,6 +22,7 @@ import {
   eventSummary,
   providerAttemptSummary,
   routeDecisionSummary,
+  routingConfigSummary,
   usageLedgerSummary
 } from "./adminSerializers.js";
 import { routeValue, surfaceValue, usageCostMicros } from "./values.js";
@@ -637,6 +638,7 @@ function promptSummary(row: PromptRow) {
     finalRoute: row.decision?.finalRoute ?? undefined,
     provider: row.decision?.selectedProvider ?? row.usage?.provider ?? undefined,
     selectedModel: row.decision?.selectedModel ?? undefined,
+    routingConfig: routingConfigSummary(row.decision ?? row.request),
     cost: {
       selected: (row.usage?.totalCostMicros ?? 0) / 1_000_000
     },
@@ -715,6 +717,7 @@ function requestSummary(row: {
     finalRoute: row.decision?.finalRoute ?? undefined,
     provider: row.decision?.selectedProvider ?? row.attempt?.provider ?? undefined,
     selectedModel,
+    routingConfig: routingConfigSummary(row.decision ?? row.request),
     terminalStatus: row.attempt?.terminalStatus ?? row.request.status,
     inputChars: row.request.inputChars,
     usage,

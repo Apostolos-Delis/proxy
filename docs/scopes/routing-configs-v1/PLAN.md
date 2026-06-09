@@ -158,6 +158,7 @@ Add routing config snapshot columns:
 ```text
 routing_config_id text
 routing_config_version_id text
+routing_config_version integer
 routing_config_hash text
 ```
 
@@ -168,6 +169,7 @@ Add the same snapshot columns:
 ```text
 routing_config_id text
 routing_config_version_id text
+routing_config_version integer
 routing_config_hash text
 ```
 

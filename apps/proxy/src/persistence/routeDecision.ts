@@ -9,6 +9,7 @@ import {
   recordArray,
   recordValue,
   routeValue,
+  routingConfigSnapshotValue,
   stringArray,
   stringValue
 } from "./values.js";
@@ -20,6 +21,7 @@ export async function persistRouteDecision(tx: PromptProxyTransaction, event: {
 }) {
   const payload = event.payload;
   const classifier = recordValue(payload.classifier) ?? {};
+  const routingConfig = routingConfigSnapshotValue(payload.routingConfig);
   await tx
     .insert(routeDecisions)
     .values({
@@ -33,6 +35,10 @@ export async function persistRouteDecision(tx: PromptProxyTransaction, event: {
       selectedModel: stringValue(payload.selectedModel),
       reasoningEffort: stringValue(payload.reasoningEffort),
       verbosity: stringValue(payload.verbosity),
+      routingConfigId: routingConfig?.configId,
+      routingConfigVersionId: routingConfig?.versionId,
+      routingConfigVersion: routingConfig?.version,
+      routingConfigHash: routingConfig?.configHash,
       confidence: basisPoints(recordValue(payload.classifier)?.confidence),
       reasonCodes: stringArray(payload.reasonCodes),
       guardrailActions: stringArray(payload.guardrailActions),
@@ -49,6 +55,10 @@ export async function persistRouteDecision(tx: PromptProxyTransaction, event: {
         selectedModel: stringValue(payload.selectedModel),
         reasoningEffort: stringValue(payload.reasoningEffort),
         verbosity: stringValue(payload.verbosity),
+        routingConfigId: routingConfig?.configId,
+        routingConfigVersionId: routingConfig?.versionId,
+        routingConfigVersion: routingConfig?.version,
+        routingConfigHash: routingConfig?.configHash,
         confidence: basisPoints(recordValue(payload.classifier)?.confidence),
         reasonCodes: stringArray(payload.reasonCodes),
         guardrailActions: stringArray(payload.guardrailActions),
