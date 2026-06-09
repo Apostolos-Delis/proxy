@@ -126,7 +126,9 @@ describe("API key admin APIs", () => {
         payload: expect.objectContaining({
           apiKeyId: "api_key_assignable",
           previousRoutingConfigId: null,
-          routingConfigId: targetConfig.id
+          routingConfigId: targetConfig.id,
+          routingConfigVersionId: expect.any(String),
+          routingConfigHash: expect.stringMatching(/^[a-f0-9]{64}$/)
         })
       }),
       expect.objectContaining({
@@ -138,7 +140,9 @@ describe("API key admin APIs", () => {
         payload: expect.objectContaining({
           apiKeyId: "api_key_assignable",
           previousRoutingConfigId: targetConfig.id,
-          routingConfigId: null
+          routingConfigId: null,
+          routingConfigVersionId: null,
+          routingConfigHash: null
         })
       })
     ]);
@@ -205,6 +209,10 @@ describe("API key admin APIs", () => {
       .select()
       .from(apiKeys)
       .where(eq(apiKeys.id, defaultApiKeyId));
+    const eventRows = await fixture.db
+      .select()
+      .from(events)
+      .where(eq(events.eventType, "routing_config.api_key_assignment_changed"));
 
     expect(archived.status).toBe(409);
     expect(archivedBody.error).toBe("routing_config_archived");
@@ -215,6 +223,7 @@ describe("API key admin APIs", () => {
     expect(crossApiKey.status).toBe(404);
     expect(crossApiKeyBody.error).toBe("api_key_not_found");
     expect(defaultApiKey.routingConfigId).toBe(defaultConfigId);
+    expect(eventRows).toHaveLength(0);
   });
 
   async function setup(organizationId: string) {

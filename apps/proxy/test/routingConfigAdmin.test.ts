@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  eventOutbox,
   events,
   organizations,
   routingConfigs,
   routingConfigVersions
 } from "@prompt-proxy/db";
 import type { RoutingConfig } from "@prompt-proxy/schema";
-import { eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
@@ -166,6 +167,12 @@ describe("routing config admin APIs", () => {
       })
     });
     const body = await response.json();
+    const eventRows = await fixture.db
+      .select()
+      .from(events)
+      .where(eq(events.scopeId, body.config.id))
+      .orderBy(asc(events.sequence));
+    const outboxRows = await outboxRowsFor(fixture, eventRows);
 
     expect(response.status).toBe(201);
     expect(body.config).toEqual(expect.objectContaining({
@@ -191,6 +198,42 @@ describe("routing config admin APIs", () => {
         })
       })
     ]);
+    expect(eventRows).toEqual([
+      expect.objectContaining({
+        sequence: 1,
+        organizationId: "org_routing_config_create",
+        scopeType: "routing_config",
+        scopeId: body.config.id,
+        actorType: "user",
+        actorId: "local-user",
+        eventType: "routing_config.created",
+        payload: expect.objectContaining({
+          configId: body.config.id,
+          versionId: body.config.activeVersionId,
+          version: 1,
+          configHash: body.config.activeVersion.configHash,
+          slug: "created-config",
+          status: "active"
+        })
+      }),
+      expect.objectContaining({
+        sequence: 2,
+        organizationId: "org_routing_config_create",
+        scopeType: "routing_config",
+        scopeId: body.config.id,
+        actorType: "user",
+        actorId: "local-user",
+        eventType: "routing_config.version_created",
+        payload: expect.objectContaining({
+          configId: body.config.id,
+          versionId: body.config.activeVersionId,
+          version: 1,
+          configHash: body.config.activeVersion.configHash,
+          status: "active"
+        })
+      })
+    ]);
+    expect(outboxRows).toHaveLength(2);
   });
 
   it("creates draft versions, activates them, and writes an audit event", async () => {
@@ -230,7 +273,9 @@ describe("routing config admin APIs", () => {
     const eventRows = await fixture.db
       .select()
       .from(events)
-      .where(eq(events.eventType, "routing_config.version_activated"));
+      .where(eq(events.scopeId, configId))
+      .orderBy(asc(events.sequence));
+    const outboxRows = await outboxRowsFor(fixture, eventRows);
     const originalVersion = await fixture.db
       .select()
       .from(routingConfigVersions)
@@ -267,6 +312,23 @@ describe("routing config admin APIs", () => {
     }));
     expect(eventRows).toEqual([
       expect.objectContaining({
+        sequence: 1,
+        organizationId: "org_routing_config_versions",
+        scopeType: "routing_config",
+        scopeId: configId,
+        actorType: "user",
+        actorId: "local-user",
+        eventType: "routing_config.version_created",
+        payload: expect.objectContaining({
+          configId,
+          versionId: draft.id,
+          version: 2,
+          configHash: draft.configHash,
+          status: "draft"
+        })
+      }),
+      expect.objectContaining({
+        sequence: 2,
         organizationId: "org_routing_config_versions",
         scopeType: "routing_config",
         scopeId: configId,
@@ -280,6 +342,7 @@ describe("routing config admin APIs", () => {
         })
       })
     ]);
+    expect(outboxRows).toHaveLength(2);
     expect(originalVersion[0].config).toEqual(originalConfig);
   });
 
@@ -309,6 +372,13 @@ describe("routing config admin APIs", () => {
       .select()
       .from(routingConfigVersions)
       .where(eq(routingConfigVersions.routingConfigId, configId));
+    const eventRows = await fixture.db
+      .select()
+      .from(events)
+      .where(and(
+        eq(events.scopeId, configId),
+        eq(events.eventType, "routing_config.version_created")
+      ));
 
     expect(response.status).toBe(400);
     expect(body.error).toBe("invalid_routing_config");
@@ -318,6 +388,59 @@ describe("routing config admin APIs", () => {
       })
     ]));
     expect(after).toHaveLength(before.length);
+    expect(eventRows).toHaveLength(0);
+  });
+
+  it("archives unassigned routing configs with an audit event", async () => {
+    const fixture = await setup("org_routing_config_archive");
+    const created = await createRoutingConfig(fixture, "org_routing_config_archive", "Archive candidate");
+
+    const archived = await fetch(`${fixture.proxyUrl}/admin/routing-configs/${created.config.id}/archive`, {
+      method: "POST",
+      headers: fixture.adminHeaders
+    });
+    const archivedBody = await archived.json();
+    const defaultArchive = await fetch(
+      `${fixture.proxyUrl}/admin/routing-configs/org_routing_config_archive:routing-config:default/archive`,
+      {
+        method: "POST",
+        headers: fixture.adminHeaders
+      }
+    );
+    const defaultArchiveBody = await defaultArchive.json();
+    const eventRows = await fixture.db
+      .select()
+      .from(events)
+      .where(eq(events.scopeId, created.config.id))
+      .orderBy(asc(events.sequence));
+    const outboxRows = await outboxRowsFor(fixture, eventRows);
+
+    expect(archived.status).toBe(200);
+    expect(archivedBody.config).toEqual(expect.objectContaining({
+      id: created.config.id,
+      status: "archived"
+    }));
+    expect(defaultArchive.status).toBe(409);
+    expect(defaultArchiveBody.error).toBe("routing_config_in_use");
+    expect(eventRows.map((event) => event.eventType)).toEqual([
+      "routing_config.created",
+      "routing_config.version_created",
+      "routing_config.archived"
+    ]);
+    expect(eventRows[2]).toEqual(expect.objectContaining({
+      sequence: 3,
+      organizationId: "org_routing_config_archive",
+      actorType: "user",
+      actorId: "local-user",
+      payload: expect.objectContaining({
+        configId: created.config.id,
+        versionId: created.config.activeVersionId,
+        version: 1,
+        configHash: created.config.activeVersion.configHash,
+        status: "archived"
+      })
+    }));
+    expect(outboxRows).toHaveLength(3);
   });
 
   async function setup(organizationId: string) {
@@ -331,5 +454,34 @@ describe("routing config admin APIs", () => {
     }).then((item) => item.json());
     const activeVersion = detail.versions.find((version: any) => version.active);
     return activeVersion.config as RoutingConfig;
+  }
+
+  async function createRoutingConfig(fixture: PromptTestFixture, organizationId: string, name: string) {
+    const baseConfig = await activeConfig(fixture, `${organizationId}:routing-config:default`);
+    const response = await fetch(`${fixture.proxyUrl}/admin/routing-configs`, {
+      method: "POST",
+      headers: {
+        ...fixture.adminHeaders,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        name,
+        slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        config: {
+          ...baseConfig,
+          displayName: name
+        }
+      })
+    });
+    expect(response.status).toBe(201);
+    return response.json();
+  }
+
+  async function outboxRowsFor(fixture: PromptTestFixture, eventRows: (typeof events.$inferSelect)[]) {
+    if (eventRows.length === 0) return [];
+    return fixture.db
+      .select()
+      .from(eventOutbox)
+      .where(inArray(eventOutbox.eventId, eventRows.map((event) => event.id)));
   }
 });
