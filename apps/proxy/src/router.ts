@@ -10,7 +10,7 @@ import type { ClassificationResult, LlmClassifier } from "./classifier.js";
 import { jsonPayload, type EventService } from "./events.js";
 import type { AppConfig } from "./config.js";
 import type { BudgetResult, BudgetService, SessionRouteStore } from "./policy.js";
-import type { JsonObject, RouteContext, RouteDecision, RouteName } from "./types.js";
+import type { JsonObject, RouteContext, RouteDecision, RouteName, RoutingConfigSnapshot } from "./types.js";
 import { isRecord } from "./util.js";
 
 export class RoutingService {
@@ -28,8 +28,9 @@ export class RoutingService {
     context: RouteContext;
     body: unknown;
     idempotencyKey: string;
+    routingConfig?: RoutingConfigSnapshot;
   }): Promise<RouteDecision> {
-    const { requestId, context, idempotencyKey } = input;
+    const { requestId, context, idempotencyKey, routingConfig } = input;
 
     await this.events.append({
       scopeType: "request",
@@ -53,7 +54,8 @@ export class RoutingService {
         hasPreviousResponseId: context.hasPreviousResponseId,
         hasImages: context.hasImages,
         extractedHints: context.extractedHints,
-        routingExtractedHints: context.routingExtractedHints
+        routingExtractedHints: context.routingExtractedHints,
+        routingConfig: routingConfig ? jsonPayload(routingConfig) : null
       }
     });
 
@@ -85,7 +87,7 @@ export class RoutingService {
       requestedRoute = classification.output.recommended_route;
     }
 
-    const decision = this.resolveRoute(context, requestedRoute, classification);
+    const decision = this.resolveRoute(context, requestedRoute, classification, routingConfig);
     if (decision.outcome === "route" && decision.finalRoute) {
       const postBudget = this.budget.checkDecision(context, decision.finalRoute);
       decision.budgetChecks = [...preBudget.checks, ...postBudget.checks];
@@ -161,7 +163,7 @@ export class RoutingService {
     return request;
   }
 
-  tokenCountDecision(context: RouteContext): RouteDecision {
+  tokenCountDecision(context: RouteContext, routingConfig?: RoutingConfigSnapshot): RouteDecision {
     let finalRoute = context.explicitAlias ?? "hard";
     const guardrailActions: string[] = [];
     let model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
@@ -194,6 +196,7 @@ export class RoutingService {
       verbosity: routeConfig.verbosity,
       guardrailActions,
       reasonCodes: ["token_count_model_resolution"],
+      routingConfig,
       policyVersion: "2026-06-08"
     };
   }
@@ -259,7 +262,8 @@ export class RoutingService {
   private resolveRoute(
     context: RouteContext,
     classifierRoute: RouteName,
-    classification?: ClassificationResult
+    classification?: ClassificationResult,
+    routingConfig?: RoutingConfigSnapshot
   ): RouteDecision {
     let finalRoute = classifierRoute;
     const guardrailActions: string[] = [];
@@ -344,6 +348,7 @@ export class RoutingService {
             recommendedRoute: classification.output.recommended_route
           }
         : undefined,
+      routingConfig,
       policyVersion: "2026-06-08"
     };
   }

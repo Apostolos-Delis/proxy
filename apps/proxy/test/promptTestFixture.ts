@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
 import { expect } from "vitest";
 
 import {
@@ -12,6 +13,7 @@ import {
   organizations,
   users
 } from "@prompt-proxy/db";
+import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
 import { buildModelCatalog } from "../src/catalog.js";
 import { loadConfig } from "../src/config.js";
@@ -69,8 +71,9 @@ export async function captureFixture(
   const db = createPgliteDatabase(client);
   const openai = await startOpenAIMock(options.openAIOptions);
   const anthropic = await startAnthropicMock();
+  const env = testEnv(options.envOverrides);
   const config = loadConfig({
-    ...testEnv(options.envOverrides),
+    ...env,
     DEFAULT_ORGANIZATION_ID: organizationId,
     OPENAI_BASE_URL: openai.url,
     ANTHROPIC_BASE_URL: anthropic.url,
@@ -103,6 +106,18 @@ export async function captureFixture(
     organizationId,
     promptCaptureMode
   });
+  await seedDatabase(db, seedOptionsFromEnv({
+    ...env,
+    DEFAULT_ORGANIZATION_ID: organizationId,
+    OPENAI_BASE_URL: openai.url,
+    ANTHROPIC_BASE_URL: anthropic.url,
+    PROMPT_PROXY_TOKEN: env.PROMPT_PROXY_TOKEN,
+    SEED_USER_ID: "local-user"
+  }));
+  await db
+    .update(organizationSettings)
+    .set({ promptCaptureMode })
+    .where(eq(organizationSettings.organizationId, organizationId));
 
   const app = buildServer(config, { persistence });
   const proxyUrl = await listen(app);
