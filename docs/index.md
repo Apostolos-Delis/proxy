@@ -12,6 +12,7 @@
 
 - [Implementation tickets](implementation-tickets.md)
 - [Routing configs V1 tickets](scopes/routing-configs-v1/TICKETS.md)
+- [Routing configs runbook](runbooks/routing-configs.md)
 
 ## Future Work
 
