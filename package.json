@@ -15,7 +15,7 @@
     "db:seed": "pnpm --filter @prompt-proxy/db seed",
     "smoke": "pnpm --filter @prompt-proxy/proxy smoke",
     "smoke:harnesses": "pnpm --filter @prompt-proxy/proxy smoke:harnesses",
-    "test": "pnpm --filter @prompt-proxy/db test && pnpm --filter @prompt-proxy/proxy test",
+    "test": "pnpm --filter @prompt-proxy/schema test && pnpm --filter @prompt-proxy/db test && pnpm --filter @prompt-proxy/proxy test",
     "typecheck": "tsc -b",
     "build": "tsc -b && pnpm --filter @prompt-proxy/web build"
   },
