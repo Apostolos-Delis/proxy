@@ -363,3 +363,212 @@ Acceptance criteria:
 - Defines evals proving quality and cost impact before rollout.
 
 Dependencies: PP-020.
+
+## Prompt Storage And Analytics Tickets
+
+These tickets extend the routing MVP into organization-wide prompt storage, usage analysis, and investigation workflows. The durable Postgres foundation already exists in the current workspace; this section tracks the remaining productized capture and analytics work. See `docs/scopes/persistence-admin-v1/PLAN.md` and `docs/scopes/tanstack-admin-app-v1/PLAN.md` for the fuller V1 shape.
+
+### PP-025: Resolve Proxy Requests Through API Keys
+
+Status: implemented in the current MVP.
+
+Replace global-token request ownership with API-key-backed organization and user identity.
+
+Acceptance criteria:
+
+- Incoming bearer tokens and `x-api-key` values are hashed and resolved through `api_keys`.
+- Revoked or expired API keys are rejected before route classification or provider spend.
+- Request persistence uses `api_keys.organization_id` and `api_keys.user_id`.
+- `api_keys.last_used_at` updates on successful auth.
+- `PROMPT_PROXY_TOKEN` remains only as an explicit local-development fallback.
+- Harness-supplied user/team headers are stored as metadata unless a later org setting marks them trusted.
+
+Dependencies: PP-002, PP-004.
+
+### PP-026: Normalize Durable Session Identity
+
+Status: implemented in the current MVP.
+
+Make every stored request replayable by attaching it to either a real harness session or an explicit request-scoped fallback session.
+
+Acceptance criteria:
+
+- Codex session headers and metadata are normalized into `agent_sessions`.
+- Claude Code session headers are normalized into `agent_sessions`.
+- Requests without stable session identity get a synthetic `request:{requestId}` session.
+- Synthetic sessions are marked with metadata so the UI can label them as unthreaded.
+- Session identity is scoped by organization and surface so identical external IDs from different orgs do not collide.
+
+Dependencies: PP-019, PP-025.
+
+### PP-027: Extend Prompt Artifact Storage For V1 Raw Text
+
+Add the schema fields needed to store prompt text directly for the prototype while preserving the hash-based artifact model.
+
+Acceptance criteria:
+
+- `prompt_artifacts` supports `raw_text`, token estimate, source role, and source index.
+- `storage_mode` includes `raw_text`.
+- Existing hash-only artifact metadata remains valid.
+- Content hash is still populated for every artifact.
+- Migration tests cover fresh schema creation.
+- PII filtering, redaction, and encrypted blob storage are explicitly deferred to a hardening ticket.
+
+Dependencies: PP-004.
+
+### PP-028: Capture Prompt Artifacts At Surface Boundaries
+
+Extract prompt artifacts before request rewrite so organization analytics can inspect the user-visible input that arrived at the proxy.
+
+Acceptance criteria:
+
+- OpenAI Responses capture includes latest user message, instructions, and tool schema metadata.
+- Anthropic Messages capture includes latest user message, system text, and tool schema metadata.
+- Captured prompt text is written to `prompt_artifacts.raw_text` when capture mode is `raw_text`.
+- Prompt artifacts include request ID, organization ID, surface, kind, source role/index, chars, token estimate, and content hash.
+- Full prompt text is never embedded in event payloads.
+- Tests cover string input, array message input, empty input, and tool-bearing requests.
+
+Dependencies: PP-025, PP-027.
+
+### PP-029: Record Prompt Capture Events
+
+Add small lifecycle events that link request timelines to prompt artifacts without duplicating prompt text.
+
+Acceptance criteria:
+
+- Prompt capture emits an event containing artifact IDs, kinds, hashes, storage mode, and metadata.
+- Event payloads omit raw prompt text and tool schemas.
+- Request detail timelines include the prompt capture event in chronological order.
+- Failed prompt capture does not silently continue into provider spend unless policy explicitly allows hash-only fallback.
+- Tests prove prompt text stays out of `events.payload`.
+
+Dependencies: PP-028.
+
+### PP-030: Add Prompt Artifact Admin APIs
+
+Expose org-scoped prompt list and prompt detail endpoints backed by Postgres.
+
+Acceptance criteria:
+
+- `GET /admin/prompts` returns prompt artifacts scoped to the authenticated organization.
+- `GET /admin/prompts/:artifactId` returns raw prompt text plus related request, route, provider, usage, and event context.
+- Prompt list supports pagination and basic filters for user, surface, route, model, and time range.
+- Prompt detail returns 404 for artifacts outside the caller's organization.
+- Responses are shaped for the web app and avoid client-side N+1 joins.
+
+Dependencies: PP-025, PP-028, PP-029.
+
+### PP-031: Add Organization Usage Analytics APIs
+
+Provide aggregate usage and cost data for organization-wide analysis.
+
+Acceptance criteria:
+
+- `GET /admin/usage` supports time range and group-by parameters.
+- Group-by supports user, provider, model, route, surface, and session.
+- Results include input tokens, cached input tokens, output tokens, reasoning tokens, total tokens, selected cost, baseline cost, and savings.
+- Failure and retry rates are included where provider attempts are available.
+- Queries are scoped by organization and backed by persisted rows, not in-memory projections.
+
+Dependencies: PP-014, PP-025.
+
+### PP-032: Add Users And Sessions Admin APIs
+
+Expose org-scoped user and session views for prompt and cost investigation.
+
+Acceptance criteria:
+
+- `GET /admin/users` returns users with request count, session count, token totals, cost totals, and recent activity.
+- `GET /admin/users/:userId` returns user-level usage plus recent sessions and requests.
+- `GET /admin/sessions` returns sessions with request count, model mix, route changes, tokens, cost, and terminal status summary.
+- `GET /admin/sessions/:sessionId` returns all rows needed for session replay.
+- All queries reject cross-organization access.
+
+Dependencies: PP-026, PP-031.
+
+### PP-033: Add Browser Auth And Organization Context
+
+Move the operations console away from static bearer-token auth.
+
+Acceptance criteria:
+
+- `user_sessions` stores hashed opaque session tokens with expiry and revocation fields.
+- `POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/auth/me` exist.
+- Login sets an HttpOnly session cookie.
+- Local/dev login is env-gated and resolves a seeded user.
+- Every admin API scopes results to organizations where the session user is an active member.
+- Unauthenticated web users are redirected to `/login`.
+
+Dependencies: PP-025.
+
+### PP-034: Build Prompt And Usage Web Views
+
+Add the first organization analytics surfaces to the TanStack admin app.
+
+Acceptance criteria:
+
+- `/usage` shows dense aggregate tables for tokens, cost, savings, routes, providers, models, and users.
+- `/prompts` shows prompt artifact rows with preview, user, session, request, surface, storage mode, hash, route, selected model, and cost.
+- `/prompts/:artifactId` shows raw prompt text and related request/session/route/provider/usage/event context.
+- Views use TanStack Query or route loaders for data fetching.
+- No direct `useEffect` calls are introduced.
+- Loading, empty, error, and unauthorized states are implemented.
+
+Dependencies: PP-030, PP-031, PP-033.
+
+### PP-035: Build Session Replay
+
+Create a chronological investigation view for all observable proxy activity in a session.
+
+Acceptance criteria:
+
+- `/sessions` lists org-scoped sessions with usage, route, model, and terminal summaries.
+- `/sessions/:sessionId` displays a chronological timeline sourced from persisted request, prompt artifact, route decision, provider attempt, usage, and event rows.
+- Timeline rows include prompt capture, routing context, classifier, route decision, provider start/stream, terminal status, and usage.
+- The UI distinguishes real harness sessions from request-scoped fallback sessions.
+- A single session-detail endpoint powers the view without client-side N+1 queries.
+
+Dependencies: PP-026, PP-032, PP-034.
+
+### PP-036: Add Prompt Retention And Redaction Hardening
+
+Add controls for keeping raw prompt capture safe beyond the prototype.
+
+Acceptance criteria:
+
+- Organization settings can configure prompt capture mode and retention period.
+- Expired prompt artifacts can be deleted or redacted without breaking request/event timelines.
+- Redaction jobs preserve content hash and metadata needed for aggregate analytics.
+- Raw prompt access is separable from aggregate analytics access.
+- Tests cover retention expiry and redacted artifact reads.
+
+Dependencies: PP-028, PP-030, PP-033.
+
+### PP-037: Add Raw Prompt Access Auditing
+
+Record who viewed sensitive prompt content and from where.
+
+Acceptance criteria:
+
+- Raw prompt detail reads append or persist an audit record containing actor, organization, artifact ID, request ID, route, timestamp, and access path.
+- Aggregate prompt list and usage endpoints do not create raw-content access records.
+- Audit records are organization-scoped and queryable by admins.
+- Failed cross-org reads do not leak artifact existence.
+
+Dependencies: PP-030, PP-033, PP-036.
+
+### PP-038: Add Prompt Analytics Validation Coverage
+
+Cover the end-to-end prompt storage and analytics path.
+
+Acceptance criteria:
+
+- Integration tests cover OpenAI Responses prompt capture through admin prompt reads.
+- Integration tests cover Anthropic Messages prompt capture through admin prompt reads.
+- API-key identity tests prove request ownership is not trusted from harness headers.
+- Session replay tests cover real and fallback session identities.
+- Usage analytics tests cover group-by queries and organization scoping.
+- `pnpm typecheck`, `pnpm test`, and `pnpm build` pass.
+
+Dependencies: PP-025, PP-026, PP-030, PP-031, PP-032, PP-034, PP-035.

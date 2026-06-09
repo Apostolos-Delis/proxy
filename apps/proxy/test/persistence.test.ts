@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   agentSessions,
+  apiKeys,
   createPgliteDatabase,
   events,
   organizations,
@@ -21,6 +22,7 @@ import { loadConfig } from "../src/config.js";
 import { EventService } from "../src/events.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
 import type { RouteContext } from "../src/types.js";
+import { sha256 } from "../src/util.js";
 
 describe("postgres persistence", () => {
   let client: PGlite | undefined;
@@ -248,6 +250,169 @@ describe("postgres persistence", () => {
     expect(requestRows[0]?.status).toBe("provider_pending");
   });
 
+  it("resolves active api keys by hash and records last use", async () => {
+    const fixture = await persistenceFixture("org_api_key");
+    await fixture.db.insert(organizations).values({
+      id: "org_api_key",
+      slug: "org_api_key",
+      name: "org_api_key"
+    }).onConflictDoNothing();
+    await fixture.db.insert(apiKeys).values({
+      id: "api_key_1",
+      organizationId: "org_api_key",
+      keyHash: sha256("secret-token"),
+      name: "Local Proxy Key",
+      scopes: ["proxy"]
+    });
+
+    const identity = await fixture.persistence.apiKeys.resolve("secret-token", new Date("2026-06-08T00:00:00.000Z"));
+    const rows = await fixture.db.select().from(apiKeys).where(eq(apiKeys.id, "api_key_1"));
+
+    expect(identity).toEqual({
+      apiKeyId: "api_key_1",
+      organizationId: "org_api_key",
+      userId: undefined,
+      scopes: ["proxy"]
+    });
+    expect(rows[0]?.lastUsedAt?.toISOString()).toBe("2026-06-08T00:00:00.000Z");
+    await expect(fixture.persistence.apiKeys.resolve("wrong-token")).resolves.toBeUndefined();
+  });
+
+  it("uses route context organization for request idempotency", async () => {
+    const fixture = await persistenceFixture("org_default");
+    const first = await fixture.persistence.requestStates.begin("idem_shared", "request_a", {
+      ...routeContext(),
+      organizationId: "org_a"
+    });
+    const second = await fixture.persistence.requestStates.begin("idem_shared", "request_b", {
+      ...routeContext(),
+      organizationId: "org_b"
+    });
+
+    const requestRows = await fixture.db.select().from(requests).where(eq(requests.id, "request_b"));
+
+    expect(first.duplicate).toBe(false);
+    expect(second.duplicate).toBe(false);
+    expect(requestRows[0]?.organizationId).toBe("org_b");
+  });
+
+  it("normalizes Codex and Claude Code session ids into durable sessions", async () => {
+    const fixture = await persistenceFixture("org_sessions");
+    await fixture.persistence.requestStates.begin("idem_codex", "request_codex", {
+      ...routeContext(),
+      organizationId: "org_sessions",
+      surface: "openai-responses",
+      sessionId: "codex-session",
+      userId: "user_codex"
+    });
+    await fixture.persistence.requestStates.begin("idem_claude", "request_claude", {
+      ...routeContext(),
+      organizationId: "org_sessions",
+      surface: "anthropic-messages",
+      sessionId: "claude-session",
+      userId: "user_claude"
+    });
+
+    const rows = await fixture.db.select().from(agentSessions);
+    const requestRows = await fixture.db.select().from(requests);
+
+    expect(rows.map((row) => ({
+      id: row.id,
+      externalSessionId: row.externalSessionId,
+      metadata: row.metadata
+    }))).toEqual(expect.arrayContaining([
+      {
+        id: "org_sessions:openai-responses:codex-session",
+        externalSessionId: "codex-session",
+        metadata: { sessionIdentity: "harness" }
+      },
+      {
+        id: "org_sessions:anthropic-messages:claude-session",
+        externalSessionId: "claude-session",
+        metadata: { sessionIdentity: "harness" }
+      }
+    ]));
+    expect(requestRows.find((row) => row.id === "request_codex")?.sessionId)
+      .toBe("org_sessions:openai-responses:codex-session");
+    expect(requestRows.find((row) => row.id === "request_claude")?.sessionId)
+      .toBe("org_sessions:anthropic-messages:claude-session");
+  });
+
+  it("creates request-scoped fallback sessions when harness session identity is absent", async () => {
+    const fixture = await persistenceFixture("org_fallback_session");
+    await fixture.persistence.requestStates.begin("idem_fallback", "request_fallback", {
+      ...routeContext(),
+      organizationId: "org_fallback_session",
+      sessionId: undefined
+    });
+
+    const rows = await fixture.db.select().from(agentSessions);
+    const requestRows = await fixture.db.select().from(requests).where(eq(requests.id, "request_fallback"));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe("org_fallback_session:openai-responses:request:request_fallback");
+    expect(rows[0]?.externalSessionId).toBe("request:request_fallback");
+    expect(rows[0]?.metadata).toEqual({ sessionIdentity: "request_fallback" });
+    expect(requestRows[0]?.sessionId).toBe(rows[0]?.id);
+  });
+
+  it("projects request-scoped fallback sessions from request events", async () => {
+    const fixture = await persistenceFixture("org_event_fallback");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_event_fallback");
+
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_event_fallback",
+      correlationId: "request_event_fallback",
+      idempotencyKey: "idem_event_fallback",
+      producer: "test",
+      eventType: "proxy.request_received",
+      payload: {
+        surface: "anthropic-messages",
+        requestedModel: "claude-router-auto",
+        inputHash: "sha256:event-fallback",
+        inputChars: 12
+      }
+    });
+
+    const rows = await fixture.db.select().from(agentSessions);
+    const requestRows = await fixture.db.select().from(requests).where(eq(requests.id, "request_event_fallback"));
+
+    expect(rows[0]?.id).toBe("org_event_fallback:anthropic-messages:request:request_event_fallback");
+    expect(rows[0]?.metadata).toEqual({ sessionIdentity: "request_fallback" });
+    expect(requestRows[0]?.sessionId).toBe(rows[0]?.id);
+  });
+
+  it("keeps identical external session ids separate by organization and surface", async () => {
+    const fixture = await persistenceFixture("org_scope_default");
+    await fixture.persistence.requestStates.begin("idem_org_a", "request_org_a", {
+      ...routeContext(),
+      organizationId: "org_a",
+      surface: "openai-responses",
+      sessionId: "shared-session"
+    });
+    await fixture.persistence.requestStates.begin("idem_org_b", "request_org_b", {
+      ...routeContext(),
+      organizationId: "org_b",
+      surface: "openai-responses",
+      sessionId: "shared-session"
+    });
+    await fixture.persistence.requestStates.begin("idem_surface", "request_surface", {
+      ...routeContext(),
+      organizationId: "org_a",
+      surface: "anthropic-messages",
+      sessionId: "shared-session"
+    });
+
+    const rows = await fixture.db.select().from(agentSessions);
+
+    expect(rows.map((row) => row.id).sort()).toEqual([
+      "org_a:anthropic-messages:shared-session",
+      "org_a:openai-responses:shared-session",
+      "org_b:openai-responses:shared-session"
+    ]);
+  });
+
   it("admin overview counts beyond the request page size", async () => {
     const fixture = await persistenceFixture("org_admin_overview");
     await fixture.db.insert(organizations).values({
@@ -424,6 +589,9 @@ describe("postgres persistence", () => {
       "org_a:openai-responses:shared-session",
       "org_b:openai-responses:shared-session"
     ]);
+    expect(rows.map((row) => row.metadata)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sessionIdentity: "harness" })
+    ]));
   });
 
   async function persistenceFixture(organizationId: string) {

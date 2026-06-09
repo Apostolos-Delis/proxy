@@ -28,7 +28,9 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
     requestId = createId("request"),
     context?: unknown
   ): Promise<RequestStateGate> {
-    const existing = await this.findRequest(idempotencyKey);
+    const routeContext = isRouteContext(context) ? context : undefined;
+    const organizationId = routeContext?.organizationId ?? this.organizationId;
+    const existing = await this.findRequest(idempotencyKey, organizationId);
     if (existing) {
       return {
         state: await this.stateForRequest(existing),
@@ -36,13 +38,13 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
       };
     }
 
-    const routeContext = isRouteContext(context) ? context : undefined;
     await this.db.transaction(async (tx) => {
-      await ensureOrganization(tx, this.organizationId);
+      await ensureOrganization(tx, organizationId);
       const sessionId = await ensureSession(tx, {
-        organizationId: this.organizationId,
+        organizationId,
         surface: routeContext?.surface,
         sessionId: routeContext?.sessionId,
+        requestId,
         userId: routeContext?.userId
       });
       await ensureUser(tx, routeContext?.userId);
@@ -50,7 +52,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
         .insert(requests)
         .values({
           id: requestId,
-          organizationId: this.organizationId,
+          organizationId,
           userId: routeContext?.userId,
           sessionId,
           surface: routeContext?.surface ?? "openai-responses",
@@ -67,7 +69,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
         .onConflictDoNothing();
     });
 
-    const stored = await this.findRequest(idempotencyKey);
+    const stored = await this.findRequest(idempotencyKey, organizationId);
     if (!stored) {
       return {
         state: { idempotencyKey, requestId, status: "classifying" },
@@ -82,12 +84,12 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
   }
 
   async markProviderPending(idempotencyKey: string, providerAttemptId: string) {
+    const request = await this.findRequest(idempotencyKey);
+    if (!request) return undefined;
     await this.readDb
       .update(requests)
       .set({ status: "provider_pending" })
-      .where(and(eq(requests.organizationId, this.organizationId), eq(requests.idempotencyKey, idempotencyKey)));
-    const request = await this.findRequest(idempotencyKey);
-    if (!request) return undefined;
+      .where(and(eq(requests.organizationId, request.organizationId), eq(requests.idempotencyKey, idempotencyKey)));
     return {
       idempotencyKey,
       requestId: request.id,
@@ -98,18 +100,16 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
 
   async finish(idempotencyKey: string, status: RequestState["status"], patch: Partial<RequestState> = {}) {
     const terminal = status !== "classifying" && status !== "provider_pending";
+    const request = await this.findRequest(idempotencyKey);
+    if (!request) return undefined;
     if (terminal && patch.providerAttemptId) {
-      const request = await this.findRequest(idempotencyKey);
-      if (!request) return undefined;
       return this.stateForRequest(request);
     }
 
     await this.readDb
       .update(requests)
       .set(terminal ? { status, completedAt: new Date() } : { status })
-      .where(and(eq(requests.organizationId, this.organizationId), eq(requests.idempotencyKey, idempotencyKey)));
-    const request = await this.findRequest(idempotencyKey);
-    if (!request) return undefined;
+      .where(and(eq(requests.organizationId, request.organizationId), eq(requests.idempotencyKey, idempotencyKey)));
     return {
       ...patch,
       idempotencyKey,
@@ -118,12 +118,15 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
     };
   }
 
-  private async findRequest(idempotencyKey: string) {
-    const [request] = await this.readDb
+  private async findRequest(idempotencyKey: string, organizationId?: string) {
+    const query = this.readDb
       .select()
       .from(requests)
-      .where(and(eq(requests.organizationId, this.organizationId), eq(requests.idempotencyKey, idempotencyKey)))
+      .where(organizationId
+        ? and(eq(requests.organizationId, organizationId), eq(requests.idempotencyKey, idempotencyKey))
+        : eq(requests.idempotencyKey, idempotencyKey))
       .limit(1);
+    const [request] = await query;
     return request;
   }
 
@@ -131,7 +134,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
     const [attempt] = await this.readDb
       .select()
       .from(providerAttempts)
-      .where(and(eq(providerAttempts.organizationId, this.organizationId), eq(providerAttempts.requestId, request.id)))
+      .where(and(eq(providerAttempts.organizationId, request.organizationId), eq(providerAttempts.requestId, request.id)))
       .orderBy(desc(providerAttempts.startedAt))
       .limit(1);
     const [usage] = attempt
@@ -170,6 +173,7 @@ export async function persistRequestReceived(tx: PromptProxyTransaction, event: 
     organizationId: event.tenantId,
     surface,
     sessionId,
+    requestId: event.scopeId,
     userId
   });
 

@@ -69,6 +69,7 @@ export class EventService {
   private readonly events: ProxyEvent[] = [];
   private readonly outbox: OutboxItem[] = [];
   private readonly sequences = new Map<string, number>();
+  private readonly scopeTenants = new Map<string, string>();
 
   constructor(
     private readonly filePath?: string,
@@ -82,13 +83,16 @@ export class EventService {
     const previousSequence = this.sequences.get(scopeKey) ?? 0;
     const sequence = previousSequence + 1;
     this.sequences.set(scopeKey, sequence);
+    const previousTenant = this.scopeTenants.get(scopeKey);
+    const tenantId = input.tenantId ?? previousTenant ?? this.defaultTenantId;
+    this.scopeTenants.set(scopeKey, tenantId);
 
     const payload = input.payload ?? {};
     const event = eventSchema.parse({
       eventId: createId("event"),
       sequence,
       schemaVersion: 1,
-      tenantId: input.tenantId ?? this.defaultTenantId,
+      tenantId,
       scopeType: input.scopeType,
       scopeId: input.scopeId,
       sessionId: input.sessionId,
@@ -120,6 +124,11 @@ export class EventService {
           this.sequences.delete(scopeKey);
         } else {
           this.sequences.set(scopeKey, previousSequence);
+        }
+        if (previousTenant === undefined) {
+          this.scopeTenants.delete(scopeKey);
+        } else {
+          this.scopeTenants.set(scopeKey, previousTenant);
         }
       }
       throw error;

@@ -4,6 +4,14 @@ import type { Duplex } from "node:stream";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
 import { openAIResponsesSurface } from "./adapters.js";
+import {
+  actorForIdentity,
+  contextForIdentity,
+  ProxyAuthService,
+  requestReceivedPayload,
+  scopedIdempotencyKey,
+  type RequestIdentity
+} from "./auth.js";
 import type { AppConfig } from "./config.js";
 import { jsonPayload, type EventService, type ProviderAttemptStore, type RequestStateStoreLike } from "./events.js";
 import type { RoutingService } from "./router.js";
@@ -20,6 +28,7 @@ type ActiveRequest = {
 export class WebSocketRoutingProxy {
   constructor(
     private readonly config: AppConfig,
+    private readonly auth: ProxyAuthService,
     private readonly routing: RoutingService,
     private readonly events: EventService,
     private readonly attempts: ProviderAttemptStore,
@@ -40,7 +49,10 @@ export class WebSocketRoutingProxy {
     }
 
     const headers = lowerHeaders(request.headers as Record<string, unknown>);
-    if (!authorized(headers, this.config.proxyToken)) {
+    let identity: RequestIdentity;
+    try {
+      identity = await this.auth.resolve(headers);
+    } catch {
       rejectUpgrade(socket, 401, "Unauthorized");
       return;
     }
@@ -65,7 +77,7 @@ export class WebSocketRoutingProxy {
         appendUpgradeHeader(responseHeaders, upstreamHeaders, "openai-model");
       });
       wss.handleUpgrade(request, socket, head, (client) => {
-        this.bridge(client, upstream, headers);
+        this.bridge(client, upstream, headers, identity);
       });
     });
     upstream.once("error", (error) => {
@@ -78,7 +90,8 @@ export class WebSocketRoutingProxy {
   private bridge(
     client: WebSocket,
     upstream: WebSocket,
-    headers: Record<string, string | undefined>
+    headers: Record<string, string | undefined>,
+    identity: RequestIdentity
   ) {
     let messageIndex = 0;
     let connectionRoute: RouteName | undefined;
@@ -93,7 +106,7 @@ export class WebSocketRoutingProxy {
       messageIndex += 1;
       sendQueue = sendQueue
         .then(async () => {
-          const route = await this.routeWebSocketMessage(data, headers, connectionRoute, messageIndex);
+          const route = await this.routeWebSocketMessage(data, headers, identity, connectionRoute, messageIndex);
           if (route.decision.finalRoute) connectionRoute = route.decision.finalRoute;
           activeRequest = route.activeRequest;
           upstream.send(JSON.stringify(route.body));
@@ -132,41 +145,38 @@ export class WebSocketRoutingProxy {
   private async routeWebSocketMessage(
     data: RawData,
     headers: Record<string, string | undefined>,
+    identity: RequestIdentity,
     connectionRoute: RouteName | undefined,
     messageIndex: number
   ) {
     const body = JSON.parse(String(data));
     const routeBody = pinnedRouteBody(body, connectionRoute);
     const requestId = createId("request");
-    const idempotencyKey = idempotencyFrom(
+    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, idempotencyFrom(
       `${openAIResponsesSurface.createOperation}:websocket:${requestId}:${messageIndex}`,
       routeBody,
       headers
-    );
-    const context = openAIResponsesSurface.buildContext(routeBody, headers);
+    ));
+    const rawContext = openAIResponsesSurface.buildContext(routeBody, headers);
+    const context = contextForIdentity(rawContext, identity);
     const gate = await this.requestStates.begin(idempotencyKey, requestId, context);
     if (gate.duplicate && (gate.state.status === "classifying" || gate.state.status === "provider_pending")) {
       throw new Error("duplicate_websocket_request_active");
     }
 
     await this.events.append({
+      tenantId: identity.organizationId,
       scopeType: "request",
       scopeId: requestId,
       sessionId: context.sessionId,
       correlationId: requestId,
       idempotencyKey,
+      actor: actorForIdentity(identity),
       producer: "prompt-proxy.surface.openai-responses.websocket",
       eventType: "proxy.request_received",
-      payload: {
-        surface: "openai-responses",
-        transport: "websocket",
-        sessionId: context.sessionId ?? null,
-        userId: context.userId ?? null,
-        teamId: context.teamId ?? null,
-        requestedModel: context.requestedModel,
-        inputHash: context.inputHash,
-        inputChars: context.inputChars
-      }
+      payload: requestReceivedPayload("openai-responses", context, rawContext, identity, {
+        transport: "websocket"
+      })
     });
 
     const decision = await this.routing.decide({
@@ -359,12 +369,6 @@ function pinnedRouteBody(body: unknown, connectionRoute: RouteName | undefined) 
     ...body,
     model: `router-${connectionRoute}`
   };
-}
-
-function authorized(headers: Record<string, string | undefined>, token: string) {
-  const auth = headers.authorization ?? "";
-  const bearer = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : auth;
-  return bearer === token || headers["x-api-key"] === token;
 }
 
 function rejectUpgrade(socket: Duplex, status: number, message: string) {
