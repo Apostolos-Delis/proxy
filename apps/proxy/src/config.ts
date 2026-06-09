@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import type { RouteName } from "./types.js";
-import { sha256 } from "./util.js";
 
 const booleanEnvSchema = z.preprocess((value) => {
   if (value === undefined) return undefined;
@@ -52,12 +51,6 @@ const modelCostsSchema = z.preprocess((value) => {
   outputCostPerMtok: z.coerce.number().nonnegative().default(0)
 })).default({}));
 
-const routePolicyOverrideSchema = z.object({
-  budgetMaxRoute: routeNameSchema.optional(),
-  budgetMaxEstimatedInputTokens: z.number().int().positive().optional(),
-  budgetWarningEstimatedInputTokens: z.number().int().positive().optional()
-}).strict();
-
 const configSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8787),
   PROMPT_PROXY_TOKEN: z.string().min(1).default("dev-proxy-token"),
@@ -84,10 +77,6 @@ const configSchema = z.object({
   BUDGET_USER_ESTIMATED_INPUT_LIMITS: jsonNumberMapSchema,
   BUDGET_TEAM_ESTIMATED_INPUT_LIMITS: jsonNumberMapSchema,
   BUDGET_ROUTE_ESTIMATED_INPUT_LIMITS: routeNumberMapSchema,
-  ROUTE_POLICY_SOURCE: z.enum(["central", "user", "repo"]).default("central"),
-  ALLOW_USER_ROUTE_POLICY: booleanEnvSchema,
-  TRUSTED_REPO_POLICY_HASH: z.string().optional(),
-  ROUTE_POLICY_JSON: z.string().optional(),
   MODEL_COSTS_JSON: modelCostsSchema,
   ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.55),
   EVENT_STORE_PATH: z.string().optional(),
@@ -108,7 +97,6 @@ export type AppConfig = ReturnType<typeof loadConfig>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const parsed = configSchema.parse(env);
-  const policy = routePolicy(parsed);
 
   return {
     port: parsed.PORT,
@@ -130,13 +118,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     classifierTimeoutMs: parsed.CLASSIFIER_TIMEOUT_MS,
     classifierMaxAttempts: parsed.CLASSIFIER_MAX_ATTEMPTS,
     classifierAllowRedactedExcerpt: parsed.CLASSIFIER_ALLOW_REDACTED_EXCERPT,
-    budgetMaxEstimatedInputTokens: policy.budgetMaxEstimatedInputTokens,
-    budgetWarningEstimatedInputTokens: policy.budgetWarningEstimatedInputTokens,
-    budgetMaxRoute: policy.budgetMaxRoute,
+    budgetMaxEstimatedInputTokens: parsed.BUDGET_MAX_ESTIMATED_INPUT_TOKENS,
+    budgetWarningEstimatedInputTokens: parsed.BUDGET_WARNING_ESTIMATED_INPUT_TOKENS,
+    budgetMaxRoute: parsed.BUDGET_MAX_ROUTE,
     budgetUserEstimatedInputLimits: parsed.BUDGET_USER_ESTIMATED_INPUT_LIMITS,
     budgetTeamEstimatedInputLimits: parsed.BUDGET_TEAM_ESTIMATED_INPUT_LIMITS,
     budgetRouteEstimatedInputLimits: parsed.BUDGET_ROUTE_ESTIMATED_INPUT_LIMITS as Partial<Record<RouteName, number>>,
-    routePolicyTrust: policy.trust,
     modelCosts: parsed.MODEL_COSTS_JSON,
     routeQualityLowConfidenceThreshold: parsed.ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD,
     eventStorePath: parsed.EVENT_STORE_PATH,
@@ -156,60 +143,4 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
-}
-
-function routePolicy(parsed: z.infer<typeof configSchema>) {
-  const central = {
-    budgetMaxRoute: parsed.BUDGET_MAX_ROUTE,
-    budgetMaxEstimatedInputTokens: parsed.BUDGET_MAX_ESTIMATED_INPUT_TOKENS,
-    budgetWarningEstimatedInputTokens: parsed.BUDGET_WARNING_ESTIMATED_INPUT_TOKENS
-  };
-  const rawPolicy = parsed.ROUTE_POLICY_JSON;
-  const policyHash = rawPolicy ? sha256(rawPolicy) : undefined;
-  const trust = policyTrust(parsed, policyHash);
-
-  if (!trust.trusted || !rawPolicy) return { ...central, trust };
-
-  const override = routePolicyOverrideSchema.parse(JSON.parse(rawPolicy));
-  return {
-    budgetMaxRoute: override.budgetMaxRoute ?? central.budgetMaxRoute,
-    budgetMaxEstimatedInputTokens: override.budgetMaxEstimatedInputTokens ?? central.budgetMaxEstimatedInputTokens,
-    budgetWarningEstimatedInputTokens: override.budgetWarningEstimatedInputTokens ?? central.budgetWarningEstimatedInputTokens,
-    trust
-  };
-}
-
-function policyTrust(
-  parsed: z.infer<typeof configSchema>,
-  policyHash: string | undefined
-) {
-  if (parsed.ROUTE_POLICY_SOURCE === "central") {
-    return {
-      source: "central" as const,
-      effectiveSource: "central" as const,
-      trusted: true,
-      policyHash,
-      reason: "central_policy"
-    };
-  }
-
-  if (parsed.ROUTE_POLICY_SOURCE === "user") {
-    const trusted = parsed.ALLOW_USER_ROUTE_POLICY;
-    return {
-      source: "user" as const,
-      effectiveSource: trusted ? "user" as const : "central" as const,
-      trusted,
-      policyHash,
-      reason: trusted ? "user_policy_enabled" : "user_policy_disabled"
-    };
-  }
-
-  const trusted = Boolean(policyHash && parsed.TRUSTED_REPO_POLICY_HASH === policyHash);
-  return {
-    source: "repo" as const,
-    effectiveSource: trusted ? "repo" as const : "central" as const,
-    trusted,
-    policyHash,
-    reason: trusted ? "repo_policy_hash_trusted" : "repo_policy_untrusted"
-  };
 }

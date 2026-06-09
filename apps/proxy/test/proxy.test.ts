@@ -33,9 +33,6 @@ function testEnv(overrides: NodeJS.ProcessEnv = {}) {
     BUDGET_TEAM_ESTIMATED_INPUT_LIMITS: "",
     BUDGET_ROUTE_ESTIMATED_INPUT_LIMITS: "",
     MODEL_COSTS_JSON: "",
-    ROUTE_POLICY_SOURCE: "central",
-    ROUTE_POLICY_JSON: "",
-    TRUSTED_REPO_POLICY_HASH: "",
     ...overrides
   };
 }

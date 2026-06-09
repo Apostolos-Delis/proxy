@@ -9,6 +9,7 @@ import { WebSocketServer } from "ws";
 
 import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
+import { createSmokePersistence } from "./smoke-persistence.js";
 
 type Recorded = {
   path: string;
@@ -19,20 +20,22 @@ const openaiRecords: Recorded[] = [];
 const anthropicRecords: Recorded[] = [];
 const openai = await mockOpenAI(openaiRecords);
 const anthropic = await mockAnthropic(anthropicRecords);
-const config = loadConfig({
-    ...process.env,
-    DATABASE_URL: "",
-    EVENT_STORE_PATH: "",
-    PROMPT_PROXY_TOKEN: "proxy-token",
-    OPENAI_API_KEY: "openai-upstream-key",
-    ANTHROPIC_API_KEY: "anthropic-upstream-key",
-    OPENAI_BASE_URL: openai.url,
-    ANTHROPIC_BASE_URL: anthropic.url,
-    CLASSIFIER_PROVIDER: "openai",
-    CLASSIFIER_MODEL: "route-classifier-cheap",
-    LOG_LEVEL: "fatal"
-  });
-const app = buildServer(config);
+const smokeEnv = {
+  ...process.env,
+  DATABASE_URL: "",
+  EVENT_STORE_PATH: "",
+  PROMPT_PROXY_TOKEN: "proxy-token",
+  OPENAI_API_KEY: "openai-upstream-key",
+  ANTHROPIC_API_KEY: "anthropic-upstream-key",
+  OPENAI_BASE_URL: openai.url,
+  ANTHROPIC_BASE_URL: anthropic.url,
+  CLASSIFIER_PROVIDER: "openai",
+  CLASSIFIER_MODEL: "route-classifier-cheap",
+  LOG_LEVEL: "fatal"
+};
+const config = loadConfig(smokeEnv);
+const smokePersistence = await createSmokePersistence(config, smokeEnv);
+const app = buildServer(config, { persistence: smokePersistence.persistence });
 
 try {
   const proxyUrl = await app.listen({ port: 0, host: "127.0.0.1" }).then(() => {
@@ -63,6 +66,7 @@ try {
   console.log(`claude_cli_route=hard model=${config.anthropicHardModel}`);
 } finally {
   await app.close();
+  await smokePersistence.close();
   await openai.close();
   await anthropic.close();
 }

@@ -217,6 +217,120 @@ describe("database migrations", () => {
       await client.close();
     }
   });
+
+  it("catches up local schemas that predate routing config runtime tables", async () => {
+    const client = new PGlite();
+    const foundation = await readFile(
+      fileURLToPath(new URL("../migrations/0000_foundation.sql", import.meta.url)),
+      "utf8"
+    );
+    const catchup = await readFile(
+      fileURLToPath(new URL("../migrations/0002_routing_config_runtime_catchup.sql", import.meta.url)),
+      "utf8"
+    );
+
+    try {
+      await client.exec(foundation);
+      await client.exec(`
+        alter table routing_configs drop constraint if exists routing_configs_active_version_fk;
+        alter table routing_config_versions drop constraint if exists routing_config_versions_config_fk;
+        alter table api_keys drop constraint if exists api_keys_routing_config_fk;
+        alter table organization_settings drop constraint if exists organization_settings_default_routing_config_fk;
+
+        drop table routing_config_versions;
+        drop table routing_configs;
+        drop table provider_accounts;
+        drop table model_catalog;
+
+        drop index if exists api_keys_routing_config_idx;
+        alter table api_keys drop column routing_config_id;
+        alter table organization_settings drop column default_routing_config_id;
+
+        drop index if exists requests_routing_config_idx;
+        alter table requests
+          drop column routing_config_id,
+          drop column routing_config_version_id,
+          drop column routing_config_version,
+          drop column routing_config_hash;
+
+        drop index if exists route_decisions_routing_config_idx;
+        alter table route_decisions
+          drop column routing_config_id,
+          drop column routing_config_version_id,
+          drop column routing_config_version,
+          drop column routing_config_hash;
+      `);
+
+      await client.exec(catchup);
+
+      const constraints = await client.query<{ conname: string }>(`
+        select conname
+        from pg_constraint
+        where conname in (
+          'routing_config_versions_config_fk',
+          'routing_configs_active_version_fk',
+          'api_keys_routing_config_fk',
+          'organization_settings_default_routing_config_fk'
+        )
+        order by conname
+      `);
+      const requestRoutingColumns = await client.query<{ column_name: string }>(`
+        select column_name
+        from information_schema.columns
+        where table_name = 'requests'
+          and column_name in ('routing_config_id', 'routing_config_version_id', 'routing_config_version', 'routing_config_hash')
+        order by column_name
+      `);
+
+      expect(constraints.rows.map((row) => row.conname)).toEqual([
+        "api_keys_routing_config_fk",
+        "organization_settings_default_routing_config_fk",
+        "routing_config_versions_config_fk",
+        "routing_configs_active_version_fk"
+      ]);
+      expect(requestRoutingColumns.rows.map((row) => row.column_name)).toEqual([
+        "routing_config_hash",
+        "routing_config_id",
+        "routing_config_version",
+        "routing_config_version_id"
+      ]);
+
+      await client.exec(`
+        insert into organizations (id, slug, name) values
+          ('catchup_org_a', 'catchup-org-a', 'Catchup Org A'),
+          ('catchup_org_b', 'catchup-org-b', 'Catchup Org B');
+
+        insert into routing_configs (id, organization_id, name, slug) values
+          ('catchup_config_a', 'catchup_org_a', 'Catchup Config A', 'catchup-config-a'),
+          ('catchup_config_b', 'catchup_org_b', 'Catchup Config B', 'catchup-config-b');
+      `);
+
+      await expect(client.exec(`
+        insert into routing_config_versions (
+          id,
+          organization_id,
+          routing_config_id,
+          version,
+          config_hash,
+          config
+        ) values (
+          'catchup_version_cross',
+          'catchup_org_b',
+          'catchup_config_a',
+          1,
+          'catchup_hash_cross',
+          '{}'::jsonb
+        );
+      `)).rejects.toThrow();
+
+      await expect(client.exec(`
+        insert into api_keys (id, organization_id, key_hash, name, routing_config_id)
+        values ('catchup_key_cross', 'catchup_org_b', 'catchup_hash_key_cross', 'Catchup Key Cross', 'catchup_config_a');
+      `)).rejects.toThrow();
+    } finally {
+      await client.close();
+    }
+  });
 });
 
 async function migratedClient() {

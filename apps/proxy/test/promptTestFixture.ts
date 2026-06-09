@@ -47,7 +47,6 @@ export function testEnv(overrides: NodeJS.ProcessEnv = {}) {
     CLASSIFIER_PROVIDER: "openai",
     CLASSIFIER_MODEL: "route-classifier-cheap",
     MODEL_COSTS_JSON: "",
-    ROUTE_POLICY_SOURCE: "central",
     ADMIN_DEV_LOGIN_ENABLED: "true",
     ADMIN_DEV_LOGIN_EMAIL: "local@example.com",
     ADMIN_DEV_LOGIN_PASSWORD: "dev-password",

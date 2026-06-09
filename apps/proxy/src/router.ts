@@ -79,16 +79,6 @@ export class RoutingService {
       }
     });
 
-    await this.events.append({
-      scopeType: "request",
-      scopeId: requestId,
-      correlationId: requestId,
-      idempotencyKey,
-      producer: "prompt-proxy.policy",
-      eventType: "policy.trust_checked",
-      payload: jsonPayload(this.config.routePolicyTrust) as JsonObject
-    });
-
     const preBudget = this.budget.checkBeforeClassification(context);
     await this.appendBudgetEvents(requestId, idempotencyKey, preBudget);
     if (preBudget.rejected) {

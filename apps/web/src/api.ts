@@ -230,7 +230,6 @@ export type Settings = {
     promptCaptureMode: string;
     retentionDays: number;
   } | null;
-  routePolicyTrust: Record<string, unknown>;
 };
 
 export async function fetchOverview() {

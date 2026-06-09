@@ -78,7 +78,7 @@ pnpm dev:local
 
 When `DATABASE_URL` is set, appended proxy events also persist durable current-state rows for requests, route decisions, provider attempts, usage, sessions, prompt artifacts, events, and outbox items.
 
-`pnpm db:seed` is idempotent. It creates the default organization from `DEFAULT_ORGANIZATION_ID`, a local seed user from `SEED_USER_*`, provider account placeholders that reference env secrets, a default route policy, model catalog rows, a default routing config with immutable v1, and a local API key assigned to that config. Use a distinct `PROMPT_PROXY_TOKEN` when seeding multiple organizations in the same database.
+`pnpm db:seed` is idempotent. It creates the default organization from `DEFAULT_ORGANIZATION_ID`, a local seed user from `SEED_USER_*`, provider account placeholders that reference env secrets, a legacy route policy placeholder, model catalog rows, a default routing config with immutable v1, and a local API key assigned to that config. Use a distinct `PROMPT_PROXY_TOKEN` when seeding multiple organizations in the same database.
 
 ## Local Harnesses
 
@@ -105,7 +105,7 @@ CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1 \
 claude --model claude-router-auto
 ```
 
-Useful optional controls include `BUDGET_MAX_ROUTE`, `BUDGET_MAX_ESTIMATED_INPUT_TOKENS`, `BUDGET_USER_ESTIMATED_INPUT_LIMITS`, `BUDGET_TEAM_ESTIMATED_INPUT_LIMITS`, `MODEL_COSTS_JSON`, `ROUTE_POLICY_SOURCE`, and `TRUSTED_REPO_POLICY_HASH`.
+Useful optional controls include `BUDGET_MAX_ROUTE`, `BUDGET_MAX_ESTIMATED_INPUT_TOKENS`, `BUDGET_USER_ESTIMATED_INPUT_LIMITS`, `BUDGET_TEAM_ESTIMATED_INPUT_LIMITS`, and `MODEL_COSTS_JSON`.
 
 ## Verification
 

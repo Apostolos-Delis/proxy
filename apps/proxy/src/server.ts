@@ -307,8 +307,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       },
       promptCapture: persistence
         ? await persistence.promptArtifacts.settings(config.defaultOrganizationId)
-        : null,
-      routePolicyTrust: config.routePolicyTrust
+        : null
     };
   });
 

@@ -18,7 +18,6 @@ export function SettingsPage() {
         <JsonPanel title="Classifier" value={settings.classifier} />
         <JsonPanel title="Budgets" value={settings.budgets} />
         <JsonPanel title="Prompt capture" value={settings.promptCapture} />
-        <JsonPanel title="Policy trust" value={settings.routePolicyTrust} />
         <JsonPanel title="Persistence" value={{ databaseEnabled: settings.databaseEnabled }} />
         <JsonPanel title="Secrets" value={{ providerKeys: "secret references only", apiKeys: "stored as hashes" }} />
       </div>
