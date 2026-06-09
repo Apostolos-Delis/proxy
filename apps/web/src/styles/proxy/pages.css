@@ -382,6 +382,40 @@
   background: transparent;
 }
 
+.routing-detail-grid,
+.routing-summary-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.routing-detail-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin-bottom: 22px;
+}
+
+.routing-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.routing-metric span,
+.routing-metric small {
+  display: block;
+  color: var(--fg-faint);
+}
+
+.routing-metric strong {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.action-error {
+  color: var(--danger);
+  font-size: 12.5px;
+}
+
 .billing-kpis {
   display: grid;
   grid-template-columns: minmax(340px, 1.3fr) minmax(260px, 0.8fr) minmax(260px, 0.8fr);

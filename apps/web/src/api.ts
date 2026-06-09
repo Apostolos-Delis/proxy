@@ -270,6 +270,57 @@ export type RoutingConfigSummary = {
   updatedAt: string;
 };
 
+export type RoutingConfigProviderSettings = {
+  model?: string;
+  reasoning?: {
+    effort?: string;
+  };
+  text?: {
+    verbosity?: string;
+  };
+  thinking?: {
+    type?: string;
+    display?: string;
+  };
+  output_config?: {
+    effort?: string;
+  };
+  maxOutputTokens?: number;
+  maxTokens?: number;
+  metadata?: Record<string, unknown>;
+};
+
+export type RoutingConfigDocument = {
+  schemaVersion: number;
+  displayName: string;
+  description?: string;
+  classifier: {
+    provider: string;
+    model: string;
+    instructions: string;
+    timeoutMs: number;
+    maxAttempts: number;
+    allowRedactedExcerpt: boolean;
+    structuredOutput?: Record<string, unknown>;
+  };
+  routes: Record<string, {
+    description?: string;
+    openai?: RoutingConfigProviderSettings;
+    anthropic?: RoutingConfigProviderSettings;
+  }>;
+  limits: Record<string, unknown>;
+  session: Record<string, unknown>;
+};
+
+export type RoutingConfigVersionDetail = RoutingConfigVersionSummary & {
+  config: RoutingConfigDocument;
+};
+
+export type RoutingConfigDetail = {
+  config: RoutingConfigSummary;
+  versions: RoutingConfigVersionDetail[];
+};
+
 export async function fetchOverview() {
   return fetchJson<Overview>("/admin/overview");
 }
@@ -288,6 +339,24 @@ export async function fetchSettings() {
 
 export async function fetchRoutingConfigs() {
   return fetchJson<{ data: RoutingConfigSummary[] }>("/admin/routing-configs");
+}
+
+export async function fetchRoutingConfigDetail(configId: string) {
+  return fetchJson<RoutingConfigDetail>(`/admin/routing-configs/${encodeURIComponent(configId)}`);
+}
+
+export async function activateRoutingConfigVersion(configId: string, versionId: string) {
+  return fetchJson<RoutingConfigDetail>(
+    `/admin/routing-configs/${encodeURIComponent(configId)}/versions/${encodeURIComponent(versionId)}/activate`,
+    { method: "POST" }
+  );
+}
+
+export async function archiveRoutingConfig(configId: string) {
+  return fetchJson<RoutingConfigDetail>(
+    `/admin/routing-configs/${encodeURIComponent(configId)}/archive`,
+    { method: "POST" }
+  );
 }
 
 export async function fetchUsage(groupBy: string) {

@@ -34,23 +34,6 @@ export function RoutingConfigsPage() {
   );
 }
 
-export function RoutingConfigDetailPage({ configId }: { configId: string }) {
-  return (
-    <div className="page page-enter">
-      <PageTitle
-        title="Routing config"
-        subtitle={configId}
-        actions={<Link to="/routing-configs" className="btn">All configs</Link>}
-      />
-      <GlassCard className="empty-state">
-        <GitBranch />
-        <strong>Routing config detail is wired</strong>
-        <span>Version history, tier mapping, and activation controls land in the detail ticket.</span>
-      </GlassCard>
-    </div>
-  );
-}
-
 function RoutingConfigRow({ config }: { config: RoutingConfigSummary }) {
   return (
     <tr>
