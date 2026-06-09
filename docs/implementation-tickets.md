@@ -582,6 +582,8 @@ Dependencies: PP-030, PP-033, PP-036.
 
 ### PP-038: Add Prompt Analytics Validation Coverage
 
+Status: implemented in the current MVP.
+
 Cover the end-to-end prompt storage and analytics path.
 
 Acceptance criteria:
