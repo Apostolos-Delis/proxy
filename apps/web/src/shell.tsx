@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { BarChart3, FileText, Gauge, GitBranch, ListFilter, Settings as SettingsIcon } from "lucide-react";
+import { BarChart3, FileText, Gauge, GitBranch, ListFilter, MessagesSquare, Settings as SettingsIcon } from "lucide-react";
 
 import { LogoutButton } from "./auth";
 
@@ -32,6 +32,10 @@ export function AppShell() {
           <Link to="/prompts" activeProps={{ className: "active" }}>
             <FileText size={18} />
             Prompts
+          </Link>
+          <Link to="/sessions" activeProps={{ className: "active" }}>
+            <MessagesSquare size={18} />
+            Sessions
           </Link>
           <Link to="/requests" activeProps={{ className: "active" }}>
             <ListFilter size={18} />
