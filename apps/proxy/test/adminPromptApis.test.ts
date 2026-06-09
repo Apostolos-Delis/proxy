@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   apiKeys,
   events,
+  hashApiKey,
   organizationMembers,
   organizations,
   promptAccessAudit,
@@ -10,6 +11,7 @@ import {
   requests,
   users
 } from "@prompt-proxy/db";
+import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
 import { sha256 } from "../src/util.js";
 import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
@@ -220,7 +222,7 @@ describe("admin prompt APIs", () => {
       id: "api_key_owned",
       organizationId: "org_api_key_identity",
       userId: "api_owner",
-      keyHash: sha256("owned-proxy-token"),
+      keyHash: hashApiKey("owned-proxy-token"),
       name: "Owned Proxy Token",
       scopes: ["proxy"]
     });
@@ -274,6 +276,43 @@ describe("admin prompt APIs", () => {
       harnessUserId: "spoofed_user",
       harnessTeamId: "spoofed_team"
     }));
+  });
+
+  it("keeps harness user headers for the seeded local API key", async () => {
+    const fixture = await setup("org_seeded_harness_identity");
+    await seedDatabase(fixture.db, seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_seeded_harness_identity",
+      SEED_USER_ID: "local-user",
+      PROMPT_PROXY_TOKEN: "proxy-token"
+    }));
+
+    const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "x-prompt-proxy-user-id": "codex_seeded_user",
+        "x-prompt-proxy-team-id": "codex_seeded_team",
+        "x-codex-session-id": "seeded-api-key-session"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "Store this under the harness user.",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const promptForHarnessUser = await fetch(`${fixture.proxyUrl}/admin/prompts?userId=codex_seeded_user`, {
+      headers: fixture.adminHeaders
+    }).then((item) => item.json());
+    const promptForSeedUser = await fetch(`${fixture.proxyUrl}/admin/prompts?userId=local-user`, {
+      headers: fixture.adminHeaders
+    }).then((item) => item.json());
+
+    expect(response.status).toBe(200);
+    expect(promptForHarnessUser.data).toHaveLength(1);
+    expect(promptForSeedUser.data).toHaveLength(0);
   });
 
   async function setup(organizationId: string) {

@@ -78,7 +78,7 @@ pnpm dev:local
 
 When `DATABASE_URL` is set, appended proxy events also persist durable current-state rows for requests, route decisions, provider attempts, usage, sessions, prompt artifacts, events, and outbox items.
 
-`pnpm db:seed` is idempotent. It creates the default organization from `DEFAULT_ORGANIZATION_ID`, a local seed user from `SEED_USER_*`, provider account placeholders that reference env secrets, a default route policy, and model catalog rows from the configured route models.
+`pnpm db:seed` is idempotent. It creates the default organization from `DEFAULT_ORGANIZATION_ID`, a local seed user from `SEED_USER_*`, provider account placeholders that reference env secrets, a default route policy, model catalog rows, a default routing config with immutable v1, and a local API key assigned to that config. Use a distinct `PROMPT_PROXY_TOKEN` when seeding multiple organizations in the same database.
 
 ## Local Harnesses
 

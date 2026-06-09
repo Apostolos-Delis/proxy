@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS } from "@prompt-proxy/schema";
 
 import type { AppConfig } from "./config.js";
 import type { ClassifierOutput, RouteContext } from "./types.js";
@@ -85,20 +86,10 @@ export class LlmClassifier {
 }
 
 function classifierRequest(model: string, view: unknown) {
-  const instruction =
-    [
-      "Classify the coding-agent request.",
-      "Use input_* and extracted_hints as the latest user intent.",
-      "full_input_* is envelope size for context/cost only; do not choose hard or deep solely because the envelope is large or tools are present.",
-      "Simple status/list/format/read-only shell requests should route fast.",
-      "System design, architecture planning, architecture reviews, database/schema/storage design, event-driven architecture, provider abstractions, organization-wide data collection, prompt/session storage, analytics pipelines, privacy/security/compliance/retention/access-control design, and cost-governance strategy must route deep with needs_deep_reasoning=true.",
-      "Return only JSON matching the requested schema."
-    ].join(" ");
-
   return {
     model,
     stream: false,
-    instructions: instruction,
+    instructions: DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS,
     input: JSON.stringify(view),
     text: {
       format: {

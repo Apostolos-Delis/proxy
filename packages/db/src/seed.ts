@@ -1,17 +1,30 @@
+import { createHash } from "node:crypto";
+
+import { and, eq, isNull } from "drizzle-orm";
 import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import type { Provider, RouteName } from "@prompt-proxy/schema";
+import {
+  DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS,
+  routingConfigSchema,
+  type Provider,
+  type RouteName,
+  type RoutingConfig
+} from "@prompt-proxy/schema";
 
+import { hashApiKey } from "./apiKeyHash.js";
 import type { PromptProxyDbSession } from "./client.js";
 import * as schema from "./schema.js";
 import {
+  apiKeys,
   modelCatalog,
   organizationMembers,
   organizationSettings,
   organizations,
   providerAccounts,
   routePolicies,
+  routingConfigs,
+  routingConfigVersions,
   users,
   userSettings
 } from "./schema.js";
@@ -23,8 +36,10 @@ export type SeedOptions = {
   userName?: string;
   classifierModel: string;
   classifierPromptVersion: string;
+  classifierAllowRedactedExcerpt: boolean;
   openaiBaseUrl: string;
   anthropicBaseUrl: string;
+  proxyToken: string;
   models: SeedModel[];
 };
 
@@ -38,6 +53,23 @@ export type SeedModel = {
 export async function seedDatabase(db: PromptProxyDbSession, options: SeedOptions) {
   const now = new Date();
   const organizationSlug = slug(options.organizationId);
+  const routingConfigId = `${options.organizationId}:routing-config:default`;
+  const defaultApiKeyId = `${options.organizationId}:api-key:default`;
+  const proxyTokenHash = hashApiKey(options.proxyToken);
+  const [tokenOwner] = await db
+    .select({
+      id: apiKeys.id,
+      organizationId: apiKeys.organizationId
+    })
+    .from(apiKeys)
+    .where(eq(apiKeys.keyHash, proxyTokenHash))
+    .limit(1);
+
+  if (tokenOwner && tokenOwner.id !== defaultApiKeyId) {
+    throw new Error(
+      `PROMPT_PROXY_TOKEN is already assigned to ${tokenOwner.id} in organization ${tokenOwner.organizationId}; set a unique PROMPT_PROXY_TOKEN for ${options.organizationId}.`
+    );
+  }
 
   await db
     .insert(organizations)
@@ -201,6 +233,88 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
       }
     });
 
+  const routingConfig = defaultRoutingConfig(options);
+  const routingConfigVersionId = `${routingConfigId}:v1`;
+  const routingConfigHash = sha256Hex(JSON.stringify(routingConfig));
+
+  await db
+    .insert(routingConfigs)
+    .values({
+      id: routingConfigId,
+      organizationId: options.organizationId,
+      name: "Default routing config",
+      slug: "default",
+      description: "Seeded default routing config for coding-agent traffic.",
+      status: "active"
+    })
+    .onConflictDoUpdate({
+      target: routingConfigs.id,
+      set: {
+        name: "Default routing config",
+        description: "Seeded default routing config for coding-agent traffic.",
+        status: "active",
+        updatedAt: now
+      }
+    });
+
+  await db
+    .insert(routingConfigVersions)
+    .values({
+      id: routingConfigVersionId,
+      organizationId: options.organizationId,
+      routingConfigId,
+      version: 1,
+      configHash: routingConfigHash,
+      config: routingConfig,
+      status: "active",
+      createdByUserId: options.userId,
+      activatedAt: now
+    })
+    .onConflictDoNothing({
+      target: routingConfigVersions.id
+    });
+
+  await db
+    .update(routingConfigs)
+    .set({
+      activeVersionId: routingConfigVersionId,
+      updatedAt: now
+    })
+    .where(and(
+      eq(routingConfigs.id, routingConfigId),
+      isNull(routingConfigs.activeVersionId)
+    ));
+
+  await db
+    .insert(apiKeys)
+    .values({
+      id: defaultApiKeyId,
+      organizationId: options.organizationId,
+      userId: null,
+      keyHash: proxyTokenHash,
+      name: "Default local API key",
+      routingConfigId,
+      scopes: ["proxy", "admin", "harness_identity"]
+    })
+    .onConflictDoUpdate({
+      target: apiKeys.id,
+      set: {
+        userId: null,
+        keyHash: proxyTokenHash,
+        name: "Default local API key",
+        routingConfigId,
+        scopes: ["proxy", "admin", "harness_identity"]
+      }
+    });
+
+  await db
+    .update(organizationSettings)
+    .set({
+      defaultRoutingConfigId: routingConfigId,
+      updatedAt: now
+    })
+    .where(eq(organizationSettings.organizationId, options.organizationId));
+
   return {
     organizationId: options.organizationId,
     userId: options.userId,
@@ -217,8 +331,10 @@ export function seedOptionsFromEnv(env: NodeJS.ProcessEnv): SeedOptions {
     userName: env.SEED_USER_NAME ?? "Local User",
     classifierModel: env.CLASSIFIER_MODEL ?? "gpt-5-nano-2025-08-07",
     classifierPromptVersion: env.CLASSIFIER_PROMPT_VERSION ?? "2026-06-08",
+    classifierAllowRedactedExcerpt: booleanEnv(env.CLASSIFIER_ALLOW_REDACTED_EXCERPT),
     openaiBaseUrl: env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
     anthropicBaseUrl: env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1",
+    proxyToken: env.PROMPT_PROXY_TOKEN ?? "dev-proxy-token",
     models: [
       model("openai", env.OPENAI_FAST_MODEL ?? "gpt-5.4-mini", "fast", "openai-responses"),
       model("openai", env.OPENAI_BALANCED_MODEL ?? "gpt-5.4", "balanced", "openai-responses"),
@@ -239,6 +355,76 @@ function model(provider: Provider, modelName: string, route: RouteName, surface:
     route,
     surface
   };
+}
+
+function defaultRoutingConfig(options: SeedOptions): RoutingConfig {
+  return routingConfigSchema.parse({
+    schemaVersion: 1,
+    displayName: "Default coding router",
+    description: "Seeded default routing config for coding-agent traffic.",
+    classifier: {
+      provider: "openai",
+      model: options.classifierModel,
+      instructions: DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS,
+      timeoutMs: 1500,
+      maxAttempts: 2,
+      allowRedactedExcerpt: options.classifierAllowRedactedExcerpt,
+      structuredOutput: {
+        mode: "json_schema",
+        schemaName: "routing_classifier"
+      }
+    },
+    routes: {
+      fast: routeConfig(options, "fast", "Simple shell/status/read-only tasks", "low", "low"),
+      balanced: routeConfig(options, "balanced", "Default coding tasks", "medium", "medium"),
+      hard: routeConfig(options, "hard", "Debugging, multi-file edits, and migrations", "high", "high"),
+      deep: routeConfig(options, "deep", "Architecture, system design, security, and storage design", "xhigh", "xhigh")
+    },
+    limits: {
+      maxRoute: "deep",
+      fallbackRoute: "hard",
+      maxEstimatedInputTokens: 200000
+    },
+    session: {
+      pinInitialRoute: true,
+      allowUpgrade: true,
+      allowDowngrade: false
+    }
+  });
+}
+
+function routeConfig(
+  options: SeedOptions,
+  route: RouteName,
+  description: string,
+  openaiEffort: "low" | "medium" | "high" | "xhigh",
+  anthropicEffort: "low" | "medium" | "high" | "xhigh"
+): RoutingConfig["routes"][RouteName] {
+  return {
+    description,
+    openai: {
+      model: modelFor(options, "openai", route),
+      reasoning: {
+        effort: openaiEffort
+      },
+      text: {
+        verbosity: route === "fast" || route === "balanced" ? "low" : "medium"
+      }
+    },
+    anthropic: {
+      model: modelFor(options, "anthropic", route),
+      thinking: route === "fast" ? { type: "disabled" } : { type: "adaptive", display: "omitted" },
+      output_config: {
+        effort: anthropicEffort
+      }
+    }
+  };
+}
+
+function modelFor(options: SeedOptions, provider: Provider, route: RouteName) {
+  const match = options.models.find((entry) => entry.provider === provider && entry.route === route);
+  if (!match) throw new Error(`Missing seeded model for provider=${provider} route=${route}`);
+  return match.model;
 }
 
 function modelCatalogRows(options: SeedOptions) {
@@ -286,6 +472,18 @@ function modelCatalogRows(options: SeedOptions) {
 
 function slug(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "local";
+}
+
+function booleanEnv(value: string | undefined) {
+  if (value === undefined) return false;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") return true;
+  if (normalized === "false" || normalized === "0" || normalized === "") return false;
+  throw new Error(`Invalid boolean env value: ${value}`);
+}
+
+function sha256Hex(value: string) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

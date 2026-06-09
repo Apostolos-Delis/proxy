@@ -10,12 +10,14 @@ import {
   apiKeys,
   createPgliteDatabase,
   events,
+  hashApiKey,
   organizations,
   providerAttempts,
   requests,
   routeDecisions,
   usageLedger
 } from "@prompt-proxy/db";
+import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
 import { buildModelCatalog } from "../src/catalog.js";
 import { loadConfig } from "../src/config.js";
@@ -260,7 +262,7 @@ describe("postgres persistence", () => {
     await fixture.db.insert(apiKeys).values({
       id: "api_key_1",
       organizationId: "org_api_key",
-      keyHash: sha256("secret-token"),
+      keyHash: hashApiKey("secret-token"),
       name: "Local Proxy Key",
       scopes: ["proxy"]
     });
@@ -276,6 +278,24 @@ describe("postgres persistence", () => {
     });
     expect(rows[0]?.lastUsedAt?.toISOString()).toBe("2026-06-08T00:00:00.000Z");
     await expect(fixture.persistence.apiKeys.resolve("wrong-token")).resolves.toBeUndefined();
+  });
+
+  it("resolves the seeded local proxy token through the API-key identity store", async () => {
+    const fixture = await persistenceFixture("org_seed_identity");
+    await seedDatabase(fixture.db, seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_seed_identity",
+      SEED_USER_ID: "seed_identity_user",
+      PROMPT_PROXY_TOKEN: "seeded-secret-token"
+    }));
+
+    const identity = await fixture.persistence.apiKeys.resolve("seeded-secret-token");
+
+    expect(identity).toEqual(expect.objectContaining({
+      apiKeyId: "org_seed_identity:api-key:default",
+      organizationId: "org_seed_identity",
+      userId: undefined,
+      scopes: ["proxy", "admin", "harness_identity"]
+    }));
   });
 
   it("uses route context organization for request idempotency", async () => {
