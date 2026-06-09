@@ -11,7 +11,8 @@ import {
   type RoutingConfigSummary
 } from "./api";
 import { compactId, formatDateTime } from "./format";
-import { Badge, DataTable, GlassCard, PageState, PageTitle, StatusBadge } from "./ui";
+import { ConsoleTable, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
+import { Badge, PageState, PageTitle, StatusBadge } from "./ui";
 
 type AssignmentVariables = {
   apiKeyId: string;
@@ -50,62 +51,66 @@ export function KeysPage() {
         subtitle="Attach each hashed key to a routing config, or let it use the organization default."
         actions={<Link to="/usage" className="btn"><BarChart3 />Key usage</Link>}
       />
-      <GlassCard className="table-wrap routing-configs-card">
-        <DataTable>
-          <thead><tr><th>Name</th><th>Status</th><th>Routing config</th><th>Scopes</th><th>Owner</th><th>Created</th><th>Last used</th></tr></thead>
-          <tbody>
-            {keys.map((apiKey) => (
-              <ApiKeyRow
-                key={apiKey.id}
-                apiKey={apiKey}
-                configs={configs}
-                open={openKeyId === apiKey.id}
-                pending={assignmentMutation.isPending && assignmentMutation.variables?.apiKeyId === apiKey.id}
-                error={assignmentMutation.variables?.apiKeyId === apiKey.id ? assignmentMutation.error?.message : undefined}
-                onOpenChange={(open) => setOpenKeyId(open ? apiKey.id : null)}
-                onAssign={(routingConfigId) => assignmentMutation.mutate({ apiKeyId: apiKey.id, routingConfigId })}
-              />
-            ))}
-          </tbody>
-        </DataTable>
-        {keys.length === 0 ? <div className="empty">No API keys found.</div> : null}
-      </GlassCard>
+      <ConsoleTable
+        className="routing-configs-card"
+        data={keys}
+        columns={apiKeyColumns({
+          configs,
+          openKeyId,
+          pendingKeyId: assignmentMutation.isPending ? assignmentMutation.variables?.apiKeyId : undefined,
+          errorKeyId: assignmentMutation.variables?.apiKeyId,
+          errorMessage: assignmentMutation.error?.message,
+          onOpenChange: (apiKeyId, open) => setOpenKeyId(open ? apiKeyId : null),
+          onAssign: (apiKeyId, routingConfigId) => assignmentMutation.mutate({ apiKeyId, routingConfigId })
+        })}
+        search={{ placeholder: "Search keys, scopes, owners...", getValue: apiKeySearchValue }}
+        filters={apiKeyFilters(keys)}
+        advancedFields={apiKeyAdvancedFields}
+        emptyLabel="No API keys found."
+        resultLabel={(count) => `${count} keys`}
+      />
     </div>
   );
 }
 
-function ApiKeyRow({ apiKey, configs, open, pending, error, onOpenChange, onAssign }: {
-  apiKey: ApiKeySummary;
+function apiKeyColumns({ configs, openKeyId, pendingKeyId, errorKeyId, errorMessage, onOpenChange, onAssign }: {
   configs: RoutingConfigSummary[];
-  open: boolean;
-  pending: boolean;
-  error?: string;
-  onOpenChange: (open: boolean) => void;
-  onAssign: (routingConfigId: string | null) => void;
-}) {
-  return (
-    <tr>
-      <td>
-        <div className="row gap-8"><KeyRound /><strong>{apiKey.name}</strong></div>
-        <div className="mono faint">{compactId(apiKey.id, 14)}</div>
-      </td>
-      <td><StatusBadge status={apiKeyStatus(apiKey)} /></td>
-      <td>
+  openKeyId: string | null;
+  pendingKeyId?: string;
+  errorKeyId?: string;
+  errorMessage?: string;
+  onOpenChange: (apiKeyId: string, open: boolean) => void;
+  onAssign: (apiKeyId: string, routingConfigId: string | null) => void;
+}): ConsoleTableColumn<ApiKeySummary>[] {
+  return [
+    { id: "name", header: "Name", size: 260, accessorFn: (apiKey) => apiKey.name, cell: ({ row }) => <ApiKeyNameCell apiKey={row.original} /> },
+    { id: "status", header: "Status", size: 130, accessorFn: apiKeyStatus, cell: ({ row }) => <StatusBadge status={apiKeyStatus(row.original)} /> },
+    { id: "routingConfig", header: "Routing config", size: 270, accessorFn: routingConfigLabel, cell: ({ row }) => (
+      <>
         <AssignmentMenu
-          apiKey={apiKey}
+          apiKey={row.original}
           configs={configs}
-          open={open}
-          pending={pending}
-          onOpenChange={onOpenChange}
-          onAssign={onAssign}
+          open={openKeyId === row.original.id}
+          pending={pendingKeyId === row.original.id}
+          onOpenChange={(open) => onOpenChange(row.original.id, open)}
+          onAssign={(routingConfigId) => onAssign(row.original.id, routingConfigId)}
         />
-        {error ? <div className="action-error">{error}</div> : null}
-      </td>
-      <td>{apiKey.scopes.map((scope) => <Badge key={scope}>{scope}</Badge>)}</td>
-      <td><span className="mono">{apiKey.userId ?? "organization"}</span></td>
-      <td>{formatDateTime(apiKey.createdAt)}</td>
-      <td>{apiKey.lastUsedAt ? formatDateTime(apiKey.lastUsedAt) : <span className="faint">never</span>}</td>
-    </tr>
+        {errorKeyId === row.original.id && errorMessage ? <div className="action-error">{errorMessage}</div> : null}
+      </>
+    ) },
+    { id: "scopes", header: "Scopes", size: 260, accessorFn: (apiKey) => apiKey.scopes.join(" "), cell: ({ row }) => row.original.scopes.map((scope) => <Badge key={scope}>{scope}</Badge>) },
+    { id: "owner", header: "Owner", size: 160, accessorFn: (apiKey) => apiKey.userId ?? "organization", cell: ({ row }) => <span className="mono">{row.original.userId ?? "organization"}</span> },
+    { id: "created", header: "Created", size: 180, accessorFn: (apiKey) => apiKey.createdAt, cell: ({ row }) => formatDateTime(row.original.createdAt) },
+    { id: "lastUsed", header: "Last used", size: 180, accessorFn: (apiKey) => apiKey.lastUsedAt ?? "", cell: ({ row }) => row.original.lastUsedAt ? formatDateTime(row.original.lastUsedAt) : <span className="faint">never</span> }
+  ];
+}
+
+function ApiKeyNameCell({ apiKey }: { apiKey: ApiKeySummary }) {
+  return (
+    <>
+      <div className="row gap-8"><KeyRound /><strong>{apiKey.name}</strong></div>
+      <div className="mono faint">{compactId(apiKey.id, 14)}</div>
+    </>
   );
 }
 
@@ -147,8 +152,72 @@ function isAssignableConfig(config: RoutingConfigSummary) {
   return config.status === "active" && Boolean(config.activeVersion);
 }
 
+const apiKeyAdvancedFields: ConsoleTableAdvancedField<ApiKeySummary>[] = [
+  { id: "name", label: "Name", getValue: (apiKey) => apiKey.name },
+  { id: "keyId", label: "Key ID", getValue: (apiKey) => apiKey.id },
+  { id: "status", label: "Status", getValue: apiKeyStatus },
+  { id: "routingConfig", label: "Routing config", getValue: routingConfigLabel },
+  { id: "owner", label: "Owner", getValue: (apiKey) => apiKey.userId ?? "organization" },
+  { id: "scopes", label: "Scopes", getValue: (apiKey) => apiKey.scopes }
+];
+
+function apiKeyFilters(keys: ApiKeySummary[]): ConsoleTableFilter<ApiKeySummary>[] {
+  const routingValues = keys.map((apiKey) => ({ value: routingConfigFilterValue(apiKey), label: routingConfigLabel(apiKey) }));
+  return [
+    {
+      id: "status",
+      label: "Status",
+      allLabel: "All statuses",
+      options: optionItems(keys.map(apiKeyStatus)),
+      getValue: apiKeyStatus
+    },
+    {
+      id: "routingConfig",
+      label: "Routing config",
+      allLabel: "All configs",
+      options: uniqueOptionItems(routingValues),
+      getValue: routingConfigFilterValue
+    }
+  ];
+}
+
+function apiKeySearchValue(apiKey: ApiKeySummary) {
+  return [
+    apiKey.id,
+    apiKey.name,
+    apiKey.userId,
+    apiKey.routingConfig?.name,
+    apiKey.routingConfig?.status,
+    apiKey.scopes.join(" ")
+  ].filter((value): value is string => Boolean(value));
+}
+
 function apiKeyStatus(apiKey: ApiKeySummary) {
   if (apiKey.revokedAt) return "revoked";
   if (apiKey.expiresAt && new Date(apiKey.expiresAt).getTime() < Date.now()) return "expired";
   return "active";
+}
+
+function routingConfigFilterValue(apiKey: ApiKeySummary) {
+  return apiKey.routingConfigId ?? "default";
+}
+
+function routingConfigLabel(apiKey: ApiKeySummary) {
+  return apiKey.routingConfig?.name ?? "Organization default";
+}
+
+function optionItems(values: string[]) {
+  return uniqueOptions(values).map((value) => ({ value, label: value }));
+}
+
+function uniqueOptionItems(values: { value: string; label: string }[]) {
+  const options = new Map<string, string>();
+  values.forEach((item) => {
+    if (!options.has(item.value)) options.set(item.value, item.label);
+  });
+  return [...options].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function uniqueOptions(values: string[]) {
+  return [...new Set(values)].filter(Boolean).sort();
 }

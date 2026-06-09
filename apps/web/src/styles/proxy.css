@@ -2,6 +2,7 @@
 @import "./proxy/shell.css";
 @import "./proxy/primitives.css";
 @import "./proxy/interactions.css";
+@import "./proxy/table.css";
 @import "./proxy/auth.css";
 @import "./proxy/pages.css";
 @import "./proxy/charts.css";

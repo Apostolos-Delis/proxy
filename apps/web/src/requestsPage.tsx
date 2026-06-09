@@ -1,14 +1,14 @@
 import { Link } from "@tanstack/react-router";
 import { useQueries } from "@tanstack/react-query";
-import { Download, Search, Shield, Users } from "lucide-react";
-import { useState } from "react";
+import { Boxes, Download, Shield, Users } from "lucide-react";
 
 import { type PromptSummary, type RequestSummary, fetchPrompts, fetchRequests, fetchUsers } from "./api";
 import { displayUser } from "./consoleData";
-import { downloadJson, FilterMenu } from "./dashboard";
+import { downloadJson } from "./dashboard";
 import { compactId, formatCompact, formatMoney } from "./format";
 import { RoutingConfigMicro } from "./routingSnapshot";
-import { DataTable, GlassCard, PageState, PageTitle, StatusBadge, UserCell } from "./ui";
+import { ConsoleTable, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
+import { PageState, PageTitle, StatusBadge, UserCell } from "./ui";
 
 type PromptLogRow = {
   prompt: PromptSummary;
@@ -17,13 +17,6 @@ type PromptLogRow = {
 };
 
 export function RequestsPage() {
-  const [queryText, setQueryText] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [userFilter, setUserFilter] = useState("all");
-  const [modelFilter, setModelFilter] = useState("all");
-  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [promptsQuery, requestsQuery, usersQuery] = useQueries({
     queries: [
       { queryKey: ["prompts"], queryFn: fetchPrompts },
@@ -38,93 +31,125 @@ export function RequestsPage() {
   if (error) return <PageState title="Request logs" label={error.message} />;
 
   const rows = promptRows(promptsQuery.data?.data ?? [], requestsQuery.data?.data ?? [], usersQuery.data?.data ?? []);
-  const filtered = rows.filter((row) => matchesPrompt(row, queryText, statusFilter, userFilter, modelFilter));
-  const users = uniqueOptions(rows.map((row) => row.prompt.userId ?? "unknown"));
-  const models = uniqueOptions(rows.map((row) => row.prompt.selectedModel ?? row.request?.selectedModel ?? "unknown"));
-  const statuses = uniqueOptions(rows.map((row) => row.request?.terminalStatus ?? "unknown"));
-  const exportRows = () => {
-    downloadJson("proxy-request-logs.json", filtered);
-  };
-
   return (
     <div className="page page-enter">
       <PageTitle
         title="Request logs"
         subtitle="Every prompt routed through Proxy, in real time."
-        actions={<button className="btn" type="button" onClick={exportRows}><Download />Export</button>}
+        actions={null}
       />
-      <div className="logs-filter-row">
-        <div className="input logs-search">
-          <Search />
-          <input value={queryText} onChange={(event) => setQueryText(event.target.value)} placeholder="Search prompts, users, request IDs..." />
-        </div>
-        <FilterMenu
-          icon={<Users />}
-          label={userFilter === "all" ? "All users" : userFilter}
-          open={userMenuOpen}
-          active={userFilter !== "all"}
-          options={["all", ...users]}
-          onOpenChange={setUserMenuOpen}
-          onSelect={setUserFilter}
-        />
-        <FilterMenu
-          label={modelFilter === "all" ? "All models" : modelFilter}
-          open={modelMenuOpen}
-          active={modelFilter !== "all"}
-          options={["all", ...models]}
-          onOpenChange={setModelMenuOpen}
-          onSelect={setModelFilter}
-        />
-        <FilterMenu
-          icon={<Shield />}
-          label={statusFilter === "all" ? "All statuses" : statusFilter}
-          open={statusMenuOpen}
-          active={statusFilter !== "all"}
-          options={["all", ...statuses]}
-          onOpenChange={setStatusMenuOpen}
-          onSelect={setStatusFilter}
-        />
-        <span className="faint">{filtered.length} prompts</span>
-      </div>
-      <GlassCard className="table-wrap logs-table-card">
-        <DataTable>
-          <thead>
-            <tr><th>Prompt</th><th>User</th><th>Model</th><th>Tokens</th><th>Cost</th><th>Latency</th><th>Status</th></tr>
-          </thead>
-          <tbody>
-            {filtered.map((row) => <PromptRequestRow key={row.prompt.artifactId} row={row} />)}
-          </tbody>
-        </DataTable>
-        {filtered.length === 0 ? <div className="empty">No requests match these filters.</div> : null}
-      </GlassCard>
+      <ConsoleTable
+        className="logs-table-card"
+        data={rows}
+        columns={requestColumns}
+        search={{ placeholder: "Search prompts, users, request IDs...", getValue: requestSearchValue }}
+        filters={requestFilters(rows)}
+        advancedFields={requestAdvancedFields}
+        emptyLabel="No requests match these filters."
+        resultLabel={(count) => `${count} prompts`}
+        actions={({ visibleData }) => (
+          <button className="btn" type="button" onClick={() => downloadJson("proxy-request-logs.json", visibleData)}>
+            <Download />Export
+          </button>
+        )}
+      />
     </div>
   );
 }
 
-function PromptRequestRow({ row }: { row: PromptLogRow }) {
-  const { prompt, request } = row;
-  const tokens = request?.usage.totalTokens ?? prompt.tokenEstimate ?? 0;
-  const cost = request?.selectedCost ?? prompt.cost.selected;
-  const promptText = prompt.preview ?? "Prompt text was not stored for this request.";
+const requestColumns: ConsoleTableColumn<PromptLogRow>[] = [
+  { id: "prompt", header: "Prompt", size: 460, accessorFn: (row) => row.prompt.preview ?? "", cell: ({ row }) => <PromptCell row={row.original} /> },
+  { id: "user", header: "User", size: 220, accessorFn: (row) => row.userName, cell: ({ row }) => <UserCell name={row.original.userName} detail={row.original.prompt.surface} /> },
+  { id: "model", header: "Model", size: 230, accessorFn: selectedModel, cell: ({ row }) => <ModelCell row={row.original} /> },
+  { id: "tokens", header: "Tokens", size: 118, accessorFn: totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(totalTokens(row.original))}</span> },
+  { id: "cost", header: "Cost", size: 118, accessorFn: selectedCost, cell: ({ row }) => <span className="mono">{formatMoney(selectedCost(row.original))}</span> },
+  { id: "latency", header: "Latency", size: 124, accessorFn: (row) => row.request?.latencyMs ?? 0, cell: ({ row }) => <span className="mono faint">{formatLatency(row.original.request?.latencyMs)}</span> },
+  { id: "status", header: "Status", size: 138, accessorFn: terminalStatus, cell: ({ row }) => <StatusBadge status={terminalStatus(row.original)} /> }
+];
+
+const requestAdvancedFields: ConsoleTableAdvancedField<PromptLogRow>[] = [
+  { id: "prompt", label: "Prompt", getValue: (row) => row.prompt.preview },
+  { id: "requestId", label: "Request ID", getValue: (row) => row.prompt.requestId },
+  { id: "user", label: "User", getValue: (row) => [row.userName, row.prompt.userId ?? ""] },
+  { id: "model", label: "Model", getValue: selectedModel },
+  { id: "status", label: "Status", getValue: terminalStatus },
+  { id: "surface", label: "Surface", getValue: (row) => row.prompt.surface },
+  { id: "route", label: "Route", getValue: (row) => row.prompt.finalRoute ?? row.request?.finalRoute },
+  { id: "routingConfig", label: "Routing config", getValue: (row) => row.prompt.routingConfig?.configName ?? row.request?.routingConfig?.configName }
+];
+
+function PromptCell({ row }: { row: PromptLogRow }) {
+  const promptText = row.prompt.preview ?? "Prompt text was not stored for this request.";
   return (
-    <tr>
-      <td className="prompt-cell">
-        <Link to="/logs/$artifactId" params={{ artifactId: prompt.artifactId }} className="table-link">
-          {promptText}
-        </Link>
-        <div className="mono faint">{compactId(prompt.requestId)}</div>
-      </td>
-      <td><UserCell name={row.userName} detail={prompt.surface} /></td>
-      <td>
-        <span className="row gap-8"><span className="model-dot" /><span className="mono">{prompt.selectedModel ?? request?.selectedModel ?? "unknown"}</span></span>
-        <RoutingConfigMicro snapshot={prompt.routingConfig ?? request?.routingConfig} />
-      </td>
-      <td className="mono">{formatCompact(tokens)}</td>
-      <td className="mono">{formatMoney(cost)}</td>
-      <td className="mono faint">{formatLatency(request?.latencyMs)}</td>
-      <td><StatusBadge status={request?.terminalStatus ?? "unknown"} /></td>
-    </tr>
+    <div className="prompt-cell">
+      <Link to="/logs/$artifactId" params={{ artifactId: row.prompt.artifactId }} className="table-link">
+        {promptText}
+      </Link>
+      <div className="mono faint">{compactId(row.prompt.requestId)}</div>
+    </div>
   );
+}
+
+function ModelCell({ row }: { row: PromptLogRow }) {
+  return (
+    <>
+      <span className="row gap-8"><span className="model-dot" /><span className="mono">{selectedModel(row)}</span></span>
+      <RoutingConfigMicro snapshot={row.prompt.routingConfig ?? row.request?.routingConfig} />
+    </>
+  );
+}
+
+function requestFilters(rows: PromptLogRow[]): ConsoleTableFilter<PromptLogRow>[] {
+  return [
+    { id: "user", label: "User", allLabel: "All users", icon: <Users />, options: uniqueOptionItems(rows.map((row) => ({ value: row.prompt.userId ?? "unknown", label: row.userName }))), getValue: (row) => row.prompt.userId ?? "unknown" },
+    { id: "model", label: "Model", allLabel: "All models", icon: <Boxes />, options: optionItems(rows.map(selectedModel)), getValue: selectedModel },
+    { id: "status", label: "Status", allLabel: "All statuses", icon: <Shield />, options: optionItems(rows.map(terminalStatus)), getValue: terminalStatus }
+  ];
+}
+
+function requestSearchValue(row: PromptLogRow) {
+  const { prompt, request } = row;
+  return [
+    prompt.preview,
+    prompt.requestId,
+    prompt.routingConfig?.configName,
+    prompt.routingConfig?.configHash,
+    request?.routingConfig?.configName,
+    request?.routingConfig?.configHash,
+    row.userName,
+    prompt.userId,
+    selectedModel(row),
+    terminalStatus(row),
+    prompt.surface
+  ].filter((value): value is string => Boolean(value));
+}
+
+function totalTokens(row: PromptLogRow) {
+  return row.request?.usage.totalTokens ?? row.prompt.tokenEstimate ?? 0;
+}
+
+function selectedCost(row: PromptLogRow) {
+  return row.request?.selectedCost ?? row.prompt.cost.selected;
+}
+
+function selectedModel(row: PromptLogRow) {
+  return row.prompt.selectedModel ?? row.request?.selectedModel ?? "unknown";
+}
+
+function terminalStatus(row: PromptLogRow) {
+  return row.request?.terminalStatus ?? "unknown";
+}
+
+function optionItems(values: string[]) {
+  return uniqueOptions(values).map((value) => ({ value, label: value }));
+}
+
+function uniqueOptionItems(values: { value: string; label: string }[]) {
+  const options = new Map<string, string>();
+  values.forEach((item) => {
+    if (!options.has(item.value)) options.set(item.value, item.label);
+  });
+  return [...options].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function promptRows(prompts: PromptSummary[], requests: RequestSummary[], users: Parameters<typeof displayUser>[0][]): PromptLogRow[] {
@@ -144,35 +169,6 @@ function promptRows(prompts: PromptSummary[], requests: RequestSummary[], users:
 
 function isVisiblePromptArtifact(prompt: PromptSummary) {
   return prompt.kind !== "tool_schema_metadata" && prompt.kind !== "request_input";
-}
-
-function matchesPrompt(row: PromptLogRow, queryText: string, statusFilter: string, userFilter: string, modelFilter: string) {
-  const status = row.request?.terminalStatus ?? "unknown";
-  const model = row.prompt.selectedModel ?? row.request?.selectedModel ?? "unknown";
-  const user = row.prompt.userId ?? "unknown";
-  const haystack = [
-    row.prompt.preview,
-    row.prompt.requestId,
-    row.prompt.routingConfig?.configName,
-    row.prompt.routingConfig?.configHash,
-    row.request?.routingConfig?.configName,
-    row.request?.routingConfig?.configHash,
-    row.userName,
-    user,
-    model,
-    status,
-    row.prompt.surface
-  ].join(" ").toLowerCase();
-  return (
-    (statusFilter === "all" || status === statusFilter) &&
-    (userFilter === "all" || user === userFilter) &&
-    (modelFilter === "all" || model === modelFilter) &&
-    haystack.includes(queryText.toLowerCase())
-  );
-}
-
-function uniqueOptions(values: string[]) {
-  return [...new Set(values)].filter(Boolean).sort();
 }
 
 function formatLatency(value?: number) {
