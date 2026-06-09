@@ -1,77 +1,221 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { Box, Clock3, Copy } from "lucide-react";
 
 import type { ProxyEvent } from "./api";
+import { compactId, formatDateTime } from "./format";
 
-export function Timeline({ events }: { events: ProxyEvent[] }) {
+export type ConsoleMetric = {
+  label: string;
+  value: string;
+  detail?: string;
+  icon?: ReactNode;
+  delta?: number;
+};
+
+export function GlassCard({ children, className = "", style }: {
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return <section className={`glass card ${className}`} style={style}>{children}</section>;
+}
+
+export function PageTitle({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
   return (
-    <div className="panel">
-      <h2>Event Timeline</h2>
-      <div className="timeline">
-        {events.map((event) => (
-          <article key={event.eventId} className="timeline-row">
-            <div>
-              <strong>{event.eventType}</strong>
-              <span>{event.producer}</span>
-            </div>
-            <time>{new Date(event.createdAt).toLocaleString()}</time>
-          </article>
-        ))}
-        {events.length === 0 ? <div className="empty">No events found for this request.</div> : null}
+    <div className="page-title-row">
+      <div>
+        <h2>{title}</h2>
+        {subtitle ? <div className="muted">{subtitle}</div> : null}
       </div>
-    </div>
-  );
-}
-
-export function JsonPanel({ icon, title, value }: { icon: ReactNode; title: string; value: unknown }) {
-  return (
-    <div className="panel json-panel">
-      <h2>{icon}{title}</h2>
-      <pre>{JSON.stringify(value, null, 2)}</pre>
-    </div>
-  );
-}
-
-export function Header({ eyebrow, title }: { eyebrow: string; title: string }) {
-  return (
-    <header className="page-header">
-      <p>{eyebrow}</p>
-      <h1>{title}</h1>
-    </header>
-  );
-}
-
-export function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="metric">
-      <div className="metric-icon">{icon}</div>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-export function Quality({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="quality">
-      <span>{label}</span>
-      <strong>{value.toLocaleString()}</strong>
+      {actions ? <div className="row gap-8">{actions}</div> : null}
     </div>
   );
 }
 
 export function PageState({ title, label }: { title: string; label: string }) {
   return (
-    <section>
-      <Header eyebrow="Prompt Proxy" title={title} />
-      <div className="empty">{label}</div>
-    </section>
+    <div className="page page-enter">
+      <PageTitle title={title} subtitle={label} />
+      <GlassCard className="empty-state">
+        <Box />
+        <strong>{label}</strong>
+        <span>Run traffic through the proxy and this surface will populate automatically.</span>
+      </GlassCard>
+    </div>
   );
 }
 
-export function formatMoney(value: number) {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 4
-  }).format(value);
+export function StatCard({ metric, chart }: { metric: ConsoleMetric; chart?: ReactNode }) {
+  return (
+    <GlassCard className="stat-card">
+      <div className="card-head">
+        <div className="card-title">{metric.icon}{metric.label}</div>
+        {metric.delta === undefined ? null : <Delta value={metric.delta} />}
+      </div>
+      <div className="stat-value">{metric.value}</div>
+      {metric.detail ? <div className="stat-sub">{metric.detail}</div> : null}
+      {chart ? <div className="stat-chart">{chart}</div> : null}
+    </GlassCard>
+  );
+}
+
+export function Segmented<T extends string>({ options, value, onChange, accent = false }: {
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  accent?: boolean;
+}) {
+  return (
+    <div className={`segmented${accent ? " accent" : ""}`}>
+      {options.map((option) => (
+        <button key={option.value} type="button" className={value === option.value ? "active" : ""} onClick={() => onChange(option.value)}>
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function Badge({ children, variant, dot = false }: { children: ReactNode; variant?: "accent" | "success" | "danger" | "warn"; dot?: boolean }) {
+  return <span className={`badge${variant ? ` badge-${variant}` : ""}`}>{dot ? <span className="dot" /> : null}{children}</span>;
+}
+
+export function StatusBadge({ status }: { status?: string }) {
+  const tone = statusTone(status ?? "unknown");
+  if (tone === "success") return <Badge variant="success" dot>{status === "paid" ? "Success" : status ?? "success"}</Badge>;
+  if (tone === "danger") return <Badge variant="danger" dot>{status ?? "error"}</Badge>;
+  if (tone === "warn") return <Badge variant="warn" dot>{status ?? "pending"}</Badge>;
+  return <Badge dot>{status ?? "unknown"}</Badge>;
+}
+
+export function RouteBadge({ route }: { route?: string }) {
+  const value = route ?? "unknown";
+  return <span className={`chip route-chip route-${routeTone(value)}`}>{value}</span>;
+}
+
+export function Avatar({ label, color = "var(--accent)", size = 30 }: { label: string; color?: string; size?: number }) {
+  return (
+    <span className="avatar" style={{ background: color, width: size, height: size, fontSize: size * 0.4 }}>
+      {initials(label)}
+    </span>
+  );
+}
+
+export function UserCell({ name, detail, color }: { name: string; detail?: string; color?: string }) {
+  return (
+    <div className="user-cell">
+      <Avatar label={name} color={color} />
+      <div>
+        <div className="user-name">{name}</div>
+        {detail ? <div className="user-email">{detail}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+export function ProgressMeter({ value, max, tone = "accent" }: { value: number; max: number; tone?: "accent" | "success" | "danger" }) {
+  const width = max <= 0 || value <= 0 ? 0 : Math.max(2, Math.min(100, (value / max) * 100));
+  return <div className={`meter ${tone}`}><i style={{ width: `${width}%` }} /></div>;
+}
+
+export function DataTable({ children }: { children: ReactNode }) {
+  return <table className="tbl">{children}</table>;
+}
+
+export function CodePill({ value, copy = false }: { value: string; copy?: boolean }) {
+  return (
+    <span className="code-pill">
+      {value}
+      {copy ? <Copy /> : null}
+    </span>
+  );
+}
+
+export function Delta({ value }: { value: number }) {
+  const up = value >= 0;
+  return <span className={`delta ${up ? "up" : "down"}`}>{up ? "up" : "down"} {Math.abs(value)}%</span>;
+}
+
+export function ConsoleButton({ children, type = "button", disabled = false, variant = "primary", onClick }: {
+  children: ReactNode;
+  type?: "button" | "submit";
+  disabled?: boolean;
+  variant?: "primary" | "default" | "ghost";
+  onClick?: () => void;
+}) {
+  const variantClass = buttonVariantClass(variant);
+  return <button className={`btn ${variantClass}`} type={type} disabled={disabled} onClick={onClick}>{children}</button>;
+}
+
+export function Timeline({ events }: { events: ProxyEvent[] }) {
+  return (
+    <GlassCard>
+      <div className="card-head">
+        <div className="card-title"><Clock3 />Event timeline</div>
+        <span className="faint mono">{events.length} events</span>
+      </div>
+      <div className="replay-timeline">
+        {events.map((event) => (
+          <article key={event.eventId} className="replay-row">
+            <div className="replay-kind">event</div>
+            <div>
+              <strong>{event.eventType}</strong>
+              <span>{event.producer}</span>
+            </div>
+            <time>{formatDateTime(event.createdAt)}</time>
+          </article>
+        ))}
+        {events.length === 0 ? <div className="empty">No events found for this request.</div> : null}
+      </div>
+    </GlassCard>
+  );
+}
+
+export function JsonPanel({ title, value }: { title: string; value: unknown }) {
+  return (
+    <GlassCard className="code-panel">
+      <div className="card-title">{title}</div>
+      <pre>{JSON.stringify(value, null, 2)}</pre>
+    </GlassCard>
+  );
+}
+
+export function RawTextPanel({ title, value }: { title: string; value: string }) {
+  return (
+    <GlassCard className="raw-panel">
+      <div className="card-title">{title}</div>
+      <pre>{value}</pre>
+    </GlassCard>
+  );
+}
+
+export function CompactId({ value }: { value: string }) {
+  return <span className="mono faint">{compactId(value)}</span>;
+}
+
+function initials(value: string) {
+  return value.split(/[\s._-]+/).map((word) => word[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
+}
+
+function routeTone(route: string) {
+  const value = route.toLowerCase();
+  if (value === "fast" || value === "low" || value === "minimal") return "fast";
+  if (value === "balanced" || value === "medium" || value === "auto") return "balanced";
+  if (value === "hard" || value === "high") return "hard";
+  if (value === "deep" || value === "xhigh" || value === "max") return "deep";
+  return "unknown";
+}
+
+function statusTone(status: string) {
+  const value = status.toLowerCase();
+  if (value === "completed" || value === "success" || value === "paid" || value === "active") return "success";
+  if (value === "failed" || value === "error" || value === "inactive") return "danger";
+  if (value === "pending" || value === "received" || value === "provider_pending" || value === "invited") return "warn";
+  return "default";
+}
+
+function buttonVariantClass(variant: "primary" | "default" | "ghost") {
+  if (variant === "primary") return "btn-primary";
+  if (variant === "ghost") return "btn-ghost";
+  return "";
 }

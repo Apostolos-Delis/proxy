@@ -1,0 +1,97 @@
+.chart-frame {
+  width: 100%;
+  min-width: 0;
+}
+
+.chart-frame .recharts-cartesian-grid-horizontal line {
+  stroke: var(--grid-line);
+  stroke-width: 1;
+}
+
+.chart-frame .recharts-cartesian-axis-tick text {
+  fill: var(--fg-faint);
+  font: 12px var(--font);
+}
+
+.chart-frame .recharts-bar-rectangle {
+  fill: var(--accent);
+  opacity: 0.82;
+  cursor: pointer;
+  transition: opacity .13s var(--ease);
+}
+
+.chart-frame .recharts-bar-rectangle:hover,
+.chart-frame .chart-cell.selected {
+  opacity: 1;
+  filter: drop-shadow(0 0 0.35rem rgba(20, 184, 166, 0.24));
+}
+
+.mini-bars-chart .recharts-bar-rectangle {
+  cursor: default;
+}
+
+.sparkline .recharts-line-curve {
+  stroke: var(--accent);
+}
+
+.area-chart .recharts-area-curve {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.area-chart .recharts-area-dot {
+  cursor: pointer;
+}
+
+.selected-area-dot {
+  fill: var(--bg-0);
+  stroke: var(--accent-2);
+  stroke-width: 2;
+}
+
+.budget-line line {
+  stroke: var(--accent-2);
+  stroke-dasharray: 4 7;
+  opacity: 0.82;
+}
+
+.budget-label {
+  fill: var(--accent-2);
+  font: 12px var(--mono);
+}
+
+.chart-tooltip {
+  min-width: 132px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--glass-strong);
+  box-shadow: var(--shadow);
+}
+
+.chart-tooltip span,
+.chart-tooltip strong {
+  display: block;
+}
+
+.chart-tooltip span {
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+.chart-tooltip strong {
+  margin-top: 3px;
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.empty-chart {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--fg-faint);
+  font-size: 13px;
+}

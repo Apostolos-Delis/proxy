@@ -110,7 +110,7 @@ export const organizationSettings = pgTable("organization_settings", {
   organizationId: text("organization_id")
     .primaryKey()
     .references(() => organizations.id, { onDelete: "cascade" }),
-  promptCaptureMode: text("prompt_capture_mode").$type<PromptCaptureMode>().notNull().default("hash_only"),
+  promptCaptureMode: text("prompt_capture_mode").$type<PromptCaptureMode>().notNull().default("raw_text"),
   retentionDays: integer("retention_days").notNull().default(30),
   maxRoute: text("max_route").$type<RouteName>(),
   settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),

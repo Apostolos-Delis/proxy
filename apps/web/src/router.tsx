@@ -1,26 +1,16 @@
-import { Link, createRootRouteWithContext, createRoute, createRouter } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import {
-  type ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable
-} from "@tanstack/react-table";
-import { Activity, Coins, Database, Gauge, KeyRound } from "lucide-react";
+import { createRootRouteWithContext, createRoute, createRouter } from "@tanstack/react-router";
 
-import {
-  type RequestSummary,
-  fetchOverview,
-  fetchRequestDetail,
-  fetchRequests,
-  fetchSettings
-} from "./api";
 import { LoginPage, requireAuth, type RouterContext } from "./auth";
+import { BillingPage } from "./billingPage";
+import { KeysPage } from "./keysPage";
+import { OverviewPage } from "./overviewPage";
 import { PromptDetailPage, PromptsPage } from "./promptsPage";
+import { RequestsPage } from "./requestsPage";
 import { SessionDetailPage, SessionsPage } from "./sessionsPage";
+import { SettingsPage } from "./settingsPage";
 import { AppShell } from "./shell";
-import { Header, JsonPanel, Metric, PageState, Quality, Timeline, formatMoney } from "./ui";
 import { UsagePage } from "./usagePage";
+import { UsersPage } from "./usersPage";
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: AppShell
@@ -37,13 +27,6 @@ const indexRoute = createRoute({
   path: "/",
   beforeLoad: requireAuth,
   component: OverviewPage
-});
-
-const requestsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/requests",
-  beforeLoad: requireAuth,
-  component: RequestsPage
 });
 
 const usageRoute = createRoute({
@@ -81,11 +64,39 @@ const sessionDetailRoute = createRoute({
   component: SessionDetailRoutePage
 });
 
-const requestDetailRoute = createRoute({
+const logsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/requests/$requestId",
+  path: "/logs",
   beforeLoad: requireAuth,
-  component: RequestDetailPage
+  component: RequestsPage
+});
+
+const logDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/logs/$artifactId",
+  beforeLoad: requireAuth,
+  component: LogDetailRoutePage
+});
+
+const keysRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/api-keys",
+  beforeLoad: requireAuth,
+  component: KeysPage
+});
+
+const usersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/users",
+  beforeLoad: requireAuth,
+  component: UsersPage
+});
+
+const billingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/billing",
+  beforeLoad: requireAuth,
+  component: BillingPage
 });
 
 const settingsRoute = createRoute({
@@ -103,8 +114,11 @@ const routeTree = rootRoute.addChildren([
   promptDetailRoute,
   sessionsRoute,
   sessionDetailRoute,
-  requestsRoute,
-  requestDetailRoute,
+  logsRoute,
+  logDetailRoute,
+  keysRoute,
+  usersRoute,
+  billingRoute,
   settingsRoute
 ]);
 
@@ -120,150 +134,6 @@ declare module "@tanstack/react-router" {
   }
 }
 
-function OverviewPage() {
-  const query = useQuery({ queryKey: ["overview"], queryFn: fetchOverview });
-
-  if (query.isLoading) return <PageState title="Overview" label="Loading overview" />;
-  if (query.error) return <PageState title="Overview" label={query.error.message} />;
-  if (!query.data) return <PageState title="Overview" label="No overview data" />;
-
-  const overview = query.data;
-  return (
-    <section>
-      <Header eyebrow={overview.organizationId} title="Routing Overview" />
-      <div className="metrics">
-        <Metric icon={<Activity size={20} />} label="Requests" value={overview.requestCount.toLocaleString()} />
-        <Metric icon={<Database size={20} />} label="Events" value={overview.eventCount.toLocaleString()} />
-        <Metric icon={<Coins size={20} />} label="Tokens" value={overview.totals.totalTokens.toLocaleString()} />
-        <Metric icon={<Gauge size={20} />} label="Savings" value={formatMoney(overview.cost.savings)} />
-      </div>
-      <div className="panel">
-        <h2>Route Quality</h2>
-        <div className="quality-grid">
-          <Quality label="Low confidence" value={overview.routeQuality.lowConfidenceCount} />
-          <Quality label="Cheaper likely worked" value={overview.routeQuality.cheaperLikelyWouldWorkCount} />
-          <Quality label="Cheap retries or repairs" value={overview.routeQuality.cheapCausedRetriesOrRepairsCount} />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-const requestColumns: ColumnDef<RequestSummary>[] = [
-  {
-    accessorKey: "requestId",
-    header: "Request",
-    cell: ({ row }) => (
-      <Link to="/requests/$requestId" params={{ requestId: row.original.requestId }} className="table-link">
-        {row.original.requestId}
-      </Link>
-    )
-  },
-  {
-    accessorKey: "surface",
-    header: "Surface"
-  },
-  {
-    accessorKey: "finalRoute",
-    header: "Route",
-    cell: ({ row }) => <span className={`route route-${row.original.finalRoute ?? "unknown"}`}>{row.original.finalRoute ?? "unknown"}</span>
-  },
-  {
-    accessorKey: "selectedModel",
-    header: "Selected Model"
-  },
-  {
-    accessorKey: "terminalStatus",
-    header: "Status"
-  },
-  {
-    id: "tokens",
-    header: "Tokens",
-    cell: ({ row }) => row.original.usage.totalTokens.toLocaleString()
-  },
-  {
-    id: "latency",
-    header: "Latency",
-    cell: ({ row }) => row.original.latencyMs === undefined ? "" : `${row.original.latencyMs}ms`
-  }
-];
-
-function RequestsPage() {
-  const query = useQuery({ queryKey: ["requests"], queryFn: fetchRequests });
-  const data = query.data?.data ?? [];
-  const table = useReactTable({
-    data,
-    columns: requestColumns,
-    getCoreRowModel: getCoreRowModel()
-  });
-
-  if (query.isLoading) return <PageState title="Requests" label="Loading requests" />;
-  if (query.error) return <PageState title="Requests" label={query.error.message} />;
-
-  return (
-    <section>
-      <Header eyebrow={`${data.length} rows`} title="Requests" />
-      <div className="table-panel">
-        <table>
-          <thead>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th key={header.id}>
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.map((row) => (
-              <tr key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {data.length === 0 ? <div className="empty">No routed requests yet.</div> : null}
-      </div>
-    </section>
-  );
-}
-
-function RequestDetailPage() {
-  const { requestId } = requestDetailRoute.useParams();
-  const query = useQuery({
-    queryKey: ["request", requestId],
-    queryFn: () => fetchRequestDetail(requestId)
-  });
-
-  if (query.isLoading) return <PageState title="Request" label="Loading request" />;
-  if (query.error) return <PageState title="Request" label={query.error.message} />;
-  if (!query.data) return <PageState title="Request" label="No request data" />;
-
-  const request = query.data.request;
-  return (
-    <section>
-      <Header eyebrow={requestId} title="Request Detail" />
-      {request ? (
-        <div className="metrics compact">
-          <Metric icon={<Gauge size={20} />} label="Route" value={request.finalRoute ?? "unknown"} />
-          <Metric icon={<Database size={20} />} label="Model" value={request.selectedModel ?? "unknown"} />
-          <Metric icon={<Coins size={20} />} label="Tokens" value={request.usage.totalTokens.toLocaleString()} />
-          <Metric icon={<Activity size={20} />} label="Status" value={request.terminalStatus} />
-        </div>
-      ) : (
-        <div className="empty">No terminal request summary yet.</div>
-      )}
-      <Timeline events={query.data.events} />
-    </section>
-  );
-}
-
 function PromptDetailRoutePage() {
   const { artifactId } = promptDetailRoute.useParams();
   return <PromptDetailPage artifactId={artifactId} />;
@@ -274,23 +144,7 @@ function SessionDetailRoutePage() {
   return <SessionDetailPage sessionId={sessionId} />;
 }
 
-function SettingsPage() {
-  const query = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
-
-  if (query.isLoading) return <PageState title="Settings" label="Loading settings" />;
-  if (query.error) return <PageState title="Settings" label={query.error.message} />;
-  if (!query.data) return <PageState title="Settings" label="No settings data" />;
-
-  return (
-    <section>
-      <Header eyebrow={query.data.organizationId} title="Settings" />
-      <div className="settings-grid">
-        <JsonPanel icon={<Database size={18} />} title="Persistence" value={{ databaseEnabled: query.data.databaseEnabled }} />
-        <JsonPanel icon={<Gauge size={18} />} title="Classifier" value={query.data.classifier} />
-        <JsonPanel icon={<Coins size={18} />} title="Budgets" value={query.data.budgets} />
-        <JsonPanel icon={<Database size={18} />} title="Prompt Capture" value={query.data.promptCapture} />
-        <JsonPanel icon={<KeyRound size={18} />} title="Policy Trust" value={query.data.routePolicyTrust} />
-      </div>
-    </section>
-  );
+function LogDetailRoutePage() {
+  const { artifactId } = logDetailRoute.useParams();
+  return <PromptDetailPage artifactId={artifactId} />;
 }

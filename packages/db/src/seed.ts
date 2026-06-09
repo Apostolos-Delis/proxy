@@ -59,7 +59,7 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
     .insert(organizationSettings)
     .values({
       organizationId: options.organizationId,
-      promptCaptureMode: "hash_only",
+      promptCaptureMode: "raw_text",
       retentionDays: 30,
       settings: {
         seeded: true
@@ -68,6 +68,8 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
     .onConflictDoUpdate({
       target: organizationSettings.organizationId,
       set: {
+        promptCaptureMode: "raw_text",
+        retentionDays: 30,
         updatedAt: now
       }
     });

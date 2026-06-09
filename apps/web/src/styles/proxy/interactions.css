@@ -1,0 +1,112 @@
+.interactive-card {
+  display: block;
+  color: var(--fg);
+  text-decoration: none;
+  transition: background .13s var(--ease), border-color .13s var(--ease), transform .13s var(--ease);
+}
+
+.interactive-card:hover,
+.interactive-card:focus-visible,
+.interactive-card.active {
+  background: var(--glass-hover);
+  border-color: var(--border-strong);
+  outline: none;
+}
+
+.interactive-card:active {
+  transform: scale(0.99);
+}
+
+.card-button {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tbl tbody tr.selectable-row {
+  cursor: pointer;
+}
+
+.tbl tbody tr.selectable-row:hover,
+.tbl tbody tr.selectable-row:focus-visible,
+.tbl tbody tr.selectable-row.selected {
+  background: var(--glass-hover);
+  outline: none;
+}
+
+.tbl tbody tr.selectable-row.selected td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.barlist-button {
+  width: 100%;
+  padding: 5px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background .13s var(--ease), border-color .13s var(--ease);
+}
+
+.barlist-button:hover,
+.barlist-button:focus-visible,
+.barlist-button.active {
+  background: var(--glass-hover);
+  border-color: var(--border);
+  outline: none;
+}
+
+.dashboard-inspector {
+  margin-top: 22px;
+}
+
+.inspector-subtitle {
+  margin-top: 6px;
+  color: var(--fg-faint);
+  font-size: 12.5px;
+}
+
+.inspector-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.inspector-row {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--glass-2);
+}
+
+.inspector-row span,
+.inspector-row strong,
+.inspector-row em {
+  display: block;
+}
+
+.inspector-row span {
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+
+.inspector-row strong {
+  margin-top: 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 18px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.inspector-row em {
+  margin-top: 6px;
+  color: var(--fg-faint);
+  font-size: 12px;
+  font-style: normal;
+}
