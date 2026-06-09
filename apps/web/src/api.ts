@@ -232,6 +232,44 @@ export type Settings = {
   } | null;
 };
 
+export type RoutingConfigRouteMatrixRow = {
+  route: string;
+  description: string | null;
+  openaiModel: string | null;
+  openaiEffort: string | null;
+  anthropicModel: string | null;
+  anthropicEffort: string | null;
+};
+
+export type RoutingConfigVersionSummary = {
+  id: string;
+  organizationId: string;
+  routingConfigId: string;
+  version: number;
+  configHash: string;
+  status: string;
+  active: boolean;
+  createdByUserId: string | null;
+  createdAt: string;
+  activatedAt: string | null;
+  archivedAt: string | null;
+};
+
+export type RoutingConfigSummary = {
+  id: string;
+  organizationId: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  status: string;
+  activeVersionId: string | null;
+  activeVersion: RoutingConfigVersionSummary | null;
+  routeMatrix: RoutingConfigRouteMatrixRow[];
+  assignedApiKeyCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export async function fetchOverview() {
   return fetchJson<Overview>("/admin/overview");
 }
@@ -246,6 +284,10 @@ export async function fetchRequestDetail(requestId: string) {
 
 export async function fetchSettings() {
   return fetchJson<Settings>("/admin/settings");
+}
+
+export async function fetchRoutingConfigs() {
+  return fetchJson<{ data: RoutingConfigSummary[] }>("/admin/routing-configs");
 }
 
 export async function fetchUsage(groupBy: string) {
