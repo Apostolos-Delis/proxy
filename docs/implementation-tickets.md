@@ -469,6 +469,8 @@ Dependencies: PP-025, PP-028, PP-029.
 
 ### PP-031: Add Organization Usage Analytics APIs
 
+Status: implemented in the current MVP.
+
 Provide aggregate usage and cost data for organization-wide analysis.
 
 Acceptance criteria:

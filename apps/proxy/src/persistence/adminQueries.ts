@@ -31,6 +31,12 @@ export type PromptListFilters = {
   end?: string;
 };
 
+export type UsageAnalyticsFilters = {
+  groupBy?: string;
+  start?: string;
+  end?: string;
+};
+
 export class AdminQueryService {
   constructor(
     private readonly db: PromptProxyDbSession,
@@ -116,6 +122,30 @@ export class AdminQueryService {
     };
   }
 
+  async usage(filters: UsageAnalyticsFilters = {}) {
+    const requestRows = await this.requestRowsForUsage(filters);
+    const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
+    const groupBy = usageGroupBy(filters.groupBy);
+    const groups = new Map<string, UsageGroup>();
+    for (const request of requestSummaries) {
+      const key = usageGroupKey(request, groupBy);
+      const group = groups.get(key) ?? emptyUsageGroup(key);
+      addUsageRequest(group, request);
+      groups.set(key, group);
+    }
+    const data = [...groups.values()]
+      .map(finalizeUsageGroup)
+      .sort((left, right) => right.cost.selected - left.cost.selected);
+    return {
+      groupBy,
+      data,
+      totals: finalizeUsageGroup(requestSummaries.reduce((group, request) => {
+        addUsageRequest(group, request);
+        return group;
+      }, emptyUsageGroup("total")))
+    };
+  }
+
   async promptDetail(artifactId: string) {
     const [row] = await this.db
       .select({
@@ -159,7 +189,23 @@ export class AdminQueryService {
       .limit(limit);
   }
 
-  private async summarizeRequests(requestRows: RequestRow[]) {
+  private async requestRowsForUsage(filters: UsageAnalyticsFilters) {
+    const conditions = [eq(requests.organizationId, this.config.defaultOrganizationId)];
+    const start = dateValue(filters.start);
+    if (start) conditions.push(gte(requests.createdAt, start));
+    const end = dateValue(filters.end);
+    if (end) conditions.push(lte(requests.createdAt, end));
+    return this.db
+      .select()
+      .from(requests)
+      .where(and(...conditions))
+      .orderBy(desc(requests.createdAt));
+  }
+
+  private async summarizeRequests(
+    requestRows: RequestRow[],
+    options: { aggregateUsageByRequest?: boolean } = {}
+  ) {
     if (requestRows.length === 0) return [];
     const requestIds = requestRows.map((request) => request.id);
     const decisions = await this.db
@@ -180,7 +226,13 @@ export class AdminQueryService {
 
     const decisionsByRequest = new Map(decisions.map((decision) => [decision.requestId, decision]));
     const attemptsByRequest = latestAttemptsByRequest(attempts);
-    const usageByAttempt = new Map(usageRows.map((usage) => [usage.providerAttemptId, usage]));
+    const attemptCountsByRequest = attemptCounts(attempts);
+    const usageByRequest = options.aggregateUsageByRequest
+      ? aggregateUsageByRequest(usageRows)
+      : new Map<string, UsageAggregate>();
+    const usageByAttempt = options.aggregateUsageByRequest
+      ? new Map<string, UsageAggregate>()
+      : new Map(usageRows.map((usage) => [usage.providerAttemptId, usageAggregateForRow(usage)]));
 
     return requestRows.map((request) => {
       const attempt = attemptsByRequest.get(request.id) ?? null;
@@ -188,7 +240,10 @@ export class AdminQueryService {
         request,
         decision: decisionsByRequest.get(request.id) ?? null,
         attempt,
-        usage: attempt ? usageByAttempt.get(attempt.id) ?? null : null
+        usage: options.aggregateUsageByRequest
+          ? usageByRequest.get(request.id) ?? null
+          : attempt ? usageByAttempt.get(attempt.id) ?? null : null,
+        attemptCount: attemptCountsByRequest.get(request.id) ?? 0
       }, this.catalog);
     });
   }
@@ -267,6 +322,7 @@ export class AdminQueryService {
 
 type RequestRow = typeof requests.$inferSelect;
 type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
+type UsageLedgerRow = typeof usageLedger.$inferSelect;
 type PromptRow = {
   artifact: typeof promptArtifacts.$inferSelect;
   request: typeof requests.$inferSelect;
@@ -365,7 +421,8 @@ function requestSummary(row: {
   request: RequestRow;
   decision: typeof routeDecisions.$inferSelect | null;
   attempt: ProviderAttemptRow | null;
-  usage: typeof usageLedger.$inferSelect | null;
+  usage: UsageAggregate | null;
+  attemptCount: number;
 }, catalog: ModelCatalog) {
   const usage = row.usage
     ? {
@@ -381,19 +438,103 @@ function requestSummary(row: {
   const baselineCost = baselineCostFor(catalog, row.request.surface, row.request.requestedModel, usage);
   return {
     requestId: row.request.id,
+    userId: row.request.userId ?? undefined,
+    sessionId: row.request.sessionId ?? undefined,
     surface: row.request.surface,
     requestedModel: row.request.requestedModel,
     finalRoute: row.decision?.finalRoute ?? undefined,
-    provider: row.decision?.selectedProvider ?? row.attempt?.provider ?? row.usage?.provider ?? undefined,
+    provider: row.decision?.selectedProvider ?? row.attempt?.provider ?? undefined,
     selectedModel,
     terminalStatus: row.attempt?.terminalStatus ?? row.request.status,
     inputChars: row.request.inputChars,
     usage,
     latencyMs: elapsedMs(row.attempt?.startedAt, row.attempt?.completedAt),
     timeToFirstByteMs: elapsedMs(row.attempt?.startedAt, row.attempt?.firstByteAt),
+    attemptCount: row.attemptCount,
     selectedCost,
     baselineCost,
     savings: baselineCost - selectedCost
+  };
+}
+
+type RequestSummary = ReturnType<typeof requestSummary>;
+type UsageGroupBy = "user" | "provider" | "model" | "route" | "surface" | "session";
+type UsageAggregate = ReturnType<typeof emptyUsageAggregate>;
+type UsageGroup = {
+  key: string;
+  requestCount: number;
+  failedRequests: number;
+  retriedRequests: number;
+  usage: ReturnType<typeof emptyUsage>;
+  cost: {
+    selected: number;
+    baseline: number;
+    savings: number;
+  };
+};
+
+function usageGroupBy(value: string | undefined): UsageGroupBy {
+  if (
+    value === "user" ||
+    value === "provider" ||
+    value === "model" ||
+    value === "route" ||
+    value === "surface" ||
+    value === "session"
+  ) {
+    return value;
+  }
+  return "route";
+}
+
+function usageGroupKey(request: RequestSummary, groupBy: UsageGroupBy) {
+  if (groupBy === "user") return request.userId ?? "unknown";
+  if (groupBy === "provider") return request.provider ?? "unknown";
+  if (groupBy === "model") return request.selectedModel ?? "unknown";
+  if (groupBy === "route") return request.finalRoute ?? "unknown";
+  if (groupBy === "surface") return request.surface ?? "unknown";
+  return request.sessionId ?? "unknown";
+}
+
+function emptyUsageGroup(key: string): UsageGroup {
+  return {
+    key,
+    requestCount: 0,
+    failedRequests: 0,
+    retriedRequests: 0,
+    usage: emptyUsage(),
+    cost: {
+      selected: 0,
+      baseline: 0,
+      savings: 0
+    }
+  };
+}
+
+function addUsageRequest(group: UsageGroup, request: RequestSummary) {
+  group.requestCount += 1;
+  if (request.terminalStatus === "failed") group.failedRequests += 1;
+  if (request.attemptCount > 1) group.retriedRequests += 1;
+  group.usage.inputTokens += request.usage.inputTokens;
+  group.usage.cachedInputTokens += request.usage.cachedInputTokens;
+  group.usage.outputTokens += request.usage.outputTokens;
+  group.usage.reasoningTokens += request.usage.reasoningTokens;
+  group.usage.totalTokens += request.usage.totalTokens;
+  group.cost.selected += request.selectedCost;
+  group.cost.baseline += request.baselineCost;
+  group.cost.savings += request.savings;
+}
+
+function finalizeUsageGroup(group: UsageGroup) {
+  return {
+    key: group.key,
+    requestCount: group.requestCount,
+    failedRequests: group.failedRequests,
+    retriedRequests: group.retriedRequests,
+    failureRate: group.requestCount === 0 ? 0 : group.failedRequests / group.requestCount,
+    retryRate: group.requestCount === 0 ? 0 : group.retriedRequests / group.requestCount,
+    usage: group.usage,
+    cost: group.cost
   };
 }
 
@@ -406,6 +547,39 @@ function latestAttemptsByRequest(attempts: ProviderAttemptRow[]) {
     if (!latest.has(attempt.requestId)) latest.set(attempt.requestId, attempt);
   }
   return latest;
+}
+
+function attemptCounts(attempts: ProviderAttemptRow[]) {
+  const counts = new Map<string, number>();
+  for (const attempt of attempts) {
+    counts.set(attempt.requestId, (counts.get(attempt.requestId) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function aggregateUsageByRequest(usageRows: UsageLedgerRow[]) {
+  const byRequest = new Map<string, UsageAggregate>();
+  for (const row of usageRows) {
+    const usage = byRequest.get(row.requestId) ?? emptyUsageAggregate();
+    addUsageRow(usage, row);
+    byRequest.set(row.requestId, usage);
+  }
+  return byRequest;
+}
+
+function usageAggregateForRow(row: UsageLedgerRow) {
+  const usage = emptyUsageAggregate();
+  addUsageRow(usage, row);
+  return usage;
+}
+
+function addUsageRow(usage: UsageAggregate, row: UsageLedgerRow) {
+  usage.inputTokens += row.inputTokens;
+  usage.cachedInputTokens += row.cachedInputTokens;
+  usage.outputTokens += row.outputTokens;
+  usage.reasoningTokens += row.reasoningTokens;
+  usage.totalTokens += row.totalTokens;
+  usage.totalCostMicros += row.totalCostMicros;
 }
 
 function timestamp(value: Date | null | undefined) {
@@ -437,6 +611,13 @@ function emptyUsage() {
     outputTokens: 0,
     reasoningTokens: 0,
     totalTokens: 0
+  };
+}
+
+function emptyUsageAggregate() {
+  return {
+    ...emptyUsage(),
+    totalCostMicros: 0
   };
 }
 
