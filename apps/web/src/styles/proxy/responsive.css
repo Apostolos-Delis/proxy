@@ -76,6 +76,8 @@
   .request-detail-grid,
   .detail-grid,
   .settings-grid,
+  .routing-detail-grid,
+  .routing-summary-grid,
   .billing-kpis,
   .usage-side-rail {
     grid-template-columns: 1fr;
