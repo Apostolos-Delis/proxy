@@ -74,7 +74,7 @@ HTTP surface adapter
   -> auth and request parsing
   -> routing service
   -> event store: proxy.request_received
-  -> route policy and compatibility gates
+  -> routing config and compatibility gates
   -> event store: routing.decision_recorded
   -> provider service
   -> event store: provider.request_started
@@ -111,7 +111,7 @@ RTK findings:
 
 - RTK keeps tool-specific integrations thin and delegates decisions to one core rewrite command. Prompt-proxy should do the same: one routing engine, thin surface adapters.
 - RTK uses an exit-code style decision contract for allow, ask, deny, and passthrough. Prompt-proxy should define explicit route decision outcomes instead of burying behavior in ad hoc booleans.
-- RTK trust-gates project-local policy files. Prompt-proxy should not let repository-local route policy redirect company model traffic unless the policy is explicitly trusted.
+- RTK trust-gates project-local policy files. Prompt-proxy should not let repository-local routing overrides redirect company model traffic unless the override is explicitly trusted.
 - RTK tracks savings and has a discover mode for missed opportunities. Prompt-proxy should measure actual savings and identify calls that could have used a cheaper route.
 
 Fia findings:
@@ -195,7 +195,7 @@ request          one inbound harness request
 turn             one Codex turn when a turn identifier is available
 session          longer proxy-side grouping for route memory and cost accounting
 provider_request one upstream provider attempt
-policy           route policy and trust changes
+routing_config   routing config version and trust changes
 budget           budget ledger and warnings
 eval             later route-quality labels and replay results
 ```
@@ -225,8 +225,8 @@ fallback.applied
 usage.recorded
 cost.estimated
 budget.warning_emitted
-policy.trust_checked
-policy.rejected
+routing_override.trust_checked
+routing_override.rejected
 ```
 
 High-volume stream chunks should not be persisted by default. For normal operation, record aggregate stream facts such as byte count, first-byte latency, terminal status, usage, and provider request IDs. If a debug mode needs raw chunks, write them to an encrypted artifact with short retention and reference the artifact from the event.
@@ -240,7 +240,7 @@ Default event payloads should be safe for audit and analytics:
 - Store tool count and tool categories, not full tool schemas by default.
 - Store response usage and cost estimates when available.
 - Store full request/response bodies only as opt-in encrypted artifacts with retention and access controls.
-- Keep `metadata` for operational details such as transport headers, deployment version, policy version, and provider attempt numbers.
+- Keep `metadata` for operational details such as transport headers, deployment version, routing config version, and provider attempt numbers.
 
 Example route decision payload:
 
@@ -260,7 +260,10 @@ Example route decision payload:
     "attempts": 1,
     "confidence": 0.82
   },
-  "policy_version": "2026-06-08"
+  "routing_config_id": "routing_config_default",
+  "routing_config_version_id": "routing_config_default:v1",
+  "routing_config_version": 1,
+  "routing_config_hash": "sha256:..."
 }
 ```
 
@@ -274,7 +277,7 @@ Do not make every read replay the event log. Keep current-state tables for:
 - Session route memory.
 - Usage ledger.
 - Budget ledger.
-- Policy trust state.
+- Routing override trust state.
 
 Then build projections from events:
 
@@ -469,9 +472,9 @@ Codex-specific compatibility requirements:
 - Do not remove `prompt_cache_key`; it affects prompt-cache reuse and should remain client-controlled in v1.
 - Treat Codex's `model_reasoning_effort` and `model_verbosity` as client defaults that the router may override only through the configured route decision.
 
-## Initial Route Config
+## Initial Routing Config
 
-Routes should be configuration, not code. A starting policy:
+Routes should be configuration, not code. A starting config:
 
 ```yaml
 routes:
@@ -500,7 +503,7 @@ Codex-specific models such as `gpt-5.1-codex-mini` and `gpt-5.2-codex` should be
 
 ## Model Catalog
 
-The router needs a model catalog separate from the route policy. Route policy answers "which route should this request take?" The catalog answers "is that route compatible with this request?"
+The router needs a model catalog separate from the routing config. The routing config answers "which route should this request take and what provider settings should it use?" The catalog answers "is that route compatible with this request?"
 
 Catalog fields:
 
@@ -531,7 +534,7 @@ Compatibility gates should run before cost optimization:
 
 Cost fields can start as `0.0` or omitted for local development, but the structure should exist from day one so usage reports can be wired without changing schemas.
 
-## Routing Policy
+## Routing Decision Flow
 
 Use a cheap LLM classifier for all non-explicit requests. Do not add a separate rule-based complexity scorer. The classifier is the classification layer; router code only enforces compatibility, budget, explicit aliases, retries, and failure behavior.
 
@@ -664,7 +667,10 @@ Route decisions should be explicit objects:
     "recommended_route": "hard"
   },
   "reasons": ["tools_present", "auth_risk", "failing_test"],
-  "policy_version": "2026-06-08"
+  "routing_config_id": "routing_config_default",
+  "routing_config_version_id": "routing_config_default:v1",
+  "routing_config_version": 1,
+  "routing_config_hash": "sha256:..."
 }
 ```
 
@@ -796,7 +802,7 @@ Add RTK-style savings analytics:
 - Calls where a cheaper route probably would have worked.
 - Calls where a cheap route caused retries or repair turns.
 
-The proxy should have a `discover`-style report later. It should identify route policy gaps from real traffic without storing prompt bodies.
+The proxy should have a `discover`-style report later. It should identify routing config gaps from real traffic without storing prompt bodies.
 
 ## Auth And Security
 
@@ -809,13 +815,13 @@ The proxy should separate caller auth from provider auth.
 - Do not log request bodies by default.
 - Add per-user, per-team, and per-route budgets later.
 
-Route policy is security-sensitive because it can redirect requests, increase spend, or downgrade model quality. Project-local policy should be treated like executable configuration:
+Routing configuration is security-sensitive because it can redirect requests, increase spend, or downgrade model quality. Project-local overrides should be treated like executable configuration:
 
-- Default to centrally managed policy only.
-- User-local route policy can be allowed for local development.
-- Repo-local route policy must be explicitly trusted before use.
-- Changed repo-local policy invalidates trust and is skipped until re-reviewed.
-- Untrusted policy should fail closed to central policy, not fail open to arbitrary routes.
+- Default to centrally managed routing configs only.
+- User-local routing overrides can be allowed for local development.
+- Repo-local routing overrides must be explicitly trusted before use.
+- Changed repo-local overrides invalidate trust and are skipped until re-reviewed.
+- Untrusted overrides should fail closed to the central routing config, not fail open to arbitrary routes.
 
 For company rollout, provider base URLs and upstream API keys should come from user, flag, or managed settings. Do not let project-local settings silently set `ANTHROPIC_BASE_URL`, `openai_base_url`, or equivalent provider redirects.
 
@@ -901,7 +907,7 @@ Unit tests:
 - Unsupported effort maps to nearest supported effort.
 - Request rewrite preserves unrelated fields.
 - Auth headers are replaced safely.
-- Untrusted repo-local route policy is skipped.
+- Untrusted repo-local routing override is skipped.
 
 Integration tests with mocked upstream:
 
@@ -980,7 +986,7 @@ Claude effort routing should follow a precedence chain:
 ```text
 explicit router alias
 -> trusted environment/session override
--> route policy
+-> active routing config
 -> model default
 ```
 
@@ -1030,7 +1036,7 @@ Once that works, add providers and surfaces incrementally.
 - Route decision events and logs.
 - Codex sticky header preservation.
 - Model catalog and compatibility gates.
-- Policy trust defaults.
+- Routing override trust defaults.
 - Request-scoped event envelope.
 - Durable event store.
 - Transactional outbox.
@@ -1104,8 +1110,8 @@ Controls and evals:
 - Which request metadata can Codex reliably send that can identify a session without inspecting full prompts?
 - What is the acceptable failure rate increase for cheaper routing?
 - What workloads should be used as the first eval set?
-- Should route policy ever downgrade within a Codex turn, or only between turns?
-- What trust flow should enable repo-local route policy?
+- Should routing config ever downgrade within a Codex turn, or only between turns?
+- What trust flow should enable repo-local routing overrides?
 - What is the minimum savings threshold required before routing to a cheaper model by default?
 
 ## References

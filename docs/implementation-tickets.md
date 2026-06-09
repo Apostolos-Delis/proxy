@@ -157,7 +157,7 @@ Resolve the final route from classifier recommendation plus guardrails, then rew
 
 Acceptance criteria:
 
-- Route decisions include `classifier_route`, `final_route`, `guardrail_actions`, selected model, reasoning effort, verbosity, reason codes, and policy version.
+- Route decisions include `classifier_route`, `final_route`, `guardrail_actions`, selected model, reasoning effort, verbosity, reason codes, routing config id, routing config version id, version number, and config hash.
 - Incompatible classifier routes escalate to the smallest compatible route.
 - Budget violations reject or apply configured budget policy before provider spend.
 - Explicit aliases force the selected route unless incompatible.
@@ -239,19 +239,19 @@ Dependencies: PP-006, PP-007, PP-011.
 
 ## Hardening Tickets
 
-### PP-017: Add Policy Trust Controls
+### PP-017: Add Routing Override Trust Controls
 
 Status: implemented in the current MVP.
 
-Gate local route policy so untrusted repo-local configuration cannot redirect provider traffic or increase spend.
+Gate local routing overrides so untrusted repo-local configuration cannot redirect provider traffic or increase spend.
 
 Acceptance criteria:
 
-- Central policy is the default.
-- User-local policy can be enabled for local development.
-- Repo-local policy requires explicit trust.
-- Changed repo-local policy invalidates trust.
-- Untrusted policy falls back to central policy.
+- Central routing config is the default.
+- User-local routing override can be enabled for local development.
+- Repo-local routing override requires explicit trust.
+- Changed repo-local routing override invalidates trust.
+- Untrusted override falls back to the central routing config.
 
 Dependencies: PP-003, PP-011.
 

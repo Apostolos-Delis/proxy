@@ -2,7 +2,7 @@
 
 These tickets break the routing config scope into PR-sized units.
 
-The intended delivery shape is a hard cutover from process-global route policy to persisted, API-key-bound routing configs. Environment variables may seed local defaults, but runtime routing should resolve from the active routing config once persistence is enabled.
+The intended delivery shape is a hard cutover from process-global routing settings to persisted, API-key-bound routing configs. Environment variables may seed local defaults, but runtime routing should resolve from the active routing config once persistence is enabled.
 
 ## Delivery Rules
 
@@ -288,7 +288,7 @@ Likely files:
 
 ### RC-010: Remove Runtime `ROUTE_POLICY_JSON` Dependency
 
-Goal: Hard cut runtime routing away from environment route policy.
+Goal: Hard cut runtime routing away from legacy environment route policy.
 
 Scope:
 
