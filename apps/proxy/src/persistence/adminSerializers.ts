@@ -38,10 +38,12 @@ export function routingConfigSummary(row: {
   routingConfigVersionId: string | null;
   routingConfigVersion: number | null;
   routingConfigHash: string | null;
+  routingConfigName?: string | null;
 }) {
   if (!row.routingConfigId) return null;
   return {
     configId: row.routingConfigId,
+    configName: row.routingConfigName ?? null,
     versionId: row.routingConfigVersionId,
     version: row.routingConfigVersion,
     configHash: row.routingConfigHash

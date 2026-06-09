@@ -7,6 +7,7 @@ import { type PromptSummary, type RequestSummary, fetchPrompts, fetchRequests, f
 import { displayUser } from "./consoleData";
 import { downloadJson, FilterMenu } from "./dashboard";
 import { compactId, formatCompact, formatMoney } from "./format";
+import { RoutingConfigMicro } from "./routingSnapshot";
 import { DataTable, GlassCard, PageState, PageTitle, StatusBadge, UserCell } from "./ui";
 
 type PromptLogRow = {
@@ -114,7 +115,10 @@ function PromptRequestRow({ row }: { row: PromptLogRow }) {
         <div className="mono faint">{compactId(prompt.requestId)}</div>
       </td>
       <td><UserCell name={row.userName} detail={prompt.surface} /></td>
-      <td><span className="row gap-8"><span className="model-dot" /><span className="mono">{prompt.selectedModel ?? request?.selectedModel ?? "unknown"}</span></span></td>
+      <td>
+        <span className="row gap-8"><span className="model-dot" /><span className="mono">{prompt.selectedModel ?? request?.selectedModel ?? "unknown"}</span></span>
+        <RoutingConfigMicro snapshot={prompt.routingConfig ?? request?.routingConfig} />
+      </td>
       <td className="mono">{formatCompact(tokens)}</td>
       <td className="mono">{formatMoney(cost)}</td>
       <td className="mono faint">{formatLatency(request?.latencyMs)}</td>
@@ -149,6 +153,10 @@ function matchesPrompt(row: PromptLogRow, queryText: string, statusFilter: strin
   const haystack = [
     row.prompt.preview,
     row.prompt.requestId,
+    row.prompt.routingConfig?.configName,
+    row.prompt.routingConfig?.configHash,
+    row.request?.routingConfig?.configName,
+    row.request?.routingConfig?.configHash,
     row.userName,
     user,
     model,

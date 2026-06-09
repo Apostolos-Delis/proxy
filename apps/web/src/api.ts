@@ -37,6 +37,25 @@ export type Overview = {
   };
 };
 
+export type RoutingConfigSnapshot = {
+  configId: string;
+  configName: string | null;
+  versionId: string | null;
+  version: number | null;
+  configHash: string | null;
+};
+
+export type ClassifierSnapshot = {
+  provider?: string;
+  model?: string;
+  attempts?: number;
+  confidence?: number;
+  recommendedRoute?: string;
+  routingConfigId?: string;
+  routingConfigVersionId?: string;
+  routingConfigHash?: string;
+};
+
 export type RequestSummary = {
   requestId: string;
   userId?: string;
@@ -46,6 +65,8 @@ export type RequestSummary = {
   finalRoute?: string;
   provider?: string;
   selectedModel?: string;
+  routingConfig: RoutingConfigSnapshot | null;
+  classifier?: ClassifierSnapshot;
   terminalStatus: string;
   inputChars?: number;
   usage: {
@@ -119,6 +140,8 @@ export type PromptSummary = {
   finalRoute?: string;
   provider?: string;
   selectedModel?: string;
+  routingConfig: RoutingConfigSnapshot | null;
+  classifier?: ClassifierSnapshot;
   cost: {
     selected: number;
   };
@@ -205,6 +228,10 @@ export type RouteDecision = {
   finalRoute?: string;
   selectedProvider?: string;
   selectedModel?: string;
+  reasoningEffort?: string;
+  verbosity?: string;
+  routingConfig: RoutingConfigSnapshot | null;
+  classifier?: ClassifierSnapshot;
   confidence: number | null;
   reasonCodes: string[];
   createdAt: string;
