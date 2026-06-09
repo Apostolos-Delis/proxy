@@ -10,6 +10,7 @@ import { AdminQueryService, type AdminQueryConfig } from "./adminQueries.js";
 import { AdminSessionStore } from "./adminSessions.js";
 import { DatabaseEventSink } from "./eventSink.js";
 import { ApiKeyIdentityStore } from "./identity.js";
+import { PromptAccessAuditStore } from "./promptAccessAudit.js";
 import { PromptArtifactStore } from "./promptArtifacts.js";
 import { PersistentRequestStateStore } from "./requestState.js";
 
@@ -28,6 +29,7 @@ export function createDatabasePersistence(
     apiKeys: new ApiKeyIdentityStore(db),
     adminSessions: new AdminSessionStore(db),
     eventSink: new DatabaseEventSink(transactional, catalog, useAdvisoryLocks),
+    promptAccessAudit: new PromptAccessAuditStore(db),
     promptArtifacts: new PromptArtifactStore(transactional, db),
     requestStates: new PersistentRequestStateStore(transactional, db, config.defaultOrganizationId),
     adminQueries: new AdminQueryService(db, catalog, config)
