@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { BarChart3, Boxes, Command, CreditCard, Gauge, KeyRound, Logs, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
+import { BarChart3, Boxes, Command, CreditCard, Gauge, GitBranch, KeyRound, Logs, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -9,6 +9,11 @@ const workspaceNav = [
   { to: "/", label: "Overview", icon: Gauge },
   { to: "/usage", label: "Usage", icon: BarChart3 },
   { to: "/logs", label: "Logs", icon: Logs }
+] as const;
+
+const operationsNav = [
+  { to: "/routing-configs", label: "Routing", icon: GitBranch },
+  { to: "/settings", label: "Settings", icon: Settings }
 ] as const;
 
 const manageNav = [
@@ -25,6 +30,7 @@ const titles: Record<string, [string, string | null]> = {
   "/users": ["Users", "Team & access"],
   "/billing": ["Billing", "Spend & invoices"],
   "/settings": ["Settings", "Runtime configuration"],
+  "/routing-configs": ["Routing", "Config versions"],
   "/prompts": ["Prompts", "Captured prompt artifacts"],
   "/sessions": ["Sessions", "Agent session replay"]
 };
@@ -47,6 +53,7 @@ export function AppShell() {
       <aside className="sidebar">
         <Brand collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
         <NavGroup title="Workspace" items={workspaceNav} collapsed={collapsed} />
+        <NavGroup title="Operations" items={operationsNav} collapsed={collapsed} />
         <NavGroup title="Manage" items={manageNav} collapsed={collapsed} />
         <div className="sidebar-foot">
           <div className="org-card">
@@ -136,5 +143,6 @@ function titleForPath(pathname: string) {
   if (pathname.startsWith("/logs/")) return ["Logs", "Prompt detail"] as const;
   if (pathname.startsWith("/prompts/")) return ["Prompts", "Prompt detail"] as const;
   if (pathname.startsWith("/sessions/")) return ["Sessions", "Session replay"] as const;
+  if (pathname.startsWith("/routing-configs/")) return ["Routing", "Config detail"] as const;
   return ["Proxy", "LLM cost console"] as const;
 }

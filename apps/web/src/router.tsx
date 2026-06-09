@@ -6,6 +6,7 @@ import { KeysPage } from "./keysPage";
 import { OverviewPage } from "./overviewPage";
 import { PromptDetailPage, PromptsPage } from "./promptsPage";
 import { RequestsPage } from "./requestsPage";
+import { RoutingConfigDetailPage, RoutingConfigsPage } from "./routingConfigsPage";
 import { SessionDetailPage, SessionsPage } from "./sessionsPage";
 import { SettingsPage } from "./settingsPage";
 import { AppShell } from "./shell";
@@ -85,6 +86,20 @@ const keysRoute = createRoute({
   component: KeysPage
 });
 
+const routingConfigsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/routing-configs",
+  beforeLoad: requireAuth,
+  component: RoutingConfigsPage
+});
+
+const routingConfigDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/routing-configs/$configId",
+  beforeLoad: requireAuth,
+  component: RoutingConfigDetailRoutePage
+});
+
 const usersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/users",
@@ -117,6 +132,8 @@ const routeTree = rootRoute.addChildren([
   logsRoute,
   logDetailRoute,
   keysRoute,
+  routingConfigsRoute,
+  routingConfigDetailRoute,
   usersRoute,
   billingRoute,
   settingsRoute
@@ -147,4 +164,9 @@ function SessionDetailRoutePage() {
 function LogDetailRoutePage() {
   const { artifactId } = logDetailRoute.useParams();
   return <PromptDetailPage artifactId={artifactId} />;
+}
+
+function RoutingConfigDetailRoutePage() {
+  const { configId } = routingConfigDetailRoute.useParams();
+  return <RoutingConfigDetailPage configId={configId} />;
 }
