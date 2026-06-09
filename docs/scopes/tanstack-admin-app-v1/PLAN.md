@@ -226,6 +226,7 @@ GET /admin/prompts/:artifactId
 GET /admin/requests
 GET /admin/requests/:requestId
 GET /admin/settings
+PATCH /admin/settings/prompt-capture
 ```
 
 Move the browser away from static bearer token auth. The proxy harness endpoints should move from one global proxy token to API-key-backed request identity.

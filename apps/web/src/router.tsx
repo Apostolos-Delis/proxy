@@ -288,6 +288,7 @@ function SettingsPage() {
         <JsonPanel icon={<Database size={18} />} title="Persistence" value={{ databaseEnabled: query.data.databaseEnabled }} />
         <JsonPanel icon={<Gauge size={18} />} title="Classifier" value={query.data.classifier} />
         <JsonPanel icon={<Coins size={18} />} title="Budgets" value={query.data.budgets} />
+        <JsonPanel icon={<Database size={18} />} title="Prompt Capture" value={query.data.promptCapture} />
         <JsonPanel icon={<KeyRound size={18} />} title="Policy Trust" value={query.data.routePolicyTrust} />
       </div>
     </section>

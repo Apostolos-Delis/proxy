@@ -1,5 +1,6 @@
 import cors from "@fastify/cors";
 import Fastify, { type FastifyReply } from "fastify";
+import type { PromptCaptureMode } from "@prompt-proxy/schema";
 
 import { AdminAuthService } from "./adminAuth.js";
 import { anthropicMessagesSurface, openAIResponsesSurface } from "./adapters.js";
@@ -253,6 +254,14 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     }
     return detail;
   });
+  app.patch("/admin/settings/prompt-capture", async (request) => {
+    await adminAuth.resolve(request.headers);
+    if (!persistence) throw notFound("prompt_capture_settings_not_found");
+    return persistence.promptArtifacts.configure({
+      organizationId: config.defaultOrganizationId,
+      ...promptCaptureSettings(request.body)
+    });
+  });
   app.get("/admin/settings", async (request) => {
     await adminAuth.resolve(request.headers);
     return {
@@ -270,6 +279,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         warningEstimatedInputTokens: config.budgetWarningEstimatedInputTokens ?? null,
         maxRoute: config.budgetMaxRoute ?? null
       },
+      promptCapture: persistence
+        ? await persistence.promptArtifacts.settings(config.defaultOrganizationId)
+        : null,
       routePolicyTrust: config.routePolicyTrust
     };
   });
@@ -510,6 +522,42 @@ function numberParam(value: unknown) {
   if (typeof value !== "string" || !value.trim()) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function promptCaptureSettings(body: unknown) {
+  const record = body && typeof body === "object" && !Array.isArray(body)
+    ? body as Record<string, unknown>
+    : {};
+  const promptCaptureMode = stringParam(record.promptCaptureMode ?? record.prompt_capture_mode);
+  const retentionDays = numberParam(record.retentionDays ?? record.retention_days);
+  if (
+    promptCaptureMode !== "none" &&
+    promptCaptureMode !== "hash_only" &&
+    promptCaptureMode !== "raw_text" &&
+    promptCaptureMode !== "redacted" &&
+    promptCaptureMode !== "encrypted_raw"
+  ) {
+    throw badRequest("invalid_prompt_capture_mode");
+  }
+  if (retentionDays === undefined || retentionDays < 0) {
+    throw badRequest("invalid_retention_days");
+  }
+  return {
+    promptCaptureMode: promptCaptureMode as PromptCaptureMode,
+    retentionDays
+  };
+}
+
+function badRequest(message: string) {
+  const error = new Error(message);
+  (error as Error & { statusCode: number }).statusCode = 400;
+  return error;
+}
+
+function notFound(message: string) {
+  const error = new Error(message);
+  (error as Error & { statusCode: number }).statusCode = 404;
+  return error;
 }
 
 function requireAuth(headers: Record<string, unknown>, token: string) {

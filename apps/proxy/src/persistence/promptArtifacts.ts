@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, lte } from "drizzle-orm";
 
 import {
   organizationSettings,
@@ -18,6 +18,11 @@ export type PromptArtifactCaptureInput = {
   body: unknown;
 };
 
+export type PromptCaptureSettings = {
+  promptCaptureMode: PromptCaptureMode;
+  retentionDays: number;
+};
+
 type ExtractedPromptArtifact = {
   kind: string;
   content?: string;
@@ -35,27 +40,93 @@ export class PromptArtifactStore {
   ) {}
 
   async capture(input: PromptArtifactCaptureInput) {
-    const mode = await this.captureMode(input.organizationId);
-    if (mode === "none") return [];
+    const settings = await this.settings(input.organizationId);
+    if (settings.promptCaptureMode === "none") return [];
 
     const artifacts = extractPromptArtifacts(input.surface, input.body);
     if (artifacts.length === 0) return [];
 
-    const rows = artifacts.map((artifact) => artifactRow(input, artifact, mode));
+    const now = new Date();
+    const rows = artifacts.map((artifact) => artifactRow(input, artifact, settings, now));
     await this.db.transaction(async (tx) => {
       await tx.insert(promptArtifacts).values(rows);
     });
     return rows;
   }
 
-  private async captureMode(organizationId: string): Promise<PromptCaptureMode> {
+  async configure(input: {
+    organizationId: string;
+    promptCaptureMode: PromptCaptureMode;
+    retentionDays: number;
+  }) {
+    const settings = {
+      promptCaptureMode: input.promptCaptureMode,
+      retentionDays: input.retentionDays,
+      updatedAt: new Date()
+    };
+    await this.readDb
+      .insert(organizationSettings)
+      .values({
+        organizationId: input.organizationId,
+        ...settings
+      })
+      .onConflictDoUpdate({
+        target: organizationSettings.organizationId,
+        set: settings
+      });
+    return {
+      organizationId: input.organizationId,
+      promptCaptureMode: input.promptCaptureMode,
+      retentionDays: input.retentionDays
+    };
+  }
+
+  async settings(organizationId: string): Promise<PromptCaptureSettings> {
     const [row] = await this.readDb
-      .select({ promptCaptureMode: organizationSettings.promptCaptureMode })
+      .select({
+        promptCaptureMode: organizationSettings.promptCaptureMode,
+        retentionDays: organizationSettings.retentionDays
+      })
       .from(organizationSettings)
       .where(eq(organizationSettings.organizationId, organizationId))
       .limit(1);
-    return row?.promptCaptureMode ?? "hash_only";
+    return {
+      promptCaptureMode: row?.promptCaptureMode ?? "hash_only",
+      retentionDays: row?.retentionDays ?? 30
+    };
   }
+
+  async redactExpired(organizationId: string, now = new Date()) {
+    const expired = await this.readDb
+      .select({
+        id: promptArtifacts.id
+      })
+      .from(promptArtifacts)
+      .where(and(
+        eq(promptArtifacts.organizationId, organizationId),
+        eq(promptArtifacts.storageMode, "raw_text"),
+        lte(promptArtifacts.expiresAt, now)
+      ));
+    if (expired.length === 0) return { redactedCount: 0 };
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(promptArtifacts)
+        .set({
+          storageMode: "redacted",
+          rawText: null,
+          redactedText: "Redacted by retention policy.",
+          encryptedBlobRef: null
+        })
+        .where(and(
+          eq(promptArtifacts.organizationId, organizationId),
+          eq(promptArtifacts.storageMode, "raw_text"),
+          lte(promptArtifacts.expiresAt, now)
+        ));
+    });
+    return { redactedCount: expired.length };
+  }
+
 }
 
 export function promptCaptureEventPayload(surface: Surface, artifacts: CapturedPromptArtifact[]) {
@@ -83,15 +154,19 @@ export function extractPromptArtifacts(surface: Surface, body: unknown): Extract
 function artifactRow(
   input: PromptArtifactCaptureInput,
   artifact: ExtractedPromptArtifact,
-  mode: PromptCaptureMode
+  settings: PromptCaptureSettings,
+  now: Date
 ): typeof promptArtifacts.$inferInsert {
   const metadata = {
     surface: input.surface,
     chars: artifact.content?.length ?? 0,
     ...(artifact.metadata ?? {})
   };
-  const rawText = mode === "raw_text" ? artifact.content : undefined;
-  const storageMode = rawText === undefined ? "hash_only" : "raw_text";
+  const rawText = settings.promptCaptureMode === "raw_text" ? artifact.content : undefined;
+  const redactedText = settings.promptCaptureMode === "redacted" && artifact.content !== undefined
+    ? "Redacted at capture."
+    : undefined;
+  const storageMode = storageModeFor(rawText, redactedText);
   return {
     id: createId("prompt_artifact"),
     organizationId: input.organizationId,
@@ -100,11 +175,24 @@ function artifactRow(
     storageMode,
     contentHash: artifact.content === undefined ? sha256(stableJson(metadata)) : sha256(artifact.content),
     rawText,
+    redactedText,
     tokenEstimate: artifact.content === undefined ? 0 : roughTokenEstimate(artifact.content.length),
     sourceRole: artifact.sourceRole,
     sourceIndex: artifact.sourceIndex,
-    metadata
+    metadata,
+    expiresAt: expiry(now, settings.retentionDays)
   };
+}
+
+function storageModeFor(rawText: string | undefined, redactedText: string | undefined): PromptCaptureMode {
+  if (rawText !== undefined) return "raw_text";
+  if (redactedText !== undefined) return "redacted";
+  return "hash_only";
+}
+
+function expiry(now: Date, retentionDays: number) {
+  if (retentionDays <= 0) return now;
+  return new Date(now.getTime() + retentionDays * 24 * 60 * 60 * 1000);
 }
 
 function extractOpenAIArtifacts(body: unknown): ExtractedPromptArtifact[] {
