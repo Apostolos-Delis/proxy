@@ -2,7 +2,6 @@ import { and, desc, eq } from "drizzle-orm";
 
 import {
   providerAttempts,
-  promptArtifacts,
   requests,
   usageLedger,
   type PromptProxyDbSession,
@@ -203,21 +202,6 @@ export async function persistRequestReceived(tx: PromptProxyTransaction, event: 
         metadata: payload
       }
     });
-
-  await tx
-    .insert(promptArtifacts)
-    .values({
-      id: createId("prompt_artifact"),
-      organizationId: event.tenantId,
-      requestId: event.scopeId,
-      kind: "request_input",
-      storageMode: "hash_only",
-      contentHash: stringValue(payload.inputHash) ?? event.payloadHash,
-      metadata: {
-        inputChars: numberValue(payload.inputChars) ?? 0
-      }
-    })
-    .onConflictDoNothing();
 }
 
 export async function persistRoutingContext(tx: PromptProxyTransaction, event: {

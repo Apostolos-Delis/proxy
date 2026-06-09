@@ -1,10 +1,38 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { BarChart3, FileText, Gauge, GitBranch, ListFilter, MessagesSquare, Settings as SettingsIcon } from "lucide-react";
+import { BarChart3, Boxes, Command, CreditCard, Gauge, KeyRound, Logs, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { useState } from "react";
 
 import { LogoutButton } from "./auth";
 
+const workspaceNav = [
+  { to: "/", label: "Overview", icon: Gauge },
+  { to: "/usage", label: "Usage", icon: BarChart3 },
+  { to: "/logs", label: "Logs", icon: Logs }
+] as const;
+
+const manageNav = [
+  { to: "/api-keys", label: "API keys", icon: KeyRound },
+  { to: "/users", label: "Users", icon: Users },
+  { to: "/billing", label: "Billing", icon: CreditCard }
+] as const;
+
+const titles: Record<string, [string, string | null]> = {
+  "/": ["Overview", null],
+  "/usage": ["Usage", "Token metering & spend"],
+  "/logs": ["Logs", "Request stream"],
+  "/api-keys": ["API keys", "Manage secrets"],
+  "/users": ["Users", "Team & access"],
+  "/billing": ["Billing", "Spend & invoices"],
+  "/settings": ["Settings", "Runtime configuration"],
+  "/prompts": ["Prompts", "Captured prompt artifacts"],
+  "/sessions": ["Sessions", "Agent session replay"]
+};
+
 export function AppShell() {
   const location = useLocation();
+  const [collapsed, setCollapsed] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
   if (location.pathname === "/login") {
     return (
       <main className="login-shell">
@@ -13,44 +41,100 @@ export function AppShell() {
     );
   }
 
+  const [title, subtitle] = titleForPath(location.pathname);
   return (
-    <div className="app">
+    <div className={`app${collapsed ? " collapsed" : ""}`} data-theme={theme}>
       <aside className="sidebar">
-        <div className="brand">
-          <GitBranch size={20} />
-          <span>Prompt Proxy</span>
+        <Brand collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
+        <NavGroup title="Workspace" items={workspaceNav} collapsed={collapsed} />
+        <NavGroup title="Manage" items={manageNav} collapsed={collapsed} />
+        <div className="sidebar-foot">
+          <div className="org-card">
+            <div className="org-avatar">P</div>
+            <div className="brand-text">
+              <strong>Proxy Labs</strong>
+              <span>Team · Mid</span>
+            </div>
+          </div>
+          <LogoutButton />
         </div>
-        <nav>
-          <Link to="/" activeProps={{ className: "active" }}>
-            <Gauge size={18} />
-            Overview
-          </Link>
-          <Link to="/usage" activeProps={{ className: "active" }}>
-            <BarChart3 size={18} />
-            Usage
-          </Link>
-          <Link to="/prompts" activeProps={{ className: "active" }}>
-            <FileText size={18} />
-            Prompts
-          </Link>
-          <Link to="/sessions" activeProps={{ className: "active" }}>
-            <MessagesSquare size={18} />
-            Sessions
-          </Link>
-          <Link to="/requests" activeProps={{ className: "active" }}>
-            <ListFilter size={18} />
-            Requests
-          </Link>
-          <Link to="/settings" activeProps={{ className: "active" }}>
-            <SettingsIcon size={18} />
-            Settings
-          </Link>
-        </nav>
-        <LogoutButton />
       </aside>
       <main className="main">
-        <Outlet />
+        <header className="topbar">
+          <div>
+            <h1>{title}</h1>
+            {subtitle ? <div className="crumb">{subtitle}</div> : null}
+          </div>
+          <div className="topbar-spacer" />
+          <div className="input topbar-search">
+            <Search />
+            <input placeholder="Search..." aria-label="Search" />
+            <span className="kbd"><Command /><span>K</span></span>
+          </div>
+          <button
+            className="btn btn-ghost btn-icon"
+            type="button"
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            onClick={() => setTheme((value) => value === "dark" ? "light" : "dark")}
+          >
+            {theme === "dark" ? <Sun /> : <Moon />}
+          </button>
+          <Link to="/settings" className="btn btn-ghost btn-icon" aria-label="Settings">
+            <Settings />
+          </Link>
+          <div className="avatar operator">AD</div>
+        </header>
+        <div className="scroll">
+          <Outlet />
+        </div>
       </main>
     </div>
   );
+}
+
+function Brand({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  return (
+    <div className="brand">
+      {collapsed ? null : (
+        <div className="brand-lockup">
+          <div className="brand-mark"><Boxes /></div>
+          <div className="brand-text">
+            <div className="brand-name">proxy</div>
+            <div className="brand-sub">platform console</div>
+          </div>
+        </div>
+      )}
+      <button className="sidebar-toggle" type="button" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} onClick={onToggle}>
+        {collapsed ? <PanelLeft /> : <PanelLeftClose />}
+      </button>
+    </div>
+  );
+}
+
+function NavGroup({ title, items, collapsed }: { title: string; items: readonly { to: string; label: string; icon: LucideIcon }[]; collapsed: boolean }) {
+  return (
+    <>
+      <div className="nav-group-label brand-text">{title}</div>
+      <nav className="nav-group" aria-label={title} data-collapsed={collapsed ? "true" : "false"}>
+        {items.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link key={item.to} to={item.to} className="nav-item" title={collapsed ? item.label : undefined} activeProps={{ className: "nav-item active" }}>
+              <Icon />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+    </>
+  );
+}
+
+function titleForPath(pathname: string) {
+  const direct = titles[pathname];
+  if (direct) return direct;
+  if (pathname.startsWith("/logs/")) return ["Logs", "Prompt detail"] as const;
+  if (pathname.startsWith("/prompts/")) return ["Prompts", "Prompt detail"] as const;
+  if (pathname.startsWith("/sessions/")) return ["Sessions", "Session replay"] as const;
+  return ["Proxy", "LLM cost console"] as const;
 }

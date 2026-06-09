@@ -91,7 +91,7 @@ export class PromptArtifactStore {
       .where(eq(organizationSettings.organizationId, organizationId))
       .limit(1);
     return {
-      promptCaptureMode: row?.promptCaptureMode ?? "hash_only",
+      promptCaptureMode: row?.promptCaptureMode ?? "raw_text",
       retentionDays: row?.retentionDays ?? 30
     };
   }

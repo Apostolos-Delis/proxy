@@ -67,7 +67,7 @@ CREATE INDEX api_keys_organization_id_idx ON api_keys (organization_id);
 
 CREATE TABLE organization_settings (
   organization_id text PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
-  prompt_capture_mode text NOT NULL DEFAULT 'hash_only',
+  prompt_capture_mode text NOT NULL DEFAULT 'raw_text',
   retention_days integer NOT NULL DEFAULT 30,
   max_route text,
   settings jsonb NOT NULL DEFAULT '{}'::jsonb,

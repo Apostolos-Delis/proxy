@@ -1,9 +1,11 @@
 import { redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { LogOut } from "lucide-react";
+import { ArrowRight, LogOut } from "lucide-react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 
 import { fetchMe, login, logout } from "./api";
+import { ConsoleButton } from "./ui";
 
 export type RouterContext = {
   queryClient: QueryClient;
@@ -50,9 +52,10 @@ export function LoginPage() {
             Password
             <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
           </label>
-          <button type="submit" disabled={mutation.isPending}>
+          <ConsoleButton type="submit" disabled={mutation.isPending}>
             {mutation.isPending ? "Signing in" : "Sign in"}
-          </button>
+            <ArrowRight />
+          </ConsoleButton>
           {mutation.error ? <p className="form-error">{mutation.error.message}</p> : null}
         </form>
       </div>
@@ -60,7 +63,7 @@ export function LoginPage() {
   );
 }
 
-export function LogoutButton() {
+export function LogoutButton({ icon }: { icon?: ReactNode }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const mutation = useMutation({
@@ -73,7 +76,7 @@ export function LogoutButton() {
 
   return (
     <button className="logout-button" type="button" onClick={() => mutation.mutate()}>
-      <LogOut size={16} />
+      {icon ?? <LogOut />}
       Sign out
     </button>
   );

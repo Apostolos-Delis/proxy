@@ -39,9 +39,12 @@ export type Overview = {
 
 export type RequestSummary = {
   requestId: string;
+  userId?: string;
+  sessionId?: string;
   surface?: string;
   requestedModel?: string;
   finalRoute?: string;
+  provider?: string;
   selectedModel?: string;
   terminalStatus: string;
   inputChars?: number;
@@ -57,6 +60,9 @@ export type RequestSummary = {
   selectedCost: number;
   baselineCost: number;
   savings: number;
+  attemptCount?: number;
+  createdAt?: string;
+  completedAt?: string;
 };
 
 export type ProxyEvent = {
@@ -150,6 +156,19 @@ export type SessionSummary = {
   startedAt: string;
   endedAt?: string;
   updatedAt: string;
+};
+
+export type UserSummary = {
+  userId: string;
+  email?: string;
+  name?: string;
+  externalId?: string;
+  requestCount: number;
+  sessionCount: number;
+  usage: Overview["totals"];
+  cost: Overview["cost"];
+  recentActivity: string | null;
+  createdAt: string;
 };
 
 export type ProviderAttempt = {
@@ -248,6 +267,10 @@ export async function fetchSessions() {
 
 export async function fetchSessionDetail(sessionId: string) {
   return fetchJson<SessionDetail>(`/admin/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+export async function fetchUsers() {
+  return fetchJson<{ data: UserSummary[] }>("/admin/users");
 }
 
 export async function fetchMe() {
