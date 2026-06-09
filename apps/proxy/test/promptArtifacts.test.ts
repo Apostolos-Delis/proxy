@@ -83,6 +83,12 @@ describe("prompt artifact capture", () => {
 
     const rows = await fixture.db.select().from(promptArtifacts);
     const eventRows = await fixture.db.select().from(events);
+    const captureEvent = eventRows.find((event) => event.eventType === "prompt_artifacts.captured");
+    const requestDetail = captureEvent
+      ? await fetch(`${fixture.proxyUrl}/admin/requests/${captureEvent.scopeId}`, {
+          headers: { authorization: "Bearer proxy-token" }
+        }).then((item) => item.json())
+      : undefined;
 
     expect(response.status).toBe(200);
     expect(rows).toEqual(expect.arrayContaining([
@@ -111,8 +117,34 @@ describe("prompt artifact capture", () => {
         })
       })
     ]));
+    expect(captureEvent?.payload).toEqual(expect.objectContaining({
+      surface: "openai-responses",
+      artifactCount: 3,
+      artifacts: expect.arrayContaining([
+        expect.objectContaining({
+          artifactId: expect.any(String),
+          kind: "instructions",
+          storageMode: "raw_text",
+          contentHash: expect.stringMatching(/^sha256:/)
+        }),
+        expect.objectContaining({
+          artifactId: expect.any(String),
+          kind: "latest_user_message",
+          storageMode: "raw_text",
+          contentHash: expect.stringMatching(/^sha256:/)
+        }),
+        expect.objectContaining({
+          artifactId: expect.any(String),
+          kind: "tool_schema_metadata",
+          storageMode: "hash_only",
+          metadata: expect.objectContaining({ toolCount: 1 })
+        })
+      ])
+    }));
+    expect(requestDetail?.events.map((event: any) => event.eventType)).toContain("prompt_artifacts.captured");
     expect(eventPayloadText(eventRows)).not.toContain("Always answer in terse bullets.");
     expect(eventPayloadText(eventRows)).not.toContain("Write tests for @filename.");
+    expect(eventPayloadText(eventRows)).not.toContain("parameters");
   });
 
   it("captures only the latest OpenAI user message from array input", async () => {
@@ -178,6 +210,7 @@ describe("prompt artifact capture", () => {
 
     const rows = await fixture.db.select().from(promptArtifacts);
     const eventRows = await fixture.db.select().from(events);
+    const captureEvent = eventRows.find((event) => event.eventType === "prompt_artifacts.captured");
 
     expect(response.status).toBe(200);
     expect(rows).toEqual(expect.arrayContaining([
@@ -204,8 +237,39 @@ describe("prompt artifact capture", () => {
         })
       })
     ]));
+    expect(captureEvent?.payload).toEqual(expect.objectContaining({
+      surface: "anthropic-messages",
+      artifactCount: 3,
+      artifacts: expect.arrayContaining([
+        expect.objectContaining({ kind: "system" }),
+        expect.objectContaining({ kind: "latest_user_message" }),
+        expect.objectContaining({ kind: "tool_schema_metadata" })
+      ])
+    }));
     expect(eventPayloadText(eventRows)).not.toContain("Use the mortgage domain rules.");
     expect(eventPayloadText(eventRows)).not.toContain("latest Claude question");
+    expect(eventPayloadText(eventRows)).not.toContain("input_schema");
+  });
+
+  it("fails before classifier or provider spend when prompt capture fails", async () => {
+    const fixture = await captureFixture("org_capture_failure", "raw_text", true);
+
+    const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "this should not reach the classifier",
+        stream: true
+      })
+    });
+    await response.text();
+
+    expect(response.status).toBe(500);
+    expect(openai?.records).toHaveLength(0);
   });
 
   it("keeps prompt content hash-only when raw capture is not enabled", async () => {
@@ -262,7 +326,11 @@ describe("prompt artifact capture", () => {
     expect(rows.filter((row) => row.storageMode === "raw_text")).toHaveLength(0);
   });
 
-  async function captureFixture(organizationId: string, promptCaptureMode: "hash_only" | "raw_text" = "raw_text") {
+  async function captureFixture(
+    organizationId: string,
+    promptCaptureMode: "hash_only" | "raw_text" = "raw_text",
+    failCapture = false
+  ) {
     client = new PGlite();
     const migration = await readFile(
       fileURLToPath(new URL("../../../packages/db/migrations/0000_foundation.sql", import.meta.url)),
@@ -281,6 +349,11 @@ describe("prompt artifact capture", () => {
     });
     const catalog = buildModelCatalog(config);
     const persistence = createDatabasePersistence(db, catalog, config, false);
+    if (failCapture) {
+      persistence.promptArtifacts.capture = async () => {
+        throw new Error("capture_failed");
+      };
+    }
 
     await db.insert(organizations).values({
       id: organizationId,

@@ -15,6 +15,7 @@ import { LlmClassifier } from "./classifier.js";
 import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStateGate } from "./events.js";
 import { BudgetService, SessionRouteStore } from "./policy.js";
 import { createPostgresPersistence } from "./persistence/index.js";
+import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
 import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
@@ -190,11 +191,20 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         eventType: "proxy.request_received",
         payload: requestReceivedPayload("openai-responses", context, rawContext, identity)
       });
-      await persistence?.promptArtifacts.capture({
+      const capturedArtifacts = await persistence?.promptArtifacts.capture({
         organizationId: identity.organizationId,
         requestId,
         surface: openAIResponsesSurface.surface,
         body: request.body
+      }) ?? [];
+      await appendPromptCaptureEvent({
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: openAIResponsesSurface.surface,
+        artifacts: capturedArtifacts
       });
 
       const decision = await routing.decide({
@@ -254,11 +264,20 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         eventType: "proxy.request_received",
         payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
       });
-      await persistence?.promptArtifacts.capture({
+      const capturedArtifacts = await persistence?.promptArtifacts.capture({
         organizationId: identity.organizationId,
         requestId,
         surface: anthropicMessagesSurface.surface,
         body: request.body
+      }) ?? [];
+      await appendPromptCaptureEvent({
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: anthropicMessagesSurface.surface,
+        artifacts: capturedArtifacts
       });
 
       const decision = await routing.decide({

@@ -15,6 +15,7 @@ import {
 import type { AppConfig } from "./config.js";
 import { jsonPayload, type EventService, type ProviderAttemptStore, type RequestStateStoreLike } from "./events.js";
 import type { PromptArtifactStore } from "./persistence/promptArtifacts.js";
+import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import type { RoutingService } from "./router.js";
 import type { JsonObject, RouteDecision, RouteName } from "./types.js";
 import { createId, headerValue, idempotencyFrom, isRecord, lowerHeaders } from "./util.js";
@@ -180,11 +181,20 @@ export class WebSocketRoutingProxy {
         transport: "websocket"
       })
     });
-    await this.promptArtifacts?.capture({
+    const capturedArtifacts = await this.promptArtifacts?.capture({
       organizationId: identity.organizationId,
       requestId,
       surface: openAIResponsesSurface.surface,
       body: routeBody
+    }) ?? [];
+    await appendPromptCaptureEvent({
+      events: this.events,
+      identity,
+      requestId,
+      idempotencyKey,
+      sessionId: context.sessionId,
+      surface: openAIResponsesSurface.surface,
+      artifacts: capturedArtifacts
     });
 
     const decision = await this.routing.decide({

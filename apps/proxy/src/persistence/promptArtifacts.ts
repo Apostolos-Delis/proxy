@@ -26,6 +26,8 @@ type ExtractedPromptArtifact = {
   metadata?: Record<string, unknown>;
 };
 
+export type CapturedPromptArtifact = typeof promptArtifacts.$inferInsert;
+
 export class PromptArtifactStore {
   constructor(
     private readonly db: PromptProxyTransactionalDatabase,
@@ -54,6 +56,23 @@ export class PromptArtifactStore {
       .limit(1);
     return row?.promptCaptureMode ?? "hash_only";
   }
+}
+
+export function promptCaptureEventPayload(surface: Surface, artifacts: CapturedPromptArtifact[]) {
+  return {
+    surface,
+    artifactCount: artifacts.length,
+    artifacts: artifacts.map((artifact) => ({
+      artifactId: artifact.id,
+      kind: artifact.kind,
+      storageMode: artifact.storageMode,
+      contentHash: artifact.contentHash,
+      tokenEstimate: artifact.tokenEstimate ?? null,
+      sourceRole: artifact.sourceRole ?? null,
+      sourceIndex: artifact.sourceIndex ?? null,
+      metadata: artifact.metadata ?? {}
+    }))
+  };
 }
 
 export function extractPromptArtifacts(surface: Surface, body: unknown): ExtractedPromptArtifact[] {
