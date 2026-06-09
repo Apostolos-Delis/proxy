@@ -6,11 +6,12 @@ import {
   supportsSurface
 } from "./catalog.js";
 import type { ModelCatalog } from "./catalog.js";
-import type { ClassificationResult, LlmClassifier } from "./classifier.js";
+import { defaultClassifierSettings } from "./classifier.js";
+import type { ClassificationResult, ClassifierSettings, LlmClassifier } from "./classifier.js";
 import { jsonPayload, type EventService } from "./events.js";
 import type { AppConfig } from "./config.js";
 import type { BudgetResult, BudgetService, SessionRouteStore } from "./policy.js";
-import type { JsonObject, RouteContext, RouteDecision, RouteName, RoutingConfigSnapshot } from "./types.js";
+import type { JsonObject, RouteContext, RouteDecision, RouteName, RoutingConfigSelection, RoutingConfigSnapshot } from "./types.js";
 import { isRecord } from "./util.js";
 
 export class RoutingService {
@@ -28,9 +29,10 @@ export class RoutingService {
     context: RouteContext;
     body: unknown;
     idempotencyKey: string;
-    routingConfig?: RoutingConfigSnapshot;
+    routingConfig?: RoutingConfigSelection;
   }): Promise<RouteDecision> {
     const { requestId, context, idempotencyKey, routingConfig } = input;
+    const routingConfigSnapshot = routingConfig?.snapshot;
 
     await this.events.append({
       scopeType: "request",
@@ -55,7 +57,7 @@ export class RoutingService {
         hasImages: context.hasImages,
         extractedHints: context.extractedHints,
         routingExtractedHints: context.routingExtractedHints,
-        routingConfig: routingConfig ? jsonPayload(routingConfig) : null
+        routingConfig: routingConfigSnapshot ? jsonPayload(routingConfigSnapshot) : null
       }
     });
 
@@ -80,14 +82,27 @@ export class RoutingService {
     const explicit = context.explicitAlias;
     let classification: ClassificationResult | undefined;
     let requestedRoute: RouteName;
+    const classifierSettings = routingConfig?.config.classifier ?? defaultClassifierSettings(this.config);
     if (explicit) {
       requestedRoute = explicit;
     } else {
-      classification = await this.classify(requestId, context, idempotencyKey);
+      classification = await this.classify(
+        requestId,
+        context,
+        idempotencyKey,
+        classifierSettings,
+        routingConfigSnapshot
+      );
       requestedRoute = classification.output.recommended_route;
     }
 
-    const decision = this.resolveRoute(context, requestedRoute, classification, routingConfig);
+    const decision = this.resolveRoute(
+      context,
+      requestedRoute,
+      classification,
+      routingConfigSnapshot,
+      classifierSettings
+    );
     if (decision.outcome === "route" && decision.finalRoute) {
       const postBudget = this.budget.checkDecision(context, decision.finalRoute);
       decision.budgetChecks = [...preBudget.checks, ...postBudget.checks];
@@ -214,10 +229,12 @@ export class RoutingService {
   private async classify(
     requestId: string,
     context: RouteContext,
-    idempotencyKey: string
+    idempotencyKey: string,
+    classifierSettings: ClassifierSettings,
+    routingConfig?: RoutingConfigSnapshot
   ) {
     try {
-      const result = await this.classifier.classify(context);
+      const result = await this.classifier.classify(context, classifierSettings);
       await this.events.append({
         scopeType: "request",
         scopeId: requestId,
@@ -226,19 +243,20 @@ export class RoutingService {
         producer: "prompt-proxy.classifier",
         eventType: "routing.classification_recorded",
         payload: {
-          model: this.config.classifierModel,
+          model: classifierSettings.model,
           attempts: result.attempts,
           confidence: result.output.confidence,
           recommendedRoute: result.output.recommended_route,
           reasonCodes: result.output.reason_codes,
-          risk: result.output.risk
+          risk: result.output.risk,
+          routingConfig: routingConfig ? jsonPayload(routingConfig) : null
         },
         metadata: {
-          contentMode: this.config.classifierAllowRedactedExcerpt
+          contentMode: classifierSettings.allowRedactedExcerpt
             ? "redacted_excerpt"
             : "features_only",
           redactionState: "redacted",
-          provider: this.config.classifierProvider
+          provider: classifierSettings.provider
         }
       });
       return result;
@@ -251,8 +269,9 @@ export class RoutingService {
         producer: "prompt-proxy.classifier",
         eventType: "routing.classification_failed",
         payload: {
-          model: this.config.classifierModel,
-          error: error instanceof Error ? error.message : "Classifier failed."
+          model: classifierSettings.model,
+          error: error instanceof Error ? error.message : "Classifier failed.",
+          routingConfig: routingConfig ? jsonPayload(routingConfig) : null
         }
       });
       throw error;
@@ -263,7 +282,8 @@ export class RoutingService {
     context: RouteContext,
     classifierRoute: RouteName,
     classification?: ClassificationResult,
-    routingConfig?: RoutingConfigSnapshot
+    routingConfig?: RoutingConfigSnapshot,
+    classifierSettings: ClassifierSettings = defaultClassifierSettings(this.config)
   ): RouteDecision {
     let finalRoute = classifierRoute;
     const guardrailActions: string[] = [];
@@ -342,10 +362,14 @@ export class RoutingService {
         : undefined,
       classifier: classification
         ? {
-            model: this.config.classifierModel,
+            provider: classifierSettings.provider,
+            model: classifierSettings.model,
             attempts: classification.attempts,
             confidence: classification.output.confidence,
-            recommendedRoute: classification.output.recommended_route
+            recommendedRoute: classification.output.recommended_route,
+            routingConfigId: routingConfig?.configId,
+            routingConfigVersionId: routingConfig?.versionId,
+            routingConfigHash: routingConfig?.configHash
           }
         : undefined,
       routingConfig,

@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS } from "@prompt-proxy/schema";
+import {
+  DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS,
+  type RoutingConfigClassifier
+} from "@prompt-proxy/schema";
 
 import type { AppConfig } from "./config.js";
 import type { ClassifierOutput, RouteContext } from "./types.js";
@@ -21,6 +24,8 @@ export type ClassificationResult = {
   attempts: number;
 };
 
+export type ClassifierSettings = RoutingConfigClassifier;
+
 export class ClassifierError extends Error {
   constructor(message: string) {
     super(message);
@@ -31,12 +36,15 @@ export class ClassifierError extends Error {
 export class LlmClassifier {
   constructor(private readonly config: AppConfig) {}
 
-  async classify(context: RouteContext): Promise<ClassificationResult> {
+  async classify(
+    context: RouteContext,
+    settings: ClassifierSettings = defaultClassifierSettings(this.config)
+  ): Promise<ClassificationResult> {
     let lastError: unknown;
 
-    for (let attempt = 1; attempt <= this.config.classifierMaxAttempts; attempt += 1) {
+    for (let attempt = 1; attempt <= settings.maxAttempts; attempt += 1) {
       try {
-        const output = await this.callClassifier(context);
+        const output = await this.callClassifier(context, settings);
         return { output, attempts: attempt };
       } catch (error) {
         lastError = error;
@@ -48,22 +56,29 @@ export class LlmClassifier {
     );
   }
 
-  private async callClassifier(context: RouteContext): Promise<ClassifierOutput> {
+  private async callClassifier(
+    context: RouteContext,
+    settings: ClassifierSettings
+  ): Promise<ClassifierOutput> {
+    if (settings.provider !== "openai") {
+      throw new ClassifierError(`Classifier provider ${settings.provider} is not supported.`);
+    }
+
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.config.classifierTimeoutMs);
+    const timeout = setTimeout(() => controller.abort(), settings.timeoutMs);
 
     try {
       const baseUrl = this.config.openaiBaseUrl;
       const key = this.config.openaiApiKey;
       const url = `${baseUrl}/responses`;
-      const view = classifierView(context, this.config.classifierAllowRedactedExcerpt);
+      const view = classifierView(context, settings.allowRedactedExcerpt);
       const response = await fetch(url, {
         method: "POST",
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${key}`
         },
-        body: JSON.stringify(classifierRequest(this.config.classifierModel, view)),
+        body: JSON.stringify(classifierRequest(settings, view)),
         signal: controller.signal
       });
 
@@ -85,16 +100,31 @@ export class LlmClassifier {
   }
 }
 
-function classifierRequest(model: string, view: unknown) {
+export function defaultClassifierSettings(config: AppConfig): ClassifierSettings {
   return {
-    model,
-    stream: false,
+    provider: config.classifierProvider,
+    model: config.classifierModel,
     instructions: DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS,
+    timeoutMs: config.classifierTimeoutMs,
+    maxAttempts: config.classifierMaxAttempts,
+    allowRedactedExcerpt: config.classifierAllowRedactedExcerpt,
+    structuredOutput: {
+      mode: "json_schema",
+      schemaName: "route_classification"
+    }
+  };
+}
+
+function classifierRequest(settings: ClassifierSettings, view: unknown) {
+  return {
+    model: settings.model,
+    stream: false,
+    instructions: settings.instructions,
     input: JSON.stringify(view),
     text: {
       format: {
         type: "json_schema",
-        name: "route_classification",
+        name: settings.structuredOutput.schemaName ?? "route_classification",
         schema: {
           type: "object",
           additionalProperties: false,
