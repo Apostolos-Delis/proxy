@@ -188,6 +188,46 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       }
     };
   });
+  app.get("/admin/users", async (request) => {
+    requireAuth(request.headers, config.proxyToken);
+    if (persistence) return persistence.adminQueries.users();
+    return { data: [] };
+  });
+  app.get("/admin/users/:userId", async (request, reply) => {
+    requireAuth(request.headers, config.proxyToken);
+    const params = request.params as { userId?: string };
+    const userId = params.userId;
+    if (!userId || !persistence) {
+      reply.code(404).send({ error: "user_not_found" });
+      return;
+    }
+    const detail = await persistence.adminQueries.userDetail(userId);
+    if (!detail) {
+      reply.code(404).send({ error: "user_not_found" });
+      return;
+    }
+    return detail;
+  });
+  app.get("/admin/sessions", async (request) => {
+    requireAuth(request.headers, config.proxyToken);
+    if (persistence) return persistence.adminQueries.sessions();
+    return { data: [] };
+  });
+  app.get("/admin/sessions/:sessionId", async (request, reply) => {
+    requireAuth(request.headers, config.proxyToken);
+    const params = request.params as { sessionId?: string };
+    const sessionId = params.sessionId;
+    if (!sessionId || !persistence) {
+      reply.code(404).send({ error: "session_not_found" });
+      return;
+    }
+    const detail = await persistence.adminQueries.sessionDetail(sessionId);
+    if (!detail) {
+      reply.code(404).send({ error: "session_not_found" });
+      return;
+    }
+    return detail;
+  });
   app.get("/admin/settings", async (request) => {
     requireAuth(request.headers, config.proxyToken);
     return {

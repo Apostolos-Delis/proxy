@@ -1,11 +1,14 @@
-import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 
 import {
+  agentSessions,
   events,
+  organizationMembers,
   promptArtifacts,
   providerAttempts,
   requests,
   routeDecisions,
+  users as usersTable,
   usageLedger,
   type PromptProxyDbSession
 } from "@prompt-proxy/db";
@@ -13,6 +16,12 @@ import {
 import { explicitAlias, modelForRoute } from "../catalog.js";
 import type { ModelCatalog } from "../catalog.js";
 import type { JsonObject, RouteName } from "../types.js";
+import {
+  eventSummary,
+  providerAttemptSummary,
+  routeDecisionSummary,
+  usageLedgerSummary
+} from "./adminSerializers.js";
 import { routeValue, surfaceValue, usageCostMicros } from "./values.js";
 
 export type AdminQueryConfig = {
@@ -146,6 +155,75 @@ export class AdminQueryService {
     };
   }
 
+  async users() {
+    const requestRows = await this.requestRows();
+    const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
+    const sessionRows = await this.sessionRows();
+    const userRows = await this.userRowsForOrg(userIdsForRequestsAndSessions(requestSummaries, sessionRows));
+    return {
+      data: [...userRows.values()]
+        .map((user) => userSummary(user, requestSummaries, sessionRows))
+        .sort((left, right) => compareRecentActivity(left.recentActivity, right.recentActivity))
+    };
+  }
+
+  async userDetail(userId: string) {
+    const requestRows = await this.requestRowsForUser(userId);
+    const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
+    const sessionRows = await this.sessionRowsForUser(userId, sessionIdsForRequests(requestSummaries));
+    const userRows = await this.userRowsForOrg(userIdsForRequestsAndSessions(requestSummaries, sessionRows));
+    const user = userRows.get(userId);
+    if (!user) return null;
+
+    const summary = userSummary(user, requestSummaries, sessionRows);
+    return {
+      user: summary,
+      usage: summary.usage,
+      cost: summary.cost,
+      sessions: sessionRows.map((session) => sessionSummary(session, requestSummaries)),
+      requests: requestSummaries.slice(0, 50)
+    };
+  }
+
+  async sessions() {
+    const sessionRows = await this.sessionRows();
+    const requestRows = await this.requestRows();
+    const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
+    return {
+      data: sessionRows
+        .map((session) => sessionSummary(session, requestSummaries))
+        .sort((left, right) => compareRecentActivity(left.recentActivity, right.recentActivity))
+    };
+  }
+
+  async sessionDetail(sessionId: string) {
+    const [session] = await this.db
+      .select()
+      .from(agentSessions)
+      .where(and(
+        eq(agentSessions.organizationId, this.config.defaultOrganizationId),
+        eq(agentSessions.id, sessionId)
+      ))
+      .limit(1);
+    if (!session) return null;
+
+    const requestRows = await this.requestRowsForSession(sessionId);
+    const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
+    const requestIds = requestRows.map((request) => request.id);
+    const userRows = session.userId ? await this.userRowsForOrg([session.userId]) : new Map<string, UserRow>();
+    const detailRows = await this.sessionDetailRows(sessionId, requestIds);
+    return {
+      session: sessionSummary(session, requestSummaries),
+      user: session.userId ? userRows.get(session.userId) ?? null : null,
+      requests: requestSummaries,
+      promptArtifacts: detailRows.prompts.map((row) => promptDetail(row)),
+      routeDecisions: detailRows.routeDecisions.map(routeDecisionSummary),
+      providerAttempts: detailRows.providerAttempts.map(providerAttemptSummary),
+      usageLedger: detailRows.usageLedger.map(usageLedgerSummary),
+      events: detailRows.events.map(eventSummary)
+    };
+  }
+
   async promptDetail(artifactId: string) {
     const [row] = await this.db
       .select({
@@ -200,6 +278,122 @@ export class AdminQueryService {
       .from(requests)
       .where(and(...conditions))
       .orderBy(desc(requests.createdAt));
+  }
+
+  private async requestRowsForUser(userId: string) {
+    return this.db
+      .select()
+      .from(requests)
+      .where(and(
+        eq(requests.organizationId, this.config.defaultOrganizationId),
+        eq(requests.userId, userId)
+      ))
+      .orderBy(desc(requests.createdAt));
+  }
+
+  private async requestRowsForSession(sessionId: string) {
+    return this.db
+      .select()
+      .from(requests)
+      .where(and(
+        eq(requests.organizationId, this.config.defaultOrganizationId),
+        eq(requests.sessionId, sessionId)
+      ))
+      .orderBy(desc(requests.createdAt));
+  }
+
+  private async sessionRows() {
+    return this.db
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.organizationId, this.config.defaultOrganizationId))
+      .orderBy(desc(agentSessions.updatedAt));
+  }
+
+  private async sessionRowsForUser(userId: string, requestSessionIds: string[]) {
+    const rows = await this.sessionRows();
+    const requestSessionIdsSet = new Set(requestSessionIds);
+    return rows.filter((session) =>
+      session.userId === userId || requestSessionIdsSet.has(session.id)
+    );
+  }
+
+  private async userRowsForOrg(candidateUserIds: string[]) {
+    const memberRows = await this.db
+      .select({
+        user: usersTable
+      })
+      .from(organizationMembers)
+      .innerJoin(usersTable, eq(usersTable.id, organizationMembers.userId))
+      .where(eq(organizationMembers.organizationId, this.config.defaultOrganizationId));
+    const usersById = new Map(memberRows.map((row) => [row.user.id, row.user]));
+    const missingUserIds = [...new Set(candidateUserIds)]
+      .filter((userId) => userId && !usersById.has(userId));
+    if (missingUserIds.length > 0) {
+      const rows = await this.db
+        .select()
+        .from(usersTable)
+        .where(inArray(usersTable.id, missingUserIds));
+      for (const row of rows) usersById.set(row.id, row);
+    }
+    return usersById;
+  }
+
+  private async sessionDetailRows(sessionId: string, requestIds: string[]) {
+    const prompts = requestIds.length > 0
+      ? await this.db
+          .select({
+            artifact: promptArtifacts,
+            request: requests
+          })
+          .from(promptArtifacts)
+          .innerJoin(requests, and(
+            eq(requests.id, promptArtifacts.requestId),
+            eq(requests.organizationId, promptArtifacts.organizationId)
+          ))
+          .where(and(
+            eq(promptArtifacts.organizationId, this.config.defaultOrganizationId),
+            inArray(promptArtifacts.requestId, requestIds)
+          ))
+          .orderBy(asc(promptArtifacts.createdAt))
+      : [];
+    const decisions = requestIds.length > 0
+      ? await this.db
+          .select()
+          .from(routeDecisions)
+          .where(and(
+            eq(routeDecisions.organizationId, this.config.defaultOrganizationId),
+            inArray(routeDecisions.requestId, requestIds)
+          ))
+          .orderBy(asc(routeDecisions.createdAt))
+      : [];
+    const attempts = requestIds.length > 0
+      ? await this.db
+          .select()
+          .from(providerAttempts)
+          .where(and(
+            eq(providerAttempts.organizationId, this.config.defaultOrganizationId),
+            inArray(providerAttempts.requestId, requestIds)
+          ))
+          .orderBy(asc(providerAttempts.startedAt))
+      : [];
+    const usageRows = requestIds.length > 0
+      ? await this.db
+          .select()
+          .from(usageLedger)
+          .where(and(
+            eq(usageLedger.organizationId, this.config.defaultOrganizationId),
+            inArray(usageLedger.requestId, requestIds)
+          ))
+          .orderBy(asc(usageLedger.createdAt))
+      : [];
+    return {
+      prompts,
+      routeDecisions: decisions,
+      providerAttempts: attempts,
+      usageLedger: usageRows,
+      events: await this.eventsForSession(sessionId, requestIds)
+    };
   }
 
   private async summarizeRequests(
@@ -304,25 +498,34 @@ export class AdminQueryService {
         seen.add(event.id);
         return true;
       })
-      .map((event) => ({
-        eventId: event.id,
-        sequence: event.sequence,
-        tenantId: event.organizationId,
-        scopeType: event.scopeType,
-        scopeId: event.scopeId,
-        correlationId: event.correlationId ?? undefined,
-        eventType: event.eventType,
-        producer: event.producer,
-        payload: event.payload as JsonObject,
-        metadata: event.metadata as JsonObject,
-        createdAt: event.createdAt.toISOString()
-      }));
+      .map(eventSummary);
+  }
+
+  private async eventsForSession(sessionId: string, requestIds: string[]) {
+    const scopeConditions = [
+      eq(events.sessionId, sessionId),
+      eq(events.scopeId, sessionId)
+    ];
+    if (requestIds.length > 0) {
+      scopeConditions.push(inArray(events.scopeId, requestIds));
+      scopeConditions.push(inArray(events.correlationId, requestIds));
+    }
+    return this.db
+      .select()
+      .from(events)
+      .where(and(
+        eq(events.organizationId, this.config.defaultOrganizationId),
+        or(...scopeConditions)
+      ))
+      .orderBy(asc(events.createdAt));
   }
 }
 
 type RequestRow = typeof requests.$inferSelect;
 type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
 type UsageLedgerRow = typeof usageLedger.$inferSelect;
+type SessionRow = typeof agentSessions.$inferSelect;
+type UserRow = typeof usersTable.$inferSelect;
 type PromptRow = {
   artifact: typeof promptArtifacts.$inferSelect;
   request: typeof requests.$inferSelect;
@@ -453,7 +656,9 @@ function requestSummary(row: {
     attemptCount: row.attemptCount,
     selectedCost,
     baselineCost,
-    savings: baselineCost - selectedCost
+    savings: baselineCost - selectedCost,
+    createdAt: row.request.createdAt.toISOString(),
+    completedAt: row.request.completedAt?.toISOString() ?? undefined
   };
 }
 
@@ -472,6 +677,129 @@ type UsageGroup = {
     savings: number;
   };
 };
+
+function userIdsForRequestsAndSessions(requests: RequestSummary[], sessions: SessionRow[]) {
+  return [
+    ...requests.flatMap((request) => request.userId ? [request.userId] : []),
+    ...sessions.flatMap((session) => session.userId ? [session.userId] : [])
+  ];
+}
+
+function sessionIdsForRequests(requests: RequestSummary[]) {
+  return requests.flatMap((request) => request.sessionId ? [request.sessionId] : []);
+}
+
+function userSummary(
+  user: UserRow,
+  allRequests: RequestSummary[],
+  allSessions: SessionRow[]
+) {
+  const requests = allRequests.filter((request) => request.userId === user.id);
+  const requestSessionIds = new Set(sessionIdsForRequests(requests));
+  const sessions = allSessions.filter((session) =>
+    session.userId === user.id || requestSessionIds.has(session.id)
+  );
+  return {
+    userId: user.id,
+    email: user.email ?? undefined,
+    name: user.name ?? undefined,
+    externalId: user.externalId ?? undefined,
+    requestCount: requests.length,
+    sessionCount: sessions.length,
+    usage: usageTotals(requests),
+    cost: costTotals(requests),
+    recentActivity: recentActivity(requests, sessions),
+    createdAt: user.createdAt.toISOString()
+  };
+}
+
+function sessionSummary(session: SessionRow, allRequests: RequestSummary[]) {
+  const requests = allRequests.filter((request) => request.sessionId === session.id);
+  return {
+    sessionId: session.id,
+    organizationId: session.organizationId,
+    userId: session.userId ?? undefined,
+    surface: session.surface,
+    externalSessionId: session.externalSessionId ?? undefined,
+    currentRoute: session.currentRoute ?? undefined,
+    sessionIdentity: stringFromMetadata(session.metadata, "sessionIdentity"),
+    requestCount: requests.length,
+    routeChanges: routeChangeCount(requests),
+    modelMix: countBy(requests, (request) => request.selectedModel ?? "unknown"),
+    routeMix: countBy(requests, (request) => request.finalRoute ?? "unknown"),
+    terminalStatusSummary: countBy(requests, (request) => request.terminalStatus),
+    usage: usageTotals(requests),
+    cost: costTotals(requests),
+    recentActivity: recentActivity(requests, [session]),
+    startedAt: session.startedAt.toISOString(),
+    endedAt: session.endedAt?.toISOString() ?? undefined,
+    updatedAt: session.updatedAt.toISOString()
+  };
+}
+
+function usageTotals(requests: RequestSummary[]) {
+  return requests.reduce((acc, request) => {
+    acc.inputTokens += request.usage.inputTokens;
+    acc.cachedInputTokens += request.usage.cachedInputTokens;
+    acc.outputTokens += request.usage.outputTokens;
+    acc.reasoningTokens += request.usage.reasoningTokens;
+    acc.totalTokens += request.usage.totalTokens;
+    return acc;
+  }, emptyUsage());
+}
+
+function costTotals(requests: RequestSummary[]) {
+  return requests.reduce((acc, request) => {
+    acc.selected += request.selectedCost;
+    acc.baseline += request.baselineCost;
+    acc.savings += request.savings;
+    return acc;
+  }, { selected: 0, baseline: 0, savings: 0 });
+}
+
+function recentActivity(requests: RequestSummary[], sessions: SessionRow[]) {
+  const times = [
+    ...requests.map((request) => new Date(request.createdAt).getTime()),
+    ...sessions.map((session) => session.updatedAt.getTime())
+  ].filter((time) => Number.isFinite(time));
+  if (times.length === 0) return null;
+  return new Date(Math.max(...times)).toISOString();
+}
+
+function compareRecentActivity(left: string | null, right: string | null) {
+  return timestampFromIso(right) - timestampFromIso(left);
+}
+
+function timestampFromIso(value: string | null) {
+  return value ? new Date(value).getTime() : 0;
+}
+
+function routeChangeCount(requests: RequestSummary[]) {
+  let previousRoute: string | undefined;
+  let changes = 0;
+  for (const request of [...requests].sort((left, right) =>
+    timestampFromIso(left.createdAt) - timestampFromIso(right.createdAt)
+  )) {
+    if (!request.finalRoute) continue;
+    if (previousRoute && previousRoute !== request.finalRoute) changes += 1;
+    previousRoute = request.finalRoute;
+  }
+  return changes;
+}
+
+function countBy<T>(items: T[], keyFor: (item: T) => string) {
+  return items.reduce<Record<string, number>>((acc, item) => {
+    const key = keyFor(item);
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
+function stringFromMetadata(metadata: unknown, key: string) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return undefined;
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
+}
 
 function usageGroupBy(value: string | undefined): UsageGroupBy {
   if (

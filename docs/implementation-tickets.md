@@ -485,6 +485,8 @@ Dependencies: PP-014, PP-025.
 
 ### PP-032: Add Users And Sessions Admin APIs
 
+Status: implemented in the current MVP.
+
 Expose org-scoped user and session views for prompt and cost investigation.
 
 Acceptance criteria:
