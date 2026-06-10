@@ -2,6 +2,7 @@ import { ScrollText, Split } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type { RoutingConfigDocument } from "../api";
+import { MenuSelect } from "../table/MenuSelect";
 import {
   ANTHROPIC_EFFORTS,
   editorRouteOrder,
@@ -134,20 +135,19 @@ function TierModelInput({ provider, model, effort, efforts, onModelChange, onEff
 }) {
   return (
     <div className="tier-model">
-      <span className="tier-model-provider">
+      <div className="tier-model-provider">
         {provider}
-        <select
+        <MenuSelect
           className="tier-effort"
           value={effort}
-          aria-label={`${provider} effort`}
-          onChange={(event) => onEffortChange(event.target.value)}
-        >
-          <option value="">default effort</option>
-          {efforts.map((option) => (
-            <option key={option} value={option}>effort {option}</option>
-          ))}
-        </select>
-      </span>
+          ariaLabel={`${provider} effort`}
+          options={[
+            { value: "", label: "default effort" },
+            ...efforts.map((option) => ({ value: option, label: `effort ${option}` }))
+          ]}
+          onChange={onEffortChange}
+        />
+      </div>
       <input
         value={model}
         placeholder="none"

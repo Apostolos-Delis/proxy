@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 
 import { type EditableSettings, fetchSettings, updateSettings } from "./api";
+import { MenuSelect } from "./table/MenuSelect";
 import { Badge, GlassCard, PageState, PageTitle } from "./ui";
 
 const routeOptions = ["", "fast", "balanced", "hard", "deep"] as const;
@@ -173,12 +174,15 @@ function NumberField({ label, value, min, max, step = 1, suffix, onChange }: {
 
 function SelectField<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly T[]; onChange: (value: T) => void }) {
   return (
-    <label className="settings-field">
+    <div className="settings-field">
       <span>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value as T)}>
-        {options.map((option) => <option key={option || "none"} value={option}>{option || "No limit"}</option>)}
-      </select>
-    </label>
+      <MenuSelect
+        value={value}
+        options={options.map((option) => ({ value: option, label: option || "No limit" }))}
+        ariaLabel={label}
+        onChange={(next) => onChange(next as T)}
+      />
+    </div>
   );
 }
 

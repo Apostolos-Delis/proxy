@@ -486,8 +486,7 @@
   font-size: 12.5px;
 }
 
-.settings-field input,
-.settings-field select {
+.settings-field input {
   width: 100%;
   min-width: 0;
   padding: 8px 10px;
@@ -499,11 +498,15 @@
   font-size: 13px;
 }
 
-.settings-field input:focus,
-.settings-field select:focus {
+.settings-field input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
   outline: none;
+}
+
+.settings-field .menu-select > button {
+  background: var(--glass-2);
+  font-size: 13px;
 }
 
 .settings-number {
@@ -1236,7 +1239,6 @@
 }
 
 .routing-create-field input,
-.routing-create-field select,
 .routing-create-field textarea {
   width: 100%;
   min-width: 0;
@@ -1247,8 +1249,7 @@
   font: inherit;
 }
 
-.routing-create-field input,
-.routing-create-field select {
+.routing-create-field input {
   height: 40px;
   padding: 0 11px;
 }
@@ -1259,11 +1260,15 @@
 }
 
 .routing-create-field input:focus,
-.routing-create-field select:focus,
 .routing-create-field textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
   outline: none;
+}
+
+.routing-create-field .menu-select > button {
+  height: 40px;
+  background: var(--glass-2);
 }
 
 .routing-create-field small {
@@ -1422,32 +1427,42 @@
   outline: none;
 }
 
-.tier-effort {
-  max-width: 150px;
+.menu-select.tier-effort {
+  max-width: 170px;
+}
+
+.menu-select.tier-effort > button {
+  height: auto;
+  padding: 0;
   border: 0;
   background: transparent;
   color: var(--fg-muted);
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0;
-  text-align: right;
   text-transform: none;
-  cursor: pointer;
 }
 
-.tier-effort:hover {
+.menu-select.tier-effort > button:hover {
   color: var(--fg);
 }
 
-.tier-effort:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--accent-soft);
+.menu-select.tier-effort > button:focus-visible {
   border-radius: 4px;
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
-.tier-effort option {
-  background: var(--code-bg);
-  color: var(--fg);
+.menu-select.tier-effort svg {
+  width: 12px;
+  height: 12px;
+}
+
+.menu-select.tier-effort .menu-select-popover {
+  left: auto;
+  right: 0;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 /* ---------- editor view toggle + JSON mode ---------- */
