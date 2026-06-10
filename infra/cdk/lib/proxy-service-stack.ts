@@ -14,11 +14,11 @@ import { ApplicationProtocol } from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config";
-import type { PromptProxyDatabaseStack } from "./database-stack";
-import type { PromptProxyFoundationStack } from "./foundation-stack";
-import type { PromptProxyNetworkStack } from "./network-stack";
-import type { PromptProxyRuntimeSecretsStack } from "./runtime-secrets-stack";
+import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
+import type { PromptProxyDatabaseStack } from "./database-stack.js";
+import type { PromptProxyFoundationStack } from "./foundation-stack.js";
+import type { PromptProxyNetworkStack } from "./network-stack.js";
+import type { PromptProxyRuntimeSecretsStack } from "./runtime-secrets-stack.js";
 
 export type PromptProxyServiceStackProps = StackProps & {
   config: PromptProxyEnvironmentConfig;

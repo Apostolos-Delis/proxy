@@ -1,4 +1,4 @@
-import type { PromptProxyEnvironmentConfig } from "../lib/config";
+import type { PromptProxyEnvironmentConfig } from "../lib/config.js";
 
 export const environments = [
   {

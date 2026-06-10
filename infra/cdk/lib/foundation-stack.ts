@@ -10,7 +10,7 @@ import {
 } from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config";
+import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
 
 export type PromptProxyFoundationStackProps = StackProps & {
   config: PromptProxyEnvironmentConfig;

@@ -7,7 +7,7 @@ import {
 } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config";
+import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
 
 export type PromptProxyWebStackProps = StackProps & {
   config: PromptProxyEnvironmentConfig;

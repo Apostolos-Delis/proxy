@@ -2,9 +2,9 @@ import { App } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 
-import { environments } from "../config/environments";
-import { stackName } from "./config";
-import { PromptProxyWebStack } from "./web-stack";
+import { environments } from "../config/environments.js";
+import { stackName } from "./config.js";
+import { PromptProxyWebStack } from "./web-stack.js";
 
 const config = environments[0];
 

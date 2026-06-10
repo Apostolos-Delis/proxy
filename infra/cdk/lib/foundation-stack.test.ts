@@ -2,9 +2,9 @@ import { App } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 
-import { environments } from "../config/environments";
-import { stackName } from "./config";
-import { PromptProxyFoundationStack } from "./foundation-stack";
+import { environments } from "../config/environments.js";
+import { stackName } from "./config.js";
+import { PromptProxyFoundationStack } from "./foundation-stack.js";
 
 const config = environments[0];
 

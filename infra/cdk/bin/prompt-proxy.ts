@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 import { App, Tags } from "aws-cdk-lib";
 
-import { environments } from "../config/environments";
-import { stackName } from "../lib/config";
-import { PromptProxyDatabaseStack } from "../lib/database-stack";
-import { PromptProxyEdgeStack } from "../lib/edge-stack";
-import { PromptProxyFoundationStack } from "../lib/foundation-stack";
-import { PromptProxyNetworkStack } from "../lib/network-stack";
-import { PromptProxyOperationsStack } from "../lib/operations-stack";
-import { PromptProxyServiceStack } from "../lib/proxy-service-stack";
-import { PromptProxyRuntimeSecretsStack } from "../lib/runtime-secrets-stack";
-import { PromptProxyWebStack } from "../lib/web-stack";
+import { environments } from "../config/environments.js";
+import { stackName } from "../lib/config.js";
+import { PromptProxyDatabaseStack } from "../lib/database-stack.js";
+import { PromptProxyEdgeStack } from "../lib/edge-stack.js";
+import { PromptProxyFoundationStack } from "../lib/foundation-stack.js";
+import { PromptProxyNetworkStack } from "../lib/network-stack.js";
+import { PromptProxyOperationsStack } from "../lib/operations-stack.js";
+import { PromptProxyServiceStack } from "../lib/proxy-service-stack.js";
+import { PromptProxyRuntimeSecretsStack } from "../lib/runtime-secrets-stack.js";
+import { PromptProxyWebStack } from "../lib/web-stack.js";
 
 const app = new App();
 const runtimeImageTag = String(app.node.tryGetContext("runtimeImageTag") ?? "local-synth");

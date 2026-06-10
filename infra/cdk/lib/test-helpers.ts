@@ -1,12 +1,12 @@
 import { App } from "aws-cdk-lib";
 
-import { environments } from "../config/environments";
-import { stackName } from "./config";
-import { PromptProxyDatabaseStack } from "./database-stack";
-import { PromptProxyFoundationStack } from "./foundation-stack";
-import { PromptProxyNetworkStack } from "./network-stack";
-import { PromptProxyServiceStack } from "./proxy-service-stack";
-import { PromptProxyRuntimeSecretsStack } from "./runtime-secrets-stack";
+import { environments } from "../config/environments.js";
+import { stackName } from "./config.js";
+import { PromptProxyDatabaseStack } from "./database-stack.js";
+import { PromptProxyFoundationStack } from "./foundation-stack.js";
+import { PromptProxyNetworkStack } from "./network-stack.js";
+import { PromptProxyServiceStack } from "./proxy-service-stack.js";
+import { PromptProxyRuntimeSecretsStack } from "./runtime-secrets-stack.js";
 
 export function createRuntimeStacks() {
   const app = new App();
