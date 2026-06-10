@@ -1,6 +1,6 @@
 import { readSettingsFile } from "../settings.js";
 import { builder } from "./builder.js";
-import { orgQueries, viewerPayload } from "./context.js";
+import { scopedQueries, viewerPayload } from "./context.js";
 import type { RequestSummaryShape, UsageReportModel, UsageTimeseriesModel } from "./models.js";
 import { settingsResponse } from "./settingsPayload.js";
 import { Overview, UsageGroupBy, UsageInterval, UsageReport, UsageTimeseries } from "./types/analytics.js";
@@ -49,7 +49,7 @@ builder.queryFields((t) => ({
   overview: t.field({
     type: Overview,
     resolve: async (_root, _args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       if (queries) return queries.overview();
       const allEvents = context.events.listEvents();
       const usage = context.projections.usage(allEvents);
@@ -72,7 +72,7 @@ builder.queryFields((t) => ({
   requests: t.field({
     type: [RequestSummary],
     resolve: async (_root, _args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       if (queries) return (await queries.requests()).data;
       return [...context.projections.usage(context.events.listEvents()).requests].reverse();
     }
@@ -83,7 +83,7 @@ builder.queryFields((t) => ({
     args: { requestId: t.arg.id({ required: true }) },
     resolve: async (_root, args, context) => {
       const requestId = String(args.requestId);
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       if (queries) return queries.requestDetail(requestId);
       const allEvents = context.events.listEvents();
       const requestSummary: RequestSummaryShape | undefined = context.projections
@@ -106,7 +106,7 @@ builder.queryFields((t) => ({
       end: t.arg.string()
     },
     resolve: async (_root, args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       if (!queries) return emptyUsageReport();
       return queries.usage({
         groupBy: args.groupBy ?? undefined,
@@ -126,7 +126,7 @@ builder.queryFields((t) => ({
       limit: t.arg.int()
     },
     resolve: async (_root, args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       if (queries) {
         return queries.usageTimeseries({
           groupBy: args.groupBy ?? undefined,
@@ -162,7 +162,7 @@ builder.queryFields((t) => ({
       end: t.arg.string()
     },
     resolve: async (_root, args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       if (!queries) return { data: [], pagination: { limit: 50, offset: 0, count: 0 } };
       return queries.prompts({
         limit: args.limit ?? undefined,
@@ -182,12 +182,13 @@ builder.queryFields((t) => ({
     nullable: true,
     args: { artifactId: t.arg.id({ required: true }) },
     resolve: async (_root, args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       if (!queries || !context.persistence) return null;
       const detail = await queries.promptDetail(String(args.artifactId));
       if (!detail) return null;
       await context.persistence.promptAccessAudit.append({
         organizationId: context.identity().organizationId,
+        workspaceId: context.identity().workspaceId,
         artifactId: detail.artifact.artifactId,
         requestId: detail.artifact.requestId,
         userId: context.identity().userId,
@@ -225,7 +226,7 @@ builder.queryFields((t) => ({
   members: t.field({
     type: [OrgMember],
     resolve: async (_root, _args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       return queries ? queries.memberDirectory() : [];
     }
   }),
@@ -233,7 +234,7 @@ builder.queryFields((t) => ({
   users: t.field({
     type: [UserSummary],
     resolve: async (_root, _args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       return queries ? (await queries.users()).data : [];
     }
   }),
@@ -243,7 +244,7 @@ builder.queryFields((t) => ({
     nullable: true,
     args: { userId: t.arg.id({ required: true }) },
     resolve: async (_root, args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       return queries ? queries.userDetail(String(args.userId)) : null;
     }
   }),
@@ -251,7 +252,7 @@ builder.queryFields((t) => ({
   sessions: t.field({
     type: [SessionSummary],
     resolve: async (_root, _args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       return queries ? (await queries.sessions()).data : [];
     }
   }),
@@ -261,7 +262,7 @@ builder.queryFields((t) => ({
     nullable: true,
     args: { sessionId: t.arg.id({ required: true }) },
     resolve: async (_root, args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       return queries ? queries.sessionDetail(String(args.sessionId)) : null;
     }
   }),
@@ -269,7 +270,7 @@ builder.queryFields((t) => ({
   apiKeys: t.field({
     type: [ApiKey],
     resolve: async (_root, _args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       return queries ? (await queries.apiKeys()).data : [];
     }
   }),
@@ -279,7 +280,7 @@ builder.queryFields((t) => ({
     nullable: true,
     args: { apiKeyId: t.arg.id({ required: true }) },
     resolve: async (_root, args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       if (!queries) return null;
       const detail = await queries.apiKeyDetail(String(args.apiKeyId));
       return detail?.apiKey ?? null;
@@ -289,7 +290,7 @@ builder.queryFields((t) => ({
   providerAccounts: t.field({
     type: [ProviderAccount],
     resolve: async (_root, _args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       return queries ? (await queries.providerAccounts()).data : [];
     }
   }),
@@ -297,7 +298,7 @@ builder.queryFields((t) => ({
   routingConfigs: t.field({
     type: [RoutingConfigSummary],
     resolve: async (_root, _args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       return queries ? (await queries.routingConfigs()).data : [];
     }
   }),
@@ -307,7 +308,7 @@ builder.queryFields((t) => ({
     nullable: true,
     args: { configId: t.arg.id({ required: true }) },
     resolve: async (_root, args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       return queries ? queries.routingConfigDetail(String(args.configId)) : null;
     }
   }),
@@ -315,7 +316,7 @@ builder.queryFields((t) => ({
   invitations: t.field({
     type: [Invitation],
     resolve: async (_root, _args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       return queries ? (await queries.invitations()).data : [];
     }
   }),
@@ -324,7 +325,7 @@ builder.queryFields((t) => ({
     type: SearchResult,
     args: { query: t.arg.string({ required: true }) },
     resolve: async (_root, args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       if (!queries) return { query: args.query, results: [] };
       return queries.search(args.query);
     }

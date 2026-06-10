@@ -41,6 +41,7 @@ type AuthUser {
   role: String!
   sessionId: String!
   userId: String!
+  workspaceId: String!
 }
 
 type BudgetSettings {
@@ -103,6 +104,12 @@ input CreateRoutingConfigInput {
   config: JSON!
   description: String
   name: String!
+}
+
+input CreateWorkspaceInput {
+  description: String
+  name: String!
+  slug: String
 }
 
 type EditableClassifier {
@@ -183,6 +190,7 @@ type Mutation {
   createProviderCredential(input: CreateProviderCredentialInput!): ProviderAccount
   createRoutingConfig(input: CreateRoutingConfigInput!): RoutingConfigDetail!
   createRoutingConfigVersion(config: JSON!, configId: ID!): RoutingConfigDetail!
+  createWorkspace(input: CreateWorkspaceInput!): WorkspaceSummary!
   deactivateUser(userId: ID!): UserStatusResult!
   login(email: String!, password: String!): Viewer!
   logout: Boolean!
@@ -192,6 +200,7 @@ type Mutation {
   revokeInvitation(invitationId: ID!): Invitation
   revokeProviderCredential(providerAccountId: ID!): ProviderAccount
   switchOrganization(organizationId: ID!): Viewer!
+  switchWorkspace(workspaceId: ID!): Viewer!
   updateSettings(input: SettingsInput!): Settings!
   updateUserRole(role: MemberRole!, userId: ID!): UpdateUserRoleResult!
 }
@@ -765,4 +774,12 @@ type Viewer {
   organizationId: String!
   organizations: [OrganizationSummary!]!
   user: AuthUser!
+  workspaceId: String!
+  workspaces: [WorkspaceSummary!]!
+}
+
+type WorkspaceSummary {
+  id: String!
+  name: String!
+  slug: String!
 }

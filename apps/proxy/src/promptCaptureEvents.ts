@@ -18,6 +18,7 @@ export async function appendPromptCaptureEvent(input: {
   if (input.artifacts.length === 0) return;
   await input.events.append({
     tenantId: input.identity.organizationId,
+    workspaceId: input.identity.workspaceId,
     scopeType: "request",
     scopeId: input.requestId,
     sessionId: input.sessionId,

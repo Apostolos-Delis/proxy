@@ -1,6 +1,11 @@
 import { eq } from "drizzle-orm";
 
-import { agentSessions, type PromptProxyDbSession, type PromptProxyTransaction } from "@prompt-proxy/db";
+import {
+  agentSessions,
+  defaultWorkspaceId,
+  type PromptProxyDbSession,
+  type PromptProxyTransaction
+} from "@prompt-proxy/db";
 import { sessionPinnedSettingsSchema } from "@prompt-proxy/schema";
 
 import type { SessionPinLoader } from "../policy.js";
@@ -9,6 +14,7 @@ import { recordValue, routeValue, stringValue, surfaceValue } from "./values.js"
 
 export async function persistSessionRoute(tx: PromptProxyTransaction, event: {
   tenantId: string;
+  workspaceId?: string;
   createdAt: string;
   sessionId?: string;
   payload: Record<string, unknown>;
@@ -24,6 +30,7 @@ export async function persistSessionRoute(tx: PromptProxyTransaction, event: {
   };
   const dbSessionId = await ensureSession(tx, {
     organizationId: event.tenantId,
+    workspaceId: event.workspaceId ?? defaultWorkspaceId(event.tenantId),
     surface,
     sessionId,
     userId,
@@ -51,7 +58,7 @@ export async function persistSessionRoute(tx: PromptProxyTransaction, event: {
 }
 
 export function createSessionPinLoader(db: PromptProxyDbSession): SessionPinLoader {
-  return async ({ organizationId, surface, sessionId }) => {
+  return async ({ workspaceId, surface, sessionId }) => {
     const [row] = await db
       .select({
         currentRoute: agentSessions.currentRoute,
@@ -60,7 +67,7 @@ export function createSessionPinLoader(db: PromptProxyDbSession): SessionPinLoad
         requestCount: agentSessions.requestCount
       })
       .from(agentSessions)
-      .where(eq(agentSessions.id, sessionRowId(organizationId, surface, sessionId)))
+      .where(eq(agentSessions.id, sessionRowId(workspaceId, surface, sessionId)))
       .limit(1);
     if (!row) return undefined;
     const currentRoute = routeValue(row.currentRoute);

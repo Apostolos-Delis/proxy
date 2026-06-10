@@ -7,7 +7,7 @@ import type { createDatabasePersistence } from "../persistence/index.js";
 import type { ProjectionService } from "../projections.js";
 
 export type AppPersistence = ReturnType<typeof createDatabasePersistence>;
-export type OrgAdminQueries = ReturnType<AppPersistence["adminQueries"]["forOrg"]>;
+export type ScopedAdminQueries = ReturnType<AppPersistence["adminQueries"]["forScope"]>;
 
 export type GraphQLContext = {
   // Throws UNAUTHENTICATED (HTTP 401) when the request has no admin session;
@@ -27,14 +27,15 @@ export type GraphQLContext = {
 // One AdminQueryService per GraphQL request: its request-scoped caches let
 // root fields of a single document (which execute concurrently) share row
 // scans and summaries instead of re-reading the same tables.
-const orgQueriesByContext = new WeakMap<GraphQLContext, OrgAdminQueries>();
+const scopedQueriesByContext = new WeakMap<GraphQLContext, ScopedAdminQueries>();
 
-export function orgQueries(context: GraphQLContext): OrgAdminQueries | undefined {
+export function scopedQueries(context: GraphQLContext): ScopedAdminQueries | undefined {
   if (!context.persistence) return undefined;
-  const existing = orgQueriesByContext.get(context);
+  const existing = scopedQueriesByContext.get(context);
   if (existing) return existing;
-  const queries = context.persistence.adminQueries.forOrg(context.identity().organizationId);
-  orgQueriesByContext.set(context, queries);
+  const identity = context.identity();
+  const queries = context.persistence.adminQueries.forScope(identity.organizationId, identity.workspaceId);
+  scopedQueriesByContext.set(context, queries);
   return queries;
 }
 
@@ -45,8 +46,12 @@ export async function viewerPayload(
   return {
     user: identity,
     organizationId: identity.organizationId,
+    workspaceId: identity.workspaceId,
     organizations: persistence
       ? await persistence.adminSessions.organizationsForUser(identity.userId)
+      : [],
+    workspaces: persistence
+      ? await persistence.adminSessions.workspacesForOrganization(identity.organizationId)
       : []
   };
 }

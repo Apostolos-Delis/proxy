@@ -145,6 +145,7 @@ export class ProviderCredentialAdminService {
 
   async bindApiKeyCredential(input: {
     organizationId: string;
+    workspaceId: string;
     actorUserId: string;
     apiKeyId: string;
     body: unknown;
@@ -160,6 +161,7 @@ export class ProviderCredentialAdminService {
         .from(apiKeys)
         .where(and(
           eq(apiKeys.organizationId, input.organizationId),
+          eq(apiKeys.workspaceId, input.workspaceId),
           eq(apiKeys.id, input.apiKeyId)
         ))
         .limit(1);
@@ -183,6 +185,7 @@ export class ProviderCredentialAdminService {
           .insert(apiKeyProviderAccounts)
           .values({
             organizationId: input.organizationId,
+            workspaceId: input.workspaceId,
             apiKeyId: input.apiKeyId,
             provider,
             providerAccountId,
@@ -198,6 +201,7 @@ export class ProviderCredentialAdminService {
 
       await appendAdminAuditEvent(tx, {
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         scopeType: "api_key",
         scopeId: input.apiKeyId,
         correlationId: providerAccountId ?? input.apiKeyId,

@@ -49,6 +49,21 @@ export class AdminAuthService {
     return session;
   }
 
+  // Workspace switching keeps the session (same org, same auth boundary) and
+  // just repoints its active workspace.
+  async switchWorkspace(headers: Record<string, unknown>, body: unknown) {
+    const identity = await this.resolve(headers);
+    if (!this.sessions) throw forbidden();
+    const workspaceId = switchWorkspaceTarget(body);
+    const switched = await this.sessions.setActiveWorkspace(
+      identity.sessionId,
+      identity.organizationId,
+      workspaceId
+    );
+    if (!switched) throw forbidden();
+    return { ...identity, workspaceId };
+  }
+
   async logout(headers: Record<string, unknown>) {
     const token = this.token(headers);
     if (token && this.sessions) await this.sessions.revoke(token);
@@ -93,6 +108,19 @@ function switchOrganizationTarget(body: unknown) {
   const organizationId = (body as Record<string, unknown>).organizationId;
   if (typeof organizationId !== "string" || !organizationId.trim()) throw badRequest();
   return organizationId.trim();
+}
+
+function switchWorkspaceTarget(body: unknown) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw workspaceBadRequest();
+  const workspaceId = (body as Record<string, unknown>).workspaceId;
+  if (typeof workspaceId !== "string" || !workspaceId.trim()) throw workspaceBadRequest();
+  return workspaceId.trim();
+}
+
+function workspaceBadRequest() {
+  const error = new Error("workspace_id_required");
+  (error as Error & { statusCode: number }).statusCode = 400;
+  return error;
 }
 
 function cookieValue(headers: Record<string, unknown>, name: string) {

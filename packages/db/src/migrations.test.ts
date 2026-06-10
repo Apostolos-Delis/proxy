@@ -51,6 +51,19 @@ describe("database migrations", () => {
         and column_name = 'default_routing_config_id'
       order by column_name
     `);
+    const workspaceColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'workspaces'
+        and column_name in ('organization_id', 'slug', 'name', 'default_routing_config_id')
+      order by column_name
+    `);
+    const workspaceScopedColumns = await client.query<{ table_name: string }>(`
+      select table_name
+      from information_schema.columns
+      where column_name = 'workspace_id'
+      order by table_name
+    `);
     const requestRoutingColumns = await client.query<{ column_name: string }>(`
       select column_name
       from information_schema.columns
@@ -123,7 +136,29 @@ describe("database migrations", () => {
       "version"
     ]);
     expect(keyColumns.rows.map((row) => row.column_name)).toEqual(["routing_config_id"]);
-    expect(organizationSettingsColumns.rows.map((row) => row.column_name)).toEqual(["default_routing_config_id"]);
+    expect(organizationSettingsColumns.rows.map((row) => row.column_name)).toEqual([]);
+    expect(workspaceColumns.rows.map((row) => row.column_name)).toEqual([
+      "default_routing_config_id",
+      "name",
+      "organization_id",
+      "slug"
+    ]);
+    expect(workspaceScopedColumns.rows.map((row) => row.table_name)).toEqual([
+      "agent_sessions",
+      "api_key_provider_accounts",
+      "api_keys",
+      "events",
+      "prompt_access_audit",
+      "prompt_artifacts",
+      "provider_attempts",
+      "requests",
+      "route_decisions",
+      "routing_config_versions",
+      "routing_configs",
+      "turns",
+      "usage_ledger",
+      "user_sessions"
+    ]);
     expect(requestRoutingColumns.rows.map((row) => row.column_name)).toEqual([
       "api_key_id",
       "routing_config_hash",
@@ -171,7 +206,7 @@ describe("database migrations", () => {
     ]);
   });
 
-  it("enforces tenant-scoped routing config references", async () => {
+  it("enforces tenant- and workspace-scoped routing config references", async () => {
     const client = await migratedClient();
 
     try {
@@ -180,16 +215,22 @@ describe("database migrations", () => {
           ('org_a', 'org-a', 'Org A'),
           ('org_b', 'org-b', 'Org B');
 
-        insert into routing_configs (id, organization_id, name, slug) values
-          ('config_a', 'org_a', 'Config A', 'config-a'),
-          ('config_a_peer', 'org_a', 'Config A Peer', 'config-a-peer'),
-          ('config_b', 'org_b', 'Config B', 'config-b');
+        insert into workspaces (id, organization_id, slug, name) values
+          ('ws_a1', 'org_a', 'primary', 'Primary'),
+          ('ws_a2', 'org_a', 'secondary', 'Secondary'),
+          ('ws_b', 'org_b', 'primary', 'Primary');
+
+        insert into routing_configs (id, organization_id, workspace_id, name, slug) values
+          ('config_a', 'org_a', 'ws_a1', 'Config A', 'config-a'),
+          ('config_a_peer', 'org_a', 'ws_a1', 'Config A Peer', 'config-a-peer'),
+          ('config_b', 'org_b', 'ws_b', 'Config B', 'config-b');
       `);
 
       await expect(client.exec(`
         insert into routing_config_versions (
           id,
           organization_id,
+          workspace_id,
           routing_config_id,
           version,
           config_hash,
@@ -197,9 +238,30 @@ describe("database migrations", () => {
         ) values (
           'version_cross',
           'org_b',
+          'ws_b',
           'config_a',
           1,
           'hash_cross',
+          '{}'::jsonb
+        );
+      `)).rejects.toThrow();
+
+      await expect(client.exec(`
+        insert into routing_config_versions (
+          id,
+          organization_id,
+          workspace_id,
+          routing_config_id,
+          version,
+          config_hash,
+          config
+        ) values (
+          'version_cross_workspace',
+          'org_a',
+          'ws_a2',
+          'config_a',
+          1,
+          'hash_cross_workspace',
           '{}'::jsonb
         );
       `)).rejects.toThrow();
@@ -208,25 +270,38 @@ describe("database migrations", () => {
         insert into routing_config_versions (
           id,
           organization_id,
+          workspace_id,
           routing_config_id,
           version,
           config_hash,
           config
         ) values
-          ('version_a', 'org_a', 'config_a', 1, 'hash_a', '{}'::jsonb),
-          ('version_a_peer', 'org_a', 'config_a_peer', 1, 'hash_a_peer', '{}'::jsonb),
-          ('version_b', 'org_b', 'config_b', 1, 'hash_b', '{}'::jsonb);
+          ('version_a', 'org_a', 'ws_a1', 'config_a', 1, 'hash_a', '{}'::jsonb),
+          ('version_a_peer', 'org_a', 'ws_a1', 'config_a_peer', 1, 'hash_a_peer', '{}'::jsonb),
+          ('version_b', 'org_b', 'ws_b', 'config_b', 1, 'hash_b', '{}'::jsonb);
       `);
 
       await expect(client.exec(`
-        insert into api_keys (id, organization_id, key_hash, name, routing_config_id)
-        values ('key_cross', 'org_b', 'hash_key_cross', 'Key Cross', 'config_a');
+        insert into api_keys (id, organization_id, workspace_id, key_hash, name, routing_config_id)
+        values ('key_cross', 'org_b', 'ws_b', 'hash_key_cross', 'Key Cross', 'config_a');
       `)).rejects.toThrow();
 
       await expect(client.exec(`
-        insert into organization_settings (organization_id, default_routing_config_id)
-        values ('org_b', 'config_a');
+        insert into api_keys (id, organization_id, workspace_id, key_hash, name, routing_config_id)
+        values ('key_cross_workspace', 'org_a', 'ws_a2', 'hash_key_cross_ws', 'Key Cross WS', 'config_a');
       `)).rejects.toThrow();
+
+      await expect(client.exec(`
+        update workspaces
+        set default_routing_config_id = 'config_a'
+        where id = 'ws_a2';
+      `)).rejects.toThrow();
+
+      await client.exec(`
+        update workspaces
+        set default_routing_config_id = 'config_a'
+        where id = 'ws_a1';
+      `);
 
       await expect(client.exec(`
         update routing_configs
@@ -259,6 +334,56 @@ describe("database migrations", () => {
       `);
 
       expect(active.rows[0]).toEqual({ active_version_id: "version_a" });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("migrates existing org-scoped rows into the default workspace", async () => {
+    const client = new PGlite();
+    const migrationsDir = fileURLToPath(new URL("../migrations", import.meta.url));
+    const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
+    const preWorkspaceFiles = files.filter((file) => file < "0006");
+
+    try {
+      for (const file of preWorkspaceFiles) {
+        await client.exec(await readFile(join(migrationsDir, file), "utf8"));
+      }
+
+      await client.exec(`
+        insert into organizations (id, slug, name) values ('org_legacy', 'org-legacy', 'Org Legacy');
+        insert into organization_settings (organization_id, default_routing_config_id) values ('org_legacy', null);
+        insert into routing_configs (id, organization_id, name, slug) values
+          ('legacy_config', 'org_legacy', 'Legacy Config', 'legacy-config');
+        update organization_settings set default_routing_config_id = 'legacy_config'
+          where organization_id = 'org_legacy';
+        insert into api_keys (id, organization_id, key_hash, name, routing_config_id) values
+          ('legacy_key', 'org_legacy', 'legacy_hash', 'Legacy Key', 'legacy_config');
+        insert into requests (id, organization_id, surface, idempotency_key, requested_model, input_hash) values
+          ('legacy_request', 'org_legacy', 'openai-responses', 'legacy-idem', 'router-auto', 'hash');
+      `);
+
+      for (const file of files.filter((name) => !preWorkspaceFiles.includes(name))) {
+        await client.exec(await readFile(join(migrationsDir, file), "utf8"));
+      }
+
+      const workspaceRows = await client.query<{ id: string; default_routing_config_id: string | null }>(`
+        select id, default_routing_config_id
+        from workspaces
+        where organization_id = 'org_legacy'
+      `);
+      const keyRows = await client.query<{ workspace_id: string }>(`
+        select workspace_id from api_keys where id = 'legacy_key'
+      `);
+      const requestRows = await client.query<{ workspace_id: string }>(`
+        select workspace_id from requests where id = 'legacy_request'
+      `);
+
+      expect(workspaceRows.rows).toEqual([
+        { id: "org_legacy:workspace:default", default_routing_config_id: "legacy_config" }
+      ]);
+      expect(keyRows.rows).toEqual([{ workspace_id: "org_legacy:workspace:default" }]);
+      expect(requestRows.rows).toEqual([{ workspace_id: "org_legacy:workspace:default" }]);
     } finally {
       await client.close();
     }

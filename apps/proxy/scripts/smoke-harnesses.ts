@@ -7,6 +7,8 @@ import { join } from "node:path";
 
 import { WebSocketServer } from "ws";
 
+import { defaultWorkspaceId } from "@prompt-proxy/db";
+
 import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
 import { createSmokePersistence } from "./smoke-persistence.js";
@@ -41,7 +43,10 @@ const smokeEnv = {
 const config = loadConfig(smokeEnv);
 const smokePersistence = await createSmokePersistence(config, smokeEnv);
 const app = buildServer(config, { persistence: smokePersistence.persistence });
-const smokeAdminQueries = smokePersistence.persistence.adminQueries.forOrg(config.defaultOrganizationId);
+const smokeAdminQueries = smokePersistence.persistence.adminQueries.forScope(
+  config.defaultOrganizationId,
+  defaultWorkspaceId(config.defaultOrganizationId)
+);
 const defaultRoutingConfigId = `${config.defaultOrganizationId}:routing-config:default`;
 
 try {

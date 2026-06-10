@@ -59,6 +59,7 @@ export type RouteConfig = {
 
 export type RouteContext = {
   organizationId?: string;
+  workspaceId?: string;
   surface: Surface;
   requestedModel: string;
   inputChars: number;

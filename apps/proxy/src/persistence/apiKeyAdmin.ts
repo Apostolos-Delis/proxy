@@ -32,6 +32,7 @@ export class ApiKeyAdminService {
 
   async createApiKey(input: {
     organizationId: string;
+    workspaceId: string;
     actorUserId: string;
     body: unknown;
   }) {
@@ -46,7 +47,7 @@ export class ApiKeyAdminService {
     return this.db.transaction(async (tx) => {
       let targetConfig: RoutingConfigAssignmentTarget | null = null;
       if (routingConfigId) {
-        targetConfig = await routingConfigForAssignment(tx, input.organizationId, routingConfigId);
+        targetConfig = await routingConfigForAssignment(tx, input.organizationId, input.workspaceId, routingConfigId);
         if (!targetConfig) throw new ApiKeyAdminError("routing_config_not_found", 404);
         if (targetConfig.status === "archived") throw new ApiKeyAdminError("routing_config_archived", 409);
         if (targetConfig.status !== "active") throw new ApiKeyAdminError("routing_config_inactive", 409);
@@ -61,6 +62,7 @@ export class ApiKeyAdminService {
       await tx.insert(apiKeys).values({
         id: apiKeyId,
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         userId: null,
         keyHash: hashApiKey(secret),
         name: body.data.name,
@@ -70,6 +72,7 @@ export class ApiKeyAdminService {
       });
       await appendAdminAuditEvent(tx, {
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         scopeType: "api_key",
         scopeId: apiKeyId,
         correlationId: apiKeyId,
@@ -93,6 +96,7 @@ export class ApiKeyAdminService {
 
   async revokeApiKey(input: {
     organizationId: string;
+    workspaceId: string;
     actorUserId: string;
     apiKeyId: string;
   }) {
@@ -107,6 +111,7 @@ export class ApiKeyAdminService {
         .from(apiKeys)
         .where(and(
           eq(apiKeys.organizationId, input.organizationId),
+          eq(apiKeys.workspaceId, input.workspaceId),
           eq(apiKeys.id, input.apiKeyId)
         ))
         .limit(1);
@@ -122,6 +127,7 @@ export class ApiKeyAdminService {
         ));
       await appendAdminAuditEvent(tx, {
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         scopeType: "api_key",
         scopeId: input.apiKeyId,
         correlationId: input.apiKeyId,

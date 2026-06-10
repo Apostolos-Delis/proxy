@@ -2,10 +2,10 @@ import type { AppConfig } from "../config.js";
 import type { EmailService } from "../email.js";
 import { invitationEmail } from "../emailTemplates.js";
 import type { InvitationModel } from "./models.js";
-import type { OrgAdminQueries } from "./context.js";
+import type { ScopedAdminQueries } from "./context.js";
 
 export async function sendInvitationEmail(
-  queries: OrgAdminQueries,
+  queries: ScopedAdminQueries,
   config: AppConfig,
   emailService: EmailService,
   input: { invitation: InvitationModel | null; token: string; inviterName?: string }

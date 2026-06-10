@@ -185,6 +185,7 @@ export class RoutingService {
       });
       await this.events.append({
         tenantId: context.organizationId,
+        workspaceId: context.workspaceId,
         scopeType: "session",
         scopeId: decision.session.sessionKey,
         sessionId: decision.session.sessionId,

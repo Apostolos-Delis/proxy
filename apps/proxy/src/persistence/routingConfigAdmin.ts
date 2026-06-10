@@ -5,9 +5,9 @@ import { z } from "zod";
 
 import {
   apiKeys,
-  organizationSettings,
   routingConfigs,
   routingConfigVersions,
+  workspaces,
   type PromptProxyTransaction,
   type PromptProxyTransactionalDatabase
 } from "@prompt-proxy/db";
@@ -38,6 +38,7 @@ export class RoutingConfigAdminService {
 
   async createConfig(input: {
     organizationId: string;
+    workspaceId: string;
     actorUserId: string;
     body: unknown;
   }) {
@@ -51,10 +52,11 @@ export class RoutingConfigAdminService {
     const hash = configHash(config);
 
     return this.db.transaction(async (tx) => {
-      await rejectDuplicateSlug(tx, input.organizationId, slug);
+      await rejectDuplicateSlug(tx, input.organizationId, input.workspaceId, slug);
       await tx.insert(routingConfigs).values({
         id: configId,
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         name: body.data.name,
         slug,
         description: body.data.description ?? null,
@@ -65,6 +67,7 @@ export class RoutingConfigAdminService {
       await tx.insert(routingConfigVersions).values({
         id: versionId,
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         routingConfigId: configId,
         version: 1,
         configHash: hash,
@@ -86,6 +89,7 @@ export class RoutingConfigAdminService {
         ));
       await appendAdminAuditEvent(tx, {
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         scopeType: "routing_config",
         scopeId: configId,
         correlationId: versionId,
@@ -104,6 +108,7 @@ export class RoutingConfigAdminService {
       });
       await appendAdminAuditEvent(tx, {
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         scopeType: "routing_config",
         scopeId: configId,
         correlationId: versionId,
@@ -125,6 +130,7 @@ export class RoutingConfigAdminService {
 
   async createVersion(input: {
     organizationId: string;
+    workspaceId: string;
     actorUserId: string;
     configId: string;
     body: unknown;
@@ -137,7 +143,7 @@ export class RoutingConfigAdminService {
     const hash = configHash(config);
 
     return this.db.transaction(async (tx) => {
-      const configRow = await lockedConfig(tx, input.organizationId, input.configId);
+      const configRow = await lockedConfig(tx, input.organizationId, input.workspaceId, input.configId);
       if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
       if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
 
@@ -145,6 +151,7 @@ export class RoutingConfigAdminService {
       await tx.insert(routingConfigVersions).values({
         id: versionId,
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         routingConfigId: input.configId,
         version,
         configHash: hash,
@@ -162,6 +169,7 @@ export class RoutingConfigAdminService {
         ));
       await appendAdminAuditEvent(tx, {
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         scopeType: "routing_config",
         scopeId: input.configId,
         correlationId: versionId,
@@ -183,13 +191,14 @@ export class RoutingConfigAdminService {
 
   async activateVersion(input: {
     organizationId: string;
+    workspaceId: string;
     actorUserId: string;
     configId: string;
     versionId: string;
   }) {
     const now = new Date();
     return this.db.transaction(async (tx) => {
-      const configRow = await lockedConfig(tx, input.organizationId, input.configId);
+      const configRow = await lockedConfig(tx, input.organizationId, input.workspaceId, input.configId);
       if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
       if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
 
@@ -230,6 +239,7 @@ export class RoutingConfigAdminService {
         ));
       await appendAdminAuditEvent(tx, {
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         scopeType: "routing_config",
         scopeId: input.configId,
         correlationId: input.versionId,
@@ -255,6 +265,7 @@ export class RoutingConfigAdminService {
 
   async assignApiKeyRoutingConfig(input: {
     organizationId: string;
+    workspaceId: string;
     actorUserId: string;
     apiKeyId: string;
     body: unknown;
@@ -272,6 +283,7 @@ export class RoutingConfigAdminService {
         .from(apiKeys)
         .where(and(
           eq(apiKeys.organizationId, input.organizationId),
+          eq(apiKeys.workspaceId, input.workspaceId),
           eq(apiKeys.id, input.apiKeyId)
         ))
         .limit(1);
@@ -279,7 +291,7 @@ export class RoutingConfigAdminService {
 
       let targetConfig: RoutingConfigAssignmentTarget | null = null;
       if (routingConfigId) {
-        targetConfig = await routingConfigForAssignment(tx, input.organizationId, routingConfigId);
+        targetConfig = await routingConfigForAssignment(tx, input.organizationId, input.workspaceId, routingConfigId);
         if (!targetConfig) throw new RoutingConfigAdminError("routing_config_not_found", 404);
         if (targetConfig.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
         if (targetConfig.status !== "active") throw new RoutingConfigAdminError("routing_config_inactive", 409);
@@ -300,6 +312,7 @@ export class RoutingConfigAdminService {
         ));
       await appendAdminAuditEvent(tx, {
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         scopeType: "api_key",
         scopeId: input.apiKeyId,
         correlationId: routingConfigId ?? input.apiKeyId,
@@ -325,12 +338,13 @@ export class RoutingConfigAdminService {
 
   async archiveConfig(input: {
     organizationId: string;
+    workspaceId: string;
     actorUserId: string;
     configId: string;
   }) {
     const now = new Date();
     return this.db.transaction(async (tx) => {
-      const configRow = await lockedConfig(tx, input.organizationId, input.configId);
+      const configRow = await lockedConfig(tx, input.organizationId, input.workspaceId, input.configId);
       if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
       if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
       if (await routingConfigInUse(tx, input.organizationId, input.configId)) {
@@ -352,6 +366,7 @@ export class RoutingConfigAdminService {
         ));
       await appendAdminAuditEvent(tx, {
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         scopeType: "routing_config",
         scopeId: input.configId,
         correlationId: configRow.activeVersionId ?? input.configId,
@@ -377,11 +392,12 @@ export class RoutingConfigAdminService {
   }
 }
 
-async function lockedConfig(tx: PromptProxyTransaction, organizationId: string, configId: string) {
+async function lockedConfig(tx: PromptProxyTransaction, organizationId: string, workspaceId: string, configId: string) {
   await tx.execute(sql`
     select id
     from routing_configs
     where organization_id = ${organizationId}
+      and workspace_id = ${workspaceId}
       and id = ${configId}
     for update
   `);
@@ -390,6 +406,7 @@ async function lockedConfig(tx: PromptProxyTransaction, organizationId: string, 
     .from(routingConfigs)
     .where(and(
       eq(routingConfigs.organizationId, organizationId),
+      eq(routingConfigs.workspaceId, workspaceId),
       eq(routingConfigs.id, configId)
     ))
     .limit(1);
@@ -409,19 +426,25 @@ async function nextVersion(tx: PromptProxyTransaction, organizationId: string, c
   return Number(row?.version ?? 1);
 }
 
-async function rejectDuplicateSlug(tx: PromptProxyTransaction, organizationId: string, slug: string) {
+async function rejectDuplicateSlug(tx: PromptProxyTransaction, organizationId: string, workspaceId: string, slug: string) {
   const [existing] = await tx
     .select({ id: routingConfigs.id })
     .from(routingConfigs)
     .where(and(
       eq(routingConfigs.organizationId, organizationId),
+      eq(routingConfigs.workspaceId, workspaceId),
       eq(routingConfigs.slug, slug)
     ))
     .limit(1);
   if (existing) throw new RoutingConfigAdminError("routing_config_name_exists", 409);
 }
 
-export async function routingConfigForAssignment(tx: PromptProxyTransaction, organizationId: string, configId: string) {
+export async function routingConfigForAssignment(
+  tx: PromptProxyTransaction,
+  organizationId: string,
+  workspaceId: string,
+  configId: string
+) {
   const [config] = await tx
     .select({
       id: routingConfigs.id,
@@ -437,6 +460,7 @@ export async function routingConfigForAssignment(tx: PromptProxyTransaction, org
     ))
     .where(and(
       eq(routingConfigs.organizationId, organizationId),
+      eq(routingConfigs.workspaceId, workspaceId),
       eq(routingConfigs.id, configId)
     ))
     .limit(1);
@@ -472,15 +496,15 @@ async function routingConfigInUse(tx: PromptProxyTransaction, organizationId: st
     .limit(1);
   if (apiKey) return true;
 
-  const [settings] = await tx
-    .select({ organizationId: organizationSettings.organizationId })
-    .from(organizationSettings)
+  const [workspace] = await tx
+    .select({ id: workspaces.id })
+    .from(workspaces)
     .where(and(
-      eq(organizationSettings.organizationId, organizationId),
-      eq(organizationSettings.defaultRoutingConfigId, configId)
+      eq(workspaces.organizationId, organizationId),
+      eq(workspaces.defaultRoutingConfigId, configId)
     ))
     .limit(1);
-  return Boolean(settings);
+  return Boolean(workspace);
 }
 
 export type RoutingConfigAssignmentTarget = NonNullable<Awaited<ReturnType<typeof routingConfigForAssignment>>>;

@@ -1,10 +1,14 @@
 import {
+  DEFAULT_WORKSPACE_NAME,
+  DEFAULT_WORKSPACE_SLUG,
   agentSessions,
   apiKeys,
+  defaultWorkspaceId,
   hashApiKey,
   organizationSettings,
   organizations,
   users,
+  workspaces,
   type PromptProxyDbSession,
   type PromptProxyTransaction
 } from "@prompt-proxy/db";
@@ -15,6 +19,7 @@ import type { RouteName, Surface } from "../types.js";
 export type ResolvedApiKeyIdentity = {
   apiKeyId: string;
   organizationId: string;
+  workspaceId: string;
   userId?: string;
   scopes: string[];
   routingConfigId: string | null;
@@ -42,6 +47,7 @@ export class ApiKeyIdentityStore {
     return {
       apiKeyId: row.id,
       organizationId: row.organizationId,
+      workspaceId: row.workspaceId,
       userId: row.userId ?? undefined,
       scopes: row.scopes,
       routingConfigId: row.routingConfigId ?? null
@@ -65,6 +71,16 @@ export async function ensureOrganization(tx: PromptProxyTransaction, organizatio
       organizationId
     })
     .onConflictDoNothing();
+
+  await tx
+    .insert(workspaces)
+    .values({
+      id: defaultWorkspaceId(organizationId),
+      organizationId,
+      slug: DEFAULT_WORKSPACE_SLUG,
+      name: DEFAULT_WORKSPACE_NAME
+    })
+    .onConflictDoNothing();
 }
 
 export async function ensureUser(tx: PromptProxyTransaction, userId: string | undefined) {
@@ -80,6 +96,7 @@ export async function ensureUser(tx: PromptProxyTransaction, userId: string | un
 
 export async function ensureSession(tx: PromptProxyTransaction, input: {
   organizationId: string;
+  workspaceId: string;
   surface: Surface | undefined;
   sessionId: string | undefined;
   requestId?: string;
@@ -89,7 +106,7 @@ export async function ensureSession(tx: PromptProxyTransaction, input: {
   if (!input.surface) return undefined;
   const externalSessionId = input.sessionId ?? (input.requestId ? `request:${input.requestId}` : undefined);
   if (!externalSessionId) return undefined;
-  const id = sessionRowId(input.organizationId, input.surface, externalSessionId);
+  const id = sessionRowId(input.workspaceId, input.surface, externalSessionId);
   const metadata = {
     sessionIdentity: input.sessionId ? "harness" : "request_fallback"
   };
@@ -99,11 +116,14 @@ export async function ensureSession(tx: PromptProxyTransaction, input: {
     updatedAt: new Date()
   };
   if (input.route) updateValues.currentRoute = input.route;
-  await tx
+  // RETURNING resolves the surviving row id when the upsert hits a session
+  // created before the workspace migration (old id format, same unique key).
+  const [row] = await tx
     .insert(agentSessions)
     .values({
       id,
       organizationId: input.organizationId,
+      workspaceId: input.workspaceId,
       userId: input.userId,
       surface: input.surface,
       externalSessionId,
@@ -111,14 +131,22 @@ export async function ensureSession(tx: PromptProxyTransaction, input: {
       metadata
     })
     .onConflictDoUpdate({
-      target: [agentSessions.organizationId, agentSessions.surface, agentSessions.externalSessionId],
+      target: [
+        agentSessions.organizationId,
+        agentSessions.workspaceId,
+        agentSessions.surface,
+        agentSessions.externalSessionId
+      ],
       set: updateValues
-    });
-  return id;
+    })
+    .returning();
+  return row?.id ?? id;
 }
 
-export function sessionRowId(organizationId: string, surface: Surface, sessionId: string) {
-  return `${organizationId}:${surface}:${sessionId}`;
+// Workspace ids embed the organization id, so the row id stays globally
+// unique while sessions with the same external id stay distinct per workspace.
+export function sessionRowId(workspaceId: string, surface: Surface, sessionId: string) {
+  return `${workspaceId}:${surface}:${sessionId}`;
 }
 
 function organizationSlug(organizationId: string) {

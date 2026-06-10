@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 
 import {
   agentSessions,
@@ -24,6 +24,7 @@ import { explicitAlias, modelForRoute } from "../catalog.js";
 import type { ModelCatalog } from "../catalog.js";
 import type { JsonObject, RouteName } from "../types.js";
 import { searchAdminEntities } from "./adminSearch.js";
+import { workspaceScope } from "./scope.js";
 import {
   eventSummary,
   invitationSummary,
@@ -72,8 +73,15 @@ export class AdminQueryService {
     private readonly db: PromptProxyDbSession,
     private readonly catalog: ModelCatalog,
     private readonly organizationId: string,
+    private readonly workspaceId: string,
     private readonly config: AdminQueryConfig
   ) {}
+
+  // All workspace-scoped table reads go through this predicate; new queries
+  // must use it rather than hand-rolling org/workspace eq pairs.
+  private scopedTo(table: Parameters<typeof workspaceScope>[0]) {
+    return workspaceScope(table, this.organizationId, this.workspaceId);
+  }
 
   private cached<T>(key: string, load: () => Promise<T>): Promise<T> {
     const existing = this.requestScopedCache.get(key);
@@ -132,7 +140,7 @@ export class AdminQueryService {
   }
 
   async search(query: string) {
-    return searchAdminEntities(this.db, this.organizationId, query);
+    return searchAdminEntities(this.db, this.organizationId, this.workspaceId, query);
   }
 
   async apiKeys() {
@@ -232,7 +240,7 @@ export class AdminQueryService {
     const configRows = await this.db
       .select()
       .from(routingConfigs)
-      .where(eq(routingConfigs.organizationId, this.organizationId))
+      .where(this.scopedTo(routingConfigs))
       .orderBy(desc(routingConfigs.updatedAt));
     const activeVersions = await this.activeRoutingConfigVersions(configRows);
     const assignedKeyCounts = await this.routingConfigApiKeyCounts(configRows.map((row) => row.id));
@@ -249,7 +257,7 @@ export class AdminQueryService {
       .select()
       .from(routingConfigs)
       .where(and(
-        eq(routingConfigs.organizationId, this.organizationId),
+        this.scopedTo(routingConfigs),
         eq(routingConfigs.id, configId)
       ))
       .limit(1);
@@ -259,7 +267,7 @@ export class AdminQueryService {
       .select()
       .from(routingConfigVersions)
       .where(and(
-        eq(routingConfigVersions.organizationId, this.organizationId),
+        this.scopedTo(routingConfigVersions),
         eq(routingConfigVersions.routingConfigId, config.id)
       ))
       .orderBy(desc(routingConfigVersions.version));
@@ -277,14 +285,16 @@ export class AdminQueryService {
       .select()
       .from(requests)
       .where(and(
-        eq(requests.organizationId, this.organizationId),
+        this.scopedTo(requests),
         eq(requests.id, requestId)
       ))
       .limit(1);
     const [request] = requestRow ? await this.summarizeRequests([requestRow]) : [];
     return {
       request: request ?? null,
-      events: await this.eventsForRequest(requestId)
+      // Only fetch the timeline once the request passed the workspace check,
+      // so foreign request ids cannot expose another workspace's events.
+      events: requestRow ? await this.eventsForRequest(requestId) : []
     };
   }
 
@@ -469,7 +479,7 @@ export class AdminQueryService {
       .select()
       .from(agentSessions)
       .where(and(
-        eq(agentSessions.organizationId, this.organizationId),
+        this.scopedTo(agentSessions),
         eq(agentSessions.id, sessionId)
       ))
       .limit(1);
@@ -512,7 +522,7 @@ export class AdminQueryService {
         eq(routeDecisions.organizationId, requests.organizationId)
       ))
       .where(and(
-        eq(promptArtifacts.organizationId, this.organizationId),
+        this.scopedTo(promptArtifacts),
         eq(requests.organizationId, this.organizationId),
         eq(promptArtifacts.id, artifactId)
       ))
@@ -526,7 +536,7 @@ export class AdminQueryService {
       .select()
       .from(promptArtifacts)
       .where(and(
-        eq(promptArtifacts.organizationId, this.organizationId),
+        this.scopedTo(promptArtifacts),
         eq(promptArtifacts.requestId, row.request.id)
       ))
       .orderBy(asc(promptArtifacts.createdAt));
@@ -544,7 +554,7 @@ export class AdminQueryService {
   }
 
   private async apiKeyRows(apiKeyId?: string) {
-    const conditions = [eq(apiKeys.organizationId, this.organizationId)];
+    const conditions = [this.scopedTo(apiKeys)];
     if (apiKeyId) conditions.push(eq(apiKeys.id, apiKeyId));
     return this.db
       .select({
@@ -586,7 +596,7 @@ export class AdminQueryService {
       const query = this.db
         .select()
         .from(requests)
-        .where(eq(requests.organizationId, this.organizationId))
+        .where(this.scopedTo(requests))
         .orderBy(desc(requests.createdAt));
       return limit === undefined ? query : query.limit(limit);
     });
@@ -598,7 +608,7 @@ export class AdminQueryService {
     // An unfiltered usage read is the same scan requestRows() performs.
     if (!start && !end) return this.requestRows();
     return this.cached(`requests:usage:${start?.toISOString() ?? ""}:${end?.toISOString() ?? ""}`, () => {
-      const conditions = [eq(requests.organizationId, this.organizationId)];
+      const conditions = [this.scopedTo(requests)];
       if (start) conditions.push(gte(requests.createdAt, start));
       if (end) conditions.push(lte(requests.createdAt, end));
       return this.db
@@ -614,7 +624,7 @@ export class AdminQueryService {
       .select()
       .from(requests)
       .where(and(
-        eq(requests.organizationId, this.organizationId),
+        this.scopedTo(requests),
         eq(requests.userId, userId)
       ))
       .orderBy(desc(requests.createdAt));
@@ -625,7 +635,7 @@ export class AdminQueryService {
       .select()
       .from(requests)
       .where(and(
-        eq(requests.organizationId, this.organizationId),
+        this.scopedTo(requests),
         eq(requests.sessionId, sessionId)
       ))
       .orderBy(desc(requests.createdAt));
@@ -635,7 +645,7 @@ export class AdminQueryService {
     return this.cached("sessions", () => this.db
       .select()
       .from(agentSessions)
-      .where(eq(agentSessions.organizationId, this.organizationId))
+      .where(this.scopedTo(agentSessions))
       .orderBy(desc(agentSessions.updatedAt)));
   }
 
@@ -705,7 +715,7 @@ export class AdminQueryService {
             eq(requests.organizationId, promptArtifacts.organizationId)
           ))
           .where(and(
-            eq(promptArtifacts.organizationId, this.organizationId),
+            this.scopedTo(promptArtifacts),
             inArray(promptArtifacts.requestId, requestIds)
           ))
           .orderBy(asc(promptArtifacts.createdAt))
@@ -715,7 +725,7 @@ export class AdminQueryService {
           .select()
           .from(routeDecisions)
           .where(and(
-            eq(routeDecisions.organizationId, this.organizationId),
+            this.scopedTo(routeDecisions),
             inArray(routeDecisions.requestId, requestIds)
           ))
           .orderBy(asc(routeDecisions.createdAt))
@@ -725,7 +735,7 @@ export class AdminQueryService {
           .select()
           .from(providerAttempts)
           .where(and(
-            eq(providerAttempts.organizationId, this.organizationId),
+            this.scopedTo(providerAttempts),
             inArray(providerAttempts.requestId, requestIds)
           ))
           .orderBy(asc(providerAttempts.startedAt))
@@ -735,7 +745,7 @@ export class AdminQueryService {
           .select()
           .from(usageLedger)
           .where(and(
-            eq(usageLedger.organizationId, this.organizationId),
+            this.scopedTo(usageLedger),
             inArray(usageLedger.requestId, requestIds)
           ))
           .orderBy(asc(usageLedger.createdAt))
@@ -796,14 +806,14 @@ export class AdminQueryService {
         .select()
         .from(routeDecisions)
         .where(and(
-          eq(routeDecisions.organizationId, this.organizationId),
+          this.scopedTo(routeDecisions),
           inArray(routeDecisions.requestId, requestIds)
         ));
       const attempts = await this.db
         .select()
         .from(providerAttempts)
         .where(and(
-          eq(providerAttempts.organizationId, this.organizationId),
+          this.scopedTo(providerAttempts),
           inArray(providerAttempts.requestId, requestIds)
         ));
       const attemptIds = attempts.map((attempt) => attempt.id);
@@ -835,7 +845,7 @@ export class AdminQueryService {
           name: routingConfigs.name
         })
         .from(routingConfigs)
-        .where(eq(routingConfigs.organizationId, this.organizationId));
+        .where(this.scopedTo(routingConfigs));
       return new Map(rows.map((row) => [row.id, row.name]));
     });
     for (const summary of summaries) {
@@ -853,7 +863,7 @@ export class AdminQueryService {
           count: sql<number>`count(*)`
         })
         .from(events)
-        .where(eq(events.organizationId, this.organizationId));
+        .where(this.scopedTo(events));
       return Number(row?.count ?? 0);
     });
   }
@@ -867,7 +877,7 @@ export class AdminQueryService {
         })
         .from(routeDecisions)
         .where(and(
-          eq(routeDecisions.organizationId, this.organizationId),
+          this.scopedTo(routeDecisions),
           sql`${routeDecisions.confidence} is not null`,
           sql`${routeDecisions.confidence} < ${threshold}`
         ));
@@ -883,7 +893,7 @@ export class AdminQueryService {
       .select()
       .from(routingConfigVersions)
       .where(and(
-        eq(routingConfigVersions.organizationId, this.organizationId),
+        this.scopedTo(routingConfigVersions),
         inArray(routingConfigVersions.id, versionIds)
       ));
     return new Map(rows.map((row) => [row.id, row]));
@@ -896,7 +906,7 @@ export class AdminQueryService {
       .select({ routingConfigId: apiKeys.routingConfigId })
       .from(apiKeys)
       .where(and(
-        eq(apiKeys.organizationId, this.organizationId),
+        this.scopedTo(apiKeys),
         inArray(apiKeys.routingConfigId, configIds)
       ));
     return rows.reduce((counts, row) => {
@@ -907,7 +917,7 @@ export class AdminQueryService {
   }
 
   private async promptRows(filters: PromptListFilters) {
-    const conditions = promptConditions(this.organizationId, filters);
+    const conditions = promptConditions(this.organizationId, this.workspaceId, filters);
     return this.db
       .select({
         artifact: promptArtifacts,
@@ -934,12 +944,21 @@ export class AdminQueryService {
       .offset(promptOffset(filters.offset));
   }
 
+  // Timelines include workspace events plus org-level events (null
+  // workspace_id, e.g. membership changes) that reference the same scope.
+  private eventWorkspaceScope() {
+    return and(
+      eq(events.organizationId, this.organizationId),
+      or(isNull(events.workspaceId), eq(events.workspaceId, this.workspaceId))
+    );
+  }
+
   private async eventsForRequest(requestId: string) {
     const requestEvents = await this.db
       .select()
       .from(events)
       .where(and(
-        eq(events.organizationId, this.organizationId),
+        this.eventWorkspaceScope(),
         eq(events.scopeId, requestId)
       ))
       .orderBy(events.sequence);
@@ -947,7 +966,7 @@ export class AdminQueryService {
       .select()
       .from(events)
       .where(and(
-        eq(events.organizationId, this.organizationId),
+        this.eventWorkspaceScope(),
         eq(events.correlationId, requestId)
       ))
       .orderBy(events.createdAt);
@@ -974,7 +993,7 @@ export class AdminQueryService {
       .select()
       .from(events)
       .where(and(
-        eq(events.organizationId, this.organizationId),
+        this.eventWorkspaceScope(),
         or(...scopeConditions)
       ))
       .orderBy(asc(events.createdAt));
@@ -1074,9 +1093,9 @@ type PromptRow = {
   usage: typeof usageLedger.$inferSelect | null;
 };
 
-function promptConditions(organizationId: string, filters: PromptListFilters) {
+function promptConditions(organizationId: string, workspaceId: string, filters: PromptListFilters) {
   const conditions = [
-    eq(promptArtifacts.organizationId, organizationId),
+    workspaceScope(promptArtifacts, organizationId, workspaceId),
     eq(requests.organizationId, organizationId)
   ];
   if (filters.userId) conditions.push(eq(requests.userId, filters.userId));

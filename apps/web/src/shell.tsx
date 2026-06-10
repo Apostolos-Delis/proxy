@@ -7,6 +7,7 @@ import { LogoutButton } from "./auth";
 import { OrgSwitcher } from "./orgSwitcher";
 import { SearchPalette } from "./search/SearchPalette";
 import { useSearchShortcut } from "./search/useSearchShortcut";
+import { WorkspaceSwitcher } from "./workspaceSwitcher";
 
 const workspaceNav = [
   { to: "/", label: "Overview", icon: Gauge },
@@ -64,6 +65,7 @@ export function AppShell() {
     <div className={`app${collapsed ? " collapsed" : ""}`} data-theme={theme}>
       <aside className="sidebar">
         <Brand collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
+        <WorkspaceSwitcher />
         <NavGroup title="Workspace" items={workspaceNav} collapsed={collapsed} />
         <NavGroup title="Operations" items={operationsNav} collapsed={collapsed} />
         <NavGroup title="Manage" items={manageNav} collapsed={collapsed} />

@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  defaultWorkspaceId,
   eventOutbox,
   events,
   organizations,
   routingConfigs,
-  routingConfigVersions
+  routingConfigVersions,
+  workspaces
 } from "@prompt-proxy/db";
 import type { RoutingConfig } from "@prompt-proxy/schema";
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -95,6 +97,7 @@ describe("routing config admin APIs", () => {
     await fixture.db.insert(routingConfigs).values({
       id: "org_routing_config_list:routing-config:archived",
       organizationId: "org_routing_config_list",
+      workspaceId: defaultWorkspaceId("org_routing_config_list"),
       name: "Archived routing config",
       slug: "archived",
       status: "archived"
@@ -104,9 +107,16 @@ describe("routing config admin APIs", () => {
       slug: "org-routing-config-other",
       name: "Other Org"
     });
+    await fixture.db.insert(workspaces).values({
+      id: defaultWorkspaceId("org_routing_config_other"),
+      organizationId: "org_routing_config_other",
+      slug: "default",
+      name: "Default"
+    });
     await fixture.db.insert(routingConfigs).values({
       id: "org_routing_config_other:routing-config:default",
       organizationId: "org_routing_config_other",
+      workspaceId: defaultWorkspaceId("org_routing_config_other"),
       name: "Other routing config",
       slug: "default"
     });
@@ -169,9 +179,16 @@ describe("routing config admin APIs", () => {
       slug: "org-routing-config-detail-other",
       name: "Other Org"
     });
+    await fixture.db.insert(workspaces).values({
+      id: defaultWorkspaceId("org_routing_config_detail_other"),
+      organizationId: "org_routing_config_detail_other",
+      slug: "default",
+      name: "Default"
+    });
     await fixture.db.insert(routingConfigs).values({
       id: "org_routing_config_detail_other:routing-config:default",
       organizationId: "org_routing_config_detail_other",
+      workspaceId: defaultWorkspaceId("org_routing_config_detail_other"),
       name: "Other routing config",
       slug: "default"
     });

@@ -41,6 +41,7 @@ export class DatabaseEventSink implements PersistentEventSink {
         sequence,
         schemaVersion: event.schemaVersion,
         organizationId: event.tenantId,
+        workspaceId: event.workspaceId,
         scopeType: event.scopeType,
         scopeId: event.scopeId,
         sessionId: event.sessionId,

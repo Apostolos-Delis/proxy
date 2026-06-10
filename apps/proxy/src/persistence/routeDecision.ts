@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 
-import { routeDecisions, type PromptProxyTransaction } from "@prompt-proxy/db";
+import { defaultWorkspaceId, routeDecisions, type PromptProxyTransaction } from "@prompt-proxy/db";
 
 import { createId } from "../util.js";
 import {
@@ -16,6 +16,7 @@ import {
 
 export async function persistRouteDecision(tx: PromptProxyTransaction, event: {
   tenantId: string;
+  workspaceId?: string;
   scopeId: string;
   payload: Record<string, unknown>;
 }) {
@@ -28,6 +29,7 @@ export async function persistRouteDecision(tx: PromptProxyTransaction, event: {
       id: createId("route_decision"),
       requestId: event.scopeId,
       organizationId: event.tenantId,
+      workspaceId: event.workspaceId ?? defaultWorkspaceId(event.tenantId),
       requestedModel: stringValue(payload.requestedModel) ?? "unknown",
       classifierRoute: routeValue(payload.classifierRoute),
       finalRoute: routeValue(payload.finalRoute),

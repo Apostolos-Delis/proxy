@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
@@ -9,16 +10,17 @@ import {
   agentSessions,
   apiKeys,
   createPgliteDatabase,
+  defaultWorkspaceId,
   events,
   hashApiKey,
   organizations,
   providerAttempts,
   requests,
   routeDecisions,
-  organizationSettings,
   routingConfigs,
   routingConfigVersions,
-  usageLedger
+  usageLedger,
+  workspaces
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
@@ -300,9 +302,16 @@ describe("postgres persistence", () => {
       slug: "org_api_key",
       name: "org_api_key"
     }).onConflictDoNothing();
+    await fixture.db.insert(workspaces).values({
+      id: defaultWorkspaceId("org_api_key"),
+      organizationId: "org_api_key",
+      slug: "default",
+      name: "Default"
+    }).onConflictDoNothing();
     await fixture.db.insert(apiKeys).values({
       id: "api_key_1",
       organizationId: "org_api_key",
+      workspaceId: defaultWorkspaceId("org_api_key"),
       keyHash: hashApiKey("secret-token"),
       name: "Local Proxy Key",
       scopes: ["proxy"]
@@ -314,6 +323,7 @@ describe("postgres persistence", () => {
     expect(identity).toEqual({
       apiKeyId: "api_key_1",
       organizationId: "org_api_key",
+      workspaceId: defaultWorkspaceId("org_api_key"),
       userId: undefined,
       scopes: ["proxy"],
       routingConfigId: null
@@ -329,9 +339,16 @@ describe("postgres persistence", () => {
       slug: "org_assigned_api_key",
       name: "org_assigned_api_key"
     }).onConflictDoNothing();
+    await fixture.db.insert(workspaces).values({
+      id: defaultWorkspaceId("org_assigned_api_key"),
+      organizationId: "org_assigned_api_key",
+      slug: "default",
+      name: "Default"
+    }).onConflictDoNothing();
     await fixture.db.insert(routingConfigs).values({
       id: "routing_config_assigned",
       organizationId: "org_assigned_api_key",
+      workspaceId: defaultWorkspaceId("org_assigned_api_key"),
       name: "Assigned config",
       slug: "assigned",
       status: "active"
@@ -339,6 +356,7 @@ describe("postgres persistence", () => {
     await fixture.db.insert(apiKeys).values({
       id: "api_key_assigned",
       organizationId: "org_assigned_api_key",
+      workspaceId: defaultWorkspaceId("org_assigned_api_key"),
       keyHash: hashApiKey("assigned-token"),
       name: "Assigned Proxy Key",
       routingConfigId: "routing_config_assigned",
@@ -391,6 +409,7 @@ describe("postgres persistence", () => {
     await fixture.db.insert(routingConfigs).values({
       id: assignedConfigId,
       organizationId: "org_assigned_config",
+      workspaceId: defaultWorkspaceId("org_assigned_config"),
       name: "Assigned routing config",
       slug: "assigned",
       status: "active"
@@ -398,6 +417,7 @@ describe("postgres persistence", () => {
     await fixture.db.insert(routingConfigVersions).values({
       id: assignedVersionId,
       organizationId: "org_assigned_config",
+      workspaceId: defaultWorkspaceId("org_assigned_config"),
       routingConfigId: assignedConfigId,
       version: 1,
       configHash: "sha256:assigned-config",
@@ -413,6 +433,7 @@ describe("postgres persistence", () => {
 
     const resolved = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_assigned_config",
+      workspaceId: defaultWorkspaceId("org_assigned_config"),
       routingConfigId: assignedConfigId
     });
 
@@ -436,15 +457,17 @@ describe("postgres persistence", () => {
 
     const orgDefault = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_default_config",
+      workspaceId: defaultWorkspaceId("org_default_config"),
       routingConfigId: null
     });
 
     await fixture.db
-      .update(organizationSettings)
+      .update(workspaces)
       .set({ defaultRoutingConfigId: null })
-      .where(eq(organizationSettings.organizationId, "org_default_config"));
+      .where(eq(workspaces.id, defaultWorkspaceId("org_default_config")));
     const seededDefault = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_default_config",
+      workspaceId: defaultWorkspaceId("org_default_config"),
       routingConfigId: null
     });
 
@@ -467,6 +490,7 @@ describe("postgres persistence", () => {
 
     await expect(fixture.persistence.routingConfigs.resolve({
       organizationId: "org_missing_active_config",
+      workspaceId: defaultWorkspaceId("org_missing_active_config"),
       routingConfigId: null
     })).rejects.toThrow("routing_config_active_version_missing");
   });
@@ -485,6 +509,7 @@ describe("postgres persistence", () => {
 
     await expect(fixture.persistence.routingConfigs.resolve({
       organizationId: "org_invalid_config",
+      workspaceId: defaultWorkspaceId("org_invalid_config"),
       routingConfigId: null
     })).rejects.toThrow(/routing_config_invalid/);
   });
@@ -533,20 +558,20 @@ describe("postgres persistence", () => {
       metadata: row.metadata
     }))).toEqual(expect.arrayContaining([
       {
-        id: "org_sessions:openai-responses:codex-session",
+        id: "org_sessions:workspace:default:openai-responses:codex-session",
         externalSessionId: "codex-session",
         metadata: { sessionIdentity: "harness" }
       },
       {
-        id: "org_sessions:anthropic-messages:claude-session",
+        id: "org_sessions:workspace:default:anthropic-messages:claude-session",
         externalSessionId: "claude-session",
         metadata: { sessionIdentity: "harness" }
       }
     ]));
     expect(requestRows.find((row) => row.id === "request_codex")?.sessionId)
-      .toBe("org_sessions:openai-responses:codex-session");
+      .toBe("org_sessions:workspace:default:openai-responses:codex-session");
     expect(requestRows.find((row) => row.id === "request_claude")?.sessionId)
-      .toBe("org_sessions:anthropic-messages:claude-session");
+      .toBe("org_sessions:workspace:default:anthropic-messages:claude-session");
   });
 
   it("creates request-scoped fallback sessions when harness session identity is absent", async () => {
@@ -561,7 +586,7 @@ describe("postgres persistence", () => {
     const requestRows = await fixture.db.select().from(requests).where(eq(requests.id, "request_fallback"));
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.id).toBe("org_fallback_session:openai-responses:request:request_fallback");
+    expect(rows[0]?.id).toBe("org_fallback_session:workspace:default:openai-responses:request:request_fallback");
     expect(rows[0]?.externalSessionId).toBe("request:request_fallback");
     expect(rows[0]?.metadata).toEqual({ sessionIdentity: "request_fallback" });
     expect(requestRows[0]?.sessionId).toBe(rows[0]?.id);
@@ -589,7 +614,7 @@ describe("postgres persistence", () => {
     const rows = await fixture.db.select().from(agentSessions);
     const requestRows = await fixture.db.select().from(requests).where(eq(requests.id, "request_event_fallback"));
 
-    expect(rows[0]?.id).toBe("org_event_fallback:anthropic-messages:request:request_event_fallback");
+    expect(rows[0]?.id).toBe("org_event_fallback:workspace:default:anthropic-messages:request:request_event_fallback");
     expect(rows[0]?.metadata).toEqual({ sessionIdentity: "request_fallback" });
     expect(requestRows[0]?.sessionId).toBe(rows[0]?.id);
   });
@@ -618,9 +643,9 @@ describe("postgres persistence", () => {
     const rows = await fixture.db.select().from(agentSessions);
 
     expect(rows.map((row) => row.id).sort()).toEqual([
-      "org_a:anthropic-messages:shared-session",
-      "org_a:openai-responses:shared-session",
-      "org_b:openai-responses:shared-session"
+      "org_a:workspace:default:anthropic-messages:shared-session",
+      "org_a:workspace:default:openai-responses:shared-session",
+      "org_b:workspace:default:openai-responses:shared-session"
     ]);
   });
 
@@ -631,11 +656,18 @@ describe("postgres persistence", () => {
       slug: "org_admin_overview",
       name: "org_admin_overview"
     }).onConflictDoNothing();
+    await fixture.db.insert(workspaces).values({
+      id: defaultWorkspaceId("org_admin_overview"),
+      organizationId: "org_admin_overview",
+      slug: "default",
+      name: "Default"
+    }).onConflictDoNothing();
 
     const ids = Array.from({ length: 201 }, (_, index) => `request_page_${index}`);
     await fixture.db.insert(requests).values(ids.map((id, index) => ({
       id,
       organizationId: "org_admin_overview",
+      workspaceId: defaultWorkspaceId("org_admin_overview"),
       surface: "openai-responses" as const,
       idempotencyKey: `idem_page_${index}`,
       requestedModel: "router-auto",
@@ -647,6 +679,7 @@ describe("postgres persistence", () => {
       id: `decision_page_${index}`,
       requestId: id,
       organizationId: "org_admin_overview",
+      workspaceId: defaultWorkspaceId("org_admin_overview"),
       requestedModel: "router-auto",
       finalRoute: "hard" as const,
       selectedProvider: "openai" as const,
@@ -657,6 +690,7 @@ describe("postgres persistence", () => {
       id: `attempt_page_${index}`,
       requestId: id,
       organizationId: "org_admin_overview",
+      workspaceId: defaultWorkspaceId("org_admin_overview"),
       surface: "openai-responses" as const,
       provider: "openai" as const,
       model: "gpt-routed-hard-test",
@@ -667,6 +701,7 @@ describe("postgres persistence", () => {
     await fixture.db.insert(usageLedger).values(ids.map((id, index) => ({
       id: `usage_page_${index}`,
       organizationId: "org_admin_overview",
+      workspaceId: defaultWorkspaceId("org_admin_overview"),
       requestId: id,
       providerAttemptId: `attempt_page_${index}`,
       provider: "openai" as const,
@@ -678,8 +713,8 @@ describe("postgres persistence", () => {
       totalCostMicros: 2
     })));
 
-    const overview = await fixture.persistence.adminQueries.forOrg("org_admin_overview").overview();
-    const requestPage = await fixture.persistence.adminQueries.forOrg("org_admin_overview").requests();
+    const overview = await fixture.persistence.adminQueries.forScope("org_admin_overview", defaultWorkspaceId("org_admin_overview")).overview();
+    const requestPage = await fixture.persistence.adminQueries.forScope("org_admin_overview", defaultWorkspaceId("org_admin_overview")).requests();
 
     expect(overview.requestCount).toBe(201);
     expect(overview.totals.totalTokens).toBe(201);
@@ -693,15 +728,23 @@ describe("postgres persistence", () => {
       slug: "org_admin_retry",
       name: "org_admin_retry"
     }).onConflictDoNothing();
+    await fixture.db.insert(workspaces).values({
+      id: defaultWorkspaceId("org_admin_retry"),
+      organizationId: "org_admin_retry",
+      slug: "default",
+      name: "Default"
+    }).onConflictDoNothing();
     await fixture.db.insert(routingConfigs).values({
       id: "routing_config_retry",
       organizationId: "org_admin_retry",
+      workspaceId: defaultWorkspaceId("org_admin_retry"),
       name: "Retry routing config",
       slug: "retry-routing-config"
     });
     await fixture.db.insert(requests).values({
       id: "request_retry",
       organizationId: "org_admin_retry",
+      workspaceId: defaultWorkspaceId("org_admin_retry"),
       surface: "openai-responses",
       idempotencyKey: "idem_retry",
       requestedModel: "router-auto",
@@ -717,6 +760,7 @@ describe("postgres persistence", () => {
       id: "decision_retry",
       requestId: "request_retry",
       organizationId: "org_admin_retry",
+      workspaceId: defaultWorkspaceId("org_admin_retry"),
       requestedModel: "router-auto",
       finalRoute: "hard",
       selectedProvider: "openai",
@@ -732,6 +776,7 @@ describe("postgres persistence", () => {
         id: "attempt_retry_old",
         requestId: "request_retry",
         organizationId: "org_admin_retry",
+        workspaceId: defaultWorkspaceId("org_admin_retry"),
         surface: "openai-responses",
         provider: "openai",
         model: "gpt-routed-hard-test",
@@ -743,6 +788,7 @@ describe("postgres persistence", () => {
         id: "attempt_retry_new",
         requestId: "request_retry",
         organizationId: "org_admin_retry",
+        workspaceId: defaultWorkspaceId("org_admin_retry"),
         surface: "openai-responses",
         provider: "openai",
         model: "gpt-routed-hard-test",
@@ -755,6 +801,7 @@ describe("postgres persistence", () => {
       {
         id: "usage_retry_old",
         organizationId: "org_admin_retry",
+        workspaceId: defaultWorkspaceId("org_admin_retry"),
         requestId: "request_retry",
         providerAttemptId: "attempt_retry_old",
         provider: "openai",
@@ -765,6 +812,7 @@ describe("postgres persistence", () => {
       {
         id: "usage_retry_new",
         organizationId: "org_admin_retry",
+        workspaceId: defaultWorkspaceId("org_admin_retry"),
         requestId: "request_retry",
         providerAttemptId: "attempt_retry_new",
         provider: "openai",
@@ -774,8 +822,8 @@ describe("postgres persistence", () => {
       }
     ]);
 
-    const requestsPage = await fixture.persistence.adminQueries.forOrg("org_admin_retry").requests();
-    const detail = await fixture.persistence.adminQueries.forOrg("org_admin_retry").requestDetail("request_retry");
+    const requestsPage = await fixture.persistence.adminQueries.forScope("org_admin_retry", defaultWorkspaceId("org_admin_retry")).requests();
+    const detail = await fixture.persistence.adminQueries.forScope("org_admin_retry", defaultWorkspaceId("org_admin_retry")).requestDetail("request_retry");
 
     expect(requestsPage.data).toHaveLength(1);
     expect(requestsPage.data[0]?.terminalStatus).toBe("completed");
@@ -835,8 +883,8 @@ describe("postgres persistence", () => {
 
     expect(rows).toHaveLength(2);
     expect(rows.map((row) => row.id).sort()).toEqual([
-      "org_a:openai-responses:shared-session",
-      "org_b:openai-responses:shared-session"
+      "org_a:workspace:default:openai-responses:shared-session",
+      "org_b:workspace:default:openai-responses:shared-session"
     ]);
     expect(rows.map((row) => row.metadata)).toEqual(expect.arrayContaining([
       expect.objectContaining({ sessionIdentity: "harness" })
@@ -845,11 +893,11 @@ describe("postgres persistence", () => {
 
   async function persistenceFixture(organizationId: string) {
     client = new PGlite();
-    const migration = await readFile(
-      fileURLToPath(new URL("../../../packages/db/migrations/0000_foundation.sql", import.meta.url)),
-      "utf8"
-    );
-    await client.exec(migration);
+    const migrationsDir = fileURLToPath(new URL("../../../packages/db/migrations", import.meta.url));
+    const migrationFiles = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
+    for (const file of migrationFiles) {
+      await client.exec(await readFile(join(migrationsDir, file), "utf8"));
+    }
     const db = createPgliteDatabase(client);
     const config = loadConfig({
       ...process.env,

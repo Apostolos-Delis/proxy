@@ -13,6 +13,7 @@ import { createPgliteDatabase } from "@prompt-proxy/db";
 import {
   agentSessions,
   apiKeys,
+  defaultWorkspaceId,
   events,
   hashApiKey,
   invitations,
@@ -24,7 +25,8 @@ import {
   requests,
   routeDecisions,
   usageLedger,
-  users
+  users,
+  workspaces
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
@@ -34,6 +36,7 @@ import { createDatabasePersistence } from "../src/persistence/index.js";
 import { buildServer } from "../src/server.js";
 
 const ORG = "org_profile";
+const WS = defaultWorkspaceId(ORG);
 const DAY_MS = 86_400_000;
 const SEED_EPOCH = Date.parse("2026-06-10T12:00:00.000Z");
 
@@ -81,6 +84,7 @@ async function createFixture() {
   const persistence = createDatabasePersistence(db, catalog, config, false);
 
   await db.insert(organizations).values({ id: ORG, slug: ORG, name: ORG });
+  await db.insert(workspaces).values({ id: WS, organizationId: ORG, slug: "default", name: "Default" });
   await db.insert(users).values({ id: "local-user", email: "local@example.com", name: "Local User" });
   await db.insert(organizationMembers).values({ organizationId: ORG, userId: "local-user", role: "owner" });
   await db.insert(organizationSettings).values({ organizationId: ORG, promptCaptureMode: "raw_text" });
@@ -121,6 +125,7 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
     Array.from({ length: 12 }, (_, index) => ({
       id: `key_${index}`,
       organizationId: ORG,
+      workspaceId: WS,
       keyHash: hashApiKey(`profile-key-${index}`),
       name: `Profile key ${index}`,
       scopes: ["proxy"]
@@ -130,6 +135,7 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
     Array.from({ length: sessionCount }, (_, index) => ({
       id: `session_${index}`,
       organizationId: ORG,
+      workspaceId: WS,
       userId: `user_${index % userCount}`,
       surface: surfaces[index % 2],
       externalSessionId: `external-${index}`,
@@ -157,6 +163,7 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
     await db.insert(requests).values(ids.map((index) => ({
       id: `request_${index}`,
       organizationId: ORG,
+      workspaceId: WS,
       userId: `user_${index % userCount}`,
       sessionId: `session_${index % sessionCount}`,
       apiKeyId: index % 3 === 0 ? null : `key_${index % 12}`,
@@ -173,6 +180,7 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
       id: `decision_${index}`,
       requestId: `request_${index}`,
       organizationId: ORG,
+      workspaceId: WS,
       requestedModel: "router-auto",
       classifierRoute: routes[index % 4],
       finalRoute: routes[index % 4],
@@ -187,6 +195,7 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
         id: `attempt_${index}${suffix}`,
         requestId: `request_${index}`,
         organizationId: ORG,
+        workspaceId: WS,
         surface: surfaces[index % 2],
         provider: index % 2 === 0 ? ("openai" as const) : ("anthropic" as const),
         model: models[index % models.length],
@@ -202,6 +211,7 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
     await db.insert(usageLedger).values(ids.map((index) => ({
       id: `usage_${index}`,
       organizationId: ORG,
+      workspaceId: WS,
       requestId: `request_${index}`,
       providerAttemptId: `attempt_${index}`,
       userId: `user_${index % userCount}`,
@@ -244,6 +254,7 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
   await db.insert(promptArtifacts).values(artifactIds.map((index) => ({
     id: `artifact_${index}`,
     organizationId: ORG,
+    workspaceId: WS,
     requestId: `request_${index * 2}`,
     kind: index % 3 === 2 ? "assistant_response" : "latest_user_message",
     storageMode: "raw_text" as const,

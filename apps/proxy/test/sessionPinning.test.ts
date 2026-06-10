@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   agentSessions,
   apiKeys,
+  defaultWorkspaceId,
   events,
   hashApiKey,
   routingConfigs,
@@ -141,7 +142,7 @@ describe("session pinning", () => {
     const [sessionRow] = await activeFixture.db
       .select()
       .from(agentSessions)
-      .where(eq(agentSessions.id, `${organizationId}:anthropic-messages:upgrade-session`));
+      .where(eq(agentSessions.id, `${defaultWorkspaceId(organizationId)}:anthropic-messages:upgrade-session`));
     expect(sessionRow?.currentRoute).toBe("hard");
     expect(sessionRow?.pinnedSettings?.model).toBe("claude-upgrade-hard");
     expect(sessionRow?.routingConfigVersionId).toBe(
@@ -172,8 +173,9 @@ describe("session pinning", () => {
       })
     });
     await activeFixture.db.insert(agentSessions).values({
-      id: `${organizationId}:anthropic-messages:stale-session`,
+      id: `${defaultWorkspaceId(organizationId)}:anthropic-messages:stale-session`,
       organizationId,
+      workspaceId: defaultWorkspaceId(organizationId),
       surface: "anthropic-messages",
       externalSessionId: "stale-session",
       currentRoute: "hard",
@@ -198,6 +200,7 @@ describe("session pinning", () => {
 function routeContext(organizationId: string, sessionId: string): RouteContext {
   return {
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     surface: "anthropic-messages",
     requestedModel: "claude-router-auto",
     inputChars: 10,
@@ -299,6 +302,7 @@ async function assignRouteConfig(
   await fixture.db.insert(routingConfigs).values({
     id: configId,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     name: "Session pin config",
     slug: input.slug,
     status: "active"
@@ -306,6 +310,7 @@ async function assignRouteConfig(
   await fixture.db.insert(routingConfigVersions).values({
     id: versionId,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     routingConfigId: configId,
     version: 1,
     configHash: input.configHash,
@@ -321,6 +326,7 @@ async function assignRouteConfig(
   await fixture.db.insert(apiKeys).values({
     id: `api_key_${input.slug}`,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     keyHash: hashApiKey(input.secret),
     name: "Session pin key",
     routingConfigId: configId,
@@ -351,6 +357,7 @@ async function publishVersion(
   await fixture.db.insert(routingConfigVersions).values({
     id: versionId,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     routingConfigId: configId,
     version: input.version,
     configHash: input.configHash,

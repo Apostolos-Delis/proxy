@@ -1,3 +1,5 @@
+import { defaultWorkspaceId } from "@prompt-proxy/db";
+
 import type { AppConfig } from "./config.js";
 import type { ApiKeyIdentityStore, ResolvedApiKeyIdentity } from "./persistence/identity.js";
 import type { RouteContext } from "./types.js";
@@ -5,6 +7,7 @@ import { headerValue, sha256 } from "./util.js";
 
 export type RequestIdentity = {
   organizationId: string;
+  workspaceId: string;
   userId?: string;
   apiKeyId?: string;
   scopes: string[];
@@ -30,6 +33,7 @@ export class ProxyAuthService {
     if (this.config.allowDevProxyTokenFallback && credential === this.config.proxyToken) {
       return {
         organizationId: this.config.defaultOrganizationId,
+        workspaceId: defaultWorkspaceId(this.config.defaultOrganizationId),
         scopes: ["proxy"],
         routingConfigId: null,
         source: "dev_proxy_token"
@@ -40,8 +44,8 @@ export class ProxyAuthService {
   }
 }
 
-export function scopedIdempotencyKey(organizationId: string, idempotencyKey: string) {
-  return sha256(`${organizationId}:${idempotencyKey}`);
+export function scopedIdempotencyKey(organizationId: string, workspaceId: string, idempotencyKey: string) {
+  return sha256(`${organizationId}:${workspaceId}:${idempotencyKey}`);
 }
 
 export function contextForIdentity(context: RouteContext, identity: RequestIdentity): RouteContext {
@@ -49,6 +53,7 @@ export function contextForIdentity(context: RouteContext, identity: RequestIdent
   return {
     ...context,
     organizationId: identity.organizationId,
+    workspaceId: identity.workspaceId,
     userId: identity.userId ?? (useHarnessIdentity ? context.userId : undefined),
     teamId: useHarnessIdentity ? context.teamId : undefined,
     apiKeyId: identity.apiKeyId
@@ -78,6 +83,7 @@ export function requestReceivedPayload(
     harnessTeamId: rawContext.teamId ?? null,
     authSource: identity.source,
     apiKeyId: identity.apiKeyId ?? null,
+    workspaceId: identity.workspaceId,
     routingConfigId: identity.routingConfigId,
     requestedModel: context.requestedModel,
     inputHash: context.inputHash,
@@ -88,6 +94,7 @@ export function requestReceivedPayload(
 function apiKeyIdentity(identity: ResolvedApiKeyIdentity): RequestIdentity {
   return {
     organizationId: identity.organizationId,
+    workspaceId: identity.workspaceId,
     userId: identity.userId,
     apiKeyId: identity.apiKeyId,
     scopes: identity.scopes,
