@@ -52,7 +52,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   });
   void app.register(cors, {
     origin: config.adminCorsOrigins,
-    credentials: true
+    credentials: true,
+    methods: ["GET", "HEAD", "POST", "PATCH", "DELETE"]
   });
   const persistence = options.persistence ?? (config.databaseUrl
     ? createPostgresPersistence(config.databaseUrl, modelCatalog, config)

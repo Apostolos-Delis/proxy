@@ -665,7 +665,7 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     credentials: "include",
     headers: {
-      "content-type": "application/json",
+      ...(init.body === undefined ? {} : { "content-type": "application/json" }),
       ...init.headers
     }
   });
