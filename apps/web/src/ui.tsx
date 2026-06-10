@@ -1,8 +1,8 @@
 import type { CSSProperties, ReactNode } from "react";
-import { ArrowDownRight, ArrowUpRight, Box, Clock3, Copy } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Box, Copy } from "lucide-react";
 
-import type { ProxyEvent } from "./api";
-import { compactId, formatDateTime } from "./format";
+import { compactId } from "./format";
+import { JsonView } from "./jsonView";
 
 export type ConsoleMetric = {
   label: string;
@@ -170,44 +170,11 @@ export function ConsoleButton({ children, type = "button", disabled = false, var
   return <button className={`btn ${variantClass}`} type={type} disabled={disabled} onClick={onClick}>{children}</button>;
 }
 
-export function Timeline({ events }: { events: ProxyEvent[] }) {
-  return (
-    <GlassCard>
-      <div className="card-head">
-        <div className="card-title"><Clock3 />Event timeline</div>
-        <span className="faint mono">{events.length} events</span>
-      </div>
-      <div className="replay-timeline">
-        {events.map((event) => (
-          <article key={event.eventId} className="replay-row">
-            <div className="replay-kind">event</div>
-            <div>
-              <strong>{event.eventType}</strong>
-              <span>{event.producer}</span>
-            </div>
-            <time>{formatDateTime(event.createdAt)}</time>
-          </article>
-        ))}
-        {events.length === 0 ? <div className="empty">No events found for this request.</div> : null}
-      </div>
-    </GlassCard>
-  );
-}
-
 export function JsonPanel({ title, value }: { title: string; value: unknown }) {
   return (
     <GlassCard className="code-panel">
       <div className="card-title">{title}</div>
-      <pre>{JSON.stringify(value, null, 2)}</pre>
-    </GlassCard>
-  );
-}
-
-export function RawTextPanel({ title, value }: { title: string; value: string }) {
-  return (
-    <GlassCard className="raw-panel">
-      <div className="card-title">{title}</div>
-      <pre>{value}</pre>
+      <JsonView value={value} maxHeight={520} />
     </GlassCard>
   );
 }

@@ -44,6 +44,10 @@
   --warn: #fbbf24;
   --warn-bg: rgba(251, 191, 36, 0.12);
   --code-bg: rgba(255, 255, 255, 0.045);
+  --json-key: #7dd3fc;
+  --json-string: #86efac;
+  --json-number: #fcd34d;
+  --json-literal: #c4b5fd;
 }
 
 /* ---------- LIGHT ---------- */
@@ -72,6 +76,10 @@
   --warn: #c2710a;
   --warn-bg: rgba(194, 113, 10, 0.12);
   --code-bg: rgba(15, 30, 30, 0.04);
+  --json-key: #0369a1;
+  --json-string: #15803d;
+  --json-number: #b45309;
+  --json-literal: #6d28d9;
 }
 
 * { box-sizing: border-box; }

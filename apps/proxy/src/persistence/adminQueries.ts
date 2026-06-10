@@ -341,10 +341,23 @@ export class AdminQueryService {
     const [request] = await this.summarizeRequests([row.request]);
     const requestEvents = await this.eventsForRequest(row.request.id);
     const [artifact] = await this.addRoutingConfigNames([promptDetail(row)]);
+    const siblingRows = await this.db
+      .select()
+      .from(promptArtifacts)
+      .where(and(
+        eq(promptArtifacts.organizationId, this.organizationId),
+        eq(promptArtifacts.requestId, row.request.id)
+      ))
+      .orderBy(asc(promptArtifacts.createdAt));
 
     return {
       artifact,
       request: request ?? null,
+      requestArtifacts: siblingRows.map((sibling) => promptDetail({
+        artifact: sibling,
+        request: row.request,
+        decision: row.decision
+      })),
       events: requestEvents
     };
   }
