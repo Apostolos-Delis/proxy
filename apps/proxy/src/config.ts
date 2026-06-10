@@ -96,6 +96,11 @@ const configSchema = z.object({
   ADMIN_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 8),
   SEED_USER_ID: z.string().min(1).default("local-user"),
   ADMIN_CORS_ORIGIN: z.string().default("http://127.0.0.1:5173,http://localhost:5173"),
+  ADMIN_CONSOLE_URL: z.string().url().default("http://127.0.0.1:5173"),
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_BASE_URL: z.string().url().default("https://api.resend.com"),
+  EMAIL_FROM: z.string().min(1).default("Prompt Proxy <onboarding@resend.dev>"),
+  INVITATION_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 7),
   LOG_LEVEL: z.string().default("info")
 });
 
@@ -150,6 +155,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     adminSessionTtlSeconds: parsed.ADMIN_SESSION_TTL_SECONDS,
     seedUserId: parsed.SEED_USER_ID,
     adminCorsOrigins: parsed.ADMIN_CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean),
+    adminConsoleUrl: trimTrailingSlash(parsed.ADMIN_CONSOLE_URL),
+    resendApiKey: parsed.RESEND_API_KEY,
+    resendBaseUrl: trimTrailingSlash(parsed.RESEND_BASE_URL),
+    emailFrom: parsed.EMAIL_FROM,
+    invitationTtlSeconds: parsed.INVITATION_TTL_SECONDS,
     logLevel: parsed.LOG_LEVEL
   };
 }

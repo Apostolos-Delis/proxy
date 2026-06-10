@@ -72,6 +72,13 @@ describe("database migrations", () => {
         and column_name in ('organization_id', 'artifact_id', 'request_id', 'user_id', 'admin_session_id', 'access_path')
       order by column_name
     `);
+    const invitationColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'invitations'
+        and column_name in ('organization_id', 'email', 'role', 'status', 'token_hash', 'token_prefix', 'invited_by_user_id', 'accepted_user_id', 'expires_at')
+      order by column_name
+    `);
     await client.close();
 
     expect(result.rows[0]).toEqual({ count: 0 });
@@ -122,6 +129,17 @@ describe("database migrations", () => {
       "organization_id",
       "request_id",
       "user_id"
+    ]);
+    expect(invitationColumns.rows.map((row) => row.column_name)).toEqual([
+      "accepted_user_id",
+      "email",
+      "expires_at",
+      "invited_by_user_id",
+      "organization_id",
+      "role",
+      "status",
+      "token_hash",
+      "token_prefix"
     ]);
   });
 

@@ -15,6 +15,11 @@ import { PromptArtifactStore } from "./promptArtifacts.js";
 import { PersistentRequestStateStore } from "./requestState.js";
 import { RoutingConfigAdminService } from "./routingConfigAdmin.js";
 import { RoutingConfigResolver } from "./routingConfig.js";
+import { UserAdminService } from "./userAdmin.js";
+
+export type DatabasePersistenceConfig = AdminQueryConfig & {
+  invitationTtlSeconds: number;
+};
 
 export function createPostgresPersistence(databaseUrl: string, catalog: ModelCatalog, config: AppConfig) {
   return createDatabasePersistence(createPostgresDatabase(databaseUrl), catalog, config, true);
@@ -23,7 +28,7 @@ export function createPostgresPersistence(databaseUrl: string, catalog: ModelCat
 export function createDatabasePersistence(
   db: PromptProxyDatabase,
   catalog: ModelCatalog,
-  config: AdminQueryConfig,
+  config: DatabasePersistenceConfig,
   useAdvisoryLocks: boolean
 ) {
   const transactional = createTransactionalDatabase(db);
@@ -36,6 +41,7 @@ export function createDatabasePersistence(
     requestStates: new PersistentRequestStateStore(transactional, db, config.defaultOrganizationId),
     routingConfigAdmin: new RoutingConfigAdminService(transactional),
     routingConfigs: new RoutingConfigResolver(db),
+    userAdmin: new UserAdminService(transactional, { invitationTtlSeconds: config.invitationTtlSeconds }),
     adminQueries: new AdminQueryService(db, catalog, config)
   };
 }

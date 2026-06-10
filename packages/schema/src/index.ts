@@ -69,6 +69,17 @@ export const ORGANIZATION_MEMBER_ROLES = {
   VIEWER: "viewer"
 } as const;
 
+export const ORGANIZATION_MEMBER_STATUSES = {
+  ACTIVE: "active",
+  DEACTIVATED: "deactivated"
+} as const;
+
+export const INVITATION_STATUSES = {
+  PENDING: "pending",
+  ACCEPTED: "accepted",
+  REVOKED: "revoked"
+} as const;
+
 export const DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS = [
   "Classify the coding-agent request.",
   "Use input_* and extracted_hints as the latest user intent.",
@@ -89,6 +100,8 @@ export type RequestStatus = typeof REQUEST_STATUSES[keyof typeof REQUEST_STATUSE
 export type ProviderAttemptStatus = typeof PROVIDER_ATTEMPT_STATUSES[keyof typeof PROVIDER_ATTEMPT_STATUSES];
 export type PromptCaptureMode = typeof PROMPT_CAPTURE_MODES[keyof typeof PROMPT_CAPTURE_MODES];
 export type OrganizationMemberRole = typeof ORGANIZATION_MEMBER_ROLES[keyof typeof ORGANIZATION_MEMBER_ROLES];
+export type OrganizationMemberStatus = typeof ORGANIZATION_MEMBER_STATUSES[keyof typeof ORGANIZATION_MEMBER_STATUSES];
+export type InvitationStatus = typeof INVITATION_STATUSES[keyof typeof INVITATION_STATUSES];
 
 export type JsonValue =
   | null

@@ -74,3 +74,42 @@
   color: var(--danger);
   font-size: 13px;
 }
+
+.invite-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.invite-note {
+  margin: 14px 0 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.invite-meta .invite-note {
+  margin: 0;
+}
+
+.invite-closed {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.invite-closed svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: var(--accent-2);
+}
+
+.invite-closed .invite-note {
+  margin: 0;
+}
+
+.invite-login-link {
+  margin-top: 22px;
+}
