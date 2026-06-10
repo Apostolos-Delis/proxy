@@ -69,42 +69,69 @@
 .impact-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
 }
 
 .impact-grid > button {
-  padding: 14px;
-  border: 1px solid var(--border);
+  position: relative;
+  min-width: 0;
+  padding: 12px 20px;
+  border: 0;
   border-radius: var(--radius);
-  background: var(--glass-2);
+  background: transparent;
   color: var(--fg);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background .13s var(--ease), border-color .13s var(--ease), transform .13s var(--ease);
+  transition: background .13s var(--ease);
+}
+
+.impact-grid > button:first-child {
+  margin-left: -20px;
+}
+
+.impact-grid > button + button::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 1px;
+  background: var(--border);
 }
 
 .impact-grid > button:hover,
-.impact-grid > button:focus-visible {
+.impact-grid > button:focus-visible,
+.impact-grid > button.active {
   background: var(--glass-hover);
-  border-color: var(--border-strong);
   outline: none;
 }
 
-.impact-grid > button:active {
-  transform: scale(0.99);
+.impact-grid > button.active span {
+  color: var(--fg-muted);
 }
 
 .impact-grid span {
   display: block;
   color: var(--fg-faint);
   font-size: 12px;
-  margin-bottom: 8px;
 }
 
 .impact-grid strong {
-  font-size: 22px;
+  display: block;
+  margin-top: 9px;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
+}
+
+.impact-grid em {
+  display: block;
+  margin-top: 6px;
+  color: var(--fg-faint);
+  font-size: 12px;
+  font-style: normal;
 }
 
 .usage-toolbar {
@@ -161,6 +188,10 @@
 
 .accent-text {
   color: var(--accent-2);
+}
+
+.warn-text {
+  color: var(--warn);
 }
 
 .usage-user-list {

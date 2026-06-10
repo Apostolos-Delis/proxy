@@ -73,15 +73,18 @@
 .inspector-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  row-gap: 20px;
 }
 
 .inspector-row {
   min-width: 0;
-  padding: 13px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--glass-2);
+  padding: 3px 22px;
+  border-left: 1px solid var(--border);
+}
+
+.inspector-row:nth-child(3n + 1) {
+  padding-left: 0;
+  border-left: 0;
 }
 
 .inspector-row span,
@@ -96,10 +99,13 @@
 }
 
 .inspector-row strong {
-  margin-top: 7px;
+  margin-top: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 18px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
   font-style: normal;
   font-variant-numeric: tabular-nums;
 }
