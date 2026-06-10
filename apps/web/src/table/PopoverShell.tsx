@@ -1,4 +1,7 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
+
+import { useMountEffect } from "./useMountEffect";
 
 type PopoverShellProps = {
   onDismiss: () => void;
@@ -11,5 +14,57 @@ export function PopoverShell({ onDismiss, children }: PopoverShellProps) {
       <div className="popover-backdrop" onClick={onDismiss} />
       {children}
     </>
+  );
+}
+
+// Keep in sync with .assignment-popover in pages.css.
+const popoverWidth = 280;
+const popoverMaxHeight = 320;
+const popoverGap = 6;
+const viewportPadding = 8;
+
+// Popovers anchored inside .console-table-scroll get clipped by its
+// overflow, so this portals them to the body at a fixed position.
+export function AnchoredPopover({ anchorRef, onDismiss, children }: PopoverShellProps & {
+  anchorRef: RefObject<HTMLElement | null>;
+}) {
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  useMountEffect(() => {
+    const onScroll = (event: Event) => {
+      if (popoverRef.current?.contains(event.target as Node)) return;
+      onDismiss();
+    };
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onDismiss);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onDismiss);
+    };
+  });
+  // Positioning happens in a callback ref: it runs at commit time, after the
+  // anchor's ref is attached even when the whole cell remounts in one commit.
+  const place = (node: HTMLDivElement | null) => {
+    popoverRef.current = node;
+    const anchor = anchorRef.current;
+    if (!node || !anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const left = Math.max(viewportPadding, Math.min(rect.left, window.innerWidth - popoverWidth - viewportPadding));
+    node.style.left = `${left}px`;
+    const spaceBelow = window.innerHeight - rect.bottom - popoverGap;
+    const spaceAbove = rect.top - popoverGap;
+    if (spaceBelow < popoverMaxHeight && spaceAbove > spaceBelow) {
+      node.style.top = "auto";
+      node.style.bottom = `${window.innerHeight - rect.top + popoverGap}px`;
+    } else {
+      node.style.top = `${rect.bottom + popoverGap}px`;
+      node.style.bottom = "auto";
+    }
+  };
+  return createPortal(
+    <>
+      <div className="popover-backdrop" onClick={onDismiss} />
+      <div ref={place} className="cell-popover">{children}</div>
+    </>,
+    document.body
   );
 }

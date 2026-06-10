@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
   assignApiKeyProviderAccount,
@@ -9,12 +9,14 @@ import {
 } from "./providers/data";
 import type { ApiKeySummary } from "./routing/data";
 import { PROVIDER_ORDER } from "./providers";
+import { AnchoredPopover } from "./table/PopoverShell";
 
 export function ApiKeyProviderBinding({ apiKey, providerAccounts }: {
   apiKey: ApiKeySummary;
   providerAccounts: ProviderAccountSummary[];
 }) {
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const queryClient = useQueryClient();
   const assignMutation = useMutation({
     mutationFn: (input: { provider: ProviderName; providerAccountId: string | null }) =>
@@ -33,23 +35,25 @@ export function ApiKeyProviderBinding({ apiKey, providerAccounts }: {
 
   return (
     <div className="assignment-menu">
-      <button className="btn btn-sm" type="button" disabled={assignMutation.isPending} onClick={() => setOpen(!open)}>
+      <button ref={triggerRef} className="btn btn-sm" type="button" disabled={assignMutation.isPending} onClick={() => setOpen(!open)}>
         {assignMutation.isPending ? "Updating" : bindingLabel(apiKey)}
         <ChevronDown />
       </button>
       {open ? (
-        <div className="assignment-popover">
-          {PROVIDER_ORDER.map((provider) => (
-            <ProviderSection
-              key={provider}
-              provider={provider}
-              accounts={activeAccounts.filter((account) => account.provider === provider)}
-              boundId={boundByProvider.get(provider)?.providerAccountId ?? null}
-              onAssign={(providerAccountId) => assignMutation.mutate({ provider, providerAccountId })}
-            />
-          ))}
-          {assignMutation.error ? <div className="action-error">{assignMutation.error.message}</div> : null}
-        </div>
+        <AnchoredPopover anchorRef={triggerRef} onDismiss={() => setOpen(false)}>
+          <div className="assignment-popover">
+            {PROVIDER_ORDER.map((provider) => (
+              <ProviderSection
+                key={provider}
+                provider={provider}
+                accounts={activeAccounts.filter((account) => account.provider === provider)}
+                boundId={boundByProvider.get(provider)?.providerAccountId ?? null}
+                onAssign={(providerAccountId) => assignMutation.mutate({ provider, providerAccountId })}
+              />
+            ))}
+            {assignMutation.error ? <div className="action-error">{assignMutation.error.message}</div> : null}
+          </div>
+        </AnchoredPopover>
       ) : null}
     </div>
   );

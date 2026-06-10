@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, Ban, ChevronDown, Plus, TerminalSquare, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
   assignApiKeyRoutingConfig,
@@ -17,7 +17,7 @@ import { apiKeyScopeOptions, CreateApiKeyPanel } from "./createApiKeyPanel";
 import { compactId, formatDate, formatDateTime } from "./format";
 import { HarnessSetupCard } from "./harnessSetupCard";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
-import { PopoverShell } from "./table/PopoverShell";
+import { AnchoredPopover } from "./table/PopoverShell";
 import { PageState, PageTitle, StatusBadge } from "./ui";
 
 type AssignmentVariables = {
@@ -263,6 +263,7 @@ function AssignmentMenu({ apiKey, configs, open, pending, onOpenChange, onAssign
   onOpenChange: (open: boolean) => void;
   onAssign: (routingConfigId: string | null) => void;
 }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const label = apiKey.routingConfig?.name ?? "Organization default";
   const options = configs.filter((config) => !isDefaultConfig(config) || apiKey.routingConfigId === config.id);
   return (
@@ -275,6 +276,7 @@ function AssignmentMenu({ apiKey, configs, open, pending, onOpenChange, onAssign
       }}
     >
       <button
+        ref={triggerRef}
         className={`cell-select${apiKey.routingConfig ? "" : " unset"}`}
         type="button"
         disabled={pending}
@@ -285,7 +287,7 @@ function AssignmentMenu({ apiKey, configs, open, pending, onOpenChange, onAssign
         <ChevronDown />
       </button>
       {open ? (
-        <PopoverShell onDismiss={() => onOpenChange(false)}>
+        <AnchoredPopover anchorRef={triggerRef} onDismiss={() => onOpenChange(false)}>
           <div className="assignment-popover">
             <button type="button" className={!apiKey.routingConfigId ? "active" : ""} onClick={() => onAssign(null)}>
               <strong>Organization default</strong>
@@ -298,7 +300,7 @@ function AssignmentMenu({ apiKey, configs, open, pending, onOpenChange, onAssign
               </button>
             ))}
           </div>
-        </PopoverShell>
+        </AnchoredPopover>
       ) : null}
     </div>
   );
