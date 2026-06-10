@@ -33,6 +33,7 @@ const titles: Record<string, [string, string | null]> = {
   "/billing": ["Billing", "Spend & invoices"],
   "/settings": ["Settings", "Runtime configuration"],
   "/routing-configs": ["Routing", "Config versions"],
+  "/routing-configs/new": ["Routing", "New config"],
   "/prompts": ["Prompts", "Captured prompt artifacts"],
   "/sessions": ["Sessions", "Agent session replay"]
 };

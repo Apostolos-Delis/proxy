@@ -72,6 +72,9 @@ Routes:
 /requests            request table
 /requests/:requestId request detail and event timeline
 /settings            searchable persistent runtime settings
+/routing-configs     routing config cards: route matrix, system prompt, key counts
+/routing-configs/new create flow: clone source, prompt editors, immediate API key attachment
+/routing-configs/:id prompt and tier-model editor, API key assignment, version history
 ```
 
 The web app currently reads the proxy admin endpoints:
@@ -103,6 +106,8 @@ PATCH /admin/users/:userId/role
 POST /admin/users/:userId/deactivate
 POST /admin/users/:userId/reactivate
 ```
+
+The routing config list summary includes the active version's `systemPrompt` so the console can surface injected prompts without per-config detail fetches.
 
 ## User Management
 

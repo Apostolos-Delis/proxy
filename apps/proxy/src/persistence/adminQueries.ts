@@ -783,6 +783,7 @@ function routingConfigListSummary(
     activeVersionId: row.activeVersionId ?? null,
     activeVersion: activeVersion ? routingConfigVersionSummary(activeVersion, true) : null,
     routeMatrix: activeVersion ? routeMatrixSummary(activeVersion.config) : [],
+    systemPrompt: activeVersion?.config.systemPrompt ?? null,
     assignedApiKeyCount,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString()

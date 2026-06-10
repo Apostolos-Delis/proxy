@@ -388,6 +388,7 @@ export type RoutingConfigSummary = {
   activeVersionId: string | null;
   activeVersion: RoutingConfigVersionSummary | null;
   routeMatrix: RoutingConfigRouteMatrixRow[];
+  systemPrompt: string | null;
   assignedApiKeyCount: number;
   createdAt: string;
   updatedAt: string;

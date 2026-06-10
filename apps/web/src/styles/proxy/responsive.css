@@ -114,8 +114,9 @@
   .settings-toolbar,
   .settings-sections,
   .routing-create-grid,
-  .routing-detail-grid,
-  .routing-summary-grid,
+  .config-facts,
+  .config-card-grid,
+  .tier-editor-row,
   .billing-kpis,
   .usage-side-rail {
     grid-template-columns: 1fr;

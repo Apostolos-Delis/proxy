@@ -39,10 +39,11 @@ const baseConfig: RoutingConfigDocument = {
 };
 
 describe("draftFromConfig", () => {
-  it("extracts the system prompt and tier models", () => {
+  it("extracts the prompts and tier models", () => {
     const draft = draftFromConfig(baseConfig);
 
     expect(draft.systemPrompt).toBe("Follow proxy policy.");
+    expect(draft.classifierInstructions).toBe("Classify.");
     expect(draft.routes.fast).toEqual({ openaiModel: "gpt-fast", anthropicModel: "claude-fast" });
     expect(draft.routes.deep).toEqual({ openaiModel: "gpt-deep", anthropicModel: "claude-deep" });
   });
@@ -89,6 +90,14 @@ describe("applyDraft", () => {
     expect(next.routes.fast.openai?.model).toBe("gpt-fast");
   });
 
+  it("updates the classifier instructions while preserving other classifier settings", () => {
+    const draft = draftFromConfig(baseConfig);
+    draft.classifierInstructions = "  Route by area.  ";
+    const next = applyDraft(baseConfig, draft);
+
+    expect(next.classifier).toEqual({ ...baseConfig.classifier, instructions: "Route by area." });
+  });
+
   it("sets and clears the system prompt", () => {
     const draft = draftFromConfig(baseConfig);
     draft.systemPrompt = "  New policy.  ";
@@ -125,5 +134,12 @@ describe("draftError", () => {
     draft.routes.hard.anthropicModel = "";
 
     expect(draftError(draft)).toContain("hard");
+  });
+
+  it("rejects blank routing rules", () => {
+    const draft = draftFromConfig(baseConfig);
+    draft.classifierInstructions = "   ";
+
+    expect(draftError(draft)).toContain("Routing rules");
   });
 });

@@ -8,6 +8,7 @@ import { OverviewPage } from "./overviewPage";
 import { PromptDetailPage } from "./promptDetailPage";
 import { PromptsPage } from "./promptsPage";
 import { RequestsPage } from "./requestsPage";
+import { CreateRoutingConfigPage } from "./routing/createConfigPage";
 import { RoutingConfigDetailPage } from "./routingConfigDetailPage";
 import { RoutingConfigsPage } from "./routingConfigsPage";
 import { SessionDetailPage, SessionsPage } from "./sessionsPage";
@@ -102,6 +103,13 @@ const routingConfigsRoute = createRoute({
   component: RoutingConfigsPage
 });
 
+const routingConfigCreateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/routing-configs/new",
+  beforeLoad: requireAuth,
+  component: CreateRoutingConfigPage
+});
+
 const routingConfigDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/routing-configs/$configId",
@@ -143,6 +151,7 @@ const routeTree = rootRoute.addChildren([
   logDetailRoute,
   keysRoute,
   routingConfigsRoute,
+  routingConfigCreateRoute,
   routingConfigDetailRoute,
   usersRoute,
   billingRoute,
