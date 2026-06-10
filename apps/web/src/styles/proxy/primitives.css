@@ -85,10 +85,6 @@
 .chip.active { color: var(--fg); border-color: var(--accent); background: var(--accent-soft); }
 .chip svg { width: 13px; height: 13px; }
 
-.filter-menu {
-  position: relative;
-}
-
 .filter-popover {
   position: absolute;
   top: calc(100% + 8px);

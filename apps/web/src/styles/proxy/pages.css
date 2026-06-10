@@ -36,11 +36,6 @@
   margin-top: 18px;
 }
 
-.overview-range-row {
-  justify-content: flex-end;
-  margin: 8px 0 18px;
-}
-
 .overview-main-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.9fr);
@@ -66,57 +61,29 @@
   flex: none;
 }
 
-.impact-grid {
+.quality-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.impact-grid > button {
-  position: relative;
+.quality-grid > div {
   min-width: 0;
-  padding: 12px 20px;
-  border: 0;
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--fg);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background .13s var(--ease);
+  padding: 2px 22px;
+  border-left: 1px solid var(--border);
 }
 
-.impact-grid > button:first-child {
-  margin-left: -20px;
+.quality-grid > div:first-child {
+  padding-left: 0;
+  border-left: 0;
 }
 
-.impact-grid > button + button::before {
-  content: "";
-  position: absolute;
-  top: 14px;
-  bottom: 14px;
-  left: 0;
-  width: 1px;
-  background: var(--border);
-}
-
-.impact-grid > button:hover,
-.impact-grid > button:focus-visible,
-.impact-grid > button.active {
-  background: var(--glass-hover);
-  outline: none;
-}
-
-.impact-grid > button.active span {
-  color: var(--fg-muted);
-}
-
-.impact-grid span {
+.quality-grid span {
   display: block;
   color: var(--fg-faint);
   font-size: 12px;
 }
 
-.impact-grid strong {
+.quality-grid strong {
   display: block;
   margin-top: 9px;
   font-size: 24px;
@@ -126,12 +93,53 @@
   font-variant-numeric: tabular-nums;
 }
 
-.impact-grid em {
+.quality-grid em {
   display: block;
   margin-top: 6px;
   color: var(--fg-faint);
   font-size: 12px;
   font-style: normal;
+}
+
+.savings-meter {
+  margin-top: 16px;
+}
+
+.savings-empty {
+  display: grid;
+  gap: 5px;
+  margin: 18px 0 12px;
+}
+
+.savings-empty strong {
+  color: var(--fg-muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.savings-empty span {
+  color: var(--fg-faint);
+  font-size: 12.5px;
+}
+
+.card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color .13s var(--ease);
+}
+
+.card-link:hover {
+  color: var(--accent-2);
+}
+
+.card-link svg {
+  width: 13px;
+  height: 13px;
 }
 
 .usage-console-layout {

@@ -39,27 +39,6 @@
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.barlist-button {
-  width: 100%;
-  padding: 5px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background .13s var(--ease), border-color .13s var(--ease);
-}
-
-.barlist-button:hover,
-.barlist-button:focus-visible,
-.barlist-button.active {
-  background: var(--glass-hover);
-  border-color: var(--border);
-  outline: none;
-}
-
 .dashboard-inspector {
   margin-top: 22px;
 }

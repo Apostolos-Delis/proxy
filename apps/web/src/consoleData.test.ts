@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { RequestSummary } from "./api";
-import { periodDelta, seriesFromRequests } from "./consoleData";
+import type { RequestSummary, UsageGroup } from "./api";
+import { modelRowsFromUsage, periodDelta, seriesFromRequests } from "./consoleData";
 
 function request(createdAt: string, totalTokens: number): RequestSummary {
   return {
@@ -15,6 +15,30 @@ function request(createdAt: string, totalTokens: number): RequestSummary {
     createdAt
   };
 }
+
+function usageGroup(key: string, totalTokens: number): UsageGroup {
+  return {
+    key,
+    requestCount: 1,
+    failedRequests: 0,
+    retriedRequests: 0,
+    failureRate: 0,
+    retryRate: 0,
+    usage: { inputTokens: totalTokens, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0, totalTokens },
+    cost: { selected: 0, baseline: 0, savings: 0 }
+  };
+}
+
+describe("modelRowsFromUsage", () => {
+  it("sorts by tokens and drops zero-token rows", () => {
+    const rows = modelRowsFromUsage([
+      usageGroup("gpt-5.5", 56),
+      usageGroup("unknown", 0),
+      usageGroup("claude-sonnet-4-6", 132)
+    ]);
+    expect(rows.map((row) => row.label)).toEqual(["claude-sonnet-4-6", "gpt-5.5"]);
+  });
+});
 
 describe("seriesFromRequests", () => {
   it("buckets by day with one point per day in range", () => {

@@ -91,12 +91,15 @@ export function periodDelta(series: ChartPoint[]): number | undefined {
 }
 
 export function modelRowsFromUsage(rows: UsageGroup[]): ModelUsageRow[] {
-  return rows.map((row, index) => ({
-    label: row.key,
-    tokens: row.usage.totalTokens,
-    spend: row.cost.selected,
-    color: colors[index % colors.length]
-  }));
+  return rows
+    .filter((row) => row.usage.totalTokens > 0)
+    .sort((left, right) => right.usage.totalTokens - left.usage.totalTokens)
+    .map((row, index) => ({
+      label: row.key,
+      tokens: row.usage.totalTokens,
+      spend: row.cost.selected,
+      color: colors[index % colors.length]
+    }));
 }
 
 export function topUsersFromUsage(rows: UsageGroup[], usersById: Map<string, UserSummary>): UserUsageRow[] {

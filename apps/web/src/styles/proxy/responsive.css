@@ -122,17 +122,14 @@
     grid-template-columns: 1fr;
   }
 
-  .impact-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    row-gap: 4px;
+  .quality-grid {
+    grid-template-columns: 1fr;
+    row-gap: 16px;
   }
 
-  .impact-grid > button:nth-child(2n + 1) {
-    margin-left: -20px;
-  }
-
-  .impact-grid > button:nth-child(2n + 1)::before {
-    display: none;
+  .quality-grid > div {
+    padding: 0;
+    border-left: 0;
   }
 
   .inspector-grid {

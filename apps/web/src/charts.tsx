@@ -8,7 +8,6 @@ import {
   ComposedChart,
   Line,
   LineChart,
-  ReferenceDot,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -24,17 +23,6 @@ type Point = {
 
 type ChartDatum = Point & {
   index: number;
-};
-
-export type ChartSelection = {
-  point: Point;
-  index: number;
-};
-
-type InteractiveChartProps = {
-  selectedIndex?: number;
-  onSelect?: (selection: ChartSelection) => void;
-  valueFormatter?: (value: number) => string;
 };
 
 export function SpendBaselineChart({ data, baseline, height = 300, valueFormatter, tickFormatter, zeroNote }: {
@@ -133,22 +121,20 @@ export function Sparkline({ data, height = 54 }: { data: Point[] | number[]; wid
 export function AreaChart({
   data,
   height = 310,
-  selectedIndex,
-  onSelect,
   valueFormatter,
   tickFormatter
 }: {
   data: Point[];
   height?: number;
+  valueFormatter?: (value: number) => string;
   tickFormatter?: (value: number) => string;
-} & InteractiveChartProps) {
+}) {
   const rows = chartData(data);
   if (rows.length === 0) return <EmptyChart height={height} />;
-  const selectedPoint = selectedIndex === undefined ? undefined : rows[selectedIndex];
 
   return (
     <ChartFrame height={height} className="area-chart">
-      <RechartsAreaChart data={rows} margin={{ top: 16, right: 10, bottom: 8, left: 4 }} onClick={(event) => selectActive(event, onSelect)}>
+      <RechartsAreaChart data={rows} margin={{ top: 16, right: 10, bottom: 8, left: 4 }}>
         <defs>
           <linearGradient id="proxy-area-fill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.24} />
@@ -167,7 +153,6 @@ export function AreaChart({
         />
         <Tooltip cursor={{ stroke: "var(--accent-2)", strokeWidth: 1 }} content={<ChartTooltip valueFormatter={valueFormatter} />} />
         <Area dataKey="value" type="monotone" fill="url(#proxy-area-fill)" stroke="var(--accent)" strokeWidth={3} activeDot={{ r: 5 }} dot={false} />
-        {selectedPoint ? <ReferenceDot x={selectedPoint.label} y={selectedPoint.value} r={5} className="selected-area-dot" /> : null}
       </RechartsAreaChart>
     </ChartFrame>
   );
@@ -224,35 +209,6 @@ function miniData(data: Point[] | number[]): ChartDatum[] {
     if (typeof item === "number") return { label: `${index + 1}`, value: item, index };
     return { ...item, index };
   });
-}
-
-function selectDatum(datum: unknown, onSelect?: (selection: ChartSelection) => void) {
-  const row = isChartDatum(datum) ? datum : undefined;
-  if (!row) return;
-  onSelect?.({ point: { label: row.label, value: row.value }, index: row.index });
-}
-
-function selectActive(event: unknown, onSelect?: (selection: ChartSelection) => void) {
-  if (!isActiveChartEvent(event)) return;
-  selectDatum(event.activePayload[0]?.payload, onSelect);
-}
-
-function isChartDatum(value: unknown): value is ChartDatum {
-  return value !== null &&
-    typeof value === "object" &&
-    "label" in value &&
-    "value" in value &&
-    "index" in value &&
-    typeof (value as ChartDatum).label === "string" &&
-    typeof (value as ChartDatum).value === "number" &&
-    typeof (value as ChartDatum).index === "number";
-}
-
-function isActiveChartEvent(value: unknown): value is { activePayload: { payload: unknown }[] } {
-  return value !== null &&
-    typeof value === "object" &&
-    "activePayload" in value &&
-    Array.isArray((value as { activePayload?: unknown }).activePayload);
 }
 
 function formatChartValue(value: number, formatter?: (value: number) => string) {

@@ -139,6 +139,27 @@ export function DataTable({ children }: { children: ReactNode }) {
   return <table className="tbl">{children}</table>;
 }
 
+export function BarListRow({ label, value, width, avatar, color, mono = false }: {
+  label: string;
+  value: string;
+  width: number;
+  avatar?: ReactNode;
+  color?: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="barlist-row">
+      <div className="barlist-label">
+        {avatar}
+        {color ? <span className="model-dot" style={{ background: color }} /> : null}
+        <span className={mono ? "mono" : undefined}>{label}</span>
+      </div>
+      <div className="barlist-val">{value}</div>
+      <div className="barlist-track"><i style={{ width: `${width}%`, background: color }} /></div>
+    </div>
+  );
+}
+
 export function CodePill({ value, copy = false }: { value: string; copy?: boolean }) {
   return (
     <span className="code-pill">
