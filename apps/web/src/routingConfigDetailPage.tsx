@@ -17,6 +17,7 @@ import { ConfigApiKeysCard } from "./routing/keyAssignment";
 import { PromptEditors, RouteMatrixEditor } from "./routing/configEditorFields";
 import { ArchivePanel, VersionHistory } from "./routing/versionHistory";
 import { applyDraft, draftError, draftFromConfig, parseConfigJson } from "./routingConfigEditor";
+import { JsonEditor } from "./jsonView";
 import { GlassCard, PageState, PageTitle, StatusBadge } from "./ui";
 
 export function RoutingConfigDetailPage({ configId }: { configId: string }) {
@@ -221,12 +222,7 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
             <p className="prompt-editor-helper">
               The full config document — classifier, route tiers, limits, and session policy. Edits here cover settings the form does not expose and are validated server-side on save.
             </p>
-            <textarea
-              value={jsonText}
-              rows={26}
-              spellCheck={false}
-              onChange={(event) => setJsonText(event.target.value)}
-            />
+            <JsonEditor value={jsonText} onChange={setJsonText} />
           </div>
         )}
         {error ? <div className="action-error">{error}</div> : null}
