@@ -240,6 +240,7 @@ CREATE TABLE requests (
   user_id text REFERENCES users(id) ON DELETE SET NULL,
   session_id text REFERENCES agent_sessions(id) ON DELETE SET NULL,
   turn_id text REFERENCES turns(id) ON DELETE SET NULL,
+  api_key_id text REFERENCES api_keys(id) ON DELETE SET NULL,
   surface text NOT NULL,
   idempotency_key text NOT NULL,
   requested_model text NOT NULL,
@@ -264,6 +265,7 @@ CREATE INDEX requests_organization_created_idx ON requests (organization_id, cre
 CREATE INDEX requests_session_id_idx ON requests (session_id);
 CREATE INDEX requests_user_id_idx ON requests (organization_id, user_id);
 CREATE INDEX requests_routing_config_idx ON requests (organization_id, routing_config_id);
+CREATE INDEX requests_api_key_idx ON requests (organization_id, api_key_id);
 
 CREATE TABLE route_decisions (
   id text PRIMARY KEY,

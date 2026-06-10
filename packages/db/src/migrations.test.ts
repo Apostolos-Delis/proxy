@@ -55,7 +55,7 @@ describe("database migrations", () => {
       select column_name
       from information_schema.columns
       where table_name = 'requests'
-        and column_name in ('routing_config_id', 'routing_config_version_id', 'routing_config_version', 'routing_config_hash')
+        and column_name in ('api_key_id', 'routing_config_id', 'routing_config_version_id', 'routing_config_version', 'routing_config_hash')
       order by column_name
     `);
     const decisionRoutingColumns = await client.query<{ column_name: string }>(`
@@ -111,6 +111,7 @@ describe("database migrations", () => {
     expect(keyColumns.rows.map((row) => row.column_name)).toEqual(["routing_config_id"]);
     expect(organizationSettingsColumns.rows.map((row) => row.column_name)).toEqual(["default_routing_config_id"]);
     expect(requestRoutingColumns.rows.map((row) => row.column_name)).toEqual([
+      "api_key_id",
       "routing_config_hash",
       "routing_config_id",
       "routing_config_version",

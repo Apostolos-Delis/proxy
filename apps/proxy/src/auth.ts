@@ -50,7 +50,8 @@ export function contextForIdentity(context: RouteContext, identity: RequestIdent
     ...context,
     organizationId: identity.organizationId,
     userId: identity.userId ?? (useHarnessIdentity ? context.userId : undefined),
-    teamId: useHarnessIdentity ? context.teamId : undefined
+    teamId: useHarnessIdentity ? context.teamId : undefined,
+    apiKeyId: identity.apiKeyId
   };
 }
 
