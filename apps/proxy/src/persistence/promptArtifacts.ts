@@ -54,6 +54,34 @@ export class PromptArtifactStore {
     return rows;
   }
 
+  async captureResponse(input: {
+    organizationId: string;
+    requestId: string;
+    surface: Surface;
+    text: string;
+    truncated?: boolean;
+  }) {
+    if (!input.text.trim()) return [];
+    const settings = await this.settings(input.organizationId);
+    if (settings.promptCaptureMode === "none") return [];
+
+    const row = artifactRow(
+      input,
+      {
+        kind: "assistant_response",
+        content: input.text,
+        sourceRole: "assistant",
+        metadata: input.truncated ? { truncated: true } : undefined
+      },
+      settings,
+      new Date()
+    );
+    await this.db.transaction(async (tx) => {
+      await tx.insert(promptArtifacts).values([row]);
+    });
+    return [row];
+  }
+
   async configure(input: {
     organizationId: string;
     promptCaptureMode: PromptCaptureMode;
@@ -151,8 +179,39 @@ export function extractPromptArtifacts(surface: Surface, body: unknown): Extract
   return extractAnthropicArtifacts(body);
 }
 
+export function extractResponseText(surface: Surface, body: unknown): string {
+  if (!isRecord(body)) return "";
+  if (surface === "openai-responses") return openAIOutputText(body.output);
+  return anthropicOutputText(body.content);
+}
+
+function openAIOutputText(output: unknown) {
+  if (!Array.isArray(output)) return "";
+  const parts: string[] = [];
+  for (const item of output) {
+    if (!isRecord(item) || item.type !== "message" || !Array.isArray(item.content)) continue;
+    for (const block of item.content) {
+      if (isRecord(block) && block.type === "output_text" && typeof block.text === "string") {
+        parts.push(block.text);
+      }
+    }
+  }
+  return parts.join("\n");
+}
+
+function anthropicOutputText(content: unknown) {
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const block of content) {
+    if (isRecord(block) && block.type === "text" && typeof block.text === "string") {
+      parts.push(block.text);
+    }
+  }
+  return parts.join("\n");
+}
+
 function artifactRow(
-  input: PromptArtifactCaptureInput,
+  input: Omit<PromptArtifactCaptureInput, "body">,
   artifact: ExtractedPromptArtifact,
   settings: PromptCaptureSettings,
   now: Date

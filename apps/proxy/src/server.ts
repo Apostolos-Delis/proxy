@@ -14,7 +14,8 @@ import {
   contextForIdentity,
   ProxyAuthService,
   requestReceivedPayload,
-  scopedIdempotencyKey
+  scopedIdempotencyKey,
+  type RequestIdentity
 } from "./auth.js";
 import { loadConfig, type AppConfig } from "./config.js";
 import { buildModelCatalog } from "./catalog.js";
@@ -36,6 +37,7 @@ import {
   type ProxySettings
 } from "./settings.js";
 import { registerUserAdminRoutes } from "./userAdminRoutes.js";
+import type { Surface } from "./types.js";
 import { createId, headerValue, idempotencyFrom, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
 
@@ -69,6 +71,37 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   const classifier = new LlmClassifier(config);
   const routing = new RoutingService(config, classifier, events, modelCatalog, budget, sessions);
   const proxy = new ProviderProxy(config, events, attempts, requestStates);
+  const assistantResponseCapture = (input: {
+    identity: RequestIdentity;
+    requestId: string;
+    idempotencyKey: string;
+    sessionId?: string;
+    surface: Surface;
+  }) => {
+    if (!persistence) return undefined;
+    return async (text: string, truncated: boolean) => {
+      try {
+        const artifacts = await persistence.promptArtifacts.captureResponse({
+          organizationId: input.identity.organizationId,
+          requestId: input.requestId,
+          surface: input.surface,
+          text,
+          truncated
+        });
+        await appendPromptCaptureEvent({
+          events,
+          identity: input.identity,
+          requestId: input.requestId,
+          idempotencyKey: input.idempotencyKey,
+          sessionId: input.sessionId,
+          surface: input.surface,
+          artifacts
+        });
+      } catch (error) {
+        app.log.warn({ err: error, requestId: input.requestId }, "assistant response capture failed");
+      }
+    };
+  };
   const wsProxy = new WebSocketRoutingProxy(
     config,
     auth,
@@ -531,7 +564,14 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         body: rewriteSurfaceRequest(request.body, decision),
         headers: lowerHeaders(request.headers),
         decision,
-        reply
+        reply,
+        onAssistantText: assistantResponseCapture({
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          surface: openAIResponsesSurface.surface
+        })
       });
     } catch (error) {
       await requestStates.finish(idempotencyKey, "failed", {
@@ -605,7 +645,14 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         body: rewriteSurfaceRequest(request.body, decision),
         headers: lowerHeaders(request.headers),
         decision,
-        reply
+        reply,
+        onAssistantText: assistantResponseCapture({
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          surface: anthropicMessagesSurface.surface
+        })
       });
     } catch (error) {
       await requestStates.finish(idempotencyKey, "failed", {

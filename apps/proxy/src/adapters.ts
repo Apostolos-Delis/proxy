@@ -22,6 +22,7 @@ export type ProviderForwardInput = {
   decision: RouteDecision;
   reply: FastifyReply;
   path?: string;
+  onAssistantText?: (text: string, truncated: boolean) => Promise<void>;
 };
 
 export type ProviderAdapter = {

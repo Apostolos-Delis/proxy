@@ -28,6 +28,7 @@ export async function startOpenAIMock(
     compressedJsonProvider?: boolean;
     slowProvider?: boolean;
     wsTerminalEvent?: "response.completed" | "response.incomplete";
+    outputText?: string;
   } = {}
 ): Promise<MockServer> {
   const records: RecordedRequest[] = [];
@@ -100,6 +101,11 @@ export async function startOpenAIMock(
       `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_mock" } })}\n\n`
     );
     if (options.slowProvider) return;
+    if (options.outputText) {
+      response.write(
+        `data: ${JSON.stringify({ type: "response.output_text.delta", delta: options.outputText })}\n\n`
+      );
+    }
     response.write(
       `data: ${JSON.stringify({
         type: "response.completed",
@@ -168,7 +174,7 @@ function isClassifierRequest(body: Record<string, unknown>) {
     );
 }
 
-export async function startAnthropicMock(): Promise<MockServer> {
+export async function startAnthropicMock(options: { outputText?: string } = {}): Promise<MockServer> {
   const records: RecordedRequest[] = [];
   const server = createServer(async (request, response) => {
     const body = await readJson(request);
@@ -186,6 +192,15 @@ export async function startAnthropicMock(): Promise<MockServer> {
         message: { id: "msg_mock", usage: { input_tokens: 120, output_tokens: 0 } }
       })}\n\n`
     );
+    if (options.outputText) {
+      response.write(
+        `data: ${JSON.stringify({
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: options.outputText }
+        })}\n\n`
+      );
+    }
     response.write(
       `data: ${JSON.stringify({
         type: "message_delta",

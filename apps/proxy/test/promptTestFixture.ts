@@ -59,7 +59,11 @@ export async function captureFixture(
   organizationId: string,
   promptCaptureMode: PromptCaptureMode = "raw_text",
   failCapture = false,
-  options: { envOverrides?: NodeJS.ProcessEnv; openAIOptions?: OpenAIOptions } = {}
+  options: {
+    envOverrides?: NodeJS.ProcessEnv;
+    openAIOptions?: OpenAIOptions;
+    anthropicOptions?: Parameters<typeof startAnthropicMock>[0];
+  } = {}
 ) {
   const client = new PGlite();
   const migration = await readFile(
@@ -69,7 +73,7 @@ export async function captureFixture(
   await client.exec(migration);
   const db = createPgliteDatabase(client);
   const openai = await startOpenAIMock(options.openAIOptions);
-  const anthropic = await startAnthropicMock();
+  const anthropic = await startAnthropicMock(options.anthropicOptions);
   const env = testEnv(options.envOverrides);
   const config = loadConfig({
     ...env,

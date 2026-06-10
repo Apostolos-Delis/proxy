@@ -8,7 +8,11 @@ export type StreamObservation = {
   upstreamResponseId?: string;
   error?: string;
   observerError?: string;
+  outputText?: string;
+  outputTextTruncated?: boolean;
 };
+
+export const MAX_OUTPUT_TEXT_CHARS = 200_000;
 
 export class SseObserver {
   private readonly decoder = new TextDecoder();
@@ -92,7 +96,32 @@ export class SseObserver {
 
     const error = findError(event);
     if (error) this.observation.error = error;
+
+    const textDelta = outputTextDelta(type, event);
+    if (textDelta) this.appendOutputText(textDelta);
   }
+
+  private appendOutputText(delta: string) {
+    if (this.observation.outputTextTruncated) return;
+    const current = this.observation.outputText ?? "";
+    const remaining = MAX_OUTPUT_TEXT_CHARS - current.length;
+    if (remaining <= 0 || delta.length > remaining) {
+      this.observation.outputText = current + delta.slice(0, Math.max(0, remaining));
+      this.observation.outputTextTruncated = true;
+      return;
+    }
+    this.observation.outputText = current + delta;
+  }
+}
+
+function outputTextDelta(type: string | undefined, event: Record<string, unknown>) {
+  if (type === "response.output_text.delta" && typeof event.delta === "string") {
+    return event.delta;
+  }
+  if (type === "content_block_delta" && isRecord(event.delta) && event.delta.type === "text_delta" && typeof event.delta.text === "string") {
+    return event.delta.text;
+  }
+  return undefined;
 }
 
 function mergeUsage(current: JsonValue | undefined, next: JsonValue): JsonValue {

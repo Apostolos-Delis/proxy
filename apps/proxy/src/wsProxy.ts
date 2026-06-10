@@ -14,7 +14,7 @@ import {
 } from "./auth.js";
 import type { AppConfig } from "./config.js";
 import { jsonPayload, type EventService, type ProviderAttemptStore, type RequestStateStoreLike } from "./events.js";
-import type { PromptArtifactStore } from "./persistence/promptArtifacts.js";
+import { extractResponseText, type PromptArtifactStore } from "./persistence/promptArtifacts.js";
 import { routingConfigSnapshot, type RoutingConfigResolver } from "./persistence/routingConfig.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import type { RoutingService } from "./router.js";
@@ -26,6 +26,8 @@ type ActiveRequest = {
   idempotencyKey: string;
   providerAttemptId: string;
   decision: RouteDecision;
+  identity: RequestIdentity;
+  sessionId?: string;
 };
 
 export class WebSocketRoutingProxy {
@@ -260,7 +262,9 @@ export class WebSocketRoutingProxy {
         requestId,
         idempotencyKey,
         providerAttemptId: attempt.id,
-        decision
+        decision,
+        identity,
+        sessionId: context.sessionId
       }
     };
   }
@@ -280,6 +284,7 @@ export class WebSocketRoutingProxy {
         upstreamResponseId: typeof response.id === "string" ? response.id : undefined,
         upstreamResponseStatus: typeof response.status === "string" ? response.status : undefined
       });
+      await this.captureAssistantResponse(activeRequest, response);
       return true;
     }
     if (event.type === "response.failed" || event.type === "error") {
@@ -289,6 +294,31 @@ export class WebSocketRoutingProxy {
       return true;
     }
     return false;
+  }
+
+  private async captureAssistantResponse(activeRequest: ActiveRequest, response: Record<string, unknown>) {
+    if (!this.promptArtifacts) return;
+    try {
+      const text = extractResponseText(openAIResponsesSurface.surface, response);
+      if (!text) return;
+      const artifacts = await this.promptArtifacts.captureResponse({
+        organizationId: activeRequest.identity.organizationId,
+        requestId: activeRequest.requestId,
+        surface: openAIResponsesSurface.surface,
+        text
+      });
+      await appendPromptCaptureEvent({
+        events: this.events,
+        identity: activeRequest.identity,
+        requestId: activeRequest.requestId,
+        idempotencyKey: activeRequest.idempotencyKey,
+        sessionId: activeRequest.sessionId,
+        surface: openAIResponsesSurface.surface,
+        artifacts
+      });
+    } catch {
+      // Response capture must never break the websocket bridge.
+    }
   }
 
   private async finishActiveRequest(
