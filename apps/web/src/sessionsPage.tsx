@@ -1,22 +1,28 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { MessagesSquare } from "lucide-react";
+import { Boxes, Download, MessagesSquare, Shield, Users } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { displayUser } from "./consoleData";
+import { downloadJson } from "./dashboard";
 import { compactCounts, compactId, dominantKey, formatCompact, formatDateTime, formatMoney } from "./format";
 import { graphql } from "./gql";
-import type { SessionDetailViewQuery, SessionsListQuery } from "./gql/graphql";
+import type { SessionDetailViewQuery, SessionsPageQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
-import { CodePill, DataTable, GlassCard, PageState, PageTitle, RouteBadge, StatusBadge } from "./ui";
+import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
+import { GlassCard, PageState, PageTitle, RouteBadge, StatusBadge, UserCell } from "./ui";
 
-const SessionsListDocument = graphql(`
-  query SessionsList {
+const SessionsPageDocument = graphql(`
+  query SessionsPage {
     sessions {
       sessionId
       externalSessionId
       userId
       surface
       currentRoute
+      requestCount
+      startedAt
+      recentActivity
       modelMix
       routeMix
       terminalStatusSummary
@@ -26,6 +32,11 @@ const SessionsListDocument = graphql(`
       cost {
         selected
       }
+    }
+    users {
+      userId
+      name
+      email
     }
   }
 `);
@@ -75,10 +86,16 @@ const SessionDetailViewDocument = graphql(`
   }
 `);
 
-type SessionSummary = SessionsListQuery["sessions"][number];
+type SessionSummary = SessionsPageQuery["sessions"][number];
 type SessionDetail = NonNullable<SessionDetailViewQuery["session"]>;
 type SessionRequest = SessionDetail["requests"][number];
 type SessionArtifact = SessionDetail["promptArtifacts"][number];
+
+type SessionLogRow = {
+  session: SessionSummary;
+  userName: string;
+  userDetail?: string;
+};
 
 type ConversationTurn = {
   request: SessionRequest;
@@ -93,24 +110,164 @@ function countRecord(value: unknown): Record<string, number> {
 }
 
 export function SessionsPage() {
-  const query = useQuery({ queryKey: ["sessions"], queryFn: () => gqlFetch(SessionsListDocument) });
-  const data = query.data?.sessions ?? [];
+  const navigate = useNavigate();
+  const query = useQuery({ queryKey: ["sessions-page"], queryFn: () => gqlFetch(SessionsPageDocument) });
 
-  if (query.isLoading) return <PageState title="Sessions" label="Loading session index" />;
+  if (query.isLoading) return <PageState title="Sessions" label="Loading sessions" />;
   if (query.error) return <PageState title="Sessions" label={query.error.message} />;
 
+  const rows = sessionRows(query.data?.sessions ?? [], query.data?.users ?? []);
+  const openSession = (row: SessionLogRow) =>
+    void navigate({ to: "/sessions/$sessionId", params: { sessionId: row.session.sessionId } });
   return (
     <div className="page page-enter">
-      <PageTitle title="Sessions" subtitle="Agent conversations threaded across requests, routes, and spend." />
-      <GlassCard className="table-wrap">
-        <DataTable>
-          <thead><tr><th>Session</th><th>User</th><th>Surface</th><th>Route</th><th>Models</th><th>Status</th><th>Tokens</th><th>Cost</th></tr></thead>
-          <tbody>{data.map((session) => <SessionRow key={session.sessionId} session={session} />)}</tbody>
-        </DataTable>
-        {data.length === 0 ? <div className="empty">No sessions observed yet.</div> : null}
-      </GlassCard>
+      <ConsoleTable
+        className="logs-table-card"
+        data={rows}
+        columns={sessionColumns}
+        search={{ placeholder: "Search sessions, users, models...", getValue: sessionSearchValue }}
+        filters={sessionFilters(rows)}
+        advancedFields={sessionAdvancedFields}
+        emptyLabel="No sessions match these filters."
+        actions={({ visibleData }) => (
+          <button className="btn" type="button" onClick={() => downloadJson("proxy-sessions.json", visibleData)}>
+            <Download />Export
+          </button>
+        )}
+        getRowProps={(row) => ({
+          className: "selectable-row",
+          tabIndex: 0,
+          role: "link",
+          onClick: () => openSession(row),
+          onKeyDown: (event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            openSession(row);
+          }
+        })}
+      />
     </div>
   );
+}
+
+const sessionColumns: ConsoleTableColumn<SessionLogRow>[] = [
+  { id: "session", header: "Session", size: 280, accessorFn: (row) => row.session.externalSessionId ?? row.session.sessionId, cell: ({ row }) => <SessionCell row={row.original} /> },
+  { id: "user", header: "User", size: 200, accessorFn: (row) => row.userName, cell: ({ row }) => <UserCell name={row.original.userName} detail={row.original.userDetail} size={24} /> },
+  { id: "models", header: "Models", size: 220, accessorFn: (row) => sessionModels(row.session).join(" "), cell: ({ row }) => <ModelsCell session={row.original.session} /> },
+  { id: "route", header: "Route", size: 110, accessorFn: (row) => sessionRoute(row.session), cell: ({ row }) => <RouteBadge route={sessionRoute(row.original.session)} /> },
+  { id: "status", header: "Status", size: 140, accessorFn: (row) => sessionStatus(row.session), cell: ({ row }) => <SessionStatusCell session={row.original.session} /> },
+  { id: "tokens", header: "Tokens", size: 96, accessorFn: (row) => row.session.usage.totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(row.original.session.usage.totalTokens)}</span> },
+  { id: "cost", header: "Cost", size: 96, accessorFn: (row) => row.session.cost.selected, cell: ({ row }) => <span className="mono">{formatMoney(row.original.session.cost.selected)}</span> },
+  { id: "activity", header: "Last activity", size: 150, accessorFn: (row) => activityTime(row.session), cell: ({ row }) => <span className="mono faint">{formatDateTime(lastActivity(row.original.session))}</span> }
+];
+
+const sessionAdvancedFields: ConsoleTableAdvancedField<SessionLogRow>[] = [
+  { id: "sessionId", label: "Session ID", getValue: (row) => [row.session.sessionId, row.session.externalSessionId ?? ""] },
+  { id: "user", label: "User", getValue: (row) => [row.userName, row.session.userId ?? ""] },
+  { id: "surface", label: "Surface", getValue: (row) => row.session.surface },
+  { id: "route", label: "Route", getValue: (row) => Object.keys(countRecord(row.session.routeMix)) },
+  { id: "model", label: "Model", getValue: (row) => sessionModels(row.session) },
+  { id: "status", label: "Status", getValue: (row) => sessionStatuses(row.session) },
+  { id: "requests", label: "Requests", getValue: (row) => row.session.requestCount }
+];
+
+function SessionCell({ row }: { row: SessionLogRow }) {
+  const session = row.session;
+  return (
+    <div className="prompt-cell">
+      <Link to="/sessions/$sessionId" params={{ sessionId: session.sessionId }} className="table-link mono">
+        {compactId(session.externalSessionId ?? session.sessionId)}
+      </Link>
+      <div className="mono faint">{requestCountLabel(session.requestCount)} · {session.surface}</div>
+    </div>
+  );
+}
+
+function ModelsCell({ session }: { session: SessionSummary }) {
+  const models = sortedCounts(countRecord(session.modelMix));
+  if (models.length === 0) return <span className="faint">—</span>;
+  const [primary, ...rest] = models;
+  return (
+    <>
+      <span className="row gap-8"><span className="model-dot" /><span className="mono">{primary[0]}</span></span>
+      {rest.length > 0 ? <div className="mono faint">+{rest.length} more</div> : null}
+    </>
+  );
+}
+
+function SessionStatusCell({ session }: { session: SessionSummary }) {
+  const statuses = sortedCounts(countRecord(session.terminalStatusSummary));
+  const rest = statuses.slice(1);
+  return (
+    <>
+      <StatusBadge status={statuses[0]?.[0] ?? "unknown"} />
+      {rest.length > 0 ? <div className="mono faint">{rest.map(([status, count]) => `${count} ${status}`).join(" · ")}</div> : null}
+    </>
+  );
+}
+
+function sessionFilters(rows: SessionLogRow[]): ConsoleTableFilter<SessionLogRow>[] {
+  return [
+    { id: "user", label: "User", allLabel: "All users", icon: <Users />, options: uniqueOptionItems(rows.map((row) => ({ value: row.session.userId ?? "unknown", label: row.userName }))), getValue: (row) => row.session.userId ?? "unknown" },
+    { id: "model", label: "Model", allLabel: "All models", icon: <Boxes />, options: optionItems(rows.flatMap((row) => sessionModels(row.session))), getValue: (row) => sessionModels(row.session) },
+    { id: "status", label: "Status", allLabel: "All statuses", icon: <Shield />, options: optionItems(rows.flatMap((row) => sessionStatuses(row.session))), getValue: (row) => sessionStatuses(row.session) }
+  ];
+}
+
+function sessionSearchValue(row: SessionLogRow) {
+  const session = row.session;
+  return [
+    session.sessionId,
+    session.externalSessionId,
+    row.userName,
+    session.userId,
+    session.surface,
+    sessionRoute(session),
+    ...sessionModels(session),
+    ...sessionStatuses(session)
+  ].filter((value): value is string => Boolean(value));
+}
+
+function sessionRows(sessions: SessionSummary[], users: SessionsPageQuery["users"]): SessionLogRow[] {
+  const usersById = new Map(users.map((user) => [user.userId, user]));
+  return sessions.map((session) => {
+    const user = session.userId ? usersById.get(session.userId) : undefined;
+    const userName = user ? displayUser(user) : session.userId ?? "unknown";
+    const email = user?.email;
+    return { session, userName, userDetail: email && email !== userName ? email : undefined };
+  });
+}
+
+function sortedCounts(counts: Record<string, number>) {
+  return Object.entries(counts).sort((left, right) => right[1] - left[1]);
+}
+
+function sessionModels(session: SessionSummary) {
+  return Object.keys(countRecord(session.modelMix));
+}
+
+function sessionStatuses(session: SessionSummary) {
+  return Object.keys(countRecord(session.terminalStatusSummary));
+}
+
+function sessionRoute(session: SessionSummary) {
+  return session.currentRoute ?? dominantKey(countRecord(session.routeMix));
+}
+
+function sessionStatus(session: SessionSummary) {
+  return dominantKey(countRecord(session.terminalStatusSummary));
+}
+
+function lastActivity(session: SessionSummary) {
+  return session.recentActivity ?? session.startedAt;
+}
+
+function activityTime(session: SessionSummary) {
+  return new Date(lastActivity(session)).getTime();
+}
+
+function requestCountLabel(count: number) {
+  return `${formatCompact(count)} ${count === 1 ? "request" : "requests"}`;
 }
 
 export function SessionDetailPage({ sessionId }: { sessionId: string }) {
@@ -146,25 +303,6 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }) {
         <SessionRail session={session} userName={sessionUserName(detail)} />
       </div>
     </div>
-  );
-}
-
-function SessionRow({ session }: { session: SessionSummary }) {
-  return (
-    <tr>
-      <td>
-        <Link to="/sessions/$sessionId" params={{ sessionId: session.sessionId }} className="table-link">
-          {compactId(session.externalSessionId ?? session.sessionId)}
-        </Link>
-      </td>
-      <td><CodePill value={session.userId ?? "unknown"} /></td>
-      <td>{session.surface}</td>
-      <td><RouteBadge route={session.currentRoute ?? dominantKey(countRecord(session.routeMix))} /></td>
-      <td>{compactCounts(countRecord(session.modelMix))}</td>
-      <td><StatusBadge status={dominantKey(countRecord(session.terminalStatusSummary))} /></td>
-      <td className="mono">{formatCompact(session.usage.totalTokens)}</td>
-      <td className="mono">{formatMoney(session.cost.selected)}</td>
-    </tr>
   );
 }
 

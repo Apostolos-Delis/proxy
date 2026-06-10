@@ -1,4 +1,16 @@
-import type { ConsoleTableAdvancedField, ConsoleTableAdvancedRule, ConsoleTableFilter, ConsoleTableSearch } from "./types";
+import type { ConsoleTableAdvancedField, ConsoleTableAdvancedRule, ConsoleTableFilter, ConsoleTableFilterOption, ConsoleTableSearch } from "./types";
+
+export function optionItems(values: string[]) {
+  return uniqueOptionItems(values.map((value) => ({ value, label: value })));
+}
+
+export function uniqueOptionItems(values: ConsoleTableFilterOption[]) {
+  const options = new Map<string, string>();
+  values.forEach((item) => {
+    if (!options.has(item.value)) options.set(item.value, item.label);
+  });
+  return [...options].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+}
 
 export function applyConsoleTableFilters<TData>({
   data,
