@@ -127,7 +127,22 @@ wire_api = "responses"
 supports_websockets = true
 ```
 
-Claude Code:
+Claude Code, in `~/.claude/settings.json`:
+
+```json
+{
+  "model": "claude-router-auto",
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8787",
+    "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"
+  },
+  "apiKeyHelper": "echo \"$PROMPT_PROXY_TOKEN\""
+}
+```
+
+Then run `claude` with no extra flags. `env` values are literal strings (no shell expansion), so the token goes through `apiKeyHelper`, a shell command whose output is sent as both `X-Api-Key` and `Authorization: Bearer`. These settings must live in user-level or managed settings: Claude Code filters `ANTHROPIC_BASE_URL` out of project-scoped settings to prevent traffic redirection.
+
+For a one-off session without touching settings:
 
 ```shell
 ANTHROPIC_BASE_URL=http://127.0.0.1:8787 \
