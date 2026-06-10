@@ -1,0 +1,161 @@
+name: AWS Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment.
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - prod
+      image_tag:
+        description: Optional immutable image tag. Defaults to the commit SHA.
+        required: false
+        type: string
+      admin_allowed_cidrs:
+        description: Comma-separated IPv4 or IPv6 CIDRs allowed to access /api/* and /admin/*.
+        required: false
+        type: string
+      seed:
+        description: Run the seed task after migrations.
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      AWS_REGION: us-east-1
+      PROMPT_PROXY_DEPLOY_ENV: ${{ inputs.environment }}
+      IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+      ADMIN_ALLOWED_CIDRS: ${{ inputs.admin_allowed_cidrs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.27.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: arn:aws:iam::459063349068:role/prompt-proxy-${{ inputs.environment }}-github-actions-deploy
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build:web:aws
+      - uses: docker/setup-buildx-action@v3
+      - name: Resolve ECR repository
+        id: ecr
+        run: |
+          repo_uri="$(aws ecr describe-repositories \
+            --repository-names "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-proxy" \
+            --query 'repositories[0].repositoryUri' \
+            --output text)"
+          echo "repo_uri=${repo_uri}" >> "${GITHUB_OUTPUT}"
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Check proxy image tag
+        id: proxy-image
+        run: |
+          if aws ecr describe-images \
+            --repository-name "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-proxy" \
+            --image-ids "imageTag=${IMAGE_TAG}" >/dev/null 2>&1; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Build and push proxy image
+        if: ${{ steps.proxy-image.outputs.exists != 'true' }}
+        run: |
+          docker buildx build \
+            --platform linux/arm64 \
+            --tag "${{ steps.ecr.outputs.repo_uri }}:${IMAGE_TAG}" \
+            --push \
+            .
+      - name: Deploy base infrastructure
+        run: |
+          pnpm --filter @prompt-proxy/infra-cdk cdk deploy \
+            --require-approval never \
+            -c "runtimeImageTag=${IMAGE_TAG}" \
+            -c "${PROMPT_PROXY_DEPLOY_ENV}AdminAllowedCidrs=${ADMIN_ALLOWED_CIDRS}" \
+            "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-foundation" \
+            "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-network" \
+            "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-database" \
+            "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-runtime-secrets" \
+            "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-operations" \
+            "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-web"
+      - run: pnpm ops:migrate:aws
+      - name: Seed database
+        if: ${{ inputs.seed }}
+        run: pnpm ops:seed:aws
+      - name: Deploy service and edge
+        run: |
+          pnpm --filter @prompt-proxy/infra-cdk cdk deploy \
+            --require-approval never \
+            -c "runtimeImageTag=${IMAGE_TAG}" \
+            -c "${PROMPT_PROXY_DEPLOY_ENV}AdminAllowedCidrs=${ADMIN_ALLOWED_CIDRS}" \
+            "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-service" \
+            "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-edge"
+      - name: Capture runtime outputs and secrets
+        run: |
+          stack_output() {
+            aws cloudformation describe-stacks \
+              --stack-name "$1" \
+              --query "Stacks[0].Outputs[?OutputKey=='$2'].OutputValue" \
+              --output text
+          }
+
+          web_bucket="$(stack_output "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-web" WebAssetsBucketName)"
+          distribution_id="$(stack_output "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-edge" CloudFrontDistributionId)"
+          distribution_domain="$(stack_output "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-edge" CloudFrontDomainName)"
+          cluster_name="$(stack_output "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-service" ClusterName)"
+          service_name="$(stack_output "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-service" ProxyServiceName)"
+          proxy_token="$(aws secretsmanager get-secret-value \
+            --secret-id "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-proxy-token" \
+            --query SecretString \
+            --output text)"
+          admin_credentials="$(aws secretsmanager get-secret-value \
+            --secret-id "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-admin-credentials" \
+            --query SecretString \
+            --output text)"
+          admin_email="$(node -e 'const value = JSON.parse(process.argv[1]); process.stdout.write(value.email)' "${admin_credentials}")"
+          admin_password="$(node -e 'const value = JSON.parse(process.argv[1]); process.stdout.write(value.password)' "${admin_credentials}")"
+
+          echo "::add-mask::${proxy_token}"
+          echo "::add-mask::${admin_password}"
+          {
+            echo "PROMPT_PROXY_WEB_BUCKET=${web_bucket}"
+            echo "PROMPT_PROXY_DEPLOYED_BASE_URL=https://${distribution_domain}"
+            echo "PROMPT_PROXY_DEPLOYED_API_KEY=${proxy_token}"
+            echo "PROMPT_PROXY_DEPLOYED_ORGANIZATION_ID=prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}"
+            echo "PROMPT_PROXY_DEPLOYED_ADMIN_EMAIL=${admin_email}"
+            echo "PROMPT_PROXY_DEPLOYED_ADMIN_PASSWORD=${admin_password}"
+            echo "PROMPT_PROXY_CLOUDFRONT_DISTRIBUTION_ID=${distribution_id}"
+            echo "PROMPT_PROXY_ECS_CLUSTER=${cluster_name}"
+            echo "PROMPT_PROXY_ECS_SERVICE=${service_name}"
+          } >> "${GITHUB_ENV}"
+      - run: pnpm sync:web:aws
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${PROMPT_PROXY_CLOUDFRONT_DISTRIBUTION_ID}" \
+            --paths "/*"
+      - name: Wait for proxy service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster "${PROMPT_PROXY_ECS_CLUSTER}" \
+            --services "${PROMPT_PROXY_ECS_SERVICE}"
+      - run: pnpm smoke:deployed
+        env:
+          PROMPT_PROXY_DEPLOYED_SKIP_ADMIN: "true"

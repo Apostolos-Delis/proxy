@@ -83,12 +83,12 @@ describe("routing config admin APIs", () => {
           openaiModel: "gpt-5.4-mini",
           openaiEffort: "low",
           anthropicModel: "claude-haiku-4-5",
-          anthropicEffort: "low"
+          anthropicEffort: null
         }),
         expect.objectContaining({
           route: "deep",
           openaiEffort: "xhigh",
-          anthropicEffort: "xhigh"
+          anthropicEffort: null
         })
       ])
     }));

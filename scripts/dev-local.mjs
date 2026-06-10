@@ -233,6 +233,9 @@ process.on("unhandledRejection", (error) => {
 async function main() {
   await ensurePostgres();
 
+  log("building runtime packages");
+  await runPnpm("build:runtime", ["build:runtime"]);
+
   log("applying migrations");
   await runPnpm("db:migrate", ["db:migrate"]);
 

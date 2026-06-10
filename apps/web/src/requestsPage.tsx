@@ -141,7 +141,7 @@ function terminalStatus(row: PromptLogRow) {
 }
 
 function optionItems(values: string[]) {
-  return uniqueOptions(values).map((value) => ({ value, label: value }));
+  return uniqueOptionItems(values.map((value) => ({ value, label: value })));
 }
 
 function uniqueOptionItems(values: { value: string; label: string }[]) {

@@ -96,8 +96,6 @@ function rewriteOpenAIResponsesRequest(
   }
   if (settings.openai.maxOutputTokens !== undefined) {
     request.max_output_tokens = settings.openai.maxOutputTokens;
-  } else {
-    delete request.max_output_tokens;
   }
   return request;
 }
@@ -126,8 +124,6 @@ function rewriteAnthropicMessagesRequest(
   }
   if (settings.anthropic.maxTokens !== undefined) {
     request.max_tokens = settings.anthropic.maxTokens;
-  } else {
-    delete request.max_tokens;
   }
   return request;
 }

@@ -1,0 +1,43 @@
+import { App } from "aws-cdk-lib";
+import { Template } from "aws-cdk-lib/assertions";
+import { describe, expect, it } from "vitest";
+
+import { environments } from "../config/environments";
+import { stackName } from "./config";
+import { PromptProxyFoundationStack } from "./foundation-stack";
+
+const config = environments[0];
+
+describe("PromptProxyFoundationStack", () => {
+  it("allows the deploy workflow to inspect immutable image tags", () => {
+    const template = foundationTemplate();
+
+    const policies = template.findResources("AWS::IAM::Policy");
+    const policyDocuments = Object.values(policies).map((policy) => policy.Properties.PolicyDocument);
+
+    expect(policyDocuments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          Statement: expect.arrayContaining([
+            expect.objectContaining({
+              Action: expect.arrayContaining(["ecr:DescribeImages", "ecr:DescribeRepositories"]),
+              Effect: "Allow"
+            })
+          ])
+        })
+      ])
+    );
+  });
+});
+
+function foundationTemplate() {
+  const app = new App();
+  const stack = new PromptProxyFoundationStack(app, stackName(config, "foundation-test"), {
+    config,
+    env: {
+      account: config.awsAccountId,
+      region: config.region
+    }
+  });
+  return Template.fromStack(stack);
+}

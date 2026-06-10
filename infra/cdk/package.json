@@ -1,20 +1,21 @@
 {
-  "name": "@prompt-proxy/schema",
+  "name": "@prompt-proxy/infra-cdk",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": {
-    ".": "./dist/src/index.js"
-  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "cdk": "cdk",
+    "synth": "cdk synth --all",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "zod": "^4.1.13"
+    "aws-cdk-lib": "2.232.0",
+    "constructs": "10.4.3"
   },
   "devDependencies": {
+    "aws-cdk": "2.1033.0",
+    "tsx": "4.21.0",
     "vitest": "^4.0.15"
   }
 }

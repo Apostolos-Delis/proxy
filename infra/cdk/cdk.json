@@ -1,0 +1,7 @@
+{
+  "app": "pnpm exec tsx bin/prompt-proxy.ts",
+  "context": {
+    "@aws-cdk/aws-iam:minimizePolicies": true,
+    "@aws-cdk/core:newStyleStackSynthesis": true
+  }
+}
