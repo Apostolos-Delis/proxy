@@ -360,6 +360,14 @@
   font-weight: 400;
 }
 
+.session-link {
+  color: var(--accent-2);
+}
+
+.session-link:hover {
+  text-decoration: underline;
+}
+
 .prompt-preview {
   max-width: 460px;
 }
@@ -572,6 +580,127 @@
   color: var(--accent-2);
   font-family: var(--mono);
   font-size: 12px;
+}
+
+.session-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 22px;
+  align-items: start;
+}
+
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.convo-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.convo-turn + .convo-turn {
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.convo-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+
+.convo-meta time {
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.convo-log-link {
+  margin-left: auto;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.convo-log-link:hover {
+  color: var(--accent-2);
+}
+
+.convo-bubble {
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--glass-2);
+}
+
+.convo-bubble.convo-assistant {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 40%, var(--glass-2));
+}
+
+.convo-role {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--fg-faint);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.convo-bubble p {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.convo-bubble .convo-missing {
+  color: var(--fg-faint);
+  font-style: italic;
+}
+
+.session-rail .card-title {
+  margin-bottom: 14px;
+}
+
+.session-facts {
+  display: grid;
+  gap: 12px;
+}
+
+.session-fact > span {
+  display: block;
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.session-fact strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1100px) {
+  .session-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .routing-config-micro {

@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { MessagesSquare } from "lucide-react";
 
 import { type PromptSummary, type RequestSummary, fetchPromptDetail, fetchPrompts } from "./api";
 import { compactId, formatDateTime, formatMoney } from "./format";
@@ -28,7 +29,7 @@ export function PromptsPage() {
 }
 
 function isVisiblePromptArtifact(prompt: PromptSummary) {
-  return prompt.kind !== "tool_schema_metadata" && prompt.kind !== "request_input";
+  return prompt.kind !== "tool_schema_metadata" && prompt.kind !== "request_input" && prompt.kind !== "assistant_response";
 }
 
 export function PromptDetailPage({ artifactId }: { artifactId: string }) {
@@ -46,7 +47,15 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
   const snapshot = promptSnapshot(artifact, query.data.request);
   return (
     <div className="page page-enter">
-      <PageTitle title="Prompt detail" subtitle={compactId(artifact.artifactId, 18)} />
+      <PageTitle
+        title="Prompt detail"
+        subtitle={compactId(artifact.artifactId, 18)}
+        actions={artifact.sessionId ? (
+          <Link to="/sessions/$sessionId" params={{ sessionId: artifact.sessionId }} className="btn">
+            <MessagesSquare />View session
+          </Link>
+        ) : null}
+      />
       <div className="detail-grid">
         <RawTextPanel title="Raw prompt" value={rawText} />
         <RoutingSnapshotPanel value={snapshot} />

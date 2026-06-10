@@ -280,12 +280,111 @@ describe("prompt artifact capture", () => {
   });
 
 
+  it("captures the streamed OpenAI assistant response as an artifact", async () => {
+    const fixture = await setup("org_openai_response", "raw_text", false, {
+      openAIOptions: { outputText: "Streamed mock answer." }
+    });
+
+    const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "Summarize the build failure.",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const rows = await fixture.db.select().from(promptArtifacts);
+    const eventRows = await fixture.db.select().from(events);
+
+    expect(response.status).toBe(200);
+    expect(rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "assistant_response",
+        storageMode: "raw_text",
+        rawText: "Streamed mock answer.",
+        sourceRole: "assistant"
+      })
+    ]));
+    expect(eventPayloadText(eventRows)).not.toContain("Streamed mock answer.");
+    expect(eventRows.map((row) => JSON.stringify(row.metadata)).join("\n")).not.toContain("Streamed mock answer.");
+  });
+
+  it("captures the streamed Anthropic assistant response as an artifact", async () => {
+    const fixture = await setup("org_anthropic_response", "raw_text", false, {
+      anthropicOptions: { outputText: "Claude mock answer." }
+    });
+
+    const response = await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-router-auto",
+        messages: [{ role: "user", content: "What changed?" }],
+        max_tokens: 256,
+        stream: true
+      })
+    });
+    await response.text();
+
+    const rows = await fixture.db.select().from(promptArtifacts);
+    const eventRows = await fixture.db.select().from(events);
+
+    expect(response.status).toBe(200);
+    expect(rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "assistant_response",
+        storageMode: "raw_text",
+        rawText: "Claude mock answer.",
+        sourceRole: "assistant"
+      })
+    ]));
+    expect(eventPayloadText(eventRows)).not.toContain("Claude mock answer.");
+  });
+
+  it("keeps assistant responses hash-only when raw capture is not enabled", async () => {
+    const fixture = await setup("org_response_hash_only", "hash_only", false, {
+      openAIOptions: { outputText: "Do not store this answer raw." }
+    });
+
+    const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "hash only please",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const rows = await fixture.db.select().from(promptArtifacts);
+
+    expect(response.status).toBe(200);
+    const assistantRow = rows.find((row) => row.kind === "assistant_response");
+    expect(assistantRow).toMatchObject({ storageMode: "hash_only", rawText: null });
+    expect(rows.some((row) => row.rawText === "Do not store this answer raw.")).toBe(false);
+  });
+
   async function setup(
     organizationId: string,
     promptCaptureMode: "hash_only" | "raw_text" = "raw_text",
-    failCapture = false
+    failCapture = false,
+    options: Parameters<typeof captureFixture>[3] = {}
   ) {
-    activeFixture = await captureFixture(organizationId, promptCaptureMode, failCapture);
+    activeFixture = await captureFixture(organizationId, promptCaptureMode, failCapture, options);
     return activeFixture;
   }
 });

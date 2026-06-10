@@ -8,7 +8,8 @@ import {
   type ProviderAttemptStore,
   type RequestStateStoreLike
 } from "./events.js";
-import { SseObserver } from "./sseObserver.js";
+import { extractResponseText } from "./persistence/promptArtifacts.js";
+import { SseObserver, type StreamObservation } from "./sseObserver.js";
 import type { JsonObject, Provider, RouteDecision, Surface } from "./types.js";
 
 export class ProviderProxy implements ProviderAdapter {
@@ -134,6 +135,10 @@ export class ProviderProxy implements ProviderAdapter {
         usage: usage === undefined ? undefined : jsonPayload(usage)
       });
       input.reply.send(text);
+      if (status === "completed" && input.onAssistantText) {
+        const assistantText = extractResponseText(input.surface, tryParseJson(text));
+        if (assistantText) await input.onAssistantText(assistantText, false);
+      }
       return;
     }
 
@@ -188,7 +193,7 @@ export class ProviderProxy implements ProviderAdapter {
           observation.usage,
           upstream.status,
           {
-            ...observation,
+            ...withoutOutputText(observation),
             error: message
           }
         );
@@ -204,7 +209,7 @@ export class ProviderProxy implements ProviderAdapter {
         });
         throw error;
       }
-      await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, observation);
+      await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, withoutOutputText(observation));
       this.attempts.update(attempt.id, {
         terminalStatus: status,
         usage: observation.usage,
@@ -217,6 +222,9 @@ export class ProviderProxy implements ProviderAdapter {
         upstreamRequestId: observation.upstreamResponseId,
         error: observation.error
       });
+      if (status === "completed" && observation.outputText && input.onAssistantText) {
+        await input.onAssistantText(observation.outputText, observation.outputTextTruncated ?? false);
+      }
     } finally {
       input.reply.raw.off("close", abortUpstream);
       input.reply.raw.end();
@@ -368,15 +376,24 @@ function copyIfPresent(
 }
 
 function tryExtractUsage(text: string) {
+  const parsed = tryParseJson(text);
+  if (parsed && typeof parsed === "object" && "usage" in parsed) {
+    return (parsed as { usage: unknown }).usage;
+  }
+  return undefined;
+}
+
+function tryParseJson(text: string): unknown {
   try {
-    const parsed = JSON.parse(text);
-    if (parsed && typeof parsed === "object" && "usage" in parsed) {
-      return (parsed as { usage: unknown }).usage;
-    }
+    return JSON.parse(text);
   } catch {
     return undefined;
   }
-  return undefined;
+}
+
+function withoutOutputText(observation: StreamObservation) {
+  const { outputText, outputTextTruncated, ...rest } = observation;
+  return rest;
 }
 
 function onceDrain(stream: NodeJS.WritableStream) {
