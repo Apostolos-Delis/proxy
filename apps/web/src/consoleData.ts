@@ -1,4 +1,4 @@
-import type { RequestSummary, UsageGroup, UserSummary } from "./api";
+import type { RequestSummary, UsageGroup } from "./api";
 
 export type ChartPoint = {
   label: string;
@@ -7,15 +7,6 @@ export type ChartPoint = {
 
 export type ModelUsageRow = {
   label: string;
-  tokens: number;
-  spend: number;
-  color: string;
-};
-
-export type UserUsageRow = {
-  id: string;
-  name: string;
-  email?: string;
   tokens: number;
   spend: number;
   color: string;
@@ -102,21 +93,7 @@ export function modelRowsFromUsage(rows: UsageGroup[]): ModelUsageRow[] {
     }));
 }
 
-export function topUsersFromUsage(rows: UsageGroup[], usersById: Map<string, UserSummary>): UserUsageRow[] {
-  return rows.map((row, index) => {
-    const user = usersById.get(row.key);
-    return {
-      id: row.key,
-      name: user ? displayUser(user) : row.key,
-      email: user?.email,
-      tokens: row.usage.totalTokens,
-      spend: row.cost.selected,
-      color: colors[index % colors.length]
-    };
-  });
-}
-
-export function displayUser(user: Pick<UserSummary, "userId" | "name" | "email">) {
+export function displayUser(user: { userId: string; name?: string; email?: string }) {
   return user.name ?? user.email ?? user.userId;
 }
 

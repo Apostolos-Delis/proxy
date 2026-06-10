@@ -113,6 +113,11 @@ export type RequestDetail = {
   events: ProxyEvent[];
 };
 
+export type UsageLatency = {
+  averageMs: number | null;
+  p95Ms: number | null;
+};
+
 export type UsageGroup = {
   key: string;
   requestCount: number;
@@ -120,6 +125,7 @@ export type UsageGroup = {
   retriedRequests: number;
   failureRate: number;
   retryRate: number;
+  latency: UsageLatency;
   usage: Overview["totals"];
   cost: Overview["cost"];
 };
@@ -128,6 +134,26 @@ export type UsageResponse = {
   groupBy: string;
   data: UsageGroup[];
   totals: UsageGroup;
+};
+
+export type UsageRangeFilters = {
+  start?: string;
+  end?: string;
+};
+
+export type UsageTimeseriesPoint = {
+  ts: string;
+  totals: UsageGroup;
+  groups: Record<string, UsageGroup>;
+};
+
+export type UsageTimeseries = {
+  groupBy: string;
+  interval: "hour" | "day";
+  start: string;
+  end: string;
+  groups: UsageGroup[];
+  points: UsageTimeseriesPoint[];
 };
 
 export type PromptSummary = {
@@ -593,8 +619,25 @@ export async function revokeApiKey(apiKeyId: string) {
   );
 }
 
-export async function fetchUsage(groupBy: string) {
-  return fetchJson<UsageResponse>(`/admin/usage?groupBy=${encodeURIComponent(groupBy)}`);
+export async function fetchUsage(groupBy: string, filters: UsageRangeFilters = {}) {
+  return fetchJson<UsageResponse>(`/admin/usage?${usageParams(groupBy, filters)}`);
+}
+
+export async function fetchUsageTimeseries(
+  groupBy: string,
+  filters: UsageRangeFilters & { interval?: "hour" | "day"; limit?: number } = {}
+) {
+  const params = usageParams(groupBy, filters);
+  if (filters.interval) params.set("interval", filters.interval);
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  return fetchJson<UsageTimeseries>(`/admin/usage/timeseries?${params}`);
+}
+
+function usageParams(groupBy: string, filters: UsageRangeFilters) {
+  const params = new URLSearchParams({ groupBy });
+  if (filters.start) params.set("start", filters.start);
+  if (filters.end) params.set("end", filters.end);
+  return params;
 }
 
 export async function fetchPrompts() {

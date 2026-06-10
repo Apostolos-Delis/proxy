@@ -40,6 +40,15 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .usage-summary-strip.cols-6 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 18px;
+  }
+
+  .usage-summary-strip.cols-6 > div:nth-child(3n) {
+    border-right: 0;
+  }
+
   .inspector-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -93,12 +102,14 @@
     flex-wrap: wrap;
   }
 
-  .usage-summary-strip {
+  .usage-summary-strip,
+  .usage-summary-strip.cols-6 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     row-gap: 18px;
   }
 
-  .usage-summary-strip > div:nth-child(2n) {
+  .usage-summary-strip > div:nth-child(2n),
+  .usage-summary-strip.cols-6 > div:nth-child(2n) {
     border-right: 0;
   }
 
