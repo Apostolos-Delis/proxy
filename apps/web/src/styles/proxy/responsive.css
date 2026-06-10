@@ -79,14 +79,34 @@
   }
 
   .page-title-row,
-  .page-hero-row,
-  .usage-toolbar {
+  .page-hero-row {
     align-items: flex-start;
     flex-direction: column;
   }
 
+  .usage-primary .card-head {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .usage-dimension-tabs {
+    flex-wrap: wrap;
+  }
+
+  .usage-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 18px;
+  }
+
+  .usage-summary-strip > div:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .usage-summary-strip > div:nth-child(2n + 1) {
+    padding-left: 0;
+  }
+
   .overview-kpis,
-  .usage-card-grid,
   .request-detail-grid,
   .detail-grid,
   .snapshot-grid,

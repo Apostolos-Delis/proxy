@@ -4,11 +4,10 @@ import {
   Bar,
   BarChart as RechartsBarChart,
   CartesianGrid,
-  Cell,
+  ComposedChart,
   Line,
   LineChart,
   ReferenceDot,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -35,36 +34,52 @@ type InteractiveChartProps = {
   valueFormatter?: (value: number) => string;
 };
 
-export function BarChart({
-  data,
-  height = 300,
-  budget,
-  selectedIndex,
-  onSelect,
-  valueFormatter
-}: {
+export function SpendBaselineChart({ data, baseline, height = 300, valueFormatter }: {
   data: Point[];
+  baseline: Point[];
   height?: number;
-  budget?: number;
-} & InteractiveChartProps) {
-  const rows = chartData(data);
+  valueFormatter?: (value: number) => string;
+}) {
+  const rows = chartData(data).map((row, index) => ({ ...row, baseline: baseline[index]?.value ?? 0 }));
   if (rows.length === 0) return <EmptyChart height={height} />;
+  const hasBaseline = rows.some((row) => row.baseline > 0);
 
   return (
-    <ChartFrame height={height}>
-      <RechartsBarChart data={rows} margin={{ top: 16, right: 10, bottom: 8, left: 4 }} barCategoryGap="28%">
+    <ChartFrame height={height} className="spend-chart">
+      <ComposedChart data={rows} margin={{ top: 16, right: 10, bottom: 8, left: 4 }} barCategoryGap="28%">
         <CartesianGrid vertical={false} />
         <XAxis dataKey="label" tickLine={false} axisLine={false} interval="preserveStartEnd" />
         <YAxis hide domain={[0, "dataMax"]} />
-        <Tooltip cursor={{ fill: "var(--glass-hover)" }} content={<ChartTooltip valueFormatter={valueFormatter} />} />
-        {budget === undefined ? null : <ReferenceLine y={budget} className="budget-line" label={{ value: `$${Math.round(budget)}`, position: "right", className: "budget-label" }} />}
-        <Bar dataKey="value" radius={[4, 4, 2, 2]} onClick={(datum) => selectDatum(datum, onSelect)}>
-          {rows.map((row) => (
-            <Cell key={`${row.label}-${row.index}`} className={selectedIndex === row.index ? "chart-cell selected" : "chart-cell"} />
-          ))}
-        </Bar>
-      </RechartsBarChart>
+        <Tooltip cursor={{ fill: "var(--glass-hover)" }} content={<SpendTooltip valueFormatter={valueFormatter} />} />
+        <Bar dataKey="value" radius={[4, 4, 2, 2]} className="chart-cell" />
+        {hasBaseline ? (
+          <Line dataKey="baseline" type="stepAfter" dot={false} strokeWidth={1.5} isAnimationActive={false} className="baseline-line" />
+        ) : null}
+      </ComposedChart>
     </ChartFrame>
+  );
+}
+
+function SpendTooltip({ active, payload, label, valueFormatter }: {
+  active?: boolean;
+  payload?: { payload?: { value: number; baseline: number } }[];
+  label?: string;
+  valueFormatter?: (value: number) => string;
+}) {
+  if (!active || !payload?.length) return null;
+  const datum = payload[0]?.payload;
+  if (!datum) return null;
+  const saved = datum.baseline - datum.value;
+  return (
+    <div className="chart-tooltip">
+      <span>{label}</span>
+      <strong>{formatChartValue(datum.value, valueFormatter)}</strong>
+      {datum.baseline > 0 ? (
+        <em className="chart-tooltip-baseline">
+          {formatChartValue(datum.baseline, valueFormatter)} baseline · {formatChartValue(saved, valueFormatter)} saved
+        </em>
+      ) : null}
+    </div>
   );
 }
 

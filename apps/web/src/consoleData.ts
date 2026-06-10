@@ -21,9 +21,11 @@ export type UserUsageRow = {
   color: string;
 };
 
+type SeriesMetric = "cost" | "baseline" | "tokens" | "requests";
+
 const colors = ["#14b8a6", "#38bdf8", "#34d399", "#5eead4", "#22d3ee", "#60a5fa", "#2dd4bf", "#0ea5e9"];
 
-export function seriesFromRequests(requests: RequestSummary[], metric: "cost" | "tokens" | "requests", days = 30): ChartPoint[] {
+export function seriesFromRequests(requests: RequestSummary[], metric: SeriesMetric, days = 30): ChartPoint[] {
   const withDates = requests.filter((request) => request.createdAt);
   if (withDates.length === 0) return [];
 
@@ -61,23 +63,27 @@ export function modelRowsFromUsage(rows: UsageGroup[]): ModelUsageRow[] {
   }));
 }
 
-export function topUsersFromUsers(users: UserSummary[]): UserUsageRow[] {
-  return users.map((user, index) => ({
-    id: user.userId,
-    name: user.name ?? user.email ?? user.userId,
-    email: user.email,
-    tokens: user.usage.totalTokens,
-    spend: user.cost.selected,
-    color: colors[index % colors.length]
-  }));
+export function topUsersFromUsage(rows: UsageGroup[], usersById: Map<string, UserSummary>): UserUsageRow[] {
+  return rows.map((row, index) => {
+    const user = usersById.get(row.key);
+    return {
+      id: row.key,
+      name: user ? displayUser(user) : row.key,
+      email: user?.email,
+      tokens: row.usage.totalTokens,
+      spend: row.cost.selected,
+      color: colors[index % colors.length]
+    };
+  });
 }
 
 export function displayUser(user: Pick<UserSummary, "userId" | "name" | "email">) {
   return user.name ?? user.email ?? user.userId;
 }
 
-function requestMetric(request: RequestSummary, metric: "cost" | "tokens" | "requests") {
+function requestMetric(request: RequestSummary, metric: SeriesMetric) {
   if (metric === "cost") return request.selectedCost;
+  if (metric === "baseline") return request.baselineCost;
   if (metric === "tokens") return request.usage.totalTokens;
   return 1;
 }
