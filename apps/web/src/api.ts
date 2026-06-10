@@ -156,15 +156,18 @@ export type PromptSummary = {
   createdAt: string;
 };
 
+export type PromptArtifactDetail = PromptSummary & {
+  rawText: string | null;
+  redactedText: string | null;
+  encryptedBlobRef: string | null;
+  metadata: Record<string, unknown>;
+  expiresAt: string | null;
+};
+
 export type PromptDetail = {
-  artifact: PromptSummary & {
-    rawText: string | null;
-    redactedText: string | null;
-    encryptedBlobRef: string | null;
-    metadata: Record<string, unknown>;
-    expiresAt: string | null;
-  };
+  artifact: PromptArtifactDetail;
   request: RequestSummary | null;
+  requestArtifacts?: PromptArtifactDetail[];
   events: ProxyEvent[];
 };
 

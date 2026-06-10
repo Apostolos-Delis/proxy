@@ -392,7 +392,7 @@ function tryParseJson(text: string): unknown {
 }
 
 function withoutOutputText(observation: StreamObservation) {
-  const { outputText, outputTextTruncated, ...rest } = observation;
+  const { outputText: _text, outputTextTruncated: _truncated, ...rest } = observation;
   return rest;
 }
 

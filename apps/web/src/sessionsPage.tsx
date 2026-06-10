@@ -133,7 +133,7 @@ function SessionRail({ session, userName }: { session: SessionSummary; userName:
   return (
     <GlassCard className="session-rail">
       <div className="card-title">Session context</div>
-      <div className="session-facts">
+      <div className="fact-grid">
         <SessionFact label="User"><span>{userName}</span></SessionFact>
         <SessionFact label="Surface"><span className="mono">{session.surface}</span></SessionFact>
         <SessionFact label="Identity"><span className="mono">{session.sessionIdentity ?? "unknown"}</span></SessionFact>
@@ -151,7 +151,7 @@ function SessionRail({ session, userName }: { session: SessionSummary; userName:
 
 function SessionFact({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="session-fact">
+    <div className="fact">
       <span>{label}</span>
       <strong>{children}</strong>
     </div>
