@@ -1120,9 +1120,16 @@
 
 .config-card-matrix-row {
   display: grid;
-  grid-template-columns: 86px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 84px minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   gap: 10px;
+}
+
+.config-card-matrix-row .route-chip {
+  width: 100%;
+  justify-content: center;
+  padding-block: 4px;
+  font-size: 11.5px;
 }
 
 .config-card-matrix-header span {
