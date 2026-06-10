@@ -2,6 +2,7 @@ import { Link, useBlocker, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import {
   createApiKey,
@@ -77,11 +78,13 @@ export function CreateApiKeyPage() {
   // Done button can approve leaving and navigate within the same tick.
   const hasSensitiveOutput = () => Boolean(created) && !leaveApprovedRef.current;
 
-  useBlocker({
-    shouldBlockFn: () =>
-      hasSensitiveOutput() && !window.confirm("The key secret is only shown once. Leave anyway?"),
+  // Tab close/refresh still gets the browser's built-in prompt — custom UI
+  // isn't allowed there — but in-app navigation pauses on our own dialog.
+  const leaveBlocker = useBlocker({
+    shouldBlockFn: hasSensitiveOutput,
     disabled: !created,
-    enableBeforeUnload: hasSensitiveOutput
+    enableBeforeUnload: hasSensitiveOutput,
+    withResolver: true
   });
 
   if (configsQuery.isLoading || providerAccountsQuery.isLoading) {
@@ -162,7 +165,37 @@ export function CreateApiKeyPage() {
           />
         </div>
       </div>
+      {leaveBlocker.status === "blocked" ? (
+        <LeaveConfirmDialog onStay={leaveBlocker.reset} onLeave={leaveBlocker.proceed} />
+      ) : null}
     </div>
+  );
+}
+
+// Portals into .app for the same reason as Drawer: the .page-enter transform
+// would otherwise trap position: fixed.
+function LeaveConfirmDialog({ onStay, onLeave }: { onStay: () => void; onLeave: () => void }) {
+  return createPortal(
+    <>
+      <div className="scrim" onClick={onStay} />
+      <div
+        className="confirm-dialog"
+        role="alertdialog"
+        aria-label="Leave without saving the key secret"
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.stopPropagation();
+          onStay();
+        }}
+      >
+        <p>The key secret is only shown once. Leave anyway?</p>
+        <div className="confirm-dialog-actions">
+          <button className="btn" type="button" autoFocus onClick={onStay}>Stay</button>
+          <button className="btn btn-danger" type="button" onClick={onLeave}>Leave</button>
+        </div>
+      </div>
+    </>,
+    document.querySelector(".app") ?? document.body
   );
 }
 

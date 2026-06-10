@@ -227,6 +227,18 @@
   flex-direction: column; align-items: flex-start; gap: 14px;
 }
 
+/* confirm dialog */
+.confirm-dialog {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 41;
+  width: 400px; max-width: 92vw;
+  background: var(--glass); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow); padding: 22px 24px;
+  animation: dialogIn .2s var(--ease);
+}
+@keyframes dialogIn { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); } to { opacity: 1; } }
+.confirm-dialog p { margin: 0 0 18px; font-size: 14px; }
+.confirm-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
 /* misc utility */
 .row { display: flex; align-items: center; }
 .gap-8 { gap: 8px; } .gap-12 { gap: 12px; } .gap-16 { gap: 16px; }
