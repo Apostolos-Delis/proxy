@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUp, Coins, Download, KeyRound, Send, Settings, Sparkles, Zap } from "lucide-react";
+import { ArrowUp, ArrowUpRight, Coins, Download, KeyRound, Send, Sparkles, Zap } from "lucide-react";
 import { useState } from "react";
 
 import { fetchOverview, fetchRequests, fetchUsage } from "./api";
@@ -49,6 +49,36 @@ export function OverviewPage() {
   const inspector = selectedPoint
     ? chartSelection(selectedPoint)
     : selection ?? overviewSelection(overview.cost.savings, overview.cost.baseline, overview.routeQuality.cheaperLikelyWouldWorkCount);
+  const activeMetric = selectedPoint ? null : selection?.title ?? null;
+  const impactMetrics = [
+    {
+      label: "Baseline spend",
+      value: formatMoney(overview.cost.baseline),
+      caption: "without smart routing",
+      detail: "What the selected model policy would have cost without routing savings."
+    },
+    {
+      label: "Savings",
+      value: formatMoney(overview.cost.savings),
+      caption: "avoided spend",
+      detail: "Avoided spend from routing to cheaper capable models.",
+      tone: overview.cost.savings > 0 ? "accent-text" : undefined
+    },
+    {
+      label: "Low confidence",
+      value: formatInteger(overview.routeQuality.lowConfidenceCount),
+      caption: "flagged route decisions",
+      detail: "Route decisions the classifier marked as lower confidence.",
+      tone: overview.routeQuality.lowConfidenceCount > 0 ? "warn-text" : undefined
+    },
+    {
+      label: "Cheaper likely worked",
+      value: formatInteger(overview.routeQuality.cheaperLikelyWouldWorkCount),
+      caption: "downgrade candidates",
+      detail: "Cases where logs suggest a cheaper route probably would have been acceptable.",
+      tone: overview.routeQuality.cheaperLikelyWouldWorkCount > 0 ? "warn-text" : undefined
+    }
+  ];
   const exportOverview = () => downloadJson("proxy-overview.json", { overview, requests, rangeDays, modelRows });
   const updateRange = (value: "1" | "7" | "30" | "90") => {
     setRangeDays(value);
@@ -121,7 +151,7 @@ export function OverviewPage() {
             {modelRows.slice(0, 4).map((row) => (
               <button
                 key={row.label}
-                className="barlist-row barlist-button"
+                className={`barlist-row barlist-button${activeMetric === row.label ? " active" : ""}`}
                 type="button"
                 onClick={() => setSelection(modelSelection(row.label, row.tokens, row.spend))}
               >
@@ -141,18 +171,19 @@ export function OverviewPage() {
           <span className="muted">Avoided spend and quality flags</span>
         </div>
         <div className="impact-grid">
-          <button type="button" onClick={() => setSelection(metricSelection("Baseline spend", formatMoney(overview.cost.baseline), "What the selected model policy would have cost without routing savings."))}>
-            <span>Baseline spend</span><strong>{formatMoney(overview.cost.baseline)}</strong>
-          </button>
-          <button type="button" onClick={() => setSelection(metricSelection("Savings", formatMoney(overview.cost.savings), "Avoided spend from routing to cheaper capable models."))}>
-            <span>Savings</span><strong>{formatMoney(overview.cost.savings)}</strong>
-          </button>
-          <button type="button" onClick={() => setSelection(metricSelection("Low confidence", formatInteger(overview.routeQuality.lowConfidenceCount), "Route decisions the classifier marked as lower confidence."))}>
-            <span>Low confidence</span><strong>{overview.routeQuality.lowConfidenceCount}</strong>
-          </button>
-          <button type="button" onClick={() => setSelection(metricSelection("Cheaper likely worked", formatInteger(overview.routeQuality.cheaperLikelyWouldWorkCount), "Cases where logs suggest a cheaper route probably would have been acceptable."))}>
-            <span>Cheaper likely worked</span><strong>{overview.routeQuality.cheaperLikelyWouldWorkCount}</strong>
-          </button>
+          {impactMetrics.map((metric) => (
+            <button
+              key={metric.label}
+              type="button"
+              className={activeMetric === metric.label ? "active" : undefined}
+              aria-pressed={activeMetric === metric.label}
+              onClick={() => setSelection(metricSelection(metric.label, metric.value, metric.detail))}
+            >
+              <span>{metric.label}</span>
+              <strong className={metric.tone}>{metric.value}</strong>
+              <em>{metric.caption}</em>
+            </button>
+          ))}
         </div>
       </GlassCard>
 
@@ -160,7 +191,7 @@ export function OverviewPage() {
         title={inspector.title}
         subtitle={inspector.subtitle}
         rows={inspector.rows}
-        action={<Link to="/logs" className="btn btn-sm"><Settings />Open logs</Link>}
+        action={<Link to="/logs" className="btn btn-sm"><ArrowUpRight />Open logs</Link>}
       />
     </div>
   );
