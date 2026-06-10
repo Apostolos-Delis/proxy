@@ -258,11 +258,16 @@
   max-width: 420px;
 }
 
+.prompt-cell .mono.faint {
+  margin-top: 2px;
+  font-size: 11px;
+}
+
 .table-link {
   display: inline-block;
   max-width: 100%;
   color: var(--fg);
-  font-weight: 600;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -270,6 +275,12 @@
 
 .table-link:hover {
   color: var(--accent-2);
+}
+
+.table-link-placeholder {
+  color: var(--fg-faint);
+  font-style: italic;
+  font-weight: 400;
 }
 
 .prompt-preview {
@@ -487,25 +498,26 @@
 }
 
 .routing-config-micro {
-  display: block;
-  margin-top: 5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
   color: var(--fg-faint);
   font-family: var(--mono);
   font-size: 11px;
   line-height: 1.35;
-}
-
-.routing-config-micro a,
-.routing-config-micro span {
-  display: block;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .routing-config-micro a {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--accent-2);
+}
+
+.routing-config-micro span {
+  flex: none;
 }
 
 .raw-panel pre,

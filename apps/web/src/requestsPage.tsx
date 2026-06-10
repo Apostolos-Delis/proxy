@@ -58,13 +58,13 @@ export function RequestsPage() {
 }
 
 const requestColumns: ConsoleTableColumn<PromptLogRow>[] = [
-  { id: "prompt", header: "Prompt", size: 460, accessorFn: (row) => row.prompt.preview ?? "", cell: ({ row }) => <PromptCell row={row.original} /> },
-  { id: "user", header: "User", size: 220, accessorFn: (row) => row.userName, cell: ({ row }) => <UserCell name={row.original.userName} detail={row.original.prompt.surface} /> },
+  { id: "prompt", header: "Prompt", size: 420, accessorFn: (row) => row.prompt.preview ?? "", cell: ({ row }) => <PromptCell row={row.original} /> },
+  { id: "user", header: "User", size: 200, accessorFn: (row) => row.userName, cell: ({ row }) => <UserCell name={row.original.userName} detail={row.original.prompt.surface} size={24} /> },
   { id: "model", header: "Model", size: 230, accessorFn: selectedModel, cell: ({ row }) => <ModelCell row={row.original} /> },
-  { id: "tokens", header: "Tokens", size: 118, accessorFn: totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(totalTokens(row.original))}</span> },
-  { id: "cost", header: "Cost", size: 118, accessorFn: selectedCost, cell: ({ row }) => <span className="mono">{formatMoney(selectedCost(row.original))}</span> },
-  { id: "latency", header: "Latency", size: 124, accessorFn: (row) => row.request?.latencyMs ?? 0, cell: ({ row }) => <span className="mono faint">{formatLatency(row.original.request?.latencyMs)}</span> },
-  { id: "status", header: "Status", size: 138, accessorFn: terminalStatus, cell: ({ row }) => <StatusBadge status={terminalStatus(row.original)} /> }
+  { id: "tokens", header: "Tokens", size: 96, accessorFn: totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(totalTokens(row.original))}</span> },
+  { id: "cost", header: "Cost", size: 96, accessorFn: selectedCost, cell: ({ row }) => <span className="mono">{formatMoney(selectedCost(row.original))}</span> },
+  { id: "latency", header: "Latency", size: 104, accessorFn: (row) => row.request?.latencyMs ?? 0, cell: ({ row }) => <span className="mono faint">{formatLatency(row.original.request?.latencyMs)}</span> },
+  { id: "status", header: "Status", size: 126, accessorFn: terminalStatus, cell: ({ row }) => <StatusBadge status={terminalStatus(row.original)} /> }
 ];
 
 const requestAdvancedFields: ConsoleTableAdvancedField<PromptLogRow>[] = [
@@ -79,11 +79,15 @@ const requestAdvancedFields: ConsoleTableAdvancedField<PromptLogRow>[] = [
 ];
 
 function PromptCell({ row }: { row: PromptLogRow }) {
-  const promptText = row.prompt.preview ?? "Prompt text was not stored for this request.";
+  const preview = row.prompt.preview;
   return (
     <div className="prompt-cell">
-      <Link to="/logs/$artifactId" params={{ artifactId: row.prompt.artifactId }} className="table-link">
-        {promptText}
+      <Link
+        to="/logs/$artifactId"
+        params={{ artifactId: row.prompt.artifactId }}
+        className={`table-link${preview ? "" : " table-link-placeholder"}`}
+      >
+        {preview ?? "Prompt not stored"}
       </Link>
       <div className="mono faint">{compactId(row.prompt.requestId)}</div>
     </div>
