@@ -2,6 +2,7 @@ import { createRootRouteWithContext, createRoute, createRouter } from "@tanstack
 
 import { LoginPage, requireAuth, type RouterContext } from "./auth";
 import { BillingPage } from "./billingPage";
+import { InvitePage } from "./invitePage";
 import { KeysPage } from "./keysPage";
 import { OverviewPage } from "./overviewPage";
 import { PromptDetailPage, PromptsPage } from "./promptsPage";
@@ -22,6 +23,12 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
   component: LoginPage
+});
+
+const inviteRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/invite/$token",
+  component: InviteRoutePage
 });
 
 const indexRoute = createRoute({
@@ -124,6 +131,7 @@ const settingsRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
+  inviteRoute,
   indexRoute,
   usageRoute,
   promptsRoute,
@@ -150,6 +158,11 @@ declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router;
   }
+}
+
+function InviteRoutePage() {
+  const { token } = inviteRoute.useParams();
+  return <InvitePage token={token} />;
 }
 
 function PromptDetailRoutePage() {

@@ -181,17 +181,70 @@ export type SessionSummary = {
   updatedAt: string;
 };
 
+export type MemberRole = "owner" | "admin" | "member" | "viewer";
+
+export type UserMembership = {
+  role: string;
+  status: string;
+};
+
 export type UserSummary = {
   userId: string;
   email?: string;
   name?: string;
   externalId?: string;
+  membership: UserMembership | null;
   requestCount: number;
   sessionCount: number;
   usage: Overview["totals"];
   cost: Overview["cost"];
   recentActivity: string | null;
   createdAt: string;
+};
+
+export type InvitationSummary = {
+  id: string;
+  organizationId: string;
+  email: string;
+  name?: string;
+  role: string;
+  status: string;
+  tokenPrefix: string;
+  invitedBy: { userId: string; name?: string; email?: string } | null;
+  acceptedUserId?: string;
+  createdAt: string;
+  expiresAt: string;
+  lastSentAt?: string;
+  acceptedAt?: string;
+  revokedAt?: string;
+};
+
+export type EmailDelivery = {
+  transport: string;
+  delivered: boolean;
+  error?: string;
+};
+
+export type InvitationActionResult = {
+  invitation: InvitationSummary | null;
+  inviteUrl: string;
+  emailDelivery: EmailDelivery;
+};
+
+export type CreateInvitationInput = {
+  email: string;
+  name?: string;
+  role: MemberRole;
+};
+
+export type PublicInvitation = {
+  organizationName: string;
+  email: string;
+  name?: string;
+  role: string;
+  status: string;
+  inviterName?: string;
+  expiresAt: string;
 };
 
 export type ProviderAttempt = {
@@ -493,6 +546,72 @@ export async function fetchSessionDetail(sessionId: string) {
 
 export async function fetchUsers() {
   return fetchJson<{ data: UserSummary[] }>("/admin/users");
+}
+
+export async function fetchInvitations() {
+  return fetchJson<{ data: InvitationSummary[] }>("/admin/invitations");
+}
+
+export async function createInvitation(input: CreateInvitationInput) {
+  return fetchJson<InvitationActionResult>("/admin/invitations", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function resendInvitation(invitationId: string) {
+  return fetchJson<InvitationActionResult>(
+    `/admin/invitations/${encodeURIComponent(invitationId)}/resend`,
+    { method: "POST" }
+  );
+}
+
+export async function revokeInvitation(invitationId: string) {
+  return fetchJson<{ invitation: InvitationSummary }>(
+    `/admin/invitations/${encodeURIComponent(invitationId)}/revoke`,
+    { method: "POST" }
+  );
+}
+
+export async function updateUserRole(userId: string, role: MemberRole) {
+  return fetchJson<{ userId: string; role: string; previousRole: string }>(
+    `/admin/users/${encodeURIComponent(userId)}/role`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ role })
+    }
+  );
+}
+
+export async function deactivateUser(userId: string) {
+  return fetchJson<{ userId: string; status: string }>(
+    `/admin/users/${encodeURIComponent(userId)}/deactivate`,
+    { method: "POST" }
+  );
+}
+
+export async function reactivateUser(userId: string) {
+  return fetchJson<{ userId: string; status: string }>(
+    `/admin/users/${encodeURIComponent(userId)}/reactivate`,
+    { method: "POST" }
+  );
+}
+
+export async function resolveInvitation(token: string) {
+  return fetchJson<{ invitation: PublicInvitation }>("/api/invitations/resolve", {
+    method: "POST",
+    body: JSON.stringify({ token })
+  });
+}
+
+export async function acceptInvitation(token: string, name?: string) {
+  return fetchJson<{ ok: boolean; organizationId: string; userId: string; email: string; role: string }>(
+    "/api/invitations/accept",
+    {
+      method: "POST",
+      body: JSON.stringify(name ? { token, name } : { token })
+    }
+  );
 }
 
 export async function fetchMe() {

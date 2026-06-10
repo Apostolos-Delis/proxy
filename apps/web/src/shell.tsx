@@ -39,7 +39,7 @@ export function AppShell() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
-  if (location.pathname === "/login") {
+  if (location.pathname === "/login" || location.pathname.startsWith("/invite/")) {
     return (
       <main className="login-shell">
         <Outlet />
