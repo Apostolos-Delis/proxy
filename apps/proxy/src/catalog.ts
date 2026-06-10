@@ -112,6 +112,24 @@ export function modelForRoute(catalog: ModelCatalog, route: RouteName, surface: 
   return catalog[routeModel(route, surface)];
 }
 
+export function modelCatalogList(catalog: ModelCatalog) {
+  const routeByModelId = new Map<string, RouteName>();
+  for (const route of routeOrder) {
+    routeByModelId.set(routes[route].openaiModel, route);
+    routeByModelId.set(routes[route].anthropicModel, route);
+  }
+  return Object.values(catalog).map((entry) => ({
+    id: entry.id,
+    provider: entry.provider,
+    route: routeByModelId.get(entry.id) ?? null,
+    upstreamModel: entry.upstreamModel,
+    contextWindow: entry.contextWindow,
+    supportsResponses: entry.supportsResponses,
+    supportsMessages: entry.supportsMessages,
+    supportedReasoningEfforts: entry.supportedReasoningEfforts
+  }));
+}
+
 export function supportsSurface(model: ModelCatalogEntry, surface: Surface) {
   return surface === "openai-responses"
     ? model.supportsResponses

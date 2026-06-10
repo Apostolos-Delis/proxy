@@ -118,6 +118,15 @@ const configSchema = z.object({
   RESEND_BASE_URL: z.string().url().default("https://api.resend.com"),
   EMAIL_FROM: z.string().min(1).default("Prompt Proxy <onboarding@resend.dev>"),
   INVITATION_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 7),
+  CONSOLE_AGENT_MODEL: z.string().default("claude-router-hard"),
+  CONSOLE_AGENT_BASE_URL: z.string().optional(),
+  CONSOLE_AGENT_API_KEY: z.string().optional(),
+  CONSOLE_AGENT_THINKING_LEVEL: z
+    .enum(["off", "minimal", "low", "medium", "high", "xhigh"])
+    .default("medium"),
+  CONSOLE_AGENT_MAX_TURNS: z.coerce.number().int().positive().default(16),
+  CONSOLE_AGENT_MAX_TOOL_CALLS_PER_TURN: z.coerce.number().int().positive().default(8),
+  CONSOLE_AGENT_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(120),
   LOG_LEVEL: z.string().default("info")
 });
 
@@ -180,6 +189,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     resendBaseUrl: trimTrailingSlash(parsed.RESEND_BASE_URL),
     emailFrom: parsed.EMAIL_FROM,
     invitationTtlSeconds: parsed.INVITATION_TTL_SECONDS,
+    consoleAgentModel: parsed.CONSOLE_AGENT_MODEL,
+    // Bare origin only: the Anthropic SDK appends /v1/messages itself.
+    consoleAgentBaseUrl: trimTrailingSlash(parsed.CONSOLE_AGENT_BASE_URL ?? `http://127.0.0.1:${parsed.PORT}`),
+    // The proxy token is only a dev fallback; production needs an org-scoped
+    // API key so console-agent traffic is attributed to the right tenant.
+    consoleAgentApiKey:
+      parsed.CONSOLE_AGENT_API_KEY ??
+      (parsed.ALLOW_DEV_PROXY_TOKEN_FALLBACK || !parsed.DATABASE_URL ? parsed.PROMPT_PROXY_TOKEN : undefined),
+    consoleAgentThinkingLevel: parsed.CONSOLE_AGENT_THINKING_LEVEL,
+    consoleAgentMaxTurns: parsed.CONSOLE_AGENT_MAX_TURNS,
+    consoleAgentMaxToolCallsPerTurn: parsed.CONSOLE_AGENT_MAX_TOOL_CALLS_PER_TURN,
+    consoleAgentTimeoutSeconds: parsed.CONSOLE_AGENT_TIMEOUT_SECONDS,
     logLevel: parsed.LOG_LEVEL
   };
 }

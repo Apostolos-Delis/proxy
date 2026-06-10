@@ -119,7 +119,7 @@ The web app at `:5173` is an org-scoped operations console (with a ⌘K global s
 | Provider keys | BYOK credential management |
 | Routing configs | Edit rules, tier models, and effort; versioned activation |
 | Users | Invitations, roles, deactivation |
-| Settings | Runtime settings, prompt capture, org system prompt |
+| Settings | Runtime settings, prompt capture, org system prompt, console agent |
 
 ### User management
 
@@ -134,6 +134,10 @@ By default the proxy forwards upstream calls with the company keys from env (`OP
 
 Customer secrets are encrypted at rest with AES-256-GCM using `PROVIDER_SECRET_ENCRYPTION_KEY` (base64, 32 bytes — `openssl rand -base64 32`) and are never returned by the admin API, only a masked hint. BYOK applies to the HTTP forward surfaces; the OpenAI realtime WebSocket always uses the company key for now. Claude subscription/OAuth tokens are a planned follow-up.
 
+### Console agent
+
+The console embeds an operations copilot (owner/admin roles only) built on the pi agent harness. It answers questions about live proxy state through read capabilities, previews routing-config changes, and proposes writes that execute only after human approval — approval cards render the server-persisted preview, never agent prose. The agent's own LLM calls go through the proxy itself using explicit route aliases (no classifier) and, in production, a seeded internal API key whose traffic is tagged `internal` in request logs and excluded from usage analytics. Run limits and the agent model are configurable from the settings page. See the [console agent runbook](docs/runbooks/console-agent.md) for setup, the proposal lifecycle, and troubleshooting.
+
 ## API surface
 
 **Proxy (API-key auth):**
@@ -145,6 +149,8 @@ Customer secrets are encrypted at rest with AES-256-GCM using `PROVIDER_SECRET_E
 - `GET /setup.sh` — hosted harness setup script
 
 **Admin (session-cookie auth):** everything the console reads or writes goes through the GraphQL API at `POST /admin/graphql`, including login/logout/org switching and the public invitation-accept flow (the only operations reachable without a session; anonymous introspection is rejected). The SDL lives at [`apps/proxy/schema.graphql`](apps/proxy/schema.graphql) (regenerate with `pnpm --filter @prompt-proxy/proxy schema:print`), and logged-in admins get GraphiQL by opening `/admin/graphql` in a browser.
+
+The console agent is the one session-cookie surface that stays on REST (its live run stream is SSE, which does not fit GraphQL): `POST/GET /admin/console-agent/conversations`, `GET /admin/console-agent/conversations/:conversationId`, `POST .../messages`, `GET /admin/console-agent/runs/:runId/events` (SSE), `POST .../cancel`, and `POST /admin/console-agent/proposals/:proposalId/approve|reject`.
 
 **Debug (local development, authenticated):** `GET /_debug/events`, `/_debug/provider-attempts`, `/_debug/outbox`, `/_debug/sessions`, `/_debug/projections`, `/_debug/route-quality`.
 
@@ -160,7 +166,7 @@ pnpm db:seed      # idempotent baseline seed
 
 Editable runtime settings live as JSON at `.prompt-proxy/settings.json` (or `PROMPT_PROXY_SETTINGS_PATH`); the `/settings` console page reads and writes that file. Environment variables take precedence, and classifier, budget, and route-quality changes apply after restart.
 
-When seeding multiple organizations into one database, use a distinct `PROMPT_PROXY_TOKEN` per org.
+When seeding multiple organizations into one database, use a distinct `PROMPT_PROXY_TOKEN` per org. With `CONSOLE_AGENT_API_KEY` set, seeding also creates the console-agent routing config and its internal API key (hash only — the raw token never lands in storage).
 
 ## Spend and routing savings
 

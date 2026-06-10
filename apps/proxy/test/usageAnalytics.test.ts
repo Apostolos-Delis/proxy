@@ -1,19 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  agentSessions,
-  apiKeys,
-  defaultWorkspaceId,
-  hashApiKey,
-  organizations,
-  providerAttempts,
-  requests,
-  routeDecisions,
-  usageLedger,
-  users,
-  workspaces
-} from "@prompt-proxy/db";
+import { agentSessions, apiKeys, defaultWorkspaceId, hashApiKey, organizations, providerAttempts, requests, routeDecisions, usageLedger, users, workspaces } from "@prompt-proxy/db";
 
 import {
   adminGql,
@@ -394,6 +382,48 @@ describe("usage analytics admin APIs", () => {
       0
     );
     expect(pointTotal).toBe(4);
+  });
+
+  it("excludes internal traffic from usage and overview while tagging request logs", async () => {
+    const ORG = "org_internal_usage";
+    const fixture = await setup(ORG);
+    const when = new Date("2026-06-08T12:00:00.000Z");
+    await fixture.db.insert(users).values([{ id: "user_int" }]);
+    await fixture.db.insert(agentSessions).values([
+      { id: "session_int", organizationId: ORG, workspaceId: defaultWorkspaceId(ORG), userId: "user_int", surface: "anthropic-messages" }
+    ]);
+    await fixture.db.insert(requests).values([
+      usageRequest("req_human", ORG, "user_int", "session_int", "anthropic-messages", when),
+      {
+        ...usageRequest("req_agent", ORG, "user_int", "session_int", "anthropic-messages", when),
+        internal: true
+      }
+    ]);
+    await fixture.db.insert(routeDecisions).values([
+      usageDecision("dec_human", "req_human", ORG, "hard", "anthropic", "claude-hard"),
+      usageDecision("dec_agent", "req_agent", ORG, "hard", "anthropic", "claude-hard")
+    ]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("att_human", "req_human", ORG, "anthropic-messages", "anthropic", "claude-hard", "completed", when),
+      usageAttempt("att_agent", "req_agent", ORG, "anthropic-messages", "anthropic", "claude-hard", "completed", when)
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      usageRow("use_human", "req_human", "att_human", ORG, "anthropic", "claude-hard", "hard", 100, 50, 2_000),
+      usageRow("use_agent", "req_agent", "att_agent", ORG, "anthropic", "claude-hard", "hard", 100, 50, 2_000)
+    ]);
+
+    const usage = await fixture.persistence.adminQueries.forScope(ORG, defaultWorkspaceId(ORG)).usage();
+    expect(usage.totals.requestCount).toBe(1);
+
+    const overview = await fixture.persistence.adminQueries.forScope(ORG, defaultWorkspaceId(ORG)).overview();
+    expect(overview.requestCount).toBe(1);
+
+    const logs = await fixture.persistence.adminQueries.forScope(ORG, defaultWorkspaceId(ORG)).requests();
+    const byId = new Map(
+      logs.data.map((entry: { requestId: string; internal: boolean }) => [entry.requestId, entry.internal])
+    );
+    expect(byId.get("req_agent")).toBe(true);
+    expect(byId.get("req_human")).toBe(false);
   });
 
   async function setup(organizationId: string) {

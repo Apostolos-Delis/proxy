@@ -13,6 +13,7 @@ type StorageInfoModel = SettingsPayload["storage"];
 type EditableSettingsModel = SettingsPayload["settings"];
 type EditableClassifierModel = EditableSettingsModel["classifier"];
 type RouteQualitySettingsModel = EditableSettingsModel["routeQuality"];
+type ConsoleAgentSettingsModel = EditableSettingsModel["consoleAgent"];
 type RuntimeSettingsModel = SettingsPayload["runtime"];
 
 export const ClassifierRuntime = builder
@@ -81,6 +82,18 @@ export const RouteQualitySettings = builder
     })
   });
 
+export const ConsoleAgentSettings = builder
+  .objectRef<ConsoleAgentSettingsModel>("ConsoleAgentSettings")
+  .implement({
+    fields: (t) => ({
+      model: t.exposeString("model"),
+      thinkingLevel: t.exposeString("thinkingLevel"),
+      maxTurns: t.exposeInt("maxTurns"),
+      maxToolCallsPerTurn: t.exposeInt("maxToolCallsPerTurn"),
+      timeoutSeconds: t.exposeInt("timeoutSeconds")
+    })
+  });
+
 export const EditableSettings = builder
   .objectRef<EditableSettingsModel>("EditableSettings")
   .implement({
@@ -90,7 +103,8 @@ export const EditableSettings = builder
       classifier: t.expose("classifier", { type: EditableClassifier }),
       budgets: t.expose("budgets", { type: BudgetSettings }),
       routeQuality: t.expose("routeQuality", { type: RouteQualitySettings }),
-      promptCapture: t.expose("promptCapture", { type: PromptCaptureState })
+      promptCapture: t.expose("promptCapture", { type: PromptCaptureState }),
+      consoleAgent: t.expose("consoleAgent", { type: ConsoleAgentSettings })
     })
   });
 
@@ -153,6 +167,16 @@ export const PromptCaptureSettingsInput = builder.inputType("PromptCaptureSettin
   })
 });
 
+export const ConsoleAgentSettingsInput = builder.inputType("ConsoleAgentSettingsInput", {
+  fields: (t) => ({
+    model: t.string(),
+    thinkingLevel: t.string(),
+    maxTurns: t.int(),
+    maxToolCallsPerTurn: t.int(),
+    timeoutSeconds: t.int()
+  })
+});
+
 export const SettingsInput = builder.inputType("SettingsInput", {
   fields: (t) => ({
     schemaVersion: t.int(),
@@ -160,6 +184,7 @@ export const SettingsInput = builder.inputType("SettingsInput", {
     classifier: t.field({ type: ClassifierSettingsInput }),
     budgets: t.field({ type: BudgetSettingsInput }),
     routeQuality: t.field({ type: RouteQualitySettingsInput }),
-    promptCapture: t.field({ type: PromptCaptureSettingsInput })
+    promptCapture: t.field({ type: PromptCaptureSettingsInput }),
+    consoleAgent: t.field({ type: ConsoleAgentSettingsInput })
   })
 });

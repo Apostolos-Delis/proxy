@@ -77,3 +77,9 @@ export function idempotencyFrom(
     .join(":");
   return sha256(`${surface}:${stableHeader}:${stableJson(body)}`);
 }
+
+export function notFoundError(message: string) {
+  const error = new Error(message) as Error & { statusCode: number };
+  error.statusCode = 404;
+  return error;
+}

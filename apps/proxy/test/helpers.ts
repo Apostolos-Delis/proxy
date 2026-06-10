@@ -183,14 +183,33 @@ function isClassifierRequest(body: Record<string, unknown>) {
     );
 }
 
-export async function startAnthropicMock(options: { outputText?: string } = {}): Promise<MockServer> {
+export type AnthropicScriptedResponse =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; name: string; input: Record<string, unknown> }
+  | { type: "hang" };
+
+export async function startAnthropicMock(
+  options: { outputText?: string; scriptedResponses?: AnthropicScriptedResponse[] } = {}
+): Promise<MockServer> {
   const records: RecordedRequest[] = [];
+  const scripted = [...(options.scriptedResponses ?? [])];
   const server = createServer(async (request, response) => {
     const body = await readJson(request);
     records.push({ path: request.url ?? "", headers: request.headers, body });
 
     if (request.url === "/messages/count_tokens") {
       sendJson(response, { input_tokens: 42 });
+      return;
+    }
+
+    if (options.scriptedResponses) {
+      const next = scripted.shift();
+      if (!next) {
+        response.writeHead(500, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: "anthropic mock script exhausted" }));
+        return;
+      }
+      sendScriptedAnthropicResponse(response, next);
       return;
     }
 
@@ -223,8 +242,65 @@ export async function startAnthropicMock(options: { outputText?: string } = {}):
   return listenMock(server, records);
 }
 
-export function listen(app: ReturnType<typeof buildServer>) {
-  return app.listen({ port: 0, host: "127.0.0.1" }).then(() => {
+function sendScriptedAnthropicResponse(
+  response: ServerResponse,
+  scripted: AnthropicScriptedResponse
+) {
+  response.writeHead(200, { "content-type": "text/event-stream" });
+  const send = (event: Record<string, unknown>) => {
+    response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+  };
+  send({
+    type: "message_start",
+    message: {
+      id: "msg_scripted",
+      type: "message",
+      role: "assistant",
+      model: "claude-mock",
+      content: [],
+      stop_reason: null,
+      stop_sequence: null,
+      usage: { input_tokens: 120, output_tokens: 0 }
+    }
+  });
+  if (scripted.type === "hang") return;
+  if (scripted.type === "text") {
+    send({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } });
+    send({
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "text_delta", text: scripted.text }
+    });
+    send({ type: "content_block_stop", index: 0 });
+    send({
+      type: "message_delta",
+      delta: { stop_reason: "end_turn", stop_sequence: null },
+      usage: { output_tokens: 30 }
+    });
+  } else {
+    send({
+      type: "content_block_start",
+      index: 0,
+      content_block: { type: "tool_use", id: `toolu_${scripted.name}`, name: scripted.name, input: {} }
+    });
+    send({
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "input_json_delta", partial_json: JSON.stringify(scripted.input) }
+    });
+    send({ type: "content_block_stop", index: 0 });
+    send({
+      type: "message_delta",
+      delta: { stop_reason: "tool_use", stop_sequence: null },
+      usage: { output_tokens: 30 }
+    });
+  }
+  send({ type: "message_stop" });
+  response.end();
+}
+
+export function listen(app: ReturnType<typeof buildServer>, port = 0) {
+  return app.listen({ port, host: "127.0.0.1" }).then(() => {
     const address = app.server.address() as AddressInfo;
     return `http://127.0.0.1:${address.port}`;
   });
@@ -237,7 +313,10 @@ function listenMock(server: ReturnType<typeof createServer>, records: RecordedRe
       resolve({
         url: `http://127.0.0.1:${address.port}`,
         records,
-        close: () => new Promise((done) => server.close(() => done()))
+        close: () => new Promise((done) => {
+          server.closeAllConnections();
+          server.close(() => done());
+        })
       });
     });
   });

@@ -33,6 +33,14 @@ const assignApiKeyRoutingConfigBodySchema = z.object({
 
 export class RoutingConfigAdminError extends AdminMutationError {}
 
+function runInTransaction<T>(
+  db: PromptProxyTransactionalDatabase,
+  outerTx: PromptProxyTransaction | undefined,
+  fn: (tx: PromptProxyTransaction) => Promise<T>
+) {
+  return outerTx ? fn(outerTx) : db.transaction(fn);
+}
+
 export class RoutingConfigAdminService {
   constructor(private readonly db: PromptProxyTransactionalDatabase) {}
 
@@ -41,7 +49,7 @@ export class RoutingConfigAdminService {
     workspaceId: string;
     actorUserId: string;
     body: unknown;
-  }) {
+  }, outerTx?: PromptProxyTransaction) {
     const body = createConfigBodySchema.safeParse(input.body);
     if (!body.success) throw validationError("invalid_routing_config_request", body.error);
     const config = parseRoutingConfig(body.data.config);
@@ -49,9 +57,9 @@ export class RoutingConfigAdminService {
     const configId = createId("routing_config");
     const versionId = createId("routing_config_version");
     const slug = slugValue(body.data.name);
-    const hash = configHash(config);
+    const hash = routingConfigHash(config);
 
-    return this.db.transaction(async (tx) => {
+    return runInTransaction(this.db, outerTx, async (tx) => {
       await rejectDuplicateSlug(tx, input.organizationId, input.workspaceId, slug);
       await tx.insert(routingConfigs).values({
         id: configId,
@@ -135,15 +143,15 @@ export class RoutingConfigAdminService {
     actorUserId: string;
     configId: string;
     body: unknown;
-  }) {
+  }, outerTx?: PromptProxyTransaction) {
     const body = createVersionBodySchema.safeParse(input.body);
     if (!body.success) throw validationError("invalid_routing_config_request", body.error);
     const config = parseRoutingConfig(body.data.config);
     const now = new Date();
     const versionId = createId("routing_config_version");
-    const hash = configHash(config);
+    const hash = routingConfigHash(config);
 
-    return this.db.transaction(async (tx) => {
+    return runInTransaction(this.db, outerTx, async (tx) => {
       const configRow = await lockedConfig(tx, input.organizationId, input.workspaceId, input.configId);
       if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
       if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
@@ -197,9 +205,9 @@ export class RoutingConfigAdminService {
     actorUserId: string;
     configId: string;
     versionId: string;
-  }) {
+  }, outerTx?: PromptProxyTransaction) {
     const now = new Date();
-    return this.db.transaction(async (tx) => {
+    return runInTransaction(this.db, outerTx, async (tx) => {
       const configRow = await lockedConfig(tx, input.organizationId, input.workspaceId, input.configId);
       if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
       if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
@@ -273,12 +281,12 @@ export class RoutingConfigAdminService {
     actorUserId: string;
     apiKeyId: string;
     body: unknown;
-  }) {
+  }, outerTx?: PromptProxyTransaction) {
     const body = assignApiKeyRoutingConfigBodySchema.safeParse(input.body);
     if (!body.success) throw validationError("invalid_api_key_routing_config_request", body.error);
     const routingConfigId = body.data.routingConfigId;
 
-    return this.db.transaction(async (tx) => {
+    return runInTransaction(this.db, outerTx, async (tx) => {
       const [apiKey] = await tx
         .select({
           id: apiKeys.id,
@@ -346,9 +354,9 @@ export class RoutingConfigAdminService {
     workspaceId: string;
     actorUserId: string;
     configId: string;
-  }) {
+  }, outerTx?: PromptProxyTransaction) {
     const now = new Date();
-    return this.db.transaction(async (tx) => {
+    return runInTransaction(this.db, outerTx, async (tx) => {
       const configRow = await lockedConfig(tx, input.organizationId, input.workspaceId, input.configId);
       if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
       if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
@@ -539,8 +547,12 @@ function validationError(message: string, error: z.ZodError) {
   );
 }
 
-function configHash(config: RoutingConfig) {
+export function routingConfigHash(config: RoutingConfig) {
   return createHash("sha256").update(JSON.stringify(config)).digest("hex");
+}
+
+export function routingConfigSlug(value: string) {
+  return slugValue(value);
 }
 
 function slugValue(value: string) {

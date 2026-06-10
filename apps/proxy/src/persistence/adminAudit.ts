@@ -59,6 +59,13 @@ async function nextEventSequence(
   scopeType: string,
   scopeId: string
 ) {
+  // Serializes concurrent same-scope appenders (e.g. parallel agent tool
+  // calls) so max+1 cannot collide on events_scope_sequence_idx.
+  await tx.execute(sql`
+    select pg_advisory_xact_lock(
+      hashtextextended(${`${organizationId}:${scopeType}:${scopeId}`}, 0)
+    )
+  `);
   const [row] = await tx
     .select({
       sequence: sql<number>`coalesce(max(${events.sequence}), 0) + 1`

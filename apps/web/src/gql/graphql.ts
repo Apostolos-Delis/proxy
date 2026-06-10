@@ -17,6 +17,14 @@ export type ClassifierSettingsInput = {
   timeoutMs?: number | null | undefined;
 };
 
+export type ConsoleAgentSettingsInput = {
+  maxToolCallsPerTurn?: number | null | undefined;
+  maxTurns?: number | null | undefined;
+  model?: string | null | undefined;
+  thinkingLevel?: string | null | undefined;
+  timeoutSeconds?: number | null | undefined;
+};
+
 export type CreateApiKeyInput = {
   name: string;
   routingConfigId?: string | number | null | undefined;
@@ -87,6 +95,7 @@ export type SetModelPricingInput = {
 export type SettingsInput = {
   budgets?: BudgetSettingsInput | null | undefined;
   classifier?: ClassifierSettingsInput | null | undefined;
+  consoleAgent?: ConsoleAgentSettingsInput | null | undefined;
   promptCapture?: PromptCaptureSettingsInput | null | undefined;
   routeQuality?: RouteQualitySettingsInput | null | undefined;
   schemaVersion?: number | null | undefined;
@@ -220,7 +229,7 @@ export type AssignApiKeyProviderAccountMutation = { assignApiKeyProviderAccount:
 export type RequestsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type RequestsPageQuery = { prompts: { data: Array<{ artifactId: string, requestId: string, sessionId: string | null, userId: string | null, surface: string, kind: string, preview: string | null, tokenEstimate: number | null, selectedModel: string | null, finalRoute: string | null, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }> }, requests: Array<{ requestId: string, selectedModel: string | null, terminalStatus: string, latencyMs: number | null, finalRoute: string | null, selectedCost: number, usage: { totalTokens: number }, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
+export type RequestsPageQuery = { prompts: { data: Array<{ artifactId: string, requestId: string, sessionId: string | null, userId: string | null, surface: string, kind: string, preview: string | null, tokenEstimate: number | null, selectedModel: string | null, finalRoute: string | null, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }> }, requests: Array<{ requestId: string, selectedModel: string | null, terminalStatus: string, internal: boolean, latencyMs: number | null, finalRoute: string | null, selectedCost: number, usage: { totalTokens: number }, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
 export type RoutingConfigSummaryFieldsFragment = { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routeMatrix: Array<{ route: string, description: string | null, openaiModel: string | null, openaiEffort: string | null, anthropicModel: string | null, anthropicEffort: string | null }> };
 
@@ -365,14 +374,14 @@ export type SessionDetailViewQuery = { session: { user: unknown, session: { sess
 export type SettingsViewQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number }, consoleAgent: { model: string, thinkingLevel: string, maxTurns: number, maxToolCallsPerTurn: number, timeoutSeconds: number } } } };
 
 export type UpdateSettingsMutationVariables = Exact<{
   input: SettingsInput;
 }>;
 
 
-export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number }, consoleAgent: { model: string, thinkingLevel: string, maxTurns: number, maxToolCallsPerTurn: number, timeoutSeconds: number } } } };
 
 export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number } };
 
@@ -947,6 +956,7 @@ export const RequestsPageDocument = new TypedDocumentString(`
     requestId
     selectedModel
     terminalStatus
+    internal
     latencyMs
     finalRoute
     selectedCost
@@ -1536,6 +1546,13 @@ export const SettingsViewDocument = new TypedDocumentString(`
         promptCaptureMode
         retentionDays
       }
+      consoleAgent {
+        model
+        thinkingLevel
+        maxTurns
+        maxToolCallsPerTurn
+        timeoutSeconds
+      }
     }
   }
 }
@@ -1570,6 +1587,13 @@ export const UpdateSettingsDocument = new TypedDocumentString(`
       promptCapture {
         promptCaptureMode
         retentionDays
+      }
+      consoleAgent {
+        model
+        thinkingLevel
+        maxTurns
+        maxToolCallsPerTurn
+        timeoutSeconds
       }
     }
   }

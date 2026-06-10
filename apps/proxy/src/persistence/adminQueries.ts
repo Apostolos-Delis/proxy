@@ -47,7 +47,7 @@ import {
   usageLedgerSummary
 } from "./adminSerializers.js";
 import { orgPricingOverrides, type OrgPricingOverride } from "./modelPricing.js";
-import { routeValue, surfaceValue } from "./values.js";
+import { requestStatusValue, routeValue, surfaceValue } from "./values.js";
 
 export type AdminQueryConfig = {
   routeQualityLowConfidenceThreshold: number;
@@ -74,6 +74,26 @@ export type UsageAnalyticsFilters = {
 
 export type UsageTimeseriesFilters = UsageAnalyticsFilters & {
   interval?: string;
+  limit?: number;
+};
+
+export type RequestListFilters = {
+  status?: string;
+  surface?: string;
+  route?: string;
+  sessionId?: string;
+  userId?: string;
+  routingConfigId?: string;
+  start?: string;
+  end?: string;
+  limit?: number;
+};
+
+export type SessionListFilters = {
+  userId?: string;
+  surface?: string;
+  start?: string;
+  end?: string;
   limit?: number;
 };
 
@@ -111,7 +131,9 @@ export class AdminQueryService {
   }
 
   async overview() {
-    const requestRows = await this.requestRows();
+    // Analytics exclude internal (console-agent) traffic; the request log
+    // keeps it visible and tagged via requestSummary.internal.
+    const requestRows = (await this.requestRows()).filter((row) => !row.internal);
     const requestSummaries = await this.summarizeRequests(requestRows);
     const eventCount = await this.eventCount();
     const lowConfidenceCount = await this.lowConfidenceDecisionCount();
@@ -148,6 +170,95 @@ export class AdminQueryService {
     return {
       data: await this.summarizeRequests(await this.requestRows(200))
     };
+  }
+
+  // Console-agent reads: filtered, uncached variants of requests()/sessions()
+  // so a long-lived service instance never serves stale request-scoped caches.
+  async requestsFiltered(filters: RequestListFilters = {}) {
+    const conditions = [this.scopedTo(requests)];
+    const status = requestStatusValue(filters.status);
+    if (status) conditions.push(eq(requests.status, status));
+    const surface = surfaceValue(filters.surface);
+    if (surface) conditions.push(eq(requests.surface, surface));
+    if (filters.sessionId) conditions.push(eq(requests.sessionId, filters.sessionId));
+    if (filters.userId) conditions.push(eq(requests.userId, filters.userId));
+    if (filters.routingConfigId) conditions.push(eq(requests.routingConfigId, filters.routingConfigId));
+    const start = dateValue(filters.start);
+    if (start) conditions.push(gte(requests.createdAt, start));
+    const end = dateValue(filters.end);
+    if (end) conditions.push(lte(requests.createdAt, end));
+    const route = routeValue(filters.route);
+    if (route) {
+      conditions.push(inArray(
+        requests.id,
+        this.db
+          .select({ id: routeDecisions.requestId })
+          .from(routeDecisions)
+          .where(and(
+            this.scopedTo(routeDecisions),
+            eq(routeDecisions.finalRoute, route)
+          ))
+      ));
+    }
+    const rows = await this.db
+      .select()
+      .from(requests)
+      .where(and(...conditions))
+      .orderBy(desc(requests.createdAt))
+      .limit(Math.min(filters.limit ?? 200, 200));
+    return { data: await this.summarizeRequests(rows) };
+  }
+
+  async sessionsFiltered(filters: SessionListFilters = {}) {
+    const conditions = [this.scopedTo(agentSessions)];
+    if (filters.userId) conditions.push(eq(agentSessions.userId, filters.userId));
+    const surface = surfaceValue(filters.surface);
+    if (surface) conditions.push(eq(agentSessions.surface, surface));
+    const start = dateValue(filters.start);
+    if (start) conditions.push(gte(agentSessions.updatedAt, start));
+    const end = dateValue(filters.end);
+    if (end) conditions.push(lte(agentSessions.updatedAt, end));
+    const sessionRows = await this.db
+      .select()
+      .from(agentSessions)
+      .where(and(...conditions))
+      .orderBy(desc(agentSessions.updatedAt))
+      .limit(Math.min(filters.limit ?? 200, 200));
+    const requestRows = await this.requestRowsForSessions(sessionRows.map((session) => session.id));
+    const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
+    return {
+      data: sessionRows
+        .map((session) => sessionSummary(session, requestSummaries))
+        .sort((left, right) => compareRecentActivity(left.recentActivity, right.recentActivity))
+    };
+  }
+
+  private async requestRowsForSessions(sessionIds: string[]) {
+    if (sessionIds.length === 0) return [];
+    return this.db
+      .select()
+      .from(requests)
+      .where(and(
+        this.scopedTo(requests),
+        inArray(requests.sessionId, sessionIds)
+      ))
+      .orderBy(desc(requests.createdAt));
+  }
+
+  async routingConfigVersionByHash(configHash: string) {
+    const [version] = await this.db
+      .select({
+        id: routingConfigVersions.id,
+        routingConfigId: routingConfigVersions.routingConfigId,
+        version: routingConfigVersions.version
+      })
+      .from(routingConfigVersions)
+      .where(and(
+        this.scopedTo(routingConfigVersions),
+        eq(routingConfigVersions.configHash, configHash)
+      ))
+      .limit(1);
+    return version ?? null;
   }
 
   async search(query: string) {
@@ -325,7 +436,7 @@ export class AdminQueryService {
   }
 
   async usage(filters: UsageAnalyticsFilters = {}) {
-    const requestRows = await this.requestRowsForUsage(filters);
+    const requestRows = (await this.requestRowsForUsage(filters)).filter((row) => !row.internal);
     const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
     const groupBy = usageGroupBy(filters.groupBy);
     const groups = new Map<string, UsageGroup>();
@@ -349,7 +460,7 @@ export class AdminQueryService {
   }
 
   async usageTimeseries(filters: UsageTimeseriesFilters = {}) {
-    const requestRows = await this.requestRowsForUsage(filters);
+    const requestRows = (await this.requestRowsForUsage(filters)).filter((row) => !row.internal);
     const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
     const groupBy = usageGroupBy(filters.groupBy);
     const interval = usageInterval(filters.interval);
@@ -1350,6 +1461,7 @@ function requestSummary(row: {
     routingConfig: routingConfigSummary(row.decision ?? row.request),
     classifier: row.decision?.classifier ?? undefined,
     terminalStatus: row.attempt?.terminalStatus ?? row.request.status,
+    internal: row.request.internal,
     inputChars: row.request.inputChars,
     usage,
     latencyMs: elapsedMs(row.attempt?.startedAt, row.attempt?.completedAt),

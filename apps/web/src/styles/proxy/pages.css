@@ -2988,3 +2988,10 @@ input[type="checkbox"][role="switch"]:focus-visible {
   gap: 6px;
   justify-items: end;
 }
+
+.internal-chip {
+  margin-left: 6px;
+  color: var(--fg-faint);
+  border-color: var(--border-strong);
+  background: var(--glass-2);
+}

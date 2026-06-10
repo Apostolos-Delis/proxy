@@ -87,6 +87,28 @@ export const INVITATION_STATUSES = {
   REVOKED: "revoked"
 } as const;
 
+export const CONSOLE_AGENT_RUN_STATUSES = {
+  RUNNING: "running",
+  FINISHED: "finished",
+  FAILED: "failed",
+  CANCELLED: "cancelled",
+  AWAITING_INPUT: "awaiting_input",
+  AWAITING_APPROVAL: "awaiting_approval"
+} as const;
+
+export const CONSOLE_AGENT_PROPOSAL_STATUSES = {
+  PENDING: "pending",
+  APPROVED: "approved",
+  REJECTED: "rejected",
+  EXPIRED: "expired",
+  STALE: "stale"
+} as const;
+
+export const CONSOLE_AGENT_MESSAGE_ROLES = {
+  USER: "user",
+  ASSISTANT: "assistant"
+} as const;
+
 export const ROUTING_HINT_NAMES = [
   "quick",
   "deep",
@@ -160,6 +182,9 @@ export type PromptCaptureMode = typeof PROMPT_CAPTURE_MODES[keyof typeof PROMPT_
 export type OrganizationMemberRole = typeof ORGANIZATION_MEMBER_ROLES[keyof typeof ORGANIZATION_MEMBER_ROLES];
 export type OrganizationMemberStatus = typeof ORGANIZATION_MEMBER_STATUSES[keyof typeof ORGANIZATION_MEMBER_STATUSES];
 export type InvitationStatus = typeof INVITATION_STATUSES[keyof typeof INVITATION_STATUSES];
+export type ConsoleAgentRunStatus = typeof CONSOLE_AGENT_RUN_STATUSES[keyof typeof CONSOLE_AGENT_RUN_STATUSES];
+export type ConsoleAgentProposalStatus = typeof CONSOLE_AGENT_PROPOSAL_STATUSES[keyof typeof CONSOLE_AGENT_PROPOSAL_STATUSES];
+export type ConsoleAgentMessageRole = typeof CONSOLE_AGENT_MESSAGE_ROLES[keyof typeof CONSOLE_AGENT_MESSAGE_ROLES];
 
 export type JsonValue =
   | null

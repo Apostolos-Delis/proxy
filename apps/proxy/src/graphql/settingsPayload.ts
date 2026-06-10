@@ -36,7 +36,15 @@ export async function settingsResponse(
     routeQuality: {
       lowConfidenceThreshold: fileSettings.routeQuality.lowConfidenceThreshold ?? config.routeQualityLowConfidenceThreshold
     },
-    promptCapture
+    promptCapture,
+    consoleAgent: {
+      model: fileSettings.consoleAgent.model ?? config.consoleAgentModel,
+      thinkingLevel: fileSettings.consoleAgent.thinkingLevel ?? config.consoleAgentThinkingLevel,
+      maxTurns: fileSettings.consoleAgent.maxTurns ?? config.consoleAgentMaxTurns,
+      maxToolCallsPerTurn:
+        fileSettings.consoleAgent.maxToolCallsPerTurn ?? config.consoleAgentMaxToolCallsPerTurn,
+      timeoutSeconds: fileSettings.consoleAgent.timeoutSeconds ?? config.consoleAgentTimeoutSeconds
+    }
   };
   return {
     organizationId,
@@ -55,7 +63,7 @@ export async function settingsResponse(
       path: config.settingsPath,
       reason: "The repo already uses JSON package/config conventions and has no YAML parser dependency."
     },
-    restartRequiredFor: ["classifier", "budgets", "routeQuality"],
+    restartRequiredFor: ["classifier", "budgets", "routeQuality", "consoleAgent"],
     settings,
     runtime: {
       classifier: {

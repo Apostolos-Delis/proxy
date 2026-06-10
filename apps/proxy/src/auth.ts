@@ -10,6 +10,7 @@ export type RequestIdentity = {
   workspaceId: string;
   userId?: string;
   apiKeyId?: string;
+  internal?: boolean;
   scopes: string[];
   routingConfigId: string | null;
   source: "api_key" | "dev_proxy_token";
@@ -84,6 +85,7 @@ export function requestReceivedPayload(
     authSource: identity.source,
     apiKeyId: identity.apiKeyId ?? null,
     workspaceId: identity.workspaceId,
+    internal: identity.internal ?? false,
     routingConfigId: identity.routingConfigId,
     requestedModel: context.requestedModel,
     inputHash: context.inputHash,
@@ -97,6 +99,7 @@ function apiKeyIdentity(identity: ResolvedApiKeyIdentity): RequestIdentity {
     workspaceId: identity.workspaceId,
     userId: identity.userId,
     apiKeyId: identity.apiKeyId,
+    internal: identity.internal,
     scopes: identity.scopes,
     routingConfigId: identity.routingConfigId,
     source: "api_key"

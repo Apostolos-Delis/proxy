@@ -24,6 +24,7 @@ export const RequestSummary = builder.objectRef<RequestSummaryShape>("RequestSum
       resolve: (request) => request.classifier ?? null
     }),
     terminalStatus: t.exposeString("terminalStatus"),
+    internal: t.field({ type: "Boolean", resolve: (request) => request.internal ?? false }),
     inputChars: t.exposeFloat("inputChars", { nullable: true }),
     usage: t.expose("usage", { type: TokenTotals }),
     latencyMs: t.exposeFloat("latencyMs", { nullable: true }),

@@ -9,6 +9,8 @@ import type { AppConfig } from "../config.js";
 import { AdminQueryService, type AdminQueryConfig } from "./adminQueries.js";
 import { AdminSessionStore } from "./adminSessions.js";
 import { ApiKeyAdminService } from "./apiKeyAdmin.js";
+import { ConsoleAgentProposalService } from "./consoleAgentProposals.js";
+import { ConsoleAgentStore } from "./consoleAgentStore.js";
 import { DatabaseEventSink } from "./eventSink.js";
 import { ApiKeyIdentityStore } from "./identity.js";
 import { ModelPricingAdminService } from "./modelPricingAdmin.js";
@@ -45,6 +47,8 @@ export function createDatabasePersistence(
     apiKeyAdmin: new ApiKeyAdminService(transactional),
     apiKeys: new ApiKeyIdentityStore(db),
     adminSessions: new AdminSessionStore(db),
+    consoleAgent: new ConsoleAgentStore(transactional, db),
+    consoleAgentProposals: new ConsoleAgentProposalService(transactional, db),
     providerCredentials: new ProviderCredentialStore(db, config.providerSecretEncryptionKey),
     providerCredentialAdmin: new ProviderCredentialAdminService(transactional, config.providerSecretEncryptionKey),
     eventSink: new DatabaseEventSink(transactional, config.modelCosts, useAdvisoryLocks),
