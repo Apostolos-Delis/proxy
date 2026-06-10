@@ -248,15 +248,47 @@ export type SessionDetail = {
   events: ProxyEvent[];
 };
 
+export type EditableSettings = {
+  schemaVersion: 1;
+  classifier: {
+    model: string;
+    timeoutMs: number;
+    maxAttempts: number;
+    allowRedactedExcerpt: boolean;
+  };
+  budgets: {
+    warningEstimatedInputTokens: number | null;
+    maxEstimatedInputTokens: number | null;
+    maxRoute: string | null;
+  };
+  routeQuality: {
+    lowConfidenceThreshold: number;
+  };
+  promptCapture: {
+    promptCaptureMode: string;
+    retentionDays: number;
+  };
+};
+
 export type Settings = {
   organizationId: string;
   databaseEnabled: boolean;
   classifier: Record<string, unknown>;
-  budgets: Record<string, unknown>;
-  promptCapture: {
-    promptCaptureMode: string;
-    retentionDays: number;
-  } | null;
+  budgets: EditableSettings["budgets"];
+  promptCapture: EditableSettings["promptCapture"] | null;
+  storage: {
+    format: string;
+    path: string;
+    reason: string;
+  };
+  restartRequiredFor: string[];
+  settings: EditableSettings;
+  runtime: {
+    classifier: Record<string, unknown>;
+    budgets: Record<string, unknown>;
+  };
+  file: Record<string, unknown>;
+  defaults: Record<string, unknown>;
 };
 
 export type RoutingConfigRouteMatrixRow = {
@@ -382,6 +414,13 @@ export async function fetchSettings() {
   return fetchJson<Settings>("/admin/settings");
 }
 
+export async function updateSettings(settings: EditableSettings) {
+  return fetchJson<Settings>("/admin/settings", {
+    method: "PATCH",
+    body: JSON.stringify(settings)
+  });
+}
+
 export async function fetchApiKeys() {
   return fetchJson<{ data: ApiKeySummary[] }>("/admin/api-keys");
 }
@@ -469,7 +508,8 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
   });
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+    const detail = await response.text();
+    throw new Error(detail ? `${response.status} ${response.statusText}: ${detail}` : `${response.status} ${response.statusText}`);
   }
   return response.json() as Promise<T>;
 }

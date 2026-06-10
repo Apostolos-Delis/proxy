@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  readSettingsFileSync,
+  settingsPathFromEnv,
+  settingsToEnv
+} from "./settings.js";
 import type { RouteName } from "./types.js";
 
 const booleanEnvSchema = z.preprocess((value) => {
@@ -54,6 +59,7 @@ const modelCostsSchema = z.preprocess((value) => {
 const configSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8787),
   PROMPT_PROXY_TOKEN: z.string().min(1).default("dev-proxy-token"),
+  PROMPT_PROXY_SETTINGS_PATH: z.string().optional(),
   OPENAI_API_KEY: z.string().min(1).default("test-openai-key"),
   OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   OPENAI_FAST_MODEL: z.string().min(1).default("gpt-5.4-mini"),
@@ -96,11 +102,18 @@ const configSchema = z.object({
 export type AppConfig = ReturnType<typeof loadConfig>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
-  const parsed = configSchema.parse(env);
+  const settingsPath = settingsPathFromEnv(env);
+  const fileSettings = readSettingsFileSync(settingsPath);
+  const parsed = configSchema.parse({
+    ...settingsToEnv(fileSettings),
+    ...env,
+    PROMPT_PROXY_SETTINGS_PATH: settingsPath
+  });
 
   return {
     port: parsed.PORT,
     proxyToken: parsed.PROMPT_PROXY_TOKEN,
+    settingsPath,
     openaiApiKey: parsed.OPENAI_API_KEY,
     openaiBaseUrl: trimTrailingSlash(parsed.OPENAI_BASE_URL),
     openaiFastModel: parsed.OPENAI_FAST_MODEL,

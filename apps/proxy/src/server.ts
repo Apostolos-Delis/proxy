@@ -28,6 +28,12 @@ import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
 import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
+import {
+  emptyProxySettings,
+  readSettingsFile,
+  writeSettingsFile,
+  type ProxySettings
+} from "./settings.js";
 import { createId, headerValue, idempotencyFrom, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
 
@@ -427,25 +433,35 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   });
   app.get("/admin/settings", async (request) => {
     await adminAuth.resolve(request.headers);
-    return {
-      organizationId: config.defaultOrganizationId,
-      databaseEnabled: Boolean(config.databaseUrl),
-      classifier: {
-        provider: config.classifierProvider,
-        model: config.classifierModel,
-        timeoutMs: config.classifierTimeoutMs,
-        maxAttempts: config.classifierMaxAttempts,
-        contentMode: config.classifierAllowRedactedExcerpt ? "redacted_excerpt" : "features_only"
-      },
-      budgets: {
-        maxEstimatedInputTokens: config.budgetMaxEstimatedInputTokens ?? null,
-        warningEstimatedInputTokens: config.budgetWarningEstimatedInputTokens ?? null,
-        maxRoute: config.budgetMaxRoute ?? null
-      },
-      promptCapture: persistence
-        ? await persistence.promptArtifacts.settings(config.defaultOrganizationId)
-        : null
-    };
+    return settingsResponse(config, await readSettingsFile(config.settingsPath), persistence);
+  });
+  app.patch("/admin/settings", async (request, reply) => {
+    const identity = await adminAuth.resolve(request.headers);
+    try {
+      const settings = await writeSettingsFile(config.settingsPath, request.body);
+      if (
+        persistence &&
+        settings.promptCapture.promptCaptureMode !== undefined &&
+        settings.promptCapture.retentionDays !== undefined
+      ) {
+        await persistence.promptArtifacts.configure({
+          organizationId: identity.organizationId,
+          promptCaptureMode: settings.promptCapture.promptCaptureMode,
+          retentionDays: settings.promptCapture.retentionDays
+        });
+      }
+      return settingsResponse(config, settings, persistence);
+    } catch (error) {
+      if (error instanceof Error && error.message === "settings_file_invalid_json") {
+        reply.code(400).send({ error: "settings_file_invalid_json" });
+        return;
+      }
+      if (error && typeof error === "object" && "issues" in error) {
+        reply.code(400).send({ error: "invalid_settings", issues: (error as { issues: unknown }).issues });
+        return;
+      }
+      throw error;
+    }
   });
 
   app.post("/v1/responses", async (request, reply) => {
@@ -725,6 +741,73 @@ async function resolveRoutingConfig(
         config: resolved.config
       }
     : undefined;
+}
+
+async function settingsResponse(
+  config: AppConfig,
+  fileSettings: ProxySettings,
+  persistence: AppPersistence | undefined
+) {
+  const promptCapture = persistence
+    ? await persistence.promptArtifacts.settings(config.defaultOrganizationId)
+    : {
+        promptCaptureMode: fileSettings.promptCapture.promptCaptureMode ?? "raw_text",
+        retentionDays: fileSettings.promptCapture.retentionDays ?? 30
+      };
+  const settings = {
+    schemaVersion: 1,
+    classifier: {
+      model: fileSettings.classifier.model ?? config.classifierModel,
+      timeoutMs: fileSettings.classifier.timeoutMs ?? config.classifierTimeoutMs,
+      maxAttempts: fileSettings.classifier.maxAttempts ?? config.classifierMaxAttempts,
+      allowRedactedExcerpt: fileSettings.classifier.allowRedactedExcerpt ?? config.classifierAllowRedactedExcerpt
+    },
+    budgets: {
+      warningEstimatedInputTokens: fileSettings.budgets.warningEstimatedInputTokens ?? config.budgetWarningEstimatedInputTokens ?? null,
+      maxEstimatedInputTokens: fileSettings.budgets.maxEstimatedInputTokens ?? config.budgetMaxEstimatedInputTokens ?? null,
+      maxRoute: fileSettings.budgets.maxRoute ?? config.budgetMaxRoute ?? null
+    },
+    routeQuality: {
+      lowConfidenceThreshold: fileSettings.routeQuality.lowConfidenceThreshold ?? config.routeQualityLowConfidenceThreshold
+    },
+    promptCapture
+  };
+  return {
+    organizationId: config.defaultOrganizationId,
+    databaseEnabled: Boolean(config.databaseUrl),
+    classifier: {
+      provider: config.classifierProvider,
+      model: config.classifierModel,
+      timeoutMs: config.classifierTimeoutMs,
+      maxAttempts: config.classifierMaxAttempts,
+      contentMode: config.classifierAllowRedactedExcerpt ? "redacted_excerpt" : "features_only"
+    },
+    budgets: settings.budgets,
+    promptCapture,
+    storage: {
+      format: "json",
+      path: config.settingsPath,
+      reason: "The repo already uses JSON package/config conventions and has no YAML parser dependency."
+    },
+    restartRequiredFor: ["classifier", "budgets", "routeQuality"],
+    settings,
+    runtime: {
+      classifier: {
+        provider: config.classifierProvider,
+        model: config.classifierModel,
+        timeoutMs: config.classifierTimeoutMs,
+        maxAttempts: config.classifierMaxAttempts,
+        contentMode: config.classifierAllowRedactedExcerpt ? "redacted_excerpt" : "features_only"
+      },
+      budgets: {
+        maxEstimatedInputTokens: config.budgetMaxEstimatedInputTokens ?? null,
+        warningEstimatedInputTokens: config.budgetWarningEstimatedInputTokens ?? null,
+        maxRoute: config.budgetMaxRoute ?? null
+      }
+    },
+    file: fileSettings,
+    defaults: emptyProxySettings
+  };
 }
 
 function badRequest(message: string) {

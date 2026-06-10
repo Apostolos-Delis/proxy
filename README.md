@@ -63,6 +63,7 @@ Cookie-authenticated admin endpoints power the web console:
 - `GET /admin/sessions`
 - `GET /admin/sessions/:sessionId`
 - `GET /admin/settings`
+- `PATCH /admin/settings`
 - `PATCH /admin/settings/prompt-capture`
 - `GET /admin/routing-configs`
 - `POST /admin/routing-configs`
@@ -87,6 +88,8 @@ pnpm dev:local
 ```
 
 When `DATABASE_URL` is set, appended proxy events also persist durable current-state rows for requests, route decisions, provider attempts, usage, sessions, prompt artifacts, events, and outbox items.
+
+Prompt Proxy stores editable runtime settings as JSON at `.prompt-proxy/settings.json` by default, or at `PROMPT_PROXY_SETTINGS_PATH` when set. The settings UI at `/settings` reads and writes that file through `GET /admin/settings` and `PATCH /admin/settings`; environment variables still take precedence, and classifier, budget, and route-quality changes apply after restart. Prompt capture settings are also applied to database-backed organization settings when persistence is enabled.
 
 `pnpm db:seed` is idempotent. It creates the default organization from `DEFAULT_ORGANIZATION_ID`, a local seed user from `SEED_USER_*`, provider account placeholders that reference env secrets, a legacy route policy placeholder, model catalog rows, a default routing config with immutable v1, and a local API key assigned to that config. Use a distinct `PROMPT_PROXY_TOKEN` when seeding multiple organizations in the same database.
 

@@ -3,5 +3,6 @@ dist/
 apps/*/dist/
 packages/*/dist/
 .vite/
+.prompt-proxy/
 .env
 .DS_Store
