@@ -29,6 +29,7 @@ import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
 import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
+import { buildSetupScript } from "./setupScript.js";
 import type { Provider, Surface } from "./types.js";
 import { createId, headerValue, idempotencyFrom, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
@@ -111,6 +112,16 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   wsProxy.register(app.server);
 
   app.get("/healthz", async () => ({ status: "ok" }));
+
+  app.get("/setup.sh", async (request, reply) => {
+    const proto = headerValue(request.headers, "x-forwarded-proto")?.split(",")[0].trim() ?? request.protocol;
+    const host = headerValue(request.headers, "x-forwarded-host") ?? headerValue(request.headers, "host") ?? `127.0.0.1:${config.port}`;
+    // text/plain (not x-shellscript) so the link in the setup guide renders
+    // the script in the browser instead of downloading it.
+    void reply.header("content-type", "text/plain; charset=utf-8");
+    void reply.header("cache-control", "no-store");
+    return buildSetupScript(`${proto}://${host}`);
+  });
 
   app.get("/v1/models", async () => ({
     object: "list",
