@@ -2,36 +2,76 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Mail, RotateCw, X } from "lucide-react";
 import { useState } from "react";
 
-import {
-  fetchInvitations,
-  resendInvitation,
-  revokeInvitation,
-  type InvitationActionResult,
-  type InvitationSummary
-} from "./api";
 import { formatDateTime } from "./format";
-import { InviteLinkResult } from "./inviteUserPanel";
+import { graphql } from "./gql";
+import type { InvitationsListQuery } from "./gql/graphql";
+import { gqlFetch } from "./graphql";
+import { InviteLinkResult, type InvitationActionResult } from "./inviteUserPanel";
 import { Badge, DataTable, GlassCard, StatusBadge } from "./ui";
+
+const InvitationsListDocument = graphql(`
+  query InvitationsList {
+    invitations {
+      id
+      email
+      name
+      role
+      status
+      lastSentAt
+      expiresAt
+      invitedBy {
+        userId
+        name
+        email
+      }
+    }
+  }
+`);
+
+const ResendInvitationDocument = graphql(`
+  mutation ResendInvitation($invitationId: ID!) {
+    resendInvitation(invitationId: $invitationId) {
+      inviteUrl
+      emailDelivery {
+        transport
+        delivered
+        error
+      }
+    }
+  }
+`);
+
+const RevokeInvitationDocument = graphql(`
+  mutation RevokeInvitation($invitationId: ID!) {
+    revokeInvitation(invitationId: $invitationId) {
+      id
+      status
+    }
+  }
+`);
+
+type InvitationSummary = InvitationsListQuery["invitations"][number];
 
 export function InvitationsCard() {
   const [resendResult, setResendResult] = useState<{ invitationId: string; result: InvitationActionResult } | null>(null);
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ["invitations"], queryFn: fetchInvitations });
+  const query = useQuery({ queryKey: ["invitations"], queryFn: () => gqlFetch(InvitationsListDocument) });
   const resendMutation = useMutation({
-    mutationFn: (invitationId: string) => resendInvitation(invitationId),
+    mutationFn: async (invitationId: string) =>
+      (await gqlFetch(ResendInvitationDocument, { invitationId })).resendInvitation,
     onSuccess: (result, invitationId) => {
       queryClient.invalidateQueries({ queryKey: ["invitations"] });
       setResendResult({ invitationId, result });
     }
   });
   const revokeMutation = useMutation({
-    mutationFn: (invitationId: string) => revokeInvitation(invitationId),
+    mutationFn: (invitationId: string) => gqlFetch(RevokeInvitationDocument, { invitationId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invitations"] });
     }
   });
 
-  const invitationList = query.data?.data ?? [];
+  const invitationList = query.data?.invitations ?? [];
   if (query.isLoading || invitationList.length === 0) return null;
 
   const actionError = resendMutation.error ?? revokeMutation.error;

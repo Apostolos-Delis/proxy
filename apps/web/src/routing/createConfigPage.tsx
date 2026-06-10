@@ -13,7 +13,7 @@ import {
   type CreateRoutingConfigInput,
   type RoutingConfigSummary,
   type RoutingConfigVersionDetail
-} from "../api";
+} from "./data";
 import { applyDraft, draftError, draftFromConfig, type ConfigEditorDraft } from "../routingConfigEditor";
 import { MenuSelect } from "../table/MenuSelect";
 import { GlassCard, PageState, PageTitle } from "../ui";
@@ -40,13 +40,13 @@ export function CreateRoutingConfigPage() {
   if (configsQuery.isLoading) return <PageState title="New routing config" label="Loading routing configs" />;
   if (configsQuery.error) return <PageState title="New routing config" label={configsQuery.error.message} />;
 
-  const sourceConfigs = (configsQuery.data?.data ?? []).filter(
+  const sourceConfigs = (configsQuery.data ?? []).filter(
     (config) => config.status === "active" && Boolean(config.activeVersion)
   );
   if (sourceConfigs.length === 0) {
     return <PageState title="New routing config" label="Creating a config requires an active source config to clone." />;
   }
-  const apiKeys = (keysQuery.data?.data ?? []).filter(isUsableKey);
+  const apiKeys = (keysQuery.data ?? []).filter(isUsableKey);
   return <CreateConfigForm sourceConfigs={sourceConfigs} apiKeys={apiKeys} />;
 }
 

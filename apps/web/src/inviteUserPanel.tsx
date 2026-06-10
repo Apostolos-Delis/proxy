@@ -2,9 +2,35 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, MailPlus } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { createInvitation, type EmailDelivery, type InvitationActionResult, type MemberRole } from "./api";
+import { graphql } from "./gql";
+import type { MemberRole } from "./gql/graphql";
+import { gqlFetch } from "./graphql";
 import { MenuSelect } from "./table/MenuSelect";
 import { Badge, GlassCard } from "./ui";
+
+const CreateInvitationDocument = graphql(`
+  mutation CreateInvitation($input: CreateInvitationInput!) {
+    createInvitation(input: $input) {
+      inviteUrl
+      emailDelivery {
+        transport
+        delivered
+        error
+      }
+    }
+  }
+`);
+
+export type EmailDelivery = {
+  transport: string;
+  delivered: boolean;
+  error?: string | null;
+};
+
+export type InvitationActionResult = {
+  inviteUrl: string;
+  emailDelivery: EmailDelivery;
+};
 
 export const memberRoleOptions: { value: MemberRole; label: string }[] = [
   { value: "owner", label: "Owner" },
@@ -27,11 +53,13 @@ export function InviteUserPanel() {
   const [result, setResult] = useState<InvitationActionResult | null>(null);
   const queryClient = useQueryClient();
   const inviteMutation = useMutation({
-    mutationFn: () => createInvitation({
-      email: form.email.trim(),
-      name: form.name.trim() || undefined,
-      role: form.role
-    }),
+    mutationFn: async () => (await gqlFetch(CreateInvitationDocument, {
+      input: {
+        email: form.email.trim(),
+        name: form.name.trim() || undefined,
+        role: form.role
+      }
+    })).createInvitation,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["invitations"] });
       setResult(data);

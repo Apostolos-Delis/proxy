@@ -2,7 +2,7 @@ import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import { Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
-import { fetchApiKeys, fetchUsage, fetchUsageTimeseries, fetchUsers, type UsageGroup } from "./api";
+import { fetchUsageLookups, fetchUsageReport, fetchUsageTimeseries, type UsageGroup } from "./usageData";
 import { ChartLegend, StackedBarsChart } from "./charts";
 import { downloadJson } from "./dashboard";
 import { formatCompact, formatCompactMoney, formatMoney, formatPercent } from "./format";
@@ -33,11 +33,11 @@ export function CostPage() {
   const [dimension, setDimension] = useState<UsageDimension>("model");
   const [spendTab, setSpendTab] = useState<SpendTab>("user");
   const { start, end, interval } = usageRangeQuery(range, anchor);
-  const [usageQuery, timeseriesQuery, usersQuery, apiKeysQuery] = useQueries({
+  const [usageQuery, timeseriesQuery, lookupsQuery] = useQueries({
     queries: [
       {
         queryKey: ["usage", dimension, start, end],
-        queryFn: () => fetchUsage(dimension, { start, end }),
+        queryFn: () => fetchUsageReport(dimension, { start, end }),
         placeholderData: keepPreviousData
       },
       {
@@ -45,13 +45,12 @@ export function CostPage() {
         queryFn: () => fetchUsageTimeseries(dimension, { start, end, interval }),
         placeholderData: keepPreviousData
       },
-      { queryKey: ["users"], queryFn: fetchUsers },
-      { queryKey: ["api-keys"], queryFn: fetchApiKeys }
+      { queryKey: ["usage-lookups"], queryFn: fetchUsageLookups }
     ]
   });
   const spendTabQuery = useQuery({
     queryKey: ["usage", spendTab, start, end],
-    queryFn: () => fetchUsage(spendTab, { start, end }),
+    queryFn: () => fetchUsageReport(spendTab, { start, end }),
     placeholderData: keepPreviousData
   });
   const loading = (usageQuery.isLoading || timeseriesQuery.isLoading) && !usageQuery.data;
@@ -66,8 +65,8 @@ export function CostPage() {
 
   const totals = usage.totals;
   const lookups: GroupLabelLookups = {
-    usersById: new Map((usersQuery.data?.data ?? []).map((user) => [user.userId, user])),
-    apiKeysById: new Map((apiKeysQuery.data?.data ?? []).map((key) => [key.id, key]))
+    usersById: new Map((lookupsQuery.data?.users ?? []).map((user) => [user.userId, user])),
+    apiKeysById: new Map((lookupsQuery.data?.apiKeys ?? []).map((key) => [key.id, key]))
   };
   const { series, rows } = stackedUsageSeries(timeseries, dimension, "cost", lookups);
   const days = Number(range);

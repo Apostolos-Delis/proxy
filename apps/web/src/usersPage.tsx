@@ -2,39 +2,90 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, MailPlus, UserCheck, UserX, X } from "lucide-react";
 import { useState } from "react";
 
-import {
-  deactivateUser,
-  fetchMe,
-  fetchUsers,
-  reactivateUser,
-  updateUserRole,
-  type MemberRole,
-  type UserSummary
-} from "./api";
+import { fetchMe } from "./api";
 import { displayUser } from "./consoleData";
 import { downloadJson, InspectorPanel } from "./dashboard";
 import { formatCompact, formatDateTime, formatMoney } from "./format";
+import { graphql } from "./gql";
+import type { MemberRole, UsersListQuery } from "./gql/graphql";
+import { gqlFetch } from "./graphql";
 import { InvitationsCard } from "./invitationsCard";
 import { InviteUserPanel, memberRoleOptions } from "./inviteUserPanel";
 import { ConsoleTable, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { MenuSelect } from "./table/MenuSelect";
 import { Badge, PageState, PageTitle, StatusBadge, UserCell } from "./ui";
 
+const UsersListDocument = graphql(`
+  query UsersList {
+    users {
+      userId
+      email
+      name
+      externalId
+      membership {
+        role
+        status
+      }
+      requestCount
+      sessionCount
+      usage {
+        totalTokens
+      }
+      cost {
+        selected
+      }
+      recentActivity
+      createdAt
+    }
+  }
+`);
+
+const UpdateUserRoleDocument = graphql(`
+  mutation UpdateUserRole($userId: ID!, $role: MemberRole!) {
+    updateUserRole(userId: $userId, role: $role) {
+      userId
+      role
+      previousRole
+    }
+  }
+`);
+
+const DeactivateUserDocument = graphql(`
+  mutation DeactivateUser($userId: ID!) {
+    deactivateUser(userId: $userId) {
+      userId
+      status
+    }
+  }
+`);
+
+const ReactivateUserDocument = graphql(`
+  mutation ReactivateUser($userId: ID!) {
+    reactivateUser(userId: $userId) {
+      userId
+      status
+    }
+  }
+`);
+
+type UserSummary = UsersListQuery["users"][number];
+
 export function UsersPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ["users"], queryFn: fetchUsers });
+  const query = useQuery({ queryKey: ["users"], queryFn: () => gqlFetch(UsersListDocument) });
   const meQuery = useQuery({ queryKey: ["me"], queryFn: fetchMe });
   const roleMutation = useMutation({
-    mutationFn: (input: { userId: string; role: MemberRole }) => updateUserRole(input.userId, input.role),
+    mutationFn: (input: { userId: string; role: MemberRole }) =>
+      gqlFetch(UpdateUserRoleDocument, { userId: input.userId, role: input.role }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users"] })
   });
 
   if (query.isLoading) return <PageState title="Users" label="Loading users" />;
   if (query.error) return <PageState title="Users" label={query.error.message} />;
 
-  const users = query.data?.data ?? [];
+  const users = query.data?.users ?? [];
   const memberCount = users.filter((user) => user.membership).length;
   const activeCount = users.filter((user) => userStatus(user) === "active").length;
   const selectedUser = users.find((user) => user.userId === selectedUserId) ?? users[0];
@@ -170,8 +221,10 @@ const userAdvancedFields: ConsoleTableAdvancedField<UserSummary>[] = [
 function UserInspector({ user, currentUserId }: { user: UserSummary; currentUserId?: string }) {
   const queryClient = useQueryClient();
   const statusMutation = useMutation({
-    mutationFn: (input: { userId: string; deactivate: boolean }) =>
-      input.deactivate ? deactivateUser(input.userId) : reactivateUser(input.userId),
+    mutationFn: async (input: { userId: string; deactivate: boolean }) => {
+      if (input.deactivate) await gqlFetch(DeactivateUserDocument, { userId: input.userId });
+      else await gqlFetch(ReactivateUserDocument, { userId: input.userId });
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users"] })
   });
 

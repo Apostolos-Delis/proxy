@@ -1,14 +1,45 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
-import { type PromptSummary, fetchPrompts } from "./api";
 import { formatDateTime, formatMoney } from "./format";
+import { graphql } from "./gql";
+import type { PromptsListQuery } from "./gql/graphql";
+import { gqlFetch } from "./graphql";
 import { RoutingConfigMicro } from "./routingSnapshot";
 import { CodePill, DataTable, GlassCard, PageState, PageTitle, RouteBadge } from "./ui";
 
+const PromptsListDocument = graphql(`
+  query PromptsList {
+    prompts {
+      data {
+        artifactId
+        userId
+        sessionId
+        surface
+        kind
+        preview
+        finalRoute
+        selectedModel
+        createdAt
+        routingConfig {
+          configId
+          configName
+          version
+          configHash
+        }
+        cost {
+          selected
+        }
+      }
+    }
+  }
+`);
+
+type PromptSummary = PromptsListQuery["prompts"]["data"][number];
+
 export function PromptsPage() {
-  const query = useQuery({ queryKey: ["prompts"], queryFn: fetchPrompts });
-  const data = (query.data?.data ?? []).filter(isVisiblePromptArtifact);
+  const query = useQuery({ queryKey: ["prompts"], queryFn: () => gqlFetch(PromptsListDocument) });
+  const data = (query.data?.prompts.data ?? []).filter(isVisiblePromptArtifact);
 
   if (query.isLoading) return <PageState title="Prompts" label="Loading prompt artifacts" />;
   if (query.error) return <PageState title="Prompts" label={query.error.message} />;

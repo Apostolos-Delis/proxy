@@ -3,16 +3,130 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Clock3, MessagesSquare } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { type PromptArtifactDetail, type ProxyEvent, type RequestSummary, fetchPromptDetail } from "./api";
 import { compactId, formatCompact, formatDateTime, formatMoney } from "./format";
+import { graphql } from "./gql";
+import type { PromptDetailViewQuery } from "./gql/graphql";
+import { gqlFetch } from "./graphql";
 import { CopyButton, JsonView } from "./jsonView";
+import { classifierSnapshot } from "./routingSnapshot";
 import { Badge, GlassCard, PageState, PageTitle, RouteBadge, StatusBadge } from "./ui";
 
+const PromptDetailViewDocument = graphql(`
+  query PromptDetailView($artifactId: ID!) {
+    prompt(artifactId: $artifactId) {
+      artifact {
+        artifactId
+        requestId
+        userId
+        sessionId
+        surface
+        kind
+        storageMode
+        contentHash
+        chars
+        tokenEstimate
+        preview
+        rawText
+        redactedText
+        expiresAt
+        finalRoute
+        provider
+        selectedModel
+        classifier
+        createdAt
+        routingConfig {
+          configId
+          configName
+          versionId
+          version
+          configHash
+        }
+        cost {
+          selected
+        }
+      }
+      requestArtifacts {
+        artifactId
+        requestId
+        userId
+        sessionId
+        surface
+        kind
+        storageMode
+        contentHash
+        chars
+        tokenEstimate
+        preview
+        rawText
+        redactedText
+        expiresAt
+        finalRoute
+        provider
+        selectedModel
+        classifier
+        createdAt
+        routingConfig {
+          configId
+          configName
+          versionId
+          version
+          configHash
+        }
+        cost {
+          selected
+        }
+      }
+      request {
+        requestId
+        terminalStatus
+        finalRoute
+        requestedModel
+        selectedModel
+        provider
+        latencyMs
+        timeToFirstByteMs
+        selectedCost
+        classifier
+        usage {
+          inputTokens
+          cachedInputTokens
+          outputTokens
+          reasoningTokens
+          totalTokens
+        }
+        routingConfig {
+          configId
+          configName
+          versionId
+          version
+          configHash
+        }
+      }
+      events {
+        eventId
+        eventType
+        producer
+        payload
+        createdAt
+      }
+    }
+  }
+`);
+
+type PromptDetailResult = NonNullable<PromptDetailViewQuery["prompt"]>;
+type PromptArtifactDetail = PromptDetailResult["requestArtifacts"][number];
+type RequestSummary = NonNullable<PromptDetailResult["request"]>;
+type ProxyEvent = PromptDetailResult["events"][number];
+
+export function promptDetailQueryOptions(artifactId: string) {
+  return {
+    queryKey: ["prompt", artifactId] as const,
+    queryFn: async () => (await gqlFetch(PromptDetailViewDocument, { artifactId })).prompt
+  };
+}
+
 export function PromptDetailPage({ artifactId }: { artifactId: string }) {
-  const query = useQuery({
-    queryKey: ["prompt", artifactId],
-    queryFn: () => fetchPromptDetail(artifactId)
-  });
+  const query = useQuery(promptDetailQueryOptions(artifactId));
 
   if (query.isLoading) return <PageState title="Prompt" label="Loading prompt detail" />;
   if (query.error) return <PageState title="Prompt" label={query.error.message} />;
@@ -100,7 +214,7 @@ function ExchangeBubble({ artifact, focused }: { artifact: PromptArtifactDetail;
     <div className={`convo-bubble convo-${role}${focused ? " convo-focused" : ""}`}>
       <span className="convo-role">{role}</span>
       <span className="convo-bubble-meta mono">
-        {artifact.chars !== undefined ? `${formatCompact(artifact.chars)} chars` : null}
+        {artifact.chars != null ? `${formatCompact(artifact.chars)} chars` : null}
         {artifact.tokenEstimate ? ` · ~${formatCompact(artifact.tokenEstimate)} tok` : null}
       </span>
       {text ? <CopyButton text={text} /> : null}
@@ -136,7 +250,8 @@ function EventTimeline({ events }: { events: ProxyEvent[] }) {
 function EventRow({ event, start }: { event: ProxyEvent; start: number }) {
   const [open, setOpen] = useState(false);
   const offset = new Date(event.createdAt).getTime() - start;
-  const hasPayload = event.payload && Object.keys(event.payload).length > 0;
+  const payload = event.payload && typeof event.payload === "object" ? event.payload as Record<string, unknown> : null;
+  const hasPayload = payload !== null && Object.keys(payload).length > 0;
   return (
     <div className={`event-row ${eventTone(event.eventType)}`}>
       <span className="event-dot" aria-hidden />
@@ -152,7 +267,7 @@ function EventRow({ event, start }: { event: ProxyEvent; start: number }) {
         <span className="event-producer">{event.producer.replace(/^prompt-proxy\./, "")}</span>
         <span className="event-offset mono" title={formatDateTime(event.createdAt)}>+{formatMs(offset)}</span>
       </button>
-      {open && hasPayload ? <div className="event-payload"><JsonView value={event.payload} maxHeight={300} /></div> : null}
+      {open && hasPayload ? <div className="event-payload"><JsonView value={payload} maxHeight={300} /></div> : null}
     </div>
   );
 }
@@ -187,7 +302,7 @@ function RawJsonCard({ artifact, request }: { artifact: PromptArtifactDetail; re
 
 function FactsRail({ artifact, request }: { artifact: PromptArtifactDetail; request: RequestSummary | null }) {
   const config = artifact.routingConfig ?? request?.routingConfig;
-  const classifier = artifact.classifier ?? request?.classifier;
+  const classifier = classifierSnapshot(artifact.classifier ?? request?.classifier);
   return (
     <aside className="detail-rail">
       <GlassCard>
@@ -264,7 +379,7 @@ function HashValue({ value }: { value: string }) {
   );
 }
 
-function formatDuration(value?: number) {
-  if (value === undefined) return "unknown";
+function formatDuration(value?: number | null) {
+  if (value == null) return "unknown";
   return formatMs(value);
 }

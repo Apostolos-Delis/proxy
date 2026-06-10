@@ -10,7 +10,65 @@ import {
 import type { RoutingConfig } from "@prompt-proxy/schema";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
-import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
+import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
+
+const detailFields = `{
+  config {
+    id
+    organizationId
+    name
+    slug
+    description
+    status
+    activeVersionId
+    assignedApiKeyCount
+    activeVersion {
+      id
+      version
+      status
+      active
+      configHash
+      createdByUserId
+    }
+    routeMatrix {
+      route
+      openaiModel
+      openaiEffort
+      anthropicModel
+      anthropicEffort
+    }
+  }
+  versions {
+    id
+    routingConfigId
+    version
+    status
+    active
+    configHash
+    createdByUserId
+    config
+  }
+}`;
+
+const listQuery = `query {
+  routingConfigs {
+    id
+    organizationId
+    name
+    slug
+    status
+    activeVersionId
+    assignedApiKeyCount
+    activeVersion { id version status active configHash }
+    routeMatrix { route openaiModel openaiEffort anthropicModel anthropicEffort }
+  }
+}`;
+
+const detailQuery = `query Detail($configId: ID!) { routingConfig(configId: $configId) ${detailFields} }`;
+const createMutation = `mutation Create($input: CreateRoutingConfigInput!) { createRoutingConfig(input: $input) ${detailFields} }`;
+const createVersionMutation = `mutation CreateVersion($configId: ID!, $config: JSON!) { createRoutingConfigVersion(configId: $configId, config: $config) ${detailFields} }`;
+const activateMutation = `mutation Activate($configId: ID!, $versionId: ID!) { activateRoutingConfigVersion(configId: $configId, versionId: $versionId) ${detailFields} }`;
+const archiveMutation = `mutation Archive($configId: ID!) { archiveRoutingConfig(configId: $configId) ${detailFields} }`;
 
 describe("routing config admin APIs", () => {
   let activeFixture: PromptTestFixture | undefined;
@@ -23,8 +81,10 @@ describe("routing config admin APIs", () => {
   it("requires browser admin sessions", async () => {
     const fixture = await setup("org_routing_config_auth");
 
-    const list = await fetch(`${fixture.proxyUrl}/admin/routing-configs`);
-    const detail = await fetch(`${fixture.proxyUrl}/admin/routing-configs/org_routing_config_auth:routing-config:default`);
+    const list = await adminGql(fixture.proxyUrl, {}, listQuery);
+    const detail = await adminGql(fixture.proxyUrl, {}, detailQuery, {
+      configId: "org_routing_config_auth:routing-config:default"
+    });
 
     expect(list.status).toBe(401);
     expect(detail.status).toBe(401);
@@ -51,16 +111,14 @@ describe("routing config admin APIs", () => {
       slug: "default"
     });
 
-    const response = await fetch(`${fixture.proxyUrl}/admin/routing-configs`, {
-      headers: fixture.adminHeaders
-    });
-    const body = await response.json();
-    const ids = body.data.map((item: any) => item.id);
-    const seeded = body.data.find((item: any) => item.id === "org_routing_config_list:routing-config:default");
-    const archived = body.data.find((item: any) => item.id === "org_routing_config_list:routing-config:archived");
+    const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, listQuery);
+    const body = result.data?.routingConfigs;
+    const ids = body.map((item: any) => item.id);
+    const seeded = body.find((item: any) => item.id === "org_routing_config_list:routing-config:default");
+    const archived = body.find((item: any) => item.id === "org_routing_config_list:routing-config:archived");
     const serialized = JSON.stringify(body);
 
-    expect(response.status).toBe(200);
+    expect(result.status).toBe(200);
     expect(ids).toContain("org_routing_config_list:routing-config:default");
     expect(ids).toContain("org_routing_config_list:routing-config:archived");
     expect(ids).not.toContain("org_routing_config_other:routing-config:default");
@@ -118,21 +176,19 @@ describe("routing config admin APIs", () => {
       slug: "default"
     });
 
-    const response = await fetch(
-      `${fixture.proxyUrl}/admin/routing-configs/org_routing_config_detail:routing-config:default`,
-      { headers: fixture.adminHeaders }
-    );
-    const body = await response.json();
-    const crossOrg = await fetch(
-      `${fixture.proxyUrl}/admin/routing-configs/org_routing_config_detail_other:routing-config:default`,
-      { headers: fixture.adminHeaders }
-    );
-    const missing = await fetch(`${fixture.proxyUrl}/admin/routing-configs/missing_config`, {
-      headers: fixture.adminHeaders
+    const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, detailQuery, {
+      configId: "org_routing_config_detail:routing-config:default"
+    });
+    const body = result.data?.routingConfig;
+    const crossOrg = await adminGql(fixture.proxyUrl, fixture.adminHeaders, detailQuery, {
+      configId: "org_routing_config_detail_other:routing-config:default"
+    });
+    const missing = await adminGql(fixture.proxyUrl, fixture.adminHeaders, detailQuery, {
+      configId: "missing_config"
     });
     const versionConfig = body.versions[0].config as RoutingConfig;
 
-    expect(response.status).toBe(200);
+    expect(result.status).toBe(200);
     expect(body.config).toEqual(expect.objectContaining({
       id: "org_routing_config_detail:routing-config:default",
       assignedApiKeyCount: 1,
@@ -156,8 +212,8 @@ describe("routing config admin APIs", () => {
     expect(versionConfig.routes.hard.anthropic?.model).toBe("claude-sonnet-4-5");
     expect(JSON.stringify(body)).not.toContain("openai-upstream-key");
     expect(JSON.stringify(body)).not.toContain("anthropic-upstream-key");
-    expect(crossOrg.status).toBe(404);
-    expect(missing.status).toBe(404);
+    expect(crossOrg.data?.routingConfig).toBeNull();
+    expect(missing.data?.routingConfig).toBeNull();
   });
 
   it("creates routing configs with active immutable version one", async () => {
@@ -168,20 +224,15 @@ describe("routing config admin APIs", () => {
       displayName: "Created config"
     };
 
-    const response = await fetch(`${fixture.proxyUrl}/admin/routing-configs`, {
-      method: "POST",
-      headers: {
-        ...fixture.adminHeaders,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
+    const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createMutation, {
+      input: {
         name: "Created config",
         slug: "created-config",
         description: "Created through admin API",
         config: nextConfig
-      })
+      }
     });
-    const body = await response.json();
+    const body = result.data?.createRoutingConfig;
     const eventRows = await fixture.db
       .select()
       .from(events)
@@ -189,7 +240,7 @@ describe("routing config admin APIs", () => {
       .orderBy(asc(events.sequence));
     const outboxRows = await outboxRowsFor(fixture, eventRows);
 
-    expect(response.status).toBe(201);
+    expect(result.errors).toBeUndefined();
     expect(body.config).toEqual(expect.objectContaining({
       name: "Created config",
       slug: "created-config",
@@ -267,23 +318,19 @@ describe("routing config admin APIs", () => {
       }
     };
 
-    const created = await fetch(`${fixture.proxyUrl}/admin/routing-configs/${configId}/versions`, {
-      method: "POST",
-      headers: {
-        ...fixture.adminHeaders,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({ config: nextConfig })
+    const created = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createVersionMutation, {
+      configId,
+      config: nextConfig
     });
-    const createdBody = await created.json();
+    const createdBody = created.data?.createRoutingConfigVersion;
     const draft = createdBody.versions.find((version: any) => version.version === 2);
     const activeBefore = createdBody.versions.find((version: any) => version.active);
 
-    const activated = await fetch(`${fixture.proxyUrl}/admin/routing-configs/${configId}/versions/${draft.id}/activate`, {
-      method: "POST",
-      headers: fixture.adminHeaders
+    const activated = await adminGql(fixture.proxyUrl, fixture.adminHeaders, activateMutation, {
+      configId,
+      versionId: draft.id
     });
-    const activatedBody = await activated.json();
+    const activatedBody = activated.data?.activateRoutingConfigVersion;
     const activeAfter = activatedBody.versions.find((version: any) => version.active);
     const eventRows = await fixture.db
       .select()
@@ -296,7 +343,7 @@ describe("routing config admin APIs", () => {
       .from(routingConfigVersions)
       .where(eq(routingConfigVersions.id, `${configId}:v1`));
 
-    expect(created.status).toBe(201);
+    expect(created.errors).toBeUndefined();
     expect(createdBody.config.activeVersionId).toBe(`${configId}:v1`);
     expect(draft).toEqual(expect.objectContaining({
       version: 2,
@@ -314,7 +361,7 @@ describe("routing config admin APIs", () => {
         displayName: originalConfig.displayName
       })
     }));
-    expect(activated.status).toBe(200);
+    expect(activated.errors).toBeUndefined();
     expect(activatedBody.config.activeVersionId).toBe(draft.id);
     expect(activeAfter).toEqual(expect.objectContaining({
       id: draft.id,
@@ -369,20 +416,13 @@ describe("routing config admin APIs", () => {
       .from(routingConfigVersions)
       .where(eq(routingConfigVersions.routingConfigId, configId));
 
-    const response = await fetch(`${fixture.proxyUrl}/admin/routing-configs/${configId}/versions`, {
-      method: "POST",
-      headers: {
-        ...fixture.adminHeaders,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        config: {
-          schemaVersion: 1,
-          displayName: "Invalid config"
-        }
-      })
+    const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createVersionMutation, {
+      configId,
+      config: {
+        schemaVersion: 1,
+        displayName: "Invalid config"
+      }
     });
-    const body = await response.json();
     const after = await fixture.db
       .select()
       .from(routingConfigVersions)
@@ -395,9 +435,9 @@ describe("routing config admin APIs", () => {
         eq(events.eventType, "routing_config.version_created")
       ));
 
-    expect(response.status).toBe(400);
-    expect(body.error).toBe("invalid_routing_config");
-    expect(body.issues).toEqual(expect.arrayContaining([
+    expect(result.errors?.[0]?.message).toBe("invalid_routing_config");
+    expect(result.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
+    expect(result.errors?.[0]?.extensions?.issues).toEqual(expect.arrayContaining([
       expect.objectContaining({
         path: expect.stringContaining("routes")
       })
@@ -410,19 +450,13 @@ describe("routing config admin APIs", () => {
     const fixture = await setup("org_routing_config_archive");
     const created = await createRoutingConfig(fixture, "org_routing_config_archive", "Archive candidate");
 
-    const archived = await fetch(`${fixture.proxyUrl}/admin/routing-configs/${created.config.id}/archive`, {
-      method: "POST",
-      headers: fixture.adminHeaders
+    const archived = await adminGql(fixture.proxyUrl, fixture.adminHeaders, archiveMutation, {
+      configId: created.config.id
     });
-    const archivedBody = await archived.json();
-    const defaultArchive = await fetch(
-      `${fixture.proxyUrl}/admin/routing-configs/org_routing_config_archive:routing-config:default/archive`,
-      {
-        method: "POST",
-        headers: fixture.adminHeaders
-      }
-    );
-    const defaultArchiveBody = await defaultArchive.json();
+    const archivedBody = archived.data?.archiveRoutingConfig;
+    const defaultArchive = await adminGql(fixture.proxyUrl, fixture.adminHeaders, archiveMutation, {
+      configId: "org_routing_config_archive:routing-config:default"
+    });
     const eventRows = await fixture.db
       .select()
       .from(events)
@@ -430,13 +464,13 @@ describe("routing config admin APIs", () => {
       .orderBy(asc(events.sequence));
     const outboxRows = await outboxRowsFor(fixture, eventRows);
 
-    expect(archived.status).toBe(200);
+    expect(archived.errors).toBeUndefined();
     expect(archivedBody.config).toEqual(expect.objectContaining({
       id: created.config.id,
       status: "archived"
     }));
-    expect(defaultArchive.status).toBe(409);
-    expect(defaultArchiveBody.error).toBe("routing_config_in_use");
+    expect(defaultArchive.errors?.[0]?.message).toBe("routing_config_in_use");
+    expect(defaultArchive.errors?.[0]?.extensions?.code).toBe("CONFLICT");
     expect(eventRows.map((event) => event.eventType)).toEqual([
       "routing_config.created",
       "routing_config.version_created",
@@ -464,32 +498,27 @@ describe("routing config admin APIs", () => {
   }
 
   async function activeConfig(fixture: PromptTestFixture, configId: string) {
-    const detail = await fetch(`${fixture.proxyUrl}/admin/routing-configs/${configId}`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
+    const detail = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, detailQuery, {
+      configId
+    })).data?.routingConfig;
     const activeVersion = detail.versions.find((version: any) => version.active);
     return activeVersion.config as RoutingConfig;
   }
 
   async function createRoutingConfig(fixture: PromptTestFixture, organizationId: string, name: string) {
     const baseConfig = await activeConfig(fixture, `${organizationId}:routing-config:default`);
-    const response = await fetch(`${fixture.proxyUrl}/admin/routing-configs`, {
-      method: "POST",
-      headers: {
-        ...fixture.adminHeaders,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
+    const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createMutation, {
+      input: {
         name,
         slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
         config: {
           ...baseConfig,
           displayName: name
         }
-      })
+      }
     });
-    expect(response.status).toBe(201);
-    return response.json();
+    expect(result.errors).toBeUndefined();
+    return result.data?.createRoutingConfig;
   }
 
   async function outboxRowsFor(fixture: PromptTestFixture, eventRows: (typeof events.$inferSelect)[]) {

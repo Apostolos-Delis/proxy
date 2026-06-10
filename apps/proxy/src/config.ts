@@ -7,7 +7,7 @@ import {
 } from "./settings.js";
 import type { RouteName } from "./types.js";
 
-const booleanEnvSchema = z.preprocess((value) => {
+function normalizeBooleanEnv(value: unknown) {
   if (value === undefined) return undefined;
   if (typeof value === "boolean") return value;
   if (typeof value !== "string") return value;
@@ -16,7 +16,10 @@ const booleanEnvSchema = z.preprocess((value) => {
   if (normalized === "true" || normalized === "1") return true;
   if (normalized === "false" || normalized === "0") return false;
   return value;
-}, z.boolean().default(false));
+}
+
+const booleanEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().default(false));
+const enabledBooleanEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().default(true));
 
 const optionalPositiveIntSchema = z.preprocess((value) => {
   if (value === undefined || value === "") return undefined;
@@ -90,6 +93,7 @@ const configSchema = z.object({
   DEFAULT_ORGANIZATION_ID: z.string().min(1).default("local"),
   ALLOW_DEV_PROXY_TOKEN_FALLBACK: booleanEnvSchema,
   ADMIN_DEV_LOGIN_ENABLED: booleanEnvSchema,
+  ADMIN_GRAPHIQL_ENABLED: enabledBooleanEnvSchema,
   ADMIN_DEV_LOGIN_EMAIL: z.string().email().default("local@example.com"),
   ADMIN_DEV_LOGIN_PASSWORD: z.string().min(1).default("dev-password"),
   ADMIN_SESSION_COOKIE_NAME: z.string().min(1).default("prompt_proxy_session"),
@@ -149,6 +153,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     defaultOrganizationId: parsed.DEFAULT_ORGANIZATION_ID,
     allowDevProxyTokenFallback: parsed.ALLOW_DEV_PROXY_TOKEN_FALLBACK || !parsed.DATABASE_URL,
     adminDevLoginEnabled: parsed.ADMIN_DEV_LOGIN_ENABLED,
+    adminGraphiqlEnabled: parsed.ADMIN_GRAPHIQL_ENABLED,
     adminDevLoginEmail: parsed.ADMIN_DEV_LOGIN_EMAIL,
     adminDevLoginPassword: parsed.ADMIN_DEV_LOGIN_PASSWORD,
     adminSessionCookieName: parsed.ADMIN_SESSION_COOKIE_NAME,

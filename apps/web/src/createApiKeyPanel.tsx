@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, KeyRound, TerminalSquare } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { createApiKey, type CreatedApiKey, type RoutingConfigSummary } from "./api";
+import { createApiKey, type CreatedApiKey, type RoutingConfigSummary } from "./routing/data";
 import { Badge, GlassCard } from "./ui";
 
 export const apiKeyScopeOptions = [

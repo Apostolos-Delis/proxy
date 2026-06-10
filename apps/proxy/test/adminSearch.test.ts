@@ -12,6 +12,7 @@ import {
 } from "@prompt-proxy/db";
 
 import {
+  adminGql,
   captureFixture,
   sessionPrompt,
   usageDecision,
@@ -170,12 +171,20 @@ describe("admin global search", () => {
   });
 
   async function fetchSearch(fixture: PromptTestFixture, query: string) {
-    const response = await fetch(
-      `${fixture.proxyUrl}/admin/search?q=${encodeURIComponent(query)}`,
-      { headers: fixture.adminHeaders }
+    const result = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query Search($query: String!) {
+        search(query: $query) {
+          query
+          results { kind id title subtitle status snippet occurredAt }
+        }
+      }`,
+      { query }
     );
-    expect(response.status).toBe(200);
-    return response.json();
+    expect(result.status).toBe(200);
+    expect(result.errors).toBeUndefined();
+    return result.data?.search;
   }
 
   async function setup(organizationId: string) {

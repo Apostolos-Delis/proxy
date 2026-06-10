@@ -1,0 +1,16 @@
+import { builder } from "./builder.js";
+import "./types/core.js";
+import "./types/viewer.js";
+import "./types/analytics.js";
+import "./types/requests.js";
+import "./types/prompts.js";
+import "./types/sessions.js";
+import "./types/users.js";
+import "./types/routing.js";
+import "./types/invitations.js";
+import "./types/search.js";
+import "./types/settings.js";
+import "./queries.js";
+import "./mutations.js";
+
+export const schema = builder.toSchema();

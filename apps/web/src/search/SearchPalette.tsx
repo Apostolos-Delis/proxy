@@ -4,7 +4,8 @@ import { LoaderCircle, Search } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 
-import { fetchGlobalSearch } from "../api";
+import { graphql } from "../gql";
+import { gqlFetch } from "../graphql";
 import {
   buildPaletteGroups,
   loadRecents,
@@ -14,6 +15,22 @@ import {
   type PaletteAction
 } from "./searchData";
 import { paletteOptionId, PaletteResults } from "./SearchResults";
+
+const GlobalSearchDocument = graphql(`
+  query GlobalSearch($query: String!) {
+    search(query: $query) {
+      results {
+        kind
+        id
+        title
+        subtitle
+        status
+        snippet
+        occurredAt
+      }
+    }
+  }
+`);
 
 export function SearchPalette({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
@@ -26,7 +43,7 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
   const canSearch = deferredQuery.length >= MIN_SEARCH_LENGTH;
   const search = useQuery({
     queryKey: ["global-search", deferredQuery],
-    queryFn: () => fetchGlobalSearch(deferredQuery),
+    queryFn: async () => (await gqlFetch(GlobalSearchDocument, { query: deferredQuery })).search,
     enabled: canSearch,
     placeholderData: keepPreviousData,
     staleTime: 15_000

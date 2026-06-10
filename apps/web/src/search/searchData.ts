@@ -13,7 +13,17 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import type { SearchHit, SearchHitKind } from "../api";
+export type SearchHitKind = "session" | "log" | "user" | "routing_config" | "api_key";
+
+export type SearchHit = {
+  kind: SearchHitKind;
+  id: string;
+  title: string;
+  subtitle: string | null;
+  status: string | null;
+  snippet: string | null;
+  occurredAt: string | null;
+};
 import { formatDateTime } from "../format";
 
 export type PalettePagePath =

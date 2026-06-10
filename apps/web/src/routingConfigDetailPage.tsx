@@ -9,9 +9,9 @@ import {
   createRoutingConfigVersion,
   fetchRoutingConfigDetail,
   type RoutingConfigDetail,
-  type RoutingConfigDocument,
   type RoutingConfigVersionDetail
-} from "./api";
+} from "./routing/data";
+import type { RoutingConfigDocument } from "./routingConfigEditor";
 import { compactId, formatDateTime, formatInteger } from "./format";
 import { ConfigApiKeysCard } from "./routing/keyAssignment";
 import { PromptEditors, RouteMatrixEditor } from "./routing/configEditorFields";

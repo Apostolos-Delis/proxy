@@ -2,7 +2,7 @@ import { keepPreviousData, useQueries } from "@tanstack/react-query";
 import { Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
-import { fetchApiKeys, fetchUsage, fetchUsageTimeseries, fetchUsers } from "./api";
+import { fetchUsageLookups, fetchUsageReport, fetchUsageTimeseries } from "./usageData";
 import { ChartLegend, StackedBarsChart } from "./charts";
 import { downloadJson } from "./dashboard";
 import { formatCompact, formatInteger, formatPercent } from "./format";
@@ -29,11 +29,11 @@ export function UsagePage() {
   const [metric, setMetric] = useState<UsageChartMetric>("tokens");
   const [dimension, setDimension] = useState<UsageDimension>("model");
   const { start, end, interval } = usageRangeQuery(range, anchor);
-  const [usageQuery, timeseriesQuery, usersQuery, apiKeysQuery] = useQueries({
+  const [usageQuery, timeseriesQuery, lookupsQuery] = useQueries({
     queries: [
       {
         queryKey: ["usage", dimension, start, end],
-        queryFn: () => fetchUsage(dimension, { start, end }),
+        queryFn: () => fetchUsageReport(dimension, { start, end }),
         placeholderData: keepPreviousData
       },
       {
@@ -41,8 +41,7 @@ export function UsagePage() {
         queryFn: () => fetchUsageTimeseries(dimension, { start, end, interval }),
         placeholderData: keepPreviousData
       },
-      { queryKey: ["users"], queryFn: fetchUsers },
-      { queryKey: ["api-keys"], queryFn: fetchApiKeys }
+      { queryKey: ["usage-lookups"], queryFn: fetchUsageLookups }
     ]
   });
   const loading = (usageQuery.isLoading || timeseriesQuery.isLoading) && !usageQuery.data;
@@ -57,8 +56,8 @@ export function UsagePage() {
 
   const totals = usage.totals;
   const lookups = {
-    usersById: new Map((usersQuery.data?.data ?? []).map((user) => [user.userId, user])),
-    apiKeysById: new Map((apiKeysQuery.data?.data ?? []).map((key) => [key.id, key]))
+    usersById: new Map((lookupsQuery.data?.users ?? []).map((user) => [user.userId, user])),
+    apiKeysById: new Map((lookupsQuery.data?.apiKeys ?? []).map((key) => [key.id, key]))
   };
   const { series, rows } = stackedUsageSeries(timeseries, dimension, metric, lookups);
   const breakdownRows = usage.data;

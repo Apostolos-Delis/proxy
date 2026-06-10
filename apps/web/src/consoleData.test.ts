@@ -1,17 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import type { RequestSummary, UsageGroup } from "./api";
-import { modelRowsFromUsage, periodDelta, seriesFromRequests } from "./consoleData";
+import { modelRowsFromUsage, periodDelta, seriesFromRequests, type RequestSummary, type UsageGroup } from "./consoleData";
 
 function request(createdAt: string, totalTokens: number): RequestSummary {
   return {
-    requestId: `req-${createdAt}`,
-    routingConfig: null,
-    terminalStatus: "completed",
     usage: { inputTokens: totalTokens, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0, totalTokens },
     selectedCost: 0,
     baselineCost: 0,
-    savings: 0,
     createdAt
   };
 }
@@ -19,11 +14,6 @@ function request(createdAt: string, totalTokens: number): RequestSummary {
 function usageGroup(key: string, totalTokens: number): UsageGroup {
   return {
     key,
-    requestCount: 1,
-    failedRequests: 0,
-    retriedRequests: 0,
-    failureRate: 0,
-    retryRate: 0,
     latency: { averageMs: null, p95Ms: null },
     usage: { inputTokens: totalTokens, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0, totalTokens },
     cost: { selected: 0, baseline: 0, savings: 0 }

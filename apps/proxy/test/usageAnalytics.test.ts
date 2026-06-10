@@ -14,6 +14,7 @@ import {
 } from "@prompt-proxy/db";
 
 import {
+  adminGql,
   captureFixture,
   usageAttempt,
   usageDecision,
@@ -21,6 +22,39 @@ import {
   usageRow,
   type PromptTestFixture
 } from "./promptTestFixture.js";
+
+const usageFields = `{
+  groupBy
+  data {
+    key
+    requestCount
+    failedRequests
+    retriedRequests
+    latency { averageMs p95Ms }
+    usage { inputTokens outputTokens totalTokens }
+    cost { selected }
+  }
+  totals {
+    requestCount
+    failedRequests
+    retriedRequests
+    failureRate
+    retryRate
+    usage { inputTokens outputTokens }
+    cost { selected }
+  }
+}`;
+
+const timeseriesQuery = `query Timeseries($groupBy: UsageGroupBy, $interval: UsageInterval, $start: String, $end: String, $limit: Int) {
+  usageTimeseries(groupBy: $groupBy, interval: $interval, start: $start, end: $end, limit: $limit) {
+    groupBy
+    interval
+    start
+    end
+    groups { key requestCount usage { totalTokens } cost { selected } }
+    points { ts totals { requestCount } groups }
+  }
+}`;
 
 describe("usage analytics admin APIs", () => {
   let activeFixture: PromptTestFixture | undefined;
@@ -99,15 +133,18 @@ describe("usage analytics admin APIs", () => {
       usageRow("usage_other", "usage_request_other", "usage_attempt_other", "org_usage_other", "openai", "gpt-other-org", "fast", 999, 999, 9999)
     ]);
 
-    const modelUsage = await fetch(
-      `${fixture.proxyUrl}/admin/usage?groupBy=model&start=2026-06-08T00:00:00.000Z&end=2026-06-09T00:00:00.000Z`,
-      { headers: fixture.adminHeaders }
-    ).then((item) => item.json());
+    const modelUsage = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { usage(groupBy: model, start: "2026-06-08T00:00:00.000Z", end: "2026-06-09T00:00:00.000Z") ${usageFields} }`
+    )).data?.usage;
     const supportedGroups = await Promise.all(
-      ["user", "provider", "model", "route", "surface", "session"].map((groupBy) =>
-        fetch(`${fixture.proxyUrl}/admin/usage?groupBy=${groupBy}`, {
-          headers: fixture.adminHeaders
-        }).then((item) => item.json()))
+      ["user", "provider", "model", "route", "surface", "session"].map(async (groupBy) =>
+        (await adminGql(
+          fixture.proxyUrl,
+          fixture.adminHeaders,
+          `query { usage(groupBy: ${groupBy}) ${usageFields} }`
+        )).data?.usage)
     );
     const hardGroup = modelUsage.data.find((item: any) => item.key === "claude-hard");
 
@@ -193,17 +230,24 @@ describe("usage analytics admin APIs", () => {
       usageRow("key_usage_anonymous", "key_request_anonymous", "key_attempt_anonymous", "org_usage_keys", "openai", "gpt-fast", "fast", 10, 5, 500)
     ]);
 
-    const keyUsage = await fetch(`${fixture.proxyUrl}/admin/usage?groupBy=api_key`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
-    const timeseries = await fetch(
-      `${fixture.proxyUrl}/admin/usage/timeseries?groupBy=api_key&interval=day&start=2026-06-07T00:00:00.000Z&end=2026-06-08T23:59:59.000Z`,
-      { headers: fixture.adminHeaders }
-    ).then((item) => item.json());
-    const collapsed = await fetch(
-      `${fixture.proxyUrl}/admin/usage/timeseries?groupBy=api_key&interval=day&start=2026-06-07T00:00:00.000Z&end=2026-06-08T23:59:59.000Z&limit=2`,
-      { headers: fixture.adminHeaders }
-    ).then((item) => item.json());
+    const keyUsage = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { usage(groupBy: api_key) ${usageFields} }`
+    )).data?.usage;
+    const timeseries = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, timeseriesQuery, {
+      groupBy: "api_key",
+      interval: "day",
+      start: "2026-06-07T00:00:00.000Z",
+      end: "2026-06-08T23:59:59.000Z"
+    })).data?.usageTimeseries;
+    const collapsed = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, timeseriesQuery, {
+      groupBy: "api_key",
+      interval: "day",
+      start: "2026-06-07T00:00:00.000Z",
+      end: "2026-06-08T23:59:59.000Z",
+      limit: 2
+    })).data?.usageTimeseries;
 
     expect(keyUsage.groupBy).toBe("api_key");
     expect(keyUsage.data.map((item: any) => item.key)).toEqual(["key_beta", "key_alpha", "unknown"]);
@@ -266,9 +310,11 @@ describe("usage analytics admin APIs", () => {
     expect(requestRows).toHaveLength(1);
     expect(requestRows[0].apiKeyId).toBe("key_capture");
 
-    const keyUsage = await fetch(`${fixture.proxyUrl}/admin/usage?groupBy=api_key`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
+    const keyUsage = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { usage(groupBy: api_key) ${usageFields} }`
+    )).data?.usage;
     expect(keyUsage.data.map((item: any) => item.key)).toEqual(["key_capture"]);
     expect(keyUsage.data[0].requestCount).toBe(1);
   });

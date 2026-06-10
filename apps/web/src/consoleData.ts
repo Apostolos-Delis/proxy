@@ -1,4 +1,30 @@
-import type { RequestSummary, UsageGroup } from "./api";
+type TokenTotals = {
+  totalTokens: number;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+};
+
+export type RequestSummary = {
+  createdAt?: string | null;
+  selectedCost: number;
+  baselineCost: number;
+  usage: TokenTotals;
+};
+
+export type UsageGroup = {
+  key: string;
+  usage: TokenTotals;
+  cost: { selected: number; baseline?: number; savings?: number };
+  latency?: { averageMs: number | null; p95Ms: number | null };
+};
+
+export type UserRef = {
+  userId: string;
+  name?: string | null;
+  email?: string | null;
+};
 
 export type ChartPoint = {
   label: string;
@@ -93,7 +119,7 @@ export function modelRowsFromUsage(rows: UsageGroup[]): ModelUsageRow[] {
     }));
 }
 
-export function displayUser(user: { userId: string; name?: string; email?: string }) {
+export function displayUser(user: UserRef) {
   return user.name ?? user.email ?? user.userId;
 }
 
@@ -104,7 +130,7 @@ function requestMetric(request: RequestSummary, metric: SeriesMetric) {
   return 1;
 }
 
-function timestamp(value?: string) {
+function timestamp(value?: string | null) {
   return value ? new Date(value).getTime() : 0;
 }
 

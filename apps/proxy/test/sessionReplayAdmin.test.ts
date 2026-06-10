@@ -14,6 +14,7 @@ import {
 } from "@prompt-proxy/db";
 
 import {
+  adminGql,
   captureFixture,
   sessionEvent,
   sessionPrompt,
@@ -23,6 +24,19 @@ import {
   usageRow,
   type PromptTestFixture
 } from "./promptTestFixture.js";
+
+const sessionDetailQuery = `query SessionDetail($sessionId: ID!) {
+  session(sessionId: $sessionId) {
+    session { sessionId externalSessionId sessionIdentity userId }
+    user
+    requests { requestId }
+    promptArtifacts { rawText }
+    routeDecisions { finalRoute }
+    providerAttempts { terminalStatus }
+    usageLedger { totalCostMicros }
+    events { eventType }
+  }
+}`;
 
 describe("session replay admin APIs", () => {
   let activeFixture: PromptTestFixture | undefined;
@@ -101,26 +115,63 @@ describe("session replay admin APIs", () => {
       sessionEvent("session_event_other", "org_session_other", "session_request_other", "session_other", second)
     ]);
 
-    const usersList = await fetch(`${fixture.proxyUrl}/admin/users`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
-    const userDetail = await fetch(`${fixture.proxyUrl}/admin/users/user_session_admin`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
-    const sessionsList = await fetch(`${fixture.proxyUrl}/admin/sessions`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
-    const sessionDetail = await fetch(`${fixture.proxyUrl}/admin/sessions/session_admin`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
-    const crossUser = await fetch(`${fixture.proxyUrl}/admin/users/user_other_org`, {
-      headers: fixture.adminHeaders
-    });
-    const crossSession = await fetch(`${fixture.proxyUrl}/admin/sessions/session_other`, {
-      headers: fixture.adminHeaders
-    });
+    const usersList = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { users {
+        userId
+        email
+        requestCount
+        sessionCount
+        usage { inputTokens outputTokens totalTokens }
+        cost { selected }
+      } }`
+    )).data?.users;
+    const userDetail = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query UserDetail($userId: ID!) {
+        user(userId: $userId) {
+          user { userId requestCount sessionCount }
+          sessions { sessionId routeChanges }
+          requests { requestId }
+        }
+      }`,
+      { userId: "user_session_admin" }
+    )).data?.user;
+    const sessionsList = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { sessions {
+        sessionId
+        userId
+        requestCount
+        routeChanges
+        modelMix
+        routeMix
+        terminalStatusSummary
+      } }`
+    )).data?.sessions;
+    const sessionDetail = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      sessionDetailQuery,
+      { sessionId: "session_admin" }
+    )).data?.session;
+    const crossUser = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query CrossUser($userId: ID!) { user(userId: $userId) { user { userId } } }",
+      { userId: "user_other_org" }
+    )).data;
+    const crossSession = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query CrossSession($sessionId: ID!) { session(sessionId: $sessionId) { session { sessionId } } }",
+      { sessionId: "session_other" }
+    )).data;
 
-    expect(usersList.data).toEqual(expect.arrayContaining([
+    expect(usersList).toEqual(expect.arrayContaining([
       expect.objectContaining({
         userId: "user_session_admin",
         email: "session@example.com",
@@ -144,7 +195,7 @@ describe("session replay admin APIs", () => {
       routeChanges: 1
     }));
     expect(userDetail.requests).toHaveLength(2);
-    expect(sessionsList.data).toEqual([
+    expect(sessionsList).toEqual([
       expect.objectContaining({
         sessionId: "session_admin",
         userId: "user_session_admin",
@@ -170,8 +221,8 @@ describe("session replay admin APIs", () => {
     expect(sessionDetail.providerAttempts.map((attempt: any) => attempt.terminalStatus).sort()).toEqual(["completed", "failed"]);
     expect(sessionDetail.usageLedger.map((usage: any) => usage.totalCostMicros).sort()).toEqual([1000, 3000]);
     expect(sessionDetail.events.map((event: any) => event.eventType)).toEqual(["proxy.request_received"]);
-    expect(crossUser.status).toBe(404);
-    expect(crossSession.status).toBe(404);
+    expect(crossUser?.user).toBeNull();
+    expect(crossSession?.session).toBeNull();
   });
 
   it("replays real and fallback sessions created by proxy requests", async () => {
@@ -214,12 +265,18 @@ describe("session replay admin APIs", () => {
     expect(realSession).toBeDefined();
     expect(fallbackSession).toBeDefined();
 
-    const realDetail = await fetch(`${fixture.proxyUrl}/admin/sessions/${encodeURIComponent(realSession?.id ?? "")}`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
-    const fallbackDetail = await fetch(`${fixture.proxyUrl}/admin/sessions/${encodeURIComponent(fallbackSession?.id ?? "")}`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
+    const realDetail = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      sessionDetailQuery,
+      { sessionId: realSession?.id ?? "" }
+    )).data?.session;
+    const fallbackDetail = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      sessionDetailQuery,
+      { sessionId: fallbackSession?.id ?? "" }
+    )).data?.session;
 
     expect(realSessionResponse.status).toBe(200);
     expect(fallbackSessionResponse.status).toBe(200);

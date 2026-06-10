@@ -12,7 +12,47 @@ import {
 } from "@prompt-proxy/db";
 
 import { sha256 } from "../src/util.js";
-import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
+import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
+
+const createInvitationMutation = `mutation CreateInvitation($input: CreateInvitationInput!) {
+  createInvitation(input: $input) {
+    invitation { id email name role status invitedBy { userId } }
+    inviteUrl
+    emailDelivery { transport delivered error }
+  }
+}`;
+
+const resendInvitationMutation = `mutation ResendInvitation($invitationId: ID!) {
+  resendInvitation(invitationId: $invitationId) {
+    invitation { id status }
+    inviteUrl
+    emailDelivery { transport delivered error }
+  }
+}`;
+
+const revokeInvitationMutation = `mutation RevokeInvitation($invitationId: ID!) {
+  revokeInvitation(invitationId: $invitationId) { id status }
+}`;
+
+const invitationsQuery = `query {
+  invitations { id email name role status tokenPrefix invitedBy { userId } }
+}`;
+
+const usersQuery = `query {
+  users { userId email membership { role status } }
+}`;
+
+const updateUserRoleMutation = `mutation UpdateUserRole($userId: ID!, $role: MemberRole!) {
+  updateUserRole(userId: $userId, role: $role) { userId role previousRole }
+}`;
+
+const deactivateUserMutation = `mutation DeactivateUser($userId: ID!) {
+  deactivateUser(userId: $userId) { userId status }
+}`;
+
+const reactivateUserMutation = `mutation ReactivateUser($userId: ID!) {
+  reactivateUser(userId: $userId) { userId status }
+}`;
 
 describe("user admin APIs", () => {
   let activeFixture: PromptTestFixture | undefined;
@@ -28,15 +68,13 @@ describe("user admin APIs", () => {
   it("invites, lists, resolves, and accepts a user", async () => {
     const fixture = await setup("org_user_admin_invite");
 
-    const created = await adminPost(fixture, "/admin/invitations", {
-      email: "Ada@Example.com",
-      name: "Ada Lovelace",
-      role: "member"
+    const created = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createInvitationMutation, {
+      input: { email: "Ada@Example.com", name: "Ada Lovelace", role: "member" }
     });
-    const createdBody = await created.json();
+    const createdBody = created.data?.createInvitation;
     const token = tokenFromInviteUrl(createdBody.inviteUrl);
 
-    expect(created.status).toBe(201);
+    expect(created.errors).toBeUndefined();
     expect(createdBody.invitation).toEqual(expect.objectContaining({
       email: "ada@example.com",
       name: "Ada Lovelace",
@@ -44,35 +82,34 @@ describe("user admin APIs", () => {
       status: "pending",
       invitedBy: expect.objectContaining({ userId: "local-user" })
     }));
-    expect(createdBody.emailDelivery).toEqual({ transport: "log", delivered: false });
+    expect(createdBody.emailDelivery).toEqual({ transport: "log", delivered: false, error: null });
     expect(token.length).toBeGreaterThan(20);
 
-    const duplicate = await adminPost(fixture, "/admin/invitations", {
-      email: "ada@example.com",
-      role: "admin"
+    const duplicate = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createInvitationMutation, {
+      input: { email: "ada@example.com", role: "admin" }
     });
-    expect(duplicate.status).toBe(409);
-    expect((await duplicate.json()).error).toBe("invitation_already_pending");
+    expect(duplicate.errors?.[0]?.message).toBe("invitation_already_pending");
+    expect(duplicate.errors?.[0]?.extensions?.code).toBe("CONFLICT");
 
-    const memberConflict = await adminPost(fixture, "/admin/invitations", {
-      email: "local@example.com",
-      role: "member"
+    const memberConflict = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createInvitationMutation, {
+      input: { email: "local@example.com", role: "member" }
     });
-    expect(memberConflict.status).toBe(409);
-    expect((await memberConflict.json()).error).toBe("invitation_email_already_member");
+    expect(memberConflict.errors?.[0]?.message).toBe("invitation_email_already_member");
+    expect(memberConflict.errors?.[0]?.extensions?.code).toBe("CONFLICT");
 
-    const invalidRole = await adminPost(fixture, "/admin/invitations", {
-      email: "valid@example.com",
-      role: "superuser"
+    // Roles are a GraphQL enum now, so invalid values are rejected during
+    // request validation before they ever reach the user admin service.
+    const invalidRole = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createInvitationMutation, {
+      input: { email: "valid@example.com", role: "superuser" }
     });
     expect(invalidRole.status).toBe(400);
-    expect((await invalidRole.json()).error).toBe("invalid_invitation_request");
+    expect(invalidRole.errors?.[0]?.message).toContain("MemberRole");
 
-    const list = await fetch(`${fixture.proxyUrl}/admin/invitations`, { headers: fixture.adminHeaders });
-    const listBody = await list.json();
+    const list = await adminGql(fixture.proxyUrl, fixture.adminHeaders, invitationsQuery);
+    const listBody = list.data?.invitations;
     const serializedList = JSON.stringify(listBody);
     expect(list.status).toBe(200);
-    expect(listBody.data).toHaveLength(1);
+    expect(listBody).toHaveLength(1);
     expect(serializedList).not.toContain(token);
     expect(serializedList).not.toContain(sha256(token));
     expect(serializedList).not.toContain("tokenHash");
@@ -113,9 +150,8 @@ describe("user admin APIs", () => {
     expect(reaccepted.status).toBe(409);
     expect((await reaccepted.json()).error).toBe("invitation_already_accepted");
 
-    const usersResponse = await fetch(`${fixture.proxyUrl}/admin/users`, { headers: fixture.adminHeaders });
-    const usersBody = await usersResponse.json();
-    expect(usersBody.data).toEqual(expect.arrayContaining([
+    const usersResult = await adminGql(fixture.proxyUrl, fixture.adminHeaders, usersQuery);
+    expect(usersResult.data?.users).toEqual(expect.arrayContaining([
       expect.objectContaining({
         userId: acceptedBody.userId,
         email: "ada@example.com",
@@ -139,16 +175,17 @@ describe("user admin APIs", () => {
   it("rotates tokens on resend, revokes, and expires invitations", async () => {
     const fixture = await setup("org_user_admin_lifecycle");
 
-    const first = await (await adminPost(fixture, "/admin/invitations", {
-      email: "rotate@example.com",
-      role: "viewer"
-    })).json();
+    const first = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, createInvitationMutation, {
+      input: { email: "rotate@example.com", role: "viewer" }
+    })).data?.createInvitation;
     const firstToken = tokenFromInviteUrl(first.inviteUrl);
 
-    const resent = await adminPost(fixture, `/admin/invitations/${first.invitation.id}/resend`);
-    const resentBody = await resent.json();
+    const resent = await adminGql(fixture.proxyUrl, fixture.adminHeaders, resendInvitationMutation, {
+      invitationId: first.invitation.id
+    });
+    const resentBody = resent.data?.resendInvitation;
     const secondToken = tokenFromInviteUrl(resentBody.inviteUrl);
-    expect(resent.status).toBe(200);
+    expect(resent.errors).toBeUndefined();
     expect(secondToken).not.toBe(firstToken);
 
     const staleResolve = await publicPost(fixture, "/api/invitations/resolve", { token: firstToken });
@@ -159,22 +196,24 @@ describe("user admin APIs", () => {
     const freshAccept = await publicPost(fixture, "/api/invitations/accept", { token: secondToken });
     expect(freshAccept.status).toBe(200);
 
-    const second = await (await adminPost(fixture, "/admin/invitations", {
-      email: "revoke@example.com",
-      role: "member"
-    })).json();
+    const second = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, createInvitationMutation, {
+      input: { email: "revoke@example.com", role: "member" }
+    })).data?.createInvitation;
     const revokeToken = tokenFromInviteUrl(second.inviteUrl);
-    const revoked = await adminPost(fixture, `/admin/invitations/${second.invitation.id}/revoke`);
-    const revokedBody = await revoked.json();
-    expect(revoked.status).toBe(200);
-    expect(revokedBody.invitation.status).toBe("revoked");
+    const revoked = await adminGql(fixture.proxyUrl, fixture.adminHeaders, revokeInvitationMutation, {
+      invitationId: second.invitation.id
+    });
+    expect(revoked.errors).toBeUndefined();
+    expect(revoked.data?.revokeInvitation.status).toBe("revoked");
 
     const revokedAccept = await publicPost(fixture, "/api/invitations/accept", { token: revokeToken });
     expect(revokedAccept.status).toBe(410);
     expect((await revokedAccept.json()).error).toBe("invitation_revoked");
-    const revokedResend = await adminPost(fixture, `/admin/invitations/${second.invitation.id}/resend`);
-    expect(revokedResend.status).toBe(409);
-    expect((await revokedResend.json()).error).toBe("invitation_not_pending");
+    const revokedResend = await adminGql(fixture.proxyUrl, fixture.adminHeaders, resendInvitationMutation, {
+      invitationId: second.invitation.id
+    });
+    expect(revokedResend.errors?.[0]?.message).toBe("invitation_not_pending");
+    expect(revokedResend.errors?.[0]?.extensions?.code).toBe("CONFLICT");
 
     await fixture.db.insert(invitations).values({
       id: "invitation_expired",
@@ -193,11 +232,12 @@ describe("user admin APIs", () => {
     expect(expiredAccept.status).toBe(410);
     expect((await expiredAccept.json()).error).toBe("invitation_expired");
 
-    const renewed = await adminPost(fixture, "/admin/invitations/invitation_expired/resend");
-    const renewedBody = await renewed.json();
-    expect(renewed.status).toBe(200);
+    const renewed = await adminGql(fixture.proxyUrl, fixture.adminHeaders, resendInvitationMutation, {
+      invitationId: "invitation_expired"
+    });
+    expect(renewed.errors).toBeUndefined();
     const renewedAccept = await publicPost(fixture, "/api/invitations/accept", {
-      token: tokenFromInviteUrl(renewedBody.inviteUrl)
+      token: tokenFromInviteUrl(renewed.data?.resendInvitation.inviteUrl)
     });
     expect(renewedAccept.status).toBe(200);
   });
@@ -206,21 +246,34 @@ describe("user admin APIs", () => {
     const fixture = await setup("org_user_admin_roles");
     const memberId = await acceptInvitedUser(fixture, "promote@example.com", "member");
 
-    const promoted = await adminPatch(fixture, `/admin/users/${memberId}/role`, { role: "admin" });
-    const promotedBody = await promoted.json();
-    expect(promoted.status).toBe(200);
-    expect(promotedBody).toEqual({ userId: memberId, role: "admin", previousRole: "member" });
+    const promoted = await adminGql(fixture.proxyUrl, fixture.adminHeaders, updateUserRoleMutation, {
+      userId: memberId,
+      role: "admin"
+    });
+    expect(promoted.errors).toBeUndefined();
+    expect(promoted.data?.updateUserRole).toEqual({ userId: memberId, role: "admin", previousRole: "member" });
 
-    const lastOwner = await adminPatch(fixture, "/admin/users/local-user/role", { role: "member" });
-    expect(lastOwner.status).toBe(409);
-    expect((await lastOwner.json()).error).toBe("last_owner");
+    const lastOwner = await adminGql(fixture.proxyUrl, fixture.adminHeaders, updateUserRoleMutation, {
+      userId: "local-user",
+      role: "member"
+    });
+    expect(lastOwner.errors?.[0]?.message).toBe("last_owner");
+    expect(lastOwner.errors?.[0]?.extensions?.code).toBe("CONFLICT");
 
-    const invalidRole = await adminPatch(fixture, `/admin/users/${memberId}/role`, { role: "root" });
+    // Invalid roles are rejected by GraphQL enum validation before execution.
+    const invalidRole = await adminGql(fixture.proxyUrl, fixture.adminHeaders, updateUserRoleMutation, {
+      userId: memberId,
+      role: "root"
+    });
     expect(invalidRole.status).toBe(400);
+    expect(invalidRole.errors?.[0]?.message).toContain("MemberRole");
 
-    const missingMember = await adminPatch(fixture, "/admin/users/unknown-user/role", { role: "member" });
-    expect(missingMember.status).toBe(404);
-    expect((await missingMember.json()).error).toBe("member_not_found");
+    const missingMember = await adminGql(fixture.proxyUrl, fixture.adminHeaders, updateUserRoleMutation, {
+      userId: "unknown-user",
+      role: "member"
+    });
+    expect(missingMember.errors?.[0]?.message).toBe("member_not_found");
+    expect(missingMember.errors?.[0]?.extensions?.code).toBe("NOT_FOUND");
 
     const roleEvents = await fixture.db
       .select()
@@ -247,33 +300,43 @@ describe("user admin APIs", () => {
     });
     expect(session).not.toBeNull();
 
-    const selfDeactivate = await adminPost(fixture, "/admin/users/local-user/deactivate");
-    expect(selfDeactivate.status).toBe(409);
-    expect((await selfDeactivate.json()).error).toBe("cannot_deactivate_self");
+    const selfDeactivate = await adminGql(fixture.proxyUrl, fixture.adminHeaders, deactivateUserMutation, {
+      userId: "local-user"
+    });
+    expect(selfDeactivate.errors?.[0]?.message).toBe("cannot_deactivate_self");
+    expect(selfDeactivate.errors?.[0]?.extensions?.code).toBe("CONFLICT");
 
-    const deactivated = await adminPost(fixture, `/admin/users/${memberId}/deactivate`);
-    expect(deactivated.status).toBe(200);
-    expect(await deactivated.json()).toEqual({ userId: memberId, status: "deactivated" });
+    const deactivated = await adminGql(fixture.proxyUrl, fixture.adminHeaders, deactivateUserMutation, {
+      userId: memberId
+    });
+    expect(deactivated.errors).toBeUndefined();
+    expect(deactivated.data?.deactivateUser).toEqual({ userId: memberId, status: "deactivated" });
     expect(await fixture.persistence.adminSessions.resolve(session?.token ?? "")).toBeNull();
 
-    const repeated = await adminPost(fixture, `/admin/users/${memberId}/deactivate`);
-    expect(repeated.status).toBe(409);
-    expect((await repeated.json()).error).toBe("member_already_deactivated");
+    const repeated = await adminGql(fixture.proxyUrl, fixture.adminHeaders, deactivateUserMutation, {
+      userId: memberId
+    });
+    expect(repeated.errors?.[0]?.message).toBe("member_already_deactivated");
+    expect(repeated.errors?.[0]?.extensions?.code).toBe("CONFLICT");
 
-    const usersResponse = await fetch(`${fixture.proxyUrl}/admin/users`, { headers: fixture.adminHeaders });
-    expect((await usersResponse.json()).data).toEqual(expect.arrayContaining([
+    const usersResult = await adminGql(fixture.proxyUrl, fixture.adminHeaders, usersQuery);
+    expect(usersResult.data?.users).toEqual(expect.arrayContaining([
       expect.objectContaining({
         userId: memberId,
         membership: { role: "member", status: "deactivated" }
       })
     ]));
 
-    const reactivated = await adminPost(fixture, `/admin/users/${memberId}/reactivate`);
-    expect(reactivated.status).toBe(200);
-    expect(await reactivated.json()).toEqual({ userId: memberId, status: "active" });
-    const reactivatedAgain = await adminPost(fixture, `/admin/users/${memberId}/reactivate`);
-    expect(reactivatedAgain.status).toBe(409);
-    expect((await reactivatedAgain.json()).error).toBe("member_already_active");
+    const reactivated = await adminGql(fixture.proxyUrl, fixture.adminHeaders, reactivateUserMutation, {
+      userId: memberId
+    });
+    expect(reactivated.errors).toBeUndefined();
+    expect(reactivated.data?.reactivateUser).toEqual({ userId: memberId, status: "active" });
+    const reactivatedAgain = await adminGql(fixture.proxyUrl, fixture.adminHeaders, reactivateUserMutation, {
+      userId: memberId
+    });
+    expect(reactivatedAgain.errors?.[0]?.message).toBe("member_already_active");
+    expect(reactivatedAgain.errors?.[0]?.extensions?.code).toBe("CONFLICT");
 
     const ownerId = await acceptInvitedUser(fixture, "owner2@example.com", "owner");
     await fixture.db
@@ -283,9 +346,11 @@ describe("user admin APIs", () => {
         eq(organizationMembers.organizationId, "org_user_admin_status"),
         eq(organizationMembers.userId, "local-user")
       ));
-    const lastOwner = await adminPost(fixture, `/admin/users/${ownerId}/deactivate`);
-    expect(lastOwner.status).toBe(409);
-    expect((await lastOwner.json()).error).toBe("last_owner");
+    const lastOwner = await adminGql(fixture.proxyUrl, fixture.adminHeaders, deactivateUserMutation, {
+      userId: ownerId
+    });
+    expect(lastOwner.errors?.[0]?.message).toBe("last_owner");
+    expect(lastOwner.errors?.[0]?.extensions?.code).toBe("CONFLICT");
 
     const statusEvents = await fixture.db
       .select()
@@ -306,15 +371,13 @@ describe("user admin APIs", () => {
       ADMIN_CONSOLE_URL: "https://console.example.com"
     });
 
-    const created = await adminPost(fixture, "/admin/invitations", {
-      email: "mail@example.com",
-      name: "Mail Person",
-      role: "admin"
+    const created = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createInvitationMutation, {
+      input: { email: "mail@example.com", name: "Mail Person", role: "admin" }
     });
-    const createdBody = await created.json();
+    const createdBody = created.data?.createInvitation;
 
-    expect(created.status).toBe(201);
-    expect(createdBody.emailDelivery).toEqual({ transport: "resend", delivered: true });
+    expect(created.errors).toBeUndefined();
+    expect(createdBody.emailDelivery).toEqual({ transport: "resend", delivered: true, error: null });
     expect(createdBody.inviteUrl.startsWith("https://console.example.com/invite/")).toBe(true);
     expect(resendMock.records).toHaveLength(1);
     expect(resendMock.records[0].headers.authorization).toBe("Bearer test-resend-key");
@@ -327,13 +390,11 @@ describe("user admin APIs", () => {
     expect(resendMock.records[0].body.text).toContain(createdBody.inviteUrl);
 
     resendMock.failNext(500);
-    const failed = await adminPost(fixture, "/admin/invitations", {
-      email: "mail-two@example.com",
-      role: "member"
+    const failed = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createInvitationMutation, {
+      input: { email: "mail-two@example.com", role: "member" }
     });
-    const failedBody = await failed.json();
-    expect(failed.status).toBe(201);
-    expect(failedBody.emailDelivery).toEqual({
+    expect(failed.errors).toBeUndefined();
+    expect(failed.data?.createInvitation.emailDelivery).toEqual({
       transport: "resend",
       delivered: false,
       error: "resend_status_500"
@@ -353,31 +414,15 @@ describe("user admin APIs", () => {
 });
 
 async function acceptInvitedUser(fixture: PromptTestFixture, email: string, role: string) {
-  const created = await (await adminPost(fixture, "/admin/invitations", { email, role })).json();
+  const created = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, createInvitationMutation, {
+    input: { email, role }
+  })).data?.createInvitation;
   const accepted = await publicPost(fixture, "/api/invitations/accept", {
     token: tokenFromInviteUrl(created.inviteUrl)
   });
   expect(accepted.status).toBe(200);
   const body = await accepted.json();
   return body.userId as string;
-}
-
-function adminPost(fixture: PromptTestFixture, path: string, body?: unknown) {
-  return fetch(`${fixture.proxyUrl}${path}`, {
-    method: "POST",
-    headers: body === undefined
-      ? fixture.adminHeaders
-      : { ...fixture.adminHeaders, "content-type": "application/json" },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) })
-  });
-}
-
-function adminPatch(fixture: PromptTestFixture, path: string, body: unknown) {
-  return fetch(`${fixture.proxyUrl}${path}`, {
-    method: "PATCH",
-    headers: { ...fixture.adminHeaders, "content-type": "application/json" },
-    body: JSON.stringify(body)
-  });
 }
 
 function publicPost(fixture: PromptTestFixture, path: string, body: unknown) {

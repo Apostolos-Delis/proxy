@@ -3,21 +3,98 @@ import { useQuery } from "@tanstack/react-query";
 import { MessagesSquare } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { type PromptDetail, type RequestSummary, type SessionDetail, type SessionSummary, fetchSessionDetail, fetchSessions } from "./api";
 import { compactCounts, compactId, dominantKey, formatCompact, formatDateTime, formatMoney } from "./format";
+import { graphql } from "./gql";
+import type { SessionDetailViewQuery, SessionsListQuery } from "./gql/graphql";
+import { gqlFetch } from "./graphql";
 import { CodePill, DataTable, GlassCard, PageState, PageTitle, RouteBadge, StatusBadge } from "./ui";
 
-type SessionArtifact = PromptDetail["artifact"];
+const SessionsListDocument = graphql(`
+  query SessionsList {
+    sessions {
+      sessionId
+      externalSessionId
+      userId
+      surface
+      currentRoute
+      modelMix
+      routeMix
+      terminalStatusSummary
+      usage {
+        totalTokens
+      }
+      cost {
+        selected
+      }
+    }
+  }
+`);
+
+const SessionDetailViewDocument = graphql(`
+  query SessionDetailView($sessionId: ID!) {
+    session(sessionId: $sessionId) {
+      session {
+        sessionId
+        externalSessionId
+        userId
+        surface
+        sessionIdentity
+        requestCount
+        startedAt
+        recentActivity
+        modelMix
+        routeMix
+        usage {
+          totalTokens
+        }
+        cost {
+          selected
+        }
+      }
+      user
+      requests {
+        requestId
+        createdAt
+        selectedModel
+        finalRoute
+        terminalStatus
+        selectedCost
+        usage {
+          totalTokens
+        }
+      }
+      promptArtifacts {
+        artifactId
+        requestId
+        kind
+        rawText
+        redactedText
+        preview
+      }
+    }
+  }
+`);
+
+type SessionSummary = SessionsListQuery["sessions"][number];
+type SessionDetail = NonNullable<SessionDetailViewQuery["session"]>;
+type SessionRequest = SessionDetail["requests"][number];
+type SessionArtifact = SessionDetail["promptArtifacts"][number];
 
 type ConversationTurn = {
-  request: RequestSummary;
+  request: SessionRequest;
   userArtifact?: SessionArtifact;
   assistantArtifact?: SessionArtifact;
 };
 
+function countRecord(value: unknown): Record<string, number> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, number>
+    : {};
+}
+
 export function SessionsPage() {
-  const query = useQuery({ queryKey: ["sessions"], queryFn: fetchSessions });
-  const data = query.data?.data ?? [];
+  const query = useQuery({ queryKey: ["sessions"], queryFn: () => gqlFetch(SessionsListDocument) });
+  const data = query.data?.sessions ?? [];
 
   if (query.isLoading) return <PageState title="Sessions" label="Loading session index" />;
   if (query.error) return <PageState title="Sessions" label={query.error.message} />;
@@ -39,7 +116,7 @@ export function SessionsPage() {
 export function SessionDetailPage({ sessionId }: { sessionId: string }) {
   const query = useQuery({
     queryKey: ["session", sessionId],
-    queryFn: () => fetchSessionDetail(sessionId)
+    queryFn: async () => (await gqlFetch(SessionDetailViewDocument, { sessionId })).session
   });
 
   if (query.isLoading) return <PageState title="Session" label="Loading conversation" />;
@@ -82,9 +159,9 @@ function SessionRow({ session }: { session: SessionSummary }) {
       </td>
       <td><CodePill value={session.userId ?? "unknown"} /></td>
       <td>{session.surface}</td>
-      <td><RouteBadge route={session.currentRoute ?? dominantKey(session.routeMix)} /></td>
-      <td>{compactCounts(session.modelMix)}</td>
-      <td><StatusBadge status={dominantKey(session.terminalStatusSummary)} /></td>
+      <td><RouteBadge route={session.currentRoute ?? dominantKey(countRecord(session.routeMix))} /></td>
+      <td>{compactCounts(countRecord(session.modelMix))}</td>
+      <td><StatusBadge status={dominantKey(countRecord(session.terminalStatusSummary))} /></td>
       <td className="mono">{formatCompact(session.usage.totalTokens)}</td>
       <td className="mono">{formatMoney(session.cost.selected)}</td>
     </tr>
@@ -129,7 +206,7 @@ function ConversationBubble({ role, artifact, missingLabel }: {
   );
 }
 
-function SessionRail({ session, userName }: { session: SessionSummary; userName: string }) {
+function SessionRail({ session, userName }: { session: SessionDetail["session"]; userName: string }) {
   return (
     <GlassCard className="session-rail">
       <div className="card-title">Session context</div>
@@ -142,8 +219,8 @@ function SessionRail({ session, userName }: { session: SessionSummary; userName:
         <SessionFact label="Requests"><span className="mono">{formatCompact(session.requestCount)}</span></SessionFact>
         <SessionFact label="Tokens"><span className="mono">{formatCompact(session.usage.totalTokens)}</span></SessionFact>
         <SessionFact label="Cost"><span className="mono">{formatMoney(session.cost.selected)}</span></SessionFact>
-        <SessionFact label="Models"><span>{compactCounts(session.modelMix)}</span></SessionFact>
-        <SessionFact label="Routes"><span>{compactCounts(session.routeMix)}</span></SessionFact>
+        <SessionFact label="Models"><span>{compactCounts(countRecord(session.modelMix))}</span></SessionFact>
+        <SessionFact label="Routes"><span>{compactCounts(countRecord(session.routeMix))}</span></SessionFact>
       </div>
     </GlassCard>
   );
@@ -177,11 +254,17 @@ function conversationTurns(detail: SessionDetail): ConversationTurn[] {
     });
 }
 
-function requestTime(request: RequestSummary) {
+function requestTime(request: SessionRequest) {
   return request.createdAt ? new Date(request.createdAt).getTime() : 0;
 }
 
+function sessionUser(value: unknown): { name?: string; email?: string } | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as { name?: string; email?: string }
+    : null;
+}
+
 function sessionUserName(detail: SessionDetail) {
-  const user = detail.user as { name?: string; email?: string } | null;
+  const user = sessionUser(detail.user);
   return user?.name ?? user?.email ?? detail.session.userId ?? "unknown";
 }

@@ -3,18 +3,97 @@ import { RotateCcw, Save, Search, SlidersHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 
-import { type EditableSettings, fetchSettings, updateSettings } from "./api";
+import { graphql } from "./gql";
+import type { SettingsViewQuery } from "./gql/graphql";
+import { gqlFetch } from "./graphql";
 import { MenuSelect } from "./table/MenuSelect";
 import { Badge, GlassCard, PageState, PageTitle } from "./ui";
+
+const SettingsViewDocument = graphql(`
+  query SettingsView {
+    settings {
+      organizationId
+      databaseEnabled
+      restartRequiredFor
+      storage {
+        path
+        reason
+      }
+      settings {
+        schemaVersion
+        classifier {
+          model
+          timeoutMs
+          maxAttempts
+          allowRedactedExcerpt
+        }
+        budgets {
+          warningEstimatedInputTokens
+          maxEstimatedInputTokens
+          maxRoute
+        }
+        routeQuality {
+          lowConfidenceThreshold
+        }
+        promptCapture {
+          promptCaptureMode
+          retentionDays
+        }
+      }
+    }
+  }
+`);
+
+const UpdateSettingsDocument = graphql(`
+  mutation UpdateSettings($input: SettingsInput!) {
+    updateSettings(input: $input) {
+      organizationId
+      databaseEnabled
+      restartRequiredFor
+      storage {
+        path
+        reason
+      }
+      settings {
+        schemaVersion
+        classifier {
+          model
+          timeoutMs
+          maxAttempts
+          allowRedactedExcerpt
+        }
+        budgets {
+          warningEstimatedInputTokens
+          maxEstimatedInputTokens
+          maxRoute
+        }
+        routeQuality {
+          lowConfidenceThreshold
+        }
+        promptCapture {
+          promptCaptureMode
+          retentionDays
+        }
+      }
+    }
+  }
+`);
+
+type SettingsView = SettingsViewQuery["settings"];
+type EditableSettings = SettingsView["settings"];
 
 const routeOptions = ["", "fast", "balanced", "hard", "deep"] as const;
 const promptCaptureOptions = ["none", "hash_only", "redacted", "raw_text", "encrypted_raw"] as const;
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
+  const query = useQuery({
+    queryKey: ["settings"],
+    queryFn: async () => (await gqlFetch(SettingsViewDocument)).settings
+  });
   const mutation = useMutation({
-    mutationFn: updateSettings,
+    mutationFn: async (settings: EditableSettings) =>
+      (await gqlFetch(UpdateSettingsDocument, { input: settingsInput(settings) })).updateSettings,
     onSuccess: (data) => queryClient.setQueryData(["settings"], data)
   });
 
@@ -199,6 +278,30 @@ function numberOrNull(value: string) {
   if (!value.trim()) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function settingsInput(settings: EditableSettings) {
+  return {
+    schemaVersion: settings.schemaVersion,
+    classifier: {
+      model: settings.classifier.model,
+      timeoutMs: settings.classifier.timeoutMs,
+      maxAttempts: settings.classifier.maxAttempts,
+      allowRedactedExcerpt: settings.classifier.allowRedactedExcerpt
+    },
+    budgets: {
+      warningEstimatedInputTokens: settings.budgets.warningEstimatedInputTokens,
+      maxEstimatedInputTokens: settings.budgets.maxEstimatedInputTokens,
+      maxRoute: settings.budgets.maxRoute
+    },
+    routeQuality: {
+      lowConfidenceThreshold: settings.routeQuality.lowConfidenceThreshold
+    },
+    promptCapture: {
+      promptCaptureMode: settings.promptCapture.promptCaptureMode,
+      retentionDays: settings.promptCapture.retentionDays
+    }
+  };
 }
 
 function visibleGroups(search: string) {

@@ -13,7 +13,60 @@ import {
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
-import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
+import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
+
+const promptListQuery = `query Prompts($userId: String, $surface: String, $route: String, $model: String, $limit: Int, $offset: Int) {
+  prompts(userId: $userId, surface: $surface, route: $route, model: $model, limit: $limit, offset: $offset) {
+    data {
+      artifactId
+      requestId
+      userId
+      kind
+      surface
+      storageMode
+      preview
+      finalRoute
+      provider
+      selectedModel
+      routingConfig { configId configName version configHash }
+      classifier
+    }
+    pagination { limit offset count }
+  }
+}`;
+
+const promptDetailQuery = `query Prompt($artifactId: ID!) {
+  prompt(artifactId: $artifactId) {
+    artifact {
+      artifactId
+      requestId
+      rawText
+      routingConfig { configId configName version configHash }
+      classifier
+    }
+    request {
+      requestId
+      surface
+      provider
+      selectedModel
+      finalRoute
+      routingConfig { configId configName version }
+    }
+    events { eventType }
+  }
+}`;
+
+const apiKeysQuery = `query {
+  apiKeys {
+    id
+    organizationId
+    userId
+    name
+    scopes
+    routingConfigId
+    routingConfig { id name status }
+  }
+}`;
 
 describe("admin prompt APIs", () => {
   let activeFixture: PromptTestFixture | undefined;
@@ -26,17 +79,25 @@ describe("admin prompt APIs", () => {
   it("requires browser admin sessions for admin APIs", async () => {
     const fixture = await setup("org_admin_auth");
 
-    const unauthenticated = await fetch(`${fixture.proxyUrl}/admin/overview`);
-    const me = await fetch(`${fixture.proxyUrl}/api/auth/me`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
+    const unauthenticated = await adminGql(
+      fixture.proxyUrl,
+      {},
+      "query { overview { organizationId } }"
+    );
+    const me = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query { viewer { user { organizationId userId email role } } }"
+    )).data?.viewer;
     const logout = await fetch(`${fixture.proxyUrl}/api/auth/logout`, {
       method: "POST",
       headers: fixture.adminHeaders
     });
-    const afterLogout = await fetch(`${fixture.proxyUrl}/admin/overview`, {
-      headers: fixture.adminHeaders
-    });
+    const afterLogout = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query { overview { organizationId } }"
+    );
 
     expect(unauthenticated.status).toBe(401);
     expect(me.user).toEqual(expect.objectContaining({
@@ -68,18 +129,24 @@ describe("admin prompt APIs", () => {
     });
     await response.text();
 
-    const prompts = await fetch(
-      `${fixture.proxyUrl}/admin/prompts?userId=user_prompt_admin&surface=openai-responses&route=hard&model=gpt-5.5&limit=10&offset=0`,
-      { headers: fixture.adminHeaders }
-    ).then((item) => item.json());
+    const prompts = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptListQuery, {
+      userId: "user_prompt_admin",
+      surface: "openai-responses",
+      route: "hard",
+      model: "gpt-5.5",
+      limit: 10,
+      offset: 0
+    })).data?.prompts;
     const latestUser = prompts.data.find((item: any) => item.kind === "latest_user_message");
-    const usageBeforeDetail = await fetch(`${fixture.proxyUrl}/admin/usage?groupBy=route`, {
-      headers: fixture.adminHeaders
-    });
+    const usageBeforeDetail = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query { usage(groupBy: route) { totals { requestCount } } }"
+    );
     const auditAfterListAndUsage = await fixture.db.select().from(promptAccessAudit);
-    const detail = await fetch(`${fixture.proxyUrl}/admin/prompts/${latestUser.artifactId}`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
+    const detail = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptDetailQuery, {
+      artifactId: latestUser.artifactId
+    })).data?.prompt;
 
     await fixture.db.insert(organizations).values({
       id: "org_other",
@@ -104,13 +171,15 @@ describe("admin prompt APIs", () => {
       contentHash: "sha256:other",
       rawText: "other org prompt"
     });
-    const crossOrg = await fetch(`${fixture.proxyUrl}/admin/prompts/artifact_other`, {
-      headers: fixture.adminHeaders
-    });
+    const crossOrg = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptDetailQuery, {
+      artifactId: "artifact_other"
+    })).data;
     const auditRows = await fixture.db.select().from(promptAccessAudit);
-    const auditList = await fetch(`${fixture.proxyUrl}/admin/prompt-access-audit`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
+    const auditList = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query { promptAccessAudit { artifactId requestId userId route accessPath } }"
+    )).data?.promptAccessAudit;
 
     expect(response.status).toBe(200);
     expect(usageBeforeDetail.status).toBe(200);
@@ -158,7 +227,7 @@ describe("admin prompt APIs", () => {
       version: 1
     }));
     expect(detail.events.map((event: any) => event.eventType)).toContain("prompt_artifacts.captured");
-    expect(crossOrg.status).toBe(404);
+    expect(crossOrg?.prompt).toBeNull();
     expect(auditRows).toEqual([
       expect.objectContaining({
         organizationId: "org_prompt_admin",
@@ -166,10 +235,10 @@ describe("admin prompt APIs", () => {
         requestId: latestUser.requestId,
         userId: "local-user",
         route: "hard",
-        accessPath: `/admin/prompts/${latestUser.artifactId}`
+        accessPath: "/admin/graphql#prompt"
       })
     ]);
-    expect(auditList.data).toEqual([
+    expect(auditList).toEqual([
       expect.objectContaining({
         artifactId: latestUser.artifactId,
         requestId: latestUser.requestId,
@@ -201,14 +270,16 @@ describe("admin prompt APIs", () => {
     });
     await response.text();
 
-    const prompts = await fetch(
-      `${fixture.proxyUrl}/admin/prompts?userId=claude_user&surface=anthropic-messages&route=hard&model=claude-sonnet-4-5`,
-      { headers: fixture.adminHeaders }
-    ).then((item) => item.json());
+    const prompts = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptListQuery, {
+      userId: "claude_user",
+      surface: "anthropic-messages",
+      route: "hard",
+      model: "claude-sonnet-4-5"
+    })).data?.prompts;
     const latestUser = prompts.data.find((item: any) => item.kind === "latest_user_message");
-    const detail = await fetch(`${fixture.proxyUrl}/admin/prompts/${latestUser.artifactId}`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
+    const detail = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptDetailQuery, {
+      artifactId: latestUser.artifactId
+    })).data?.prompt;
 
     expect(response.status).toBe(200);
     expect(latestUser).toEqual(expect.objectContaining({
@@ -267,12 +338,12 @@ describe("admin prompt APIs", () => {
     });
     await response.text();
 
-    const promptForOwner = await fetch(`${fixture.proxyUrl}/admin/prompts?userId=api_owner`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
-    const promptForSpoofedUser = await fetch(`${fixture.proxyUrl}/admin/prompts?userId=spoofed_user`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
+    const promptForOwner = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptListQuery, {
+      userId: "api_owner"
+    })).data?.prompts;
+    const promptForSpoofedUser = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptListQuery, {
+      userId: "spoofed_user"
+    })).data?.prompts;
     const requestRows = await fixture.db.select().from(requests);
     const eventRows = await fixture.db.select().from(events);
     const received = eventRows.find((event) => event.eventType === "proxy.request_received");
@@ -327,12 +398,12 @@ describe("admin prompt APIs", () => {
     });
     await response.text();
 
-    const promptForHarnessUser = await fetch(`${fixture.proxyUrl}/admin/prompts?userId=codex_seeded_user`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
-    const promptForSeedUser = await fetch(`${fixture.proxyUrl}/admin/prompts?userId=local-user`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
+    const promptForHarnessUser = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptListQuery, {
+      userId: "codex_seeded_user"
+    })).data?.prompts;
+    const promptForSeedUser = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptListQuery, {
+      userId: "local-user"
+    })).data?.prompts;
     const eventRows = await fixture.db.select().from(events);
     const received = eventRows.find((event) => event.eventType === "proxy.request_received");
 
@@ -356,13 +427,11 @@ describe("admin prompt APIs", () => {
       PROMPT_PROXY_TOKEN: "proxy-token"
     }));
 
-    const response = await fetch(`${fixture.proxyUrl}/admin/api-keys`, {
-      headers: fixture.adminHeaders
-    });
-    const body = await response.json();
+    const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, apiKeysQuery);
+    const body = result.data?.apiKeys;
 
-    expect(response.status).toBe(200);
-    expect(body.data).toEqual([
+    expect(result.status).toBe(200);
+    expect(body).toEqual([
       expect.objectContaining({
         id: "org_admin_api_keys:api-key:default",
         organizationId: "org_admin_api_keys",
@@ -377,8 +446,8 @@ describe("admin prompt APIs", () => {
         })
       })
     ]);
-    expect(body.data[0]).not.toHaveProperty("keyHash");
-    expect(body.data[0]).not.toHaveProperty("secret");
+    expect(body[0]).not.toHaveProperty("keyHash");
+    expect(body[0]).not.toHaveProperty("secret");
   });
 
   it("lists unassigned API keys with explicit null routing assignment", async () => {
@@ -391,14 +460,12 @@ describe("admin prompt APIs", () => {
       scopes: ["proxy"]
     });
 
-    const response = await fetch(`${fixture.proxyUrl}/admin/api-keys`, {
-      headers: fixture.adminHeaders
-    });
-    const body = await response.json();
-    const unassigned = body.data.find((item: any) => item.id === "api_key_unassigned");
+    const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, apiKeysQuery);
+    const body = result.data?.apiKeys;
+    const unassigned = body.find((item: any) => item.id === "api_key_unassigned");
 
-    expect(response.status).toBe(200);
-    expect(body.data).toEqual(expect.arrayContaining([
+    expect(result.status).toBe(200);
+    expect(body).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: "api_key_unassigned",
         routingConfigId: null,

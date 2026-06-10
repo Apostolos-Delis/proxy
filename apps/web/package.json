@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev --host 127.0.0.1",
-    "build": "vite build",
+    "codegen": "graphql-codegen --config codegen.ts",
+    "build": "graphql-codegen --config codegen.ts && vite build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -21,8 +22,12 @@
     "vite": "7.2.6"
   },
   "devDependencies": {
+    "@graphql-codegen/cli": "^7.1.2",
+    "@graphql-codegen/client-preset": "^6.0.1",
+    "@graphql-typed-document-node/core": "^3.2.0",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
+    "graphql": "^16.14.2",
     "typescript": "^5.9.3",
     "vitest": "^4.0.15"
   }
