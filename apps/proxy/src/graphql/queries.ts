@@ -4,7 +4,7 @@ import { orgQueries, viewerPayload } from "./context.js";
 import type { RequestSummaryShape, UsageReportModel, UsageTimeseriesModel } from "./models.js";
 import { settingsResponse } from "./settingsPayload.js";
 import { Overview, UsageGroupBy, UsageInterval, UsageReport, UsageTimeseries } from "./types/analytics.js";
-import { Invitation } from "./types/invitations.js";
+import { Invitation, PublicInvitation } from "./types/invitations.js";
 import { PromptAccessAuditEntry, PromptDetail, PromptPage } from "./types/prompts.js";
 import { RequestDetail, RequestSummary } from "./types/requests.js";
 import { ApiKey, RoutingConfigDetail, RoutingConfigSummary } from "./types/routing.js";
@@ -43,7 +43,7 @@ function emptyUsageReport(): UsageReportModel {
 builder.queryFields((t) => ({
   viewer: t.field({
     type: Viewer,
-    resolve: (_root, _args, context) => viewerPayload(context.identity, context.persistence)
+    resolve: (_root, _args, context) => viewerPayload(context.identity(), context.persistence)
   }),
 
   overview: t.field({
@@ -187,15 +187,27 @@ builder.queryFields((t) => ({
       const detail = await queries.promptDetail(String(args.artifactId));
       if (!detail) return null;
       await context.persistence.promptAccessAudit.append({
-        organizationId: context.identity.organizationId,
+        organizationId: context.identity().organizationId,
         artifactId: detail.artifact.artifactId,
         requestId: detail.artifact.requestId,
-        userId: context.identity.userId,
-        adminSessionId: context.identity.sessionId,
+        userId: context.identity().userId,
+        adminSessionId: context.identity().sessionId,
         route: detail.request?.finalRoute,
         accessPath: PROMPT_GRAPHQL_ACCESS_PATH
       });
       return detail;
+    }
+  }),
+
+  publicInvitation: t.field({
+    type: PublicInvitation,
+    nullable: true,
+    args: { token: t.arg.string({ required: true }) },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) return null;
+      const token = args.token.trim();
+      if (!token) return null;
+      return context.persistence.userAdmin.resolveInvitation(token);
     }
   }),
 
@@ -204,7 +216,7 @@ builder.queryFields((t) => ({
     resolve: async (_root, _args, context) => {
       if (!context.persistence) return [];
       const audit = await context.persistence.promptAccessAudit.list(
-        context.identity.organizationId
+        context.identity().organizationId
       );
       return audit.data;
     }
@@ -307,7 +319,7 @@ builder.queryFields((t) => ({
     resolve: async (_root, _args, context) =>
       settingsResponse(
         context.config,
-        context.identity.organizationId,
+        context.identity().organizationId,
         await readSettingsFile(context.config.settingsPath),
         context.persistence
       )

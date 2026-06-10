@@ -74,20 +74,23 @@ Use the web console when possible:
 4. Pick the key and assign a routing config.
 5. Check request logs after the next request; each row should show the routing config version/hash snapshot.
 
-The same flow is available through admin APIs. First create a dev session:
+The same flow is available through the admin GraphQL API at `/admin/graphql`
+(logged-in admins can also use GraphiQL there). First create a dev session:
 
 ```shell
 curl -sS -c /tmp/prompt-proxy.cookies \
   -H 'content-type: application/json' \
-  -X POST http://127.0.0.1:8787/api/auth/login \
-  -d "{\"email\":\"${ADMIN_DEV_LOGIN_EMAIL:-local@example.com}\",\"password\":\"${ADMIN_DEV_LOGIN_PASSWORD:-dev-password}\"}"
+  -X POST http://127.0.0.1:8787/admin/graphql \
+  -d "{\"query\":\"mutation { login(email: \\\"${ADMIN_DEV_LOGIN_EMAIL:-local@example.com}\\\", password: \\\"${ADMIN_DEV_LOGIN_PASSWORD:-dev-password}\\\") { organizationId } }\"}"
 ```
 
 List routing configs and API keys:
 
 ```shell
-curl -sS -b /tmp/prompt-proxy.cookies http://127.0.0.1:8787/admin/routing-configs
-curl -sS -b /tmp/prompt-proxy.cookies http://127.0.0.1:8787/admin/api-keys
+curl -sS -b /tmp/prompt-proxy.cookies \
+  -H 'content-type: application/json' \
+  -X POST http://127.0.0.1:8787/admin/graphql \
+  -d '{"query":"{ routingConfigs { id name status activeVersion { version } } apiKeys { id name routingConfigId } }"}'
 ```
 
 Assign a config:
@@ -95,8 +98,8 @@ Assign a config:
 ```shell
 curl -sS -b /tmp/prompt-proxy.cookies \
   -H 'content-type: application/json' \
-  -X PATCH http://127.0.0.1:8787/admin/api-keys/local:api-key:default/routing-config \
-  -d '{"routingConfigId":"local:routing-config:default"}'
+  -X POST http://127.0.0.1:8787/admin/graphql \
+  -d '{"query":"mutation { assignApiKeyRoutingConfig(apiKeyId: \"local:api-key:default\", routingConfigId: \"local:routing-config:default\") { id routingConfigId } }"}'
 ```
 
 Clear a key-level assignment and fall back to the organization default:

@@ -4,7 +4,7 @@ import { ArrowRight, LogOut } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 
-import { fetchMe, login, logout } from "./api";
+import { fetchMe, login, logout } from "./session";
 import { ConsoleButton } from "./ui";
 
 export type RouterContext = {

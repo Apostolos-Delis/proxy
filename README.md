@@ -49,31 +49,23 @@ Authenticated debug endpoints expose route evidence during local development:
 - `GET /_debug/projections`
 - `GET /_debug/route-quality`
 
-Cookie-authenticated admin access powers the web console. Session bootstrap
-stays on REST because it sets or clears cookies:
-
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `POST /api/auth/switch-organization`
-
-Everything else the console reads or writes goes through the GraphQL API at
-`POST /admin/graphql` (queries: viewer, overview, requests, request, prompts,
-prompt, promptAccessAudit, usage, users, user, sessions, session, invitations,
-settings, routingConfigs, routingConfig, apiKeys, apiKey, search,
-usageTimeseries; mutations:
-updateSettings, configurePromptCapture, createRoutingConfig,
+Everything the web console reads or writes goes through the GraphQL API at
+`POST /admin/graphql` — including session bootstrap (the `login`, `logout`,
+and `switchOrganization` mutations set or clear the session cookie) and the
+public invitation accept flow (`publicInvitation` query plus the
+`acceptInvitation` mutation, both reachable without a session; everything else
+requires an authenticated admin session and anonymous introspection is
+rejected). Queries: viewer, overview, requests, request, prompts, prompt,
+promptAccessAudit, publicInvitation, usage, usageTimeseries, users, user,
+sessions, session, invitations, settings, routingConfigs, routingConfig,
+apiKeys, apiKey, search. Mutations: login, logout, switchOrganization,
+acceptInvitation, updateSettings, configurePromptCapture, createRoutingConfig,
 createRoutingConfigVersion, activateRoutingConfigVersion, archiveRoutingConfig,
 assignApiKeyRoutingConfig, createApiKey, revokeApiKey, createInvitation,
 resendInvitation, revokeInvitation, updateUserRole, deactivateUser,
-reactivateUser). The SDL lives at
-`apps/proxy/schema.graphql` (regenerate with `pnpm --filter @prompt-proxy/proxy
-schema:print`), and logged-in admins get GraphiQL by opening `/admin/graphql`
-in a browser.
-
-Public token-authenticated invitation endpoints power the accept flow:
-
-- `POST /api/invitations/resolve`
-- `POST /api/invitations/accept`
+reactivateUser. The SDL lives at `apps/proxy/schema.graphql` (regenerate with
+`pnpm --filter @prompt-proxy/proxy schema:print`), and logged-in admins get
+GraphiQL by opening `/admin/graphql` in a browser.
 
 ## User Management
 

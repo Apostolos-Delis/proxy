@@ -89,17 +89,25 @@ describe("admin prompt APIs", () => {
       fixture.adminHeaders,
       "query { viewer { user { organizationId userId email role } } }"
     )).data?.viewer;
-    const logout = await fetch(`${fixture.proxyUrl}/api/auth/logout`, {
-      method: "POST",
-      headers: fixture.adminHeaders
-    });
+    const logout = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "mutation { logout }"
+    );
     const afterLogout = await adminGql(
       fixture.proxyUrl,
       fixture.adminHeaders,
       "query { overview { organizationId } }"
     );
 
+    const anonymousIntrospection = await adminGql(
+      fixture.proxyUrl,
+      {},
+      "query { __schema { queryType { name } } }"
+    );
+
     expect(unauthenticated.status).toBe(401);
+    expect(anonymousIntrospection.errors?.[0]?.message).toContain("Introspection requires");
     expect(me.user).toEqual(expect.objectContaining({
       organizationId: "org_admin_auth",
       userId: "local-user",
@@ -107,7 +115,8 @@ describe("admin prompt APIs", () => {
       role: "owner"
     }));
     expect(logout.status).toBe(200);
-    expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(logout.data?.logout).toBe(true);
+    expect(logout.setCookie).toContain("Max-Age=0");
     expect(afterLogout.status).toBe(401);
   });
 

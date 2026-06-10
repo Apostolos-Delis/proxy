@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, MailPlus, UserCheck, UserX, X } from "lucide-react";
 import { useState } from "react";
 
-import { fetchMe } from "./api";
+import { fetchMe } from "./session";
 import { displayUser } from "./consoleData";
 import { downloadJson, InspectorPanel } from "./dashboard";
 import { formatCompact, formatDateTime, formatMoney } from "./format";

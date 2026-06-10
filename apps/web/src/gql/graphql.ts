@@ -79,11 +79,6 @@ export type UsageInterval =
   | 'day'
   | 'hour';
 
-export type ViewerQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type ViewerQuery = { viewer: { organizationId: string, user: { sessionId: string, organizationId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }> } };
-
 export type BillingPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -107,6 +102,21 @@ export type RevokeInvitationMutationVariables = Exact<{
 
 
 export type RevokeInvitationMutation = { revokeInvitation: { id: string, status: string } | null };
+
+export type PublicInvitationQueryVariables = Exact<{
+  token: string;
+}>;
+
+
+export type PublicInvitationQuery = { publicInvitation: { organizationName: string, email: string, name: string | null, role: string, status: string, inviterName: string | null, expiresAt: string } | null };
+
+export type AcceptInvitationMutationVariables = Exact<{
+  token: string;
+  name?: string | null | undefined;
+}>;
+
+
+export type AcceptInvitationMutation = { acceptInvitation: { ok: boolean, organizationId: string, userId: string, email: string, role: string } };
 
 export type CreateInvitationMutationVariables = Exact<{
   input: CreateInvitationInput;
@@ -216,6 +226,33 @@ export type GlobalSearchQueryVariables = Exact<{
 
 
 export type GlobalSearchQuery = { search: { results: Array<{ kind: SearchHitKind, id: string, title: string, subtitle: string | null, status: string | null, snippet: string | null, occurredAt: string | null }> } };
+
+export type ViewerFieldsFragment = { organizationId: string, user: { sessionId: string, organizationId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }> };
+
+export type ViewerQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type ViewerQuery = { viewer: { organizationId: string, user: { sessionId: string, organizationId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }> } };
+
+export type LoginMutationVariables = Exact<{
+  email: string;
+  password: string;
+}>;
+
+
+export type LoginMutation = { login: { organizationId: string, user: { sessionId: string, organizationId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }> } };
+
+export type LogoutMutationVariables = Exact<{ [key: string]: never; }>;
+
+
+export type LogoutMutation = { logout: boolean };
+
+export type SwitchOrganizationMutationVariables = Exact<{
+  organizationId: string | number;
+}>;
+
+
+export type SwitchOrganizationMutation = { switchOrganization: { organizationId: string, user: { sessionId: string, organizationId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }> } };
 
 export type SessionsListQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -379,6 +416,25 @@ export const RoutingConfigDetailFieldsFragmentDoc = new TypedDocumentString(`
     anthropicEffort
   }
 }`, {"fragmentName":"RoutingConfigDetailFields"}) as unknown as TypedDocumentString<RoutingConfigDetailFieldsFragment, unknown>;
+export const ViewerFieldsFragmentDoc = new TypedDocumentString(`
+    fragment ViewerFields on Viewer {
+  user {
+    sessionId
+    organizationId
+    userId
+    email
+    name
+    role
+  }
+  organizationId
+  organizations {
+    id
+    slug
+    name
+    role
+  }
+}
+    `, {"fragmentName":"ViewerFields"}) as unknown as TypedDocumentString<ViewerFieldsFragment, unknown>;
 export const UsageGroupFieldsFragmentDoc = new TypedDocumentString(`
     fragment UsageGroupFields on UsageGroup {
   key
@@ -405,27 +461,6 @@ export const UsageGroupFieldsFragmentDoc = new TypedDocumentString(`
   }
 }
     `, {"fragmentName":"UsageGroupFields"}) as unknown as TypedDocumentString<UsageGroupFieldsFragment, unknown>;
-export const ViewerDocument = new TypedDocumentString(`
-    query Viewer {
-  viewer {
-    user {
-      sessionId
-      organizationId
-      userId
-      email
-      name
-      role
-    }
-    organizationId
-    organizations {
-      id
-      slug
-      name
-      role
-    }
-  }
-}
-    `) as unknown as TypedDocumentString<ViewerQuery, ViewerQueryVariables>;
 export const BillingPageDocument = new TypedDocumentString(`
     query BillingPage {
   overview {
@@ -483,6 +518,30 @@ export const RevokeInvitationDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<RevokeInvitationMutation, RevokeInvitationMutationVariables>;
+export const PublicInvitationDocument = new TypedDocumentString(`
+    query PublicInvitation($token: String!) {
+  publicInvitation(token: $token) {
+    organizationName
+    email
+    name
+    role
+    status
+    inviterName
+    expiresAt
+  }
+}
+    `) as unknown as TypedDocumentString<PublicInvitationQuery, PublicInvitationQueryVariables>;
+export const AcceptInvitationDocument = new TypedDocumentString(`
+    mutation AcceptInvitation($token: String!, $name: String) {
+  acceptInvitation(token: $token, name: $name) {
+    ok
+    organizationId
+    userId
+    email
+    role
+  }
+}
+    `) as unknown as TypedDocumentString<AcceptInvitationMutation, AcceptInvitationMutationVariables>;
 export const CreateInvitationDocument = new TypedDocumentString(`
     mutation CreateInvitation($input: CreateInvitationInput!) {
   createInvitation(input: $input) {
@@ -1030,6 +1089,80 @@ export const GlobalSearchDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<GlobalSearchQuery, GlobalSearchQueryVariables>;
+export const ViewerDocument = new TypedDocumentString(`
+    query Viewer {
+  viewer {
+    ...ViewerFields
+  }
+}
+    fragment ViewerFields on Viewer {
+  user {
+    sessionId
+    organizationId
+    userId
+    email
+    name
+    role
+  }
+  organizationId
+  organizations {
+    id
+    slug
+    name
+    role
+  }
+}`) as unknown as TypedDocumentString<ViewerQuery, ViewerQueryVariables>;
+export const LoginDocument = new TypedDocumentString(`
+    mutation Login($email: String!, $password: String!) {
+  login(email: $email, password: $password) {
+    ...ViewerFields
+  }
+}
+    fragment ViewerFields on Viewer {
+  user {
+    sessionId
+    organizationId
+    userId
+    email
+    name
+    role
+  }
+  organizationId
+  organizations {
+    id
+    slug
+    name
+    role
+  }
+}`) as unknown as TypedDocumentString<LoginMutation, LoginMutationVariables>;
+export const LogoutDocument = new TypedDocumentString(`
+    mutation Logout {
+  logout
+}
+    `) as unknown as TypedDocumentString<LogoutMutation, LogoutMutationVariables>;
+export const SwitchOrganizationDocument = new TypedDocumentString(`
+    mutation SwitchOrganization($organizationId: ID!) {
+  switchOrganization(organizationId: $organizationId) {
+    ...ViewerFields
+  }
+}
+    fragment ViewerFields on Viewer {
+  user {
+    sessionId
+    organizationId
+    userId
+    email
+    name
+    role
+  }
+  organizationId
+  organizations {
+    id
+    slug
+    name
+    role
+  }
+}`) as unknown as TypedDocumentString<SwitchOrganizationMutation, SwitchOrganizationMutationVariables>;
 export const SessionsListDocument = new TypedDocumentString(`
     query SessionsList {
   sessions {

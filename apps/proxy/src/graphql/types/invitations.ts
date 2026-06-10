@@ -9,6 +9,12 @@ export type InvitationActionResultModel = {
   inviteUrl: string;
   emailDelivery: EmailDeliveryModel;
 };
+export type PublicInvitationModel = NonNullable<
+  Awaited<ReturnType<UserAdminService["resolveInvitation"]>>
+>;
+export type AcceptedInvitationModel = Awaited<ReturnType<UserAdminService["acceptInvitation"]>> & {
+  ok: boolean;
+};
 export type UpdateUserRoleResultModel = Awaited<ReturnType<UserAdminService["updateMemberRole"]>>;
 export type UserStatusResultModel =
   | Awaited<ReturnType<UserAdminService["deactivateMember"]>>
@@ -85,5 +91,31 @@ export const UserStatusResult = builder
     fields: (t) => ({
       userId: t.exposeString("userId"),
       status: t.exposeString("status")
+    })
+  });
+
+export const PublicInvitation = builder
+  .objectRef<PublicInvitationModel>("PublicInvitation")
+  .implement({
+    fields: (t) => ({
+      organizationName: t.exposeString("organizationName"),
+      email: t.exposeString("email"),
+      name: t.exposeString("name", { nullable: true }),
+      role: t.exposeString("role"),
+      status: t.exposeString("status"),
+      inviterName: t.exposeString("inviterName", { nullable: true }),
+      expiresAt: t.exposeString("expiresAt")
+    })
+  });
+
+export const AcceptedInvitation = builder
+  .objectRef<AcceptedInvitationModel>("AcceptedInvitation")
+  .implement({
+    fields: (t) => ({
+      ok: t.exposeBoolean("ok"),
+      organizationId: t.exposeString("organizationId"),
+      userId: t.exposeString("userId"),
+      email: t.exposeString("email"),
+      role: t.exposeString("role")
     })
   });

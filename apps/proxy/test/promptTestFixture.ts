@@ -156,21 +156,24 @@ export async function adminGql(
   return {
     status: response.status,
     data: body?.data ?? null,
-    errors: body?.errors ?? undefined
+    errors: body?.errors ?? undefined,
+    setCookie: response.headers.get("set-cookie") ?? undefined
   };
 }
 
 export async function loginAdmin(proxyUrl: string) {
-  const response = await fetch(`${proxyUrl}/api/auth/login`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      email: "local@example.com",
-      password: "dev-password"
-    })
-  });
-  expect(response.status).toBe(200);
-  const cookie = response.headers.get("set-cookie")?.split(";")[0];
+  const result = await adminGql(
+    proxyUrl,
+    {},
+    `mutation Login($email: String!, $password: String!) {
+      login(email: $email, password: $password) {
+        organizationId
+      }
+    }`,
+    { email: "local@example.com", password: "dev-password" }
+  );
+  expect(result.errors).toBeUndefined();
+  const cookie = result.setCookie?.split(";")[0];
   expect(cookie).toBeTruthy();
   return { cookie: cookie ?? "" };
 }

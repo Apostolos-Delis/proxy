@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight, Coins, Download, KeyRound, Send, Sparkles, Zap } from "lucide-react";
 import { useState } from "react";
 
-import { type AuthMe, fetchMe } from "./api";
+import { type AuthMe, fetchMe } from "./session";
 import { AreaChart, MiniBars, Sparkline } from "./charts";
 import { modelRowsFromUsage, periodDelta, seriesFromRequests } from "./consoleData";
 import { downloadJson, InteractiveStatCard } from "./dashboard";
