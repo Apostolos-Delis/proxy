@@ -4,11 +4,7 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
-  type ColumnSizingState,
-  type PaginationState,
-  type SortingState,
-  type Updater,
-  type VisibilityState
+  type ColumnSizingState
 } from "@tanstack/react-table";
 import { useState, type ReactNode } from "react";
 
@@ -17,6 +13,7 @@ import { ConsoleTableFrame } from "./ConsoleTableFrame";
 import { ConsoleTablePagination } from "./ConsoleTablePagination";
 import { ConsoleTableToolbar } from "./ConsoleTableToolbar";
 import { applyConsoleTableFilters } from "./filtering";
+import { useConsoleTableState } from "./useConsoleTableState";
 import type {
   ConsoleTableActionContext,
   ConsoleTableAdvancedField,
@@ -41,6 +38,8 @@ type ConsoleTableProps<TData> = {
   pageSizeOptions?: number[];
   /** Resets search/filters/sort/page in place when it changes. Prefer this over a `key` remount, which collapses the page's scroll position. */
   stateKey?: string;
+  /** Syncs search/filters/sort/pagination to URL query params so table state is shareable. Pass a string to prefix the params when a page hosts more than one synced table. */
+  urlState?: boolean | string;
   actions?: (context: ConsoleTableActionContext<TData>) => ReactNode;
   getRowProps?: (row: TData) => ConsoleTableRowProps;
 };
@@ -57,38 +56,28 @@ export function ConsoleTable<TData>({
   initialPageSize = 10,
   pageSizeOptions = [10, 25, 50],
   stateKey,
+  urlState,
   actions,
   getRowProps
 }: ConsoleTableProps<TData>) {
-  const [searchValue, setSearchValue] = useState("");
-  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
-  const [advancedRules, setAdvancedRules] = useState<ConsoleTableAdvancedRule[]>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: initialPageSize });
-  const [activeViewId, setActiveViewId] = useState<string | null>(views[0]?.id ?? null);
-  const [appliedStateKey, setAppliedStateKey] = useState(stateKey);
-  if (stateKey !== appliedStateKey) {
-    setAppliedStateKey(stateKey);
-    setSearchValue("");
-    setFilterValues({});
-    setAdvancedRules([]);
-    setSorting([]);
-    setActiveViewId(views[0]?.id ?? null);
-    setPagination((current) => ({ ...current, pageIndex: 0 }));
-  }
+  const state = useConsoleTableState({
+    urlState,
+    stateKey,
+    views,
+    filterIds: filters.map((filter) => filter.id),
+    advancedFieldIds: advancedFields.map((field) => field.id),
+    columnIds: columns.map((column) => column.id).filter((id): id is string => Boolean(id)),
+    initialPageSize,
+    pageSizeOptions
+  });
+  const { searchValue, filterValues, advancedRules, sorting, columnVisibility } = state;
   const visibleData = applyConsoleTableFilters({ data, search, searchValue, filters, filterValues, advancedFields, advancedRules });
+  // A stale URL or a shrunken data set can point past the last page; render the last real page instead.
+  const maxPageIndex = Math.max(0, Math.ceil(visibleData.length / state.pagination.pageSize) - 1);
+  const pagination = state.pagination.pageIndex > maxPageIndex ? { ...state.pagination, pageIndex: maxPageIndex } : state.pagination;
   const normalizedPageSizeOptions = Array.from(new Set([...pageSizeOptions, initialPageSize])).sort((a, b) => a - b);
   const hasFilterControls = Boolean(searchValue) || Object.values(filterValues).some(Boolean) || activeAdvancedRuleCount(advancedRules) > 0;
-  const updateSorting = (updater: Updater<SortingState>) => {
-    setActiveViewId(null);
-    setSorting((current) => functionalUpdate(updater, current));
-  };
-  const updateColumnVisibility = (updater: Updater<VisibilityState>) => {
-    setActiveViewId(null);
-    setColumnVisibility((current) => functionalUpdate(updater, current));
-  };
   const table = useReactTable({
     data: visibleData,
     columns,
@@ -100,10 +89,12 @@ export function ConsoleTable<TData>({
     columnResizeMode: "onChange",
     defaultColumn: { minSize: 96, size: 180, maxSize: 680 },
     state: { sorting, columnVisibility, columnSizing, pagination },
-    onSortingChange: updateSorting,
-    onColumnVisibilityChange: updateColumnVisibility,
+    onSortingChange: state.updateSorting,
+    onColumnVisibilityChange: state.updateColumnVisibility,
     onColumnSizingChange: setColumnSizing,
-    onPaginationChange: setPagination,
+    // Apply pagination updaters against the clamped value so a stale page index from the URL
+    // converges instead of feeding TanStack's page-size math an out-of-range base.
+    onPaginationChange: (updater) => state.updatePagination(() => functionalUpdate(updater, pagination)),
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel()
@@ -119,40 +110,6 @@ export function ConsoleTable<TData>({
     canSort: column.getCanSort()
   }));
 
-  const setFilterValue = (filterId: string, value: string) => {
-    setActiveViewId(null);
-    setPagination((current) => ({ ...current, pageIndex: 0 }));
-    setFilterValues((current) => ({ ...current, [filterId]: value }));
-  };
-  const setSearch = (value: string) => {
-    setActiveViewId(null);
-    setPagination((current) => ({ ...current, pageIndex: 0 }));
-    setSearchValue(value);
-  };
-  const setAdvanced = (rules: ConsoleTableAdvancedRule[]) => {
-    setActiveViewId(null);
-    setPagination((current) => ({ ...current, pageIndex: 0 }));
-    setAdvancedRules(rules);
-  };
-  const applyView = (view: ConsoleTableView) => {
-    setActiveViewId(view.id);
-    setSearchValue(view.search ?? "");
-    setFilterValues(view.filters ?? {});
-    setAdvancedRules(view.advancedRules ?? []);
-    setColumnVisibility(view.columnVisibility ?? {});
-    setSorting(view.sorting ?? []);
-    setPagination((current) => ({ ...current, pageIndex: 0 }));
-  };
-  const clear = () => {
-    setActiveViewId(views[0]?.id ?? null);
-    setSearchValue("");
-    setFilterValues({});
-    setAdvancedRules([]);
-    setColumnVisibility({});
-    setSorting([]);
-    setPagination((current) => ({ ...current, pageIndex: 0 }));
-  };
-
   return (
     <GlassCard className={`console-table-card ${className}`}>
       <ConsoleTableToolbar
@@ -163,20 +120,20 @@ export function ConsoleTable<TData>({
         advancedFields={advancedFields}
         advancedRules={advancedRules}
         views={views}
-        activeViewId={activeViewId}
+        activeViewId={state.activeViewId}
         columnOptions={columnOptions}
         sorting={sorting}
         actionContext={actionContext}
         actions={actions}
-        onSearchChange={setSearch}
-        onFilterChange={setFilterValue}
-        onAdvancedRulesChange={setAdvanced}
-        onApplyView={applyView}
+        onSearchChange={state.setSearchValue}
+        onFilterChange={state.setFilterValue}
+        onAdvancedRulesChange={state.setAdvancedRules}
+        onApplyView={state.applyView}
         onToggleColumn={(columnId) => table.getColumn(columnId)?.toggleVisibility()}
-        onSortingChange={(nextSorting) => updateSorting(nextSorting)}
-        onClear={clear}
+        onSortingChange={(nextSorting) => state.updateSorting(nextSorting)}
+        onClear={state.clear}
       />
-      <ConsoleTableFrame table={table} tableWidth={tableWidth} emptyLabel={emptyLabel} filtered={hasFilterControls} getRowProps={getRowProps} onClear={clear} />
+      <ConsoleTableFrame table={table} tableWidth={tableWidth} emptyLabel={emptyLabel} filtered={hasFilterControls} getRowProps={getRowProps} onClear={state.clear} />
       <ConsoleTablePagination
         pageIndex={pagination.pageIndex}
         pageSize={pagination.pageSize}

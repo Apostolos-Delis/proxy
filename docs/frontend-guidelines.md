@@ -79,6 +79,14 @@ useEffect(() => {
 - Prefer full-width operational layouts over decorative hero sections or marketing cards.
 - Avoid one-off colors. Define route/provider/status colors as shared tokens or constants.
 
+## Tables
+
+- Page-level record lists use the shared `ConsoleTable` (`apps/web/src/table/`). It provides search, quick filters, advanced filter rules, sort, column visibility, pagination, and toolbar actions.
+- Pass `urlState` so table state syncs to URL query params and views are shareable/deep-linkable. Pass a string prefix (`urlState="costs"`) only if a page ever hosts two synced tables.
+- Param scheme: `q` (search), one param per quick-filter id (`user`, `model`, `status`, ...), `sort` (`-tokens` = descending, comma-separated), `page` (1-based), `size`, `hide` (hidden columns), `adv` (advanced rules). Defaults are omitted from the URL; invalid values are sanitized on read. The codec lives in `apps/web/src/table/urlState.ts`.
+- Keep memory-backed state (no `urlState`) for tables embedded behind in-page tabs or repeated per row — pair with `stateKey` to reset on tab switches (see `usageBreakdown.tsx`).
+- Small embedded action tables inside cards (pending invitations, version history) may stay on the plain `DataTable` primitive; toolbar and pagination chrome would be noise there.
+
 ## JSON Display & Editing
 
 - Anywhere the console displays or edits JSON, it must be syntax highlighted. Never render JSON in a plain `<pre>` or `<textarea>`.
