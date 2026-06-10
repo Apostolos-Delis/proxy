@@ -41,6 +41,14 @@ export function formatDateTime(value: string) {
   });
 }
 
+export function formatDate(value: string) {
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  });
+}
+
 export function compactId(value: string, size = 10) {
   if (value.length <= size * 2 + 1) return value;
   return `${value.slice(0, size)}...${value.slice(-size)}`;
