@@ -53,6 +53,7 @@ pnpm install
 pnpm dev:proxy
 pnpm dev:web
 pnpm db:migrate
+pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build

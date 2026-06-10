@@ -1,0 +1,7 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": ["Proxy/"],
+  "rules": {
+    "no-nested-ternary": "warn"
+  }
+}
