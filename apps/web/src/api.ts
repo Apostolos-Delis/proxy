@@ -1,4 +1,4 @@
-const apiBase = import.meta.env.VITE_PROMPT_PROXY_API_BASE ?? "http://127.0.0.1:8787";
+export const apiBase = import.meta.env.VITE_PROMPT_PROXY_API_BASE ?? "http://127.0.0.1:8787";
 
 export type AuthUser = {
   sessionId: string;
@@ -565,6 +565,31 @@ export async function assignApiKeyRoutingConfig(apiKeyId: string, routingConfigI
       method: "PATCH",
       body: JSON.stringify({ routingConfigId })
     }
+  );
+}
+
+export type CreateApiKeyInput = {
+  name: string;
+  scopes: string[];
+  routingConfigId: string | null;
+};
+
+export type CreatedApiKey = {
+  apiKey: ApiKeySummary | null;
+  secret: string;
+};
+
+export async function createApiKey(input: CreateApiKeyInput) {
+  return fetchJson<CreatedApiKey>("/admin/api-keys", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function revokeApiKey(apiKeyId: string) {
+  return fetchJson<{ apiKey: ApiKeySummary }>(
+    `/admin/api-keys/${encodeURIComponent(apiKeyId)}/revoke`,
+    { method: "POST" }
   );
 }
 

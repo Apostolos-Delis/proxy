@@ -1807,6 +1807,98 @@
   text-transform: uppercase;
 }
 
+.scope-tags {
+  flex-wrap: nowrap;
+}
+
+.scope-tags .code-pill {
+  flex: none;
+}
+
+.scope-more {
+  color: var(--fg-faint);
+}
+
+.key-create-grid {
+  grid-template-columns: minmax(220px, 1.2fr) minmax(220px, 1fr);
+}
+
+.scope-options {
+  display: grid;
+  gap: 10px;
+}
+
+.scope-options-label {
+  color: var(--fg-faint);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.scope-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.scope-option input {
+  accent-color: var(--accent);
+}
+
+.scope-option .faint {
+  font-size: 12.5px;
+}
+
+.harness-setup {
+  margin-bottom: 22px;
+}
+
+.harness-setup .card-head {
+  align-items: flex-start;
+}
+
+.setup-steps {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.setup-steps li {
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.setup-steps li::marker {
+  color: var(--fg-faint);
+  font-weight: 600;
+}
+
+.setup-snippet {
+  position: relative;
+  margin-top: 8px;
+}
+
+.setup-snippet pre {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  color: var(--fg-muted);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+.setup-snippet .snippet-copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
 .assignment-popover {
   margin-top: 8px;
   width: 280px;

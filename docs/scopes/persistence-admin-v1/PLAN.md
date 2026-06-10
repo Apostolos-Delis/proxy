@@ -96,8 +96,10 @@ POST /admin/routing-configs/:configId/versions
 POST /admin/routing-configs/:configId/versions/:versionId/activate
 POST /admin/routing-configs/:configId/archive
 GET /admin/api-keys
+POST /admin/api-keys
 GET /admin/api-keys/:apiKeyId
 PATCH /admin/api-keys/:apiKeyId/routing-config
+POST /admin/api-keys/:apiKeyId/revoke
 GET /admin/invitations
 POST /admin/invitations
 POST /admin/invitations/:invitationId/resend
@@ -108,6 +110,8 @@ POST /admin/users/:userId/reactivate
 ```
 
 The routing config list summary includes the active version's `systemPrompt` so the console can surface injected prompts without per-config detail fetches.
+
+API key lifecycle is managed from the `/api-keys` console page. `POST /admin/api-keys` generates the secret server-side (`pp_` + 48 hex chars), stores only `key_hash`, and returns the secret exactly once in the create response; the console pairs it with copyable Claude Code/Codex setup snippets. `POST /admin/api-keys/:apiKeyId/revoke` sets `revoked_at`, which proxy auth already rejects. Mutations append audit events with producer `prompt-proxy.admin.api-keys`: `api_key.created`, `api_key.revoked`, plus the existing `routing_config.api_key_assignment_changed`.
 
 ## User Management
 

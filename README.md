@@ -82,8 +82,10 @@ Cookie-authenticated admin endpoints power the web console:
 - `POST /admin/routing-configs/:configId/versions/:versionId/activate`
 - `POST /admin/routing-configs/:configId/archive`
 - `GET /admin/api-keys`
+- `POST /admin/api-keys`
 - `GET /admin/api-keys/:apiKeyId`
 - `PATCH /admin/api-keys/:apiKeyId/routing-config`
+- `POST /admin/api-keys/:apiKeyId/revoke`
 
 Public token-authenticated invitation endpoints power the accept flow:
 

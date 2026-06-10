@@ -429,7 +429,7 @@ async function rejectDuplicateSlug(tx: PromptProxyTransaction, organizationId: s
   if (existing) throw new RoutingConfigAdminError("routing_config_slug_exists", 409);
 }
 
-async function routingConfigForAssignment(tx: PromptProxyTransaction, organizationId: string, configId: string) {
+export async function routingConfigForAssignment(tx: PromptProxyTransaction, organizationId: string, configId: string) {
   const [config] = await tx
     .select({
       id: routingConfigs.id,
@@ -491,7 +491,7 @@ async function routingConfigInUse(tx: PromptProxyTransaction, organizationId: st
   return Boolean(settings);
 }
 
-type RoutingConfigAssignmentTarget = NonNullable<Awaited<ReturnType<typeof routingConfigForAssignment>>>;
+export type RoutingConfigAssignmentTarget = NonNullable<Awaited<ReturnType<typeof routingConfigForAssignment>>>;
 
 function parseRoutingConfig(value: unknown): RoutingConfig {
   const parsed = routingConfigSchema.safeParse(value);

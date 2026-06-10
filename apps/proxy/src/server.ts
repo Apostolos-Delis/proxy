@@ -24,6 +24,7 @@ import { EmailService } from "./email.js";
 import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStateGate } from "./events.js";
 import { BudgetService, SessionRouteStore } from "./policy.js";
 import type { AdminSessionIdentity } from "./persistence/adminSessions.js";
+import { ApiKeyAdminError } from "./persistence/apiKeyAdmin.js";
 import { createPostgresPersistence } from "./persistence/index.js";
 import { routingConfigSnapshot } from "./persistence/routingConfig.js";
 import { RoutingConfigAdminError } from "./persistence/routingConfigAdmin.js";
@@ -214,6 +215,46 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     const identity = await adminAuth.resolve(request.headers);
     if (!persistence) throw notFound("api_keys_not_found");
     return persistence.adminQueries.forOrg(identity.organizationId).apiKeys();
+  });
+  app.post("/admin/api-keys", async (request, reply) => {
+    const identity = await adminAuth.resolve(request.headers);
+    if (!persistence) throw notFound("api_keys_not_found");
+    try {
+      const created = await persistence.apiKeyAdmin.createApiKey({
+        organizationId: identity.organizationId,
+        actorUserId: identity.userId,
+        body: request.body
+      });
+      const detail = await persistence.adminQueries.forOrg(identity.organizationId).apiKeyDetail(created.apiKeyId);
+      reply.code(201);
+      return {
+        apiKey: detail?.apiKey ?? null,
+        secret: created.secret
+      };
+    } catch (error) {
+      if (sendApiKeyAdminError(error, reply)) return;
+      throw error;
+    }
+  });
+  app.post("/admin/api-keys/:apiKeyId/revoke", async (request, reply) => {
+    const identity = await adminAuth.resolve(request.headers);
+    const params = request.params as { apiKeyId?: string };
+    const apiKeyId = params.apiKeyId;
+    if (!apiKeyId || !persistence) {
+      reply.code(404).send({ error: "api_key_not_found" });
+      return;
+    }
+    try {
+      await persistence.apiKeyAdmin.revokeApiKey({
+        organizationId: identity.organizationId,
+        actorUserId: identity.userId,
+        apiKeyId
+      });
+      return persistence.adminQueries.forOrg(identity.organizationId).apiKeyDetail(apiKeyId);
+    } catch (error) {
+      if (sendApiKeyAdminError(error, reply)) return;
+      throw error;
+    }
   });
   app.get("/admin/api-keys/:apiKeyId", async (request, reply) => {
     const identity = await adminAuth.resolve(request.headers);
@@ -895,6 +936,15 @@ function badRequest(message: string) {
 
 function sendRoutingConfigAdminError(error: unknown, reply: FastifyReply) {
   if (!(error instanceof RoutingConfigAdminError)) return false;
+  reply.code(error.statusCode).send({
+    error: error.message,
+    issues: error.issues ?? []
+  });
+  return true;
+}
+
+function sendApiKeyAdminError(error: unknown, reply: FastifyReply) {
+  if (!(error instanceof ApiKeyAdminError)) return false;
   reply.code(error.statusCode).send({
     error: error.message,
     issues: error.issues ?? []

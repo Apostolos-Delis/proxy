@@ -21,6 +21,8 @@
 .btn-primary:hover { background: var(--accent-2); filter: none; }
 .btn-ghost { background: transparent; border-color: transparent; box-shadow: none; }
 .btn-ghost:hover { background: var(--glass-hover); }
+.btn-danger { color: var(--danger); background: var(--danger-bg); border-color: transparent; }
+.btn-danger:hover { background: var(--danger-bg); border-color: var(--danger); }
 .btn-icon { padding: 8px; }
 .btn-sm { padding: 6px 10px; font-size: 12.5px; }
 
