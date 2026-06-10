@@ -2,7 +2,9 @@ import { foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp
 
 import type {
   EventOutboxStatus,
+  InvitationStatus,
   OrganizationMemberRole,
+  OrganizationMemberStatus,
   PromptCaptureMode,
   Provider,
   ProviderAttemptStatus,
@@ -51,13 +53,42 @@ export const organizationMembers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: text("role").$type<OrganizationMemberRole>().notNull(),
-    status: text("status").notNull().default("active"),
+    status: text("status").$type<OrganizationMemberStatus>().notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
   (table) => [
     primaryKey({ name: "organization_members_pk", columns: [table.organizationId, table.userId] }),
     index("organization_members_user_id_idx").on(table.userId)
+  ]
+);
+
+export const invitations = pgTable(
+  "invitations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    name: text("name"),
+    role: text("role").$type<OrganizationMemberRole>().notNull(),
+    status: text("status").$type<InvitationStatus>().notNull().default("pending"),
+    tokenHash: text("token_hash").notNull(),
+    tokenPrefix: text("token_prefix").notNull(),
+    invitedByUserId: text("invited_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    acceptedUserId: text("accepted_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true })
+  },
+  (table) => [
+    uniqueIndex("invitations_token_hash_idx").on(table.tokenHash),
+    index("invitations_org_email_idx").on(table.organizationId, table.email),
+    index("invitations_org_status_idx").on(table.organizationId, table.status)
   ]
 );
 
