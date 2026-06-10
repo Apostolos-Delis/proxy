@@ -4,7 +4,9 @@ import {
   agentSessions,
   apiKeys,
   events,
+  invitations,
   organizationMembers,
+  organizations,
   promptArtifacts,
   providerAttempts,
   requests,
@@ -21,6 +23,7 @@ import type { ModelCatalog } from "../catalog.js";
 import type { JsonObject, RouteName } from "../types.js";
 import {
   eventSummary,
+  invitationSummary,
   providerAttemptSummary,
   routeMatrixSummary,
   routeDecisionSummary,
@@ -222,9 +225,10 @@ export class AdminQueryService {
     const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
     const sessionRows = await this.sessionRows();
     const userRows = await this.userRowsForOrg(userIdsForRequestsAndSessions(requestSummaries, sessionRows));
+    const memberRows = await this.memberRowsByUserId();
     return {
       data: [...userRows.values()]
-        .map((user) => userSummary(user, requestSummaries, sessionRows))
+        .map((user) => userSummary(user, requestSummaries, sessionRows, memberRows.get(user.id)))
         .sort((left, right) => compareRecentActivity(left.recentActivity, right.recentActivity))
     };
   }
@@ -237,7 +241,8 @@ export class AdminQueryService {
     const user = userRows.get(userId);
     if (!user) return null;
 
-    const summary = userSummary(user, requestSummaries, sessionRows);
+    const memberRows = await this.memberRowsByUserId();
+    const summary = userSummary(user, requestSummaries, sessionRows, memberRows.get(userId));
     return {
       user: summary,
       usage: summary.usage,
@@ -245,6 +250,27 @@ export class AdminQueryService {
       sessions: sessionRows.map((session) => sessionSummary(session, requestSummaries)),
       requests: requestSummaries.slice(0, 50)
     };
+  }
+
+  async invitations() {
+    const rows = await this.invitationRows();
+    return {
+      data: rows.map((row) => invitationSummary(row.invitation, row.inviter))
+    };
+  }
+
+  async invitationDetail(invitationId: string) {
+    const [row] = await this.invitationRows(invitationId);
+    return row ? { invitation: invitationSummary(row.invitation, row.inviter) } : null;
+  }
+
+  async organizationName() {
+    const [row] = await this.db
+      .select({ name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, this.config.defaultOrganizationId))
+      .limit(1);
+    return row?.name ?? this.config.defaultOrganizationId;
   }
 
   async sessions() {
@@ -437,6 +463,28 @@ export class AdminQueryService {
       for (const row of rows) usersById.set(row.id, row);
     }
     return usersById;
+  }
+
+  private async memberRowsByUserId() {
+    const rows = await this.db
+      .select()
+      .from(organizationMembers)
+      .where(eq(organizationMembers.organizationId, this.config.defaultOrganizationId));
+    return new Map(rows.map((row) => [row.userId, row]));
+  }
+
+  private async invitationRows(invitationId?: string) {
+    const conditions = [eq(invitations.organizationId, this.config.defaultOrganizationId)];
+    if (invitationId) conditions.push(eq(invitations.id, invitationId));
+    return this.db
+      .select({
+        invitation: invitations,
+        inviter: usersTable
+      })
+      .from(invitations)
+      .leftJoin(usersTable, eq(usersTable.id, invitations.invitedByUserId))
+      .where(and(...conditions))
+      .orderBy(desc(invitations.createdAt));
   }
 
   private async sessionDetailRows(sessionId: string, requestIds: string[]) {
@@ -687,6 +735,7 @@ type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
 type UsageLedgerRow = typeof usageLedger.$inferSelect;
 type SessionRow = typeof agentSessions.$inferSelect;
 type UserRow = typeof usersTable.$inferSelect;
+type MemberRow = typeof organizationMembers.$inferSelect;
 type RoutingConfigRow = typeof routingConfigs.$inferSelect;
 type RoutingConfigVersionRow = typeof routingConfigVersions.$inferSelect;
 type ApiKeySummaryRow = {
@@ -939,7 +988,8 @@ function sessionIdsForRequests(requests: RequestSummary[]) {
 function userSummary(
   user: UserRow,
   allRequests: RequestSummary[],
-  allSessions: SessionRow[]
+  allSessions: SessionRow[],
+  member?: MemberRow
 ) {
   const requests = allRequests.filter((request) => request.userId === user.id);
   const requestSessionIds = new Set(sessionIdsForRequests(requests));
@@ -951,6 +1001,7 @@ function userSummary(
     email: user.email ?? undefined,
     name: user.name ?? undefined,
     externalId: user.externalId ?? undefined,
+    membership: member ? { role: member.role, status: member.status } : null,
     requestCount: requests.length,
     sessionCount: sessions.length,
     usage: usageTotals(requests),

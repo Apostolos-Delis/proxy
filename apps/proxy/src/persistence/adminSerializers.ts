@@ -1,5 +1,6 @@
 import {
   events,
+  invitations,
   providerAttempts,
   routeDecisions,
   usageLedger
@@ -7,9 +8,39 @@ import {
 import { ROUTE_NAMES, type RoutingConfig } from "@prompt-proxy/schema";
 
 import type { JsonObject } from "../types.js";
+import { effectiveInvitationStatus } from "./userAdmin.js";
 
 type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
 type UsageLedgerRow = typeof usageLedger.$inferSelect;
+
+export function invitationSummary(
+  row: typeof invitations.$inferSelect,
+  inviter: { id: string; name: string | null; email: string | null } | null,
+  now = new Date()
+) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    email: row.email,
+    name: row.name ?? undefined,
+    role: row.role,
+    status: effectiveInvitationStatus(row, now),
+    tokenPrefix: row.tokenPrefix,
+    invitedBy: inviter
+      ? {
+          userId: inviter.id,
+          name: inviter.name ?? undefined,
+          email: inviter.email ?? undefined
+        }
+      : null,
+    acceptedUserId: row.acceptedUserId ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
+    lastSentAt: row.lastSentAt?.toISOString() ?? undefined,
+    acceptedAt: row.acceptedAt?.toISOString() ?? undefined,
+    revokedAt: row.revokedAt?.toISOString() ?? undefined
+  };
+}
 
 export function routeDecisionSummary(row: typeof routeDecisions.$inferSelect) {
   return {

@@ -19,6 +19,7 @@ import {
 import { loadConfig, type AppConfig } from "./config.js";
 import { buildModelCatalog } from "./catalog.js";
 import { LlmClassifier } from "./classifier.js";
+import { EmailService } from "./email.js";
 import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStateGate } from "./events.js";
 import { BudgetService, SessionRouteStore } from "./policy.js";
 import { createPostgresPersistence } from "./persistence/index.js";
@@ -34,6 +35,7 @@ import {
   writeSettingsFile,
   type ProxySettings
 } from "./settings.js";
+import { registerUserAdminRoutes } from "./userAdminRoutes.js";
 import { createId, headerValue, idempotencyFrom, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
 
@@ -78,6 +80,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     persistence?.routingConfigs
   );
   const projections = new ProjectionService(modelCatalog, config);
+  const emailService = new EmailService(config, app.log);
+  registerUserAdminRoutes(app, { config, adminAuth, emailService, persistence });
   wsProxy.register(app.server);
 
   app.get("/healthz", async () => ({ status: "ok" }));
