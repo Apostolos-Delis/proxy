@@ -8,6 +8,7 @@ import type { ModelCatalog } from "../catalog.js";
 import type { AppConfig } from "../config.js";
 import { AdminQueryService, type AdminQueryConfig } from "./adminQueries.js";
 import { AdminSessionStore } from "./adminSessions.js";
+import { ApiKeyAdminService } from "./apiKeyAdmin.js";
 import { DatabaseEventSink } from "./eventSink.js";
 import { ApiKeyIdentityStore } from "./identity.js";
 import { PromptAccessAuditStore } from "./promptAccessAudit.js";
@@ -34,6 +35,7 @@ export function createDatabasePersistence(
 ) {
   const transactional = createTransactionalDatabase(db);
   return {
+    apiKeyAdmin: new ApiKeyAdminService(transactional),
     apiKeys: new ApiKeyIdentityStore(db),
     adminSessions: new AdminSessionStore(db),
     eventSink: new DatabaseEventSink(transactional, catalog, useAdvisoryLocks),
