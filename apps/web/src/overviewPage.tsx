@@ -3,12 +3,54 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight, Coins, Download, KeyRound, Send, Sparkles, Zap } from "lucide-react";
 import { useState } from "react";
 
-import { type AuthMe, fetchMe, fetchOverview, fetchRequests, fetchUsage } from "./api";
+import { type AuthMe, fetchMe } from "./api";
 import { AreaChart, MiniBars, Sparkline } from "./charts";
 import { modelRowsFromUsage, periodDelta, seriesFromRequests } from "./consoleData";
 import { downloadJson, InteractiveStatCard } from "./dashboard";
 import { formatCompact, formatInteger, formatMoney, formatPercent } from "./format";
+import { graphql } from "./gql";
+import { gqlFetch } from "./graphql";
 import { BarListRow, ConsoleButton, GlassCard, PageSkeleton, PageState, ProgressMeter, Segmented } from "./ui";
+
+const OverviewPageDocument = graphql(`
+  query OverviewPage {
+    overview {
+      requestCount
+      totals {
+        totalTokens
+      }
+      cost {
+        selected
+        baseline
+        savings
+      }
+      routeQuality {
+        lowConfidenceCount
+        cheaperLikelyWouldWorkCount
+        cheapCausedRetriesOrRepairsCount
+      }
+    }
+    requests {
+      createdAt
+      selectedCost
+      baselineCost
+      usage {
+        totalTokens
+      }
+    }
+    modelUsage: usage(groupBy: model) {
+      data {
+        key
+        usage {
+          totalTokens
+        }
+        cost {
+          selected
+        }
+      }
+    }
+  }
+`);
 
 const rangeOptions = [
   { value: "1", label: "24h" },
@@ -19,19 +61,15 @@ const rangeOptions = [
 
 export function OverviewPage() {
   const [rangeDays, setRangeDays] = useState<"1" | "7" | "30" | "90">("7");
-  const overviewQuery = useQuery({ queryKey: ["overview"], queryFn: fetchOverview });
-  const requestsQuery = useQuery({ queryKey: ["requests"], queryFn: fetchRequests });
-  const modelUsageQuery = useQuery({ queryKey: ["usage", "model"], queryFn: () => fetchUsage("model") });
+  const query = useQuery({ queryKey: ["overview-page"], queryFn: () => gqlFetch(OverviewPageDocument) });
   const meQuery = useQuery({ queryKey: ["me"], queryFn: fetchMe });
-  const loading = overviewQuery.isLoading || requestsQuery.isLoading || modelUsageQuery.isLoading;
-  const error = overviewQuery.error ?? requestsQuery.error ?? modelUsageQuery.error;
 
-  if (loading) return <PageSkeleton blocks={[186, 380, 150]} />;
-  if (error) return <PageState title="Overview" label={error.message} />;
-  if (!overviewQuery.data) return <PageState title="Overview" label="No overview data" />;
+  if (query.isLoading) return <PageSkeleton blocks={[186, 380, 150]} />;
+  if (query.error) return <PageState title="Overview" label={query.error.message} />;
+  if (!query.data) return <PageState title="Overview" label="No overview data" />;
 
-  const overview = overviewQuery.data;
-  const requests = requestsQuery.data?.data ?? [];
+  const overview = query.data.overview;
+  const requests = query.data.requests;
   const days = Number(rangeDays);
   const spendSeries = seriesFromRequests(requests, "cost", days);
   const tokenSeries = seriesFromRequests(requests, "tokens", days);
@@ -41,7 +79,7 @@ export function OverviewPage() {
   const tokenDelta = periodDelta(seriesFromRequests(requests, "tokens", 14));
   const requestDelta = periodDelta(seriesFromRequests(requests, "requests", 14));
   const spendDelta = periodDelta(seriesFromRequests(requests, "cost", 14));
-  const modelRows = modelRowsFromUsage(modelUsageQuery.data?.data ?? []);
+  const modelRows = modelRowsFromUsage(query.data.modelUsage.data);
   const quality = overview.routeQuality;
   const exportOverview = () => downloadJson("proxy-overview.json", { overview, requests, rangeDays, modelRows });
 
@@ -196,7 +234,7 @@ function organizationName(me?: AuthMe) {
   return me.organizations.find((organization) => organization.id === me.organizationId)?.name;
 }
 
-function greetingFor(user?: { name?: string; email?: string }) {
+function greetingFor(user?: { name?: string | null; email?: string | null }) {
   const hour = new Date().getHours();
   let timeOfDay = "evening";
   if (hour < 12) timeOfDay = "morning";

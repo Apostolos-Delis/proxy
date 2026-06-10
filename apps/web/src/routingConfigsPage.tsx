@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { GitBranch, Plus, Settings2 } from "lucide-react";
 
-import { fetchRoutingConfigs } from "./api";
+import { fetchRoutingConfigs } from "./routing/data";
 import { RoutingConfigCard } from "./routing/configCard";
 import { GlassCard, PageState, PageTitle } from "./ui";
 
@@ -12,7 +12,7 @@ export function RoutingConfigsPage() {
   if (query.isLoading) return <PageState title="Routing configs" label="Loading routing configs" />;
   if (query.error) return <PageState title="Routing configs" label={query.error.message} />;
 
-  const configs = query.data?.data ?? [];
+  const configs = query.data ?? [];
   return (
     <div className="page page-enter">
       <PageTitle

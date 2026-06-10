@@ -1,11 +1,32 @@
-import { useQueries } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CreditCard, Settings } from "lucide-react";
 import { useState } from "react";
 
-import { fetchOverview, fetchSettings } from "./api";
 import { InspectorPanel, type InspectorRow } from "./dashboard";
 import { formatMoney } from "./format";
+import { graphql } from "./gql";
+import { gqlFetch } from "./graphql";
 import { GlassCard, JsonPanel, PageSkeleton, PageState, PageTitle, ProgressMeter } from "./ui";
+
+const BillingPageDocument = graphql(`
+  query BillingPage {
+    overview {
+      requestCount
+      cost {
+        selected
+        baseline
+        savings
+      }
+    }
+    settings {
+      budgets {
+        warningEstimatedInputTokens
+        maxEstimatedInputTokens
+        maxRoute
+      }
+    }
+  }
+`);
 
 type BillingSelection = {
   title: string;
@@ -15,20 +36,13 @@ type BillingSelection = {
 
 export function BillingPage() {
   const [selection, setSelection] = useState<BillingSelection | null>(null);
-  const [overviewQuery, settingsQuery] = useQueries({
-    queries: [
-      { queryKey: ["overview"], queryFn: fetchOverview },
-      { queryKey: ["settings"], queryFn: fetchSettings }
-    ]
-  });
-  const loading = overviewQuery.isLoading || settingsQuery.isLoading;
-  const error = overviewQuery.error ?? settingsQuery.error;
+  const query = useQuery({ queryKey: ["billing-page"], queryFn: () => gqlFetch(BillingPageDocument) });
 
-  if (loading) return <PageSkeleton blocks={[150, 280, 160]} />;
-  if (error) return <PageState title="Billing" label={error.message} />;
+  if (query.isLoading) return <PageSkeleton blocks={[150, 280, 160]} />;
+  if (query.error) return <PageState title="Billing" label={query.error.message} />;
 
-  const overview = overviewQuery.data;
-  const settings = settingsQuery.data;
+  const overview = query.data?.overview;
+  const settings = query.data?.settings;
   if (!overview || !settings) return <PageState title="Billing" label="No billing data" />;
 
   const comparison = Math.max(overview.cost.baseline, overview.cost.selected);

@@ -1,7 +1,7 @@
 import { ScrollText, Split } from "lucide-react";
 import type { ReactNode } from "react";
 
-import type { RoutingConfigDocument } from "../api";
+import type { RoutingConfigDocument } from "../routingConfigEditor";
 import { MenuSelect } from "../table/MenuSelect";
 import {
   ANTHROPIC_EFFORTS,

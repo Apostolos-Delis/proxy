@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { organizationMembers, organizations, requests } from "@prompt-proxy/db";
 
-import { captureFixture, usageRequest, type PromptTestFixture } from "./promptTestFixture.js";
+import { adminGql, captureFixture, usageRequest, type PromptTestFixture } from "./promptTestFixture.js";
 
 describe("organization switching", () => {
   let activeFixture: PromptTestFixture | undefined;
@@ -15,9 +15,11 @@ describe("organization switching", () => {
   it("returns the user's organizations from login and me", async () => {
     const fixture = await setup("org_switch");
 
-    const me = await fetch(`${fixture.proxyUrl}/api/auth/me`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
+    const me = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query { viewer { organizationId organizations { id name role } } }"
+    )).data?.viewer;
 
     expect(me.organizationId).toBe("org_switch");
     expect(me.organizations).toEqual(expect.arrayContaining([
@@ -47,14 +49,18 @@ describe("organization switching", () => {
     expect(newCookie).toBeTruthy();
     expect(newCookie).not.toBe(fixture.adminHeaders.cookie);
 
-    const oldSession = await fetch(`${fixture.proxyUrl}/api/auth/me`, {
-      headers: fixture.adminHeaders
-    });
+    const oldSession = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query { viewer { organizationId } }"
+    );
     expect(oldSession.status).toBe(401);
 
-    const overview = await fetch(`${fixture.proxyUrl}/admin/overview`, {
-      headers: { cookie: newCookie }
-    }).then((item) => item.json());
+    const overview = (await adminGql(
+      fixture.proxyUrl,
+      { cookie: newCookie },
+      "query { overview { organizationId } }"
+    )).data?.overview;
     expect(overview.organizationId).toBe("org_switch_happy-sandbox");
   });
 
@@ -87,9 +93,11 @@ describe("organization switching", () => {
     });
     expect(invalidBody.status).toBe(400);
 
-    const me = await fetch(`${fixture.proxyUrl}/api/auth/me`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
+    const me = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query { viewer { organizationId } }"
+    )).data?.viewer;
     expect(me.organizationId).toBe("org_switch_denied");
   });
 
@@ -100,10 +108,12 @@ describe("organization switching", () => {
       { ...usageRequest("request_sandbox", "org_switch_scope-sandbox", "local-user", "", "openai-responses", new Date()), sessionId: null }
     ]);
 
-    const primaryRequests = await fetch(`${fixture.proxyUrl}/admin/requests`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
-    expect(primaryRequests.data.map((item: { requestId: string }) => item.requestId)).toEqual(["request_primary"]);
+    const primaryRequests = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query { requests { requestId } }"
+    )).data?.requests;
+    expect(primaryRequests.map((item: { requestId: string }) => item.requestId)).toEqual(["request_primary"]);
 
     const switched = await fetch(`${fixture.proxyUrl}/api/auth/switch-organization`, {
       method: "POST",
@@ -112,10 +122,12 @@ describe("organization switching", () => {
     });
     const newCookie = switched.headers.get("set-cookie")?.split(";")[0] ?? "";
 
-    const sandboxRequests = await fetch(`${fixture.proxyUrl}/admin/requests`, {
-      headers: { cookie: newCookie }
-    }).then((item) => item.json());
-    expect(sandboxRequests.data.map((item: { requestId: string }) => item.requestId)).toEqual(["request_sandbox"]);
+    const sandboxRequests = (await adminGql(
+      fixture.proxyUrl,
+      { cookie: newCookie },
+      "query { requests { requestId } }"
+    )).data?.requests;
+    expect(sandboxRequests.map((item: { requestId: string }) => item.requestId)).toEqual(["request_sandbox"]);
   });
 
   async function setup(organizationId: string) {

@@ -1,6 +1,6 @@
 import { Archive, CheckCircle2, History } from "lucide-react";
 
-import type { RoutingConfigDetail, RoutingConfigVersionDetail } from "../api";
+import type { RoutingConfigDetail, RoutingConfigVersionDetail } from "./data";
 import { compactId, formatDateTime, formatInteger } from "../format";
 import { Badge, DataTable, GlassCard, StatusBadge } from "../ui";
 

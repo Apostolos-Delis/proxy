@@ -10,7 +10,9 @@ import {
 } from "@prompt-proxy/db";
 import type { RoutingConfig } from "@prompt-proxy/schema";
 
-import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
+import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
+
+const apiKeyFields = "{ id name scopes userId routingConfigId routingConfig { id name status } createdAt expiresAt revokedAt lastUsedAt }";
 
 describe("API key admin APIs", () => {
   let activeFixture: PromptTestFixture | undefined;
@@ -30,20 +32,24 @@ describe("API key admin APIs", () => {
       scopes: ["proxy"]
     });
 
-    const listResponse = await fetch(`${fixture.proxyUrl}/admin/api-keys`, {
-      headers: fixture.adminHeaders
-    });
-    const list = await listResponse.json();
-    const detailResponse = await fetch(
-      `${fixture.proxyUrl}/admin/api-keys/org_api_key_admin_list:api-key:default`,
-      { headers: fixture.adminHeaders }
+    const listResult = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { apiKeys ${apiKeyFields} }`
     );
-    const detail = await detailResponse.json();
+    const list = listResult.data?.apiKeys;
+    const detailResult = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query ApiKey($apiKeyId: ID!) { apiKey(apiKeyId: $apiKeyId) ${apiKeyFields} }`,
+      { apiKeyId: "org_api_key_admin_list:api-key:default" }
+    );
+    const detail = detailResult.data?.apiKey;
     const serialized = JSON.stringify({ list, detail });
 
-    expect(listResponse.status).toBe(200);
-    expect(detailResponse.status).toBe(200);
-    expect(list.data).toEqual(expect.arrayContaining([
+    expect(listResult.status).toBe(200);
+    expect(detailResult.status).toBe(200);
+    expect(list).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: "org_api_key_admin_list:api-key:default",
         routingConfig: expect.objectContaining({
@@ -58,7 +64,7 @@ describe("API key admin APIs", () => {
         routingConfig: null
       })
     ]));
-    expect(detail.apiKey).toEqual(expect.objectContaining({
+    expect(detail).toEqual(expect.objectContaining({
       id: "org_api_key_admin_list:api-key:default",
       routingConfig: expect.objectContaining({
         id: "org_api_key_admin_list:routing-config:default"
@@ -81,12 +87,12 @@ describe("API key admin APIs", () => {
     });
     const targetConfig = await createRoutingConfig(fixture, "org_api_key_admin_assign", "Assigned config");
 
-    const assignedResponse = await patchRoutingConfig(fixture, "api_key_assignable", targetConfig.id);
-    const assigned = await assignedResponse.json();
+    const assignedResult = await assignRoutingConfig(fixture, "api_key_assignable", targetConfig.id);
+    const assigned = assignedResult.data?.assignApiKeyRoutingConfig;
     const assignedIdentity = await fixture.persistence.apiKeys.resolve("assignment-token");
 
-    const clearedResponse = await patchRoutingConfig(fixture, "api_key_assignable", null);
-    const cleared = await clearedResponse.json();
+    const clearedResult = await assignRoutingConfig(fixture, "api_key_assignable", null);
+    const cleared = clearedResult.data?.assignApiKeyRoutingConfig;
     const clearedIdentity = await fixture.persistence.apiKeys.resolve("assignment-token");
     const resolvedAfterClear = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_api_key_admin_assign",
@@ -97,8 +103,8 @@ describe("API key admin APIs", () => {
       .from(events)
       .where(eq(events.eventType, "routing_config.api_key_assignment_changed"));
 
-    expect(assignedResponse.status).toBe(200);
-    expect(assigned.apiKey).toEqual(expect.objectContaining({
+    expect(assignedResult.errors).toBeUndefined();
+    expect(assigned).toEqual(expect.objectContaining({
       id: "api_key_assignable",
       routingConfigId: targetConfig.id,
       routingConfig: expect.objectContaining({
@@ -108,8 +114,8 @@ describe("API key admin APIs", () => {
       })
     }));
     expect(assignedIdentity?.routingConfigId).toBe(targetConfig.id);
-    expect(clearedResponse.status).toBe(200);
-    expect(cleared.apiKey).toEqual(expect.objectContaining({
+    expect(clearedResult.errors).toBeUndefined();
+    expect(cleared).toEqual(expect.objectContaining({
       id: "api_key_assignable",
       routingConfigId: null,
       routingConfig: null
@@ -157,18 +163,19 @@ describe("API key admin APIs", () => {
       scopes: ["proxy", "harness_identity"],
       routingConfigId: targetConfig.id
     });
-    const created = await response.json();
+    const created = response.data?.createApiKey;
     const identity = await fixture.persistence.apiKeys.resolve(created.secret);
-    const listResponse = await fetch(`${fixture.proxyUrl}/admin/api-keys`, {
-      headers: fixture.adminHeaders
-    });
-    const list = await listResponse.json();
+    const list = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { apiKeys ${apiKeyFields} }`
+    )).data?.apiKeys;
     const eventRows = await fixture.db
       .select()
       .from(events)
       .where(eq(events.eventType, "api_key.created"));
 
-    expect(response.status).toBe(201);
+    expect(response.errors).toBeUndefined();
     expect(created.secret).toMatch(/^pp_[0-9a-f]{48}$/);
     expect(created.apiKey).toEqual(expect.objectContaining({
       name: "Harness key",
@@ -214,65 +221,53 @@ describe("API key admin APIs", () => {
     });
 
     const missingName = await postApiKey(fixture, { name: "" });
-    const missingNameBody = await missingName.json();
     const unknownScope = await postApiKey(fixture, { name: "Bad scope key", scopes: ["root"] });
-    const unknownScopeBody = await unknownScope.json();
     const archivedConfig = await postApiKey(fixture, {
       name: "Archived target key",
       routingConfigId: "org_api_key_admin_create_invalid:routing-config:archived"
     });
-    const archivedConfigBody = await archivedConfig.json();
     const keyRows = await fixture.db
       .select()
       .from(apiKeys)
       .where(eq(apiKeys.organizationId, "org_api_key_admin_create_invalid"));
 
-    expect(missingName.status).toBe(400);
-    expect(missingNameBody.error).toBe("invalid_api_key_request");
-    expect(unknownScope.status).toBe(400);
-    expect(unknownScopeBody.error).toBe("invalid_api_key_request");
-    expect(archivedConfig.status).toBe(409);
-    expect(archivedConfigBody.error).toBe("routing_config_archived");
+    expect(missingName.errors?.[0]?.message).toBe("invalid_api_key_request");
+    expect(missingName.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
+    expect(unknownScope.errors?.[0]?.message).toBe("invalid_api_key_request");
+    expect(unknownScope.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
+    expect(archivedConfig.errors?.[0]?.message).toBe("routing_config_archived");
+    expect(archivedConfig.errors?.[0]?.extensions?.code).toBe("CONFLICT");
     expect(keyRows.map((row) => row.id)).toEqual(["org_api_key_admin_create_invalid:api-key:default"]);
   });
 
   it("revokes API keys and blocks further proxy auth", async () => {
     const fixture = await setup("org_api_key_admin_revoke");
     const createResponse = await postApiKey(fixture, { name: "Revocable key" });
-    const created = await createResponse.json();
+    const created = createResponse.data?.createApiKey;
     const beforeIdentity = await fixture.persistence.apiKeys.resolve(created.secret);
 
-    const revokeResponse = await fetch(
-      `${fixture.proxyUrl}/admin/api-keys/${created.apiKey.id}/revoke`,
-      { method: "POST", headers: fixture.adminHeaders }
-    );
-    const revoked = await revokeResponse.json();
+    const revokeResponse = await revokeKey(fixture, created.apiKey.id);
+    const revoked = revokeResponse.data?.revokeApiKey;
     const afterIdentity = await fixture.persistence.apiKeys.resolve(created.secret);
-    const repeat = await fetch(
-      `${fixture.proxyUrl}/admin/api-keys/${created.apiKey.id}/revoke`,
-      { method: "POST", headers: fixture.adminHeaders }
-    );
-    const repeatBody = await repeat.json();
-    const missing = await fetch(
-      `${fixture.proxyUrl}/admin/api-keys/missing-key/revoke`,
-      { method: "POST", headers: fixture.adminHeaders }
-    );
+    const repeat = await revokeKey(fixture, created.apiKey.id);
+    const missing = await revokeKey(fixture, "missing-key");
     const eventRows = await fixture.db
       .select()
       .from(events)
       .where(eq(events.eventType, "api_key.revoked"));
 
-    expect(createResponse.status).toBe(201);
+    expect(createResponse.errors).toBeUndefined();
     expect(beforeIdentity?.apiKeyId).toBe(created.apiKey.id);
-    expect(revokeResponse.status).toBe(200);
-    expect(revoked.apiKey).toEqual(expect.objectContaining({
+    expect(revokeResponse.errors).toBeUndefined();
+    expect(revoked).toEqual(expect.objectContaining({
       id: created.apiKey.id,
       revokedAt: expect.any(String)
     }));
     expect(afterIdentity).toBeUndefined();
-    expect(repeat.status).toBe(409);
-    expect(repeatBody.error).toBe("api_key_revoked");
-    expect(missing.status).toBe(404);
+    expect(repeat.errors?.[0]?.message).toBe("api_key_revoked");
+    expect(repeat.errors?.[0]?.extensions?.code).toBe("CONFLICT");
+    expect(missing.errors?.[0]?.message).toBe("api_key_not_found");
+    expect(missing.errors?.[0]?.extensions?.code).toBe("NOT_FOUND");
     expect(eventRows).toEqual([
       expect.objectContaining({
         organizationId: "org_api_key_admin_revoke",
@@ -326,26 +321,22 @@ describe("API key admin APIs", () => {
       scopes: ["proxy"]
     });
 
-    const archived = await patchRoutingConfig(
+    const archived = await assignRoutingConfig(
       fixture,
       defaultApiKeyId,
       "org_api_key_admin_rejects:routing-config:archived"
     );
-    const archivedBody = await archived.json();
-    const missingVersion = await patchRoutingConfig(
+    const missingVersion = await assignRoutingConfig(
       fixture,
       defaultApiKeyId,
       "org_api_key_admin_rejects:routing-config:empty"
     );
-    const missingVersionBody = await missingVersion.json();
-    const crossConfig = await patchRoutingConfig(
+    const crossConfig = await assignRoutingConfig(
       fixture,
       defaultApiKeyId,
       "org_api_key_admin_other:routing-config:default"
     );
-    const crossConfigBody = await crossConfig.json();
-    const crossApiKey = await patchRoutingConfig(fixture, "other_org_api_key", defaultConfigId);
-    const crossApiKeyBody = await crossApiKey.json();
+    const crossApiKey = await assignRoutingConfig(fixture, "other_org_api_key", defaultConfigId);
     const [defaultApiKey] = await fixture.db
       .select()
       .from(apiKeys)
@@ -355,14 +346,14 @@ describe("API key admin APIs", () => {
       .from(events)
       .where(eq(events.eventType, "routing_config.api_key_assignment_changed"));
 
-    expect(archived.status).toBe(409);
-    expect(archivedBody.error).toBe("routing_config_archived");
-    expect(missingVersion.status).toBe(409);
-    expect(missingVersionBody.error).toBe("routing_config_active_version_missing");
-    expect(crossConfig.status).toBe(404);
-    expect(crossConfigBody.error).toBe("routing_config_not_found");
-    expect(crossApiKey.status).toBe(404);
-    expect(crossApiKeyBody.error).toBe("api_key_not_found");
+    expect(archived.errors?.[0]?.message).toBe("routing_config_archived");
+    expect(archived.errors?.[0]?.extensions?.code).toBe("CONFLICT");
+    expect(missingVersion.errors?.[0]?.message).toBe("routing_config_active_version_missing");
+    expect(missingVersion.errors?.[0]?.extensions?.code).toBe("CONFLICT");
+    expect(crossConfig.errors?.[0]?.message).toBe("routing_config_not_found");
+    expect(crossConfig.errors?.[0]?.extensions?.code).toBe("NOT_FOUND");
+    expect(crossApiKey.errors?.[0]?.message).toBe("api_key_not_found");
+    expect(crossApiKey.errors?.[0]?.extensions?.code).toBe("NOT_FOUND");
     expect(defaultApiKey.routingConfigId).toBe(defaultConfigId);
     expect(eventRows).toHaveLength(0);
   });
@@ -373,50 +364,72 @@ describe("API key admin APIs", () => {
   }
 
   async function createRoutingConfig(fixture: PromptTestFixture, organizationId: string, name: string) {
-    const defaultDetail = await fetch(`${fixture.proxyUrl}/admin/routing-configs/${organizationId}:routing-config:default`, {
-      headers: fixture.adminHeaders
-    }).then((item) => item.json());
+    const defaultDetail = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query Detail($configId: ID!) { routingConfig(configId: $configId) { versions { active config } } }",
+      { configId: `${organizationId}:routing-config:default` }
+    )).data?.routingConfig;
     const activeVersion = defaultDetail.versions.find((version: any) => version.active);
     const config = {
       ...(activeVersion.config as RoutingConfig),
       displayName: name
     };
-    const response = await fetch(`${fixture.proxyUrl}/admin/routing-configs`, {
-      method: "POST",
-      headers: {
-        ...fixture.adminHeaders,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        name,
-        slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-        config
-      })
-    });
-    expect(response.status).toBe(201);
-    const body = await response.json();
-    return body.config as { id: string; name: string };
+    const result = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `mutation Create($input: CreateRoutingConfigInput!) {
+        createRoutingConfig(input: $input) { config { id name } }
+      }`,
+      {
+        input: {
+          name,
+          slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+          config
+        }
+      }
+    );
+    expect(result.errors).toBeUndefined();
+    return result.data?.createRoutingConfig.config as { id: string; name: string };
   }
 
-  function patchRoutingConfig(fixture: PromptTestFixture, apiKeyId: string, routingConfigId: string | null) {
-    return fetch(`${fixture.proxyUrl}/admin/api-keys/${apiKeyId}/routing-config`, {
-      method: "PATCH",
-      headers: {
-        ...fixture.adminHeaders,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({ routingConfigId })
-    });
+  function assignRoutingConfig(fixture: PromptTestFixture, apiKeyId: string, routingConfigId: string | null) {
+    return adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `mutation Assign($apiKeyId: ID!, $routingConfigId: ID) {
+        assignApiKeyRoutingConfig(apiKeyId: $apiKeyId, routingConfigId: $routingConfigId) {
+          id
+          routingConfigId
+          routingConfig { id name status }
+        }
+      }`,
+      { apiKeyId, routingConfigId }
+    );
   }
 
-  function postApiKey(fixture: PromptTestFixture, body: Record<string, unknown>) {
-    return fetch(`${fixture.proxyUrl}/admin/api-keys`, {
-      method: "POST",
-      headers: {
-        ...fixture.adminHeaders,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify(body)
-    });
+  function postApiKey(fixture: PromptTestFixture, input: Record<string, unknown>) {
+    return adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `mutation CreateKey($input: CreateApiKeyInput!) {
+        createApiKey(input: $input) {
+          apiKey { id name userId scopes routingConfigId revokedAt }
+          secret
+        }
+      }`,
+      { input }
+    );
+  }
+
+  function revokeKey(fixture: PromptTestFixture, apiKeyId: string) {
+    return adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `mutation RevokeKey($apiKeyId: ID!) {
+        revokeApiKey(apiKeyId: $apiKeyId) { id revokedAt }
+      }`,
+      { apiKeyId }
+    );
   }
 });

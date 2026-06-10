@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { RoutingConfigDocument } from "./api";
-import { applyDraft, draftError, draftFromConfig, parseConfigJson } from "./routingConfigEditor";
+import { applyDraft, draftError, draftFromConfig, parseConfigJson, type RoutingConfigDocument } from "./routingConfigEditor";
 
 const baseConfig: RoutingConfigDocument = {
   schemaVersion: 1,

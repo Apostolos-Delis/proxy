@@ -59,32 +59,42 @@ describe("persistent settings admin APIs", () => {
     }), { persistence: fakePersistence(promptCapture, "org_settings_file") });
 
     const response = await app.inject({
-      method: "PATCH",
-      url: "/admin/settings",
+      method: "POST",
+      url: "/admin/graphql",
       headers: adminHeaders(),
       payload: {
-        schemaVersion: 1,
-        classifier: {
-          model: "route-classifier-ui",
-          timeoutMs: 1800,
-          maxAttempts: 3,
-          allowRedactedExcerpt: false
-        },
-        budgets: {
-          warningEstimatedInputTokens: 1000,
-          maxEstimatedInputTokens: 2000,
-          maxRoute: "balanced"
-        },
-        routeQuality: {
-          lowConfidenceThreshold: 0.6
-        },
-        promptCapture: {
-          promptCaptureMode: "hash_only",
-          retentionDays: 7
+        query: `mutation UpdateSettings($input: SettingsInput!) {
+          updateSettings(input: $input) {
+            storage { format path }
+            settings { classifier { model } }
+          }
+        }`,
+        variables: {
+          input: {
+            schemaVersion: 1,
+            classifier: {
+              model: "route-classifier-ui",
+              timeoutMs: 1800,
+              maxAttempts: 3,
+              allowRedactedExcerpt: false
+            },
+            budgets: {
+              warningEstimatedInputTokens: 1000,
+              maxEstimatedInputTokens: 2000,
+              maxRoute: "balanced"
+            },
+            routeQuality: {
+              lowConfidenceThreshold: 0.6
+            },
+            promptCapture: {
+              promptCaptureMode: "hash_only",
+              retentionDays: 7
+            }
+          }
         }
       }
     });
-    const body = response.json();
+    const body = response.json().data?.updateSettings;
     const file = JSON.parse(await readFile(settingsPath, "utf8"));
 
     await app.close();
@@ -108,28 +118,38 @@ describe("persistent settings admin APIs", () => {
     }), { persistence: fakePersistence() });
 
     const response = await app.inject({
-      method: "PATCH",
-      url: "/admin/settings",
+      method: "POST",
+      url: "/admin/graphql",
       headers: adminHeaders(),
       payload: {
-        schemaVersion: 1,
-        classifier: {
-          model: "route-classifier-ui",
-          timeoutMs: 0,
-          maxAttempts: 3,
-          allowRedactedExcerpt: false
-        },
-        budgets: {},
-        routeQuality: {},
-        promptCapture: {}
+        query: `mutation UpdateSettings($input: SettingsInput!) {
+          updateSettings(input: $input) {
+            organizationId
+          }
+        }`,
+        variables: {
+          input: {
+            schemaVersion: 1,
+            classifier: {
+              model: "route-classifier-ui",
+              timeoutMs: 0,
+              maxAttempts: 3,
+              allowRedactedExcerpt: false
+            },
+            budgets: {},
+            routeQuality: {},
+            promptCapture: {}
+          }
+        }
       }
     });
     const body = response.json();
 
     await app.close();
 
-    expect(response.statusCode).toBe(400);
-    expect(body.error).toBe("invalid_settings");
+    expect(response.statusCode).toBe(200);
+    expect(body.errors?.[0]?.message).toBe("invalid_settings");
+    expect(body.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
     await expect(readFile(settingsPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 

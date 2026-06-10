@@ -138,6 +138,28 @@ export async function captureFixture(
   };
 }
 
+export async function adminGql(
+  proxyUrl: string,
+  headers: Record<string, string>,
+  query: string,
+  variables?: Record<string, unknown>
+) {
+  const response = await fetch(`${proxyUrl}/admin/graphql`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify(variables ? { query, variables } : { query })
+  });
+  const body = await response.json().catch(() => null) as {
+    data?: Record<string, any> | null;
+    errors?: { message: string; extensions?: { code?: string; issues?: unknown[] } }[];
+  } | null;
+  return {
+    status: response.status,
+    data: body?.data ?? null,
+    errors: body?.errors ?? undefined
+  };
+}
+
 export async function loginAdmin(proxyUrl: string) {
   const response = await fetch(`${proxyUrl}/api/auth/login`, {
     method: "POST",

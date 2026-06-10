@@ -212,18 +212,28 @@ async function smokeAnthropicMessages(parentMarker: string): Promise<SmokeResult
 async function smokeAdmin(results: SmokeResult[], parentMarker: string): Promise<AdminProof> {
   const cookie = adminCookie ?? await loginAdmin();
   const headers = { cookie };
-  const me = await fetchJson(`${baseUrl}/api/auth/me`, { headers });
-  if (expectedOrganizationId && recordString(me, "organizationId") !== expectedOrganizationId) {
-    throw new Error(`/api/auth/me organization mismatch: expected=${expectedOrganizationId} actual=${recordString(me, "organizationId")}`);
+  const viewer = await gqlJson(
+    "query { viewer { organizationId } }",
+    undefined,
+    headers
+  );
+  if (expectedOrganizationId && recordString(viewer.viewer, "organizationId") !== expectedOrganizationId) {
+    throw new Error(`viewer organization mismatch: expected=${expectedOrganizationId} actual=${recordString(viewer.viewer, "organizationId")}`);
   }
 
   return poll(async () => {
-    const requests = await fetchJson(`${baseUrl}/admin/requests`, { headers });
-    const sessions = await fetchJson(`${baseUrl}/admin/sessions`, { headers });
-    const prompts = await fetchJson(`${baseUrl}/admin/prompts?limit=200`, { headers });
-    const requestRows = recordArray(requests, "data");
-    const sessionRows = recordArray(sessions, "data");
-    const promptRows = recordArray(prompts, "data");
+    const overview = await gqlJson(
+      `query AdminSmoke($limit: Int) {
+        requests { sessionId finalRoute selectedModel }
+        sessions { sessionId externalSessionId }
+        prompts(limit: $limit) { data { preview } }
+      }`,
+      { limit: 200 },
+      headers
+    );
+    const requestRows = recordArray(overview, "requests");
+    const sessionRows = recordArray(overview, "sessions");
+    const promptRows = recordArray(asRecord(overview.prompts), "data");
 
     for (const result of results) {
       const request = requestRows.find((row) => matchesSessionId(recordString(row, "sessionId"), result.sessionId));
@@ -232,14 +242,27 @@ async function smokeAdmin(results: SmokeResult[], parentMarker: string): Promise
       if (!recordString(request, "selectedModel")) throw new Error(`admin request missing selectedModel for ${result.sessionId}`);
       const session = sessionRows.find((row) =>
         matchesSessionId(recordString(row, "sessionId"), result.sessionId) ||
-        matchesSessionId(recordString(row, "id"), result.sessionId)
+        matchesSessionId(recordString(row, "externalSessionId"), result.sessionId)
       );
       if (!session) {
         throw new Error(`admin sessions missing ${result.sessionId}`);
       }
 
-      const sessionDetailId = recordString(session, "id") ?? recordString(session, "sessionId") ?? result.sessionId;
-      const detail = await fetchJson(`${baseUrl}/admin/sessions/${encodeURIComponent(sessionDetailId)}`, { headers });
+      const sessionDetailId = recordString(session, "sessionId") ?? result.sessionId;
+      const detailResult = await gqlJson(
+        `query SmokeSessionDetail($sessionId: ID!) {
+          session(sessionId: $sessionId) {
+            requests { requestId }
+            routeDecisions { id }
+            providerAttempts { id }
+            usageLedger { id }
+            promptArtifacts { artifactId }
+          }
+        }`,
+        { sessionId: sessionDetailId },
+        headers
+      );
+      const detail = asRecord(detailResult.session);
       if (recordArray(detail, "requests").length === 0) throw new Error(`session detail missing requests for ${result.sessionId}`);
       if (recordArray(detail, "routeDecisions").length === 0) throw new Error(`session detail missing route decisions for ${result.sessionId}`);
       if (recordArray(detail, "providerAttempts").length === 0) throw new Error(`session detail missing provider attempts for ${result.sessionId}`);
@@ -257,6 +280,31 @@ async function smokeAdmin(results: SmokeResult[], parentMarker: string): Promise
       promptCount: promptRows.length
     };
   }, 30000);
+}
+
+async function gqlJson(
+  query: string,
+  variables: Record<string, unknown> | undefined,
+  headers: Record<string, string>
+) {
+  const body = await fetchJson(`${baseUrl}/admin/graphql`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify(variables ? { query, variables } : { query })
+  });
+  const errors = recordArray(body, "errors");
+  if (errors.length > 0) {
+    throw new Error(`admin graphql error: ${JSON.stringify(errors[0])}`);
+  }
+  const data = asRecord(asRecord(body).data);
+  if (Object.keys(data).length === 0) throw new Error("admin graphql returned no data");
+  return data;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 async function loginAdmin() {

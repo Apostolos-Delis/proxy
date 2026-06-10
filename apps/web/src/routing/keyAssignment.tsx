@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, KeyRound, Plus } from "lucide-react";
 import { useState } from "react";
 
-import { assignApiKeyRoutingConfig, fetchApiKeys, type ApiKeySummary } from "../api";
+import { assignApiKeyRoutingConfig, fetchApiKeys, type ApiKeySummary } from "./data";
 import { formatDateTime } from "../format";
 import { GlassCard } from "../ui";
 
@@ -20,7 +20,7 @@ export function ConfigApiKeysCard({ configId }: { configId: string }) {
       queryClient.invalidateQueries({ queryKey: ["routing-config", configId] });
     }
   });
-  const keys = (keysQuery.data?.data ?? []).filter(isUsableKey);
+  const keys = (keysQuery.data ?? []).filter(isUsableKey);
   const assigned = keys.filter((key) => key.routingConfigId === configId);
   const attachable = keys.filter((key) => key.routingConfigId !== configId);
 

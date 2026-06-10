@@ -10,7 +10,7 @@ import {
   revokeApiKey,
   type ApiKeySummary,
   type RoutingConfigSummary
-} from "./api";
+} from "./routing/data";
 import { apiKeyScopeOptions, CreateApiKeyPanel } from "./createApiKeyPanel";
 import { compactId, formatDateTime } from "./format";
 import { HarnessSetupCard } from "./harnessSetupCard";
@@ -55,8 +55,8 @@ export function KeysPage() {
   if (loading) return <PageState title="API keys" label="Loading API keys" />;
   if (error) return <PageState title="API keys" label={error.message} />;
 
-  const keys = keysQuery.data?.data ?? [];
-  const configs = (configsQuery.data?.data ?? []).filter(isAssignableConfig);
+  const keys = keysQuery.data ?? [];
+  const configs = (configsQuery.data ?? []).filter(isAssignableConfig);
   return (
     <div className="page page-enter">
       <PageTitle

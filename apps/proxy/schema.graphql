@@ -1,0 +1,705 @@
+type ApiKey {
+  createdAt: String!
+  expiresAt: String
+  id: String!
+  lastUsedAt: String
+  name: String!
+  organizationId: String!
+  revokedAt: String
+  routingConfig: ApiKeyRoutingConfigRef
+  routingConfigId: String
+  scopes: [String!]!
+  userId: String
+}
+
+type ApiKeyRoutingConfigRef {
+  id: String!
+  name: String
+  status: String
+}
+
+type AuthUser {
+  email: String
+  name: String
+  organizationId: String!
+  role: String!
+  sessionId: String!
+  userId: String!
+}
+
+type BudgetSettings {
+  maxEstimatedInputTokens: Float
+  maxRoute: String
+  warningEstimatedInputTokens: Float
+}
+
+input BudgetSettingsInput {
+  maxEstimatedInputTokens: Float
+  maxRoute: String
+  warningEstimatedInputTokens: Float
+}
+
+type ClassifierRuntime {
+  contentMode: String!
+  maxAttempts: Int!
+  model: String!
+  provider: String!
+  timeoutMs: Int!
+}
+
+input ClassifierSettingsInput {
+  allowRedactedExcerpt: Boolean
+  maxAttempts: Int
+  model: String
+  timeoutMs: Int
+}
+
+type CostTotals {
+  baseline: Float!
+  savings: Float!
+  selected: Float!
+}
+
+input CreateApiKeyInput {
+  name: String!
+  routingConfigId: ID
+  scopes: [String!]
+}
+
+type CreateApiKeyResult {
+  apiKey: ApiKey
+  secret: String!
+}
+
+input CreateInvitationInput {
+  email: String!
+  name: String
+  role: MemberRole!
+}
+
+input CreateRoutingConfigInput {
+  config: JSON!
+  description: String
+  name: String!
+  slug: String!
+}
+
+type EditableClassifier {
+  allowRedactedExcerpt: Boolean!
+  maxAttempts: Int!
+  model: String!
+  timeoutMs: Int!
+}
+
+type EditableSettings {
+  budgets: BudgetSettings!
+  classifier: EditableClassifier!
+  promptCapture: PromptCaptureState!
+  routeQuality: RouteQualitySettings!
+  schemaVersion: Int!
+}
+
+type EmailDelivery {
+  delivered: Boolean!
+  error: String
+  transport: String!
+}
+
+type Invitation {
+  acceptedAt: String
+  acceptedUserId: String
+  createdAt: String!
+  email: String!
+  expiresAt: String!
+  id: String!
+  invitedBy: InvitationInviter
+  lastSentAt: String
+  name: String
+  organizationId: String!
+  revokedAt: String
+  role: String!
+  status: String!
+  tokenPrefix: String!
+}
+
+type InvitationActionResult {
+  emailDelivery: EmailDelivery!
+  invitation: Invitation
+  inviteUrl: String!
+}
+
+type InvitationInviter {
+  email: String
+  name: String
+  userId: String!
+}
+
+"""Arbitrary JSON value passed through unchanged."""
+scalar JSON
+
+type LatencySummary {
+  averageMs: Int
+  p95Ms: Int
+}
+
+enum MemberRole {
+  admin
+  member
+  owner
+  viewer
+}
+
+type Mutation {
+  activateRoutingConfigVersion(configId: ID!, versionId: ID!): RoutingConfigDetail!
+  archiveRoutingConfig(configId: ID!): RoutingConfigDetail!
+  assignApiKeyRoutingConfig(apiKeyId: ID!, routingConfigId: ID): ApiKey!
+  configurePromptCapture(promptCaptureMode: String!, retentionDays: Int!): PromptCaptureConfig!
+  createApiKey(input: CreateApiKeyInput!): CreateApiKeyResult!
+  createInvitation(input: CreateInvitationInput!): InvitationActionResult!
+  createRoutingConfig(input: CreateRoutingConfigInput!): RoutingConfigDetail!
+  createRoutingConfigVersion(config: JSON!, configId: ID!): RoutingConfigDetail!
+  deactivateUser(userId: ID!): UserStatusResult!
+  reactivateUser(userId: ID!): UserStatusResult!
+  resendInvitation(invitationId: ID!): InvitationActionResult!
+  revokeApiKey(apiKeyId: ID!): ApiKey!
+  revokeInvitation(invitationId: ID!): Invitation
+  updateSettings(input: SettingsInput!): Settings!
+  updateUserRole(role: MemberRole!, userId: ID!): UpdateUserRoleResult!
+}
+
+type OrganizationSummary {
+  id: String!
+  name: String!
+  role: String!
+  slug: String!
+}
+
+type Overview {
+  cost: CostTotals!
+  eventCount: Float!
+  organizationId: String!
+  requestCount: Float!
+  routeQuality: RouteQuality!
+  totals: TokenTotals!
+}
+
+type PromptAccessAuditEntry {
+  accessPath: String!
+  adminSessionId: String
+  artifactId: String!
+  createdAt: String!
+  id: String!
+  organizationId: String!
+  requestId: String!
+  route: String
+  userId: String
+}
+
+interface PromptArtifactBase {
+  artifactId: String!
+  chars: Float
+  classifier: JSON
+  contentHash: String!
+  cost: PromptCost!
+  createdAt: String!
+  finalRoute: String
+  kind: String!
+  organizationId: String!
+  preview: String
+  provider: String
+  requestId: String!
+  routingConfig: RoutingConfigSnapshot
+  selectedModel: String
+  sessionId: String
+  sourceIndex: Int
+  sourceRole: String
+  storageMode: String!
+  surface: String!
+  tokenEstimate: Float
+  userId: String
+}
+
+type PromptArtifactDetail implements PromptArtifactBase {
+  artifactId: String!
+  chars: Float
+  classifier: JSON
+  contentHash: String!
+  cost: PromptCost!
+  createdAt: String!
+  encryptedBlobRef: String
+  expiresAt: String
+  finalRoute: String
+  kind: String!
+  metadata: JSON!
+  organizationId: String!
+  preview: String
+  provider: String
+  rawText: String
+  redactedText: String
+  requestId: String!
+  routingConfig: RoutingConfigSnapshot
+  selectedModel: String
+  sessionId: String
+  sourceIndex: Int
+  sourceRole: String
+  storageMode: String!
+  surface: String!
+  tokenEstimate: Float
+  userId: String
+}
+
+type PromptCaptureConfig {
+  organizationId: String!
+  promptCaptureMode: String!
+  retentionDays: Int!
+}
+
+input PromptCaptureSettingsInput {
+  promptCaptureMode: String
+  retentionDays: Int
+}
+
+type PromptCaptureState {
+  promptCaptureMode: String!
+  retentionDays: Int!
+}
+
+type PromptCost {
+  selected: Float!
+}
+
+type PromptDetail {
+  artifact: PromptArtifactDetail!
+  events: [ProxyEvent!]!
+  request: RequestSummary
+  requestArtifacts: [PromptArtifactDetail!]!
+}
+
+type PromptPage {
+  data: [PromptSummary!]!
+  pagination: PromptPagination!
+}
+
+type PromptPagination {
+  count: Int!
+  limit: Int!
+  offset: Int!
+}
+
+type PromptSummary implements PromptArtifactBase {
+  artifactId: String!
+  chars: Float
+  classifier: JSON
+  contentHash: String!
+  cost: PromptCost!
+  createdAt: String!
+  finalRoute: String
+  kind: String!
+  organizationId: String!
+  preview: String
+  provider: String
+  requestId: String!
+  routingConfig: RoutingConfigSnapshot
+  selectedModel: String
+  sessionId: String
+  sourceIndex: Int
+  sourceRole: String
+  storageMode: String!
+  surface: String!
+  tokenEstimate: Float
+  userId: String
+}
+
+type ProviderAttempt {
+  completedAt: String
+  error: String
+  firstByteAt: String
+  id: String!
+  model: String!
+  provider: String!
+  requestId: String!
+  startedAt: String!
+  statusCode: Int
+  surface: String!
+  terminalStatus: String!
+  upstreamRequestId: String
+  usage: JSON!
+}
+
+type ProxyEvent {
+  correlationId: String
+  createdAt: String!
+  eventId: String!
+  eventType: String!
+  metadata: JSON!
+  payload: JSON!
+  producer: String!
+  scopeId: String!
+  scopeType: String!
+  sequence: Float!
+  sessionId: String
+  tenantId: String!
+}
+
+type Query {
+  apiKey(apiKeyId: ID!): ApiKey
+  apiKeys: [ApiKey!]!
+  invitations: [Invitation!]!
+  overview: Overview!
+  prompt(artifactId: ID!): PromptDetail
+  promptAccessAudit: [PromptAccessAuditEntry!]!
+  prompts(end: String, limit: Int, model: String, offset: Int, route: String, start: String, surface: String, userId: String): PromptPage!
+  request(requestId: ID!): RequestDetail!
+  requests: [RequestSummary!]!
+  routingConfig(configId: ID!): RoutingConfigDetail
+  routingConfigs: [RoutingConfigSummary!]!
+  search(query: String!): SearchResult!
+  session(sessionId: ID!): SessionDetail
+  sessions: [SessionSummary!]!
+  settings: Settings!
+  usage(end: String, groupBy: UsageGroupBy, start: String): UsageReport!
+  usageTimeseries(end: String, groupBy: UsageGroupBy, interval: UsageInterval, limit: Int, start: String): UsageTimeseries!
+  user(userId: ID!): UserDetail
+  users: [UserSummary!]!
+  viewer: Viewer!
+}
+
+type RequestDetail {
+  events: [ProxyEvent!]!
+  request: RequestSummary
+}
+
+type RequestSummary {
+  apiKeyId: String
+  attemptCount: Int
+  baselineCost: Float!
+  classifier: JSON
+  completedAt: String
+  createdAt: String
+  finalRoute: String
+  inputChars: Float
+  latencyMs: Float
+  provider: String
+  requestId: String!
+  requestedModel: String
+  routingConfig: RoutingConfigSnapshot
+  savings: Float!
+  selectedCost: Float!
+  selectedModel: String
+  sessionId: String
+  surface: String
+  terminalStatus: String!
+  timeToFirstByteMs: Float
+  usage: TokenTotals!
+  userId: String
+}
+
+type RouteDecision {
+  budgetChecks: JSON!
+  classifier: JSON
+  classifierRoute: String
+  confidence: Float
+  createdAt: String!
+  finalRoute: String
+  guardrailActions: [String!]!
+  id: String!
+  policyVersion: String!
+  reasonCodes: [String!]!
+  reasoningEffort: String
+  requestId: String!
+  requestedModel: String!
+  routingConfig: RoutingConfigSnapshot
+  selectedModel: String
+  selectedProvider: String
+  verbosity: String
+}
+
+type RouteMatrixRow {
+  anthropicEffort: String
+  anthropicModel: String
+  description: String
+  openaiEffort: String
+  openaiModel: String
+  route: String!
+}
+
+type RouteQuality {
+  cheapCausedRetriesOrRepairsCount: Int!
+  cheaperLikelyWouldWorkCount: Int!
+  lowConfidenceCount: Int!
+}
+
+type RouteQualitySettings {
+  lowConfidenceThreshold: Float!
+}
+
+input RouteQualitySettingsInput {
+  lowConfidenceThreshold: Float
+}
+
+type RoutingConfigDetail {
+  config: RoutingConfigSummary!
+  versions: [RoutingConfigVersionDetail!]!
+}
+
+type RoutingConfigSnapshot {
+  configHash: String
+  configId: String!
+  configName: String
+  version: Int
+  versionId: String
+}
+
+type RoutingConfigSummary {
+  activeVersion: RoutingConfigVersion
+  activeVersionId: String
+  assignedApiKeyCount: Int!
+  createdAt: String!
+  description: String
+  id: String!
+  name: String!
+  organizationId: String!
+  routeMatrix: [RouteMatrixRow!]!
+  slug: String!
+  status: String!
+  systemPrompt: String
+  updatedAt: String!
+}
+
+type RoutingConfigVersion {
+  activatedAt: String
+  active: Boolean!
+  archivedAt: String
+  configHash: String!
+  createdAt: String!
+  createdByUserId: String
+  id: String!
+  organizationId: String!
+  routingConfigId: String!
+  status: String!
+  version: Int!
+}
+
+type RoutingConfigVersionDetail {
+  activatedAt: String
+  active: Boolean!
+  archivedAt: String
+  config: JSON!
+  configHash: String!
+  createdAt: String!
+  createdByUserId: String
+  id: String!
+  organizationId: String!
+  routingConfigId: String!
+  status: String!
+  version: Int!
+}
+
+type RuntimeSettings {
+  budgets: BudgetSettings!
+  classifier: ClassifierRuntime!
+}
+
+type SearchHit {
+  id: String!
+  kind: SearchHitKind!
+  occurredAt: String
+  snippet: String
+  status: String
+  subtitle: String
+  title: String!
+}
+
+enum SearchHitKind {
+  api_key
+  log
+  routing_config
+  session
+  user
+}
+
+type SearchResult {
+  query: String!
+  results: [SearchHit!]!
+}
+
+type SessionDetail {
+  events: [ProxyEvent!]!
+  promptArtifacts: [PromptArtifactDetail!]!
+  providerAttempts: [ProviderAttempt!]!
+  requests: [RequestSummary!]!
+  routeDecisions: [RouteDecision!]!
+  session: SessionSummary!
+  usageLedger: [UsageLedgerRow!]!
+  user: JSON
+}
+
+type SessionSummary {
+  cost: CostTotals!
+  currentRoute: String
+  endedAt: String
+  externalSessionId: String
+  modelMix: JSON!
+  organizationId: String!
+  recentActivity: String
+  requestCount: Float!
+  routeChanges: Float!
+  routeMix: JSON!
+  sessionId: String!
+  sessionIdentity: String
+  startedAt: String!
+  surface: String!
+  terminalStatusSummary: JSON!
+  updatedAt: String!
+  usage: TokenTotals!
+  userId: String
+}
+
+type Settings {
+  budgets: BudgetSettings!
+  classifier: ClassifierRuntime!
+  databaseEnabled: Boolean!
+  defaults: JSON!
+  file: JSON!
+  organizationId: String!
+  promptCapture: PromptCaptureState!
+  restartRequiredFor: [String!]!
+  runtime: RuntimeSettings!
+  settings: EditableSettings!
+  storage: StorageInfo!
+}
+
+input SettingsInput {
+  budgets: BudgetSettingsInput
+  classifier: ClassifierSettingsInput
+  promptCapture: PromptCaptureSettingsInput
+  routeQuality: RouteQualitySettingsInput
+  schemaVersion: Int
+}
+
+type StorageInfo {
+  format: String!
+  path: String!
+  reason: String!
+}
+
+type TokenTotals {
+  cachedInputTokens: Float!
+  inputTokens: Float!
+  outputTokens: Float!
+  reasoningTokens: Float!
+  totalTokens: Float!
+}
+
+type UpdateUserRoleResult {
+  previousRole: String!
+  role: String!
+  userId: String!
+}
+
+type UsageGroup {
+  cost: CostTotals!
+  failedRequests: Float!
+  failureRate: Float!
+  key: String!
+  latency: LatencySummary!
+  requestCount: Float!
+  retriedRequests: Float!
+  retryRate: Float!
+  usage: TokenTotals!
+}
+
+enum UsageGroupBy {
+  api_key
+  model
+  provider
+  route
+  session
+  surface
+  user
+}
+
+enum UsageInterval {
+  day
+  hour
+}
+
+type UsageLedgerRow {
+  cachedInputTokens: Float!
+  createdAt: String!
+  id: String!
+  inputCostMicros: Float!
+  inputTokens: Float!
+  model: String!
+  outputCostMicros: Float!
+  outputTokens: Float!
+  provider: String!
+  providerAttemptId: String!
+  reasoningTokens: Float!
+  requestId: String!
+  route: String
+  sessionId: String
+  totalCostMicros: Float!
+  totalTokens: Float!
+  usage: JSON!
+  userId: String
+}
+
+type UsageReport {
+  data: [UsageGroup!]!
+  groupBy: UsageGroupBy!
+  totals: UsageGroup!
+}
+
+type UsageTimeseries {
+  end: String!
+  groupBy: UsageGroupBy!
+  groups: [UsageGroup!]!
+  interval: UsageInterval!
+  points: [UsageTimeseriesPoint!]!
+  start: String!
+}
+
+type UsageTimeseriesPoint {
+  groups: JSON!
+  totals: UsageGroup!
+  ts: String!
+}
+
+type UserDetail {
+  cost: CostTotals!
+  requests: [RequestSummary!]!
+  sessions: [SessionSummary!]!
+  usage: TokenTotals!
+  user: UserSummary!
+}
+
+type UserMembership {
+  role: String!
+  status: String!
+}
+
+type UserStatusResult {
+  status: String!
+  userId: String!
+}
+
+type UserSummary {
+  cost: CostTotals!
+  createdAt: String!
+  email: String
+  externalId: String
+  membership: UserMembership
+  name: String
+  recentActivity: String
+  requestCount: Float!
+  sessionCount: Float!
+  usage: TokenTotals!
+  userId: String!
+}
+
+type Viewer {
+  organizationId: String!
+  organizations: [OrganizationSummary!]!
+  user: AuthUser!
+}

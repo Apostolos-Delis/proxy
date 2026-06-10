@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { SearchHit } from "../api";
+import type { SearchHit } from "./searchData";
 import { buildPaletteGroups, matchSegments } from "./searchData";
 
 const hit = (overrides: Partial<SearchHit>): SearchHit => ({

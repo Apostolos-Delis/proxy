@@ -1,4 +1,39 @@
-import type { RoutingConfigDocument, RoutingConfigProviderSettings } from "./api";
+// The editor manipulates the raw config document as loose JSON; the server's
+// zod schema (@prompt-proxy/schema routingConfigSchema) is the validator of
+// record when a draft is saved.
+export type RoutingConfigProviderSettings = {
+  model?: string;
+  reasoning?: { effort?: string };
+  text?: { verbosity?: string };
+  thinking?: { type?: string; display?: string };
+  output_config?: { effort?: string };
+  maxOutputTokens?: number;
+  maxTokens?: number;
+  metadata?: Record<string, unknown>;
+};
+
+export type RoutingConfigDocument = {
+  schemaVersion: number;
+  displayName: string;
+  description?: string;
+  systemPrompt?: string;
+  classifier: {
+    provider: string;
+    model: string;
+    instructions: string;
+    timeoutMs: number;
+    maxAttempts: number;
+    allowRedactedExcerpt: boolean;
+    structuredOutput?: Record<string, unknown>;
+  };
+  routes: Record<string, {
+    description?: string;
+    openai?: RoutingConfigProviderSettings;
+    anthropic?: RoutingConfigProviderSettings;
+  }>;
+  limits: Record<string, unknown>;
+  session: Record<string, unknown>;
+};
 
 export const editorRouteOrder = ["fast", "balanced", "hard", "deep"] as const;
 

@@ -1,5 +1,5 @@
-import type { ApiKeySummary, UsageGroup, UsageTimeseries, UserSummary } from "./api";
 import { displayUser } from "./consoleData";
+import type { UsageGroup, UsageLookupApiKey, UsageLookupUser, UsageTimeseries } from "./usageData";
 
 export type UsageRangeKey = "1" | "7" | "30" | "90";
 
@@ -59,8 +59,8 @@ export function seriesColor(index: number, key: string) {
 }
 
 export type GroupLabelLookups = {
-  usersById?: Map<string, UserSummary>;
-  apiKeysById?: Map<string, ApiKeySummary>;
+  usersById?: Map<string, UsageLookupUser>;
+  apiKeysById?: Map<string, UsageLookupApiKey>;
 };
 
 export function groupKeyLabel(dimension: UsageDimension, key: string, lookups: GroupLabelLookups = {}) {

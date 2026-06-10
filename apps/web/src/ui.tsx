@@ -97,7 +97,7 @@ export function Badge({ children, variant, dot = false }: { children: ReactNode;
   return <span className={`badge${variant ? ` badge-${variant}` : ""}`}>{dot ? <span className="dot" /> : null}{children}</span>;
 }
 
-export function StatusBadge({ status }: { status?: string }) {
+export function StatusBadge({ status }: { status?: string | null }) {
   const tone = statusTone(status ?? "unknown");
   if (tone === "success") return <Badge variant="success" dot>{status === "paid" ? "Success" : status ?? "success"}</Badge>;
   if (tone === "danger") return <Badge variant="danger" dot>{status ?? "error"}</Badge>;
@@ -105,7 +105,7 @@ export function StatusBadge({ status }: { status?: string }) {
   return <Badge dot>{status ?? "unknown"}</Badge>;
 }
 
-export function RouteBadge({ route }: { route?: string }) {
+export function RouteBadge({ route }: { route?: string | null }) {
   const value = route ?? "unknown";
   return <span className={`chip route-chip route-${routeTone(value)}`}>{value}</span>;
 }
@@ -118,7 +118,7 @@ export function Avatar({ label, color = "var(--accent)", size = 30 }: { label: s
   );
 }
 
-export function UserCell({ name, detail, color, size }: { name: string; detail?: string; color?: string; size?: number }) {
+export function UserCell({ name, detail, color, size }: { name: string; detail?: string | null; color?: string; size?: number }) {
   return (
     <div className="user-cell">
       <Avatar label={name} color={color} size={size} />

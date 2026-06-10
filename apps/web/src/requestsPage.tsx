@@ -1,14 +1,70 @@
 import { Link } from "@tanstack/react-router";
-import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Boxes, Download, Shield, Users } from "lucide-react";
 
-import { type PromptSummary, type RequestSummary, fetchPromptDetail, fetchPrompts, fetchRequests, fetchUsers } from "./api";
 import { displayUser } from "./consoleData";
 import { downloadJson } from "./dashboard";
 import { compactId, formatCompact, formatMoney } from "./format";
+import { graphql } from "./gql";
+import type { RequestsPageQuery } from "./gql/graphql";
+import { gqlFetch } from "./graphql";
+import { promptDetailQueryOptions } from "./promptDetailPage";
 import { RoutingConfigMicro } from "./routingSnapshot";
 import { ConsoleTable, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { PageState, PageTitle, StatusBadge, UserCell } from "./ui";
+
+const RequestsPageDocument = graphql(`
+  query RequestsPage {
+    prompts {
+      data {
+        artifactId
+        requestId
+        sessionId
+        userId
+        surface
+        kind
+        preview
+        tokenEstimate
+        selectedModel
+        finalRoute
+        routingConfig {
+          configId
+          configName
+          version
+          configHash
+        }
+        cost {
+          selected
+        }
+      }
+    }
+    requests {
+      requestId
+      selectedModel
+      terminalStatus
+      latencyMs
+      finalRoute
+      selectedCost
+      usage {
+        totalTokens
+      }
+      routingConfig {
+        configId
+        configName
+        version
+        configHash
+      }
+    }
+    users {
+      userId
+      name
+      email
+    }
+  }
+`);
+
+type PromptSummary = RequestsPageQuery["prompts"]["data"][number];
+type RequestSummary = RequestsPageQuery["requests"][number];
 
 type PromptLogRow = {
   prompt: PromptSummary;
@@ -17,20 +73,12 @@ type PromptLogRow = {
 };
 
 export function RequestsPage() {
-  const [promptsQuery, requestsQuery, usersQuery] = useQueries({
-    queries: [
-      { queryKey: ["prompts"], queryFn: fetchPrompts },
-      { queryKey: ["requests"], queryFn: fetchRequests },
-      { queryKey: ["users"], queryFn: fetchUsers }
-    ]
-  });
-  const loading = promptsQuery.isLoading || requestsQuery.isLoading || usersQuery.isLoading;
-  const error = promptsQuery.error ?? requestsQuery.error ?? usersQuery.error;
+  const query = useQuery({ queryKey: ["requests-page"], queryFn: () => gqlFetch(RequestsPageDocument) });
 
-  if (loading) return <PageState title="Request logs" label="Loading prompts" />;
-  if (error) return <PageState title="Request logs" label={error.message} />;
+  if (query.isLoading) return <PageState title="Request logs" label="Loading prompts" />;
+  if (query.error) return <PageState title="Request logs" label={query.error.message} />;
 
-  const rows = promptRows(promptsQuery.data?.data ?? [], requestsQuery.data?.data ?? [], usersQuery.data?.data ?? []);
+  const rows = promptRows(query.data?.prompts.data ?? [], query.data?.requests ?? [], query.data?.users ?? []);
   return (
     <div className="page page-enter">
       <PageTitle
@@ -82,8 +130,7 @@ function PromptCell({ row }: { row: PromptLogRow }) {
   const queryClient = useQueryClient();
   const prefetchDetail = () => {
     void queryClient.prefetchQuery({
-      queryKey: ["prompt", row.prompt.artifactId],
-      queryFn: () => fetchPromptDetail(row.prompt.artifactId),
+      ...promptDetailQueryOptions(row.prompt.artifactId),
       staleTime: 30_000
     });
   };
@@ -175,7 +222,7 @@ function uniqueOptionItems(values: { value: string; label: string }[]) {
   return [...options].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
 }
 
-function promptRows(prompts: PromptSummary[], requests: RequestSummary[], users: Parameters<typeof displayUser>[0][]): PromptLogRow[] {
+function promptRows(prompts: PromptSummary[], requests: RequestSummary[], users: RequestsPageQuery["users"]): PromptLogRow[] {
   const requestsById = new Map(requests.map((request) => [request.requestId, request]));
   const usersById = new Map(users.map((user) => [user.userId, user]));
   const promptsByRequest = new Map<string, PromptSummary>();
@@ -203,6 +250,6 @@ function artifactRank(prompt: PromptSummary) {
   return prompt.kind === "latest_user_message" ? 0 : 1;
 }
 
-function formatLatency(value?: number) {
-  return value === undefined ? "unknown" : `${formatCompact(value)}ms`;
+function formatLatency(value?: number | null) {
+  return value === undefined || value === null ? "unknown" : `${formatCompact(value)}ms`;
 }

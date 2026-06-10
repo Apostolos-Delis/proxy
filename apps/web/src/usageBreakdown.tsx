@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, KeyRound } from "lucide-react";
 
-import type { ApiKeySummary, UsageGroup, UserSummary } from "./api";
 import { displayUser } from "./consoleData";
+import type { UsageGroup, UsageLookupApiKey, UsageLookupUser } from "./usageData";
 import { compactId, formatCompact, formatInteger, formatMoney, formatPercent } from "./format";
 import { ConsoleTable, type ConsoleTableColumn } from "./table";
 import { Avatar, RouteBadge } from "./ui";
@@ -124,7 +124,7 @@ function UsageKeyCell({ dimension, group, lookups }: {
   return <span className="mono">{group.key}</span>;
 }
 
-function UserKeyCell({ userId, usersById }: { userId: string; usersById?: Map<string, UserSummary> }) {
+function UserKeyCell({ userId, usersById }: { userId: string; usersById?: Map<string, UsageLookupUser> }) {
   if (userId === "unknown") return <span className="faint">Unknown user</span>;
   const user = usersById?.get(userId);
   const name = user ? displayUser(user) : userId;
@@ -136,7 +136,7 @@ function UserKeyCell({ userId, usersById }: { userId: string; usersById?: Map<st
   );
 }
 
-function ApiKeyCell({ apiKeyId, apiKeysById }: { apiKeyId: string; apiKeysById?: Map<string, ApiKeySummary> }) {
+function ApiKeyCell({ apiKeyId, apiKeysById }: { apiKeyId: string; apiKeysById?: Map<string, UsageLookupApiKey> }) {
   if (apiKeyId === "unknown") return <span className="faint">No API key</span>;
   const apiKey = apiKeysById?.get(apiKeyId);
   return (

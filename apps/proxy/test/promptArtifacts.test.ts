@@ -5,7 +5,7 @@ import {
   promptArtifacts
 } from "@prompt-proxy/db";
 
-import { captureFixture, eventPayloadText, type PromptTestFixture } from "./promptTestFixture.js";
+import { adminGql, captureFixture, eventPayloadText, type PromptTestFixture } from "./promptTestFixture.js";
 
 describe("prompt artifact capture", () => {
   let activeFixture: PromptTestFixture | undefined;
@@ -38,9 +38,12 @@ describe("prompt artifact capture", () => {
     const eventRows = await fixture.db.select().from(events);
     const captureEvent = eventRows.find((event) => event.eventType === "prompt_artifacts.captured");
     const requestDetail = captureEvent
-      ? await fetch(`${fixture.proxyUrl}/admin/requests/${captureEvent.scopeId}`, {
-          headers: fixture.adminHeaders
-        }).then((item) => item.json())
+      ? (await adminGql(
+          fixture.proxyUrl,
+          fixture.adminHeaders,
+          "query RequestDetail($requestId: ID!) { request(requestId: $requestId) { events { eventType } } }",
+          { requestId: captureEvent.scopeId }
+        )).data?.request
       : undefined;
 
     expect(response.status).toBe(200);

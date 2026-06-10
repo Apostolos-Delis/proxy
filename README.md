@@ -49,43 +49,26 @@ Authenticated debug endpoints expose route evidence during local development:
 - `GET /_debug/projections`
 - `GET /_debug/route-quality`
 
-Cookie-authenticated admin endpoints power the web console:
+Cookie-authenticated admin access powers the web console. Session bootstrap
+stays on REST because it sets or clears cookies:
 
-- `GET /api/auth/me`
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
-- `GET /admin/overview`
-- `GET /admin/requests`
-- `GET /admin/requests/:requestId`
-- `GET /admin/prompts`
-- `GET /admin/prompts/:artifactId`
-- `GET /admin/prompt-access-audit`
-- `GET /admin/usage`
-- `GET /admin/users`
-- `GET /admin/users/:userId`
-- `PATCH /admin/users/:userId/role`
-- `POST /admin/users/:userId/deactivate`
-- `POST /admin/users/:userId/reactivate`
-- `GET /admin/invitations`
-- `POST /admin/invitations`
-- `POST /admin/invitations/:invitationId/resend`
-- `POST /admin/invitations/:invitationId/revoke`
-- `GET /admin/sessions`
-- `GET /admin/sessions/:sessionId`
-- `GET /admin/settings`
-- `PATCH /admin/settings`
-- `PATCH /admin/settings/prompt-capture`
-- `GET /admin/routing-configs`
-- `POST /admin/routing-configs`
-- `GET /admin/routing-configs/:configId`
-- `POST /admin/routing-configs/:configId/versions`
-- `POST /admin/routing-configs/:configId/versions/:versionId/activate`
-- `POST /admin/routing-configs/:configId/archive`
-- `GET /admin/api-keys`
-- `POST /admin/api-keys`
-- `GET /admin/api-keys/:apiKeyId`
-- `PATCH /admin/api-keys/:apiKeyId/routing-config`
-- `POST /admin/api-keys/:apiKeyId/revoke`
+- `POST /api/auth/switch-organization`
+
+Everything else the console reads or writes goes through the GraphQL API at
+`POST /admin/graphql` (queries: viewer, overview, requests, request, prompts,
+prompt, promptAccessAudit, usage, users, user, sessions, session, invitations,
+settings, routingConfigs, routingConfig, apiKeys, apiKey, search,
+usageTimeseries; mutations:
+updateSettings, configurePromptCapture, createRoutingConfig,
+createRoutingConfigVersion, activateRoutingConfigVersion, archiveRoutingConfig,
+assignApiKeyRoutingConfig, createApiKey, revokeApiKey, createInvitation,
+resendInvitation, revokeInvitation, updateUserRole, deactivateUser,
+reactivateUser). The SDL lives at
+`apps/proxy/schema.graphql` (regenerate with `pnpm --filter @prompt-proxy/proxy
+schema:print`), and logged-in admins get GraphiQL by opening `/admin/graphql`
+in a browser.
 
 Public token-authenticated invitation endpoints power the accept flow:
 

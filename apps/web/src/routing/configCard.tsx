@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { KeyRound, ScrollText } from "lucide-react";
 
-import type { RoutingConfigRouteMatrixRow, RoutingConfigSummary } from "../api";
+import type { RouteMatrixRow, RoutingConfigSummary } from "./data";
 import { formatDateTime, formatInteger } from "../format";
 import { Badge, RouteBadge, StatusBadge } from "../ui";
 
@@ -34,7 +34,7 @@ export function RoutingConfigCard({ config }: { config: RoutingConfigSummary }) 
   );
 }
 
-function RouteMatrixSection({ routes }: { routes: RoutingConfigRouteMatrixRow[] }) {
+function RouteMatrixSection({ routes }: { routes: RouteMatrixRow[] }) {
   if (routes.length === 0) {
     return (
       <div className="config-card-section">
@@ -74,7 +74,7 @@ function ModelCell({ model, effort }: { model: string | null; effort: string | n
   );
 }
 
-function SystemPromptSection({ systemPrompt }: { systemPrompt: string | null }) {
+function SystemPromptSection({ systemPrompt }: { systemPrompt?: string | null }) {
   return (
     <div className="config-card-section">
       <span className="config-card-label"><ScrollText />System prompt</span>
