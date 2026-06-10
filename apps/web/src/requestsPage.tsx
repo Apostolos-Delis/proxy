@@ -10,8 +10,8 @@ import type { RequestsPageQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
 import { promptDetailQueryOptions } from "./promptDetailPage";
 import { RoutingConfigMicro } from "./routingSnapshot";
-import { ConsoleTable, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
-import { PageState, PageTitle, StatusBadge, UserCell } from "./ui";
+import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
+import { PageState, StatusBadge, UserCell } from "./ui";
 
 const RequestsPageDocument = graphql(`
   query RequestsPage {
@@ -81,11 +81,6 @@ export function RequestsPage() {
   const rows = promptRows(query.data?.prompts.data ?? [], query.data?.requests ?? [], query.data?.users ?? []);
   return (
     <div className="page page-enter">
-      <PageTitle
-        title="Request logs"
-        subtitle="Every prompt routed through Proxy, in real time."
-        actions={null}
-      />
       <ConsoleTable
         className="logs-table-card"
         data={rows}
@@ -208,18 +203,6 @@ function selectedModel(row: PromptLogRow) {
 
 function terminalStatus(row: PromptLogRow) {
   return row.request?.terminalStatus ?? "unknown";
-}
-
-function optionItems(values: string[]) {
-  return uniqueOptionItems(values.map((value) => ({ value, label: value })));
-}
-
-function uniqueOptionItems(values: { value: string; label: string }[]) {
-  const options = new Map<string, string>();
-  values.forEach((item) => {
-    if (!options.has(item.value)) options.set(item.value, item.label);
-  });
-  return [...options].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function promptRows(prompts: PromptSummary[], requests: RequestSummary[], users: RequestsPageQuery["users"]): PromptLogRow[] {

@@ -254,10 +254,10 @@ export type SwitchOrganizationMutationVariables = Exact<{
 
 export type SwitchOrganizationMutation = { switchOrganization: { organizationId: string, user: { sessionId: string, organizationId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }> } };
 
-export type SessionsListQueryVariables = Exact<{ [key: string]: never; }>;
+export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type SessionsListQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }> };
+export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, requestCount: number, startedAt: string, recentActivity: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
 export type SessionDetailViewQueryVariables = Exact<{
   sessionId: string | number;
@@ -1163,14 +1163,17 @@ export const SwitchOrganizationDocument = new TypedDocumentString(`
     role
   }
 }`) as unknown as TypedDocumentString<SwitchOrganizationMutation, SwitchOrganizationMutationVariables>;
-export const SessionsListDocument = new TypedDocumentString(`
-    query SessionsList {
+export const SessionsPageDocument = new TypedDocumentString(`
+    query SessionsPage {
   sessions {
     sessionId
     externalSessionId
     userId
     surface
     currentRoute
+    requestCount
+    startedAt
+    recentActivity
     modelMix
     routeMix
     terminalStatusSummary
@@ -1181,8 +1184,13 @@ export const SessionsListDocument = new TypedDocumentString(`
       selected
     }
   }
+  users {
+    userId
+    name
+    email
+  }
 }
-    `) as unknown as TypedDocumentString<SessionsListQuery, SessionsListQueryVariables>;
+    `) as unknown as TypedDocumentString<SessionsPageQuery, SessionsPageQueryVariables>;
 export const SessionDetailViewDocument = new TypedDocumentString(`
     query SessionDetailView($sessionId: ID!) {
   session(sessionId: $sessionId) {
