@@ -19,7 +19,6 @@ import { Viewer } from "./types/viewer.js";
 const CreateRoutingConfigInput = builder.inputType("CreateRoutingConfigInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
-    slug: t.string({ required: true }),
     description: t.string(),
     config: t.field({ type: "JSON", required: true })
   })
@@ -196,7 +195,6 @@ builder.mutationFields((t) => ({
           actorUserId: context.identity().userId,
           body: {
             name: args.input.name,
-            slug: args.input.slug,
             description: args.input.description ?? null,
             config: args.input.config
           }

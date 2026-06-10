@@ -176,7 +176,6 @@ export type RoutingConfigDetail = {
 
 export type CreateRoutingConfigInput = {
   name: string;
-  slug: string;
   description: string | null;
   config: RoutingConfigDocument;
 };

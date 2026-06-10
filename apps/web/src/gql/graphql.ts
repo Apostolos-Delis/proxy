@@ -39,7 +39,6 @@ export type CreateRoutingConfigInput = {
   config: unknown;
   description?: string | null | undefined;
   name: string;
-  slug: string;
 };
 
 export type MemberRole =

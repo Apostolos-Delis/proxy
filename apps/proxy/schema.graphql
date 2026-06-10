@@ -103,7 +103,6 @@ input CreateRoutingConfigInput {
   config: JSON!
   description: String
   name: String!
-  slug: String!
 }
 
 type EditableClassifier {
