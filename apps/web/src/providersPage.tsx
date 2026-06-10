@@ -43,6 +43,7 @@ export function ProvidersPage() {
       {showCreate ? <CreateProviderCredentialPanel onClose={() => setShowCreate(false)} /> : null}
       <ConsoleTable
         className="routing-configs-card"
+        urlState
         data={accounts}
         columns={providerAccountColumns({
           revokePendingId: revokeMutation.isPending ? revokeMutation.variables : undefined,

@@ -91,6 +91,7 @@ export function KeysPage() {
       {showSetup ? <HarnessSetupCard secret={createdSecret} /> : null}
       <ConsoleTable
         className="routing-configs-card"
+        urlState
         data={keys}
         columns={apiKeyColumns({
           configs,

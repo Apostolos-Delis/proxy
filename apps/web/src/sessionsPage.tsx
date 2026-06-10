@@ -123,6 +123,7 @@ export function SessionsPage() {
     <div className="page page-enter">
       <ConsoleTable
         className="logs-table-card"
+        urlState
         data={rows}
         columns={sessionColumns}
         search={{ placeholder: "Search sessions, users, models...", getValue: sessionSearchValue }}

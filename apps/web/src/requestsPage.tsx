@@ -83,6 +83,7 @@ export function RequestsPage() {
     <div className="page page-enter">
       <ConsoleTable
         className="logs-table-card"
+        urlState
         data={rows}
         columns={requestColumns}
         search={{ placeholder: "Search prompts, users, request IDs...", getValue: requestSearchValue }}

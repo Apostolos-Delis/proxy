@@ -104,6 +104,7 @@ export function UsersPage() {
       />
       {showInvite ? <InviteUserPanel /> : null}
       <ConsoleTable
+        urlState
         data={users}
         columns={userColumns({
           pendingUserId: roleMutation.isPending ? roleMutation.variables?.userId : undefined,
