@@ -3,6 +3,7 @@ import { Check, Copy, KeyRound, TerminalSquare } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { createApiKey, type CreatedApiKey, type RoutingConfigSummary } from "./routing/data";
+import { MenuSelect } from "./table/MenuSelect";
 import { Badge, GlassCard } from "./ui";
 
 export const apiKeyScopeOptions = [
@@ -82,17 +83,18 @@ export function CreateApiKeyPanel({ configs, onCreated, onShowSetup }: {
               autoComplete="off"
             />
           </Field>
-          <Field label="Routing config">
-            <select
+          <div className="routing-create-field">
+            <span>Routing config</span>
+            <MenuSelect
               value={form.routingConfigId}
-              onChange={(event) => setForm((value) => ({ ...value, routingConfigId: event.target.value }))}
-            >
-              <option value="">Organization default</option>
-              {configs.map((config) => (
-                <option key={config.id} value={config.id}>{config.name}</option>
-              ))}
-            </select>
-          </Field>
+              options={[
+                { value: "", label: "Organization default" },
+                ...configs.map((config) => ({ value: config.id, label: config.name }))
+              ]}
+              ariaLabel="Routing config"
+              onChange={(routingConfigId) => setForm((value) => ({ ...value, routingConfigId }))}
+            />
+          </div>
         </div>
         <div className="scope-options">
           <span className="scope-options-label">Scopes</span>
