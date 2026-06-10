@@ -4,6 +4,7 @@ import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
 import { LogoutButton } from "./auth";
+import { OrgSwitcher } from "./orgSwitcher";
 
 const workspaceNav = [
   { to: "/", label: "Overview", icon: Gauge },
@@ -56,13 +57,7 @@ export function AppShell() {
         <NavGroup title="Operations" items={operationsNav} collapsed={collapsed} />
         <NavGroup title="Manage" items={manageNav} collapsed={collapsed} />
         <div className="sidebar-foot">
-          <div className="org-card">
-            <div className="org-avatar">P</div>
-            <div className="brand-text">
-              <strong>Proxy Labs</strong>
-              <span>Team · Mid</span>
-            </div>
-          </div>
+          <OrgSwitcher />
           <LogoutButton />
         </div>
       </aside>
