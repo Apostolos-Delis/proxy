@@ -42,7 +42,7 @@ export function InteractiveStatCard({ metric, chart, to, onClick, active = false
     <InteractiveCard className="stat-card" active={active} ariaLabel={`Inspect ${metric.label}`} to={to} onClick={onClick}>
       <div className="card-head">
         <div className="card-title">{metric.icon}{metric.label}</div>
-        {metric.delta === undefined ? null : <Delta value={metric.delta} />}
+        {metric.delta === undefined ? null : <Delta value={metric.delta} positiveIsGood={metric.deltaPositiveIsGood} />}
       </div>
       <div className="stat-value">{metric.value}</div>
       {metric.detail ? <div className="stat-sub">{metric.detail}</div> : null}

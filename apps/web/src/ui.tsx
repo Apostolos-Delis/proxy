@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { Box, Clock3, Copy } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Box, Clock3, Copy } from "lucide-react";
 
 import type { ProxyEvent } from "./api";
 import { compactId, formatDateTime } from "./format";
@@ -10,6 +10,7 @@ export type ConsoleMetric = {
   detail?: string;
   icon?: ReactNode;
   delta?: number;
+  deltaPositiveIsGood?: boolean;
 };
 
 export function GlassCard({ children, className = "", style }: {
@@ -50,12 +51,22 @@ export function StatCard({ metric, chart }: { metric: ConsoleMetric; chart?: Rea
     <GlassCard className="stat-card">
       <div className="card-head">
         <div className="card-title">{metric.icon}{metric.label}</div>
-        {metric.delta === undefined ? null : <Delta value={metric.delta} />}
+        {metric.delta === undefined ? null : <Delta value={metric.delta} positiveIsGood={metric.deltaPositiveIsGood} />}
       </div>
       <div className="stat-value">{metric.value}</div>
       {metric.detail ? <div className="stat-sub">{metric.detail}</div> : null}
       {chart ? <div className="stat-chart">{chart}</div> : null}
     </GlassCard>
+  );
+}
+
+export function PageSkeleton({ blocks = [200, 320, 160] }: { blocks?: number[] }) {
+  return (
+    <div className="page page-enter" aria-busy="true" aria-label="Loading">
+      {blocks.map((height, index) => (
+        <div key={index} className="glass card skeleton-card skeleton-pulse" style={{ height }} />
+      ))}
+    </div>
   );
 }
 
@@ -68,7 +79,13 @@ export function Segmented<T extends string>({ options, value, onChange, accent =
   return (
     <div className={`segmented${accent ? " accent" : ""}`}>
       {options.map((option) => (
-        <button key={option.value} type="button" className={value === option.value ? "active" : ""} onClick={() => onChange(option.value)}>
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={value === option.value}
+          className={value === option.value ? "active" : ""}
+          onClick={() => onChange(option.value)}
+        >
           {option.label}
         </button>
       ))}
@@ -131,9 +148,15 @@ export function CodePill({ value, copy = false }: { value: string; copy?: boolea
   );
 }
 
-export function Delta({ value }: { value: number }) {
+export function Delta({ value, positiveIsGood = true }: { value: number; positiveIsGood?: boolean }) {
   const up = value >= 0;
-  return <span className={`delta ${up ? "up" : "down"}`}>{up ? "up" : "down"} {Math.abs(value)}%</span>;
+  const good = up === positiveIsGood;
+  return (
+    <span className={`delta ${good ? "up" : "down"}`} title="vs previous period">
+      {up ? <ArrowUpRight /> : <ArrowDownRight />}
+      {Math.round(Math.abs(value))}%
+    </span>
+  );
 }
 
 export function ConsoleButton({ children, type = "button", disabled = false, variant = "primary", onClick }: {

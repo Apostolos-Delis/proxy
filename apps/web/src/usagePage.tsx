@@ -6,8 +6,8 @@ import { type UsageResponse, fetchRequests, fetchUsage, fetchUsers } from "./api
 import { SpendBaselineChart } from "./charts";
 import { downloadJson } from "./dashboard";
 import { modelRowsFromUsage, seriesFromRequests, topUsersFromUsage } from "./consoleData";
-import { formatCompact, formatInteger, formatMoney } from "./format";
-import { GlassCard, PageState, Segmented } from "./ui";
+import { formatCompact, formatCompactMoney, formatInteger, formatMoney } from "./format";
+import { GlassCard, PageSkeleton, PageState, Segmented } from "./ui";
 import {
   UsageBreakdown,
   UsageSideRail,
@@ -55,7 +55,7 @@ export function UsagePage() {
   const requests = requestsResponse?.data ?? [];
   const usersData = usersResponse?.data ?? [];
 
-  if (loading) return <PageState title="Usage" label="Loading usage" />;
+  if (loading) return <PageSkeleton blocks={[420, 260]} />;
   if (error) return <PageState title="Usage" label={error.message} />;
   if (usageResponses.length === 0) return <PageState title="Usage" label="No usage data" />;
 
@@ -103,7 +103,14 @@ export function UsagePage() {
               </div>
             ) : null}
           </div>
-          <SpendBaselineChart data={chartSeries} baseline={baselineSeries} height={280} valueFormatter={chartFormatter} />
+          <SpendBaselineChart
+            data={chartSeries}
+            baseline={baselineSeries}
+            height={280}
+            valueFormatter={chartFormatter}
+            tickFormatter={chartMetric === "cost" ? formatCompactMoney : formatCompact}
+            zeroNote={zeroNoteFor(chartMetric)}
+          />
           <div className="sep" />
           <UsageSummaryStrip totals={totals} />
         </GlassCard>
@@ -120,4 +127,10 @@ function metricFormatter(metric: ChartMetric) {
   if (metric === "cost") return formatMoney;
   if (metric === "tokens") return formatCompact;
   return formatInteger;
+}
+
+function zeroNoteFor(metric: ChartMetric) {
+  if (metric === "cost") return "No spend recorded in this window — model pricing may be unset";
+  if (metric === "tokens") return "No tokens recorded in this window";
+  return "No requests in this window";
 }

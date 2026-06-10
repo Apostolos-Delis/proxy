@@ -1,8 +1,9 @@
-export function formatMoney(value: number, maximumFractionDigits = 4) {
+// Sub-dollar amounts keep extra precision; anything larger reads as normal currency.
+export function formatMoney(value: number, maximumFractionDigits?: number) {
   return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency: "USD",
-    maximumFractionDigits
+    maximumFractionDigits: maximumFractionDigits ?? (Math.abs(value) < 1 ? 4 : 2)
   }).format(value);
 }
 
@@ -10,6 +11,16 @@ export function formatCompact(value: number) {
   return new Intl.NumberFormat(undefined, {
     notation: "compact",
     maximumFractionDigits: 2
+  }).format(value);
+}
+
+export function formatCompactMoney(value: number) {
+  if (value !== 0 && Math.abs(value) < 1) return formatMoney(value);
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 1
   }).format(value);
 }
 

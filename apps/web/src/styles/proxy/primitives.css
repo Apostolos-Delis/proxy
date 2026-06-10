@@ -48,13 +48,17 @@
   border: none; background: transparent; cursor: pointer;
   padding: 6px 12px; border-radius: 4px; font-family: var(--font);
   font-size: 12.5px; font-weight: 500; color: var(--fg-muted);
-  transition: color .13s var(--ease), background .13s var(--ease);
+  transition: color .13s var(--ease), background .13s var(--ease), box-shadow .13s var(--ease);
 }
+.segmented button:hover { color: var(--fg); background: var(--glass-hover); }
+.segmented button:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
+.segmented button:active { background: var(--glass); }
 .segmented button.active {
   color: var(--fg);
   background: var(--glass-hover);
+  box-shadow: inset 0 0 0 1px var(--border-strong), 0 1px 2px rgba(0, 0, 0, 0.2);
 }
-.segmented.accent button.active { color: #04211d; background: var(--accent); }
+.segmented.accent button.active { color: #04211d; background: var(--accent); box-shadow: none; }
 
 /* pills / badges */
 .badge {
@@ -128,9 +132,12 @@
 .stat-value { font-size: 30px; font-weight: 600; letter-spacing: 0; line-height: 1.05; font-variant-numeric: tabular-nums; }
 .stat-value.big { font-size: 44px; }
 .stat-sub { font-size: 12.5px; color: var(--fg-faint); margin-top: 4px; }
-.delta { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 999px; }
+.delta { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 999px; font-variant-numeric: tabular-nums; }
 .delta.up { color: var(--success); background: var(--success-bg); }
 .delta.down { color: var(--danger); background: var(--danger-bg); }
+.delta svg { width: 12px; height: 12px; }
+
+.skeleton-card { margin-bottom: 20px; }
 
 .grid { display: grid; gap: 18px; }
 .mono { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }

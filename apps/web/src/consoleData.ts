@@ -30,6 +30,8 @@ export function seriesFromRequests(requests: RequestSummary[], metric: SeriesMet
   if (withDates.length === 0) return [];
 
   const latest = Math.max(...withDates.map((request) => timestamp(request.createdAt)));
+  if (days === 1) return hourlySeries(withDates, metric, latest);
+
   const end = startOfDay(new Date(latest));
   const start = new Date(end);
   start.setDate(start.getDate() - (days - 1));
@@ -52,6 +54,40 @@ export function seriesFromRequests(requests: RequestSummary[], metric: SeriesMet
     label: new Date(`${key}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     value
   }));
+}
+
+function hourlySeries(requests: RequestSummary[], metric: SeriesMetric, latest: number): ChartPoint[] {
+  const end = startOfHour(new Date(latest));
+  const start = new Date(end);
+  start.setHours(start.getHours() - 23);
+
+  const buckets = new Map<number, number>();
+  for (let index = 0; index < 24; index += 1) {
+    const date = new Date(start);
+    date.setHours(start.getHours() + index);
+    buckets.set(date.getTime(), 0);
+  }
+
+  for (const request of requests) {
+    const key = startOfHour(new Date(request.createdAt ?? "")).getTime();
+    if (!buckets.has(key)) continue;
+    buckets.set(key, (buckets.get(key) ?? 0) + requestMetric(request, metric));
+  }
+
+  return [...buckets.entries()].map(([key, value]) => ({
+    label: new Date(key).toLocaleTimeString("en-US", { hour: "numeric" }),
+    value
+  }));
+}
+
+/** Percent change between the first and second half of a series; undefined when the prior half is empty. */
+export function periodDelta(series: ChartPoint[]): number | undefined {
+  const half = Math.floor(series.length / 2);
+  if (half === 0) return undefined;
+  const previous = series.slice(0, half).reduce((sum, point) => sum + point.value, 0);
+  const current = series.slice(series.length - half).reduce((sum, point) => sum + point.value, 0);
+  if (previous <= 0) return undefined;
+  return ((current - previous) / previous) * 100;
 }
 
 export function modelRowsFromUsage(rows: UsageGroup[]): ModelUsageRow[] {
@@ -94,6 +130,10 @@ function timestamp(value?: string) {
 
 function startOfDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function startOfHour(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours());
 }
 
 function dayKey(date: Date) {
