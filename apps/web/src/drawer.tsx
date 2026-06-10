@@ -2,9 +2,9 @@ import { X } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 
-// Portals out of the page so the fixed positioning survives the .page-enter
-// transform animation (a filled transform traps fixed descendants), but into
-// .app rather than body so the data-theme variables still apply.
+// Portals out of the page so fixed positioning isn't trapped while the
+// .page-enter transform animation runs, but into .app rather than body so
+// the data-theme variables still apply.
 export function Drawer({ label, onClose, children }: {
   label: string;
   onClose: () => void;
