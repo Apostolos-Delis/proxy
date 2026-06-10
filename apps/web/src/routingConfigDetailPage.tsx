@@ -1,20 +1,20 @@
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { useState } from "react";
 
 import {
   activateRoutingConfigVersion,
   archiveRoutingConfig,
+  createRoutingConfigVersion,
   fetchRoutingConfigDetail,
   type RoutingConfigDetail,
   type RoutingConfigDocument,
-  type RoutingConfigProviderSettings,
   type RoutingConfigVersionDetail
 } from "./api";
 import { compactId, formatDateTime, formatInteger } from "./format";
-import { Badge, DataTable, GlassCard, JsonPanel, PageState, PageTitle, RouteBadge, StatusBadge } from "./ui";
-
-const routeOrder = ["fast", "balanced", "hard", "deep"] as const;
+import { applyDraft, ConfigEditorFields, draftError, draftFromConfig, draftsEqual } from "./routingConfigEditor";
+import { Badge, DataTable, GlassCard, JsonPanel, PageState, PageTitle, StatusBadge } from "./ui";
 
 export function RoutingConfigDetailPage({ configId }: { configId: string }) {
   const queryClient = useQueryClient();
@@ -54,7 +54,7 @@ export function RoutingConfigDetailPage({ configId }: { configId: string }) {
         <ConfigSummary detail={query.data} activeVersion={activeVersion} />
         <ClassifierCard config={activeConfig} />
       </div>
-      {activeConfig ? <RouteTierTable config={activeConfig} /> : <MissingActiveConfig />}
+      {activeVersion ? <ConfigEditorCard key={activeVersion.id} configId={configId} version={activeVersion} /> : <MissingActiveConfig />}
       <VersionHistory
         versions={query.data.versions}
         pendingVersionId={activateMutation.isPending ? activateMutation.variables : undefined}
@@ -114,29 +114,56 @@ function MissingActiveConfig() {
   );
 }
 
-function RouteTierTable({ config }: { config: RoutingConfigDocument }) {
+function ConfigEditorCard({ configId, version }: { configId: string; version: RoutingConfigVersionDetail }) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState(() => draftFromConfig(version.config));
+  const [activateAfterSave, setActivateAfterSave] = useState(true);
+  const [validationError, setValidationError] = useState<string>();
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const created = await createRoutingConfigVersion(configId, applyDraft(version.config, draft));
+      if (!activateAfterSave) return created;
+      const newest = [...created.versions].sort((left, right) => right.version - left.version)[0];
+      return newest ? activateRoutingConfigVersion(configId, newest.id) : created;
+    },
+    onSuccess: (detail) => {
+      queryClient.setQueryData(["routing-config", configId], detail);
+      queryClient.invalidateQueries({ queryKey: ["routing-configs"] });
+    }
+  });
+  const dirty = !draftsEqual(draft, draftFromConfig(version.config));
+  const error = validationError ?? saveMutation.error?.message;
+
   return (
     <GlassCard className="table-wrap routing-configs-card">
-      <div className="card-head">
-        <div className="card-title">Route tier model matrix</div>
-        <span className="faint mono">max {String(config.limits.maxRoute ?? "unknown")}</span>
-      </div>
-      <DataTable>
-        <thead><tr><th>Tier</th><th>OpenAI</th><th>Anthropic</th><th>Description</th></tr></thead>
-        <tbody>
-          {routeOrder.map((route) => {
-            const tier = config.routes[route];
-            return (
-              <tr key={route}>
-                <td><RouteBadge route={route} /></td>
-                <td><ProviderSettings settings={tier?.openai} provider="openai" /></td>
-                <td><ProviderSettings settings={tier?.anthropic} provider="anthropic" /></td>
-                <td>{tier?.description ?? "No description"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </DataTable>
+      <form className="routing-config-edit-form" onSubmit={(event) => {
+        event.preventDefault();
+        const nextError = draftError(draft);
+        setValidationError(nextError);
+        if (!nextError) saveMutation.mutate();
+      }}>
+        <div className="card-head">
+          <div>
+            <div className="card-title">Route tier models &amp; system prompt</div>
+            <div className="faint">Saving creates a new version from v{version.version} · max route {String(version.config.limits.maxRoute ?? "unknown")}</div>
+          </div>
+          <div className="row gap-8">
+            <label className="row gap-8 faint">
+              <input
+                type="checkbox"
+                checked={activateAfterSave}
+                onChange={(event) => setActivateAfterSave(event.target.checked)}
+              />
+              Activate immediately
+            </label>
+            <button className="btn btn-primary" type="submit" disabled={!dirty || saveMutation.isPending}>
+              {saveMutation.isPending ? "Saving" : "Save new version"}
+            </button>
+          </div>
+        </div>
+        <ConfigEditorFields draft={draft} baseConfig={version.config} onChange={setDraft} />
+        {error ? <div className="action-error">{error}</div> : null}
+      </form>
     </GlassCard>
   );
 }
@@ -205,17 +232,6 @@ function ArchivePanel({ detail, pending, error, onArchive }: {
       {detail.config.assignedApiKeyCount > 0 ? <div className="faint">{formatInteger(detail.config.assignedApiKeyCount)} API keys still use this config.</div> : null}
       {error ? <div className="action-error">{error}</div> : null}
     </GlassCard>
-  );
-}
-
-function ProviderSettings({ settings, provider }: { settings?: RoutingConfigProviderSettings; provider: string }) {
-  if (!settings) return <span className="faint">{provider}: none</span>;
-  const effort = settings.reasoning?.effort ?? settings.output_config?.effort ?? settings.thinking?.type;
-  return (
-    <div>
-      <div className="mono">{settings.model ?? "unknown"}</div>
-      <div className="faint">{effort ? `effort ${effort}` : provider}</div>
-    </div>
   );
 }
 

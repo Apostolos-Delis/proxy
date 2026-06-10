@@ -358,6 +358,7 @@ export class RoutingService {
           providerSettings: {
             provider: "openai",
             model: routeConfig.openai.model,
+            systemPrompt: routingConfig.systemPrompt,
             openai: routeConfig.openai
           }
         };
@@ -370,6 +371,7 @@ export class RoutingService {
         providerSettings: {
           provider: "anthropic",
           model: routeConfig.anthropic.model,
+          systemPrompt: routingConfig.systemPrompt,
           anthropic: routeConfig.anthropic
         }
       };

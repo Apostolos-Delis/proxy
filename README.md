@@ -132,6 +132,8 @@ Config precedence for each request:
 
 The selected config id, version id, version number, and config hash are stored on request and route-decision rows. Use the web console API-key screen or `PATCH /admin/api-keys/:apiKeyId/routing-config` to assign a config. See the [routing configs runbook](docs/runbooks/routing-configs.md) for local setup, assignment commands, and troubleshooting.
 
+Routing configs can also carry a top-level `systemPrompt` that the proxy prepends to every routed request (OpenAI Responses `instructions`, Anthropic Messages `system`) ahead of harness prompts. The console's routing config screens edit the system prompt and the per-tier OpenAI/Anthropic models; saving creates a new immutable version that can be activated in the same step.
+
 ## Local Harnesses
 
 Codex profile:
