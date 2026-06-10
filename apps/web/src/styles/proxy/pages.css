@@ -1294,6 +1294,11 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 /* ---------- routing config cards (list page) ---------- */
+.config-view-toggle {
+  display: flex;
+  margin-bottom: 22px;
+}
+
 .config-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
