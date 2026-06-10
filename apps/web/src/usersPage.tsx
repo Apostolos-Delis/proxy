@@ -32,7 +32,6 @@ export function UsersPage() {
         filters={userFilters}
         advancedFields={userAdvancedFields}
         emptyLabel="No users match these filters."
-        resultLabel={(count) => `${count} users`}
         actions={({ visibleData }) => (
           <button className="btn" type="button" onClick={() => downloadJson("proxy-users.json", { users: visibleData, selectedUser })}>
             <Download />Export

@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, List, SlidersHorizontal } from "lucide-react";
+import { ArrowDown, ArrowUp, SlidersHorizontal } from "lucide-react";
 import type { SortingState } from "@tanstack/react-table";
 
 import { MenuSelect } from "./MenuSelect";
@@ -6,12 +6,13 @@ import type { ConsoleTableColumnOption } from "./types";
 
 type DisplayOptionsPopoverProps = {
   columns: ConsoleTableColumnOption[];
+  mode: "sort" | "view";
   sorting: SortingState;
   onSortingChange: (sorting: SortingState) => void;
   onToggleColumn: (columnId: string) => void;
 };
 
-export function DisplayOptionsPopover({ columns, sorting, onSortingChange, onToggleColumn }: DisplayOptionsPopoverProps) {
+export function DisplayOptionsPopover({ columns, mode, sorting, onSortingChange, onToggleColumn }: DisplayOptionsPopoverProps) {
   const sortableColumns = columns.filter((column) => column.canSort);
   const hideableColumns = columns.filter((column) => column.canHide);
   const activeSort = sorting[0];
@@ -19,13 +20,9 @@ export function DisplayOptionsPopover({ columns, sorting, onSortingChange, onTog
   const selectedSortDesc = activeSort?.desc ?? false;
   return (
     <div className="display-options-popover">
-      <div className="display-section">
-        <span>View</span>
-        <button type="button" className="display-view-option active"><List />List</button>
-      </div>
-      {sortableColumns.length > 0 ? (
+      {mode === "sort" && sortableColumns.length > 0 ? (
         <div className="display-section">
-          <span>Ordering</span>
+          <span>Sort</span>
           <div className="display-ordering-row">
             <MenuSelect
               value={selectedSortId}
@@ -40,7 +37,7 @@ export function DisplayOptionsPopover({ columns, sorting, onSortingChange, onTog
           </div>
         </div>
       ) : null}
-      {hideableColumns.length > 0 ? (
+      {mode === "view" && hideableColumns.length > 0 ? (
         <div className="display-section">
           <span><SlidersHorizontal />{columns.filter((column) => column.visible).length} columns shown</span>
           <div className="display-columns-grid">

@@ -46,7 +46,6 @@ export function RequestsPage() {
         filters={requestFilters(rows)}
         advancedFields={requestAdvancedFields}
         emptyLabel="No requests match these filters."
-        resultLabel={(count) => `${count} prompts`}
         actions={({ visibleData }) => (
           <button className="btn" type="button" onClick={() => downloadJson("proxy-request-logs.json", visibleData)}>
             <Download />Export
