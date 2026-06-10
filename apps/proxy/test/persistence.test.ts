@@ -51,6 +51,23 @@ describe("postgres persistence", () => {
     expect(duplicate.state.status).toBe("completed");
   });
 
+  it("reprocesses failed idempotency keys instead of replaying the failure", async () => {
+    const fixture = await persistenceFixture("org_retry");
+    const context = routeContext();
+    const first = await fixture.persistence.requestStates.begin("idem_retry", "request_first", context);
+    await fixture.persistence.requestStates.finish("idem_retry", "failed", { error: "provider unavailable" });
+
+    const retry = await fixture.persistence.requestStates.begin("idem_retry", "request_second", context);
+    const [requestRow] = await fixture.db.select().from(requests).where(eq(requests.idempotencyKey, "idem_retry"));
+
+    expect(first.duplicate).toBe(false);
+    expect(retry.duplicate).toBe(false);
+    expect(retry.state.requestId).toBe("request_first");
+    expect(retry.state.status).toBe("classifying");
+    expect(requestRow?.status).toBe("classifying");
+    expect(requestRow?.completedAt).toBeNull();
+  });
+
   it("does not mirror events when durable append fails", async () => {
     const eventService = new EventService(undefined, undefined, {
       append: async () => {

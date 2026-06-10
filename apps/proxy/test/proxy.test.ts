@@ -651,7 +651,7 @@ describe("prompt proxy", () => {
     expect(providerCall).toBeTruthy();
   });
 
-  it("fails before provider spend when classifier structured output fails", async () => {
+  it("falls back to the balanced route when the classifier fails", async () => {
     const failingOpenAI = await startOpenAIMock({ invalidClassifier: true });
     const app = buildServer(
       loadConfig({
@@ -681,12 +681,77 @@ describe("prompt proxy", () => {
         stream: false
       })
     });
+    await response.text();
+    const eventRows = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
 
     await app.close();
     await failingOpenAI.close();
 
-    expect(response.status).toBe(500);
-    expect(failingOpenAI.records).toHaveLength(2);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("balanced");
+    const decision = eventRows.find((event: { eventType: string }) => event.eventType === "routing.decision_recorded");
+    expect(decision?.payload?.reasonCodes).toEqual(["classifier_failure_fallback"]);
+    expect(decision?.payload?.guardrailActions).toContain("classifier_failure_fallback");
+    const classifierCalls = failingOpenAI.records.filter(
+      (record) => record.body.model === "route-classifier-cheap"
+    );
+    const providerCalls = failingOpenAI.records.filter(
+      (record) => record.body.model !== "route-classifier-cheap"
+    );
+    expect(classifierCalls).toHaveLength(2);
+    expect(providerCalls).toHaveLength(1);
+    expect(providerCalls[0].body.model).toBe("gpt-5.4");
+  });
+
+  it("reprocesses failed requests instead of replaying the failure", async () => {
+    const flakyOpenAI = await startOpenAIMock({ failProviderOnce: true });
+    const app = buildServer(
+      loadConfig({
+        ...testEnv(),
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: flakyOpenAI.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+    const request = () =>
+      fetch(`${proxyUrl}/v1/responses`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer proxy-token",
+          "content-type": "application/json",
+          "idempotency-key": "idem-retry-1"
+        },
+        body: JSON.stringify({
+          model: "router-auto",
+          input: "retry after provider failure",
+          stream: true
+        })
+      });
+
+    const first = await request();
+    await first.text();
+    const second = await request();
+    const secondBody = await second.text();
+
+    await app.close();
+    await flakyOpenAI.close();
+
+    expect(first.status).toBe(500);
+    expect(second.status).toBe(200);
+    expect(second.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(secondBody).toContain("response.completed");
+    const providerCalls = flakyOpenAI.records.filter(
+      (record) => record.body.model !== "route-classifier-cheap"
+    );
+    expect(providerCalls).toHaveLength(2);
   });
 
   it("aborts upstream streaming when the client cancels", async () => {

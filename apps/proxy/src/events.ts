@@ -187,7 +187,12 @@ export class ProviderAttemptStore {
     model: string;
   }) {
     const existingId = this.idempotency.get(input.idempotencyKey);
-    if (existingId) return { attempt: this.attempts.get(existingId), duplicate: true };
+    if (existingId) {
+      const existing = this.attempts.get(existingId);
+      if (existing && existing.terminalStatus !== "failed" && existing.terminalStatus !== "cancelled") {
+        return { attempt: existing, duplicate: true };
+      }
+    }
 
     const attempt: ProviderAttempt = {
       id: createId("provider_attempt"),
@@ -246,7 +251,9 @@ export class RequestStateStore {
 
   begin(idempotencyKey: string, requestId?: string) {
     const existing = this.states.get(idempotencyKey);
-    if (existing) return { state: existing, duplicate: true };
+    if (existing && existing.status !== "failed" && existing.status !== "cancelled") {
+      return { state: existing, duplicate: true };
+    }
 
     const state: RequestState = {
       idempotencyKey,

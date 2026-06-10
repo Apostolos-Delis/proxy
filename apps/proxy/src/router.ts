@@ -24,6 +24,8 @@ import type {
 } from "./types.js";
 import type { AnthropicEffort, RoutingConfig } from "@prompt-proxy/schema";
 
+const classifierFailureFallbackRoute: RouteName = "balanced";
+
 type ResolvedRouteSettings = {
   selectedModel: string;
   providerSettings: SelectedRouteSettings;
@@ -90,27 +92,49 @@ export class RoutingService {
     const explicit = context.explicitAlias;
     let classification: ClassificationResult | undefined;
     let requestedRoute: RouteName;
+    let classifierFailed = false;
     const classifierSettings = routingConfig?.config.classifier ?? defaultClassifierSettings(this.config);
     if (explicit) {
       requestedRoute = explicit;
     } else {
-      classification = await this.classify(
-        requestId,
-        context,
-        idempotencyKey,
-        classifierSettings,
-        routingConfigSnapshot
-      );
-      requestedRoute = classification.output.recommended_route;
+      try {
+        classification = await this.classify(
+          requestId,
+          context,
+          idempotencyKey,
+          classifierSettings,
+          routingConfigSnapshot
+        );
+        requestedRoute = classification.output.recommended_route;
+      } catch {
+        classifierFailed = true;
+        requestedRoute = classifierFailureFallbackRoute;
+      }
     }
 
-    const decision = this.resolveRoute(
+    let decision = this.resolveRoute(
       context,
       requestedRoute,
       classification,
       routingConfig,
       classifierSettings
     );
+    if (classifierFailed) {
+      if (decision.outcome === "reject" && decision.error === "route_not_available_for_surface") {
+        for (const route of routeOrder) {
+          if (route === requestedRoute) continue;
+          const candidate = this.resolveRoute(context, route, classification, routingConfig, classifierSettings);
+          if (candidate.outcome === "route") {
+            decision = candidate;
+            break;
+          }
+        }
+      }
+      if (decision.outcome === "route") {
+        decision.guardrailActions.push("classifier_failure_fallback");
+        decision.reasonCodes = ["classifier_failure_fallback"];
+      }
+    }
     if (decision.outcome === "route" && decision.finalRoute) {
       const postBudget = this.budget.checkDecision(context, decision.finalRoute);
       decision.budgetChecks = [...preBudget.checks, ...postBudget.checks];

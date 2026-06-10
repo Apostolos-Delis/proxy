@@ -26,6 +26,7 @@ export async function startOpenAIMock(
     classifierOutputs?: Record<string, unknown>[];
     classifierResponsesShape?: boolean;
     compressedJsonProvider?: boolean;
+    failProviderOnce?: boolean;
     slowProvider?: boolean;
     wsTerminalEvent?: "response.completed" | "response.incomplete";
     outputText?: string;
@@ -35,6 +36,7 @@ export async function startOpenAIMock(
   const classifierOutputs = [...(options.classifierOutputs ?? [])];
   const wss = new WebSocketServer({ noServer: true });
   let wsResponseCount = 0;
+  let providerFailed = false;
   let resolveProviderClosed: (() => void) | undefined;
   const providerClosed = new Promise<void>((resolve) => {
     resolveProviderClosed = resolve;
@@ -74,6 +76,13 @@ export async function startOpenAIMock(
         return;
       }
       sendJson(response, { output_text: outputText });
+      return;
+    }
+
+    if (options.failProviderOnce && !providerFailed) {
+      providerFailed = true;
+      response.writeHead(500, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "mock provider unavailable" } }));
       return;
     }
 
