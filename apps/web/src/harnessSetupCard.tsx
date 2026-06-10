@@ -2,7 +2,7 @@ import { Check, Copy, TerminalSquare } from "lucide-react";
 import { useState } from "react";
 
 import { apiBase } from "./graphql";
-import { GlassCard, Segmented } from "./ui";
+import { Segmented } from "./ui";
 
 type Harness = "claude-code" | "codex";
 
@@ -13,11 +13,14 @@ const harnessOptions = [
 
 const keyPlaceholder = "<your-api-key>";
 
-export function HarnessSetupCard({ secret }: { secret: string | null }) {
+export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
+  secret: string | null;
+  showKeyContextSteps?: boolean;
+}) {
   const [harness, setHarness] = useState<Harness>("claude-code");
   const key = secret ?? keyPlaceholder;
   return (
-    <GlassCard className="harness-setup">
+    <>
       <div className="card-head">
         <div>
           <div className="card-title"><TerminalSquare />Route your coding agent through the proxy</div>
@@ -28,18 +31,22 @@ export function HarnessSetupCard({ secret }: { secret: string | null }) {
         <Segmented options={harnessOptions} value={harness} onChange={setHarness} />
       </div>
       <ol className="setup-steps">
-        <li>
-          Create an API key above with the <span className="code-pill">proxy</span> scope.
-          Add <span className="code-pill">harness_identity</span> so usage is attributed to the person running the agent.
-          {secret ? null : <span className="faint"> Then replace {keyPlaceholder} below with the key secret.</span>}
-        </li>
+        {showKeyContextSteps ? (
+          <li>
+            Create an API key with the <span className="code-pill">proxy</span> scope.
+            Add <span className="code-pill">harness_identity</span> so usage is attributed to the person running the agent.
+            {secret ? null : <span className="faint"> Then replace {keyPlaceholder} below with the key secret.</span>}
+          </li>
+        ) : null}
         {harness === "claude-code" ? <ClaudeCodeSteps apiKey={key} /> : <CodexSteps apiKey={key} />}
-        <li>
-          Assign a routing config to the key (or leave it on the organization default) to control which models each
-          route tier uses.
-        </li>
+        {showKeyContextSteps ? (
+          <li>
+            Assign a routing config to the key (or leave it on the organization default) to control which models each
+            route tier uses.
+          </li>
+        ) : null}
       </ol>
-    </GlassCard>
+    </>
   );
 }
 

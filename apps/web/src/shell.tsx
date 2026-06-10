@@ -34,6 +34,7 @@ const titles: Record<string, [string, string | null]> = {
   "/cost": ["Cost", "Spend, savings & attribution"],
   "/logs": ["Logs", "Request stream"],
   "/api-keys": ["API keys", "Manage secrets"],
+  "/api-keys/new": ["API keys", "Create key"],
   "/provider-keys": ["Provider keys", "Bring-your-own provider credentials"],
   "/users": ["Users", "Team & access"],
   "/billing": ["Billing", "Spend & invoices"],
