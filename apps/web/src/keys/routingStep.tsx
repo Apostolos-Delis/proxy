@@ -5,6 +5,7 @@ import type { ProviderAccountSummary, ProviderName } from "../providers/data";
 import { PROVIDER_OPTIONS } from "../providers";
 import type { RoutingConfigSummary } from "../routing/data";
 import { MenuSelect } from "../table/MenuSelect";
+import { SearchSelect } from "../table/SearchSelect";
 import { GlassCard } from "../ui";
 import { WizardStepHead } from "./stepHead";
 import { orgDefaultConfigLabel, withProviderKeyMode, type CreateKeyDraft } from "./wizard";
@@ -109,16 +110,18 @@ function ProviderBindingField({ provider, accounts, value, onChange }: {
   return (
     <div className="routing-create-field">
       <span>{provider.label}</span>
-      <MenuSelect
+      <SearchSelect
         value={value ?? ""}
         options={[
           { value: "", label: "Company default" },
           ...accounts.map((account) => ({
             value: account.id,
-            label: `${account.name} (${account.secretHint ?? "customer key"})`
+            label: account.name,
+            hint: account.secretHint ?? "customer key"
           }))
         ]}
         ariaLabel={`${provider.label} provider key`}
+        placeholder="Search provider keys…"
         onChange={(providerAccountId) => onChange(providerAccountId || null)}
       />
       {accounts.length === 0 ? <span className="faint">No {provider.value} keys added — the platform key is used.</span> : null}
