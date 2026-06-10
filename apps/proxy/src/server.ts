@@ -456,6 +456,12 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     }
     return detail;
   });
+  app.get("/admin/search", async (request) => {
+    const identity = await adminAuth.resolve(request.headers);
+    const query = searchQuery(request.query);
+    if (!persistence) return { query, results: [] };
+    return persistence.adminQueries.forOrg(identity.organizationId).search(query);
+  });
   app.get("/admin/prompt-access-audit", async (request) => {
     const identity = await adminAuth.resolve(request.headers);
     if (!persistence) return { data: [] };
@@ -744,6 +750,13 @@ function promptFilters(query: unknown) {
     start: stringParam(record.start ?? record.startDate),
     end: stringParam(record.end ?? record.endDate)
   };
+}
+
+function searchQuery(query: unknown) {
+  const record = query && typeof query === "object" && !Array.isArray(query)
+    ? query as Record<string, unknown>
+    : {};
+  return stringParam(record.q ?? record.query) ?? "";
 }
 
 function stringParam(value: unknown) {

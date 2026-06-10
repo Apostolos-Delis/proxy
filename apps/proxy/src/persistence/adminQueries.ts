@@ -21,6 +21,7 @@ import {
 import { explicitAlias, modelForRoute } from "../catalog.js";
 import type { ModelCatalog } from "../catalog.js";
 import type { JsonObject, RouteName } from "../types.js";
+import { searchAdminEntities } from "./adminSearch.js";
 import {
   eventSummary,
   invitationSummary,
@@ -109,6 +110,10 @@ export class AdminQueryService {
     return {
       data: await this.summarizeRequests(await this.requestRows(200))
     };
+  }
+
+  async search(query: string) {
+    return searchAdminEntities(this.db, this.organizationId, query);
   }
 
   async apiKeys() {
