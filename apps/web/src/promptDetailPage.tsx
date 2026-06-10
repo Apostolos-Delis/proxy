@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Clock3, MessagesSquare } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { compactId, formatCompact, formatDateTime, formatMoney } from "./format";
+import { compactId, formatCompact, formatDateTime, formatDurationMs, formatMoney } from "./format";
 import { graphql } from "./gql";
 import type { PromptDetailViewQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
@@ -198,7 +198,7 @@ function ExchangeCard({ artifacts, focusedArtifactId }: {
         {visible.length === 0 ? <div className="empty compact-empty">No prompt content captured for this request.</div> : null}
         {!hasAssistant && visible.length > 0 ? (
           <div className="convo-bubble convo-assistant">
-            <span className="convo-role">assistant</span>
+            <div className="convo-bubble-head"><span className="convo-role">assistant</span></div>
             <p className="convo-missing">Response not captured for this request.</p>
           </div>
         ) : null}
@@ -210,14 +210,19 @@ function ExchangeCard({ artifacts, focusedArtifactId }: {
 function ExchangeBubble({ artifact, focused }: { artifact: PromptArtifactDetail; focused: boolean }) {
   const { role } = EXCHANGE_ROLES[artifact.kind];
   const text = artifact.rawText ?? artifact.redactedText;
+  const meta = [
+    artifact.chars != null ? `${formatCompact(artifact.chars)} chars` : null,
+    artifact.tokenEstimate ? `~${formatCompact(artifact.tokenEstimate)} tok` : null
+  ].filter(Boolean).join(" · ");
   return (
     <div className={`convo-bubble convo-${role}${focused ? " convo-focused" : ""}`}>
-      <span className="convo-role">{role}</span>
-      <span className="convo-bubble-meta mono">
-        {artifact.chars != null ? `${formatCompact(artifact.chars)} chars` : null}
-        {artifact.tokenEstimate ? ` · ~${formatCompact(artifact.tokenEstimate)} tok` : null}
-      </span>
-      {text ? <CopyButton text={text} /> : null}
+      <div className="convo-bubble-head">
+        <span className="convo-role">{role}</span>
+        <span className="convo-bubble-actions">
+          {meta ? <span className="convo-bubble-meta mono">{meta}</span> : null}
+          {text ? <CopyButton text={text} /> : null}
+        </span>
+      </div>
       {text ? <p>{text}</p> : <p className="convo-missing">Content not stored ({artifact.storageMode}).</p>}
     </div>
   );
@@ -265,7 +270,7 @@ function EventRow({ event, start }: { event: ProxyEvent; start: number }) {
         {hasPayload ? <ChevronRight className={`event-chevron${open ? " open" : ""}`} /> : <span className="event-chevron-spacer" />}
         <span className="event-name mono">{event.eventType}</span>
         <span className="event-producer">{event.producer.replace(/^prompt-proxy\./, "")}</span>
-        <span className="event-offset mono" title={formatDateTime(event.createdAt)}>+{formatMs(offset)}</span>
+        <span className="event-offset mono" title={formatDateTime(event.createdAt)}>+{formatDurationMs(offset)}</span>
       </button>
       {open && hasPayload ? <div className="event-payload"><JsonView value={payload} maxHeight={300} /></div> : null}
     </div>
@@ -278,12 +283,7 @@ function eventTone(eventType: string) {
 
 function totalSpan(events: ProxyEvent[], start: number) {
   const end = new Date(events[events.length - 1].createdAt).getTime();
-  return formatMs(end - start);
-}
-
-function formatMs(value: number) {
-  if (value < 1000) return `${Math.max(0, Math.round(value))}ms`;
-  return `${(value / 1000).toFixed(2)}s`;
+  return formatDurationMs(end - start);
 }
 
 function RawJsonCard({ artifact, request }: { artifact: PromptArtifactDetail; request: RequestSummary | null }) {
@@ -381,5 +381,5 @@ function HashValue({ value }: { value: string }) {
 
 function formatDuration(value?: number | null) {
   if (value == null) return "unknown";
-  return formatMs(value);
+  return formatDurationMs(value);
 }
