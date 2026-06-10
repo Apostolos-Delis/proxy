@@ -1,10 +1,10 @@
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 
-import { stackName } from "./config";
-import { PromptProxyEdgeStack } from "./edge-stack";
-import { createRuntimeStacks } from "./test-helpers";
-import { PromptProxyWebStack } from "./web-stack";
+import { stackName } from "./config.js";
+import { PromptProxyEdgeStack } from "./edge-stack.js";
+import { createRuntimeStacks } from "./test-helpers.js";
+import { PromptProxyWebStack } from "./web-stack.js";
 
 describe("PromptProxyEdgeStack", () => {
   it("serves web assets and forwards API traffic through CloudFront", () => {

@@ -2,7 +2,7 @@ import { CfnOutput, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import { CfnSecret, Secret, type ISecret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config";
+import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
 
 export type PromptProxyRuntimeSecretsStackProps = StackProps & {
   config: PromptProxyEnvironmentConfig;

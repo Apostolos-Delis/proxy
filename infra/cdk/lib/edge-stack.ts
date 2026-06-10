@@ -19,9 +19,9 @@ import { Bucket, CfnBucketPolicy } from "aws-cdk-lib/aws-s3";
 import { CfnIPSet, CfnWebACL } from "aws-cdk-lib/aws-wafv2";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config";
-import type { PromptProxyNetworkStack } from "./network-stack";
-import type { PromptProxyWebStack } from "./web-stack";
+import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
+import type { PromptProxyNetworkStack } from "./network-stack.js";
+import type { PromptProxyWebStack } from "./web-stack.js";
 
 export type PromptProxyEdgeStackProps = StackProps & {
   config: PromptProxyEnvironmentConfig;
