@@ -33,6 +33,7 @@ Prompt Proxy is an OpenAI/Anthropic-compatible model routing gateway with durabl
 - Do not manipulate the DOM directly from React components. Avoid `document.createElement`, `querySelector`, and imperative DOM injection.
 - Do not use nested ternaries. Move branching into a named helper or intermediate variables.
 - Never render a native `<select>` (or any other OS-styled menu control). The browser draws its popup with light system styling that breaks the dark console theme. Use the shared `MenuSelect` component (`apps/web/src/table/MenuSelect.tsx`) for every dropdown.
+- Never ship a form control with default browser styling — an unthemed blue checkbox or grey input is a bug. Boolean toggles use `<input type="checkbox" role="switch">`, which the global switch styles in `pages.css` theme automatically. Checkbox lists set `accent-color: var(--accent)` (see `.scope-option`, `.key-pick-row`). Text inputs follow the bordered `var(--glass-2)` pattern.
 - Anywhere the console displays or edits JSON, it must be syntax highlighted. Use the shared components in `apps/web/src/jsonView.tsx`: `JsonView` for read-only display, `JsonEditor` for editable JSON. Never render JSON in a plain `<pre>` or `<textarea>`.
 - Prefer `type` aliases over `interface` for props, DTOs, and exported object shapes.
 - Keep route files thin: params, loaders, guards, and page composition only. Query shaping and DTO mapping belong in `lib/` or feature modules.

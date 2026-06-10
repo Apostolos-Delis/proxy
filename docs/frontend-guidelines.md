@@ -91,6 +91,13 @@ useEffect(() => {
 - Style page-specific variants with a `className` on `MenuSelect` plus scoped CSS on `.menu-select > button` (see `.tier-effort` and `.settings-field .menu-select` for examples) instead of reintroducing native controls.
 - Do not place `MenuSelect` inside a `<label>` element. Label click-forwarding targets the trigger button and fights the popover's open/close handling; use a `div` with a `span` caption instead.
 
+## Form Controls
+
+- Never ship a form control with default browser styling — an unthemed blue checkbox or grey input is a bug, not a placeholder.
+- Boolean toggles use `<input type="checkbox" role="switch">`. The global `input[type="checkbox"][role="switch"]` rules in `pages.css` render it as a themed pill switch.
+- Multi-select checkbox lists keep native checkboxes but set `accent-color: var(--accent)` (see `.scope-option`, `.key-pick-row`, `.console-column-toggle`).
+- Text and number inputs follow the bordered `var(--glass-2)` pattern with `var(--accent)` focus ring (see `.settings-field input`).
+
 ## Raw Prompt UI
 
 - Raw prompt text is a first-class V1 test-project feature.

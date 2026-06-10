@@ -672,7 +672,7 @@
   font-size: 12px;
 }
 
-.settings-toggle input {
+input[type="checkbox"][role="switch"] {
   appearance: none;
   position: relative;
   justify-self: start;
@@ -686,7 +686,7 @@
   transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
 }
 
-.settings-toggle input::before {
+input[type="checkbox"][role="switch"]::before {
   content: "";
   position: absolute;
   top: 2px;
@@ -698,17 +698,17 @@
   transition: transform 0.15s var(--ease), background 0.15s var(--ease);
 }
 
-.settings-toggle input:checked {
+input[type="checkbox"][role="switch"]:checked {
   border-color: transparent;
   background: var(--accent);
 }
 
-.settings-toggle input:checked::before {
+input[type="checkbox"][role="switch"]:checked::before {
   background: #fff;
   transform: translateX(15px);
 }
 
-.settings-toggle input:focus-visible {
+input[type="checkbox"][role="switch"]:focus-visible {
   box-shadow: var(--ring);
   outline: none;
 }

@@ -201,6 +201,7 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
             <label className="row gap-8 faint">
               <input
                 type="checkbox"
+                role="switch"
                 checked={activateAfterSave}
                 onChange={(event) => setActivateAfterSave(event.target.checked)}
               />
