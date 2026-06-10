@@ -237,6 +237,13 @@
 
 .topbar-search {
   width: min(330px, 28vw);
+  cursor: pointer;
+  transition: border-color 0.14s var(--ease), background 0.14s var(--ease);
+}
+.topbar-search:hover { border-color: var(--border-strong); background: var(--glass-hover); }
+.topbar-search-label {
+  flex: 1; min-width: 0;
+  text-align: left; color: var(--fg-faint);
 }
 
 .operator {

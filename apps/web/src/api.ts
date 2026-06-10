@@ -470,6 +470,27 @@ export type ApiKeySummary = {
   lastUsedAt: string | null;
 };
 
+export type SearchHitKind = "session" | "log" | "user" | "routing_config" | "api_key";
+
+export type SearchHit = {
+  kind: SearchHitKind;
+  id: string;
+  title: string;
+  subtitle: string | null;
+  status: string | null;
+  snippet: string | null;
+  occurredAt: string | null;
+};
+
+export type SearchResponse = {
+  query: string;
+  results: SearchHit[];
+};
+
+export async function fetchGlobalSearch(query: string) {
+  return fetchJson<SearchResponse>(`/admin/search?q=${encodeURIComponent(query)}`);
+}
+
 export async function fetchOverview() {
   return fetchJson<Overview>("/admin/overview");
 }
