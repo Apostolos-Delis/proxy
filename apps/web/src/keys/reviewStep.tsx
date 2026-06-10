@@ -4,23 +4,25 @@ import type { ProviderAccountSummary } from "../providers/data";
 import { PROVIDER_OPTIONS } from "../providers";
 import type { RoutingConfigSummary } from "../routing/data";
 import { GlassCard } from "../ui";
-import type { CreateKeyDraft } from "./wizard";
+import { WizardStepHead } from "./stepHead";
+import { orgDefaultConfigLabel, type CreateKeyDraft } from "./wizard";
 
-export function ReviewStep({ draft, configs, providerAccounts }: {
+export function ReviewStep({ draft, configs, defaultConfig, providerAccounts }: {
   draft: CreateKeyDraft;
   configs: RoutingConfigSummary[];
+  defaultConfig: RoutingConfigSummary | null;
   providerAccounts: ProviderAccountSummary[];
 }) {
-  const routingConfigName = configs.find((config) => config.id === draft.routingConfigId)?.name
-    ?? "Organization default";
+  const routingConfigName = draft.routingConfigId
+    ? configs.find((config) => config.id === draft.routingConfigId)?.name ?? draft.routingConfigId
+    : orgDefaultConfigLabel(defaultConfig);
   return (
     <GlassCard>
-      <div className="card-head">
-        <div>
-          <div className="card-title"><ClipboardCheck />Review & create</div>
-          <div className="faint">The key secret is generated once and stored as a hash — copy it right away.</div>
-        </div>
-      </div>
+      <WizardStepHead
+        icon={<ClipboardCheck />}
+        title="Review & create"
+        sub="The key secret is generated once and stored as a hash — copy it right away."
+      />
       <dl className="wizard-review">
         <div>
           <dt>Name</dt>
@@ -36,12 +38,19 @@ export function ReviewStep({ draft, configs, providerAccounts }: {
           <dt>Routing config</dt>
           <dd>{routingConfigName}</dd>
         </div>
-        {PROVIDER_OPTIONS.map((provider) => (
-          <div key={provider.value}>
-            <dt>{provider.label} key</dt>
-            <dd>{bindingLabel(draft.providerBindings[provider.value], providerAccounts)}</dd>
+        {draft.linkProviderKeys ? (
+          PROVIDER_OPTIONS.map((provider) => (
+            <div key={provider.value}>
+              <dt>{provider.label} key</dt>
+              <dd>{bindingLabel(draft.providerBindings[provider.value], providerAccounts)}</dd>
+            </div>
+          ))
+        ) : (
+          <div>
+            <dt>Provider keys</dt>
+            <dd>Company default (platform keys)</dd>
           </div>
-        ))}
+        )}
       </dl>
     </GlassCard>
   );

@@ -2,34 +2,20 @@ import { Check, Copy, TerminalSquare } from "lucide-react";
 import { useState } from "react";
 
 import { apiBase } from "./graphql";
-import { Segmented } from "./ui";
-
-type Harness = "claude-code" | "codex";
-
-const harnessOptions = [
-  { value: "claude-code", label: "Claude Code" },
-  { value: "codex", label: "Codex" }
-] as const;
-
-const keyPlaceholder = "<your-api-key>";
+import { buildSetupScript, keyPlaceholder } from "./keys/setupScript";
+import { WizardStepHead } from "./keys/stepHead";
 
 export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
   secret: string | null;
   showKeyContextSteps?: boolean;
 }) {
-  const [harness, setHarness] = useState<Harness>("claude-code");
-  const key = secret ?? keyPlaceholder;
   return (
     <>
-      <div className="card-head">
-        <div>
-          <div className="card-title"><TerminalSquare />Route your coding agent through the proxy</div>
-          <div className="faint">
-            The harness authenticates with an API key, and the proxy picks models from the routing config assigned to that key.
-          </div>
-        </div>
-        <Segmented options={harnessOptions} value={harness} onChange={setHarness} />
-      </div>
+      <WizardStepHead
+        icon={<TerminalSquare />}
+        title="Route your coding agent through the proxy"
+        sub="The harness authenticates with an API key, and the proxy picks models from the routing config assigned to that key."
+      />
       <ol className="setup-steps">
         {showKeyContextSteps ? (
           <li>
@@ -38,7 +24,20 @@ export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
             {secret ? null : <span className="faint"> Then replace {keyPlaceholder} below with the key secret.</span>}
           </li>
         ) : null}
-        {harness === "claude-code" ? <ClaudeCodeSteps apiKey={key} /> : <CodexSteps apiKey={key} />}
+        <li>
+          Run this once on your machine — it stores the key in <span className="code-pill">~/.prompt-proxy/token</span>,
+          points Claude Code at the proxy, and registers the proxy provider for Codex:
+          <Snippet text={buildSetupScript({ apiBase, secret })} />
+        </li>
+        <li>
+          Open a new terminal and run <span className="code-pill">claude</span> or <span className="code-pill">codex</span> —
+          no flags or exports needed.
+          <div className="faint setup-explainer">
+            Claude Code: model, base URL, and an apiKeyHelper land in ~/.claude/settings.json, so other Anthropic tools
+            on this machine are untouched. Codex: a prompt_proxy provider in ~/.codex/config.toml reads
+            PROMPT_PROXY_TOKEN from your shell.
+          </div>
+        </li>
         {showKeyContextSteps ? (
           <li>
             Assign a routing config to the key (or leave it on the organization default) to control which models each
@@ -46,51 +45,6 @@ export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
           </li>
         ) : null}
       </ol>
-    </>
-  );
-}
-
-function ClaudeCodeSteps({ apiKey }: { apiKey: string }) {
-  const snippet = [
-    `export ANTHROPIC_BASE_URL=${apiBase}`,
-    `export ANTHROPIC_API_KEY=${apiKey}`,
-    "export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1",
-    "claude --model claude-router-auto"
-  ].join("\n");
-  return (
-    <li>
-      Point Claude Code at the proxy and launch it with the router model:
-      <Snippet text={snippet} />
-    </li>
-  );
-}
-
-function CodexSteps({ apiKey }: { apiKey: string }) {
-  const profileSnippet = [
-    "model = \"router-auto\"",
-    "model_provider = \"prompt_proxy\"",
-    "",
-    "[model_providers.prompt_proxy]",
-    "name = \"Prompt Proxy\"",
-    `base_url = "${apiBase}/v1"`,
-    "env_key = \"PROMPT_PROXY_TOKEN\"",
-    "wire_api = \"responses\"",
-    "supports_websockets = true"
-  ].join("\n");
-  const launchSnippet = [
-    `export PROMPT_PROXY_TOKEN=${apiKey}`,
-    "codex"
-  ].join("\n");
-  return (
-    <>
-      <li>
-        Add the Prompt Proxy provider to <span className="code-pill">~/.codex/config.toml</span>:
-        <Snippet text={profileSnippet} />
-      </li>
-      <li>
-        Export the key and launch Codex:
-        <Snippet text={launchSnippet} />
-      </li>
     </>
   );
 }

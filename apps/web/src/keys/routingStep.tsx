@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { GitBranch, KeySquare } from "lucide-react";
 
 import type { ProviderAccountSummary, ProviderName } from "../providers/data";
@@ -5,61 +6,95 @@ import { PROVIDER_OPTIONS } from "../providers";
 import type { RoutingConfigSummary } from "../routing/data";
 import { MenuSelect } from "../table/MenuSelect";
 import { GlassCard } from "../ui";
-import type { CreateKeyDraft } from "./wizard";
+import { WizardStepHead } from "./stepHead";
+import { orgDefaultConfigLabel, withProviderKeyMode, type CreateKeyDraft } from "./wizard";
 
-export function RoutingStep({ draft, configs, providerAccounts, onChange }: {
+export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, onChange }: {
   draft: CreateKeyDraft;
   configs: RoutingConfigSummary[];
+  defaultConfig: RoutingConfigSummary | null;
   providerAccounts: ProviderAccountSummary[];
   onChange: (draft: CreateKeyDraft) => void;
 }) {
+  const activeAccounts = providerAccounts.filter((account) => account.status === "active");
   return (
     <>
       <GlassCard>
-        <div className="card-head">
-          <div>
-            <div className="card-title"><GitBranch />Routing config</div>
-            <div className="faint">Controls which models each route tier uses for traffic on this key.</div>
-          </div>
-        </div>
+        <WizardStepHead
+          icon={<GitBranch />}
+          title="Routing config"
+          sub="Controls which models each route tier uses for traffic on this key."
+        />
         <div className="wizard-step-body">
-          <label className="routing-create-field wizard-name-field">
+          {/* A <label> here would re-trigger the select button when the
+              popover backdrop (a label descendant) is clicked. */}
+          <div className="routing-create-field wizard-name-field">
             <span>Routing config</span>
             <MenuSelect
               value={draft.routingConfigId ?? ""}
               options={[
-                { value: "", label: "Organization default" },
+                { value: "", label: orgDefaultConfigLabel(defaultConfig) },
                 ...configs.map((config) => ({ value: config.id, label: config.name }))
               ]}
               ariaLabel="Routing config"
               onChange={(routingConfigId) => onChange({ ...draft, routingConfigId: routingConfigId || null })}
             />
-          </label>
+          </div>
         </div>
       </GlassCard>
       <GlassCard>
-        <div className="card-head">
-          <div>
-            <div className="card-title"><KeySquare />Provider keys</div>
-            <div className="faint">Bill this key's upstream traffic to your own provider credentials instead of the platform key.</div>
+        <WizardStepHead
+          icon={<KeySquare />}
+          title="Provider keys"
+          sub="Bill this key's upstream traffic to your own provider credentials instead of the platform key."
+        />
+        {activeAccounts.length === 0 ? (
+          <div className="wizard-provider-note">
+            <span className="faint">No provider keys linked yet — this key's upstream traffic uses the platform keys.</span>
+            <Link to="/provider-keys" className="btn btn-sm">Add provider keys</Link>
           </div>
-        </div>
-        <div className="wizard-step-body wizard-provider-grid">
-          {PROVIDER_OPTIONS.map((provider) => (
-            <ProviderBindingField
-              key={provider.value}
-              provider={provider}
-              accounts={providerAccounts.filter(
-                (account) => account.provider === provider.value && account.status === "active"
-              )}
-              value={draft.providerBindings[provider.value]}
-              onChange={(providerAccountId) => onChange({
-                ...draft,
-                providerBindings: { ...draft.providerBindings, [provider.value]: providerAccountId }
-              })}
-            />
-          ))}
-        </div>
+        ) : (
+          <div className="wizard-step-body">
+            <div className="scope-options" role="radiogroup" aria-label="Provider key mode">
+              <label className="scope-option">
+                <input
+                  type="radio"
+                  name="provider-key-mode"
+                  checked={!draft.linkProviderKeys}
+                  onChange={() => onChange(withProviderKeyMode(draft, false))}
+                />
+                <span>Company default</span>
+                <span className="faint">Upstream traffic is billed to the platform's provider keys.</span>
+              </label>
+              <label className="scope-option">
+                <input
+                  type="radio"
+                  name="provider-key-mode"
+                  checked={draft.linkProviderKeys}
+                  onChange={() => onChange(withProviderKeyMode(draft, true))}
+                />
+                <span>Use my own keys</span>
+                <span className="faint">Bill this key's upstream traffic to provider accounts linked to the organization.</span>
+              </label>
+            </div>
+            {draft.linkProviderKeys ? (
+              <div className="wizard-provider-grid">
+                {PROVIDER_OPTIONS.map((provider) => (
+                  <ProviderBindingField
+                    key={provider.value}
+                    provider={provider}
+                    accounts={activeAccounts.filter((account) => account.provider === provider.value)}
+                    value={draft.providerBindings[provider.value]}
+                    onChange={(providerAccountId) => onChange({
+                      ...draft,
+                      providerBindings: { ...draft.providerBindings, [provider.value]: providerAccountId }
+                    })}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        )}
       </GlassCard>
     </>
   );

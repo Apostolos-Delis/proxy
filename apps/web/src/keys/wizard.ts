@@ -15,6 +15,7 @@ export type CreateKeyDraft = {
   name: string;
   scopes: string[];
   routingConfigId: string | null;
+  linkProviderKeys: boolean;
   providerBindings: Record<ProviderName, string | null>;
 };
 
@@ -31,10 +32,28 @@ export function initialDraft(): CreateKeyDraft {
     name: "",
     scopes: ["proxy", "harness_identity"],
     routingConfigId: null,
-    providerBindings: Object.fromEntries(
-      PROVIDER_ORDER.map((provider) => [provider, null])
-    ) as Record<ProviderName, string | null>
+    linkProviderKeys: false,
+    providerBindings: emptyProviderBindings()
   };
+}
+
+function emptyProviderBindings() {
+  return Object.fromEntries(
+    PROVIDER_ORDER.map((provider) => [provider, null])
+  ) as Record<ProviderName, string | null>;
+}
+
+// Switching back to the platform keys clears any per-provider picks so the
+// submit payload can never carry bindings the user deselected.
+export function withProviderKeyMode(draft: CreateKeyDraft, linkProviderKeys: boolean): CreateKeyDraft {
+  if (linkProviderKeys) return { ...draft, linkProviderKeys };
+  return { ...draft, linkProviderKeys, providerBindings: emptyProviderBindings() };
+}
+
+// A null routingConfigId resolves server-side to the seeded default config,
+// so surface its real name instead of an opaque "Organization default".
+export function orgDefaultConfigLabel(defaultConfig: { name: string } | null): string {
+  return defaultConfig ? `${defaultConfig.name} (organization default)` : "Organization default";
 }
 
 export function stepBlockerMessage(draft: CreateKeyDraft): string | null {

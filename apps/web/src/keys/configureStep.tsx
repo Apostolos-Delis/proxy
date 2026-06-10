@@ -2,6 +2,7 @@ import { KeyRound } from "lucide-react";
 
 import { GlassCard } from "../ui";
 import { apiKeyScopeOptions } from "./scopeOptions";
+import { WizardStepHead } from "./stepHead";
 import type { CreateKeyDraft } from "./wizard";
 
 export function ConfigureStep({ draft, onChange }: {
@@ -10,12 +11,11 @@ export function ConfigureStep({ draft, onChange }: {
 }) {
   return (
     <GlassCard>
-      <div className="card-head">
-        <div>
-          <div className="card-title"><KeyRound />Name & scopes</div>
-          <div className="faint">Name the key after the workload that will hold it, then grant only the scopes it needs.</div>
-        </div>
-      </div>
+      <WizardStepHead
+        icon={<KeyRound />}
+        title="Name & scopes"
+        sub="Name the key after the workload that will hold it, then grant only the scopes it needs."
+      />
       <div className="wizard-step-body">
         <label className="routing-create-field wizard-name-field">
           <span>Name</span>
