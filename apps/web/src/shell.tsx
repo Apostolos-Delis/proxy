@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { BarChart3, Boxes, Command, CreditCard, Gauge, GitBranch, KeyRound, Logs, MessagesSquare, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
+import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, Logs, MessagesSquare, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -11,6 +11,7 @@ import { useSearchShortcut } from "./search/useSearchShortcut";
 const workspaceNav = [
   { to: "/", label: "Overview", icon: Gauge },
   { to: "/usage", label: "Usage", icon: BarChart3 },
+  { to: "/cost", label: "Cost", icon: CircleDollarSign },
   { to: "/logs", label: "Logs", icon: Logs },
   { to: "/sessions", label: "Sessions", icon: MessagesSquare }
 ] as const;
@@ -28,7 +29,8 @@ const manageNav = [
 
 const titles: Record<string, [string, string | null]> = {
   "/": ["Overview", null],
-  "/usage": ["Usage", "Token metering & spend"],
+  "/usage": ["Usage", "Token metering by dimension"],
+  "/cost": ["Cost", "Spend, savings & attribution"],
   "/logs": ["Logs", "Request stream"],
   "/api-keys": ["API keys", "Manage secrets"],
   "/users": ["Users", "Team & access"],

@@ -1,136 +1,137 @@
-import { useQueries } from "@tanstack/react-query";
+import { keepPreviousData, useQueries } from "@tanstack/react-query";
 import { Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
-import { type UsageResponse, fetchRequests, fetchUsage, fetchUsers } from "./api";
-import { SpendBaselineChart } from "./charts";
+import { fetchApiKeys, fetchUsage, fetchUsageTimeseries, fetchUsers } from "./api";
+import { ChartLegend, StackedBarsChart } from "./charts";
 import { downloadJson } from "./dashboard";
-import { modelRowsFromUsage, seriesFromRequests, topUsersFromUsage } from "./consoleData";
-import { formatCompact, formatCompactMoney, formatInteger, formatMoney } from "./format";
+import { formatCompact, formatInteger, formatPercent } from "./format";
 import { GlassCard, PageSkeleton, PageState, Segmented } from "./ui";
 import {
-  UsageBreakdown,
-  UsageSideRail,
-  UsageSummaryStrip,
-  usageDimensions,
+  stackedUsageSeries,
+  usageRangeOptions,
+  usageRangeQuery,
   type UsageDimension,
-  type UsageSideTab
-} from "./usageDashboard";
-
-const rangeOptions = [
-  { value: "1", label: "24h" },
-  { value: "7", label: "7d" },
-  { value: "30", label: "30d" },
-  { value: "90", label: "90d" }
-] as const;
+  type UsageRangeKey
+} from "./usageAnalytics";
+import { UsageBreakdownTable, UsageDimensionTabs, formatDurationMs } from "./usageBreakdown";
 
 const metricOptions = [
-  { value: "cost", label: "Spend" },
   { value: "tokens", label: "Tokens" },
   { value: "requests", label: "Requests" }
 ] as const;
 
-type RangeDays = (typeof rangeOptions)[number]["value"];
-type ChartMetric = (typeof metricOptions)[number]["value"];
-type RequestsResponse = Awaited<ReturnType<typeof fetchRequests>>;
-type UsersResponse = Awaited<ReturnType<typeof fetchUsers>>;
+type UsageChartMetric = (typeof metricOptions)[number]["value"];
 
 export function UsagePage() {
-  const [rangeDays, setRangeDays] = useState<RangeDays>("30");
-  const [metric, setMetric] = useState<ChartMetric | null>(null);
-  const [sideTab, setSideTab] = useState<UsageSideTab>("users");
-  const [dimension, setDimension] = useState<UsageDimension>("route");
-  const queries = useQueries({
+  const [range, setRange] = useState<UsageRangeKey>("30");
+  const [anchor, setAnchor] = useState(() => new Date());
+  const [metric, setMetric] = useState<UsageChartMetric>("tokens");
+  const [dimension, setDimension] = useState<UsageDimension>("model");
+  const { start, end, interval } = usageRangeQuery(range, anchor);
+  const [usageQuery, timeseriesQuery, usersQuery, apiKeysQuery] = useQueries({
     queries: [
-      ...usageDimensions.map(({ value }) => ({ queryKey: ["usage", value], queryFn: () => fetchUsage(value) })),
-      { queryKey: ["requests"], queryFn: fetchRequests },
-      { queryKey: ["users"], queryFn: fetchUsers }
+      {
+        queryKey: ["usage", dimension, start, end],
+        queryFn: () => fetchUsage(dimension, { start, end }),
+        placeholderData: keepPreviousData
+      },
+      {
+        queryKey: ["usage-timeseries", dimension, start, end, interval],
+        queryFn: () => fetchUsageTimeseries(dimension, { start, end, interval }),
+        placeholderData: keepPreviousData
+      },
+      { queryKey: ["users"], queryFn: fetchUsers },
+      { queryKey: ["api-keys"], queryFn: fetchApiKeys }
     ]
   });
-  const loading = queries.some((query) => query.isLoading);
-  const error = queries.find((query) => query.error)?.error;
-  const usageResponses = queries.slice(0, usageDimensions.length).map((query) => query.data).filter((item): item is UsageResponse => Boolean(item));
-  const requestsResponse = queries[usageDimensions.length].data as RequestsResponse | undefined;
-  const usersResponse = queries[usageDimensions.length + 1].data as UsersResponse | undefined;
-  const requests = requestsResponse?.data ?? [];
-  const usersData = usersResponse?.data ?? [];
+  const loading = (usageQuery.isLoading || timeseriesQuery.isLoading) && !usageQuery.data;
+  const error = usageQuery.error ?? timeseriesQuery.error;
 
-  if (loading) return <PageSkeleton blocks={[420, 260]} />;
+  if (loading) return <PageSkeleton blocks={[460, 260]} />;
   if (error) return <PageState title="Usage" label={error.message} />;
-  if (usageResponses.length === 0) return <PageState title="Usage" label="No usage data" />;
 
-  const totals = usageResponses[0].totals;
-  const days = Number(rangeDays);
-  // Spend is the lead metric, but fall back to tokens while pricing is unset and every cost is $0.
-  const chartMetric = metric ?? (totals.cost.selected > 0 ? "cost" : "tokens");
-  const chartSeries = seriesFromRequests(requests, chartMetric, days);
-  const baselineSeries = chartMetric === "cost" ? seriesFromRequests(requests, "baseline", days) : [];
-  const showBaseline = baselineSeries.some((point) => point.value > 0);
-  const chartFormatter = metricFormatter(chartMetric);
-  const modelRows = modelRowsFromUsage(usageResponses.find((response) => response.groupBy === "model")?.data ?? []);
-  const usersById = new Map(usersData.map((user) => [user.userId, user]));
-  const users = topUsersFromUsage(usageResponses.find((response) => response.groupBy === "user")?.data ?? [], usersById);
-  const refresh = () => queries.forEach((query) => void query.refetch());
+  const usage = usageQuery.data;
+  const timeseries = timeseriesQuery.data;
+  if (!usage || !timeseries) return <PageState title="Usage" label="No usage data" />;
+
+  const totals = usage.totals;
+  const lookups = {
+    usersById: new Map((usersQuery.data?.data ?? []).map((user) => [user.userId, user])),
+    apiKeysById: new Map((apiKeysQuery.data?.data ?? []).map((key) => [key.id, key]))
+  };
+  const { series, rows } = stackedUsageSeries(timeseries, dimension, metric, lookups);
+  const breakdownRows = usage.data;
+  const refresh = () => setAnchor(new Date());
   const exportUsage = () => {
-    downloadJson("proxy-usage.json", { totals, usage: usageResponses, requests });
+    downloadJson("proxy-usage.json", { range: { start, end }, usage, timeseries });
   };
 
   return (
     <div className="page page-enter">
-      <div className="usage-console-layout">
-        <GlassCard className="usage-primary">
-          <div className="card-head">
-            <div>
-              <div className="card-title">Total spend<span className="usage-scope-note">all time</span></div>
-              <div className="stat-value big">{formatMoney(totals.cost.selected)}</div>
-              <div className="row gap-8 usage-spend-sub">
-                <span className="badge badge-accent">{formatMoney(totals.cost.savings)} saved</span>
-                <span className="faint">vs {formatMoney(totals.cost.baseline)} baseline</span>
-              </div>
-            </div>
-            <div className="row gap-8">
-              <Segmented options={rangeOptions} value={rangeDays} onChange={setRangeDays} />
-              <button className="btn btn-icon" type="button" aria-label="Refresh" onClick={refresh}><RefreshCw /></button>
-              <button className="btn btn-icon" type="button" aria-label="Export" onClick={exportUsage}><Download /></button>
+      <GlassCard className="usage-primary">
+        <div className="card-head">
+          <div>
+            <div className="card-title">Tokens<span className="usage-scope-note">{rangeLabel(range)}</span></div>
+            <div className="stat-value big">{formatCompact(totals.usage.totalTokens)}</div>
+            <div className="row gap-8 usage-spend-sub">
+              <span className="badge">{formatInteger(totals.requestCount)} requests</span>
+              <span className="faint">
+                {totals.requestCount > 0 ? `${formatCompact(totals.usage.totalTokens / totals.requestCount)} tok avg / request` : "no requests in range"}
+              </span>
             </div>
           </div>
-          <div className="chart-controls">
-            <Segmented options={metricOptions} value={chartMetric} onChange={setMetric} />
-            {showBaseline ? (
-              <div className="chart-legend">
-                <span><i className="legend-bar" />Spend</span>
-                <span><i className="legend-baseline" />Baseline</span>
-              </div>
-            ) : null}
+          <div className="row gap-8">
+            <Segmented options={usageRangeOptions} value={range} onChange={setRange} />
+            <button className="btn btn-icon" type="button" aria-label="Refresh" onClick={refresh}><RefreshCw /></button>
+            <button className="btn btn-icon" type="button" aria-label="Export" onClick={exportUsage}><Download /></button>
           </div>
-          <SpendBaselineChart
-            data={chartSeries}
-            baseline={baselineSeries}
-            height={280}
-            valueFormatter={chartFormatter}
-            tickFormatter={chartMetric === "cost" ? formatCompactMoney : formatCompact}
-            zeroNote={zeroNoteFor(chartMetric)}
+        </div>
+        <div className="chart-controls">
+          <Segmented options={metricOptions} value={metric} onChange={setMetric} />
+          <ChartLegend series={series} />
+        </div>
+        <StackedBarsChart
+          data={rows}
+          series={series}
+          height={280}
+          valueFormatter={formatCompact}
+          tickFormatter={formatCompact}
+          zeroNote={metric === "tokens" ? "No tokens recorded in this window" : "No requests in this window"}
+        />
+        <div className="sep" />
+        <div className="usage-summary-strip cols-6">
+          <Summary label="Input" value={formatCompact(totals.usage.inputTokens)} />
+          <Summary label="Cached" value={formatCompact(totals.usage.cachedInputTokens)} />
+          <Summary label="Output" value={formatCompact(totals.usage.outputTokens)} />
+          <Summary label="Reasoning" value={formatCompact(totals.usage.reasoningTokens)} />
+          <Summary label="p95 latency" value={totals.latency.p95Ms === null ? "—" : formatDurationMs(totals.latency.p95Ms)} />
+          <Summary
+            label="Failure rate"
+            value={formatPercent(totals.failureRate)}
+            tone={totals.failureRate > 0 ? "danger-text" : undefined}
           />
-          <div className="sep" />
-          <UsageSummaryStrip totals={totals} />
-        </GlassCard>
+        </div>
+      </GlassCard>
 
-        <UsageSideRail totals={totals} sideTab={sideTab} users={users} modelRows={modelRows} onSideTab={setSideTab} />
-      </div>
-
-      <UsageBreakdown responses={usageResponses} dimension={dimension} usersById={usersById} onDimension={setDimension} />
+      <section className="usage-breakdown">
+        <UsageDimensionTabs dimension={dimension} onDimension={setDimension} />
+        <UsageBreakdownTable mode="tokens" dimension={dimension} rows={breakdownRows} totals={totals} lookups={lookups} />
+      </section>
     </div>
   );
 }
 
-function metricFormatter(metric: ChartMetric) {
-  if (metric === "cost") return formatMoney;
-  if (metric === "tokens") return formatCompact;
-  return formatInteger;
+function Summary({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div>
+      <div className="card-title">{label}</div>
+      <strong className={tone}>{value}</strong>
+    </div>
+  );
 }
 
-function zeroNoteFor(metric: ChartMetric) {
-  if (metric === "cost") return "No spend recorded in this window — model pricing may be unset";
-  if (metric === "tokens") return "No tokens recorded in this window";
-  return "No requests in this window";
+function rangeLabel(range: UsageRangeKey) {
+  const option = usageRangeOptions.find((item) => item.value === range);
+  return `last ${option?.label ?? range}`;
 }

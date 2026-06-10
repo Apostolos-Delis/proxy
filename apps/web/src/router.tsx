@@ -2,6 +2,7 @@ import { createRootRouteWithContext, createRoute, createRouter } from "@tanstack
 
 import { LoginPage, requireAuth, type RouterContext } from "./auth";
 import { BillingPage } from "./billingPage";
+import { CostPage } from "./costPage";
 import { InvitePage } from "./invitePage";
 import { KeysPage } from "./keysPage";
 import { OverviewPage } from "./overviewPage";
@@ -45,6 +46,13 @@ const usageRoute = createRoute({
   path: "/usage",
   beforeLoad: requireAuth,
   component: UsagePage
+});
+
+const costRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/cost",
+  beforeLoad: requireAuth,
+  component: CostPage
 });
 
 const promptsRoute = createRoute({
@@ -143,6 +151,7 @@ const routeTree = rootRoute.addChildren([
   inviteRoute,
   indexRoute,
   usageRoute,
+  costRoute,
   promptsRoute,
   promptDetailRoute,
   sessionsRoute,

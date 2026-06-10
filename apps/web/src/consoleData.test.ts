@@ -24,6 +24,7 @@ function usageGroup(key: string, totalTokens: number): UsageGroup {
     retriedRequests: 0,
     failureRate: 0,
     retryRate: 0,
+    latency: { averageMs: null, p95Ms: null },
     usage: { inputTokens: totalTokens, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0, totalTokens },
     cost: { selected: 0, baseline: 0, savings: 0 }
   };

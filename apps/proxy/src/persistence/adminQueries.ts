@@ -54,6 +54,11 @@ export type UsageAnalyticsFilters = {
   end?: string;
 };
 
+export type UsageTimeseriesFilters = UsageAnalyticsFilters & {
+  interval?: string;
+  limit?: number;
+};
+
 export class AdminQueryService {
   constructor(
     private readonly db: PromptProxyDbSession,
@@ -214,7 +219,7 @@ export class AdminQueryService {
     }
     const data = [...groups.values()]
       .map(finalizeUsageGroup)
-      .sort((left, right) => right.cost.selected - left.cost.selected);
+      .sort(compareUsageGroups);
     return {
       groupBy,
       data,
@@ -222,6 +227,65 @@ export class AdminQueryService {
         addUsageRequest(group, request);
         return group;
       }, emptyUsageGroup("total")))
+    };
+  }
+
+  async usageTimeseries(filters: UsageTimeseriesFilters = {}) {
+    const requestRows = await this.requestRowsForUsage(filters);
+    const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
+    const groupBy = usageGroupBy(filters.groupBy);
+    const interval = usageInterval(filters.interval);
+    const window = timeseriesWindow(requestSummaries, filters, interval);
+    const limit = timeseriesGroupLimit(filters.limit);
+
+    const groupTotals = new Map<string, UsageGroup>();
+    for (const request of requestSummaries) {
+      const key = usageGroupKey(request, groupBy);
+      const group = groupTotals.get(key) ?? emptyUsageGroup(key);
+      addUsageRequest(group, request);
+      groupTotals.set(key, group);
+    }
+    const ranked = [...groupTotals.values()].sort(compareUsageGroups);
+    const keptKeys = new Set(ranked.slice(0, limit).map((group) => group.key));
+    const collapseOthers = ranked.length > limit;
+
+    const points = new Map<number, { totals: UsageGroup; groups: Map<string, UsageGroup> }>();
+    for (let ts = window.start; ts <= window.end; ts += intervalMs(interval)) {
+      points.set(ts, { totals: emptyUsageGroup("total"), groups: new Map() });
+    }
+    for (const request of requestSummaries) {
+      const ts = bucketStart(timestampFromIso(request.createdAt), interval);
+      const point = points.get(ts);
+      if (!point) continue;
+      const groupKey = usageGroupKey(request, groupBy);
+      const key = keptKeys.has(groupKey) ? groupKey : OTHER_GROUP_KEY;
+      const group = point.groups.get(key) ?? emptyUsageGroup(key);
+      addUsageRequest(point.totals, request);
+      addUsageRequest(group, request);
+      point.groups.set(key, group);
+    }
+
+    const groups = ranked.slice(0, limit);
+    if (collapseOthers) {
+      const other = emptyUsageGroup(OTHER_GROUP_KEY);
+      for (const group of ranked.slice(limit)) mergeUsageGroup(other, group);
+      groups.push(other);
+    }
+    return {
+      groupBy,
+      interval,
+      start: new Date(window.start).toISOString(),
+      end: new Date(window.end).toISOString(),
+      groups: groups.map(finalizeUsageGroup),
+      points: [...points.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([ts, point]) => ({
+          ts: new Date(ts).toISOString(),
+          totals: finalizeUsageGroup(point.totals),
+          groups: Object.fromEntries(
+            [...point.groups.entries()].map(([key, group]) => [key, finalizeUsageGroup(group)])
+          )
+        }))
     };
   }
 
@@ -958,6 +1022,7 @@ function requestSummary(row: {
     requestId: row.request.id,
     userId: row.request.userId ?? undefined,
     sessionId: row.request.sessionId ?? undefined,
+    apiKeyId: row.request.apiKeyId ?? undefined,
     surface: row.request.surface,
     requestedModel: row.request.requestedModel,
     finalRoute: row.decision?.finalRoute ?? undefined,
@@ -980,13 +1045,15 @@ function requestSummary(row: {
 }
 
 type RequestSummary = ReturnType<typeof requestSummary>;
-type UsageGroupBy = "user" | "provider" | "model" | "route" | "surface" | "session";
+type UsageGroupBy = "user" | "api_key" | "provider" | "model" | "route" | "surface" | "session";
+type UsageInterval = "hour" | "day";
 type UsageAggregate = ReturnType<typeof emptyUsageAggregate>;
 type UsageGroup = {
   key: string;
   requestCount: number;
   failedRequests: number;
   retriedRequests: number;
+  latenciesMs: number[];
   usage: ReturnType<typeof emptyUsage>;
   cost: {
     selected: number;
@@ -994,6 +1061,8 @@ type UsageGroup = {
     savings: number;
   };
 };
+
+const OTHER_GROUP_KEY = "__other__";
 
 function userIdsForRequestsAndSessions(requests: RequestSummary[], sessions: SessionRow[]) {
   return [
@@ -1123,6 +1192,7 @@ function stringFromMetadata(metadata: unknown, key: string) {
 function usageGroupBy(value: string | undefined): UsageGroupBy {
   if (
     value === "user" ||
+    value === "api_key" ||
     value === "provider" ||
     value === "model" ||
     value === "route" ||
@@ -1136,6 +1206,7 @@ function usageGroupBy(value: string | undefined): UsageGroupBy {
 
 function usageGroupKey(request: RequestSummary, groupBy: UsageGroupBy) {
   if (groupBy === "user") return request.userId ?? "unknown";
+  if (groupBy === "api_key") return request.apiKeyId ?? "unknown";
   if (groupBy === "provider") return request.provider ?? "unknown";
   if (groupBy === "model") return request.selectedModel ?? "unknown";
   if (groupBy === "route") return request.finalRoute ?? "unknown";
@@ -1149,6 +1220,7 @@ function emptyUsageGroup(key: string): UsageGroup {
     requestCount: 0,
     failedRequests: 0,
     retriedRequests: 0,
+    latenciesMs: [],
     usage: emptyUsage(),
     cost: {
       selected: 0,
@@ -1162,6 +1234,7 @@ function addUsageRequest(group: UsageGroup, request: RequestSummary) {
   group.requestCount += 1;
   if (request.terminalStatus === "failed") group.failedRequests += 1;
   if (request.attemptCount > 1) group.retriedRequests += 1;
+  if (request.latencyMs !== undefined && request.latencyMs >= 0) group.latenciesMs.push(request.latencyMs);
   group.usage.inputTokens += request.usage.inputTokens;
   group.usage.cachedInputTokens += request.usage.cachedInputTokens;
   group.usage.outputTokens += request.usage.outputTokens;
@@ -1172,6 +1245,21 @@ function addUsageRequest(group: UsageGroup, request: RequestSummary) {
   group.cost.savings += request.savings;
 }
 
+function mergeUsageGroup(target: UsageGroup, source: UsageGroup) {
+  target.requestCount += source.requestCount;
+  target.failedRequests += source.failedRequests;
+  target.retriedRequests += source.retriedRequests;
+  target.latenciesMs.push(...source.latenciesMs);
+  target.usage.inputTokens += source.usage.inputTokens;
+  target.usage.cachedInputTokens += source.usage.cachedInputTokens;
+  target.usage.outputTokens += source.usage.outputTokens;
+  target.usage.reasoningTokens += source.usage.reasoningTokens;
+  target.usage.totalTokens += source.usage.totalTokens;
+  target.cost.selected += source.cost.selected;
+  target.cost.baseline += source.cost.baseline;
+  target.cost.savings += source.cost.savings;
+}
+
 function finalizeUsageGroup(group: UsageGroup) {
   return {
     key: group.key,
@@ -1180,9 +1268,64 @@ function finalizeUsageGroup(group: UsageGroup) {
     retriedRequests: group.retriedRequests,
     failureRate: group.requestCount === 0 ? 0 : group.failedRequests / group.requestCount,
     retryRate: group.requestCount === 0 ? 0 : group.retriedRequests / group.requestCount,
+    latency: latencySummary(group.latenciesMs),
     usage: group.usage,
     cost: group.cost
   };
+}
+
+/** Spend ranks groups; tokens and request counts break ties while pricing is unset. */
+function compareUsageGroups(
+  left: { requestCount: number; usage: { totalTokens: number }; cost: { selected: number } },
+  right: { requestCount: number; usage: { totalTokens: number }; cost: { selected: number } }
+) {
+  return (right.cost.selected - left.cost.selected) ||
+    (right.usage.totalTokens - left.usage.totalTokens) ||
+    (right.requestCount - left.requestCount);
+}
+
+function latencySummary(latenciesMs: number[]) {
+  if (latenciesMs.length === 0) return { averageMs: null, p95Ms: null };
+  const sorted = [...latenciesMs].sort((left, right) => left - right);
+  const average = sorted.reduce((sum, value) => sum + value, 0) / sorted.length;
+  const p95Index = Math.max(0, Math.ceil(sorted.length * 0.95) - 1);
+  return {
+    averageMs: Math.round(average),
+    p95Ms: Math.round(sorted[p95Index])
+  };
+}
+
+function usageInterval(value: string | undefined): UsageInterval {
+  return value === "hour" ? "hour" : "day";
+}
+
+function intervalMs(interval: UsageInterval) {
+  return interval === "hour" ? 3_600_000 : 86_400_000;
+}
+
+/** UTC bucket floor; hour and day intervals both align with the epoch. */
+function bucketStart(ts: number, interval: UsageInterval) {
+  const step = intervalMs(interval);
+  return ts - (ts % step);
+}
+
+const MAX_TIMESERIES_BUCKETS = 400;
+
+function timeseriesWindow(requests: RequestSummary[], filters: UsageTimeseriesFilters, interval: UsageInterval) {
+  const requestTimes = requests
+    .map((request) => timestampFromIso(request.createdAt))
+    .filter((time) => Number.isFinite(time) && time > 0);
+  const end = bucketStart(dateValue(filters.end)?.getTime() ?? Date.now(), interval);
+  const earliest = requestTimes.length > 0 ? Math.min(...requestTimes) : end;
+  const start = bucketStart(dateValue(filters.start)?.getTime() ?? earliest, interval);
+  const step = intervalMs(interval);
+  const clampedStart = Math.max(Math.min(start, end), end - (MAX_TIMESERIES_BUCKETS - 1) * step);
+  return { start: clampedStart, end };
+}
+
+function timeseriesGroupLimit(value: number | undefined) {
+  if (!value || !Number.isFinite(value)) return 8;
+  return Math.max(1, Math.min(25, Math.floor(value)));
 }
 
 function latestAttemptsByRequest(attempts: ProviderAttemptRow[]) {

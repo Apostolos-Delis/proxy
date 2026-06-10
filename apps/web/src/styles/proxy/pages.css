@@ -214,6 +214,67 @@
   font-variant-numeric: tabular-nums;
 }
 
+.usage-summary-strip.cols-6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.usage-summary-strip.cols-6 > div {
+  padding: 0 18px;
+}
+
+.usage-summary-strip.cols-6 strong {
+  font-size: 20px;
+}
+
+.usage-summary-strip .stat-sub {
+  margin-top: 4px;
+}
+
+.usage-key-cell {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.usage-key-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--glass);
+  color: var(--fg-muted);
+}
+
+.usage-key-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.usage-key-name {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.usage-key-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-key-name em {
+  flex: none;
+  color: var(--danger);
+  font-size: 11px;
+  font-style: normal;
+}
+
 .usage-breakdown {
   display: grid;
   gap: 16px;

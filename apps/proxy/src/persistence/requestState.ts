@@ -54,6 +54,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
           organizationId,
           userId: routeContext?.userId,
           sessionId,
+          apiKeyId: routeContext?.apiKeyId,
           surface: routeContext?.surface ?? "openai-responses",
           idempotencyKey,
           requestedModel: routeContext?.requestedModel ?? "unknown",
@@ -167,6 +168,7 @@ export async function persistRequestReceived(tx: PromptProxyTransaction, event: 
   const userId = stringValue(payload.userId);
   const surface = surfaceValue(payload.surface);
   const sessionId = stringValue(payload.sessionId);
+  const apiKeyId = stringValue(payload.apiKeyId);
   await ensureUser(tx, userId);
   const dbSessionId = await ensureSession(tx, {
     organizationId: event.tenantId,
@@ -183,6 +185,7 @@ export async function persistRequestReceived(tx: PromptProxyTransaction, event: 
       organizationId: event.tenantId,
       userId,
       sessionId: dbSessionId,
+      apiKeyId,
       surface: surface ?? "openai-responses",
       idempotencyKey: event.idempotencyKey ?? event.scopeId,
       requestedModel: stringValue(payload.requestedModel) ?? "unknown",
@@ -196,6 +199,7 @@ export async function persistRequestReceived(tx: PromptProxyTransaction, event: 
       set: {
         userId,
         sessionId: dbSessionId,
+        apiKeyId,
         requestedModel: stringValue(payload.requestedModel) ?? "unknown",
         inputHash: stringValue(payload.inputHash) ?? event.payloadHash,
         inputChars: numberValue(payload.inputChars) ?? 0,

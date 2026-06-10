@@ -73,6 +73,7 @@ export type RouteContext = {
   sessionId?: string;
   userId?: string;
   teamId?: string;
+  apiKeyId?: string;
   explicitAlias?: RouteName;
 };
 

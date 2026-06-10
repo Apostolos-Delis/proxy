@@ -364,6 +364,7 @@ export const requests = pgTable(
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     sessionId: text("session_id").references(() => agentSessions.id, { onDelete: "set null" }),
     turnId: text("turn_id").references(() => turns.id, { onDelete: "set null" }),
+    apiKeyId: text("api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
     surface: text("surface").$type<Surface>().notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     requestedModel: text("requested_model").notNull(),
@@ -387,7 +388,8 @@ export const requests = pgTable(
     index("requests_organization_created_idx").on(table.organizationId, table.createdAt),
     index("requests_session_id_idx").on(table.sessionId),
     index("requests_user_id_idx").on(table.organizationId, table.userId),
-    index("requests_routing_config_idx").on(table.organizationId, table.routingConfigId)
+    index("requests_routing_config_idx").on(table.organizationId, table.routingConfigId),
+    index("requests_api_key_idx").on(table.organizationId, table.apiKeyId)
   ]
 );
 
