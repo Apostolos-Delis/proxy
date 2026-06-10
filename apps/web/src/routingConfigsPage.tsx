@@ -12,6 +12,13 @@ import {
   type RoutingConfigSummary
 } from "./api";
 import { compactId, formatDateTime, formatInteger } from "./format";
+import {
+  applyDraft,
+  ConfigEditorFields,
+  draftError,
+  draftFromConfig,
+  type ConfigEditorDraft
+} from "./routingConfigEditor";
 import { Badge, DataTable, GlassCard, PageState, PageTitle, RouteBadge, StatusBadge } from "./ui";
 
 type CreateRoutingConfigForm = {
@@ -68,9 +75,22 @@ function CreateRoutingConfigPanel({ configs, onCreated }: { configs: RoutingConf
     sourceConfigId: sourceConfigs[0]?.id ?? ""
   }));
   const [errors, setErrors] = useState<CreateRoutingConfigErrors>({});
+  const [editorError, setEditorError] = useState<string>();
+  const [draftState, setDraftState] = useState<{ versionId: string; draft: ConfigEditorDraft } | null>(null);
   const queryClient = useQueryClient();
+  const sourceQuery = useQuery({
+    queryKey: ["routing-config", form.sourceConfigId],
+    queryFn: () => fetchRoutingConfigDetail(form.sourceConfigId),
+    enabled: Boolean(form.sourceConfigId)
+  });
+  const sourceVersion = sourceQuery.data?.versions.find((version) => version.active);
+  const draft = draftState && draftState.versionId === sourceVersion?.id
+    ? draftState.draft
+    : sourceVersion
+      ? draftFromConfig(sourceVersion.config)
+      : null;
   const createMutation = useMutation({
-    mutationFn: () => createFromForm(form),
+    mutationFn: (input: CreateRoutingConfigInput) => createRoutingConfig(input),
     onSuccess: (detail) => {
       queryClient.setQueryData<{ data: RoutingConfigSummary[] }>(["routing-configs"], (current) => ({
         data: [detail.config, ...(current?.data ?? []).filter((config) => config.id !== detail.config.id)]
@@ -78,6 +98,8 @@ function CreateRoutingConfigPanel({ configs, onCreated }: { configs: RoutingConf
       queryClient.invalidateQueries({ queryKey: ["routing-configs"] });
       setForm({ name: "", slug: "", description: "", sourceConfigId: sourceConfigs[0]?.id ?? "" });
       setErrors({});
+      setEditorError(undefined);
+      setDraftState(null);
       onCreated();
     }
   });
@@ -88,13 +110,28 @@ function CreateRoutingConfigPanel({ configs, onCreated }: { configs: RoutingConf
       <form onSubmit={(event) => {
         event.preventDefault();
         const nextErrors = validateCreateForm(form);
+        const nextEditorError = !sourceVersion || !draft
+          ? "Source routing config has no active version."
+          : draftError(draft);
         setErrors(nextErrors);
-        if (Object.keys(nextErrors).length === 0) createMutation.mutate();
+        setEditorError(nextEditorError);
+        if (Object.keys(nextErrors).length > 0 || nextEditorError || !sourceVersion || !draft) return;
+        const description = form.description.trim();
+        createMutation.mutate({
+          name: form.name.trim(),
+          slug: form.slug.trim(),
+          description: description || null,
+          config: {
+            ...applyDraft(sourceVersion.config, draft),
+            displayName: form.name.trim(),
+            description: description || undefined
+          }
+        });
       }}>
         <div className="card-head routing-create-head">
           <div>
             <div className="card-title"><Plus />New routing config</div>
-            <div className="faint">Clone an active config, then adjust versions from the detail page.</div>
+            <div className="faint">Clone an active config, then set its system prompt and route tier models.</div>
           </div>
           <button className="btn btn-primary" type="submit" disabled={disabled}>
             {createMutation.isPending ? "Creating" : "Create config"}
@@ -125,7 +162,17 @@ function CreateRoutingConfigPanel({ configs, onCreated }: { configs: RoutingConf
         <Field label="Description" error={errors.description}>
           <textarea value={form.description} onChange={(event) => setForm((value) => ({ ...value, description: event.target.value }))} rows={3} placeholder="When this routing config should be assigned." />
         </Field>
+        {sourceVersion && draft ? (
+          <ConfigEditorFields
+            draft={draft}
+            baseConfig={sourceVersion.config}
+            onChange={(next) => setDraftState({ versionId: sourceVersion.id, draft: next })}
+          />
+        ) : sourceQuery.isLoading ? (
+          <div className="faint">Loading source config…</div>
+        ) : null}
         {sourceConfigs.length === 0 ? <div className="action-error">Create requires an active source routing config.</div> : null}
+        {editorError ? <div className="action-error">{editorError}</div> : null}
         {createMutation.error ? <div className="action-error">{createMutation.error.message}</div> : null}
       </form>
     </GlassCard>
@@ -211,25 +258,6 @@ function RoutingConfigsEmpty() {
 function providerRouteLabel(provider: string, model: string | null, effort: string | null) {
   if (!model) return `${provider}: none`;
   return effort ? `${provider}: ${model} · ${effort}` : `${provider}: ${model}`;
-}
-
-async function createFromForm(form: CreateRoutingConfigForm) {
-  const source = await fetchRoutingConfigDetail(form.sourceConfigId);
-  const activeVersion = source.versions.find((version) => version.active);
-  if (!activeVersion) throw new Error("Source routing config has no active version.");
-
-  const description = form.description.trim();
-  const input: CreateRoutingConfigInput = {
-    name: form.name.trim(),
-    slug: form.slug.trim(),
-    description: description || null,
-    config: {
-      ...activeVersion.config,
-      displayName: form.name.trim(),
-      description: description || undefined
-    }
-  };
-  return createRoutingConfig(input);
 }
 
 function validateCreateForm(form: CreateRoutingConfigForm) {

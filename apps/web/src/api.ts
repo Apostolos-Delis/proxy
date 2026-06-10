@@ -406,6 +406,7 @@ export type RoutingConfigDocument = {
   schemaVersion: number;
   displayName: string;
   description?: string;
+  systemPrompt?: string;
   classifier: {
     provider: string;
     model: string;
@@ -498,6 +499,16 @@ export async function createRoutingConfig(input: CreateRoutingConfigInput) {
     method: "POST",
     body: JSON.stringify(input)
   });
+}
+
+export async function createRoutingConfigVersion(configId: string, config: RoutingConfigDocument) {
+  return fetchJson<RoutingConfigDetail>(
+    `/admin/routing-configs/${encodeURIComponent(configId)}/versions`,
+    {
+      method: "POST",
+      body: JSON.stringify({ config })
+    }
+  );
 }
 
 export async function activateRoutingConfigVersion(configId: string, versionId: string) {

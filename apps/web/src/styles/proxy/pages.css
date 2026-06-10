@@ -760,6 +760,26 @@
   font-size: 12px;
 }
 
+.route-matrix-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.routing-config-edit-form {
+  display: grid;
+  gap: 16px;
+}
+
+.route-model-field input {
+  font-family: var(--mono);
+  font-size: 13px;
+  min-width: 170px;
+}
+
+.route-model-field > span {
+  font-weight: 500;
+}
+
 .route-matrix-preview {
   display: grid;
   gap: 7px;
