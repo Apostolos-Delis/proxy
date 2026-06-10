@@ -1051,6 +1051,49 @@
 .json-number { color: var(--json-number); }
 .json-literal { color: var(--json-literal); }
 
+/* json editor: highlighted pre stacked under a transparent-text textarea */
+.json-editor {
+  display: grid;
+  min-height: 380px;
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--code-bg);
+}
+
+.json-editor:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.json-editor pre,
+.json-editor textarea {
+  grid-area: 1 / 1;
+  margin: 0;
+  min-width: 0;
+  padding: 12px 13px;
+  border: 0;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.json-editor pre {
+  color: var(--fg-muted);
+}
+
+.json-editor textarea {
+  resize: none;
+  overflow: hidden;
+  outline: none;
+  color: transparent;
+  caret-color: var(--fg);
+}
+
 .copy-button {
   display: inline-flex;
   align-items: center;
@@ -1694,27 +1737,6 @@
 .config-json-editor {
   display: grid;
   gap: 8px;
-}
-
-.config-json-editor textarea {
-  width: 100%;
-  min-width: 0;
-  min-height: 380px;
-  resize: vertical;
-  padding: 12px 13px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--code-bg);
-  color: var(--fg);
-  font-family: var(--mono);
-  font-size: 12.5px;
-  line-height: 1.6;
-}
-
-.config-json-editor textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-  outline: none;
 }
 
 .routing-configs-empty {

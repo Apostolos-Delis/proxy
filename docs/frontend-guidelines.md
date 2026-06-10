@@ -79,6 +79,11 @@ useEffect(() => {
 - Prefer full-width operational layouts over decorative hero sections or marketing cards.
 - Avoid one-off colors. Define route/provider/status colors as shared tokens or constants.
 
+## JSON Display & Editing
+
+- Anywhere the console displays or edits JSON, it must be syntax highlighted. Never render JSON in a plain `<pre>` or `<textarea>`.
+- Use the shared components in `apps/web/src/jsonView.tsx`: `JsonView` for read-only display (includes a copy button), `JsonEditor` for editable JSON (highlighted `<pre>` stacked under a transparent-text `<textarea>`).
+
 ## Dropdown Menus
 
 - Never render a native `<select>`. The OS draws its option popup with light system styling that cannot be themed and clashes with the dark console shell.

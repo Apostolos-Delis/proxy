@@ -39,6 +39,20 @@ export function JsonView({ value, maxHeight = 420 }: { value: unknown; maxHeight
   );
 }
 
+export function JsonEditor({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  const nodes = useMemo(() => highlightJson(value), [value]);
+  return (
+    <div className="json-editor">
+      <pre aria-hidden>{nodes}{"\n"}</pre>
+      <textarea
+        value={value}
+        spellCheck={false}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
 export function CopyButton({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   return (
