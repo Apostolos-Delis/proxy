@@ -83,7 +83,7 @@ export function KeysPage() {
       />
       {showCreate ? (
         <CreateApiKeyPanel
-          configs={configs}
+          configs={configs.filter((config) => !isDefaultConfig(config))}
           onCreated={(created) => setCreatedSecret(created.secret)}
           onShowSetup={() => setShowSetup(true)}
         />
@@ -264,6 +264,7 @@ function AssignmentMenu({ apiKey, configs, open, pending, onOpenChange, onAssign
   onAssign: (routingConfigId: string | null) => void;
 }) {
   const label = apiKey.routingConfig?.name ?? "Organization default";
+  const options = configs.filter((config) => !isDefaultConfig(config) || apiKey.routingConfigId === config.id);
   return (
     <div
       className="assignment-menu"
@@ -290,7 +291,7 @@ function AssignmentMenu({ apiKey, configs, open, pending, onOpenChange, onAssign
               <strong>Organization default</strong>
               <span>Clear key-specific routing</span>
             </button>
-            {configs.map((config) => (
+            {options.map((config) => (
               <button key={config.id} type="button" className={apiKey.routingConfigId === config.id ? "active" : ""} onClick={() => onAssign(config.id)}>
                 <strong>{config.name}</strong>
                 <span>v{config.activeVersion?.version ?? "?"} · {config.assignedApiKeyCount} keys</span>
@@ -305,6 +306,12 @@ function AssignmentMenu({ apiKey, configs, open, pending, onOpenChange, onAssign
 
 function isAssignableConfig(config: RoutingConfigSummary) {
   return config.status === "active" && Boolean(config.activeVersion);
+}
+
+// The slug-"default" config is what "Organization default" resolves to, so
+// listing it as a separate assignment target only duplicates the null option.
+function isDefaultConfig(config: RoutingConfigSummary) {
+  return config.slug === "default";
 }
 
 const apiKeyAdvancedFields: ConsoleTableAdvancedField<ApiKeySummary>[] = [
