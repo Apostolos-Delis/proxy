@@ -388,6 +388,7 @@ export type RoutingConfigSummary = {
   activeVersionId: string | null;
   activeVersion: RoutingConfigVersionSummary | null;
   routeMatrix: RoutingConfigRouteMatrixRow[];
+  systemPrompt: string | null;
   assignedApiKeyCount: number;
   createdAt: string;
   updatedAt: string;
@@ -686,7 +687,7 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     credentials: "include",
     headers: {
-      "content-type": "application/json",
+      ...(init.body === undefined ? {} : { "content-type": "application/json" }),
       ...init.headers
     }
   });

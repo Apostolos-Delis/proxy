@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Layers, PenLine } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -9,12 +9,14 @@ import {
   createRoutingConfigVersion,
   fetchRoutingConfigDetail,
   type RoutingConfigDetail,
-  type RoutingConfigDocument,
   type RoutingConfigVersionDetail
 } from "./api";
 import { compactId, formatDateTime, formatInteger } from "./format";
-import { applyDraft, ConfigEditorFields, draftError, draftFromConfig, draftsEqual } from "./routingConfigEditor";
-import { Badge, DataTable, GlassCard, JsonPanel, PageState, PageTitle, StatusBadge } from "./ui";
+import { ConfigApiKeysCard } from "./routing/keyAssignment";
+import { PromptEditors, RouteMatrixEditor } from "./routing/configEditorFields";
+import { ArchivePanel, VersionHistory } from "./routing/versionHistory";
+import { applyDraft, draftError, draftFromConfig, draftsEqual } from "./routingConfigEditor";
+import { GlassCard, JsonPanel, PageState, PageTitle, StatusBadge } from "./ui";
 
 export function RoutingConfigDetailPage({ configId }: { configId: string }) {
   const queryClient = useQueryClient();
@@ -42,18 +44,20 @@ export function RoutingConfigDetailPage({ configId }: { configId: string }) {
   if (!query.data) return <PageState title="Routing config" label="No routing config data" />;
 
   const activeVersion = query.data.versions.find((version) => version.active);
-  const activeConfig = activeVersion?.config;
   return (
-    <div className="page page-enter">
+    <div className="page page-enter routing-detail-stack">
       <PageTitle
         title={query.data.config.name}
-        subtitle={query.data.config.description ?? compactId(query.data.config.id, 24)}
-        actions={<Link to="/routing-configs" className="btn"><ArrowLeft />All configs</Link>}
+        subtitle={query.data.config.description ?? "No description"}
+        actions={
+          <>
+            <StatusBadge status={query.data.config.status} />
+            <Link to="/routing-configs" className="btn"><ArrowLeft />All configs</Link>
+          </>
+        }
       />
-      <div className="routing-detail-grid">
-        <ConfigSummary detail={query.data} activeVersion={activeVersion} />
-        <ClassifierCard config={activeConfig} />
-      </div>
+      <FactsStrip detail={query.data} activeVersion={activeVersion} />
+      <ConfigApiKeysCard configId={configId} />
       {activeVersion ? <ConfigEditorCard key={activeVersion.id} configId={configId} version={activeVersion} /> : <MissingActiveConfig />}
       <VersionHistory
         versions={query.data.versions}
@@ -67,41 +71,46 @@ export function RoutingConfigDetailPage({ configId }: { configId: string }) {
         error={archiveMutation.error?.message}
         onArchive={() => archiveMutation.mutate()}
       />
-      {activeConfig ? <JsonPanel title="Active config JSON" value={activeConfig} /> : null}
+      {activeVersion ? <JsonPanel title="Active config JSON" value={activeVersion.config} /> : null}
     </div>
   );
 }
 
-function ConfigSummary({ detail, activeVersion }: { detail: RoutingConfigDetail; activeVersion?: RoutingConfigVersionDetail }) {
+function FactsStrip({ detail, activeVersion }: { detail: RoutingConfigDetail; activeVersion?: RoutingConfigVersionDetail }) {
+  const classifier = activeVersion?.config.classifier;
   return (
-    <GlassCard>
-      <div className="card-head">
-        <div className="card-title">Active version</div>
-        <StatusBadge status={detail.config.status} />
-      </div>
-      <div className="routing-summary-grid">
-        <Metric label="Version" value={activeVersion ? `v${activeVersion.version}` : "none"} detail={activeVersion ? compactId(activeVersion.configHash, 12) : undefined} />
-        <Metric label="API keys" value={formatInteger(detail.config.assignedApiKeyCount)} detail={detail.config.assignedApiKeyCount === 0 ? "unused" : "assigned"} />
-        <Metric label="Updated" value={formatDateTime(detail.config.updatedAt)} detail={detail.config.slug === "default" ? "default config" : detail.config.slug} />
-      </div>
+    <GlassCard className="config-facts">
+      <Fact
+        label="Active version"
+        value={activeVersion ? `v${activeVersion.version}` : "none"}
+        detail={activeVersion ? `hash ${compactId(activeVersion.configHash, 8)}` : "activate a version below"}
+      />
+      <Fact
+        label="API keys"
+        value={formatInteger(detail.config.assignedApiKeyCount)}
+        detail={detail.config.assignedApiKeyCount === 0 ? "unused" : "assigned"}
+      />
+      <Fact
+        label="Classifier"
+        value={classifier?.model ?? "none"}
+        detail={classifier ? `${classifier.provider} · ${formatInteger(classifier.maxAttempts)} attempts` : undefined}
+      />
+      <Fact
+        label="Updated"
+        value={formatDateTime(detail.config.updatedAt)}
+        detail={detail.config.slug}
+      />
     </GlassCard>
   );
 }
 
-function ClassifierCard({ config }: { config?: RoutingConfigDocument }) {
-  if (!config) return null;
+function Fact({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
-    <GlassCard>
-      <div className="card-head">
-        <div className="card-title">Classifier</div>
-        <Badge variant="accent">{config.classifier.provider}</Badge>
-      </div>
-      <div className="routing-summary-grid">
-        <Metric label="Model" value={config.classifier.model} />
-        <Metric label="Attempts" value={formatInteger(config.classifier.maxAttempts)} detail={`${formatInteger(config.classifier.timeoutMs)}ms timeout`} />
-        <Metric label="Excerpt" value={config.classifier.allowRedactedExcerpt ? "allowed" : "disabled"} detail={String(config.classifier.structuredOutput?.mode ?? "json_schema")} />
-      </div>
-    </GlassCard>
+    <div className="routing-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {detail ? <small>{detail}</small> : null}
+    </div>
   );
 }
 
@@ -135,7 +144,7 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
   const error = validationError ?? saveMutation.error?.message;
 
   return (
-    <GlassCard className="table-wrap routing-configs-card">
+    <GlassCard className="routing-configs-card">
       <form className="routing-config-edit-form" onSubmit={(event) => {
         event.preventDefault();
         const nextError = draftError(draft);
@@ -144,7 +153,7 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
       }}>
         <div className="card-head">
           <div>
-            <div className="card-title">Route tier models &amp; system prompt</div>
+            <div className="card-title"><PenLine />Prompts &amp; route models</div>
             <div className="faint">Saving creates a new version from v{version.version} · max route {String(version.config.limits.maxRoute ?? "unknown")}</div>
           </div>
           <div className="row gap-8">
@@ -161,86 +170,11 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
             </button>
           </div>
         </div>
-        <ConfigEditorFields draft={draft} baseConfig={version.config} onChange={setDraft} />
+        <PromptEditors draft={draft} onChange={setDraft} />
+        <div className="editor-subhead"><Layers />Route tier models</div>
+        <RouteMatrixEditor draft={draft} baseConfig={version.config} onChange={setDraft} />
         {error ? <div className="action-error">{error}</div> : null}
       </form>
     </GlassCard>
-  );
-}
-
-function VersionHistory({ versions, pendingVersionId, onActivate, error }: {
-  versions: RoutingConfigVersionDetail[];
-  pendingVersionId?: string;
-  onActivate: (versionId: string) => void;
-  error?: string;
-}) {
-  return (
-    <GlassCard className="table-wrap routing-configs-card">
-      <div className="card-head">
-        <div className="card-title">Version history</div>
-        {error ? <span className="action-error">{error}</span> : null}
-      </div>
-      <DataTable>
-        <thead><tr><th>Version</th><th>Status</th><th>Hash</th><th>Created</th><th>Activated</th><th>Action</th></tr></thead>
-        <tbody>{versions.map((version) => <VersionRow key={version.id} version={version} pending={pendingVersionId === version.id} onActivate={onActivate} />)}</tbody>
-      </DataTable>
-    </GlassCard>
-  );
-}
-
-function VersionRow({ version, pending, onActivate }: {
-  version: RoutingConfigVersionDetail;
-  pending: boolean;
-  onActivate: (versionId: string) => void;
-}) {
-  return (
-    <tr>
-      <td><span className="mono">v{version.version}</span></td>
-      <td>{version.active ? <Badge variant="success" dot>Active</Badge> : <StatusBadge status={version.status} />}</td>
-      <td><span className="mono faint">{compactId(version.configHash, 12)}</span></td>
-      <td>{formatDateTime(version.createdAt)}</td>
-      <td>{version.activatedAt ? formatDateTime(version.activatedAt) : <span className="faint">never</span>}</td>
-      <td>
-        {version.active ? (
-          <span className="row gap-8 faint"><CheckCircle2 />Current</span>
-        ) : (
-          <button className="btn btn-sm" type="button" disabled={pending || version.status === "archived"} onClick={() => onActivate(version.id)}>
-            {pending ? "Activating" : "Activate"}
-          </button>
-        )}
-      </td>
-    </tr>
-  );
-}
-
-function ArchivePanel({ detail, pending, error, onArchive }: {
-  detail: RoutingConfigDetail;
-  pending: boolean;
-  error?: string;
-  onArchive: () => void;
-}) {
-  const disabled = pending || detail.config.status === "archived" || detail.config.assignedApiKeyCount > 0;
-  return (
-    <GlassCard>
-      <div className="card-head">
-        <div>
-          <div className="card-title"><Archive />Archive config</div>
-          <div className="faint">Only unused configs can be archived.</div>
-        </div>
-        <button className="btn" type="button" disabled={disabled} onClick={onArchive}>{pending ? "Archiving" : "Archive"}</button>
-      </div>
-      {detail.config.assignedApiKeyCount > 0 ? <div className="faint">{formatInteger(detail.config.assignedApiKeyCount)} API keys still use this config.</div> : null}
-      {error ? <div className="action-error">{error}</div> : null}
-    </GlassCard>
-  );
-}
-
-function Metric({ label, value, detail }: { label: string; value: string; detail?: string }) {
-  return (
-    <div className="routing-metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      {detail ? <small>{detail}</small> : null}
-    </div>
   );
 }
