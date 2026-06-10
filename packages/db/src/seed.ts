@@ -159,6 +159,59 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
       }
     });
 
+  const sandboxOrganizationId = `${options.organizationId}-sandbox`;
+  await db
+    .insert(organizations)
+    .values({
+      id: sandboxOrganizationId,
+      slug: slug(sandboxOrganizationId),
+      name: `${options.organizationId} Sandbox`
+    })
+    .onConflictDoUpdate({
+      target: organizations.id,
+      set: {
+        slug: slug(sandboxOrganizationId),
+        name: `${options.organizationId} Sandbox`,
+        updatedAt: now
+      }
+    });
+
+  await db
+    .insert(organizationSettings)
+    .values({
+      organizationId: sandboxOrganizationId,
+      promptCaptureMode: "raw_text",
+      retentionDays: 30,
+      settings: {
+        seeded: true
+      }
+    })
+    .onConflictDoUpdate({
+      target: organizationSettings.organizationId,
+      set: {
+        promptCaptureMode: "raw_text",
+        retentionDays: 30,
+        updatedAt: now
+      }
+    });
+
+  await db
+    .insert(organizationMembers)
+    .values({
+      organizationId: sandboxOrganizationId,
+      userId: options.userId,
+      role: "owner",
+      status: "active"
+    })
+    .onConflictDoUpdate({
+      target: [organizationMembers.organizationId, organizationMembers.userId],
+      set: {
+        role: "owner",
+        status: "active",
+        updatedAt: now
+      }
+    });
+
   const providerRows = [
     {
       id: `${options.organizationId}:provider:openai`,

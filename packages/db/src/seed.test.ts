@@ -78,11 +78,24 @@ describe("database seed", () => {
       .select()
       .from(apiKeys)
       .where(eq(apiKeys.organizationId, "org_seed"));
+    const sandboxOrgRows = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, "org_seed-sandbox"));
+    const sandboxMemberRows = await db
+      .select()
+      .from(organizationMembers)
+      .where(eq(organizationMembers.organizationId, "org_seed-sandbox"));
     await client.close();
 
     expect(orgRows).toHaveLength(1);
     expect(userRows[0]?.email).toBe("seed@example.com");
     expect(memberRows).toHaveLength(1);
+    expect(sandboxOrgRows).toHaveLength(1);
+    expect(sandboxOrgRows[0]?.name).toBe("org_seed Sandbox");
+    expect(sandboxMemberRows).toEqual([
+      expect.objectContaining({ userId: "user_seed", role: "owner", status: "active" })
+    ]);
     expect(providerRows).toHaveLength(2);
     expect(modelRows).toHaveLength(7);
     expect(policyRows[0]?.name).toBe("default");

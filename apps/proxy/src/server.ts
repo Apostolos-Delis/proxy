@@ -22,6 +22,7 @@ import { LlmClassifier } from "./classifier.js";
 import { EmailService } from "./email.js";
 import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStateGate } from "./events.js";
 import { BudgetService, SessionRouteStore } from "./policy.js";
+import type { AdminSessionIdentity } from "./persistence/adminSessions.js";
 import { createPostgresPersistence } from "./persistence/index.js";
 import { routingConfigSnapshot } from "./persistence/routingConfig.js";
 import { RoutingConfigAdminError } from "./persistence/routingConfigAdmin.js";
@@ -89,10 +90,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   app.post("/api/auth/login", async (request, reply) => {
     const session = await adminAuth.login(request.body);
     reply.header("set-cookie", adminAuth.sessionCookie(session.token, session.expiresAt));
-    return {
-      user: session.identity,
-      organizationId: session.identity.organizationId
-    };
+    return authPayload(session.identity, persistence);
   });
 
   app.post("/api/auth/logout", async (request, reply) => {
@@ -103,10 +101,13 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
 
   app.get("/api/auth/me", async (request) => {
     const identity = await adminAuth.resolve(request.headers);
-    return {
-      user: identity,
-      organizationId: identity.organizationId
-    };
+    return authPayload(identity, persistence);
+  });
+
+  app.post("/api/auth/switch-organization", async (request, reply) => {
+    const session = await adminAuth.switchOrganization(request.headers, request.body);
+    reply.header("set-cookie", adminAuth.sessionCookie(session.token, session.expiresAt));
+    return authPayload(session.identity, persistence);
   });
 
   app.get("/v1/models", async () => ({
@@ -150,8 +151,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     return projections.routeQuality(events.listEvents());
   });
   app.get("/admin/overview", async (request) => {
-    await adminAuth.resolve(request.headers);
-    if (persistence) return persistence.adminQueries.overview();
+    const identity = await adminAuth.resolve(request.headers);
+    if (persistence) return persistence.adminQueries.forOrg(identity.organizationId).overview();
     const allEvents = events.listEvents();
     const usage = projections.usage(allEvents);
     const routeQuality = projections.routeQuality(allEvents);
@@ -169,26 +170,26 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     };
   });
   app.get("/admin/requests", async (request) => {
-    await adminAuth.resolve(request.headers);
-    if (persistence) return persistence.adminQueries.requests();
+    const identity = await adminAuth.resolve(request.headers);
+    if (persistence) return persistence.adminQueries.forOrg(identity.organizationId).requests();
     return {
       data: [...projections.usage(events.listEvents()).requests].reverse()
     };
   });
   app.get("/admin/api-keys", async (request) => {
-    await adminAuth.resolve(request.headers);
+    const identity = await adminAuth.resolve(request.headers);
     if (!persistence) throw notFound("api_keys_not_found");
-    return persistence.adminQueries.apiKeys();
+    return persistence.adminQueries.forOrg(identity.organizationId).apiKeys();
   });
   app.get("/admin/api-keys/:apiKeyId", async (request, reply) => {
-    await adminAuth.resolve(request.headers);
+    const identity = await adminAuth.resolve(request.headers);
     const params = request.params as { apiKeyId?: string };
     const apiKeyId = params.apiKeyId;
     if (!apiKeyId || !persistence) {
       reply.code(404).send({ error: "api_key_not_found" });
       return;
     }
-    const detail = await persistence.adminQueries.apiKeyDetail(apiKeyId);
+    const detail = await persistence.adminQueries.forOrg(identity.organizationId).apiKeyDetail(apiKeyId);
     if (!detail) {
       reply.code(404).send({ error: "api_key_not_found" });
       return;
@@ -210,16 +211,16 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         apiKeyId,
         body: request.body
       });
-      return persistence.adminQueries.apiKeyDetail(apiKeyId);
+      return persistence.adminQueries.forOrg(identity.organizationId).apiKeyDetail(apiKeyId);
     } catch (error) {
       if (sendRoutingConfigAdminError(error, reply)) return;
       throw error;
     }
   });
   app.get("/admin/routing-configs", async (request) => {
-    await adminAuth.resolve(request.headers);
+    const identity = await adminAuth.resolve(request.headers);
     if (!persistence) return { data: [] };
-    return persistence.adminQueries.routingConfigs();
+    return persistence.adminQueries.forOrg(identity.organizationId).routingConfigs();
   });
   app.post("/admin/routing-configs", async (request, reply) => {
     const identity = await adminAuth.resolve(request.headers);
@@ -231,21 +232,21 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         body: request.body
       });
       reply.code(201);
-      return persistence.adminQueries.routingConfigDetail(created.configId);
+      return persistence.adminQueries.forOrg(identity.organizationId).routingConfigDetail(created.configId);
     } catch (error) {
       if (sendRoutingConfigAdminError(error, reply)) return;
       throw error;
     }
   });
   app.get("/admin/routing-configs/:configId", async (request, reply) => {
-    await adminAuth.resolve(request.headers);
+    const identity = await adminAuth.resolve(request.headers);
     const params = request.params as { configId?: string };
     const configId = params.configId;
     if (!configId || !persistence) {
       reply.code(404).send({ error: "routing_config_not_found" });
       return;
     }
-    const detail = await persistence.adminQueries.routingConfigDetail(configId);
+    const detail = await persistence.adminQueries.forOrg(identity.organizationId).routingConfigDetail(configId);
     if (!detail) {
       reply.code(404).send({ error: "routing_config_not_found" });
       return;
@@ -268,7 +269,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         body: request.body
       });
       reply.code(201);
-      return persistence.adminQueries.routingConfigDetail(configId);
+      return persistence.adminQueries.forOrg(identity.organizationId).routingConfigDetail(configId);
     } catch (error) {
       if (sendRoutingConfigAdminError(error, reply)) return;
       throw error;
@@ -290,7 +291,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         configId,
         versionId
       });
-      return persistence.adminQueries.routingConfigDetail(configId);
+      return persistence.adminQueries.forOrg(identity.organizationId).routingConfigDetail(configId);
     } catch (error) {
       if (sendRoutingConfigAdminError(error, reply)) return;
       throw error;
@@ -310,18 +311,18 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         actorUserId: identity.userId,
         configId
       });
-      return persistence.adminQueries.routingConfigDetail(configId);
+      return persistence.adminQueries.forOrg(identity.organizationId).routingConfigDetail(configId);
     } catch (error) {
       if (sendRoutingConfigAdminError(error, reply)) return;
       throw error;
     }
   });
   app.get("/admin/requests/:requestId", async (request) => {
-    await adminAuth.resolve(request.headers);
+    const identity = await adminAuth.resolve(request.headers);
     const params = request.params as { requestId?: string };
     const requestId = params.requestId;
     if (!requestId) return { request: null, events: [] };
-    if (persistence) return persistence.adminQueries.requestDetail(requestId);
+    if (persistence) return persistence.adminQueries.forOrg(identity.organizationId).requestDetail(requestId);
     const allEvents = events.listEvents();
     const requestSummary = projections.usage(allEvents).requests.find((item) => item.requestId === requestId);
     return {
@@ -330,8 +331,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     };
   });
   app.get("/admin/prompts", async (request) => {
-    await adminAuth.resolve(request.headers);
-    if (persistence) return persistence.adminQueries.prompts(promptFilters(request.query));
+    const identity = await adminAuth.resolve(request.headers);
+    if (persistence) return persistence.adminQueries.forOrg(identity.organizationId).prompts(promptFilters(request.query));
     return { data: [], pagination: { limit: 50, offset: 0, count: 0 } };
   });
   app.get("/admin/prompts/:artifactId", async (request, reply) => {
@@ -342,7 +343,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       reply.code(404).send({ error: "prompt_artifact_not_found" });
       return;
     }
-    const detail = await persistence.adminQueries.promptDetail(artifactId);
+    const detail = await persistence.adminQueries.forOrg(identity.organizationId).promptDetail(artifactId);
     if (!detail) {
       reply.code(404).send({ error: "prompt_artifact_not_found" });
       return;
@@ -359,8 +360,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     return detail;
   });
   app.get("/admin/usage", async (request) => {
-    await adminAuth.resolve(request.headers);
-    if (persistence) return persistence.adminQueries.usage(usageFilters(request.query));
+    const identity = await adminAuth.resolve(request.headers);
+    if (persistence) return persistence.adminQueries.forOrg(identity.organizationId).usage(usageFilters(request.query));
     return {
       groupBy: "route",
       data: [],
@@ -383,19 +384,19 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     };
   });
   app.get("/admin/users", async (request) => {
-    await adminAuth.resolve(request.headers);
-    if (persistence) return persistence.adminQueries.users();
+    const identity = await adminAuth.resolve(request.headers);
+    if (persistence) return persistence.adminQueries.forOrg(identity.organizationId).users();
     return { data: [] };
   });
   app.get("/admin/users/:userId", async (request, reply) => {
-    await adminAuth.resolve(request.headers);
+    const identity = await adminAuth.resolve(request.headers);
     const params = request.params as { userId?: string };
     const userId = params.userId;
     if (!userId || !persistence) {
       reply.code(404).send({ error: "user_not_found" });
       return;
     }
-    const detail = await persistence.adminQueries.userDetail(userId);
+    const detail = await persistence.adminQueries.forOrg(identity.organizationId).userDetail(userId);
     if (!detail) {
       reply.code(404).send({ error: "user_not_found" });
       return;
@@ -403,19 +404,19 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     return detail;
   });
   app.get("/admin/sessions", async (request) => {
-    await adminAuth.resolve(request.headers);
-    if (persistence) return persistence.adminQueries.sessions();
+    const identity = await adminAuth.resolve(request.headers);
+    if (persistence) return persistence.adminQueries.forOrg(identity.organizationId).sessions();
     return { data: [] };
   });
   app.get("/admin/sessions/:sessionId", async (request, reply) => {
-    await adminAuth.resolve(request.headers);
+    const identity = await adminAuth.resolve(request.headers);
     const params = request.params as { sessionId?: string };
     const sessionId = params.sessionId;
     if (!sessionId || !persistence) {
       reply.code(404).send({ error: "session_not_found" });
       return;
     }
-    const detail = await persistence.adminQueries.sessionDetail(sessionId);
+    const detail = await persistence.adminQueries.forOrg(identity.organizationId).sessionDetail(sessionId);
     if (!detail) {
       reply.code(404).send({ error: "session_not_found" });
       return;
@@ -428,16 +429,16 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     return persistence.promptAccessAudit.list(identity.organizationId);
   });
   app.patch("/admin/settings/prompt-capture", async (request) => {
-    await adminAuth.resolve(request.headers);
+    const identity = await adminAuth.resolve(request.headers);
     if (!persistence) throw notFound("prompt_capture_settings_not_found");
     return persistence.promptArtifacts.configure({
-      organizationId: config.defaultOrganizationId,
+      organizationId: identity.organizationId,
       ...promptCaptureSettings(request.body)
     });
   });
   app.get("/admin/settings", async (request) => {
-    await adminAuth.resolve(request.headers);
-    return settingsResponse(config, await readSettingsFile(config.settingsPath), persistence);
+    const identity = await adminAuth.resolve(request.headers);
+    return settingsResponse(config, identity.organizationId, await readSettingsFile(config.settingsPath), persistence);
   });
   app.patch("/admin/settings", async (request, reply) => {
     const identity = await adminAuth.resolve(request.headers);
@@ -454,7 +455,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           retentionDays: settings.promptCapture.retentionDays
         });
       }
-      return settingsResponse(config, settings, persistence);
+      return settingsResponse(config, identity.organizationId, settings, persistence);
     } catch (error) {
       if (error instanceof Error && error.message === "settings_file_invalid_json") {
         reply.code(400).send({ error: "settings_file_invalid_json" });
@@ -747,13 +748,24 @@ async function resolveRoutingConfig(
     : undefined;
 }
 
+async function authPayload(identity: AdminSessionIdentity, persistence: AppPersistence | undefined) {
+  return {
+    user: identity,
+    organizationId: identity.organizationId,
+    organizations: persistence
+      ? await persistence.adminSessions.organizationsForUser(identity.userId)
+      : []
+  };
+}
+
 async function settingsResponse(
   config: AppConfig,
+  organizationId: string,
   fileSettings: ProxySettings,
   persistence: AppPersistence | undefined
 ) {
   const promptCapture = persistence
-    ? await persistence.promptArtifacts.settings(config.defaultOrganizationId)
+    ? await persistence.promptArtifacts.settings(organizationId)
     : {
         promptCaptureMode: fileSettings.promptCapture.promptCaptureMode ?? "raw_text",
         retentionDays: fileSettings.promptCapture.retentionDays ?? 30
@@ -777,7 +789,7 @@ async function settingsResponse(
     promptCapture
   };
   return {
-    organizationId: config.defaultOrganizationId,
+    organizationId,
     databaseEnabled: Boolean(config.databaseUrl),
     classifier: {
       provider: config.classifierProvider,

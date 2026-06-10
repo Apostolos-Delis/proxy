@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
 
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import {
   organizationMembers,
+  organizations,
   userSessions,
   users,
   type PromptProxyDbSession
@@ -93,6 +94,23 @@ export class AdminSessionStore {
       name: row.user.name ?? undefined,
       role: row.member.role
     };
+  }
+
+  async organizationsForUser(userId: string) {
+    return this.db
+      .select({
+        id: organizations.id,
+        slug: organizations.slug,
+        name: organizations.name,
+        role: organizationMembers.role
+      })
+      .from(organizationMembers)
+      .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
+      .where(and(
+        eq(organizationMembers.userId, userId),
+        eq(organizationMembers.status, "active")
+      ))
+      .orderBy(asc(organizations.name));
   }
 
   async revoke(token: string, now = new Date()) {

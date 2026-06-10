@@ -18,6 +18,7 @@ import { RoutingConfigResolver } from "./routingConfig.js";
 import { UserAdminService } from "./userAdmin.js";
 
 export type DatabasePersistenceConfig = AdminQueryConfig & {
+  defaultOrganizationId: string;
   invitationTtlSeconds: number;
 };
 
@@ -42,6 +43,11 @@ export function createDatabasePersistence(
     routingConfigAdmin: new RoutingConfigAdminService(transactional),
     routingConfigs: new RoutingConfigResolver(db),
     userAdmin: new UserAdminService(transactional, { invitationTtlSeconds: config.invitationTtlSeconds }),
-    adminQueries: new AdminQueryService(db, catalog, config)
+    adminQueries: {
+      forOrg: (organizationId: string) =>
+        new AdminQueryService(db, catalog, organizationId, {
+          routeQualityLowConfidenceThreshold: config.routeQualityLowConfidenceThreshold
+        })
+    }
   };
 }
