@@ -578,13 +578,15 @@ export class AdminQueryService {
 
     const summaries = requestRows.map((request) => {
       const attempt = attemptsByRequest.get(request.id) ?? null;
+      const attemptUsage = attempt ? usageByAttempt.get(attempt.id) ?? null : null;
+      const usage = options.aggregateUsageByRequest
+        ? usageByRequest.get(request.id) ?? null
+        : attemptUsage;
       return requestSummary({
         request,
         decision: decisionsByRequest.get(request.id) ?? null,
         attempt,
-        usage: options.aggregateUsageByRequest
-          ? usageByRequest.get(request.id) ?? null
-          : attempt ? usageByAttempt.get(attempt.id) ?? null : null,
+        usage,
         attemptCount: attemptCountsByRequest.get(request.id) ?? 0
       }, this.catalog);
     });

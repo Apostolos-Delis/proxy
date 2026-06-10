@@ -115,8 +115,8 @@ describe("database seed", () => {
         })
       })
     }));
-    expect((routingConfigVersionRows[0]?.config as RoutingConfig).routes.hard.anthropic?.output_config)
-      .toBeUndefined();
+    const seededConfig = routingConfigVersionRows[0]?.config as RoutingConfig;
+    expect(seededConfig.routes.hard.anthropic?.output_config).toBeUndefined();
     expect(keyRows).toHaveLength(1);
     expect(keyRows[0]?.routingConfigId).toBe("org_seed:routing-config:default");
     expect(keyRows[0]?.userId).toBeNull();
@@ -239,6 +239,7 @@ describe("database seed", () => {
       .select()
       .from(routingConfigVersions)
       .where(eq(routingConfigVersions.id, "org_replace_seed:routing-config:default:v1"));
+    const v1Config = v1?.config as RoutingConfig;
     await db.insert(routingConfigVersions).values({
       id: "org_replace_seed:routing-config:default:v2",
       organizationId: "org_replace_seed",
@@ -246,12 +247,12 @@ describe("database seed", () => {
       version: 2,
       configHash: "sha256:manual-v2",
       config: {
-        ...(v1?.config as RoutingConfig),
+        ...v1Config,
         schemaVersion: 1,
         displayName: "Manual",
         description: "Manual active version",
         classifier: {
-          ...(v1?.config as RoutingConfig).classifier,
+          ...v1Config.classifier,
           model: "manual"
         }
       } as RoutingConfig,
