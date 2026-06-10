@@ -211,6 +211,15 @@
   z-index: 30;
 }
 
+.cell-popover {
+  position: fixed;
+  z-index: 45;
+}
+
+.cell-popover .assignment-popover {
+  position: static;
+}
+
 .table-filter-popover {
   z-index: 35;
   min-width: 210px;
