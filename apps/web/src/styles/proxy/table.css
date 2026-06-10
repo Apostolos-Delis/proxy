@@ -800,6 +800,12 @@
   border-color: var(--border-strong);
 }
 
+.menu-select > button:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
 .menu-select svg {
   width: 15px;
   height: 15px;

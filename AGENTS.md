@@ -32,6 +32,7 @@ Prompt Proxy is an OpenAI/Anthropic-compatible model routing gateway with durabl
 - Keep React component files under 300 lines and individual component functions under 150 lines. Split page composition, table columns, timeline rows, inspector panes, and formatting helpers before files become hard to scan.
 - Do not manipulate the DOM directly from React components. Avoid `document.createElement`, `querySelector`, and imperative DOM injection.
 - Do not use nested ternaries. Move branching into a named helper or intermediate variables.
+- Never render a native `<select>` (or any other OS-styled menu control). The browser draws its popup with light system styling that breaks the dark console theme. Use the shared `MenuSelect` component (`apps/web/src/table/MenuSelect.tsx`) for every dropdown.
 - Prefer `type` aliases over `interface` for props, DTOs, and exported object shapes.
 - Keep route files thin: params, loaders, guards, and page composition only. Query shaping and DTO mapping belong in `lib/` or feature modules.
 - Use shared components only when duplication becomes real. Keep the first dashboard screens simple and operational.

@@ -79,6 +79,13 @@ useEffect(() => {
 - Prefer full-width operational layouts over decorative hero sections or marketing cards.
 - Avoid one-off colors. Define route/provider/status colors as shared tokens or constants.
 
+## Dropdown Menus
+
+- Never render a native `<select>`. The OS draws its option popup with light system styling that cannot be themed and clashes with the dark console shell.
+- Use the shared `MenuSelect` component (`apps/web/src/table/MenuSelect.tsx`) for every dropdown. It renders a themed trigger button plus a `menu-select-popover`, supports keyboard dismissal, and marks the active option.
+- Style page-specific variants with a `className` on `MenuSelect` plus scoped CSS on `.menu-select > button` (see `.tier-effort` and `.settings-field .menu-select` for examples) instead of reintroducing native controls.
+- Do not place `MenuSelect` inside a `<label>` element. Label click-forwarding targets the trigger button and fights the popover's open/close handling; use a `div` with a `span` caption instead.
+
 ## Raw Prompt UI
 
 - Raw prompt text is a first-class V1 test-project feature.

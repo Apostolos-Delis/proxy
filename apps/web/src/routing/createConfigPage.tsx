@@ -15,6 +15,7 @@ import {
   type RoutingConfigVersionDetail
 } from "../api";
 import { applyDraft, draftError, draftFromConfig, type ConfigEditorDraft } from "../routingConfigEditor";
+import { MenuSelect } from "../table/MenuSelect";
 import { GlassCard, PageState, PageTitle } from "../ui";
 import { PromptEditors, RouteMatrixEditor } from "./configEditorFields";
 import { isUsableKey, KeyPickList } from "./keyAssignment";
@@ -149,13 +150,19 @@ function CreateConfigForm({ sourceConfigs, apiKeys }: {
                 setForm((value) => ({ ...value, slug }));
               }} />
             </Field>
-            <Field label="Clone from" error={errors.sourceConfigId}>
-              <select value={form.sourceConfigId} onChange={(event) => setForm((value) => ({ ...value, sourceConfigId: event.target.value }))}>
-                {sourceConfigs.map((config) => (
-                  <option key={config.id} value={config.id}>{config.name} · v{config.activeVersion?.version ?? "?"}</option>
-                ))}
-              </select>
-            </Field>
+            <div className="routing-create-field">
+              <span>Clone from</span>
+              <MenuSelect
+                value={form.sourceConfigId}
+                options={sourceConfigs.map((config) => ({
+                  value: config.id,
+                  label: `${config.name} · v${config.activeVersion?.version ?? "?"}`
+                }))}
+                ariaLabel="Clone from"
+                onChange={(sourceConfigId) => setForm((value) => ({ ...value, sourceConfigId }))}
+              />
+              {errors.sourceConfigId ? <small>{errors.sourceConfigId}</small> : null}
+            </div>
           </div>
           <Field label="Description" error={errors.description}>
             <textarea

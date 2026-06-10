@@ -3,6 +3,7 @@ import { Check, Copy, MailPlus } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { createInvitation, type EmailDelivery, type InvitationActionResult, type MemberRole } from "./api";
+import { MenuSelect } from "./table/MenuSelect";
 import { Badge, GlassCard } from "./ui";
 
 export const memberRoleOptions: { value: MemberRole; label: string }[] = [
@@ -72,13 +73,15 @@ export function InviteUserPanel() {
               autoComplete="off"
             />
           </Field>
-          <Field label="Role">
-            <select value={form.role} onChange={(event) => setForm((value) => ({ ...value, role: event.target.value as MemberRole }))}>
-              {memberRoleOptions.map((role) => (
-                <option key={role.value} value={role.value}>{role.label}</option>
-              ))}
-            </select>
-          </Field>
+          <div className="routing-create-field">
+            <span>Role</span>
+            <MenuSelect
+              value={form.role}
+              options={memberRoleOptions}
+              ariaLabel="Role"
+              onChange={(role) => setForm((value) => ({ ...value, role: role as MemberRole }))}
+            />
+          </div>
         </div>
         {inviteMutation.error ? <div className="action-error">{inviteMutation.error.message}</div> : null}
         {result ? <InviteLinkResult result={result} /> : null}
