@@ -62,6 +62,28 @@ export function TextField({ label, info, value, onChange }: {
   );
 }
 
+export function TextAreaField({ label, info, value, placeholder, onChange }: {
+  label: string;
+  info: string;
+  value: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="settings-field settings-field-wide">
+      <FieldCaption label={label} info={info} />
+      <textarea
+        value={value}
+        rows={4}
+        placeholder={placeholder}
+        spellCheck={false}
+        aria-label={label}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
 export function NumberField({ label, info, value, min, max, step = 1, suffix, placeholder, onChange }: {
   label: string;
   info: string;

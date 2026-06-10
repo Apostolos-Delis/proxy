@@ -17,7 +17,7 @@ export function RoutingConfigsPage() {
     <div className="page page-enter">
       <PageTitle
         title="Routing configs"
-        subtitle="Model tiers, routing rules, and the system prompt injected into every request."
+        subtitle="Model tiers and routing rules for proxied coding-agent traffic."
         actions={
           <>
             <Link to="/settings" className="btn"><Settings2 />Runtime settings</Link>

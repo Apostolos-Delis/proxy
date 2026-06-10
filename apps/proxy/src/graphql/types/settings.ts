@@ -86,6 +86,7 @@ export const EditableSettings = builder
   .implement({
     fields: (t) => ({
       schemaVersion: t.exposeInt("schemaVersion"),
+      systemPrompt: t.exposeString("systemPrompt", { nullable: true }),
       classifier: t.expose("classifier", { type: EditableClassifier }),
       budgets: t.expose("budgets", { type: BudgetSettings }),
       routeQuality: t.expose("routeQuality", { type: RouteQualitySettings }),
@@ -155,6 +156,7 @@ export const PromptCaptureSettingsInput = builder.inputType("PromptCaptureSettin
 export const SettingsInput = builder.inputType("SettingsInput", {
   fields: (t) => ({
     schemaVersion: t.int(),
+    systemPrompt: t.string(),
     classifier: t.field({ type: ClassifierSettingsInput }),
     budgets: t.field({ type: BudgetSettingsInput }),
     routeQuality: t.field({ type: RouteQualitySettingsInput }),

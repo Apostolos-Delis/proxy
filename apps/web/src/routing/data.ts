@@ -10,7 +10,6 @@ graphql(`
     slug
     description
     status
-    systemPrompt
     activeVersionId
     assignedApiKeyCount
     updatedAt

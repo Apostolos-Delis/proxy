@@ -11,6 +11,7 @@ import { AdminSessionStore } from "./adminSessions.js";
 import { ApiKeyAdminService } from "./apiKeyAdmin.js";
 import { DatabaseEventSink } from "./eventSink.js";
 import { ApiKeyIdentityStore } from "./identity.js";
+import { OrganizationSettingsStore } from "./organizationSettings.js";
 import { ProviderCredentialAdminService } from "./providerCredentialAdmin.js";
 import { ProviderCredentialStore } from "./providerCredentials.js";
 import { PromptAccessAuditStore } from "./promptAccessAudit.js";
@@ -44,6 +45,7 @@ export function createDatabasePersistence(
     providerCredentials: new ProviderCredentialStore(db, config.providerSecretEncryptionKey),
     providerCredentialAdmin: new ProviderCredentialAdminService(transactional, config.providerSecretEncryptionKey),
     eventSink: new DatabaseEventSink(transactional, catalog, useAdvisoryLocks),
+    organizationSettings: new OrganizationSettingsStore(db),
     promptAccessAudit: new PromptAccessAuditStore(db),
     promptArtifacts: new PromptArtifactStore(transactional, db),
     requestStates: new PersistentRequestStateStore(transactional, db, config.defaultOrganizationId),

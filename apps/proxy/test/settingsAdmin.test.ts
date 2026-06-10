@@ -52,11 +52,12 @@ describe("persistent settings admin APIs", () => {
   it("writes validated JSON settings and applies prompt capture persistence", async () => {
     const settingsPath = await tempSettingsPath();
     const promptCapture = { promptCaptureMode: "raw_text" as PromptCaptureMode, retentionDays: 30 };
+    const orgSystemPrompt = { value: null as string | null };
     const app = buildServer(loadConfig({
       PROMPT_PROXY_SETTINGS_PATH: settingsPath,
       DEFAULT_ORGANIZATION_ID: "org_settings_file",
       LOG_LEVEL: "fatal"
-    }), { persistence: fakePersistence(promptCapture, "org_settings_file") });
+    }), { persistence: fakePersistence(promptCapture, "org_settings_file", orgSystemPrompt) });
 
     const response = await app.inject({
       method: "POST",
@@ -66,12 +67,13 @@ describe("persistent settings admin APIs", () => {
         query: `mutation UpdateSettings($input: SettingsInput!) {
           updateSettings(input: $input) {
             storage { format path }
-            settings { classifier { model } }
+            settings { systemPrompt classifier { model } }
           }
         }`,
         variables: {
           input: {
             schemaVersion: 1,
+            systemPrompt: "  Follow organization proxy policy.  ",
             classifier: {
               model: "route-classifier-ui",
               timeoutMs: 1800,
@@ -102,8 +104,11 @@ describe("persistent settings admin APIs", () => {
     expect(response.statusCode).toBe(200);
     expect(body.storage).toEqual(expect.objectContaining({ format: "json", path: settingsPath }));
     expect(body.settings.classifier.model).toBe("route-classifier-ui");
+    expect(body.settings.systemPrompt).toBe("Follow organization proxy policy.");
     expect(file.classifier.timeoutMs).toBe(1800);
     expect(file.promptCapture.promptCaptureMode).toBe("hash_only");
+    expect(file.systemPrompt).toBeUndefined();
+    expect(orgSystemPrompt.value).toBe("Follow organization proxy policy.");
     expect(promptCapture).toEqual({
       promptCaptureMode: "hash_only",
       retentionDays: 7
@@ -165,7 +170,8 @@ function adminHeaders() {
 
 function fakePersistence(
   promptCapture = { promptCaptureMode: "raw_text" as PromptCaptureMode, retentionDays: 30 },
-  organizationId = "local"
+  organizationId = "local",
+  orgSystemPrompt = { value: null as string | null }
 ) {
   return {
     adminSessions: {
@@ -179,6 +185,13 @@ function fakePersistence(
         : null,
       create: async () => null,
       revoke: async () => {}
+    },
+    organizationSettings: {
+      systemPrompt: async () => orgSystemPrompt.value,
+      setSystemPrompt: async (_organizationId: string, systemPrompt: string | null) => {
+        orgSystemPrompt.value = systemPrompt;
+        return systemPrompt;
+      }
     },
     promptArtifacts: {
       settings: async () => promptCapture,

@@ -45,42 +45,43 @@ export const anthropicMessagesSurface: SurfaceAdapter = {
   buildContext: buildAnthropicContext
 };
 
-export function rewriteSurfaceRequest(body: unknown, decision: RouteDecision) {
+export function rewriteSurfaceRequest(body: unknown, decision: RouteDecision, systemPrompt?: string) {
   if (!decision.providerSettings) {
     throw new Error("Cannot rewrite request without selected provider settings.");
   }
   if (decision.surface === "openai-responses" && decision.providerSettings.provider === "openai") {
-    return rewriteOpenAIResponsesRequest(body, decision.providerSettings);
+    return rewriteOpenAIResponsesRequest(body, decision.providerSettings, systemPrompt);
   }
   if (decision.surface === "anthropic-messages" && decision.providerSettings.provider === "anthropic") {
-    return rewriteAnthropicMessagesRequest(body, decision.providerSettings);
+    return rewriteAnthropicMessagesRequest(body, decision.providerSettings, systemPrompt);
   }
   throw new Error("Selected provider settings do not match the request surface.");
 }
 
-export function rewriteTokenCountRequest(body: unknown, decision: RouteDecision) {
+export function rewriteTokenCountRequest(body: unknown, decision: RouteDecision, systemPrompt?: string) {
   if (!decision.selectedModel) {
     throw new Error("Cannot rewrite token-count request without a selected model.");
   }
 
   const request = structuredClone(isRecord(body) ? body : {});
   request.model = decision.selectedModel;
-  if (decision.providerSettings?.provider === "anthropic" && decision.providerSettings.systemPrompt) {
-    request.system = prependAnthropicSystemPrompt(request.system, decision.providerSettings.systemPrompt);
+  if (decision.providerSettings?.provider === "anthropic" && systemPrompt) {
+    request.system = prependAnthropicSystemPrompt(request.system, systemPrompt);
   }
   return request;
 }
 
 function rewriteOpenAIResponsesRequest(
   body: unknown,
-  settings: Extract<SelectedRouteSettings, { provider: "openai" }>
+  settings: Extract<SelectedRouteSettings, { provider: "openai" }>,
+  systemPrompt?: string
 ) {
   const request = structuredClone(isRecord(body) ? body : {});
   request.model = settings.model;
-  if (settings.systemPrompt) {
+  if (systemPrompt) {
     request.instructions = typeof request.instructions === "string" && request.instructions.trim()
-      ? `${settings.systemPrompt}\n\n${request.instructions}`
-      : settings.systemPrompt;
+      ? `${systemPrompt}\n\n${request.instructions}`
+      : systemPrompt;
   }
   if (settings.openai.reasoning) {
     request.reasoning = {
@@ -112,12 +113,13 @@ function rewriteOpenAIResponsesRequest(
 
 function rewriteAnthropicMessagesRequest(
   body: unknown,
-  settings: Extract<SelectedRouteSettings, { provider: "anthropic" }>
+  settings: Extract<SelectedRouteSettings, { provider: "anthropic" }>,
+  systemPrompt?: string
 ) {
   const request = structuredClone(isRecord(body) ? body : {});
   request.model = settings.model;
-  if (settings.systemPrompt) {
-    request.system = prependAnthropicSystemPrompt(request.system, settings.systemPrompt);
+  if (systemPrompt) {
+    request.system = prependAnthropicSystemPrompt(request.system, systemPrompt);
   }
   if (settings.anthropic.thinking) {
     request.thinking = settings.anthropic.thinking;

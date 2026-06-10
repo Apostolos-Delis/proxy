@@ -119,6 +119,7 @@ type EditableSettings {
   promptCapture: PromptCaptureState!
   routeQuality: RouteQualitySettings!
   schemaVersion: Int!
+  systemPrompt: String
 }
 
 type EmailDelivery {
@@ -525,7 +526,6 @@ type RoutingConfigSummary {
   routeMatrix: [RouteMatrixRow!]!
   slug: String!
   status: String!
-  systemPrompt: String
   updatedAt: String!
 }
 
@@ -638,6 +638,7 @@ input SettingsInput {
   promptCapture: PromptCaptureSettingsInput
   routeQuality: RouteQualitySettingsInput
   schemaVersion: Int
+  systemPrompt: String
 }
 
 type StorageInfo {

@@ -16,8 +16,12 @@ export async function settingsResponse(
         promptCaptureMode: fileSettings.promptCapture.promptCaptureMode ?? "raw_text",
         retentionDays: fileSettings.promptCapture.retentionDays ?? 30
       };
+  const systemPrompt = persistence
+    ? await persistence.organizationSettings.systemPrompt(organizationId)
+    : null;
   const settings = {
     schemaVersion: 1,
+    systemPrompt,
     classifier: {
       model: fileSettings.classifier.model ?? config.classifierModel,
       timeoutMs: fileSettings.classifier.timeoutMs ?? config.classifierTimeoutMs,

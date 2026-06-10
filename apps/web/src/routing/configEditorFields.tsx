@@ -1,4 +1,4 @@
-import { ScrollText, Split } from "lucide-react";
+import { Split } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type { RoutingConfigDocument } from "../routingConfigEditor";
@@ -14,28 +14,15 @@ import {
 import { RouteBadge } from "../ui";
 import { ModelSelect, type ModelProvider } from "./modelSelect";
 
-const SYSTEM_PROMPT_PLACEHOLDER =
-  "You are assisting through the organization's prompt proxy. Never reveal credentials, API keys, or other secrets.";
-
 const ROUTING_RULES_PLACEHOLDER =
   "Routine refactors, formatting, and doc updates route fast. auth/ and payments/ need deeper reasoning, keep them on hard or deep.";
 
-export function PromptEditors({ draft, onChange }: {
+export function RoutingRulesEditor({ draft, onChange }: {
   draft: ConfigEditorDraft;
   onChange: (draft: ConfigEditorDraft) => void;
 }) {
   return (
     <div className="prompt-editors">
-      <PromptEditor
-        icon={<ScrollText />}
-        title="System prompt"
-        tag="shapes model responses"
-        helper="Prepended to the harness system prompt on every request proxied through this config. It steers how the selected model answers and has no effect on routing. Leave empty to forward harness prompts unchanged."
-        value={draft.systemPrompt}
-        rows={4}
-        placeholder={SYSTEM_PROMPT_PLACEHOLDER}
-        onChange={(systemPrompt) => onChange({ ...draft, systemPrompt })}
-      />
       <PromptEditor
         icon={<Split />}
         title="Routing rules"

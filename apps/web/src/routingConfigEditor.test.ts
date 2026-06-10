@@ -5,7 +5,6 @@ import { applyDraft, draftError, draftFromConfig, parseConfigJson, type RoutingC
 const baseConfig: RoutingConfigDocument = {
   schemaVersion: 1,
   displayName: "Default coding router",
-  systemPrompt: "Follow proxy policy.",
   classifier: {
     provider: "openai",
     model: "route-classifier",
@@ -38,10 +37,9 @@ const baseConfig: RoutingConfigDocument = {
 };
 
 describe("draftFromConfig", () => {
-  it("extracts the prompts, tier models, and efforts", () => {
+  it("extracts the routing rules, tier models, and efforts", () => {
     const draft = draftFromConfig(baseConfig);
 
-    expect(draft.systemPrompt).toBe("Follow proxy policy.");
     expect(draft.classifierRules).toBe("Keep auth/ on hard.");
     expect(draft.routes.fast).toEqual({
       openaiModel: "gpt-fast",
@@ -57,15 +55,13 @@ describe("draftFromConfig", () => {
     });
   });
 
-  it("uses empty strings for missing provider blocks and prompts", () => {
-    const { systemPrompt: _ignored, ...withoutPrompt } = baseConfig;
+  it("uses empty strings for missing provider blocks", () => {
     const config = {
-      ...withoutPrompt,
+      ...baseConfig,
       routes: { ...baseConfig.routes, fast: { openai: { model: "gpt-fast" } } }
     };
     const draft = draftFromConfig(config);
 
-    expect(draft.systemPrompt).toBe("");
     expect(draft.routes.fast).toEqual({
       openaiModel: "gpt-fast",
       openaiEffort: "",
@@ -148,22 +144,11 @@ describe("applyDraft", () => {
     expect(next.classifier.model).toBe("route-classifier");
   });
 
-  it("sets and clears the system prompt", () => {
-    const draft = draftFromConfig(baseConfig);
-    draft.systemPrompt = "  New policy.  ";
-    expect(applyDraft(baseConfig, draft).systemPrompt).toBe("New policy.");
-
-    draft.systemPrompt = "   ";
-    const cleared = applyDraft(baseConfig, draft);
-    expect(cleared.systemPrompt).toBeUndefined();
-    expect("systemPrompt" in cleared).toBe(false);
-  });
-
   it("does not mutate the base config", () => {
     const snapshot = structuredClone(baseConfig);
     const draft = draftFromConfig(baseConfig);
     draft.routes.deep.openaiModel = "gpt-other";
-    draft.systemPrompt = "";
+    draft.classifierRules = "";
     applyDraft(baseConfig, draft);
 
     expect(baseConfig).toEqual(snapshot);

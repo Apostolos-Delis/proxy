@@ -15,7 +15,7 @@ import {
 import type { AppConfig } from "./config.js";
 import { jsonPayload, type EventService, type ProviderAttemptStore, type RequestStateStoreLike } from "./events.js";
 import { extractResponseText, type PromptArtifactStore } from "./persistence/promptArtifacts.js";
-import { routingConfigSnapshot, type RoutingConfigResolver } from "./persistence/routingConfig.js";
+import { resolveRoutingSelection, type RoutingConfigResolver } from "./persistence/routingConfig.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import type { RoutingService } from "./router.js";
 import type { JsonObject, RouteDecision, RouteName } from "./types.js";
@@ -201,12 +201,13 @@ export class WebSocketRoutingProxy {
       artifacts: capturedArtifacts
     });
 
+    const resolved = await this.resolveRoutingConfig(identity);
     const decision = await this.routing.decide({
       requestId,
       context,
       body: routeBody,
       idempotencyKey,
-      routingConfig: await this.resolveRoutingConfig(identity)
+      routingConfig: resolved.routingConfig
     });
     if (decision.outcome === "reject") {
       await this.requestStates.finish(idempotencyKey, "failed", { error: decision.error });
@@ -256,7 +257,7 @@ export class WebSocketRoutingProxy {
     });
 
     return {
-      body: rewriteSurfaceRequest(routeBody, decision),
+      body: rewriteSurfaceRequest(routeBody, decision, resolved.systemPrompt),
       decision,
       activeRequest: {
         requestId,
@@ -402,16 +403,10 @@ export class WebSocketRoutingProxy {
   }
 
   private async resolveRoutingConfig(identity: RequestIdentity) {
-    const resolved = await this.routingConfigs?.resolve({
+    return resolveRoutingSelection(this.routingConfigs, {
       organizationId: identity.organizationId,
       routingConfigId: identity.routingConfigId
     });
-    return resolved
-      ? {
-          snapshot: routingConfigSnapshot(resolved),
-          config: resolved.config
-        }
-      : undefined;
   }
 }
 

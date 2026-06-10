@@ -24,7 +24,7 @@ import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStat
 import { registerAdminGraphQL } from "./graphql/route.js";
 import { BudgetService, SessionRouteStore } from "./policy.js";
 import { createPostgresPersistence } from "./persistence/index.js";
-import { routingConfigSnapshot } from "./persistence/routingConfig.js";
+import { resolveRoutingSelection } from "./persistence/routingConfig.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
 import { ProviderProxy } from "./proxy.js";
@@ -194,12 +194,13 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         artifacts: capturedArtifacts
       });
 
+      const resolved = await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId);
       const decision = await routing.decide({
         requestId,
         context,
         body: request.body,
         idempotencyKey,
-        routingConfig: await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId)
+        routingConfig: resolved.routingConfig
       });
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
@@ -212,7 +213,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         surface: openAIResponsesSurface.surface,
         provider: openAIResponsesSurface.provider,
-        body: rewriteSurfaceRequest(request.body, decision),
+        body: rewriteSurfaceRequest(request.body, decision, resolved.systemPrompt),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
@@ -276,12 +277,13 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         artifacts: capturedArtifacts
       });
 
+      const resolved = await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId);
       const decision = await routing.decide({
         requestId,
         context,
         body: request.body,
         idempotencyKey,
-        routingConfig: await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId)
+        routingConfig: resolved.routingConfig
       });
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
@@ -294,7 +296,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         surface: anthropicMessagesSurface.surface,
         provider: anthropicMessagesSurface.provider,
-        body: rewriteSurfaceRequest(request.body, decision),
+        body: rewriteSurfaceRequest(request.body, decision, resolved.systemPrompt),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
@@ -341,8 +343,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         eventType: "proxy.request_received",
         payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
       });
-      const routingConfig = await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId);
-      const decision = routing.tokenCountDecision(context, routingConfig);
+      const resolved = await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId);
+      const decision = routing.tokenCountDecision(context, resolved.routingConfig);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
         reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
@@ -354,7 +356,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         surface: anthropicMessagesSurface.surface,
         provider: anthropicMessagesSurface.provider,
-        body: rewriteTokenCountRequest(request.body, decision),
+        body: rewriteTokenCountRequest(request.body, decision, resolved.systemPrompt),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
@@ -390,13 +392,7 @@ async function resolveRoutingConfig(
   organizationId: string,
   routingConfigId: string | null
 ) {
-  const resolved = await persistence?.routingConfigs.resolve({ organizationId, routingConfigId });
-  return resolved
-    ? {
-        snapshot: routingConfigSnapshot(resolved),
-        config: resolved.config
-      }
-    : undefined;
+  return resolveRoutingSelection(persistence?.routingConfigs, { organizationId, routingConfigId });
 }
 
 function requireAuth(headers: Record<string, unknown>, token: string) {

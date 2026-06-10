@@ -5,6 +5,7 @@ import {
   apiKeys,
   events,
   hashApiKey,
+  organizationSettings,
   routingConfigs,
   routingConfigVersions
 } from "@prompt-proxy/db";
@@ -296,59 +297,54 @@ describe("routing config runtime resolution", () => {
     expect(providerCall?.headers["x-claude-code-session-id"]).toBe("claude-session-config");
   });
 
-  it("prepends the config system prompt to OpenAI Responses instructions", async () => {
-    const organizationId = "org_config_system_prompt_openai";
+  it("prepends the organization system prompt to OpenAI Responses instructions", async () => {
+    const organizationId = "org_system_prompt_openai";
     activeFixture = await captureFixture(organizationId);
-    await assignRouteConfig(activeFixture, organizationId, {
-      secret: "assigned-system-prompt-openai-token",
-      slug: "system-prompt-openai",
-      configHash: "sha256:system-prompt-openai-config",
-      configure: (config) => ({
-        ...config,
-        systemPrompt: "Follow organization proxy policy."
-      })
-    });
-
-    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+    const sendRequest = (input: string) => fetch(`${activeFixture!.proxyUrl}/v1/responses`, {
       method: "POST",
       headers: {
-        authorization: "Bearer assigned-system-prompt-openai-token",
+        authorization: "Bearer proxy-token",
         "content-type": "application/json"
       },
       body: JSON.stringify({
         model: "router-hard",
         instructions: "You are Codex.",
-        input: "debug this failing test",
+        input,
         stream: true
       })
     });
+
+    const beforeResponse = await sendRequest("debug this failing test");
+    await beforeResponse.text();
+    await activeFixture.db
+      .update(organizationSettings)
+      .set({ systemPrompt: "Follow organization proxy policy." })
+      .where(eq(organizationSettings.organizationId, organizationId));
+    const response = await sendRequest("debug this other failing test");
     await response.text();
 
-    const providerCall = activeFixture.openai.records.find((record) =>
+    const providerCalls = activeFixture.openai.records.filter((record) =>
       record.body.model !== "route-classifier-cheap" && record.path === "/responses"
     );
 
+    expect(beforeResponse.status).toBe(200);
     expect(response.status).toBe(200);
-    expect(providerCall?.body.instructions).toBe("Follow organization proxy policy.\n\nYou are Codex.");
+    expect(providerCalls[0]?.body.instructions).toBe("You are Codex.");
+    expect(providerCalls[1]?.body.instructions).toBe("Follow organization proxy policy.\n\nYou are Codex.");
   });
 
-  it("prepends the config system prompt to Anthropic Messages system blocks", async () => {
-    const organizationId = "org_config_system_prompt_anthropic";
+  it("prepends the organization system prompt to Anthropic Messages system blocks", async () => {
+    const organizationId = "org_system_prompt_anthropic";
     activeFixture = await captureFixture(organizationId);
-    await assignRouteConfig(activeFixture, organizationId, {
-      secret: "assigned-system-prompt-anthropic-token",
-      slug: "system-prompt-anthropic",
-      configHash: "sha256:system-prompt-anthropic-config",
-      configure: (config) => ({
-        ...config,
-        systemPrompt: "Follow organization proxy policy."
-      })
-    });
+    await activeFixture.db
+      .update(organizationSettings)
+      .set({ systemPrompt: "Follow organization proxy policy." })
+      .where(eq(organizationSettings.organizationId, organizationId));
 
     const response = await fetch(`${activeFixture.proxyUrl}/v1/messages`, {
       method: "POST",
       headers: {
-        authorization: "Bearer assigned-system-prompt-anthropic-token",
+        authorization: "Bearer proxy-token",
         "content-type": "application/json",
         "anthropic-version": "2023-06-01"
       },
@@ -365,7 +361,7 @@ describe("routing config runtime resolution", () => {
     const countResponse = await fetch(`${activeFixture.proxyUrl}/v1/messages/count_tokens`, {
       method: "POST",
       headers: {
-        authorization: "Bearer assigned-system-prompt-anthropic-token",
+        authorization: "Bearer proxy-token",
         "content-type": "application/json",
         "anthropic-version": "2023-06-01"
       },

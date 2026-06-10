@@ -5,6 +5,7 @@ export type EditableSettings = SettingsViewQuery["settings"]["settings"];
 export function settingsInput(settings: EditableSettings) {
   return {
     schemaVersion: settings.schemaVersion,
+    systemPrompt: settings.systemPrompt,
     classifier: {
       model: settings.classifier.model,
       timeoutMs: settings.classifier.timeoutMs,
@@ -28,6 +29,7 @@ export function settingsInput(settings: EditableSettings) {
 
 export function visibleGroups(search: string) {
   const groups = [
+    { key: "system", terms: "system prompt organization injected harness model requests" },
     { key: "classifier", terms: "classifier model timeout attempts redacted excerpt structured routing" },
     { key: "budgets", terms: "budgets warning max input tokens route guardrails policy limit" },
     { key: "prompt", terms: "prompt capture retention raw text hash redacted encrypted artifacts" },

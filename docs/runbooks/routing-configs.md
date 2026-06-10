@@ -48,16 +48,16 @@ Changing an API key assignment affects the next request from that key. Active ve
 
 ## System Prompt And Route Tier Models
 
-Each routing config can carry a top-level `systemPrompt`. When a request resolves a config with a system prompt, the proxy prepends it to the outbound provider request before forwarding:
+The organization system prompt lives on `organization_settings.system_prompt` (Settings → System Prompt in the console), not on routing configs. When set, the proxy prepends it to the outbound provider request before forwarding, for every request in the organization:
 
 - OpenAI Responses: prepended to `instructions`
 - Anthropic Messages: prepended as the first `system` block (or joined when `system` is a string), including `count_tokens` requests
 
-Harness-provided prompts are preserved after the config prompt. Omit `systemPrompt` to forward harness prompts unchanged. The seeded default config includes `DEFAULT_ROUTING_SYSTEM_PROMPT` from `@prompt-proxy/schema`; databases seeded before this field existed keep their original v1 until a new version is activated.
+Harness-provided prompts are preserved after the organization prompt. Leave the setting empty to forward harness prompts unchanged; nothing is seeded by default. Routing config versions that still carry the pre-cutover top-level `systemPrompt` or `classifier.instructions` fields fail strict validation; migration `0005_organization_system_prompt.sql` strips both from stored versions.
 
-The web console edits the system prompt, routing rules, and the per-tier models and efforts (`fast`, `balanced`, `hard`, `deep` for OpenAI and Anthropic):
+The web console edits the routing rules and the per-tier models and efforts (`fast`, `balanced`, `hard`, `deep` for OpenAI and Anthropic):
 
-- Routing configs → New config: clones an active config, then lets you set the prompts and tier models before creating v1.
+- Routing configs → New config: clones an active config, then lets you set the routing rules and tier models before creating v1.
 - Routing config detail → Prompts & route models: edits create a new draft version; leave "Activate immediately" checked to promote it in the same step.
 - Each tier exposes a per-provider effort dropdown with provider-specific levels (OpenAI reasoning: `minimal`–`xhigh`; Anthropic output: `low`–`max`). "Default effort" omits the effort so the model default applies.
 - The UI/JSON toggle on the detail editor switches to the raw config document, VSCode-style. JSON mode edits fields the form does not expose (limits, session, classifier details); both views feed the same save-new-version flow, and JSON is validated server-side against the routing config schema.
@@ -144,7 +144,7 @@ curl -sS -b /tmp/prompt-proxy.cookies \
   -d @routing-config-version.json
 ```
 
-`routing-config-version.json` should contain `{ "config": { ... } }` with the full replacement config body. The web console detail page drives this same endpoint when saving system prompt or tier model edits.
+`routing-config-version.json` should contain `{ "config": { ... } }` with the full replacement config body. The web console detail page drives this same endpoint when saving routing rule or tier model edits.
 
 Activate a version:
 

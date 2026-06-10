@@ -69,7 +69,6 @@ export const RoutingConfigSummary = builder
       slug: t.exposeString("slug"),
       description: t.exposeString("description", { nullable: true }),
       status: t.exposeString("status"),
-      systemPrompt: t.exposeString("systemPrompt", { nullable: true }),
       activeVersionId: t.exposeString("activeVersionId", { nullable: true }),
       activeVersion: t.field({
         type: RoutingConfigVersion,

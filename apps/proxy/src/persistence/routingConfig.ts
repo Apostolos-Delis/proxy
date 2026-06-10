@@ -7,7 +7,7 @@ import {
   type PromptProxyDbSession
 } from "@prompt-proxy/db";
 import { routingConfigSchema, type RoutingConfig } from "@prompt-proxy/schema";
-import type { RoutingConfigSnapshot } from "../types.js";
+import type { RoutingConfigSelection, RoutingConfigSnapshot } from "../types.js";
 
 export type ResolvedRoutingConfig = {
   organizationId: string;
@@ -17,6 +17,7 @@ export type ResolvedRoutingConfig = {
   version: number;
   configHash: string;
   config: RoutingConfig;
+  organizationSystemPrompt?: string;
 };
 
 export class RoutingConfigResolutionError extends Error {
@@ -30,8 +31,9 @@ export class RoutingConfigResolver {
     organizationId: string;
     routingConfigId?: string | null;
   }): Promise<ResolvedRoutingConfig> {
+    const orgSettings = await this.organizationSettings(input.organizationId);
     const configId = input.routingConfigId
-      ?? await this.defaultRoutingConfigId(input.organizationId)
+      ?? orgSettings?.defaultRoutingConfigId
       ?? seededDefaultRoutingConfigId(input.organizationId);
     const [config] = await this.db
       .select()
@@ -74,17 +76,21 @@ export class RoutingConfigResolver {
       versionId: version.id,
       version: version.version,
       configHash: version.configHash,
-      config: parsed.data
+      config: parsed.data,
+      organizationSystemPrompt: orgSettings?.systemPrompt ?? undefined
     };
   }
 
-  private async defaultRoutingConfigId(organizationId: string) {
+  private async organizationSettings(organizationId: string) {
     const [settings] = await this.db
-      .select({ defaultRoutingConfigId: organizationSettings.defaultRoutingConfigId })
+      .select({
+        defaultRoutingConfigId: organizationSettings.defaultRoutingConfigId,
+        systemPrompt: organizationSettings.systemPrompt
+      })
       .from(organizationSettings)
       .where(eq(organizationSettings.organizationId, organizationId))
       .limit(1);
-    return settings?.defaultRoutingConfigId ?? undefined;
+    return settings;
   }
 }
 
@@ -95,6 +101,21 @@ export function routingConfigSnapshot(resolved: ResolvedRoutingConfig): RoutingC
     versionId: resolved.versionId,
     version: resolved.version,
     configHash: resolved.configHash
+  };
+}
+
+export async function resolveRoutingSelection(
+  resolver: RoutingConfigResolver | undefined,
+  input: { organizationId: string; routingConfigId?: string | null }
+): Promise<{ routingConfig?: RoutingConfigSelection; systemPrompt?: string }> {
+  const resolved = await resolver?.resolve(input);
+  if (!resolved) return {};
+  return {
+    routingConfig: {
+      snapshot: routingConfigSnapshot(resolved),
+      config: resolved.config
+    },
+    systemPrompt: resolved.organizationSystemPrompt
   };
 }
 

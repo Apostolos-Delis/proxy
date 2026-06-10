@@ -5,7 +5,6 @@ import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import {
-  DEFAULT_ROUTING_SYSTEM_PROMPT,
   routingConfigSchema,
   type Provider,
   type RouteName,
@@ -440,7 +439,6 @@ function defaultRoutingConfig(options: SeedOptions): RoutingConfig {
     schemaVersion: 1,
     displayName: "Default coding router",
     description: "Seeded default routing config for coding-agent traffic.",
-    systemPrompt: DEFAULT_ROUTING_SYSTEM_PROMPT,
     classifier: {
       provider: "openai",
       model: options.classifierModel,

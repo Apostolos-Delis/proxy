@@ -291,7 +291,7 @@ const operations: Operation[] = [
   { name: "session", query: "query { session(sessionId: \"session_5\") { session { sessionId requestCount } requests { requestId } promptArtifacts { artifactId kind rawText } routeDecisions { id finalRoute } providerAttempts { id terminalStatus } usageLedger { id totalCostMicros } events { eventId eventType } } }" },
   { name: "invitations", query: "query { invitations { id email role status invitedBy { userId name } expiresAt } }" },
   { name: "settings", query: "query { settings { organizationId databaseEnabled settings { schemaVersion classifier { model } budgets { maxRoute } routeQuality { lowConfidenceThreshold } promptCapture { promptCaptureMode retentionDays } } } }" },
-  { name: "routingConfigs", query: "query { routingConfigs { id name slug status systemPrompt assignedApiKeyCount activeVersion { id version configHash } routeMatrix { route openaiModel anthropicModel } } }" },
+  { name: "routingConfigs", query: "query { routingConfigs { id name slug status assignedApiKeyCount activeVersion { id version configHash } routeMatrix { route openaiModel anthropicModel } } }" },
   { name: "routingConfig", query: `query { routingConfig(configId: "${ORG}:routing-config:default") { config { id name assignedApiKeyCount } versions { id version active config } } }` },
   { name: "apiKeys", query: "query { apiKeys { id name scopes userId routingConfigId routingConfig { id name status } createdAt lastUsedAt } }" },
   { name: "apiKey", query: "query { apiKey(apiKeyId: \"key_3\") { id name scopes } }" },

@@ -220,6 +220,7 @@ export const organizationSettings = pgTable("organization_settings", {
   promptCaptureMode: text("prompt_capture_mode").$type<PromptCaptureMode>().notNull().default("raw_text"),
   retentionDays: integer("retention_days").notNull().default(30),
   maxRoute: text("max_route").$type<RouteName>(),
+  systemPrompt: text("system_prompt"),
   defaultRoutingConfigId: text("default_routing_config_id"),
   settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
