@@ -6,6 +6,8 @@ import { PopoverShell } from "./PopoverShell";
 export type SearchSelectOption = {
   value: string;
   label: string;
+  // Secondary text shown faint after the label, also matched when filtering
+  // (e.g. a secret hint, a slug, an owner).
   hint?: string;
 };
 
@@ -14,18 +16,29 @@ type SearchSelectProps = {
   options: SearchSelectOption[];
   ariaLabel: string;
   placeholder?: string;
+  emptyLabel?: string;
   className?: string;
   onChange: (value: string) => void;
 };
 
-// MenuSelect with a filter input on top â€” for option lists long enough that
-// scanning beats scrolling (e.g. picking a provider key).
-export function SearchSelect({ value, options, ariaLabel, placeholder = "Searchâ€¦", className = "", onChange }: SearchSelectProps) {
+// Drop-in MenuSelect variant with a filter input on top, for option lists
+// long enough that searching beats scrolling. Fully data-driven: callers
+// supply {value, label, hint?} options and get the same trigger/popover
+// styling as MenuSelect, plus arrow-key navigation and Enter-to-pick.
+export function SearchSelect({
+  value,
+  options,
+  ariaLabel,
+  placeholder = "Searchâ€¦",
+  emptyLabel = "No matches.",
+  className = "",
+  onChange
+}: SearchSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const selected = options.find((option) => option.value === value) ?? options[0];
-  const filtered = filterOptions(options, query);
+  const filtered = filterSearchOptions(options, query);
 
   const toggle = () => {
     setQuery("");
@@ -47,7 +60,7 @@ export function SearchSelect({ value, options, ariaLabel, placeholder = "Searchâ
       }}
     >
       <button type="button" aria-label={ariaLabel} aria-expanded={open} onClick={toggle}>
-        <span>{optionText(selected)}</span>
+        <OptionText option={selected} />
         <ChevronDown />
       </button>
       {open ? (
@@ -93,11 +106,11 @@ export function SearchSelect({ value, options, ariaLabel, placeholder = "Searchâ
                   ref={index === activeIndex ? scrollNearestRef : undefined}
                   onClick={() => pick(option)}
                 >
-                  <span>{optionText(option)}</span>
+                  <OptionText option={option} />
                   {option.value === value ? <Check /> : null}
                 </button>
               ))}
-              {filtered.length === 0 ? <div className="search-select-empty">No matches.</div> : null}
+              {filtered.length === 0 ? <div className="search-select-empty">{emptyLabel}</div> : null}
             </div>
           </div>
         </PopoverShell>
@@ -106,15 +119,20 @@ export function SearchSelect({ value, options, ariaLabel, placeholder = "Searchâ
   );
 }
 
-function filterOptions(options: SearchSelectOption[], query: string) {
+function OptionText({ option }: { option: SearchSelectOption | undefined }) {
+  if (!option) return <span>Select</span>;
+  return (
+    <span className="search-select-text">
+      {option.label}
+      {option.hint ? <span className="faint">{option.hint}</span> : null}
+    </span>
+  );
+}
+
+export function filterSearchOptions(options: SearchSelectOption[], query: string) {
   const needle = query.trim().toLowerCase();
   if (!needle) return options;
   return options.filter((option) => `${option.label} ${option.hint ?? ""}`.toLowerCase().includes(needle));
-}
-
-function optionText(option: SearchSelectOption | undefined) {
-  if (!option) return "Select";
-  return option.hint ? `${option.label} (${option.hint})` : option.label;
 }
 
 function optionDomId(ariaLabel: string, index: number) {

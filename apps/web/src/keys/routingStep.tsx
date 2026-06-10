@@ -4,7 +4,6 @@ import { GitBranch, KeySquare } from "lucide-react";
 import type { ProviderAccountSummary, ProviderName } from "../providers/data";
 import { PROVIDER_OPTIONS } from "../providers";
 import type { RoutingConfigSummary } from "../routing/data";
-import { MenuSelect } from "../table/MenuSelect";
 import { SearchSelect } from "../table/SearchSelect";
 import { GlassCard } from "../ui";
 import { WizardStepHead } from "./stepHead";
@@ -31,13 +30,18 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
               popover backdrop (a label descendant) is clicked. */}
           <div className="routing-create-field wizard-name-field">
             <span>Routing config</span>
-            <MenuSelect
+            <SearchSelect
               value={draft.routingConfigId ?? ""}
               options={[
                 { value: "", label: orgDefaultConfigLabel(defaultConfig) },
-                ...configs.map((config) => ({ value: config.id, label: config.name }))
+                ...configs.map((config) => ({
+                  value: config.id,
+                  label: config.name,
+                  hint: `v${config.activeVersion?.version ?? "?"}`
+                }))
               ]}
               ariaLabel="Routing config"
+              placeholder="Search routing configs…"
               onChange={(routingConfigId) => onChange({ ...draft, routingConfigId: routingConfigId || null })}
             />
           </div>

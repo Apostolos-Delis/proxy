@@ -907,6 +907,20 @@
   font-size: 12.5px;
 }
 
+.search-select-text {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-select-text .faint {
+  font-size: 12px;
+}
+
 @media (max-width: 900px) {
   .console-table-controls {
     width: 100%;

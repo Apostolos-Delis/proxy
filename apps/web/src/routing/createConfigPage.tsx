@@ -15,7 +15,7 @@ import {
   type RoutingConfigVersionDetail
 } from "./data";
 import { applyDraft, draftError, draftFromConfig, type ConfigEditorDraft } from "../routingConfigEditor";
-import { MenuSelect } from "../table/MenuSelect";
+import { SearchSelect } from "../table/SearchSelect";
 import { GlassCard, PageState, PageTitle } from "../ui";
 import { RoutingRulesEditor, RouteMatrixEditor } from "./configEditorFields";
 import { isUsableKey, KeyPickList } from "./keyAssignment";
@@ -152,13 +152,15 @@ function CreateConfigForm({ sourceConfigs, apiKeys }: {
             </Field>
             <div className="routing-create-field">
               <span>Clone from</span>
-              <MenuSelect
+              <SearchSelect
                 value={form.sourceConfigId}
                 options={sourceConfigs.map((config) => ({
                   value: config.id,
-                  label: `${config.name} · v${config.activeVersion?.version ?? "?"}`
+                  label: config.name,
+                  hint: `v${config.activeVersion?.version ?? "?"}`
                 }))}
                 ariaLabel="Clone from"
+                placeholder="Search routing configs…"
                 onChange={(sourceConfigId) => setForm((value) => ({ ...value, sourceConfigId }))}
               />
               {errors.sourceConfigId ? <small>{errors.sourceConfigId}</small> : null}
