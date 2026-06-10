@@ -137,11 +137,13 @@ export type SelectedRouteSettings =
   | {
       provider: "openai";
       model: string;
+      systemPrompt?: string;
       openai: RoutingConfigOpenAIRoute;
     }
   | {
       provider: "anthropic";
       model: string;
+      systemPrompt?: string;
       anthropic: RoutingConfigAnthropicRoute;
     };
 

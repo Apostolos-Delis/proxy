@@ -63,6 +63,9 @@ export function rewriteTokenCountRequest(body: unknown, decision: RouteDecision)
 
   const request = structuredClone(isRecord(body) ? body : {});
   request.model = decision.selectedModel;
+  if (decision.providerSettings?.provider === "anthropic" && decision.providerSettings.systemPrompt) {
+    request.system = prependAnthropicSystemPrompt(request.system, decision.providerSettings.systemPrompt);
+  }
   return request;
 }
 
@@ -72,6 +75,11 @@ function rewriteOpenAIResponsesRequest(
 ) {
   const request = structuredClone(isRecord(body) ? body : {});
   request.model = settings.model;
+  if (settings.systemPrompt) {
+    request.instructions = typeof request.instructions === "string" && request.instructions.trim()
+      ? `${settings.systemPrompt}\n\n${request.instructions}`
+      : settings.systemPrompt;
+  }
   if (settings.openai.reasoning) {
     request.reasoning = {
       ...(isRecord(request.reasoning) ? request.reasoning : {}),
@@ -106,6 +114,9 @@ function rewriteAnthropicMessagesRequest(
 ) {
   const request = structuredClone(isRecord(body) ? body : {});
   request.model = settings.model;
+  if (settings.systemPrompt) {
+    request.system = prependAnthropicSystemPrompt(request.system, settings.systemPrompt);
+  }
   if (settings.anthropic.thinking) {
     request.thinking = settings.anthropic.thinking;
   } else {
@@ -126,4 +137,14 @@ function rewriteAnthropicMessagesRequest(
     request.max_tokens = settings.anthropic.maxTokens;
   }
   return request;
+}
+
+function prependAnthropicSystemPrompt(system: unknown, systemPrompt: string) {
+  if (Array.isArray(system)) {
+    return [{ type: "text", text: systemPrompt }, ...system];
+  }
+  if (typeof system === "string" && system.trim()) {
+    return `${systemPrompt}\n\n${system}`;
+  }
+  return systemPrompt;
 }

@@ -6,6 +6,7 @@ const validConfig = {
   schemaVersion: 1,
   displayName: "Default coding router",
   description: "Routes coding-agent traffic by complexity.",
+  systemPrompt: "You are assisting through the organization's prompt proxy.",
   classifier: {
     provider: "openai",
     model: "gpt-5-nano-2025-08-07",
@@ -96,6 +97,22 @@ const validConfig = {
 describe("routingConfigSchema", () => {
   it("accepts a default OpenAI and Anthropic routing config", () => {
     expect(routingConfigSchema.parse(validConfig)).toEqual(validConfig);
+  });
+
+  it("accepts configs without a system prompt", () => {
+    const { systemPrompt: _systemPrompt, ...withoutSystemPrompt } = validConfig;
+
+    expect(routingConfigSchema.safeParse(withoutSystemPrompt).success).toBe(true);
+  });
+
+  it("rejects whitespace-only system prompts", () => {
+    const result = routingConfigSchema.safeParse({
+      ...validConfig,
+      systemPrompt: "   "
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(["systemPrompt"]);
   });
 
   it("rejects unknown top-level fields", () => {

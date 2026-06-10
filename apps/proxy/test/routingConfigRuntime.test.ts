@@ -294,6 +294,99 @@ describe("routing config runtime resolution", () => {
     expect(providerCall?.headers["x-claude-code-session-id"]).toBe("claude-session-config");
   });
 
+  it("prepends the config system prompt to OpenAI Responses instructions", async () => {
+    const organizationId = "org_config_system_prompt_openai";
+    activeFixture = await captureFixture(organizationId);
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "assigned-system-prompt-openai-token",
+      slug: "system-prompt-openai",
+      configHash: "sha256:system-prompt-openai-config",
+      configure: (config) => ({
+        ...config,
+        systemPrompt: "Follow organization proxy policy."
+      })
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer assigned-system-prompt-openai-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-hard",
+        instructions: "You are Codex.",
+        input: "debug this failing test",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const providerCall = activeFixture.openai.records.find((record) =>
+      record.body.model !== "route-classifier-cheap" && record.path === "/responses"
+    );
+
+    expect(response.status).toBe(200);
+    expect(providerCall?.body.instructions).toBe("Follow organization proxy policy.\n\nYou are Codex.");
+  });
+
+  it("prepends the config system prompt to Anthropic Messages system blocks", async () => {
+    const organizationId = "org_config_system_prompt_anthropic";
+    activeFixture = await captureFixture(organizationId);
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "assigned-system-prompt-anthropic-token",
+      slug: "system-prompt-anthropic",
+      configHash: "sha256:system-prompt-anthropic-config",
+      configure: (config) => ({
+        ...config,
+        systemPrompt: "Follow organization proxy policy."
+      })
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer assigned-system-prompt-anthropic-token",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-router-hard",
+        system: [{ type: "text", text: "You are Claude Code." }],
+        messages: [{ role: "user", content: "debug this failing test" }],
+        stream: true,
+        max_tokens: 4096
+      })
+    });
+    await response.text();
+
+    const countResponse = await fetch(`${activeFixture.proxyUrl}/v1/messages/count_tokens`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer assigned-system-prompt-anthropic-token",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-router-hard",
+        system: "You are Claude Code.",
+        messages: [{ role: "user", content: "debug this failing test" }]
+      })
+    });
+    await countResponse.text();
+
+    const providerCall = activeFixture.anthropic.records.find((record) => record.path === "/messages");
+    const countCall = activeFixture.anthropic.records.find((record) => record.path === "/messages/count_tokens");
+
+    expect(response.status).toBe(200);
+    expect(providerCall?.body.system).toEqual([
+      { type: "text", text: "Follow organization proxy policy." },
+      { type: "text", text: "You are Claude Code." }
+    ]);
+    expect(countResponse.status).toBe(200);
+    expect(countCall?.body.system).toBe("Follow organization proxy policy.\n\nYou are Claude Code.");
+  });
+
   it("rejects when the selected route is unavailable for the incoming surface", async () => {
     const organizationId = "org_config_missing_surface_route";
     activeFixture = await captureFixture(organizationId);
