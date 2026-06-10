@@ -16,7 +16,6 @@ export type RoutingConfigDocument = {
   schemaVersion: number;
   displayName: string;
   description?: string;
-  systemPrompt?: string;
   classifier: {
     provider: string;
     model: string;
@@ -51,7 +50,6 @@ export type RouteTierDraft = {
 };
 
 export type ConfigEditorDraft = {
-  systemPrompt: string;
   classifierRules: string;
   routes: Record<EditorRouteName, RouteTierDraft>;
 };
@@ -68,7 +66,6 @@ export function draftFromConfig(config: RoutingConfigDocument): ConfigEditorDraf
     };
   }
   return {
-    systemPrompt: config.systemPrompt ?? "",
     classifierRules: config.classifier.rules ?? "",
     routes
   };
@@ -96,9 +93,6 @@ export function applyDraft(base: RoutingConfigDocument, draft: ConfigEditorDraft
   const rules = draft.classifierRules.trim();
   if (rules) next.classifier.rules = rules;
   else delete next.classifier.rules;
-  const systemPrompt = draft.systemPrompt.trim();
-  if (systemPrompt) next.systemPrompt = systemPrompt;
-  else delete next.systemPrompt;
   return next;
 }
 

@@ -654,6 +654,30 @@
   outline: none;
 }
 
+.settings-field-wide {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.settings-field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 13px;
+  resize: vertical;
+}
+
+.settings-field textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
 .settings-field .menu-select > button {
   background: var(--glass-2);
   font-size: 13px;

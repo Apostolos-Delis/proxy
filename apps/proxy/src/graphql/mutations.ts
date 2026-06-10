@@ -132,7 +132,8 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: SettingsInput, required: true }) },
     resolve: async (_root, args, context) => {
       try {
-        const settings = await writeSettingsFile(context.config.settingsPath, args.input);
+        const { systemPrompt, ...fileInput } = args.input;
+        const settings = await writeSettingsFile(context.config.settingsPath, fileInput);
         if (
           context.persistence &&
           settings.promptCapture.promptCaptureMode !== undefined &&
@@ -143,6 +144,12 @@ builder.mutationFields((t) => ({
             promptCaptureMode: settings.promptCapture.promptCaptureMode,
             retentionDays: settings.promptCapture.retentionDays
           });
+        }
+        if (context.persistence && systemPrompt !== undefined) {
+          await context.persistence.organizationSettings.setSystemPrompt(
+            context.identity().organizationId,
+            systemPrompt?.trim() ? systemPrompt.trim() : null
+          );
         }
         return await settingsResponse(
           context.config,

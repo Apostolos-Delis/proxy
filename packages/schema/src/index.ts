@@ -87,12 +87,6 @@ export const INVITATION_STATUSES = {
   REVOKED: "revoked"
 } as const;
 
-export const DEFAULT_ROUTING_SYSTEM_PROMPT = [
-  "You are assisting through the organization's prompt proxy.",
-  "Follow the user's instructions precisely and keep changes minimal.",
-  "Never reveal credentials, API keys, or other secrets in responses."
-].join(" ");
-
 export const ROUTING_HINT_NAMES = [
   "quick",
   "deep",
@@ -295,7 +289,6 @@ export const routingConfigSchema = z.strictObject({
   schemaVersion: z.literal(1),
   displayName: routingConfigTextSchema,
   description: routingConfigTextSchema.optional(),
-  systemPrompt: routingConfigTextSchema.optional(),
   classifier: routingConfigClassifierSchema,
   routes: routingConfigRoutesSchema,
   limits: routingConfigLimitsSchema,

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 
 import { graphql } from "./gql";
 import { gqlFetch } from "./graphql";
-import { InfoTip, NumberField, SelectField, SettingsSection, TextField, ToggleField } from "./settingsFields";
+import { InfoTip, NumberField, SelectField, SettingsSection, TextAreaField, TextField, ToggleField } from "./settingsFields";
 import { settingsInput, validate, visibleGroups, type EditableSettings } from "./settingsPageData";
 import { Badge, GlassCard, PageState, PageTitle } from "./ui";
 
@@ -20,6 +20,7 @@ const SettingsViewDocument = graphql(`
       }
       settings {
         schemaVersion
+        systemPrompt
         classifier {
           model
           timeoutMs
@@ -55,6 +56,7 @@ const UpdateSettingsDocument = graphql(`
       }
       settings {
         schemaVersion
+        systemPrompt
         classifier {
           model
           timeoutMs
@@ -120,6 +122,7 @@ export function SettingsPage() {
       <SettingsForm
         key={JSON.stringify(query.data.settings)}
         initial={query.data.settings}
+        databaseEnabled={query.data.databaseEnabled}
         storagePath={query.data.storage.path}
         storageReason={query.data.storage.reason}
         restartRequiredFor={query.data.restartRequiredFor}
@@ -134,6 +137,7 @@ export function SettingsPage() {
 
 function SettingsForm({
   initial,
+  databaseEnabled,
   storagePath,
   storageReason,
   restartRequiredFor,
@@ -143,6 +147,7 @@ function SettingsForm({
   onSave
 }: {
   initial: EditableSettings;
+  databaseEnabled: boolean;
   storagePath: string;
   storageReason: string;
   restartRequiredFor: string[];
@@ -179,6 +184,18 @@ function SettingsForm({
       ))}
 
       <div className="settings-sections">
+        {databaseEnabled && groups.includes("system") ? (
+          <SettingsSection title="System Prompt" description="Prepended to the harness system prompt on every proxied request, across all routing configs. Leave empty to forward harness prompts unchanged.">
+            <TextAreaField
+              label="Organization system prompt"
+              info="Stored on organization settings and applied immediately to every routed request: prepended to OpenAI instructions and Anthropic system blocks ahead of harness prompts."
+              value={settings.systemPrompt ?? ""}
+              placeholder="Organization-wide guidance injected ahead of every model request."
+              onChange={(value) => setSettings({ ...settings, systemPrompt: value })}
+            />
+          </SettingsSection>
+        ) : null}
+
         {groups.includes("classifier") ? (
           <SettingsSection title="Classifier" description="The LLM call that picks a route for each request." restartRequired={restartRequiredFor.includes("classifier")}>
             <TextField

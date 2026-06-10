@@ -139,6 +139,7 @@ CREATE TABLE organization_settings (
   prompt_capture_mode text NOT NULL DEFAULT 'raw_text',
   retention_days integer NOT NULL DEFAULT 30,
   max_route text,
+  system_prompt text,
   default_routing_config_id text,
   settings jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),

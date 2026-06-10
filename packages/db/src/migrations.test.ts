@@ -378,6 +378,59 @@ describe("database migrations", () => {
       await client.close();
     }
   });
+
+  it("strips pre-cutover prompt fields from stored routing config versions", async () => {
+    const client = new PGlite();
+    const foundation = await readFile(
+      fileURLToPath(new URL("../migrations/0000_foundation.sql", import.meta.url)),
+      "utf8"
+    );
+    const cutover = await readFile(
+      fileURLToPath(new URL("../migrations/0005_organization_system_prompt.sql", import.meta.url)),
+      "utf8"
+    );
+
+    try {
+      await client.exec(foundation);
+      await client.exec(`
+        insert into organizations (id, slug, name)
+        values ('cutover_org', 'cutover-org', 'Cutover Org');
+
+        insert into routing_configs (id, organization_id, name, slug)
+        values ('cutover_config', 'cutover_org', 'Cutover Config', 'cutover-config');
+
+        insert into routing_config_versions (id, organization_id, routing_config_id, version, config_hash, config)
+        values
+          (
+            'cutover_version_stale',
+            'cutover_org',
+            'cutover_config',
+            1,
+            'cutover_hash_stale',
+            '{"systemPrompt": "Old prompt.", "classifier": {"model": "m", "instructions": "Old instructions."}}'::jsonb
+          ),
+          (
+            'cutover_version_clean',
+            'cutover_org',
+            'cutover_config',
+            2,
+            'cutover_hash_clean',
+            '{"classifier": {"model": "m", "rules": "Keep auth/ on hard."}}'::jsonb
+          );
+      `);
+
+      await client.exec(cutover);
+
+      const versions = await client.query<{ id: string; config: Record<string, unknown> }>(`
+        select id, config from routing_config_versions order by version
+      `);
+
+      expect(versions.rows[0]?.config).toEqual({ classifier: { model: "m" } });
+      expect(versions.rows[1]?.config).toEqual({ classifier: { model: "m", rules: "Keep auth/ on hard." } });
+    } finally {
+      await client.close();
+    }
+  });
 });
 
 async function migratedClient() {

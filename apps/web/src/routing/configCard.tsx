@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { KeyRound, ScrollText } from "lucide-react";
+import { KeyRound } from "lucide-react";
 
 import type { RouteMatrixRow, RoutingConfigSummary } from "./data";
 import { formatDateTime, formatInteger } from "../format";
@@ -25,7 +25,6 @@ export function RoutingConfigCard({ config }: { config: RoutingConfigSummary }) 
       </div>
       {config.description ? <p className="config-card-description">{config.description}</p> : null}
       <RouteMatrixSection routes={config.routeMatrix} />
-      <SystemPromptSection systemPrompt={config.systemPrompt} />
       <div className="config-card-foot">
         <KeyCount count={config.assignedApiKeyCount} />
         <span className="faint">Updated {formatDateTime(config.updatedAt)}</span>
@@ -71,17 +70,6 @@ function ModelCell({ model, effort }: { model: string | null; effort: string | n
       {model}
       {effort ? <em>{effort}</em> : null}
     </span>
-  );
-}
-
-function SystemPromptSection({ systemPrompt }: { systemPrompt?: string | null }) {
-  return (
-    <div className="config-card-section">
-      <span className="config-card-label"><ScrollText />System prompt</span>
-      {systemPrompt
-        ? <p className="config-card-prompt">{systemPrompt}</p>
-        : <span className="faint">None — harness prompts are forwarded unchanged.</span>}
-    </div>
   );
 }
 

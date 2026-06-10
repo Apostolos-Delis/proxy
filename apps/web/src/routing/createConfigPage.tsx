@@ -17,7 +17,7 @@ import {
 import { applyDraft, draftError, draftFromConfig, type ConfigEditorDraft } from "../routingConfigEditor";
 import { MenuSelect } from "../table/MenuSelect";
 import { GlassCard, PageState, PageTitle } from "../ui";
-import { PromptEditors, RouteMatrixEditor } from "./configEditorFields";
+import { RoutingRulesEditor, RouteMatrixEditor } from "./configEditorFields";
 import { isUsableKey, KeyPickList } from "./keyAssignment";
 
 type CreateForm = {
@@ -177,7 +177,7 @@ function CreateConfigForm({ sourceConfigs, apiKeys }: {
         {sourceVersion && draft ? (
           <>
             <GlassCard>
-              <PromptEditors
+              <RoutingRulesEditor
                 draft={draft}
                 onChange={(next) => setDraftState({ versionId: sourceVersion.id, draft: next })}
               />

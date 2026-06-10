@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   createPgliteDatabase,
+  organizationSettings,
   routingConfigs,
   routingConfigVersions
 } from "@prompt-proxy/db";
@@ -135,6 +136,40 @@ describe("routing config resolver guardrails", () => {
     expect(clearedIdentity?.routingConfigId).toBeNull();
     expect(cleared.configId).toBe(defaultConfigId);
     expect(cleared.versionId).toBe(`${defaultConfigId}:v1`);
+  });
+
+  it("returns the organization system prompt alongside resolved configs", async () => {
+    const fixture = await setup("org_resolver_system_prompt");
+    await seed(fixture, "org_resolver_system_prompt", "seed_resolver_prompt_user", "seeded-resolver-prompt-token");
+    const configId = "org_resolver_system_prompt:routing-config:default";
+
+    const before = await fixture.persistence.routingConfigs.resolve({
+      organizationId: "org_resolver_system_prompt",
+      routingConfigId: null
+    });
+
+    await fixture.db
+      .update(organizationSettings)
+      .set({ systemPrompt: "Follow organization proxy policy." })
+      .where(eq(organizationSettings.organizationId, "org_resolver_system_prompt"));
+    const pinnedWithPrompt = await fixture.persistence.routingConfigs.resolve({
+      organizationId: "org_resolver_system_prompt",
+      routingConfigId: configId
+    });
+
+    await fixture.db
+      .delete(organizationSettings)
+      .where(eq(organizationSettings.organizationId, "org_resolver_system_prompt"));
+    const pinnedWithoutRow = await fixture.persistence.routingConfigs.resolve({
+      organizationId: "org_resolver_system_prompt",
+      routingConfigId: configId
+    });
+
+    expect(before.organizationSystemPrompt).toBeUndefined();
+    expect(pinnedWithPrompt.configId).toBe(configId);
+    expect(pinnedWithPrompt.organizationSystemPrompt).toBe("Follow organization proxy policy.");
+    expect(pinnedWithoutRow.configId).toBe(configId);
+    expect(pinnedWithoutRow.organizationSystemPrompt).toBeUndefined();
   });
 
   async function setup(organizationId: string) {
