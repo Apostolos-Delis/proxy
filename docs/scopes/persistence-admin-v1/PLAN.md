@@ -70,7 +70,7 @@ Routes:
 /                    overview
 /requests            request table
 /requests/:requestId request detail and event timeline
-/settings            current routing/runtime settings
+/settings            searchable persistent runtime settings
 ```
 
 The web app currently reads the proxy admin endpoints:
@@ -84,6 +84,7 @@ GET /admin/overview
 GET /admin/requests
 GET /admin/requests/:requestId
 GET /admin/settings
+PATCH /admin/settings
 GET /admin/routing-configs
 GET /admin/routing-configs/:configId
 POST /admin/routing-configs
@@ -105,7 +106,10 @@ VITE_PROMPT_PROXY_API_BASE=http://127.0.0.1:8787
 ADMIN_DEV_LOGIN_ENABLED=true
 ADMIN_DEV_LOGIN_EMAIL=local@example.com
 ADMIN_DEV_LOGIN_PASSWORD=dev-password
+PROMPT_PROXY_SETTINGS_PATH=.prompt-proxy/settings.json
 ```
+
+Editable runtime settings are stored as JSON because the repo already uses JSON package/config conventions and does not carry a YAML parser dependency. The file defaults to `.prompt-proxy/settings.json`; environment variables continue to override file values. Classifier, budget, and route-quality edits are persisted for the next proxy restart, while prompt-capture edits are also applied to `organization_settings` when database persistence is enabled.
 
 ## Follow-Up Tickets
 
@@ -113,9 +117,8 @@ ADMIN_DEV_LOGIN_PASSWORD=dev-password
 2. Add API-key-backed org/user resolution instead of relying on `DEFAULT_ORGANIZATION_ID`.
 3. Move admin endpoints from in-memory projections to direct Postgres queries.
 4. Add API key management UI.
-5. Add organization settings mutation UI.
-6. Add provider/model catalog mutation UI.
-7. Add usage analytics by user, provider, model, route, and session.
-8. Add prompt artifact retention and redaction policies.
-9. Add durable outbox worker processing.
-10. Add held-out eval/prompt optimization tables after the prompt artifact model stabilizes.
+5. Add provider/model catalog mutation UI.
+6. Add usage analytics by user, provider, model, route, and session.
+7. Add prompt artifact retention and redaction policies.
+8. Add durable outbox worker processing.
+9. Add held-out eval/prompt optimization tables after the prompt artifact model stabilizes.

@@ -254,6 +254,151 @@
   margin-bottom: 22px;
 }
 
+.settings-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 360px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+}
+
+.settings-search {
+  min-width: 0;
+}
+
+.settings-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  color: var(--fg-faint);
+}
+
+.settings-meta svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.settings-meta .mono {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  color: var(--fg-faint);
+  font-size: 12.5px;
+}
+
+.settings-error {
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 12.5px;
+}
+
+.settings-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.settings-section {
+  min-width: 0;
+  padding: 18px;
+}
+
+.settings-section-head h3 {
+  margin: 0;
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-section-head p {
+  margin: 5px 0 0;
+  color: var(--fg-faint);
+  font-size: 12.5px;
+}
+
+.settings-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.settings-field,
+.settings-toggle {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.55fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-field > span,
+.settings-toggle > span {
+  color: var(--fg-muted);
+  font-size: 12.5px;
+}
+
+.settings-field input,
+.settings-field select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 13px;
+}
+
+.settings-field input:focus,
+.settings-field select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
+.settings-number {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-number em {
+  min-width: 34px;
+  color: var(--fg-faint);
+  font-style: normal;
+  font-size: 12px;
+}
+
+.settings-toggle input {
+  justify-self: start;
+  width: 34px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
 .request-route-line {
   display: flex;
   flex-wrap: wrap;
