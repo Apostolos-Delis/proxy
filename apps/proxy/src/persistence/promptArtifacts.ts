@@ -219,7 +219,7 @@ function artifactRow(
   const metadata = {
     surface: input.surface,
     chars: artifact.content?.length ?? 0,
-    ...(artifact.metadata ?? {})
+    ...artifact.metadata
   };
   const rawText = settings.promptCaptureMode === "raw_text" ? artifact.content : undefined;
   const redactedText = settings.promptCaptureMode === "redacted" && artifact.content !== undefined

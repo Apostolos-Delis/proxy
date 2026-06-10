@@ -27,11 +27,14 @@
     "smoke:deployed": "pnpm --filter @prompt-proxy/proxy smoke:deployed",
     "smoke:harnesses": "pnpm --filter @prompt-proxy/proxy smoke:harnesses",
     "test": "pnpm build:runtime && pnpm --filter @prompt-proxy/schema test && pnpm --filter @prompt-proxy/db test && pnpm --filter @prompt-proxy/proxy test && pnpm --filter @prompt-proxy/web test && pnpm --filter @prompt-proxy/infra-cdk test",
+    "lint": "oxlint --deny-warnings",
+    "lint:fix": "oxlint --fix",
     "typecheck": "tsc -b",
     "build": "pnpm build:runtime && pnpm --filter @prompt-proxy/web build"
   },
   "devDependencies": {
     "@types/node": "^25.0.2",
+    "oxlint": "^1.69.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.15"

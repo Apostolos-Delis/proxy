@@ -13,7 +13,6 @@ import {
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
-import { sha256 } from "../src/util.js";
 import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
 describe("admin prompt APIs", () => {

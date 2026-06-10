@@ -27,7 +27,6 @@ import { loadConfig } from "../src/config.js";
 import { EventService } from "../src/events.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
 import type { RouteContext } from "../src/types.js";
-import { sha256 } from "../src/util.js";
 
 describe("postgres persistence", () => {
   let client: PGlite | undefined;

@@ -162,6 +162,7 @@ Useful optional controls include `BUDGET_MAX_ROUTE`, `BUDGET_MAX_ESTIMATED_INPUT
 ## Verification
 
 ```shell
+pnpm lint
 pnpm typecheck
 pnpm test
 pnpm smoke
