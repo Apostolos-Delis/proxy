@@ -2515,6 +2515,31 @@ input[type="checkbox"][role="switch"]:focus-visible {
   right: 8px;
 }
 
+.setup-manual {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.setup-manual summary {
+  color: var(--fg-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.setup-manual summary:hover {
+  color: var(--fg);
+}
+
+.setup-manual[open] summary {
+  margin-bottom: 14px;
+}
+
+.setup-manual-title {
+  color: var(--fg);
+  font-weight: 600;
+}
+
 .assignment-popover {
   position: absolute;
   top: calc(100% + 6px);

@@ -2,7 +2,7 @@ import { Check, Copy, TerminalSquare } from "lucide-react";
 import { useState } from "react";
 
 import { apiBase } from "./graphql";
-import { buildSetupScript, keyPlaceholder } from "./keys/setupScript";
+import { buildManualSteps, buildSetupCommand, keyPlaceholder } from "./keys/setupSnippets";
 import { WizardStepHead } from "./keys/stepHead";
 
 export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
@@ -25,18 +25,17 @@ export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
           </li>
         ) : null}
         <li>
-          Run this once on your machine — it stores the key in <span className="code-pill">~/.prompt-proxy/token</span>,
-          points Claude Code at the proxy, and registers the proxy provider for Codex:
-          <Snippet text={buildSetupScript({ apiBase, secret })} />
+          Run this on your machine — or paste it into Claude Code or Codex and let the agent run it for you:
+          <Snippet text={buildSetupCommand({ apiBase, secret })} />
+          <div className="faint setup-explainer">
+            It fetches the <a href={`${apiBase}/setup.sh`} target="_blank" rel="noreferrer">setup script</a> from
+            the proxy, stores the key at <span className="code-pill">~/.prompt-proxy/token</span>, points Claude
+            Code at the proxy, and registers the proxy provider for Codex. Safe to re-run.
+          </div>
         </li>
         <li>
           Open a new terminal and run <span className="code-pill">claude</span> or <span className="code-pill">codex</span> —
           no flags or exports needed.
-          <div className="faint setup-explainer">
-            Claude Code: model, base URL, and an apiKeyHelper land in ~/.claude/settings.json, so other Anthropic tools
-            on this machine are untouched. Codex: a prompt_proxy provider in ~/.codex/config.toml reads
-            PROMPT_PROXY_TOKEN from your shell.
-          </div>
         </li>
         {showKeyContextSteps ? (
           <li>
@@ -45,6 +44,17 @@ export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
           </li>
         ) : null}
       </ol>
+      <details className="setup-manual">
+        <summary>Prefer to set it up by hand? Here is what the script does, step by step.</summary>
+        <ol className="setup-steps">
+          {buildManualSteps({ apiBase, secret }).map((step) => (
+            <li key={step.title}>
+              <span className="setup-manual-title">{step.title}.</span> {step.detail}
+              <Snippet text={step.snippet} />
+            </li>
+          ))}
+        </ol>
+      </details>
     </>
   );
 }
