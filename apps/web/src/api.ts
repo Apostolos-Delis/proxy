@@ -380,6 +380,13 @@ export type RoutingConfigDetail = {
   versions: RoutingConfigVersionDetail[];
 };
 
+export type CreateRoutingConfigInput = {
+  name: string;
+  slug: string;
+  description: string | null;
+  config: RoutingConfigDocument;
+};
+
 export type ApiKeySummary = {
   id: string;
   organizationId: string;
@@ -431,6 +438,13 @@ export async function fetchRoutingConfigs() {
 
 export async function fetchRoutingConfigDetail(configId: string) {
   return fetchJson<RoutingConfigDetail>(`/admin/routing-configs/${encodeURIComponent(configId)}`);
+}
+
+export async function createRoutingConfig(input: CreateRoutingConfigInput) {
+  return fetchJson<RoutingConfigDetail>("/admin/routing-configs", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
 }
 
 export async function activateRoutingConfigVersion(configId: string, versionId: string) {
@@ -508,8 +522,27 @@ async function fetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
   });
   if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(detail ? `${response.status} ${response.statusText}: ${detail}` : `${response.status} ${response.statusText}`);
+    throw new Error(await responseErrorMessage(response));
   }
   return response.json() as Promise<T>;
+}
+
+async function responseErrorMessage(response: Response) {
+  const fallback = `${response.status} ${response.statusText}`;
+  const body = await response.json().catch(() => null) as {
+    error?: unknown;
+    issues?: { path?: unknown; message?: unknown }[];
+  } | null;
+  if (typeof body?.error !== "string") return fallback;
+
+  const issues = Array.isArray(body.issues)
+    ? body.issues
+      .map((issue) => {
+        if (typeof issue.message !== "string") return null;
+        const path = typeof issue.path === "string" ? `${issue.path}: ` : "";
+        return `${path}${issue.message}`;
+      })
+      .filter((issue): issue is string => Boolean(issue))
+    : [];
+  return issues.length > 0 ? `${body.error} (${issues.join("; ")})` : body.error;
 }
