@@ -11,10 +11,12 @@ import {
   type ApiKeySummary,
   type RoutingConfigSummary
 } from "./routing/data";
+import { fetchProviderAccounts, type ProviderAccountSummary } from "./providers/data";
+import { ApiKeyProviderBinding } from "./apiKeyProviderBinding";
 import { apiKeyScopeOptions, CreateApiKeyPanel } from "./createApiKeyPanel";
 import { compactId, formatDateTime } from "./format";
 import { HarnessSetupCard } from "./harnessSetupCard";
-import { ConsoleTable, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
+import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { PageState, PageTitle, StatusBadge } from "./ui";
 
 type AssignmentVariables = {
@@ -28,10 +30,11 @@ export function KeysPage() {
   const [showSetup, setShowSetup] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const queryClient = useQueryClient();
-  const [keysQuery, configsQuery] = useQueries({
+  const [keysQuery, configsQuery, providerAccountsQuery] = useQueries({
     queries: [
       { queryKey: ["api-keys"], queryFn: fetchApiKeys },
-      { queryKey: ["routing-configs"], queryFn: fetchRoutingConfigs }
+      { queryKey: ["routing-configs"], queryFn: fetchRoutingConfigs },
+      { queryKey: ["provider-accounts"], queryFn: fetchProviderAccounts }
     ]
   });
   const assignmentMutation = useMutation({
@@ -49,14 +52,15 @@ export function KeysPage() {
       queryClient.invalidateQueries({ queryKey: ["routing-configs"] });
     }
   });
-  const loading = keysQuery.isLoading || configsQuery.isLoading;
-  const error = keysQuery.error ?? configsQuery.error;
+  const loading = keysQuery.isLoading || configsQuery.isLoading || providerAccountsQuery.isLoading;
+  const error = keysQuery.error ?? configsQuery.error ?? providerAccountsQuery.error;
 
   if (loading) return <PageState title="API keys" label="Loading API keys" />;
   if (error) return <PageState title="API keys" label={error.message} />;
 
   const keys = keysQuery.data ?? [];
   const configs = (configsQuery.data ?? []).filter(isAssignableConfig);
+  const providerAccounts = providerAccountsQuery.data ?? [];
   return (
     <div className="page page-enter">
       <PageTitle
@@ -89,6 +93,7 @@ export function KeysPage() {
         data={keys}
         columns={apiKeyColumns({
           configs,
+          providerAccounts,
           openKeyId,
           pendingKeyId: assignmentMutation.isPending ? assignmentMutation.variables?.apiKeyId : undefined,
           errorKeyId: assignmentMutation.variables?.apiKeyId,
@@ -111,6 +116,7 @@ export function KeysPage() {
 
 function apiKeyColumns({
   configs,
+  providerAccounts,
   openKeyId,
   pendingKeyId,
   errorKeyId,
@@ -123,6 +129,7 @@ function apiKeyColumns({
   onRevoke
 }: {
   configs: RoutingConfigSummary[];
+  providerAccounts: ProviderAccountSummary[];
   openKeyId: string | null;
   pendingKeyId?: string;
   errorKeyId?: string;
@@ -150,6 +157,7 @@ function apiKeyColumns({
         {errorKeyId === row.original.id && errorMessage ? <div className="action-error">{errorMessage}</div> : null}
       </>
     ) },
+    { id: "providerKey", header: "Provider key", size: 220, enableSorting: false, accessorFn: providerBindingValue, cell: ({ row }) => <ApiKeyProviderBinding apiKey={row.original} providerAccounts={providerAccounts} /> },
     { id: "scopes", header: "Scopes", size: 200, accessorFn: (apiKey) => apiKey.scopes.join(" "), cell: ({ row }) => <ScopesCell scopes={row.original.scopes} /> },
     { id: "owner", header: "Owner", size: 140, accessorFn: (apiKey) => apiKey.userId ?? "organization", cell: ({ row }) => <span className="mono">{row.original.userId ?? "organization"}</span> },
     { id: "created", header: "Created", size: 170, accessorFn: (apiKey) => apiKey.createdAt, cell: ({ row }) => formatDateTime(row.original.createdAt) },
@@ -304,8 +312,16 @@ function apiKeySearchValue(apiKey: ApiKeySummary) {
     apiKey.userId,
     apiKey.routingConfig?.name,
     apiKey.routingConfig?.status,
-    apiKey.scopes.join(" ")
+    apiKey.scopes.join(" "),
+    providerBindingValue(apiKey)
   ].filter((value): value is string => Boolean(value));
+}
+
+function providerBindingValue(apiKey: ApiKeySummary) {
+  if (apiKey.providerCredentials.length === 0) return "company default";
+  return apiKey.providerCredentials
+    .map((binding) => `${binding.provider} ${binding.name ?? ""}`.trim())
+    .join(" ");
 }
 
 function apiKeyStatus(apiKey: ApiKeySummary) {
@@ -322,18 +338,3 @@ function routingConfigLabel(apiKey: ApiKeySummary) {
   return apiKey.routingConfig?.name ?? "Organization default";
 }
 
-function optionItems(values: string[]) {
-  return uniqueOptions(values).map((value) => ({ value, label: value }));
-}
-
-function uniqueOptionItems(values: { value: string; label: string }[]) {
-  const options = new Map<string, string>();
-  values.forEach((item) => {
-    if (!options.has(item.value)) options.set(item.value, item.label);
-  });
-  return [...options].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
-}
-
-function uniqueOptions(values: string[]) {
-  return [...new Set(values)].filter(Boolean).sort();
-}

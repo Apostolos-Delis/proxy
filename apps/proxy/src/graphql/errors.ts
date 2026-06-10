@@ -1,7 +1,6 @@
 import { createGraphQLError } from "graphql-yoga";
 
-import { ApiKeyAdminError } from "../persistence/apiKeyAdmin.js";
-import { RoutingConfigAdminError } from "../persistence/routingConfigAdmin.js";
+import { AdminMutationError } from "../persistence/adminErrors.js";
 import { UserAdminError } from "../persistence/userAdmin.js";
 
 const CODES: Record<number, string> = {
@@ -42,11 +41,7 @@ export function notFoundError(message: string) {
 }
 
 export function mapAdminError(error: unknown): never {
-  if (
-    error instanceof RoutingConfigAdminError ||
-    error instanceof UserAdminError ||
-    error instanceof ApiKeyAdminError
-  ) {
+  if (error instanceof AdminMutationError || error instanceof UserAdminError) {
     throw adminGraphQLError(error.message, error.statusCode, error.issues);
   }
   if (error instanceof Error && typeof (error as { statusCode?: unknown }).statusCode === "number") {

@@ -7,7 +7,7 @@ import { Overview, UsageGroupBy, UsageInterval, UsageReport, UsageTimeseries } f
 import { Invitation, PublicInvitation } from "./types/invitations.js";
 import { PromptAccessAuditEntry, PromptDetail, PromptPage } from "./types/prompts.js";
 import { RequestDetail, RequestSummary } from "./types/requests.js";
-import { ApiKey, RoutingConfigDetail, RoutingConfigSummary } from "./types/routing.js";
+import { ApiKey, ProviderAccount, RoutingConfigDetail, RoutingConfigSummary } from "./types/routing.js";
 import { SearchResult } from "./types/search.js";
 import { SessionDetail, SessionSummary } from "./types/sessions.js";
 import { Settings } from "./types/settings.js";
@@ -283,6 +283,14 @@ builder.queryFields((t) => ({
       if (!queries) return null;
       const detail = await queries.apiKeyDetail(String(args.apiKeyId));
       return detail?.apiKey ?? null;
+    }
+  }),
+
+  providerAccounts: t.field({
+    type: [ProviderAccount],
+    resolve: async (_root, _args, context) => {
+      const queries = orgQueries(context);
+      return queries ? (await queries.providerAccounts()).data : [];
     }
   }),
 

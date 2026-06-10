@@ -14,6 +14,7 @@ import {
 import { routingConfigSchema, type RoutingConfig } from "@prompt-proxy/schema";
 
 import { createId } from "../util.js";
+import { AdminMutationError } from "./adminErrors.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
 
 const createConfigBodySchema = z.object({
@@ -31,15 +32,7 @@ const assignApiKeyRoutingConfigBodySchema = z.object({
   routingConfigId: z.string().trim().min(1).nullable()
 }).strict();
 
-export class RoutingConfigAdminError extends Error {
-  constructor(
-    message: string,
-    readonly statusCode: number,
-    readonly issues?: { path: string; message: string }[]
-  ) {
-    super(message);
-  }
-}
+export class RoutingConfigAdminError extends AdminMutationError {}
 
 export class RoutingConfigAdminService {
   constructor(private readonly db: PromptProxyTransactionalDatabase) {}

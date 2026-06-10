@@ -1,7 +1,7 @@
 import type { FastifyReply } from "fastify";
 
 import { buildAnthropicContext, buildOpenAIContext } from "./features.js";
-import type { RouteContext, RouteDecision, Surface, Provider, SelectedRouteSettings } from "./types.js";
+import type { RouteContext, RouteDecision, Surface, Provider, SelectedRouteSettings, UpstreamCredential } from "./types.js";
 import { isRecord } from "./util.js";
 
 export type SurfaceAdapter = {
@@ -22,6 +22,7 @@ export type ProviderForwardInput = {
   decision: RouteDecision;
   reply: FastifyReply;
   path?: string;
+  credential?: UpstreamCredential;
   onAssistantText?: (text: string, truncated: boolean) => Promise<void>;
 };
 

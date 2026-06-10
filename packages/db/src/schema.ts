@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, type PgTableExtraConfigValue } from "drizzle-orm/pg-core";
 
 import type {
@@ -7,6 +8,7 @@ import type {
   OrganizationMemberStatus,
   PromptCaptureMode,
   Provider,
+  ProviderAccountAuthType,
   ProviderAttemptStatus,
   RequestStatus,
   RoutingConfig,
@@ -259,15 +261,50 @@ export const providerAccounts = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     provider: text("provider").$type<Provider>().notNull(),
     name: text("name").notNull(),
+    authType: text("auth_type").$type<ProviderAccountAuthType>().notNull().default("api_key"),
     secretRef: text("secret_ref"),
+    secretCiphertext: text("secret_ciphertext"),
+    secretHint: text("secret_hint"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
     status: text("status").notNull().default("active"),
     settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true })
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("provider_accounts_org_provider_name_idx")
+      .on(table.organizationId, table.provider, table.name)
+      .where(sql`status = 'active'`),
+    uniqueIndex("provider_accounts_org_id_idx").on(table.organizationId, table.id),
+    index("provider_accounts_organization_id_idx").on(table.organizationId)
+  ]
+);
+
+export const apiKeyProviderAccounts = pgTable(
+  "api_key_provider_accounts",
+  {
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    apiKeyId: text("api_key_id")
+      .notNull()
+      .references(() => apiKeys.id, { onDelete: "cascade" }),
+    provider: text("provider").$type<Provider>().notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
-  (table) => [
-    uniqueIndex("provider_accounts_org_provider_name_idx").on(table.organizationId, table.provider, table.name),
-    index("provider_accounts_organization_id_idx").on(table.organizationId)
+  (table): PgTableExtraConfigValue[] => [
+    primaryKey({ name: "api_key_provider_accounts_pk", columns: [table.organizationId, table.apiKeyId, table.provider] }),
+    index("api_key_provider_accounts_account_idx").on(table.organizationId, table.providerAccountId),
+    index("api_key_provider_accounts_api_key_idx").on(table.organizationId, table.apiKeyId),
+    foreignKey({
+      name: "api_key_provider_accounts_account_fk",
+      columns: [table.organizationId, table.providerAccountId],
+      foreignColumns: [providerAccounts.organizationId, providerAccounts.id]
+    }).onDelete("cascade")
   ]
 );
 

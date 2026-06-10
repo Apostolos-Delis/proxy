@@ -384,6 +384,8 @@ export class WebSocketRoutingProxy {
   }
 
   private upstreamHeaders(incoming: Record<string, string | undefined>) {
+    // BYOK does not apply to the realtime WebSocket surface yet; this path always
+    // forwards with the company OpenAI key. See README "Provider Keys (BYOK)".
     const headers: Record<string, string> = {
       authorization: `Bearer ${this.config.openaiApiKey}`
     };

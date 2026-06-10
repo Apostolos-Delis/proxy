@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, Logs, MessagesSquare, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
+import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, KeySquare, Logs, MessagesSquare, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -23,6 +23,7 @@ const operationsNav = [
 
 const manageNav = [
   { to: "/api-keys", label: "API keys", icon: KeyRound },
+  { to: "/provider-keys", label: "Provider keys", icon: KeySquare },
   { to: "/users", label: "Users", icon: Users },
   { to: "/billing", label: "Billing", icon: CreditCard }
 ] as const;
@@ -33,6 +34,7 @@ const titles: Record<string, [string, string | null]> = {
   "/cost": ["Cost", "Spend, savings & attribution"],
   "/logs": ["Logs", "Request stream"],
   "/api-keys": ["API keys", "Manage secrets"],
+  "/provider-keys": ["Provider keys", "Bring-your-own provider credentials"],
   "/users": ["Users", "Team & access"],
   "/billing": ["Billing", "Spend & invoices"],
   "/settings": ["Settings", "Runtime configuration"],

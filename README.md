@@ -58,10 +58,11 @@ requires an authenticated admin session and anonymous introspection is
 rejected). Queries: viewer, overview, requests, request, prompts, prompt,
 promptAccessAudit, publicInvitation, usage, usageTimeseries, users, user,
 sessions, session, invitations, settings, routingConfigs, routingConfig,
-apiKeys, apiKey, search. Mutations: login, logout, switchOrganization,
+apiKeys, apiKey, providerAccounts, search. Mutations: login, logout, switchOrganization,
 acceptInvitation, updateSettings, configurePromptCapture, createRoutingConfig,
 createRoutingConfigVersion, activateRoutingConfigVersion, archiveRoutingConfig,
-assignApiKeyRoutingConfig, createApiKey, revokeApiKey, createInvitation,
+assignApiKeyRoutingConfig, createApiKey, revokeApiKey, createProviderCredential,
+revokeProviderCredential, assignApiKeyProviderAccount, createInvitation,
 resendInvitation, revokeInvitation, updateUserRole, deactivateUser,
 reactivateUser. The SDL lives at `apps/proxy/schema.graphql` (regenerate with
 `pnpm --filter @prompt-proxy/proxy schema:print`), and logged-in admins get
@@ -110,6 +111,14 @@ Config precedence for each request:
 The selected config id, version id, version number, and config hash are stored on request and route-decision rows. Use the web console API-key screen or `PATCH /admin/api-keys/:apiKeyId/routing-config` to assign a config. See the [routing configs runbook](docs/runbooks/routing-configs.md) for local setup, assignment commands, and troubleshooting.
 
 Routing configs can also carry a top-level `systemPrompt` that the proxy prepends to every routed request (OpenAI Responses `instructions`, Anthropic Messages `system`) ahead of harness prompts. The console's routing config screens edit the system prompt and the per-tier OpenAI/Anthropic models; saving creates a new immutable version that can be activated in the same step.
+
+## Provider Keys (BYOK)
+
+By default the proxy forwards every upstream call with the company-owned provider keys from env (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`). A customer can instead bring their own key: add it under the console's **Provider keys** screen (the `createProviderCredential` GraphQL mutation), then bind it to one of your prompt-proxy API keys for a given provider (the `assignApiKeyProviderAccount` mutation, surfaced on the API-keys screen). When a request authenticates with that API key, the proxy forwards to the matching provider using the customer's key (Anthropic `x-api-key`, OpenAI `Authorization: Bearer`); unbound keys keep using the company key. A key may bind at most one credential per provider.
+
+Customer secrets are encrypted at rest with AES-256-GCM using `PROVIDER_SECRET_ENCRYPTION_KEY` (base64, 32 bytes — generate with `openssl rand -base64 32`); they are never returned by the admin API, which exposes only a masked hint and the owning user. Only API-key credentials are supported today — Claude subscription/OAuth tokens are a planned follow-up.
+
+BYOK currently applies to the HTTP forward surfaces (`/v1/responses`, `/v1/messages`, `/v1/messages/count_tokens`). The OpenAI realtime WebSocket surface always uses the company key for now.
 
 ## Local Harnesses
 

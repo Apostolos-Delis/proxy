@@ -12,7 +12,7 @@ import {
   UpdateUserRoleResult,
   UserStatusResult
 } from "./types/invitations.js";
-import { ApiKey, CreateApiKeyResult, RoutingConfigDetail } from "./types/routing.js";
+import { ApiKey, CreateApiKeyResult, ProviderAccount, RoutingConfigDetail } from "./types/routing.js";
 import { PromptCaptureConfig, Settings, SettingsInput } from "./types/settings.js";
 import { Viewer } from "./types/viewer.js";
 
@@ -30,6 +30,14 @@ const CreateApiKeyInput = builder.inputType("CreateApiKeyInput", {
     name: t.string({ required: true }),
     scopes: t.stringList(),
     routingConfigId: t.id()
+  })
+});
+
+const CreateProviderCredentialInput = builder.inputType("CreateProviderCredentialInput", {
+  fields: (t) => ({
+    provider: t.string({ required: true }),
+    name: t.string({ required: true }),
+    apiKey: t.string({ required: true })
   })
 });
 
@@ -328,6 +336,76 @@ builder.mutationFields((t) => ({
           actorUserId: context.identity().userId,
           apiKeyId,
           body: { routingConfigId: args.routingConfigId ? String(args.routingConfigId) : null }
+        });
+        const detail = await orgQueries(context)?.apiKeyDetail(apiKeyId);
+        if (!detail) throw notFoundError("api_key_not_found");
+        return detail.apiKey;
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  createProviderCredential: t.field({
+    type: ProviderAccount,
+    nullable: true,
+    args: { input: t.arg({ type: CreateProviderCredentialInput, required: true }) },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("provider_accounts_not_found");
+      try {
+        const created = await context.persistence.providerCredentialAdmin.createCredential({
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
+          body: { provider: args.input.provider, name: args.input.name, apiKey: args.input.apiKey }
+        });
+        const accounts = (await orgQueries(context)?.providerAccounts())?.data ?? [];
+        return accounts.find((account) => account.id === created.providerAccountId) ?? null;
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  revokeProviderCredential: t.field({
+    type: ProviderAccount,
+    nullable: true,
+    args: { providerAccountId: t.arg.id({ required: true }) },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("provider_credential_not_found");
+      const providerAccountId = String(args.providerAccountId);
+      try {
+        await context.persistence.providerCredentialAdmin.revokeCredential({
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
+          providerAccountId
+        });
+        const accounts = (await orgQueries(context)?.providerAccounts())?.data ?? [];
+        return accounts.find((account) => account.id === providerAccountId) ?? null;
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  assignApiKeyProviderAccount: t.field({
+    type: ApiKey,
+    args: {
+      apiKeyId: t.arg.id({ required: true }),
+      provider: t.arg.string({ required: true }),
+      providerAccountId: t.arg.id()
+    },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("api_key_not_found");
+      const apiKeyId = String(args.apiKeyId);
+      try {
+        await context.persistence.providerCredentialAdmin.bindApiKeyCredential({
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
+          apiKeyId,
+          body: {
+            provider: args.provider,
+            providerAccountId: args.providerAccountId ? String(args.providerAccountId) : null
+          }
         });
         const detail = await orgQueries(context)?.apiKeyDetail(apiKeyId);
         if (!detail) throw notFoundError("api_key_not_found");

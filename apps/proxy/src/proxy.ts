@@ -10,7 +10,7 @@ import {
 } from "./events.js";
 import { extractResponseText } from "./persistence/promptArtifacts.js";
 import { SseObserver, type StreamObservation } from "./sseObserver.js";
-import type { JsonObject, Provider, RouteDecision, Surface } from "./types.js";
+import type { JsonObject, Provider, RouteDecision, Surface, UpstreamCredential } from "./types.js";
 
 export class ProviderProxy implements ProviderAdapter {
   constructor(
@@ -86,7 +86,7 @@ export class ProviderProxy implements ProviderAdapter {
     try {
       upstream = await fetch(this.urlFor(input.provider, input.path), {
         method: "POST",
-        headers: this.headersFor(input.provider, input.headers),
+        headers: this.headersFor(input.provider, input.headers, input.credential),
         body: JSON.stringify(input.body),
         signal: abortController.signal
       });
@@ -303,13 +303,18 @@ export class ProviderProxy implements ProviderAdapter {
     return `${base}${path ?? (provider === "openai" ? "/responses" : "/messages")}`;
   }
 
-  private headersFor(provider: Provider, incoming: Record<string, string | undefined>) {
+  private headersFor(
+    provider: Provider,
+    incoming: Record<string, string | undefined>,
+    credential?: UpstreamCredential
+  ) {
     const headers: Record<string, string> = {
       "content-type": "application/json"
     };
+    const byok = credential && credential.provider === provider ? credential : undefined;
 
     if (provider === "openai") {
-      headers.authorization = `Bearer ${this.config.openaiApiKey}`;
+      headers.authorization = `Bearer ${byok?.token ?? this.config.openaiApiKey}`;
       copyIfPresent(incoming, headers, "x-codex-turn-state");
       copyIfPresent(incoming, headers, "x-codex-turn-metadata");
       copyIfPresent(incoming, headers, "x-openai-subagent");
@@ -319,7 +324,7 @@ export class ProviderProxy implements ProviderAdapter {
       return headers;
     }
 
-    headers["x-api-key"] = this.config.anthropicApiKey;
+    headers["x-api-key"] = byok?.token ?? this.config.anthropicApiKey;
     headers["anthropic-version"] = incoming["anthropic-version"] ?? "2023-06-01";
     copyIfPresent(incoming, headers, "anthropic-beta");
     copyIfPresent(incoming, headers, "x-claude-code-session-id");

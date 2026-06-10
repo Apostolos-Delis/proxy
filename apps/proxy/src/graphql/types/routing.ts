@@ -1,7 +1,9 @@
 import { builder } from "../builder.js";
 import type {
   ApiKeyModel,
+  ApiKeyProviderBindingModel,
   ApiKeyRoutingConfigRefModel,
+  ProviderAccountModel,
   RouteMatrixRowModel,
   RoutingConfigDetailModel,
   RoutingConfigSummaryModel,
@@ -100,6 +102,17 @@ export const ApiKeyRoutingConfigRef = builder
     })
   });
 
+export const ApiKeyProviderBinding = builder
+  .objectRef<ApiKeyProviderBindingModel>("ApiKeyProviderBinding")
+  .implement({
+    fields: (t) => ({
+      provider: t.exposeString("provider"),
+      providerAccountId: t.exposeString("providerAccountId"),
+      name: t.exposeString("name", { nullable: true }),
+      status: t.exposeString("status", { nullable: true })
+    })
+  });
+
 export const ApiKey = builder.objectRef<ApiKeyModel>("ApiKey").implement({
   fields: (t) => ({
     id: t.exposeString("id"),
@@ -113,9 +126,26 @@ export const ApiKey = builder.objectRef<ApiKeyModel>("ApiKey").implement({
       nullable: true,
       resolve: (key) => key.routingConfig
     }),
+    providerCredentials: t.expose("providerCredentials", { type: [ApiKeyProviderBinding] }),
     createdAt: t.exposeString("createdAt"),
     expiresAt: t.exposeString("expiresAt", { nullable: true }),
     revokedAt: t.exposeString("revokedAt", { nullable: true }),
+    lastUsedAt: t.exposeString("lastUsedAt", { nullable: true })
+  })
+});
+
+export const ProviderAccount = builder.objectRef<ProviderAccountModel>("ProviderAccount").implement({
+  fields: (t) => ({
+    id: t.exposeString("id"),
+    organizationId: t.exposeString("organizationId"),
+    provider: t.exposeString("provider"),
+    name: t.exposeString("name"),
+    authType: t.exposeString("authType"),
+    status: t.exposeString("status"),
+    secretHint: t.exposeString("secretHint", { nullable: true }),
+    ownerUserId: t.exposeString("ownerUserId", { nullable: true }),
+    boundKeyCount: t.exposeInt("boundKeyCount"),
+    createdAt: t.exposeString("createdAt"),
     lastUsedAt: t.exposeString("lastUsedAt", { nullable: true })
   })
 });

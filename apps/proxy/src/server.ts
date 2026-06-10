@@ -29,7 +29,7 @@ import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
 import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
-import type { Surface } from "./types.js";
+import type { Provider, Surface } from "./types.js";
 import { createId, headerValue, idempotencyFrom, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
 
@@ -216,6 +216,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         headers: lowerHeaders(request.headers),
         decision,
         reply,
+        credential: await resolveUpstreamCredential(persistence, identity, openAIResponsesSurface.provider),
         onAssistantText: assistantResponseCapture({
           identity,
           requestId,
@@ -297,6 +298,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         headers: lowerHeaders(request.headers),
         decision,
         reply,
+        credential: await resolveUpstreamCredential(persistence, identity, anthropicMessagesSurface.provider),
         onAssistantText: assistantResponseCapture({
           identity,
           requestId,
@@ -356,7 +358,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         headers: lowerHeaders(request.headers),
         decision,
         reply,
-        path: "/messages/count_tokens"
+        path: "/messages/count_tokens",
+        credential: await resolveUpstreamCredential(persistence, identity, anthropicMessagesSurface.provider)
       });
     } catch (error) {
       await requestStates.finish(idempotencyKey, "failed", {
@@ -367,6 +370,19 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   });
 
   return app;
+}
+
+function resolveUpstreamCredential(
+  persistence: AppPersistence | undefined,
+  identity: RequestIdentity,
+  provider: Provider
+) {
+  if (!persistence) return undefined;
+  return persistence.providerCredentials.resolveForRequest({
+    organizationId: identity.organizationId,
+    apiKeyId: identity.apiKeyId,
+    provider
+  });
 }
 
 async function resolveRoutingConfig(

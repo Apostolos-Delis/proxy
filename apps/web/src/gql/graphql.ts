@@ -29,6 +29,12 @@ export type CreateInvitationInput = {
   role: MemberRole;
 };
 
+export type CreateProviderCredentialInput = {
+  apiKey: string;
+  name: string;
+  provider: string;
+};
+
 export type CreateRoutingConfigInput = {
   config: unknown;
   description?: string | null | undefined;
@@ -142,6 +148,34 @@ export type PromptsListQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type PromptsListQuery = { prompts: { data: Array<{ artifactId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, preview: string | null, finalRoute: string | null, selectedModel: string | null, createdAt: string, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }> } };
 
+export type ProviderAccountsQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type ProviderAccountsQuery = { providerAccounts: Array<{ id: string, organizationId: string, provider: string, name: string, authType: string, status: string, secretHint: string | null, ownerUserId: string | null, boundKeyCount: number, createdAt: string, lastUsedAt: string | null }> };
+
+export type CreateProviderCredentialMutationVariables = Exact<{
+  input: CreateProviderCredentialInput;
+}>;
+
+
+export type CreateProviderCredentialMutation = { createProviderCredential: { id: string, name: string } | null };
+
+export type RevokeProviderCredentialMutationVariables = Exact<{
+  providerAccountId: string | number;
+}>;
+
+
+export type RevokeProviderCredentialMutation = { revokeProviderCredential: { id: string, status: string } | null };
+
+export type AssignApiKeyProviderAccountMutationVariables = Exact<{
+  apiKeyId: string | number;
+  provider: string;
+  providerAccountId?: string | number | null | undefined;
+}>;
+
+
+export type AssignApiKeyProviderAccountMutation = { assignApiKeyProviderAccount: { id: string, providerCredentials: Array<{ provider: string, providerAccountId: string, name: string | null, status: string | null }> } };
+
 export type RequestsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -166,7 +200,7 @@ export type RoutingConfigDetailViewQuery = { routingConfig: { config: { id: stri
 export type RoutingApiKeysQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type RoutingApiKeysQuery = { apiKeys: Array<{ id: string, name: string, userId: string | null, scopes: Array<string>, routingConfigId: string | null, createdAt: string, expiresAt: string | null, revokedAt: string | null, lastUsedAt: string | null, routingConfig: { id: string, name: string | null, status: string | null } | null }> };
+export type RoutingApiKeysQuery = { apiKeys: Array<{ id: string, name: string, userId: string | null, scopes: Array<string>, routingConfigId: string | null, createdAt: string, expiresAt: string | null, revokedAt: string | null, lastUsedAt: string | null, routingConfig: { id: string, name: string | null, status: string | null } | null, providerCredentials: Array<{ provider: string, providerAccountId: string, name: string | null, status: string | null }> }> };
 
 export type CreateApiKeyMutationVariables = Exact<{
   input: CreateApiKeyInput;
@@ -720,6 +754,56 @@ export const PromptsListDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<PromptsListQuery, PromptsListQueryVariables>;
+export const ProviderAccountsDocument = new TypedDocumentString(`
+    query ProviderAccounts {
+  providerAccounts {
+    id
+    organizationId
+    provider
+    name
+    authType
+    status
+    secretHint
+    ownerUserId
+    boundKeyCount
+    createdAt
+    lastUsedAt
+  }
+}
+    `) as unknown as TypedDocumentString<ProviderAccountsQuery, ProviderAccountsQueryVariables>;
+export const CreateProviderCredentialDocument = new TypedDocumentString(`
+    mutation CreateProviderCredential($input: CreateProviderCredentialInput!) {
+  createProviderCredential(input: $input) {
+    id
+    name
+  }
+}
+    `) as unknown as TypedDocumentString<CreateProviderCredentialMutation, CreateProviderCredentialMutationVariables>;
+export const RevokeProviderCredentialDocument = new TypedDocumentString(`
+    mutation RevokeProviderCredential($providerAccountId: ID!) {
+  revokeProviderCredential(providerAccountId: $providerAccountId) {
+    id
+    status
+  }
+}
+    `) as unknown as TypedDocumentString<RevokeProviderCredentialMutation, RevokeProviderCredentialMutationVariables>;
+export const AssignApiKeyProviderAccountDocument = new TypedDocumentString(`
+    mutation AssignApiKeyProviderAccount($apiKeyId: ID!, $provider: String!, $providerAccountId: ID) {
+  assignApiKeyProviderAccount(
+    apiKeyId: $apiKeyId
+    provider: $provider
+    providerAccountId: $providerAccountId
+  ) {
+    id
+    providerCredentials {
+      provider
+      providerAccountId
+      name
+      status
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<AssignApiKeyProviderAccountMutation, AssignApiKeyProviderAccountMutationVariables>;
 export const RequestsPageDocument = new TypedDocumentString(`
     query RequestsPage {
   prompts {
@@ -858,6 +942,12 @@ export const RoutingApiKeysDocument = new TypedDocumentString(`
     lastUsedAt
     routingConfig {
       id
+      name
+      status
+    }
+    providerCredentials {
+      provider
+      providerAccountId
       name
       status
     }

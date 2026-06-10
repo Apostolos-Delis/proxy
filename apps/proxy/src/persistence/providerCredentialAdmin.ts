@@ -1,0 +1,248 @@
+import { and, eq } from "drizzle-orm";
+import { z } from "zod";
+
+import {
+  apiKeyProviderAccounts,
+  apiKeys,
+  encryptSecret,
+  providerAccounts,
+  secretHint,
+  type PromptProxyTransaction,
+  type PromptProxyTransactionalDatabase
+} from "@prompt-proxy/db";
+import { PROVIDER_ACCOUNT_STATUSES, PROVIDER_NAMES } from "@prompt-proxy/schema";
+
+import { createId } from "../util.js";
+import { AdminMutationError } from "./adminErrors.js";
+import { appendAdminAuditEvent } from "./adminAudit.js";
+
+const createCredentialBodySchema = z.object({
+  provider: z.enum(PROVIDER_NAMES),
+  name: z.string().trim().min(1),
+  apiKey: z.string().trim().min(1)
+}).strict();
+
+const bindApiKeyCredentialBodySchema = z.object({
+  provider: z.enum(PROVIDER_NAMES),
+  providerAccountId: z.string().trim().min(1).nullable()
+}).strict();
+
+export class ProviderCredentialAdminError extends AdminMutationError {}
+
+export class ProviderCredentialAdminService {
+  constructor(
+    private readonly db: PromptProxyTransactionalDatabase,
+    private readonly encryptionKey: string | undefined
+  ) {}
+
+  async createCredential(input: {
+    organizationId: string;
+    actorUserId: string;
+    body: unknown;
+  }) {
+    const body = createCredentialBodySchema.safeParse(input.body);
+    if (!body.success) throw validationError("invalid_provider_credential_request", body.error);
+    if (!this.encryptionKey) {
+      throw new ProviderCredentialAdminError("provider_secret_encryption_key_missing", 503);
+    }
+
+    const providerAccountId = createId("provider_account");
+    const ciphertext = encryptSecret(body.data.apiKey, this.encryptionKey);
+    const hint = secretHint(body.data.apiKey);
+    const now = new Date();
+
+    return this.db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({ id: providerAccounts.id })
+        .from(providerAccounts)
+        .where(and(
+          eq(providerAccounts.organizationId, input.organizationId),
+          eq(providerAccounts.provider, body.data.provider),
+          eq(providerAccounts.name, body.data.name),
+          eq(providerAccounts.status, PROVIDER_ACCOUNT_STATUSES.ACTIVE)
+        ))
+        .limit(1);
+      if (existing) throw new ProviderCredentialAdminError("provider_credential_name_exists", 409);
+
+      await tx.insert(providerAccounts).values({
+        id: providerAccountId,
+        organizationId: input.organizationId,
+        provider: body.data.provider,
+        name: body.data.name,
+        authType: "api_key",
+        secretCiphertext: ciphertext,
+        secretHint: hint,
+        createdByUserId: input.actorUserId,
+        status: PROVIDER_ACCOUNT_STATUSES.ACTIVE,
+        createdAt: now,
+        updatedAt: now
+      });
+      await appendAdminAuditEvent(tx, {
+        organizationId: input.organizationId,
+        scopeType: "provider_account",
+        scopeId: providerAccountId,
+        correlationId: providerAccountId,
+        actorUserId: input.actorUserId,
+        producer: "prompt-proxy.admin.provider-accounts",
+        eventType: "provider_account.created",
+        payload: {
+          providerAccountId,
+          provider: body.data.provider,
+          name: body.data.name,
+          authType: "api_key",
+          secretHint: hint
+        },
+        createdAt: now
+      });
+
+      return { providerAccountId };
+    });
+  }
+
+  async revokeCredential(input: {
+    organizationId: string;
+    actorUserId: string;
+    providerAccountId: string;
+  }) {
+    const now = new Date();
+    return this.db.transaction(async (tx) => {
+      const account = await byokAccount(tx, input.organizationId, input.providerAccountId);
+      if (!account) throw new ProviderCredentialAdminError("provider_credential_not_found", 404);
+      if (account.status !== PROVIDER_ACCOUNT_STATUSES.ACTIVE) throw new ProviderCredentialAdminError("provider_credential_revoked", 409);
+
+      await tx
+        .update(providerAccounts)
+        .set({ status: PROVIDER_ACCOUNT_STATUSES.DISABLED, updatedAt: now })
+        .where(and(
+          eq(providerAccounts.organizationId, input.organizationId),
+          eq(providerAccounts.id, input.providerAccountId)
+        ));
+      await tx
+        .delete(apiKeyProviderAccounts)
+        .where(and(
+          eq(apiKeyProviderAccounts.organizationId, input.organizationId),
+          eq(apiKeyProviderAccounts.providerAccountId, input.providerAccountId)
+        ));
+      await appendAdminAuditEvent(tx, {
+        organizationId: input.organizationId,
+        scopeType: "provider_account",
+        scopeId: input.providerAccountId,
+        correlationId: input.providerAccountId,
+        actorUserId: input.actorUserId,
+        producer: "prompt-proxy.admin.provider-accounts",
+        eventType: "provider_account.revoked",
+        payload: {
+          providerAccountId: input.providerAccountId,
+          provider: account.provider,
+          name: account.name
+        },
+        createdAt: now
+      });
+
+      return { providerAccountId: input.providerAccountId };
+    });
+  }
+
+  async bindApiKeyCredential(input: {
+    organizationId: string;
+    actorUserId: string;
+    apiKeyId: string;
+    body: unknown;
+  }) {
+    const body = bindApiKeyCredentialBodySchema.safeParse(input.body);
+    if (!body.success) throw validationError("invalid_provider_credential_binding", body.error);
+    const { provider, providerAccountId } = body.data;
+    const now = new Date();
+
+    return this.db.transaction(async (tx) => {
+      const [apiKey] = await tx
+        .select({ id: apiKeys.id })
+        .from(apiKeys)
+        .where(and(
+          eq(apiKeys.organizationId, input.organizationId),
+          eq(apiKeys.id, input.apiKeyId)
+        ))
+        .limit(1);
+      if (!apiKey) throw new ProviderCredentialAdminError("api_key_not_found", 404);
+
+      if (providerAccountId === null) {
+        await tx
+          .delete(apiKeyProviderAccounts)
+          .where(and(
+            eq(apiKeyProviderAccounts.organizationId, input.organizationId),
+            eq(apiKeyProviderAccounts.apiKeyId, input.apiKeyId),
+            eq(apiKeyProviderAccounts.provider, provider)
+          ));
+      } else {
+        const account = await byokAccount(tx, input.organizationId, providerAccountId);
+        if (!account) throw new ProviderCredentialAdminError("provider_credential_not_found", 404);
+        if (account.status !== PROVIDER_ACCOUNT_STATUSES.ACTIVE) throw new ProviderCredentialAdminError("provider_credential_revoked", 409);
+        if (account.provider !== provider) throw new ProviderCredentialAdminError("provider_credential_provider_mismatch", 409);
+
+        await tx
+          .insert(apiKeyProviderAccounts)
+          .values({
+            organizationId: input.organizationId,
+            apiKeyId: input.apiKeyId,
+            provider,
+            providerAccountId,
+            createdByUserId: input.actorUserId,
+            createdAt: now,
+            updatedAt: now
+          })
+          .onConflictDoUpdate({
+            target: [apiKeyProviderAccounts.organizationId, apiKeyProviderAccounts.apiKeyId, apiKeyProviderAccounts.provider],
+            set: { providerAccountId, updatedAt: now }
+          });
+      }
+
+      await appendAdminAuditEvent(tx, {
+        organizationId: input.organizationId,
+        scopeType: "api_key",
+        scopeId: input.apiKeyId,
+        correlationId: providerAccountId ?? input.apiKeyId,
+        actorUserId: input.actorUserId,
+        producer: "prompt-proxy.admin.api-keys",
+        eventType: "provider_account.api_key_assignment_changed",
+        payload: {
+          apiKeyId: input.apiKeyId,
+          provider,
+          providerAccountId
+        },
+        createdAt: now
+      });
+
+      return { apiKeyId: input.apiKeyId, provider, providerAccountId };
+    });
+  }
+}
+
+async function byokAccount(tx: PromptProxyTransaction, organizationId: string, providerAccountId: string) {
+  const [account] = await tx
+    .select({
+      id: providerAccounts.id,
+      provider: providerAccounts.provider,
+      name: providerAccounts.name,
+      status: providerAccounts.status,
+      secretCiphertext: providerAccounts.secretCiphertext
+    })
+    .from(providerAccounts)
+    .where(and(
+      eq(providerAccounts.organizationId, organizationId),
+      eq(providerAccounts.id, providerAccountId)
+    ))
+    .limit(1);
+  if (!account || !account.secretCiphertext) return null;
+  return account;
+}
+
+function validationError(message: string, error: z.ZodError) {
+  return new ProviderCredentialAdminError(
+    message,
+    400,
+    error.issues.map((issue) => ({
+      path: issue.path.join(".") || "body",
+      message: issue.message
+    }))
+  );
+}

@@ -163,15 +163,37 @@ CREATE TABLE provider_accounts (
   organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   provider text NOT NULL,
   name text NOT NULL,
+  auth_type text NOT NULL DEFAULT 'api_key',
   secret_ref text,
+  secret_ciphertext text,
+  secret_hint text,
+  created_by_user_id text REFERENCES users(id) ON DELETE SET NULL,
   status text NOT NULL DEFAULT 'active',
   settings jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now()
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  last_used_at timestamp with time zone
 );
 
-CREATE UNIQUE INDEX provider_accounts_org_provider_name_idx ON provider_accounts (organization_id, provider, name);
+CREATE UNIQUE INDEX provider_accounts_org_provider_name_idx ON provider_accounts (organization_id, provider, name) WHERE status = 'active';
+CREATE UNIQUE INDEX provider_accounts_org_id_idx ON provider_accounts (organization_id, id);
 CREATE INDEX provider_accounts_organization_id_idx ON provider_accounts (organization_id);
+
+CREATE TABLE api_key_provider_accounts (
+  organization_id text NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  api_key_id text NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+  provider text NOT NULL,
+  provider_account_id text NOT NULL,
+  created_by_user_id text REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT api_key_provider_accounts_pk PRIMARY KEY (organization_id, api_key_id, provider),
+  CONSTRAINT api_key_provider_accounts_account_fk FOREIGN KEY (organization_id, provider_account_id)
+    REFERENCES provider_accounts(organization_id, id) ON DELETE CASCADE
+);
+
+CREATE INDEX api_key_provider_accounts_account_idx ON api_key_provider_accounts (organization_id, provider_account_id);
+CREATE INDEX api_key_provider_accounts_api_key_idx ON api_key_provider_accounts (organization_id, api_key_id);
 
 CREATE TABLE model_catalog (
   id text PRIMARY KEY,
