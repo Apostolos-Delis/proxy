@@ -89,7 +89,17 @@ function PromptCell({ row }: { row: PromptLogRow }) {
       >
         {preview ?? "Prompt not stored"}
       </Link>
-      <div className="mono faint">{compactId(row.prompt.requestId)}</div>
+      <div className="mono faint">
+        {compactId(row.prompt.requestId)}
+        {row.prompt.sessionId ? (
+          <>
+            {" · "}
+            <Link to="/sessions/$sessionId" params={{ sessionId: row.prompt.sessionId }} className="session-link">
+              session
+            </Link>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -159,20 +169,29 @@ function uniqueOptionItems(values: { value: string; label: string }[]) {
 function promptRows(prompts: PromptSummary[], requests: RequestSummary[], users: Parameters<typeof displayUser>[0][]): PromptLogRow[] {
   const requestsById = new Map(requests.map((request) => [request.requestId, request]));
   const usersById = new Map(users.map((user) => [user.userId, user]));
-  return prompts
-    .filter(isVisiblePromptArtifact)
-    .map((prompt) => {
-      const user = prompt.userId ? usersById.get(prompt.userId) : undefined;
-      return {
-        prompt,
-        request: requestsById.get(prompt.requestId),
-        userName: user ? displayUser(user) : prompt.userId ?? "unknown"
-      };
-    });
+  const promptsByRequest = new Map<string, PromptSummary>();
+  prompts.filter(isVisiblePromptArtifact).forEach((prompt) => {
+    const existing = promptsByRequest.get(prompt.requestId);
+    if (!existing || artifactRank(prompt) < artifactRank(existing)) {
+      promptsByRequest.set(prompt.requestId, prompt);
+    }
+  });
+  return [...promptsByRequest.values()].map((prompt) => {
+    const user = prompt.userId ? usersById.get(prompt.userId) : undefined;
+    return {
+      prompt,
+      request: requestsById.get(prompt.requestId),
+      userName: user ? displayUser(user) : prompt.userId ?? "unknown"
+    };
+  });
 }
 
 function isVisiblePromptArtifact(prompt: PromptSummary) {
-  return prompt.kind !== "tool_schema_metadata" && prompt.kind !== "request_input";
+  return prompt.kind !== "tool_schema_metadata" && prompt.kind !== "request_input" && prompt.kind !== "assistant_response";
+}
+
+function artifactRank(prompt: PromptSummary) {
+  return prompt.kind === "latest_user_message" ? 0 : 1;
 }
 
 function formatLatency(value?: number) {

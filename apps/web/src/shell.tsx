@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { BarChart3, Boxes, Command, CreditCard, Gauge, GitBranch, KeyRound, Logs, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
+import { BarChart3, Boxes, Command, CreditCard, Gauge, GitBranch, KeyRound, Logs, MessagesSquare, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -8,7 +8,8 @@ import { LogoutButton } from "./auth";
 const workspaceNav = [
   { to: "/", label: "Overview", icon: Gauge },
   { to: "/usage", label: "Usage", icon: BarChart3 },
-  { to: "/logs", label: "Logs", icon: Logs }
+  { to: "/logs", label: "Logs", icon: Logs },
+  { to: "/sessions", label: "Sessions", icon: MessagesSquare }
 ] as const;
 
 const operationsNav = [
