@@ -3,6 +3,8 @@
 - [Model routing proxy design](docs/model-routing-proxy.md)
 - [Implementation tickets](docs/implementation-tickets.md)
 - [Routing configs runbook](docs/runbooks/routing-configs.md)
+- [AWS prod-like deployment scope](docs/scopes/aws-prod-like-deployment-v1/PLAN.md)
+- [AWS prod-like deployment tickets](docs/scopes/aws-prod-like-deployment-v1/TICKETS.md)
 - [Future: GEPA-inspired prompt optimization](docs/future/gepa-prompt-optimization.md)
 
 ## Development
