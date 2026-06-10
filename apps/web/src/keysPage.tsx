@@ -67,7 +67,6 @@ export function KeysPage() {
         filters={apiKeyFilters(keys)}
         advancedFields={apiKeyAdvancedFields}
         emptyLabel="No API keys found."
-        resultLabel={(count) => `${count} keys`}
       />
     </div>
   );
