@@ -440,22 +440,23 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     return {
       groupBy: "route",
       data: [],
-      totals: {
-        key: "total",
-        requestCount: 0,
-        failedRequests: 0,
-        retriedRequests: 0,
-        failureRate: 0,
-        retryRate: 0,
-        usage: {
-          inputTokens: 0,
-          cachedInputTokens: 0,
-          outputTokens: 0,
-          reasoningTokens: 0,
-          totalTokens: 0
-        },
-        cost: { selected: 0, baseline: 0, savings: 0 }
-      }
+      totals: emptyUsageTotals()
+    };
+  });
+  app.get("/admin/usage/timeseries", async (request) => {
+    const identity = await adminAuth.resolve(request.headers);
+    const filters = usageTimeseriesFilters(request.query);
+    if (persistence) {
+      return persistence.adminQueries.forOrg(identity.organizationId).usageTimeseries(filters);
+    }
+    const now = new Date().toISOString();
+    return {
+      groupBy: filters.groupBy ?? "route",
+      interval: filters.interval ?? "day",
+      start: filters.start ?? now,
+      end: filters.end ?? now,
+      groups: [],
+      points: []
     };
   });
   app.get("/admin/users", async (request) => {
@@ -775,6 +776,37 @@ function usageFilters(query: unknown) {
     groupBy: stringParam(record.groupBy ?? record.group_by),
     start: stringParam(record.start ?? record.startDate),
     end: stringParam(record.end ?? record.endDate)
+  };
+}
+
+function usageTimeseriesFilters(query: unknown) {
+  const record = query && typeof query === "object" && !Array.isArray(query)
+    ? query as Record<string, unknown>
+    : {};
+  return {
+    ...usageFilters(query),
+    interval: stringParam(record.interval),
+    limit: numberParam(record.limit)
+  };
+}
+
+function emptyUsageTotals() {
+  return {
+    key: "total",
+    requestCount: 0,
+    failedRequests: 0,
+    retriedRequests: 0,
+    failureRate: 0,
+    retryRate: 0,
+    latency: { averageMs: null, p95Ms: null },
+    usage: {
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0
+    },
+    cost: { selected: 0, baseline: 0, savings: 0 }
   };
 }
 

@@ -159,13 +159,15 @@ export function usageRequest(
   userId: string,
   sessionId: string,
   surface: "openai-responses" | "anthropic-messages",
-  createdAt: Date
+  createdAt: Date,
+  apiKeyId?: string
 ) {
   return {
     id,
     organizationId,
     userId,
     sessionId,
+    apiKeyId,
     surface,
     idempotencyKey: `idem_${id}`,
     requestedModel: "router-auto",

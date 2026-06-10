@@ -1,7 +1,10 @@
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
   agentSessions,
+  apiKeys,
+  hashApiKey,
   organizations,
   providerAttempts,
   requests,
@@ -133,6 +136,141 @@ describe("usage analytics admin APIs", () => {
       "surface",
       "session"
     ]);
+  });
+
+  it("groups usage by API key and serves bucketed timeseries with group collapse", async () => {
+    const fixture = await setup("org_usage_keys");
+    const dayOne = new Date("2026-06-07T10:00:00.000Z");
+    const dayTwo = new Date("2026-06-08T12:00:00.000Z");
+
+    await fixture.db.insert(users).values([{ id: "user_keys" }]);
+    await fixture.db.insert(apiKeys).values([
+      {
+        id: "key_alpha",
+        organizationId: "org_usage_keys",
+        keyHash: hashApiKey("alpha-secret"),
+        name: "Alpha key",
+        scopes: ["proxy"]
+      },
+      {
+        id: "key_beta",
+        organizationId: "org_usage_keys",
+        keyHash: hashApiKey("beta-secret"),
+        name: "Beta key",
+        scopes: ["proxy"]
+      }
+    ]);
+    await fixture.db.insert(agentSessions).values([
+      {
+        id: "session_keys",
+        organizationId: "org_usage_keys",
+        userId: "user_keys",
+        surface: "openai-responses"
+      }
+    ]);
+    await fixture.db.insert(requests).values([
+      usageRequest("key_request_alpha_one", "org_usage_keys", "user_keys", "session_keys", "openai-responses", dayOne, "key_alpha"),
+      usageRequest("key_request_alpha_two", "org_usage_keys", "user_keys", "session_keys", "openai-responses", dayTwo, "key_alpha"),
+      usageRequest("key_request_beta", "org_usage_keys", "user_keys", "session_keys", "openai-responses", dayTwo, "key_beta"),
+      usageRequest("key_request_anonymous", "org_usage_keys", "user_keys", "session_keys", "openai-responses", dayTwo)
+    ]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("key_attempt_alpha_one", "key_request_alpha_one", "org_usage_keys", "openai-responses", "openai", "gpt-fast", "completed", dayOne),
+      {
+        ...usageAttempt("key_attempt_alpha_two", "key_request_alpha_two", "org_usage_keys", "openai-responses", "openai", "gpt-fast", "completed", dayTwo),
+        completedAt: new Date(dayTwo.getTime() + 200)
+      },
+      {
+        ...usageAttempt("key_attempt_beta", "key_request_beta", "org_usage_keys", "openai-responses", "openai", "gpt-fast", "completed", dayTwo),
+        completedAt: new Date(dayTwo.getTime() + 100)
+      },
+      usageAttempt("key_attempt_anonymous", "key_request_anonymous", "org_usage_keys", "openai-responses", "openai", "gpt-fast", "completed", dayTwo)
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      usageRow("key_usage_alpha_one", "key_request_alpha_one", "key_attempt_alpha_one", "org_usage_keys", "openai", "gpt-fast", "fast", 100, 25, 1000),
+      usageRow("key_usage_alpha_two", "key_request_alpha_two", "key_attempt_alpha_two", "org_usage_keys", "openai", "gpt-fast", "fast", 200, 50, 2000),
+      usageRow("key_usage_beta", "key_request_beta", "key_attempt_beta", "org_usage_keys", "openai", "gpt-fast", "fast", 400, 100, 4000),
+      usageRow("key_usage_anonymous", "key_request_anonymous", "key_attempt_anonymous", "org_usage_keys", "openai", "gpt-fast", "fast", 10, 5, 500)
+    ]);
+
+    const keyUsage = await fetch(`${fixture.proxyUrl}/admin/usage?groupBy=api_key`, {
+      headers: fixture.adminHeaders
+    }).then((item) => item.json());
+    const timeseries = await fetch(
+      `${fixture.proxyUrl}/admin/usage/timeseries?groupBy=api_key&interval=day&start=2026-06-07T00:00:00.000Z&end=2026-06-08T23:59:59.000Z`,
+      { headers: fixture.adminHeaders }
+    ).then((item) => item.json());
+    const collapsed = await fetch(
+      `${fixture.proxyUrl}/admin/usage/timeseries?groupBy=api_key&interval=day&start=2026-06-07T00:00:00.000Z&end=2026-06-08T23:59:59.000Z&limit=2`,
+      { headers: fixture.adminHeaders }
+    ).then((item) => item.json());
+
+    expect(keyUsage.groupBy).toBe("api_key");
+    expect(keyUsage.data.map((item: any) => item.key)).toEqual(["key_beta", "key_alpha", "unknown"]);
+    const alphaGroup = keyUsage.data.find((item: any) => item.key === "key_alpha");
+    expect(alphaGroup).toEqual(expect.objectContaining({
+      requestCount: 2,
+      usage: expect.objectContaining({ totalTokens: 375 })
+    }));
+    expect(alphaGroup.cost.selected).toBeCloseTo(0.003);
+    expect(alphaGroup.latency).toEqual({ averageMs: 100, p95Ms: 200 });
+
+    expect(timeseries.groupBy).toBe("api_key");
+    expect(timeseries.interval).toBe("day");
+    expect(timeseries.groups.map((item: any) => item.key)).toEqual(["key_beta", "key_alpha", "unknown"]);
+    expect(timeseries.points).toHaveLength(2);
+    const [firstPoint, secondPoint] = timeseries.points;
+    expect(firstPoint.ts).toBe("2026-06-07T00:00:00.000Z");
+    expect(firstPoint.totals.requestCount).toBe(1);
+    expect(firstPoint.groups.key_alpha.usage.totalTokens).toBe(125);
+    expect(secondPoint.ts).toBe("2026-06-08T00:00:00.000Z");
+    expect(secondPoint.totals.requestCount).toBe(3);
+    expect(secondPoint.groups.key_beta.cost.selected).toBeCloseTo(0.004);
+    expect(secondPoint.groups.unknown.requestCount).toBe(1);
+
+    expect(collapsed.groups.map((item: any) => item.key)).toEqual(["key_beta", "key_alpha", "__other__"]);
+    const collapsedSecondPoint = collapsed.points[1];
+    expect(collapsedSecondPoint.groups.__other__.requestCount).toBe(1);
+    expect(collapsedSecondPoint.groups.__other__.usage.totalTokens).toBe(15);
+  });
+
+  it("records the API key on proxied requests and attributes usage to it", async () => {
+    const fixture = await setup("org_usage_key_capture");
+    await fixture.db.insert(apiKeys).values({
+      id: "key_capture",
+      organizationId: "org_usage_key_capture",
+      keyHash: hashApiKey("capture-secret"),
+      name: "Capture key",
+      scopes: ["proxy"]
+    });
+
+    const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer capture-secret",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "summarize this changelog",
+        stream: true
+      })
+    });
+    await response.text();
+    expect(response.status).toBe(200);
+
+    const requestRows = await fixture.db
+      .select()
+      .from(requests)
+      .where(eq(requests.organizationId, "org_usage_key_capture"));
+    expect(requestRows).toHaveLength(1);
+    expect(requestRows[0].apiKeyId).toBe("key_capture");
+
+    const keyUsage = await fetch(`${fixture.proxyUrl}/admin/usage?groupBy=api_key`, {
+      headers: fixture.adminHeaders
+    }).then((item) => item.json());
+    expect(keyUsage.data.map((item: any) => item.key)).toEqual(["key_capture"]);
+    expect(keyUsage.data[0].requestCount).toBe(1);
   });
 
   async function setup(organizationId: string) {
