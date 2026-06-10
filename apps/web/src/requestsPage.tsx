@@ -6,6 +6,7 @@ import { type PromptSummary, type RequestSummary, fetchPrompts, fetchRequests, f
 import { displayUser } from "./consoleData";
 import { downloadJson } from "./dashboard";
 import { compactId, formatCompact, formatMoney } from "./format";
+import { uniqueOptions } from "./requestsPageData";
 import { RoutingConfigMicro } from "./routingSnapshot";
 import { ConsoleTable, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { PageState, PageTitle, StatusBadge, UserCell } from "./ui";
