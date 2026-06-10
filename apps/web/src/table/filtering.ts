@@ -1,5 +1,30 @@
 import type { ConsoleTableAdvancedField, ConsoleTableAdvancedRule, ConsoleTableFilter, ConsoleTableFilterOption, ConsoleTableSearch } from "./types";
 
+export const FILTER_ALL_VALUE = "all";
+
+/** Maps stored filter state to the values actually applied: absent entries fall back to the filter's defaultValue, and the "all" sentinel clears it. */
+export function resolveFilterValues<TData>(
+  filters: ConsoleTableFilter<TData>[],
+  stored: Record<string, string>
+): Record<string, string> {
+  return Object.fromEntries(
+    filters
+      .map((filter) => {
+        const value = stored[filter.id] ?? "";
+        if (filter.defaultValue === undefined) return [filter.id, value] as const;
+        if (value === FILTER_ALL_VALUE) return [filter.id, ""] as const;
+        return [filter.id, value || filter.defaultValue] as const;
+      })
+      .filter(([, value]) => value)
+  );
+}
+
+/** Maps a user selection to the value to store: clearing a filter that has a default must persist the "all" sentinel or the default would reassert. */
+export function storedFilterValue<TData>(filter: ConsoleTableFilter<TData> | undefined, value: string) {
+  if (filter?.defaultValue !== undefined && value === "") return FILTER_ALL_VALUE;
+  return value;
+}
+
 export function optionItems(values: string[]) {
   return uniqueOptionItems(values.map((value) => ({ value, label: value })));
 }

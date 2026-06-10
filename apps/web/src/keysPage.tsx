@@ -324,7 +324,8 @@ function apiKeyFilters(keys: ApiKeySummary[]): ConsoleTableFilter<ApiKeySummary>
       label: "Status",
       allLabel: "All statuses",
       options: optionItems(keys.map(apiKeyStatus)),
-      getValue: apiKeyStatus
+      getValue: apiKeyStatus,
+      defaultValue: "active"
     },
     {
       id: "routingConfig",

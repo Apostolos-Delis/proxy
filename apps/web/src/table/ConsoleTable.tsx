@@ -12,7 +12,7 @@ import { GlassCard } from "../ui";
 import { ConsoleTableFrame } from "./ConsoleTableFrame";
 import { ConsoleTablePagination } from "./ConsoleTablePagination";
 import { ConsoleTableToolbar } from "./ConsoleTableToolbar";
-import { applyConsoleTableFilters } from "./filtering";
+import { applyConsoleTableFilters, resolveFilterValues, storedFilterValue } from "./filtering";
 import { useConsoleTableState } from "./useConsoleTableState";
 import type {
   ConsoleTableActionContext,
@@ -71,7 +71,10 @@ export function ConsoleTable<TData>({
     initialPageSize,
     pageSizeOptions
   });
-  const { searchValue, filterValues, advancedRules, sorting, columnVisibility } = state;
+  const { searchValue, advancedRules, sorting, columnVisibility } = state;
+  const filterValues = resolveFilterValues(filters, state.filterValues);
+  const setFilterValue = (filterId: string, value: string) =>
+    state.setFilterValue(filterId, storedFilterValue(filters.find((filter) => filter.id === filterId), value));
   const visibleData = applyConsoleTableFilters({ data, search, searchValue, filters, filterValues, advancedFields, advancedRules });
   // A stale URL or a shrunken data set can point past the last page; render the last real page instead.
   const maxPageIndex = Math.max(0, Math.ceil(visibleData.length / state.pagination.pageSize) - 1);
@@ -126,7 +129,7 @@ export function ConsoleTable<TData>({
         actionContext={actionContext}
         actions={actions}
         onSearchChange={state.setSearchValue}
-        onFilterChange={state.setFilterValue}
+        onFilterChange={setFilterValue}
         onAdvancedRulesChange={state.setAdvancedRules}
         onApplyView={state.applyView}
         onToggleColumn={(columnId) => table.getColumn(columnId)?.toggleVisibility()}

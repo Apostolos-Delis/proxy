@@ -15,6 +15,12 @@ export type ConsoleTableFilter<TData> = {
   icon?: ReactNode;
   options: ConsoleTableFilterOption[];
   getValue: (row: TData) => string | string[] | null | undefined;
+  /**
+   * Applied when the user has not touched the filter. Choosing the allLabel
+   * option stores the reserved value "all" so the cleared state survives, which
+   * means option values themselves must never be "all".
+   */
+  defaultValue?: string;
 };
 
 export type ConsoleTableAdvancedField<TData> = {
