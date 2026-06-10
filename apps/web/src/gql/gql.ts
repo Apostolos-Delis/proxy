@@ -37,6 +37,7 @@ type Documents = {
     "\n  query RoutingApiKeys {\n    apiKeys {\n      id\n      name\n      userId\n      scopes\n      routingConfigId\n      createdAt\n      expiresAt\n      revokedAt\n      lastUsedAt\n      routingConfig {\n        id\n        name\n        status\n      }\n      providerCredentials {\n        provider\n        providerAccountId\n        name\n        status\n      }\n    }\n  }\n": typeof types.RoutingApiKeysDocument,
     "\n  mutation CreateApiKey($input: CreateApiKeyInput!) {\n    createApiKey(input: $input) {\n      apiKey {\n        id\n        name\n      }\n      secret\n    }\n  }\n": typeof types.CreateApiKeyDocument,
     "\n  mutation RevokeApiKey($apiKeyId: ID!) {\n    revokeApiKey(apiKeyId: $apiKeyId) {\n      id\n      revokedAt\n    }\n  }\n": typeof types.RevokeApiKeyDocument,
+    "\n  query ApiKeyVerification($apiKeyId: ID!) {\n    apiKey(apiKeyId: $apiKeyId) {\n      id\n      lastUsedAt\n    }\n  }\n": typeof types.ApiKeyVerificationDocument,
     "\n  mutation CreateRoutingConfig($input: CreateRoutingConfigInput!) {\n    createRoutingConfig(input: $input) {\n      ...RoutingConfigDetailFields\n    }\n  }\n": typeof types.CreateRoutingConfigDocument,
     "\n  mutation CreateRoutingConfigVersion($configId: ID!, $config: JSON!) {\n    createRoutingConfigVersion(configId: $configId, config: $config) {\n      ...RoutingConfigDetailFields\n    }\n  }\n": typeof types.CreateRoutingConfigVersionDocument,
     "\n  mutation ActivateRoutingConfigVersion($configId: ID!, $versionId: ID!) {\n    activateRoutingConfigVersion(configId: $configId, versionId: $versionId) {\n      ...RoutingConfigDetailFields\n    }\n  }\n": typeof types.ActivateRoutingConfigVersionDocument,
@@ -84,6 +85,7 @@ const documents: Documents = {
     "\n  query RoutingApiKeys {\n    apiKeys {\n      id\n      name\n      userId\n      scopes\n      routingConfigId\n      createdAt\n      expiresAt\n      revokedAt\n      lastUsedAt\n      routingConfig {\n        id\n        name\n        status\n      }\n      providerCredentials {\n        provider\n        providerAccountId\n        name\n        status\n      }\n    }\n  }\n": types.RoutingApiKeysDocument,
     "\n  mutation CreateApiKey($input: CreateApiKeyInput!) {\n    createApiKey(input: $input) {\n      apiKey {\n        id\n        name\n      }\n      secret\n    }\n  }\n": types.CreateApiKeyDocument,
     "\n  mutation RevokeApiKey($apiKeyId: ID!) {\n    revokeApiKey(apiKeyId: $apiKeyId) {\n      id\n      revokedAt\n    }\n  }\n": types.RevokeApiKeyDocument,
+    "\n  query ApiKeyVerification($apiKeyId: ID!) {\n    apiKey(apiKeyId: $apiKeyId) {\n      id\n      lastUsedAt\n    }\n  }\n": types.ApiKeyVerificationDocument,
     "\n  mutation CreateRoutingConfig($input: CreateRoutingConfigInput!) {\n    createRoutingConfig(input: $input) {\n      ...RoutingConfigDetailFields\n    }\n  }\n": types.CreateRoutingConfigDocument,
     "\n  mutation CreateRoutingConfigVersion($configId: ID!, $config: JSON!) {\n    createRoutingConfigVersion(configId: $configId, config: $config) {\n      ...RoutingConfigDetailFields\n    }\n  }\n": types.CreateRoutingConfigVersionDocument,
     "\n  mutation ActivateRoutingConfigVersion($configId: ID!, $versionId: ID!) {\n    activateRoutingConfigVersion(configId: $configId, versionId: $versionId) {\n      ...RoutingConfigDetailFields\n    }\n  }\n": types.ActivateRoutingConfigVersionDocument,
@@ -197,6 +199,10 @@ export function graphql(source: "\n  mutation CreateApiKey($input: CreateApiKeyI
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  mutation RevokeApiKey($apiKeyId: ID!) {\n    revokeApiKey(apiKeyId: $apiKeyId) {\n      id\n      revokedAt\n    }\n  }\n"): typeof import('./graphql').RevokeApiKeyDocument;
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query ApiKeyVerification($apiKeyId: ID!) {\n    apiKey(apiKeyId: $apiKeyId) {\n      id\n      lastUsedAt\n    }\n  }\n"): typeof import('./graphql').ApiKeyVerificationDocument;
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

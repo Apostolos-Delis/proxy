@@ -1,21 +1,24 @@
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Ban, ChevronDown, Plus, TerminalSquare, X } from "lucide-react";
+import { BarChart3, Ban, ChevronDown, Plus, TerminalSquare } from "lucide-react";
 import { useRef, useState } from "react";
 
 import {
   assignApiKeyRoutingConfig,
   fetchApiKeys,
   fetchRoutingConfigs,
+  isAssignableConfig,
+  isDefaultConfig,
   revokeApiKey,
   type ApiKeySummary,
   type RoutingConfigSummary
 } from "./routing/data";
 import { fetchProviderAccounts, type ProviderAccountSummary } from "./providers/data";
 import { ApiKeyProviderBinding } from "./apiKeyProviderBinding";
-import { apiKeyScopeOptions, CreateApiKeyPanel } from "./createApiKeyPanel";
+import { Drawer } from "./drawer";
 import { compactId, formatDate, formatDateTime } from "./format";
-import { HarnessSetupCard } from "./harnessSetupCard";
+import { HarnessSetupGuide } from "./harnessSetupCard";
+import { apiKeyScopeOptions } from "./keys/scopeOptions";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { AnchoredPopover } from "./table/PopoverShell";
 import { PageState, PageTitle, StatusBadge } from "./ui";
@@ -27,9 +30,7 @@ type AssignmentVariables = {
 
 export function KeysPage() {
   const [openKeyId, setOpenKeyId] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
-  const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const [keysQuery, configsQuery, providerAccountsQuery] = useQueries({
     queries: [
@@ -69,26 +70,20 @@ export function KeysPage() {
         subtitle="Attach each hashed key to a routing config, or let it use the organization default."
         actions={(
           <>
-            <button className="btn" type="button" onClick={() => setShowSetup((open) => !open)}>
+            <button className="btn" type="button" onClick={() => setShowSetup(true)}>
               <TerminalSquare />
               Setup guide
             </button>
             <Link to="/usage" className="btn"><BarChart3 />Key usage</Link>
-            <button className="btn btn-primary" type="button" onClick={() => setShowCreate((open) => !open)}>
-              {showCreate ? <X /> : <Plus />}
-              {showCreate ? "Close" : "Create key"}
-            </button>
+            <Link to="/api-keys/new" className="btn btn-primary"><Plus />Create key</Link>
           </>
         )}
       />
-      {showCreate ? (
-        <CreateApiKeyPanel
-          configs={configs.filter((config) => !isDefaultConfig(config))}
-          onCreated={(created) => setCreatedSecret(created.secret)}
-          onShowSetup={() => setShowSetup(true)}
-        />
+      {showSetup ? (
+        <Drawer label="Harness setup guide" onClose={() => setShowSetup(false)}>
+          <HarnessSetupGuide secret={null} />
+        </Drawer>
       ) : null}
-      {showSetup ? <HarnessSetupCard secret={createdSecret} /> : null}
       <ConsoleTable
         className="routing-configs-card"
         urlState
@@ -304,16 +299,6 @@ function AssignmentMenu({ apiKey, configs, open, pending, onOpenChange, onAssign
       ) : null}
     </div>
   );
-}
-
-function isAssignableConfig(config: RoutingConfigSummary) {
-  return config.status === "active" && Boolean(config.activeVersion);
-}
-
-// The slug-"default" config is what "Organization default" resolves to, so
-// listing it as a separate assignment target only duplicates the null option.
-function isDefaultConfig(config: RoutingConfigSummary) {
-  return config.slug === "default";
 }
 
 const apiKeyAdvancedFields: ConsoleTableAdvancedField<ApiKeySummary>[] = [

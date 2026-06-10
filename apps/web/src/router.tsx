@@ -4,6 +4,7 @@ import { LoginPage, requireAuth, type RouterContext } from "./auth";
 import { BillingPage } from "./billingPage";
 import { CostPage } from "./costPage";
 import { InvitePage } from "./invitePage";
+import { CreateApiKeyPage } from "./keys/createKeyPage";
 import { KeysPage } from "./keysPage";
 import { OverviewPage } from "./overviewPage";
 import { ProvidersPage } from "./providersPage";
@@ -105,6 +106,13 @@ const keysRoute = createRoute({
   component: KeysPage
 });
 
+const keysCreateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/api-keys/new",
+  beforeLoad: requireAuth,
+  component: CreateApiKeyPage
+});
+
 const providerKeysRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/provider-keys",
@@ -167,6 +175,7 @@ const routeTree = rootRoute.addChildren([
   logsRoute,
   logDetailRoute,
   keysRoute,
+  keysCreateRoute,
   providerKeysRoute,
   routingConfigsRoute,
   routingConfigCreateRoute,

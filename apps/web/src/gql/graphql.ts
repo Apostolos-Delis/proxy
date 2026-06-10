@@ -217,6 +217,13 @@ export type RevokeApiKeyMutationVariables = Exact<{
 
 export type RevokeApiKeyMutation = { revokeApiKey: { id: string, revokedAt: string | null } };
 
+export type ApiKeyVerificationQueryVariables = Exact<{
+  apiKeyId: string | number;
+}>;
+
+
+export type ApiKeyVerificationQuery = { apiKey: { id: string, lastUsedAt: string | null } | null };
+
 export type CreateRoutingConfigMutationVariables = Exact<{
   input: CreateRoutingConfigInput;
 }>;
@@ -970,6 +977,14 @@ export const RevokeApiKeyDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<RevokeApiKeyMutation, RevokeApiKeyMutationVariables>;
+export const ApiKeyVerificationDocument = new TypedDocumentString(`
+    query ApiKeyVerification($apiKeyId: ID!) {
+  apiKey(apiKeyId: $apiKeyId) {
+    id
+    lastUsedAt
+  }
+}
+    `) as unknown as TypedDocumentString<ApiKeyVerificationQuery, ApiKeyVerificationQueryVariables>;
 export const CreateRoutingConfigDocument = new TypedDocumentString(`
     mutation CreateRoutingConfig($input: CreateRoutingConfigInput!) {
   createRoutingConfig(input: $input) {

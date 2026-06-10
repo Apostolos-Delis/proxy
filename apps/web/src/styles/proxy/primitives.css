@@ -47,7 +47,7 @@
   border: 1px solid var(--border); background: var(--glass-2);
 }
 .segmented button {
-  border: none; background: transparent; cursor: pointer;
+  border: none; background: transparent; cursor: pointer; white-space: nowrap;
   padding: 6px 12px; border-radius: 4px; font-family: var(--font);
   font-size: 12.5px; font-weight: 500; color: var(--fg-muted);
   transition: color .13s var(--ease), background .13s var(--ease), box-shadow .13s var(--ease);
@@ -220,6 +220,12 @@
   animation: slideIn .3s var(--ease);
 }
 @keyframes slideIn { from { transform: translateX(28px); } to { transform: none; } }
+.drawer-head {
+  display: flex; justify-content: flex-end; margin-bottom: 8px;
+}
+.drawer .card-head {
+  flex-direction: column; align-items: flex-start; gap: 14px;
+}
 
 /* misc utility */
 .row { display: flex; align-items: center; }

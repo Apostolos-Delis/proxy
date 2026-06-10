@@ -111,6 +111,15 @@ const RevokeApiKeyDocument = graphql(`
   }
 `);
 
+const ApiKeyVerificationDocument = graphql(`
+  query ApiKeyVerification($apiKeyId: ID!) {
+    apiKey(apiKeyId: $apiKeyId) {
+      id
+      lastUsedAt
+    }
+  }
+`);
+
 const CreateRoutingConfigDocument = graphql(`
   mutation CreateRoutingConfig($input: CreateRoutingConfigInput!) {
     createRoutingConfig(input: $input) {
@@ -235,4 +244,18 @@ export async function createApiKey(input: CreateApiKeyInput) {
 
 export async function revokeApiKey(apiKeyId: string) {
   return (await gqlFetch(RevokeApiKeyDocument, { apiKeyId })).revokeApiKey;
+}
+
+export async function fetchApiKeyVerification(apiKeyId: string) {
+  return (await gqlFetch(ApiKeyVerificationDocument, { apiKeyId })).apiKey;
+}
+
+export function isAssignableConfig(config: RoutingConfigSummary) {
+  return config.status === "active" && Boolean(config.activeVersion);
+}
+
+// The slug-"default" config is what "Organization default" resolves to, so
+// listing it as a separate assignment target only duplicates the null option.
+export function isDefaultConfig(config: RoutingConfigSummary) {
+  return config.slug === "default";
 }
