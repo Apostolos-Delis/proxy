@@ -1422,6 +1422,77 @@
   outline: none;
 }
 
+.tier-effort {
+  max-width: 150px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-align: right;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.tier-effort:hover {
+  color: var(--fg);
+}
+
+.tier-effort:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+  border-radius: 4px;
+}
+
+.tier-effort option {
+  background: var(--code-bg);
+  color: var(--fg);
+}
+
+/* ---------- editor view toggle + JSON mode ---------- */
+.editor-view-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editor-view-toggle button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.editor-view-toggle button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.config-json-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.config-json-editor textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 380px;
+  resize: vertical;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.config-json-editor textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
 .routing-configs-empty {
   margin: 0;
 }

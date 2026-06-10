@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Layers, PenLine } from "lucide-react";
+import { ArrowLeft, Braces, Layers, PenLine, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -9,14 +9,15 @@ import {
   createRoutingConfigVersion,
   fetchRoutingConfigDetail,
   type RoutingConfigDetail,
+  type RoutingConfigDocument,
   type RoutingConfigVersionDetail
 } from "./api";
 import { compactId, formatDateTime, formatInteger } from "./format";
 import { ConfigApiKeysCard } from "./routing/keyAssignment";
 import { PromptEditors, RouteMatrixEditor } from "./routing/configEditorFields";
 import { ArchivePanel, VersionHistory } from "./routing/versionHistory";
-import { applyDraft, draftError, draftFromConfig, draftsEqual } from "./routingConfigEditor";
-import { GlassCard, JsonPanel, PageState, PageTitle, StatusBadge } from "./ui";
+import { applyDraft, draftError, draftFromConfig, parseConfigJson } from "./routingConfigEditor";
+import { GlassCard, PageState, PageTitle, StatusBadge } from "./ui";
 
 export function RoutingConfigDetailPage({ configId }: { configId: string }) {
   const queryClient = useQueryClient();
@@ -71,7 +72,6 @@ export function RoutingConfigDetailPage({ configId }: { configId: string }) {
         error={archiveMutation.error?.message}
         onArchive={() => archiveMutation.mutate()}
       />
-      {activeVersion ? <JsonPanel title="Active config JSON" value={activeVersion.config} /> : null}
     </div>
   );
 }
@@ -125,12 +125,15 @@ function MissingActiveConfig() {
 
 function ConfigEditorCard({ configId, version }: { configId: string; version: RoutingConfigVersionDetail }) {
   const queryClient = useQueryClient();
+  const [baseConfig, setBaseConfig] = useState(version.config);
   const [draft, setDraft] = useState(() => draftFromConfig(version.config));
+  const [view, setView] = useState<"form" | "json">("form");
+  const [jsonText, setJsonText] = useState("");
   const [activateAfterSave, setActivateAfterSave] = useState(true);
   const [validationError, setValidationError] = useState<string>();
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      const created = await createRoutingConfigVersion(configId, applyDraft(version.config, draft));
+    mutationFn: async (config: RoutingConfigDocument) => {
+      const created = await createRoutingConfigVersion(configId, config);
       if (!activateAfterSave) return created;
       const newest = [...created.versions].sort((left, right) => right.version - left.version)[0];
       return newest ? activateRoutingConfigVersion(configId, newest.id) : created;
@@ -140,16 +143,35 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
       queryClient.invalidateQueries({ queryKey: ["routing-configs"] });
     }
   });
-  const dirty = !draftsEqual(draft, draftFromConfig(version.config));
-  const error = validationError ?? saveMutation.error?.message;
+
+  const jsonResult = view === "json" ? parseConfigJson(jsonText) : undefined;
+  const candidate = view === "form" ? applyDraft(baseConfig, draft) : jsonResult?.config;
+  const dirty = candidate !== undefined && JSON.stringify(candidate) !== JSON.stringify(version.config);
+  const error = validationError ?? jsonResult?.error ?? saveMutation.error?.message;
+
+  const switchView = (next: "form" | "json") => {
+    if (next === view) return;
+    setValidationError(undefined);
+    if (next === "json") {
+      setJsonText(JSON.stringify(applyDraft(baseConfig, draft), null, 2));
+      setView("json");
+      return;
+    }
+    const parsed = parseConfigJson(jsonText);
+    if (!parsed.config) return;
+    setBaseConfig(parsed.config);
+    setDraft(draftFromConfig(parsed.config));
+    setView("form");
+  };
 
   return (
     <GlassCard className="routing-configs-card">
       <form className="routing-config-edit-form" onSubmit={(event) => {
         event.preventDefault();
-        const nextError = draftError(draft);
+        if (!candidate) return;
+        const nextError = view === "form" ? draftError(draft) : undefined;
         setValidationError(nextError);
-        if (!nextError) saveMutation.mutate();
+        if (!nextError) saveMutation.mutate(candidate);
       }}>
         <div className="card-head">
           <div>
@@ -157,6 +179,24 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
             <div className="faint">Saving creates a new version from v{version.version} · max route {String(version.config.limits.maxRoute ?? "unknown")}</div>
           </div>
           <div className="row gap-8">
+            <div className="segmented editor-view-toggle">
+              <button
+                type="button"
+                className={view === "form" ? "active" : ""}
+                disabled={view === "json" && !jsonResult?.config}
+                title={view === "json" && !jsonResult?.config ? "Fix the JSON before switching back" : undefined}
+                onClick={() => switchView("form")}
+              >
+                <SlidersHorizontal />UI
+              </button>
+              <button
+                type="button"
+                className={view === "json" ? "active" : ""}
+                onClick={() => switchView("json")}
+              >
+                <Braces />JSON
+              </button>
+            </div>
             <label className="row gap-8 faint">
               <input
                 type="checkbox"
@@ -170,9 +210,25 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
             </button>
           </div>
         </div>
-        <PromptEditors draft={draft} onChange={setDraft} />
-        <div className="editor-subhead"><Layers />Route tier models</div>
-        <RouteMatrixEditor draft={draft} baseConfig={version.config} onChange={setDraft} />
+        {view === "form" ? (
+          <>
+            <PromptEditors draft={draft} onChange={setDraft} />
+            <div className="editor-subhead"><Layers />Route tier models</div>
+            <RouteMatrixEditor draft={draft} baseConfig={baseConfig} onChange={setDraft} />
+          </>
+        ) : (
+          <div className="config-json-editor">
+            <p className="prompt-editor-helper">
+              The full config document — classifier, route tiers, limits, and session policy. Edits here cover settings the form does not expose and are validated server-side on save.
+            </p>
+            <textarea
+              value={jsonText}
+              rows={26}
+              spellCheck={false}
+              onChange={(event) => setJsonText(event.target.value)}
+            />
+          </div>
+        )}
         {error ? <div className="action-error">{error}</div> : null}
       </form>
     </GlassCard>
