@@ -62,6 +62,13 @@ Cookie-authenticated admin endpoints power the web console:
 - `GET /admin/usage`
 - `GET /admin/users`
 - `GET /admin/users/:userId`
+- `PATCH /admin/users/:userId/role`
+- `POST /admin/users/:userId/deactivate`
+- `POST /admin/users/:userId/reactivate`
+- `GET /admin/invitations`
+- `POST /admin/invitations`
+- `POST /admin/invitations/:invitationId/resend`
+- `POST /admin/invitations/:invitationId/revoke`
 - `GET /admin/sessions`
 - `GET /admin/sessions/:sessionId`
 - `GET /admin/settings`
@@ -76,6 +83,22 @@ Cookie-authenticated admin endpoints power the web console:
 - `GET /admin/api-keys`
 - `GET /admin/api-keys/:apiKeyId`
 - `PATCH /admin/api-keys/:apiKeyId/routing-config`
+
+Public token-authenticated invitation endpoints power the accept flow:
+
+- `POST /api/invitations/resolve`
+- `POST /api/invitations/accept`
+
+## User Management
+
+The `/users` console page manages organization membership:
+
+- **Invite** users by email with a role (`owner`, `admin`, `member`, `viewer`). Roles are stored on `organization_members` and carry no permission checks yet.
+- Invitation emails are sent through the [Resend](https://resend.com) API when `RESEND_API_KEY` is set (`EMAIL_FROM` controls the sender). Without a key the proxy logs the message instead, and the console shows a copyable invite link after every create/resend.
+- Invite links point at `ADMIN_CONSOLE_URL/invite/<token>`. Tokens are stored as hashes only, rotate on resend, and expire after `INVITATION_TTL_SECONDS` (default 7 days). Pending invites can be resent or revoked from the console.
+- Accepting an invite on the public `/invite/$token` page creates the user (or reuses an existing user with that email) and activates the membership with the invited role.
+- **Deactivate** members instead of deleting them: deactivation blocks console sessions but keeps the user row, API keys, and usage history. The last active owner cannot be demoted or deactivated, and admins cannot deactivate themselves.
+- Every mutation appends a `user.*` audit event (`prompt-proxy.admin.users` producer) to the event log.
 
 ## Persistence
 

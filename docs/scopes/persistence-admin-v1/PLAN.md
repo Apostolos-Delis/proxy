@@ -36,6 +36,7 @@ Initial Drizzle schema includes:
 organizations
 users
 organization_members
+invitations
 api_keys
 organization_settings
 user_settings
@@ -94,7 +95,25 @@ POST /admin/routing-configs/:configId/archive
 GET /admin/api-keys
 GET /admin/api-keys/:apiKeyId
 PATCH /admin/api-keys/:apiKeyId/routing-config
+GET /admin/invitations
+POST /admin/invitations
+POST /admin/invitations/:invitationId/resend
+POST /admin/invitations/:invitationId/revoke
+PATCH /admin/users/:userId/role
+POST /admin/users/:userId/deactivate
+POST /admin/users/:userId/reactivate
 ```
+
+## User Management
+
+Organization membership is managed from the `/users` console page:
+
+- Invitations are durable `invitations` rows. Raw invite tokens are never stored; only `token_hash` plus a display `token_prefix`, matching the API key and admin session hash rule. Tokens rotate on resend.
+- Invitation emails are delivered through the Resend API (`RESEND_API_KEY`, `EMAIL_FROM`); without a key the proxy logs the message and admins copy the invite link from the console instead.
+- Accepting an invite (`POST /api/invitations/resolve` / `POST /api/invitations/accept`, public token-authenticated endpoints) creates or reuses the `users` row by email and upserts the `organization_members` row with the invited role.
+- Members are never deleted. Deactivation sets `organization_members.status = 'deactivated'`, which admin session resolution already rejects; API keys and usage history stay intact.
+- Guards: pending duplicate invites and already-active members are rejected, the last active owner cannot be demoted or deactivated, and admins cannot deactivate themselves.
+- Mutations append audit events with producer `prompt-proxy.admin.users`: `user.invitation_created`, `user.invitation_resent`, `user.invitation_revoked`, `user.invitation_accepted`, `user.role_changed`, `user.deactivated`, `user.reactivated`.
 
 ## Environment
 
