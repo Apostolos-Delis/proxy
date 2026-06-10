@@ -46,6 +46,22 @@ The resolver parses the active version with the shared routing config schema and
 
 Changing an API key assignment affects the next request from that key. Active version rows are immutable; create a new version and activate it instead of editing a live version in place.
 
+## System Prompt And Route Tier Models
+
+Each routing config can carry a top-level `systemPrompt`. When a request resolves a config with a system prompt, the proxy prepends it to the outbound provider request before forwarding:
+
+- OpenAI Responses: prepended to `instructions`
+- Anthropic Messages: prepended as the first `system` block (or joined when `system` is a string), including `count_tokens` requests
+
+Harness-provided prompts are preserved after the config prompt. Omit `systemPrompt` to forward harness prompts unchanged. The seeded default config includes `DEFAULT_ROUTING_SYSTEM_PROMPT` from `@prompt-proxy/schema`; databases seeded before this field existed keep their original v1 until a new version is activated.
+
+The web console edits both the system prompt and the per-tier models (`fast`, `balanced`, `hard`, `deep` for OpenAI and Anthropic):
+
+- Routing configs → New config: clones an active config, then lets you set the system prompt and tier models before creating v1.
+- Routing config detail → Route tier models & system prompt: edits create a new draft version; leave "Activate immediately" checked to promote it in the same step.
+
+Clearing a tier's model removes that provider block from the tier; every tier must keep at least one provider model.
+
 ## Assign A Config To An API Key
 
 Use the web console when possible:
@@ -123,7 +139,7 @@ curl -sS -b /tmp/prompt-proxy.cookies \
   -d @routing-config-version.json
 ```
 
-`routing-config-version.json` should contain `{ "config": { ... } }` with the full replacement config body.
+`routing-config-version.json` should contain `{ "config": { ... } }` with the full replacement config body. The web console detail page drives this same endpoint when saving system prompt or tier model edits.
 
 Activate a version:
 
