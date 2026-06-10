@@ -457,7 +457,7 @@
 
 .settings-toolbar {
   display: grid;
-  grid-template-columns: minmax(240px, 360px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(240px, 360px) minmax(0, 1fr);
   align-items: center;
   gap: 14px;
   padding: 14px;
@@ -467,39 +467,90 @@
   min-width: 0;
 }
 
-.settings-meta {
+.settings-actions {
   display: flex;
-  min-width: 0;
+  justify-content: flex-end;
   align-items: center;
-  gap: 9px;
-  color: var(--fg-faint);
+  gap: 10px;
 }
 
-.settings-meta svg {
-  width: 15px;
-  height: 15px;
+.settings-storage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+
+.settings-storage svg {
+  width: 14px;
+  height: 14px;
   flex: none;
 }
 
-.settings-meta .mono {
+.settings-storage .mono {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.settings-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+.settings-empty {
+  padding: 26px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--fg-faint);
+  font-size: 13px;
+  text-align: center;
 }
 
-.settings-note {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
   color: var(--fg-faint);
-  font-size: 12.5px;
+  cursor: help;
+}
+
+.info-tip:hover,
+.info-tip:focus-visible {
+  color: var(--fg-muted);
+  outline: none;
+}
+
+.info-tip > svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.info-tip [role="tooltip"] {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: -8px;
+  z-index: 35;
+  width: max-content;
+  max-width: 250px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--glass-strong);
+  box-shadow: var(--shadow);
+  color: var(--fg-muted);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s var(--ease);
+}
+
+.info-tip:hover [role="tooltip"],
+.info-tip:focus-visible [role="tooltip"] {
+  opacity: 1;
 }
 
 .settings-error {
@@ -522,6 +573,13 @@
   padding: 18px;
 }
 
+.settings-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .settings-section-head h3 {
   margin: 0;
   color: var(--fg);
@@ -533,6 +591,27 @@
   margin: 5px 0 0;
   color: var(--fg-faint);
   font-size: 12.5px;
+}
+
+.settings-restart {
+  flex: none;
+  gap: 5px;
+  margin-top: 2px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.settings-restart > svg {
+  width: 11px;
+  height: 11px;
+}
+
+.settings-restart [role="tooltip"] {
+  left: auto;
+  right: 0;
 }
 
 .settings-fields {
@@ -549,8 +628,10 @@
   gap: 12px;
 }
 
-.settings-field > span,
-.settings-toggle > span {
+.settings-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--fg-muted);
   font-size: 12.5px;
 }
@@ -592,10 +673,44 @@
 }
 
 .settings-toggle input {
+  appearance: none;
+  position: relative;
   justify-self: start;
   width: 34px;
-  height: 18px;
-  accent-color: var(--accent);
+  height: 19px;
+  margin: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--track);
+  cursor: pointer;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.settings-toggle input::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: var(--fg-muted);
+  transition: transform 0.15s var(--ease), background 0.15s var(--ease);
+}
+
+.settings-toggle input:checked {
+  border-color: transparent;
+  background: var(--accent);
+}
+
+.settings-toggle input:checked::before {
+  background: #fff;
+  transform: translateX(15px);
+}
+
+.settings-toggle input:focus-visible {
+  box-shadow: var(--ring);
+  outline: none;
 }
 
 .request-route-line {

@@ -1,12 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RotateCcw, Save, Search, SlidersHorizontal } from "lucide-react";
-import type { ReactNode } from "react";
+import { FileJson, RotateCcw, Save, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { graphql } from "./gql";
-import type { SettingsViewQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
-import { MenuSelect } from "./table/MenuSelect";
+import { InfoTip, NumberField, SelectField, SettingsSection, TextField, ToggleField } from "./settingsFields";
+import { settingsInput, validate, visibleGroups, type EditableSettings } from "./settingsPageData";
 import { Badge, GlassCard, PageState, PageTitle } from "./ui";
 
 const SettingsViewDocument = graphql(`
@@ -79,11 +78,21 @@ const UpdateSettingsDocument = graphql(`
   }
 `);
 
-type SettingsView = SettingsViewQuery["settings"];
-type EditableSettings = SettingsView["settings"];
+const routeOptions = [
+  { value: "", label: "No limit" },
+  { value: "fast", label: "fast" },
+  { value: "balanced", label: "balanced" },
+  { value: "hard", label: "hard" },
+  { value: "deep", label: "deep" }
+];
 
-const routeOptions = ["", "fast", "balanced", "hard", "deep"] as const;
-const promptCaptureOptions = ["none", "hash_only", "redacted", "raw_text", "encrypted_raw"] as const;
+const promptCaptureOptions = [
+  { value: "none", label: "None" },
+  { value: "hash_only", label: "Hash only" },
+  { value: "redacted", label: "Redacted" },
+  { value: "raw_text", label: "Raw text" },
+  { value: "encrypted_raw", label: "Encrypted raw" }
+];
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
@@ -105,7 +114,7 @@ export function SettingsPage() {
     <div className="page page-enter">
       <PageTitle
         title="Settings"
-        subtitle={`Persistent JSON settings for ${query.data.organizationId}.`}
+        subtitle={`Proxy runtime settings for ${query.data.organizationId}.`}
         actions={<Badge variant={query.data.databaseEnabled ? "success" : "warn"} dot>{query.data.databaseEnabled ? "Database on" : "File only"}</Badge>}
       />
       <SettingsForm
@@ -115,6 +124,7 @@ export function SettingsPage() {
         storageReason={query.data.storage.reason}
         restartRequiredFor={query.data.restartRequiredFor}
         saving={mutation.isPending}
+        justSaved={mutation.isSuccess}
         saveError={mutation.error?.message}
         onSave={(settings) => mutation.mutate(settings)}
       />
@@ -128,6 +138,7 @@ function SettingsForm({
   storageReason,
   restartRequiredFor,
   saving,
+  justSaved,
   saveError,
   onSave
 }: {
@@ -136,6 +147,7 @@ function SettingsForm({
   storageReason: string;
   restartRequiredFor: string[];
   saving: boolean;
+  justSaved: boolean;
   saveError?: string;
   onSave: (settings: EditableSettings) => void;
 }) {
@@ -143,31 +155,24 @@ function SettingsForm({
   const [search, setSearch] = useState("");
   const validation = validate(settings);
   const groups = useMemo(() => visibleGroups(search), [search]);
+  const dirty = JSON.stringify(settings) !== JSON.stringify(initial);
 
   return (
     <form className="settings-layout" onSubmit={(event) => {
       event.preventDefault();
-      if (validation.length === 0) onSave(settings);
+      if (dirty && validation.length === 0) onSave(settings);
     }}>
       <GlassCard className="settings-toolbar">
         <div className="input settings-search">
           <Search />
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search settings..." aria-label="Search settings" />
         </div>
-        <div className="settings-meta">
-          <SlidersHorizontal />
-          <span className="mono">{storagePath}</span>
-        </div>
         <div className="settings-actions">
-          <button className="btn btn-ghost" type="button" onClick={() => setSettings(initial)}><RotateCcw />Reset</button>
-          <button className="btn btn-primary" type="submit" disabled={saving || validation.length > 0}><Save />{saving ? "Saving" : "Save"}</button>
+          {saveStatus(dirty, justSaved)}
+          <button className="btn btn-ghost" type="button" disabled={!dirty} onClick={() => setSettings(initial)}><RotateCcw />Reset</button>
+          <button className="btn btn-primary" type="submit" disabled={!dirty || saving || validation.length > 0}><Save />{saving ? "Saving" : "Save"}</button>
         </div>
       </GlassCard>
-
-      <div className="settings-note">
-        <span>{storageReason}</span>
-        <span>Restart required for {restartRequiredFor.join(", ")} changes.</span>
-      </div>
 
       {validation.concat(saveError ? [saveError] : []).map((message) => (
         <div key={message} className="settings-error">{message}</div>
@@ -175,155 +180,117 @@ function SettingsForm({
 
       <div className="settings-sections">
         {groups.includes("classifier") ? (
-          <SettingsSection title="Classifier" description="Structured routing classifier controls.">
-            <TextField label="Model" value={settings.classifier.model} onChange={(value) => setSettings({ ...settings, classifier: { ...settings.classifier, model: value } })} />
-            <NumberField label="Timeout" suffix="ms" value={settings.classifier.timeoutMs} min={1} max={30000} onChange={(value) => setSettings({ ...settings, classifier: { ...settings.classifier, timeoutMs: value ?? 1500 } })} />
-            <NumberField label="Max attempts" value={settings.classifier.maxAttempts} min={1} max={5} onChange={(value) => setSettings({ ...settings, classifier: { ...settings.classifier, maxAttempts: value ?? 1 } })} />
-            <ToggleField label="Allow redacted excerpt" checked={settings.classifier.allowRedactedExcerpt} onChange={(value) => setSettings({ ...settings, classifier: { ...settings.classifier, allowRedactedExcerpt: value } })} />
+          <SettingsSection title="Classifier" description="The LLM call that picks a route for each request." restartRequired={restartRequiredFor.includes("classifier")}>
+            <TextField
+              label="Model"
+              info="Model that classifies each request to choose a route. Called with structured output through the OpenAI Responses API."
+              value={settings.classifier.model}
+              onChange={(value) => setSettings({ ...settings, classifier: { ...settings.classifier, model: value } })}
+            />
+            <NumberField
+              label="Timeout"
+              info="Time limit for each classification attempt. Attempts that exceed it are aborted and retried."
+              suffix="ms"
+              value={settings.classifier.timeoutMs}
+              min={1}
+              max={30000}
+              onChange={(value) => setSettings({ ...settings, classifier: { ...settings.classifier, timeoutMs: value ?? 1500 } })}
+            />
+            <NumberField
+              label="Max attempts"
+              info="Classification attempts before the request fails. There is no deterministic fallback route."
+              value={settings.classifier.maxAttempts}
+              min={1}
+              max={5}
+              onChange={(value) => setSettings({ ...settings, classifier: { ...settings.classifier, maxAttempts: value ?? 1 } })}
+            />
+            <ToggleField
+              label="Allow redacted excerpt"
+              info="Include a redacted excerpt of the prompt in the classifier call. When off, the classifier only sees derived features."
+              checked={settings.classifier.allowRedactedExcerpt}
+              onChange={(value) => setSettings({ ...settings, classifier: { ...settings.classifier, allowRedactedExcerpt: value } })}
+            />
           </SettingsSection>
         ) : null}
 
         {groups.includes("budgets") ? (
-          <SettingsSection title="Budgets" description="Request-size guardrails used by routing policy.">
-            <NumberField label="Warning input tokens" value={settings.budgets.warningEstimatedInputTokens} min={1} onChange={(value) => setSettings({ ...settings, budgets: { ...settings.budgets, warningEstimatedInputTokens: value } })} />
-            <NumberField label="Max input tokens" value={settings.budgets.maxEstimatedInputTokens} min={1} onChange={(value) => setSettings({ ...settings, budgets: { ...settings.budgets, maxEstimatedInputTokens: value } })} />
-            <SelectField label="Max route" value={settings.budgets.maxRoute ?? ""} options={routeOptions} onChange={(value) => setSettings({ ...settings, budgets: { ...settings.budgets, maxRoute: value || null } })} />
+          <SettingsSection title="Budgets" description="Request-size guardrails enforced by routing policy." restartRequired={restartRequiredFor.includes("budgets")}>
+            <NumberField
+              label="Warning input tokens"
+              info="Records a budget warning when a request's estimated input tokens exceed this value. The request still proceeds."
+              placeholder="No limit"
+              value={settings.budgets.warningEstimatedInputTokens}
+              min={1}
+              onChange={(value) => setSettings({ ...settings, budgets: { ...settings.budgets, warningEstimatedInputTokens: value } })}
+            />
+            <NumberField
+              label="Max input tokens"
+              info="Rejects requests whose estimated input tokens exceed this value."
+              placeholder="No limit"
+              value={settings.budgets.maxEstimatedInputTokens}
+              min={1}
+              onChange={(value) => setSettings({ ...settings, budgets: { ...settings.budgets, maxEstimatedInputTokens: value } })}
+            />
+            <SelectField
+              label="Max route"
+              info="Caps routing at this route tier (fast < balanced < hard < deep). Requests routed above the cap are rejected."
+              value={settings.budgets.maxRoute ?? ""}
+              options={routeOptions}
+              onChange={(value) => setSettings({ ...settings, budgets: { ...settings.budgets, maxRoute: value || null } })}
+            />
           </SettingsSection>
         ) : null}
 
         {groups.includes("prompt") ? (
-          <SettingsSection title="Prompt Capture" description="Persistence policy for captured prompt artifacts.">
-            <SelectField label="Capture mode" value={settings.promptCapture.promptCaptureMode} options={promptCaptureOptions} onChange={(value) => setSettings({ ...settings, promptCapture: { ...settings.promptCapture, promptCaptureMode: value } })} />
-            <NumberField label="Retention" suffix="days" value={settings.promptCapture.retentionDays} min={0} onChange={(value) => setSettings({ ...settings, promptCapture: { ...settings.promptCapture, retentionDays: value ?? 0 } })} />
+          <SettingsSection title="Prompt Capture" description="What the proxy persists from each prompt." restartRequired={restartRequiredFor.includes("promptCapture")}>
+            <SelectField
+              label="Capture mode"
+              info="How much prompt text is stored per request: nothing, a hash fingerprint, a redacted copy, full raw text, or encrypted raw text."
+              value={settings.promptCapture.promptCaptureMode}
+              options={promptCaptureOptions}
+              onChange={(value) => setSettings({ ...settings, promptCapture: { ...settings.promptCapture, promptCaptureMode: value } })}
+            />
+            <NumberField
+              label="Retention"
+              info="Days before captured prompt text is redacted by the retention sweep. 0 redacts immediately."
+              suffix="days"
+              value={settings.promptCapture.retentionDays}
+              min={0}
+              onChange={(value) => setSettings({ ...settings, promptCapture: { ...settings.promptCapture, retentionDays: value ?? 0 } })}
+            />
           </SettingsSection>
         ) : null}
 
         {groups.includes("quality") ? (
-          <SettingsSection title="Route Quality" description="Thresholds used by operations reporting.">
-            <NumberField label="Low confidence threshold" value={settings.routeQuality.lowConfidenceThreshold} min={0} max={1} step={0.01} onChange={(value) => setSettings({ ...settings, routeQuality: { lowConfidenceThreshold: value ?? 0 } })} />
+          <SettingsSection title="Route Quality" description="Thresholds used by operations reporting." restartRequired={restartRequiredFor.includes("routeQuality")}>
+            <NumberField
+              label="Low confidence threshold"
+              info="Classifier decisions below this confidence are counted as low-confidence in route quality reporting. Reporting only — routing is unaffected."
+              value={settings.routeQuality.lowConfidenceThreshold}
+              min={0}
+              max={1}
+              step={0.01}
+              onChange={(value) => setSettings({ ...settings, routeQuality: { lowConfidenceThreshold: value ?? 0 } })}
+            />
           </SettingsSection>
         ) : null}
+      </div>
+
+      {groups.length === 0 ? (
+        <div className="settings-empty">No settings match &ldquo;{search.trim()}&rdquo;.</div>
+      ) : null}
+
+      <div className="settings-storage">
+        <FileJson />
+        <span className="mono">{storagePath}</span>
+        <InfoTip text={`Settings persist to this JSON file on the proxy host. ${storageReason}`} />
       </div>
     </form>
   );
 }
 
-function SettingsSection({ title, description, children }: { title: string; description: string; children: ReactNode }) {
-  return (
-    <GlassCard className="settings-section">
-      <div className="settings-section-head">
-        <div>
-          <h3>{title}</h3>
-          <p>{description}</p>
-        </div>
-      </div>
-      <div className="settings-fields">{children}</div>
-    </GlassCard>
-  );
-}
-
-function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return (
-    <label className="settings-field">
-      <span>{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} />
-    </label>
-  );
-}
-
-function NumberField({ label, value, min, max, step = 1, suffix, onChange }: {
-  label: string;
-  value: number | null;
-  min: number;
-  max?: number;
-  step?: number;
-  suffix?: string;
-  onChange: (value: number | null) => void;
-}) {
-  return (
-    <label className="settings-field">
-      <span>{label}</span>
-      <div className="settings-number">
-        <input type="number" value={value ?? ""} min={min} max={max} step={step} onChange={(event) => onChange(numberOrNull(event.target.value))} />
-        {suffix ? <em>{suffix}</em> : null}
-      </div>
-    </label>
-  );
-}
-
-function SelectField<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly T[]; onChange: (value: T) => void }) {
-  return (
-    <div className="settings-field">
-      <span>{label}</span>
-      <MenuSelect
-        value={value}
-        options={options.map((option) => ({ value: option, label: option || "No limit" }))}
-        ariaLabel={label}
-        onChange={(next) => onChange(next as T)}
-      />
-    </div>
-  );
-}
-
-function ToggleField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return (
-    <label className="settings-toggle">
-      <span>{label}</span>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-    </label>
-  );
-}
-
-function numberOrNull(value: string) {
-  if (!value.trim()) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function settingsInput(settings: EditableSettings) {
-  return {
-    schemaVersion: settings.schemaVersion,
-    classifier: {
-      model: settings.classifier.model,
-      timeoutMs: settings.classifier.timeoutMs,
-      maxAttempts: settings.classifier.maxAttempts,
-      allowRedactedExcerpt: settings.classifier.allowRedactedExcerpt
-    },
-    budgets: {
-      warningEstimatedInputTokens: settings.budgets.warningEstimatedInputTokens,
-      maxEstimatedInputTokens: settings.budgets.maxEstimatedInputTokens,
-      maxRoute: settings.budgets.maxRoute
-    },
-    routeQuality: {
-      lowConfidenceThreshold: settings.routeQuality.lowConfidenceThreshold
-    },
-    promptCapture: {
-      promptCaptureMode: settings.promptCapture.promptCaptureMode,
-      retentionDays: settings.promptCapture.retentionDays
-    }
-  };
-}
-
-function visibleGroups(search: string) {
-  const groups = [
-    { key: "classifier", terms: "classifier model timeout attempts redacted excerpt structured routing" },
-    { key: "budgets", terms: "budgets warning max input tokens route guardrails policy" },
-    { key: "prompt", terms: "prompt capture retention raw text hash redacted encrypted artifacts" },
-    { key: "quality", terms: "quality confidence threshold route reporting" }
-  ];
-  const needle = search.trim().toLowerCase();
-  if (!needle) return groups.map((group) => group.key);
-  return groups
-    .filter((group) => `${group.key} ${group.terms}`.includes(needle))
-    .map((group) => group.key);
-}
-
-function validate(settings: EditableSettings) {
-  const errors: string[] = [];
-  if (!settings.classifier.model.trim()) errors.push("Classifier model is required.");
-  if (settings.classifier.timeoutMs < 1 || settings.classifier.timeoutMs > 30000) errors.push("Classifier timeout must be between 1 and 30000 ms.");
-  if (settings.classifier.maxAttempts < 1 || settings.classifier.maxAttempts > 5) errors.push("Classifier attempts must be between 1 and 5.");
-  if (settings.routeQuality.lowConfidenceThreshold < 0 || settings.routeQuality.lowConfidenceThreshold > 1) errors.push("Low confidence threshold must be between 0 and 1.");
-  if (settings.promptCapture.retentionDays < 0) errors.push("Prompt retention must be zero or more days.");
-  return errors;
+function saveStatus(dirty: boolean, justSaved: boolean) {
+  if (dirty) return <Badge variant="warn" dot>Unsaved changes</Badge>;
+  if (justSaved) return <Badge variant="success" dot>Saved</Badge>;
+  return null;
 }
