@@ -66,7 +66,7 @@ const UsageTimeseriesViewDocument = graphql(`
 
 const UsageLookupsDocument = graphql(`
   query UsageLookups {
-    users {
+    members {
       userId
       name
       email
@@ -81,7 +81,7 @@ const UsageLookupsDocument = graphql(`
 
 export type UsageResponse = UsageReportViewQuery["usage"];
 export type UsageGroup = UsageResponse["totals"];
-export type UsageLookupUser = UsageLookupsQuery["users"][number];
+export type UsageLookupUser = UsageLookupsQuery["members"][number];
 export type UsageLookupApiKey = UsageLookupsQuery["apiKeys"][number];
 
 export type UsageRangeFilters = {

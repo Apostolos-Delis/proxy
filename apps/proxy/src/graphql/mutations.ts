@@ -342,7 +342,8 @@ builder.mutationFields((t) => ({
     type: InvitationActionResult,
     args: { input: t.arg({ type: CreateInvitationInput, required: true }) },
     resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("invitations_not_found");
+      const queries = orgQueries(context);
+      if (!context.persistence || !queries) throw notFoundError("invitations_not_found");
       try {
         const created = await context.persistence.userAdmin.createInvitation({
           organizationId: context.identity().organizationId,
@@ -353,20 +354,14 @@ builder.mutationFields((t) => ({
             role: args.input.role
           }
         });
-        const emailDelivery = await sendInvitationEmail(
-          context.persistence,
-          context.config,
-          context.emailService,
-          {
-            organizationId: context.identity().organizationId,
-            invitationId: created.invitationId,
-            token: created.token,
-            inviterName: context.identity().name ?? context.identity().email
-          }
-        );
-        const detail = await orgQueries(context)?.invitationDetail(created.invitationId);
+        const invitation = (await queries.invitationDetail(created.invitationId))?.invitation ?? null;
+        const emailDelivery = await sendInvitationEmail(queries, context.config, context.emailService, {
+          invitation,
+          token: created.token,
+          inviterName: context.identity().name ?? context.identity().email
+        });
         return {
-          invitation: detail?.invitation ?? null,
+          invitation,
           inviteUrl: inviteUrl(context.config, created.token),
           emailDelivery
         };
@@ -380,7 +375,8 @@ builder.mutationFields((t) => ({
     type: InvitationActionResult,
     args: { invitationId: t.arg.id({ required: true }) },
     resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("invitation_not_found");
+      const queries = orgQueries(context);
+      if (!context.persistence || !queries) throw notFoundError("invitation_not_found");
       const invitationId = String(args.invitationId);
       try {
         const resent = await context.persistence.userAdmin.resendInvitation({
@@ -388,20 +384,14 @@ builder.mutationFields((t) => ({
           actorUserId: context.identity().userId,
           invitationId
         });
-        const emailDelivery = await sendInvitationEmail(
-          context.persistence,
-          context.config,
-          context.emailService,
-          {
-            organizationId: context.identity().organizationId,
-            invitationId,
-            token: resent.token,
-            inviterName: context.identity().name ?? context.identity().email
-          }
-        );
-        const detail = await orgQueries(context)?.invitationDetail(invitationId);
+        const invitation = (await queries.invitationDetail(invitationId))?.invitation ?? null;
+        const emailDelivery = await sendInvitationEmail(queries, context.config, context.emailService, {
+          invitation,
+          token: resent.token,
+          inviterName: context.identity().name ?? context.identity().email
+        });
         return {
-          invitation: detail?.invitation ?? null,
+          invitation,
           inviteUrl: inviteUrl(context.config, resent.token),
           emailDelivery
         };
