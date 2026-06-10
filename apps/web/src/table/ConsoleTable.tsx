@@ -1,18 +1,20 @@
 import {
-  flexRender,
   functionalUpdate,
   getCoreRowModel,
+  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
   type ColumnSizingState,
+  type PaginationState,
   type SortingState,
   type Updater,
   type VisibilityState
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { GlassCard } from "../ui";
+import { ConsoleTableFrame } from "./ConsoleTableFrame";
+import { ConsoleTablePagination } from "./ConsoleTablePagination";
 import { ConsoleTableToolbar } from "./ConsoleTableToolbar";
 import { applyConsoleTableFilters } from "./filtering";
 import type {
@@ -35,7 +37,8 @@ type ConsoleTableProps<TData> = {
   views?: ConsoleTableView[];
   emptyLabel?: string;
   className?: string;
-  resultLabel?: (filteredCount: number, totalCount: number) => string;
+  initialPageSize?: number;
+  pageSizeOptions?: number[];
   actions?: (context: ConsoleTableActionContext<TData>) => ReactNode;
   getRowProps?: (row: TData) => ConsoleTableRowProps;
 };
@@ -49,7 +52,8 @@ export function ConsoleTable<TData>({
   views = [],
   emptyLabel = "No rows found.",
   className = "",
-  resultLabel = defaultResultLabel,
+  initialPageSize = 10,
+  pageSizeOptions = [10, 25, 50],
   actions,
   getRowProps
 }: ConsoleTableProps<TData>) {
@@ -59,8 +63,11 @@ export function ConsoleTable<TData>({
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: initialPageSize });
   const [activeViewId, setActiveViewId] = useState<string | null>(views[0]?.id ?? null);
   const visibleData = applyConsoleTableFilters({ data, search, searchValue, filters, filterValues, advancedFields, advancedRules });
+  const normalizedPageSizeOptions = Array.from(new Set([...pageSizeOptions, initialPageSize])).sort((a, b) => a - b);
+  const hasFilterControls = Boolean(searchValue) || Object.values(filterValues).some(Boolean) || activeAdvancedRuleCount(advancedRules) > 0;
   const updateSorting = (updater: Updater<SortingState>) => {
     setActiveViewId(null);
     setSorting((current) => functionalUpdate(updater, current));
@@ -74,15 +81,17 @@ export function ConsoleTable<TData>({
     columns,
     columnResizeMode: "onChange",
     defaultColumn: { minSize: 96, size: 180, maxSize: 680 },
-    state: { sorting, columnVisibility, columnSizing },
+    state: { sorting, columnVisibility, columnSizing, pagination },
     onSortingChange: updateSorting,
     onColumnVisibilityChange: updateColumnVisibility,
     onColumnSizingChange: setColumnSizing,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel()
   });
   const tableWidth = Math.max(table.getCenterTotalSize(), 760);
-  const sortedVisibleData = table.getRowModel().rows.map((row) => row.original);
+  const sortedVisibleData = table.getPrePaginationRowModel().rows.map((row) => row.original);
   const actionContext = { visibleData: sortedVisibleData, totalCount: data.length, filteredCount: visibleData.length };
   const columnOptions = table.getAllLeafColumns().map((column) => ({
     id: column.id,
@@ -94,14 +103,17 @@ export function ConsoleTable<TData>({
 
   const setFilterValue = (filterId: string, value: string) => {
     setActiveViewId(null);
+    setPagination((current) => ({ ...current, pageIndex: 0 }));
     setFilterValues((current) => ({ ...current, [filterId]: value }));
   };
   const setSearch = (value: string) => {
     setActiveViewId(null);
+    setPagination((current) => ({ ...current, pageIndex: 0 }));
     setSearchValue(value);
   };
   const setAdvanced = (rules: ConsoleTableAdvancedRule[]) => {
     setActiveViewId(null);
+    setPagination((current) => ({ ...current, pageIndex: 0 }));
     setAdvancedRules(rules);
   };
   const applyView = (view: ConsoleTableView) => {
@@ -111,6 +123,7 @@ export function ConsoleTable<TData>({
     setAdvancedRules(view.advancedRules ?? []);
     setColumnVisibility(view.columnVisibility ?? {});
     setSorting(view.sorting ?? []);
+    setPagination((current) => ({ ...current, pageIndex: 0 }));
   };
   const clear = () => {
     setActiveViewId(views[0]?.id ?? null);
@@ -119,6 +132,7 @@ export function ConsoleTable<TData>({
     setAdvancedRules([]);
     setColumnVisibility({});
     setSorting([]);
+    setPagination((current) => ({ ...current, pageIndex: 0 }));
   };
 
   return (
@@ -135,7 +149,6 @@ export function ConsoleTable<TData>({
         columnOptions={columnOptions}
         sorting={sorting}
         actionContext={actionContext}
-        resultLabel={resultLabel(visibleData.length, data.length)}
         actions={actions}
         onSearchChange={setSearch}
         onFilterChange={setFilterValue}
@@ -145,64 +158,23 @@ export function ConsoleTable<TData>({
         onSortingChange={(nextSorting) => updateSorting(nextSorting)}
         onClear={clear}
       />
-      <div className="console-table-scroll">
-        <table className="tbl console-table" style={{ width: tableWidth }}>
-          <thead>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th key={header.id} style={{ width: header.getSize() }}>
-                    <div className="console-table-th">
-                      {header.isPlaceholder ? null : (
-                        <button type="button" disabled={!header.column.getCanSort()} onClick={header.column.getToggleSortingHandler()}>
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                          <SortIcon sorted={header.column.getIsSorted()} />
-                        </button>
-                      )}
-                      {header.column.getCanResize() ? (
-                        <span
-                          role="separator"
-                          aria-label={`Resize ${header.column.id} column`}
-                          className={`console-column-resizer${header.column.getIsResizing() ? " resizing" : ""}`}
-                          onMouseDown={header.getResizeHandler()}
-                          onTouchStart={header.getResizeHandler()}
-                          onDoubleClick={() => header.column.resetSize()}
-                        />
-                      ) : null}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.map((row) => {
-              const rowProps = getRowProps?.(row.original);
-              return (
-                <tr key={row.id} {...rowProps} className={rowProps?.className}>
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} style={{ width: cell.column.getSize() }}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      {visibleData.length === 0 ? <div className="empty">{emptyLabel}</div> : null}
+      <ConsoleTableFrame table={table} tableWidth={tableWidth} emptyLabel={emptyLabel} filtered={hasFilterControls} getRowProps={getRowProps} onClear={clear} />
+      <ConsoleTablePagination
+        pageIndex={pagination.pageIndex}
+        pageSize={pagination.pageSize}
+        pageCount={table.getPageCount()}
+        filteredCount={visibleData.length}
+        totalCount={data.length}
+        pageSizeOptions={normalizedPageSizeOptions}
+        canPreviousPage={table.getCanPreviousPage()}
+        canNextPage={table.getCanNextPage()}
+        onPageChange={(pageIndex) => table.setPageIndex(pageIndex)}
+        onPageSizeChange={(pageSize) => table.setPageSize(pageSize)}
+      />
     </GlassCard>
   );
 }
 
-function SortIcon({ sorted }: { sorted: false | "asc" | "desc" }) {
-  if (sorted === "asc") return <ArrowUp />;
-  if (sorted === "desc") return <ArrowDown />;
-  return <ArrowUpDown />;
-}
-
-function defaultResultLabel(filteredCount: number, totalCount: number) {
-  if (filteredCount === totalCount) return `${totalCount} rows`;
-  return `${filteredCount} of ${totalCount} rows`;
+function activeAdvancedRuleCount(rules: ConsoleTableAdvancedRule[]) {
+  return rules.filter((rule) => rule.operator === "isEmpty" || rule.operator === "isNotEmpty" || rule.value.trim()).length;
 }
