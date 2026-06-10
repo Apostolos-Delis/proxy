@@ -736,9 +736,25 @@
   min-width: 210px;
 }
 
-.assignment-subtitle {
-  margin-top: 4px;
+.cell-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.key-id {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 3px;
   font-size: 12px;
+}
+
+.key-id span:first-child {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .assignment-popover {

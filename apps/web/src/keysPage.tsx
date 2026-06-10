@@ -12,7 +12,7 @@ import {
 } from "./api";
 import { compactId, formatDateTime } from "./format";
 import { ConsoleTable, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
-import { Badge, PageState, PageTitle, StatusBadge } from "./ui";
+import { PageState, PageTitle, StatusBadge } from "./ui";
 
 type AssignmentVariables = {
   apiKeyId: string;
@@ -97,7 +97,11 @@ function apiKeyColumns({ configs, openKeyId, pendingKeyId, errorKeyId, errorMess
         {errorKeyId === row.original.id && errorMessage ? <div className="action-error">{errorMessage}</div> : null}
       </>
     ) },
-    { id: "scopes", header: "Scopes", size: 260, accessorFn: (apiKey) => apiKey.scopes.join(" "), cell: ({ row }) => row.original.scopes.map((scope) => <Badge key={scope}>{scope}</Badge>) },
+    { id: "scopes", header: "Scopes", size: 260, accessorFn: (apiKey) => apiKey.scopes.join(" "), cell: ({ row }) => (
+      <div className="cell-tags">
+        {row.original.scopes.map((scope) => <span key={scope} className="code-pill">{scope}</span>)}
+      </div>
+    ) },
     { id: "owner", header: "Owner", size: 160, accessorFn: (apiKey) => apiKey.userId ?? "organization", cell: ({ row }) => <span className="mono">{row.original.userId ?? "organization"}</span> },
     { id: "created", header: "Created", size: 180, accessorFn: (apiKey) => apiKey.createdAt, cell: ({ row }) => formatDateTime(row.original.createdAt) },
     { id: "lastUsed", header: "Last used", size: 180, accessorFn: (apiKey) => apiKey.lastUsedAt ?? "", cell: ({ row }) => row.original.lastUsedAt ? formatDateTime(row.original.lastUsedAt) : <span className="faint">never</span> }
@@ -108,7 +112,10 @@ function ApiKeyNameCell({ apiKey }: { apiKey: ApiKeySummary }) {
   return (
     <>
       <div className="row gap-8"><KeyRound /><strong>{apiKey.name}</strong></div>
-      <div className="mono faint">{compactId(apiKey.id, 14)}</div>
+      <div className="key-id faint" title={apiKey.id}>
+        <span>Key ID</span>
+        <span className="mono">{compactId(apiKey.id, 14)}</span>
+      </div>
     </>
   );
 }
@@ -128,7 +135,6 @@ function AssignmentMenu({ apiKey, configs, open, pending, onOpenChange, onAssign
         {pending ? "Updating" : label}
         <ChevronDown />
       </button>
-      <div className="faint assignment-subtitle">{apiKey.routingConfig ? apiKey.routingConfig.status ?? "assigned" : "fallback"}</div>
       {open ? (
         <div className="assignment-popover">
           <button type="button" className={!apiKey.routingConfigId ? "active" : ""} onClick={() => onAssign(null)}>
