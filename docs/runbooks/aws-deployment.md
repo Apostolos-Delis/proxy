@@ -192,6 +192,21 @@ Then run a small command from Codex and check the admin console or `pnpm smoke:d
 
 ## Claude Code Config
 
+Add to `~/.claude/settings.json` (user-level or managed settings only; Claude Code filters `ANTHROPIC_BASE_URL` out of project-scoped settings):
+
+```json
+{
+  "model": "claude-router-auto",
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://REPLACE_WITH_CLOUDFRONT_DOMAIN",
+    "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"
+  },
+  "apiKeyHelper": "echo \"$PROMPT_PROXY_DEPLOYED_API_KEY\""
+}
+```
+
+Then run `claude` with no extra flags. For a one-off session without touching settings:
+
 ```shell
 export ANTHROPIC_BASE_URL="https://REPLACE_WITH_CLOUDFRONT_DOMAIN"
 export ANTHROPIC_API_KEY="$PROMPT_PROXY_DEPLOYED_API_KEY"
