@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Boxes, Download, Shield, Users } from "lucide-react";
 
-import { type PromptSummary, type RequestSummary, fetchPrompts, fetchRequests, fetchUsers } from "./api";
+import { type PromptSummary, type RequestSummary, fetchPromptDetail, fetchPrompts, fetchRequests, fetchUsers } from "./api";
 import { displayUser } from "./consoleData";
 import { downloadJson } from "./dashboard";
 import { compactId, formatCompact, formatMoney } from "./format";
@@ -79,12 +79,22 @@ const requestAdvancedFields: ConsoleTableAdvancedField<PromptLogRow>[] = [
 
 function PromptCell({ row }: { row: PromptLogRow }) {
   const preview = row.prompt.preview;
+  const queryClient = useQueryClient();
+  const prefetchDetail = () => {
+    void queryClient.prefetchQuery({
+      queryKey: ["prompt", row.prompt.artifactId],
+      queryFn: () => fetchPromptDetail(row.prompt.artifactId),
+      staleTime: 30_000
+    });
+  };
   return (
     <div className="prompt-cell">
       <Link
         to="/logs/$artifactId"
         params={{ artifactId: row.prompt.artifactId }}
         className={`table-link${preview ? "" : " table-link-placeholder"}`}
+        onMouseEnter={prefetchDetail}
+        onFocus={prefetchDetail}
       >
         {preview ?? "Prompt not stored"}
       </Link>
