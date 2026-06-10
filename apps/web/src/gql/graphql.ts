@@ -305,7 +305,7 @@ export type SessionDetailViewQueryVariables = Exact<{
 }>;
 
 
-export type SessionDetailViewQuery = { session: { user: unknown, session: { sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, sessionIdentity: string | null, requestCount: number, startedAt: string, recentActivity: string | null, modelMix: unknown, routeMix: unknown, usage: { totalTokens: number }, cost: { selected: number } }, requests: Array<{ requestId: string, createdAt: string | null, selectedModel: string | null, finalRoute: string | null, terminalStatus: string, selectedCost: number, usage: { totalTokens: number } }>, promptArtifacts: Array<{ artifactId: string, requestId: string, kind: string, rawText: string | null, redactedText: string | null, preview: string | null }> } | null };
+export type SessionDetailViewQuery = { session: { user: unknown, session: { sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, sessionIdentity: string | null, requestCount: number, startedAt: string, recentActivity: string | null, modelMix: unknown, routeMix: unknown, usage: { totalTokens: number }, cost: { selected: number } }, requests: Array<{ requestId: string, createdAt: string | null, selectedModel: string | null, finalRoute: string | null, terminalStatus: string, latencyMs: number | null, selectedCost: number, usage: { totalTokens: number } }>, promptArtifacts: Array<{ artifactId: string, requestId: string, kind: string, createdAt: string, rawText: string | null, redactedText: string | null, preview: string | null }> } | null };
 
 export type SettingsViewQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -1316,6 +1316,7 @@ export const SessionDetailViewDocument = new TypedDocumentString(`
       selectedModel
       finalRoute
       terminalStatus
+      latencyMs
       selectedCost
       usage {
         totalTokens
@@ -1325,6 +1326,7 @@ export const SessionDetailViewDocument = new TypedDocumentString(`
       artifactId
       requestId
       kind
+      createdAt
       rawText
       redactedText
       preview

@@ -5,10 +5,11 @@ import type { ReactNode } from "react";
 
 import { displayUser } from "./consoleData";
 import { downloadJson } from "./dashboard";
-import { compactCounts, compactId, dominantKey, formatCompact, formatDateTime, formatMoney } from "./format";
+import { compactId, dominantKey, formatCompact, formatDateTime, formatDateTimeSeconds, formatDurationMs, formatMoney, formatTimeOfDay } from "./format";
 import { graphql } from "./gql";
 import type { SessionDetailViewQuery, SessionsPageQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
+import { CopyButton } from "./jsonView";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { GlassCard, PageState, PageTitle, RouteBadge, StatusBadge, UserCell } from "./ui";
 
@@ -69,6 +70,7 @@ const SessionDetailViewDocument = graphql(`
         selectedModel
         finalRoute
         terminalStatus
+        latencyMs
         selectedCost
         usage {
           totalTokens
@@ -78,6 +80,7 @@ const SessionDetailViewDocument = graphql(`
         artifactId
         requestId
         kind
+        createdAt
         rawText
         redactedText
         preview
@@ -98,6 +101,8 @@ type SessionLogRow = {
 };
 
 type ConversationTurn = {
+  index: number;
+  gapMs: number | null;
   request: SessionRequest;
   userArtifact?: SessionArtifact;
   assistantArtifact?: SessionArtifact;
@@ -284,6 +289,9 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }) {
   const detail = query.data;
   const session = detail.session;
   const turns = conversationTurns(detail);
+  const spanMs = conversationSpan(turns);
+  const hasCapturedText = turns.some((turn) => artifactText(turn.userArtifact) ?? artifactText(turn.assistantArtifact));
+  const transcript = hasCapturedText ? transcriptText(turns) : null;
   return (
     <div className="page page-enter">
       <PageTitle
@@ -294,12 +302,21 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }) {
         <GlassCard className="conversation-card">
           <div className="card-head">
             <div className="card-title"><MessagesSquare />Conversation</div>
-            <span className="faint mono">{turns.length} {turns.length === 1 ? "turn" : "turns"}</span>
+            <div className="row gap-8">
+              <span className="faint mono">
+                {turns.length} {turns.length === 1 ? "turn" : "turns"}
+                {spanMs != null && spanMs >= 1000 ? ` · ${formatDurationMs(spanMs)}` : ""}
+              </span>
+              {transcript ? <CopyButton text={transcript} label="Copy transcript" /> : null}
+            </div>
           </div>
-          <div className="conversation">
-            {turns.map((turn) => <ConversationTurnView key={turn.request.requestId} turn={turn} />)}
-            {turns.length === 0 ? <div className="empty">No requests recorded for this session.</div> : null}
-          </div>
+          {turns.length > 0 ? (
+            <div className="conversation convo-timeline">
+              {turns.map((turn) => <ConversationTurnView key={turn.request.requestId} turn={turn} />)}
+            </div>
+          ) : (
+            <div className="empty">No requests recorded for this session.</div>
+          )}
         </GlassCard>
         <SessionRail session={session} userName={sessionUserName(detail)} />
       </div>
@@ -308,17 +325,22 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }) {
 }
 
 function ConversationTurnView({ turn }: { turn: ConversationTurn }) {
-  const { request, userArtifact, assistantArtifact } = turn;
+  const { request, index, gapMs, userArtifact, assistantArtifact } = turn;
   const logArtifactId = userArtifact?.artifactId ?? assistantArtifact?.artifactId;
   return (
     <article className="convo-turn">
+      <span className="turn-node" aria-hidden>{index + 1}</span>
       <header className="convo-meta">
-        {request.createdAt ? <time>{formatDateTime(request.createdAt)}</time> : null}
+        {request.createdAt ? <time dateTime={request.createdAt}>{formatDateTimeSeconds(request.createdAt)}</time> : null}
+        {gapMs != null && gapMs >= 1000 ? <span className="convo-gap">+{formatDurationMs(gapMs)}</span> : null}
         <span className="row gap-8"><span className="model-dot" /><span className="mono">{request.selectedModel ?? "unknown"}</span></span>
         <RouteBadge route={request.finalRoute} />
         <StatusBadge status={request.terminalStatus} />
-        <span className="mono">{formatCompact(request.usage.totalTokens)} tok</span>
-        <span className="mono">{formatMoney(request.selectedCost)}</span>
+        <span className="convo-stats">
+          <span>{formatCompact(request.usage.totalTokens)} tok</span>
+          <span>{formatMoney(request.selectedCost)}</span>
+          {request.latencyMs != null ? <span>{formatDurationMs(request.latencyMs)}</span> : null}
+        </span>
         {logArtifactId ? (
           <Link to="/logs/$artifactId" params={{ artifactId: logArtifactId }} className="convo-log-link">
             Open log
@@ -336,10 +358,16 @@ function ConversationBubble({ role, artifact, missingLabel }: {
   artifact?: SessionArtifact;
   missingLabel: string;
 }) {
-  const text = artifact ? artifact.rawText ?? artifact.redactedText ?? artifact.preview : null;
+  const text = artifactText(artifact);
   return (
     <div className={`convo-bubble convo-${role}`}>
-      <span className="convo-role">{role}</span>
+      <div className="convo-bubble-head">
+        <span className="convo-role">{role}</span>
+        <span className="convo-bubble-actions">
+          {artifact?.createdAt ? <time dateTime={artifact.createdAt} className="convo-bubble-meta mono">{formatTimeOfDay(artifact.createdAt)}</time> : null}
+          {text ? <CopyButton text={text} /> : null}
+        </span>
+      </div>
       {text ? <p>{text}</p> : <p className="convo-missing">{missingLabel}</p>}
     </div>
   );
@@ -355,13 +383,33 @@ function SessionRail({ session, userName }: { session: SessionDetail["session"];
         <SessionFact label="Identity"><span className="mono">{session.sessionIdentity ?? "unknown"}</span></SessionFact>
         <SessionFact label="Started"><span>{formatDateTime(session.startedAt)}</span></SessionFact>
         <SessionFact label="Last activity"><span>{session.recentActivity ? formatDateTime(session.recentActivity) : "unknown"}</span></SessionFact>
+      </div>
+      <div className="rail-stats">
         <SessionFact label="Requests"><span className="mono">{formatCompact(session.requestCount)}</span></SessionFact>
         <SessionFact label="Tokens"><span className="mono">{formatCompact(session.usage.totalTokens)}</span></SessionFact>
         <SessionFact label="Cost"><span className="mono">{formatMoney(session.cost.selected)}</span></SessionFact>
-        <SessionFact label="Models"><span>{compactCounts(countRecord(session.modelMix))}</span></SessionFact>
-        <SessionFact label="Routes"><span>{compactCounts(countRecord(session.routeMix))}</span></SessionFact>
       </div>
+      <MixList label="Models" kind="model" counts={countRecord(session.modelMix)} />
+      <MixList label="Routes" kind="route" counts={countRecord(session.routeMix)} />
     </GlassCard>
+  );
+}
+
+function MixList({ label, kind, counts }: { label: string; kind: "model" | "route"; counts: Record<string, number> }) {
+  const entries = sortedCounts(counts);
+  if (entries.length === 0) return null;
+  return (
+    <div className="mix-section">
+      <span className="mix-label">{label}</span>
+      {entries.map(([key, count]) => (
+        <div key={key} className="mix-row">
+          {kind === "model"
+            ? <span className="row gap-8"><span className="model-dot" /><span className="mono">{key}</span></span>
+            : <RouteBadge route={key} />}
+          <span className="mono faint">×{formatCompact(count)}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -381,16 +429,52 @@ function conversationTurns(detail: SessionDetail): ConversationTurn[] {
     list.push(artifact);
     artifactsByRequest.set(artifact.requestId, list);
   }
-  return [...detail.requests]
-    .sort((left, right) => requestTime(left) - requestTime(right))
-    .map((request) => {
-      const artifacts = artifactsByRequest.get(request.requestId) ?? [];
-      return {
-        request,
-        userArtifact: artifacts.find((artifact) => artifact.kind === "latest_user_message"),
-        assistantArtifact: artifacts.find((artifact) => artifact.kind === "assistant_response")
-      };
-    });
+  const ordered = [...detail.requests].sort((left, right) => requestTime(left) - requestTime(right));
+  return ordered.map((request, index) => {
+    const artifacts = artifactsByRequest.get(request.requestId) ?? [];
+    const previous = index > 0 ? ordered[index - 1] : null;
+    // Idle time before this turn: previous turn's latency is not "waiting".
+    const gapMs = request.createdAt && previous?.createdAt
+      ? Math.max(0, new Date(request.createdAt).getTime() - new Date(previous.createdAt).getTime() - (previous.latencyMs ?? 0))
+      : null;
+    return {
+      index,
+      gapMs,
+      request,
+      userArtifact: artifacts.find((artifact) => artifact.kind === "latest_user_message"),
+      assistantArtifact: artifacts.find((artifact) => artifact.kind === "assistant_response")
+    };
+  });
+}
+
+function conversationSpan(turns: ConversationTurn[]) {
+  if (turns.length < 2) return null;
+  const first = turns[0].request.createdAt;
+  const last = turns[turns.length - 1].request.createdAt;
+  return first && last ? new Date(last).getTime() - new Date(first).getTime() : null;
+}
+
+function artifactText(artifact?: SessionArtifact) {
+  return artifact ? artifact.rawText ?? artifact.redactedText ?? artifact.preview : null;
+}
+
+function transcriptText(turns: ConversationTurn[]) {
+  return turns
+    .map((turn) => {
+      const lines = (["user", "assistant"] as const)
+        .map((role) => {
+          const artifact = role === "user" ? turn.userArtifact : turn.assistantArtifact;
+          const text = artifactText(artifact);
+          if (!text) return null;
+          const stamp = artifact?.createdAt ?? turn.request.createdAt;
+          return `${stamp ? `[${formatDateTimeSeconds(stamp)}] ` : ""}${role}: ${text}`;
+        })
+        .filter(Boolean);
+      if (lines.length > 0) return lines.join("\n");
+      const stamp = turn.request.createdAt ? `[${formatDateTimeSeconds(turn.request.createdAt)}] ` : "";
+      return `${stamp}(turn ${turn.index + 1}: content not captured)`;
+    })
+    .join("\n\n");
 }
 
 function requestTime(request: SessionRequest) {

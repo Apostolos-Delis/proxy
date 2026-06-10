@@ -41,6 +41,36 @@ export function formatDateTime(value: string) {
   });
 }
 
+export function formatDateTimeSeconds(value: string) {
+  return new Date(value).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+export function formatTimeOfDay(value: string) {
+  return new Date(value).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+export function formatDurationMs(value: number) {
+  if (value < 1000) return `${Math.max(0, Math.round(value))}ms`;
+  const totalSeconds = Math.round(value / 1000);
+  if (totalSeconds < 60) return `${(value / 1000).toFixed(totalSeconds < 10 ? 2 : 1)}s`;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (totalMinutes < 60) return seconds > 0 ? `${totalMinutes}m ${seconds}s` : `${totalMinutes}m`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
 export function formatDate(value: string) {
   return new Date(value).toLocaleDateString(undefined, {
     month: "short",
@@ -56,14 +86,4 @@ export function compactId(value: string, size = 10) {
 
 export function dominantKey(counts: Record<string, number>) {
   return Object.entries(counts).sort((left, right) => right[1] - left[1])[0]?.[0] ?? "unknown";
-}
-
-export function compactCounts(counts: Record<string, number>) {
-  const entries = Object.entries(counts);
-  if (entries.length === 0) return "none";
-  return entries
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 2)
-    .map(([key, value]) => `${key} ${value}`)
-    .join(", ");
 }

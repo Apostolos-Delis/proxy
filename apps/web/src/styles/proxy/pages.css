@@ -757,33 +757,82 @@ input[type="checkbox"][role="switch"]:focus-visible {
   gap: 22px;
 }
 
-.convo-turn {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
+/* session replay timeline: hairline rail + numbered turn nodes */
+.convo-timeline {
+  position: relative;
+  gap: 28px;
 }
 
-.convo-turn + .convo-turn {
-  padding-top: 22px;
-  border-top: 1px solid var(--border);
+.convo-timeline::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 16px;
+  left: 11px;
+  width: 1px;
+  background: var(--border-strong);
+}
+
+.convo-turn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 36px;
+}
+
+.turn-node {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 23px;
+  height: 23px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--glass);
+  color: var(--fg-muted);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
 }
 
 .convo-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
+  min-height: 23px;
   color: var(--fg-faint);
   font-size: 12px;
 }
 
 .convo-meta time {
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.convo-gap {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.convo-stats {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
   font-family: var(--mono);
   font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .convo-log-link {
-  margin-left: auto;
   color: var(--fg-muted);
   font-size: 12px;
   font-weight: 500;
@@ -832,6 +881,40 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font-style: italic;
 }
 
+.convo-bubble-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.convo-bubble-head .convo-role {
+  margin-bottom: 0;
+}
+
+.convo-bubble-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.convo-bubble-meta {
+  color: var(--fg-faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.convo-bubble-head .copy-button {
+  padding: 2px 3px;
+  opacity: 0;
+}
+
+.convo-bubble:hover .convo-bubble-head .copy-button,
+.convo-bubble-head .copy-button:focus-visible {
+  opacity: 1;
+}
+
 .session-rail .card-title {
   margin-bottom: 14px;
 }
@@ -857,6 +940,44 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.session-rail .rail-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.mix-section {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.mix-label {
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mix-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.mix-row .mono {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1100px) {
@@ -986,10 +1107,6 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 /* exchange bubbles */
-.convo-bubble {
-  position: relative;
-}
-
 .convo-bubble.convo-system {
   border-style: dashed;
   background: transparent;
@@ -998,26 +1115,6 @@ input[type="checkbox"][role="switch"]:focus-visible {
 .convo-bubble.convo-focused {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
   box-shadow: 0 0 0 1px var(--accent-soft);
-}
-
-.convo-bubble-meta {
-  position: absolute;
-  top: 11px;
-  right: 38px;
-  color: var(--fg-faint);
-  font-size: 10.5px;
-}
-
-.convo-bubble > .copy-button {
-  position: absolute;
-  top: 7px;
-  right: 8px;
-  opacity: 0;
-}
-
-.convo-bubble:hover > .copy-button,
-.convo-bubble > .copy-button:focus-visible {
-  opacity: 1;
 }
 
 /* event timeline */
