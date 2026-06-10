@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Ban, ChevronDown, KeyRound, Plus, TerminalSquare, X } from "lucide-react";
+import { BarChart3, Ban, ChevronDown, Plus, TerminalSquare, X } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -14,9 +14,10 @@ import {
 import { fetchProviderAccounts, type ProviderAccountSummary } from "./providers/data";
 import { ApiKeyProviderBinding } from "./apiKeyProviderBinding";
 import { apiKeyScopeOptions, CreateApiKeyPanel } from "./createApiKeyPanel";
-import { compactId, formatDateTime } from "./format";
+import { compactId, formatDate, formatDateTime } from "./format";
 import { HarnessSetupCard } from "./harnessSetupCard";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
+import { PopoverShell } from "./table/PopoverShell";
 import { PageState, PageTitle, StatusBadge } from "./ui";
 
 type AssignmentVariables = {
@@ -142,27 +143,39 @@ function apiKeyColumns({
   onRevoke: (apiKeyId: string) => void;
 }): ConsoleTableColumn<ApiKeySummary>[] {
   return [
-    { id: "name", header: "Name", size: 260, accessorFn: (apiKey) => apiKey.name, cell: ({ row }) => <ApiKeyNameCell apiKey={row.original} /> },
-    { id: "status", header: "Status", size: 130, accessorFn: apiKeyStatus, cell: ({ row }) => <StatusBadge status={apiKeyStatus(row.original)} /> },
-    { id: "routingConfig", header: "Routing config", size: 250, accessorFn: routingConfigLabel, cell: ({ row }) => (
-      <>
-        <AssignmentMenu
-          apiKey={row.original}
-          configs={configs}
-          open={openKeyId === row.original.id}
-          pending={pendingKeyId === row.original.id}
-          onOpenChange={(open) => onOpenChange(row.original.id, open)}
-          onAssign={(routingConfigId) => onAssign(row.original.id, routingConfigId)}
-        />
-        {errorKeyId === row.original.id && errorMessage ? <div className="action-error">{errorMessage}</div> : null}
-      </>
+    { id: "name", header: "Name", size: 225, accessorFn: (apiKey) => apiKey.name, cell: ({ row }) => <ApiKeyNameCell apiKey={row.original} /> },
+    { id: "status", header: "Status", size: 96, accessorFn: apiKeyStatus, cell: ({ row }) => <StatusBadge status={apiKeyStatus(row.original)} /> },
+    { id: "routingConfig", header: "Routing config", size: 200, accessorFn: routingConfigLabel, cell: ({ row }) => (
+      apiKeyStatus(row.original) === "active" ? (
+        <>
+          <AssignmentMenu
+            apiKey={row.original}
+            configs={configs}
+            open={openKeyId === row.original.id}
+            pending={pendingKeyId === row.original.id}
+            onOpenChange={(open) => onOpenChange(row.original.id, open)}
+            onAssign={(routingConfigId) => onAssign(row.original.id, routingConfigId)}
+          />
+          {errorKeyId === row.original.id && errorMessage ? <div className="action-error">{errorMessage}</div> : null}
+        </>
+      ) : (
+        <span className="faint">{routingConfigLabel(row.original)}</span>
+      )
     ) },
     { id: "providerKey", header: "Provider key", size: 220, enableSorting: false, accessorFn: providerBindingValue, cell: ({ row }) => <ApiKeyProviderBinding apiKey={row.original} providerAccounts={providerAccounts} /> },
-    { id: "scopes", header: "Scopes", size: 200, accessorFn: (apiKey) => apiKey.scopes.join(" "), cell: ({ row }) => <ScopesCell scopes={row.original.scopes} /> },
-    { id: "owner", header: "Owner", size: 140, accessorFn: (apiKey) => apiKey.userId ?? "organization", cell: ({ row }) => <span className="mono">{row.original.userId ?? "organization"}</span> },
-    { id: "created", header: "Created", size: 170, accessorFn: (apiKey) => apiKey.createdAt, cell: ({ row }) => formatDateTime(row.original.createdAt) },
-    { id: "lastUsed", header: "Last used", size: 170, accessorFn: (apiKey) => apiKey.lastUsedAt ?? "", cell: ({ row }) => row.original.lastUsedAt ? formatDateTime(row.original.lastUsedAt) : <span className="faint">never</span> },
-    { id: "actions", header: "", size: 120, enableSorting: false, enableHiding: false, accessorFn: () => "", cell: ({ row }) => (
+    { id: "scopes", header: "Scopes", size: 215, accessorFn: (apiKey) => apiKey.scopes.join(" "), cell: ({ row }) => <ScopesCell scopes={row.original.scopes} /> },
+    { id: "owner", header: "Owner", size: 115, accessorFn: (apiKey) => apiKey.userId ?? "organization", cell: ({ row }) => (
+      row.original.userId ? <span className="mono">{row.original.userId}</span> : <span className="faint">Organization</span>
+    ) },
+    { id: "created", header: "Created", size: 105, accessorFn: (apiKey) => apiKey.createdAt, cell: ({ row }) => (
+      <span className="nowrap" title={formatDateTime(row.original.createdAt)}>{formatDate(row.original.createdAt)}</span>
+    ) },
+    { id: "lastUsed", header: "Last used", size: 105, accessorFn: (apiKey) => apiKey.lastUsedAt ?? "", cell: ({ row }) => (
+      row.original.lastUsedAt
+        ? <span className="nowrap" title={formatDateTime(row.original.lastUsedAt)}>{formatDate(row.original.lastUsedAt)}</span>
+        : <span className="faint">Never</span>
+    ) },
+    { id: "actions", header: "", size: 88, enableSorting: false, enableHiding: false, accessorFn: () => "", cell: ({ row }) => (
       <RevokeKeyAction
         apiKey={row.original}
         pending={revokePendingKeyId === row.original.id}
@@ -201,9 +214,11 @@ function RevokeKeyAction({ apiKey, pending, error, onRevoke }: {
   return (
     <>
       <button
-        className={`btn btn-sm${confirming ? " btn-danger" : ""}`}
+        className={confirming || pending ? "btn btn-sm btn-danger" : "btn btn-icon btn-ghost cell-action"}
         type="button"
         disabled={pending}
+        title={confirming ? undefined : "Revoke key"}
+        aria-label={confirming ? `Confirm revoking ${apiKey.name}` : `Revoke ${apiKey.name}`}
         onBlur={() => setConfirming(false)}
         onClick={() => {
           if (!confirming) {
@@ -214,26 +229,26 @@ function RevokeKeyAction({ apiKey, pending, error, onRevoke }: {
           onRevoke();
         }}
       >
-        <Ban />
-        {revokeLabel(pending, confirming)}
+        {revokeContent(pending, confirming)}
       </button>
       {error ? <div className="action-error">{error}</div> : null}
     </>
   );
 }
 
-function revokeLabel(pending: boolean, confirming: boolean) {
-  if (pending) return "Revoking";
-  return confirming ? "Confirm revoke" : "Revoke";
+function revokeContent(pending: boolean, confirming: boolean) {
+  if (pending) return "Revoking…";
+  if (confirming) return "Revoke?";
+  return <Ban />;
 }
 
 function ApiKeyNameCell({ apiKey }: { apiKey: ApiKeySummary }) {
   return (
     <>
-      <div className="row gap-8"><KeyRound /><strong>{apiKey.name}</strong></div>
+      <div className="key-name">{apiKey.name}</div>
       <div className="key-id faint" title={apiKey.id}>
         <span>Key ID</span>
-        <span className="mono">{compactId(apiKey.id, 14)}</span>
+        <span className="mono">{compactId(apiKey.id, 9)}</span>
       </div>
     </>
   );
@@ -249,24 +264,39 @@ function AssignmentMenu({ apiKey, configs, open, pending, onOpenChange, onAssign
 }) {
   const label = apiKey.routingConfig?.name ?? "Organization default";
   return (
-    <div className="assignment-menu">
-      <button className="btn btn-sm" type="button" disabled={pending} onClick={() => onOpenChange(!open)}>
-        {pending ? "Updating" : label}
+    <div
+      className="assignment-menu"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !open) return;
+        event.stopPropagation();
+        onOpenChange(false);
+      }}
+    >
+      <button
+        className={`cell-select${apiKey.routingConfig ? "" : " unset"}`}
+        type="button"
+        disabled={pending}
+        aria-expanded={open}
+        onClick={() => onOpenChange(!open)}
+      >
+        <span>{pending ? "Updating…" : label}</span>
         <ChevronDown />
       </button>
       {open ? (
-        <div className="assignment-popover">
-          <button type="button" className={!apiKey.routingConfigId ? "active" : ""} onClick={() => onAssign(null)}>
-            <strong>Organization default</strong>
-            <span>Clear key-specific routing</span>
-          </button>
-          {configs.map((config) => (
-            <button key={config.id} type="button" className={apiKey.routingConfigId === config.id ? "active" : ""} onClick={() => onAssign(config.id)}>
-              <strong>{config.name}</strong>
-              <span>v{config.activeVersion?.version ?? "?"} · {config.assignedApiKeyCount} keys</span>
+        <PopoverShell onDismiss={() => onOpenChange(false)}>
+          <div className="assignment-popover">
+            <button type="button" className={!apiKey.routingConfigId ? "active" : ""} onClick={() => onAssign(null)}>
+              <strong>Organization default</strong>
+              <span>Clear key-specific routing</span>
             </button>
-          ))}
-        </div>
+            {configs.map((config) => (
+              <button key={config.id} type="button" className={apiKey.routingConfigId === config.id ? "active" : ""} onClick={() => onAssign(config.id)}>
+                <strong>{config.name}</strong>
+                <span>v{config.activeVersion?.version ?? "?"} · {config.assignedApiKeyCount} keys</span>
+              </button>
+            ))}
+          </div>
+        </PopoverShell>
       ) : null}
     </div>
   );

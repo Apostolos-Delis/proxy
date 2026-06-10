@@ -1760,12 +1760,8 @@
 }
 
 .config-keys-attach .assignment-popover {
-  position: absolute;
-  top: 100%;
+  left: auto;
   right: 0;
-  z-index: 30;
-  max-height: 320px;
-  overflow: auto;
 }
 
 .config-key-rows {
@@ -1873,7 +1869,71 @@
 .assignment-menu {
   position: relative;
   display: inline-block;
-  min-width: 210px;
+  margin-left: -7px;
+  max-width: calc(100% + 7px);
+}
+
+.cell-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  transition: background .13s var(--ease), color .13s var(--ease);
+}
+
+.cell-select > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-select svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--fg-faint);
+}
+
+.cell-select:hover:not(:disabled),
+.cell-select[aria-expanded="true"] {
+  background: var(--glass-hover);
+}
+
+.cell-select:disabled {
+  cursor: default;
+  color: var(--fg-muted);
+}
+
+.cell-select.unset > span {
+  color: var(--fg-faint);
+}
+
+.cell-select.unset:hover:not(:disabled) > span {
+  color: var(--fg-muted);
+}
+
+.cell-action {
+  padding: 6px;
+  color: var(--fg-faint);
+}
+
+.cell-action:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.cell-action svg {
+  width: 14px;
+  height: 14px;
 }
 
 .cell-tags {
@@ -1882,26 +1942,49 @@
   gap: 6px;
 }
 
+.key-name {
+  overflow: hidden;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .key-id {
   display: flex;
   align-items: center;
   gap: 7px;
   margin-top: 3px;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .key-id span:first-child {
+  flex: none;
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
+.key-id .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .scope-tags {
   flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .scope-tags .code-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scope-tags .scope-more {
   flex: none;
 }
 
@@ -1990,13 +2073,25 @@
 }
 
 .assignment-popover {
-  margin-top: 8px;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 45;
   width: 280px;
+  max-height: 320px;
+  overflow: auto;
   padding: 6px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--glass-strong);
   box-shadow: var(--shadow);
+  animation: popover-in .14s var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assignment-popover {
+    animation: none;
+  }
 }
 
 .assignment-popover button {
