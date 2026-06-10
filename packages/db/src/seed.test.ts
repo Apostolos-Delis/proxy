@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS, type RoutingConfig } from "@prompt-proxy/schema";
+import type { RoutingConfig } from "@prompt-proxy/schema";
 
 import { hashApiKey } from "./apiKeyHash.js";
 import { createPgliteDatabase } from "./client.js";
@@ -109,7 +109,6 @@ describe("database seed", () => {
       schemaVersion: 1,
       classifier: expect.objectContaining({
         model: options.classifierModel,
-        instructions: DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS,
         allowRedactedExcerpt: false
       }),
       routes: expect.objectContaining({
@@ -129,6 +128,7 @@ describe("database seed", () => {
       })
     }));
     const seededConfig = routingConfigVersionRows[0]?.config as RoutingConfig;
+    expect(seededConfig.classifier.rules).toBeUndefined();
     expect(seededConfig.routes.hard.anthropic?.output_config).toBeUndefined();
     expect(keyRows).toHaveLength(1);
     expect(keyRows[0]?.routingConfigId).toBe("org_seed:routing-config:default");

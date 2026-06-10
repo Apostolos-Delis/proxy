@@ -9,7 +9,7 @@ const baseConfig: RoutingConfigDocument = {
   classifier: {
     provider: "openai",
     model: "route-classifier",
-    instructions: "Classify.",
+    rules: "Keep auth/ on hard.",
     timeoutMs: 1500,
     maxAttempts: 2,
     allowRedactedExcerpt: false
@@ -42,7 +42,7 @@ describe("draftFromConfig", () => {
     const draft = draftFromConfig(baseConfig);
 
     expect(draft.systemPrompt).toBe("Follow proxy policy.");
-    expect(draft.classifierInstructions).toBe("Classify.");
+    expect(draft.classifierRules).toBe("Keep auth/ on hard.");
     expect(draft.routes.fast).toEqual({
       openaiModel: "gpt-fast",
       openaiEffort: "low",
@@ -130,12 +130,22 @@ describe("applyDraft", () => {
     expect(next.routes.fast.openai?.model).toBe("gpt-fast");
   });
 
-  it("updates the classifier instructions while preserving other classifier settings", () => {
+  it("updates the classifier rules while preserving other classifier settings", () => {
     const draft = draftFromConfig(baseConfig);
-    draft.classifierInstructions = "  Route by area.  ";
+    draft.classifierRules = "  Route by area.  ";
     const next = applyDraft(baseConfig, draft);
 
-    expect(next.classifier).toEqual({ ...baseConfig.classifier, instructions: "Route by area." });
+    expect(next.classifier).toEqual({ ...baseConfig.classifier, rules: "Route by area." });
+  });
+
+  it("clears the classifier rules when blank", () => {
+    const draft = draftFromConfig(baseConfig);
+    draft.classifierRules = "   ";
+    const next = applyDraft(baseConfig, draft);
+
+    expect(next.classifier.rules).toBeUndefined();
+    expect("rules" in next.classifier).toBe(false);
+    expect(next.classifier.model).toBe("route-classifier");
   });
 
   it("sets and clears the system prompt", () => {
@@ -176,11 +186,11 @@ describe("draftError", () => {
     expect(draftError(draft)).toContain("hard");
   });
 
-  it("rejects blank routing rules", () => {
+  it("accepts blank routing rules", () => {
     const draft = draftFromConfig(baseConfig);
-    draft.classifierInstructions = "   ";
+    draft.classifierRules = "   ";
 
-    expect(draftError(draft)).toContain("Routing rules");
+    expect(draftError(draft)).toBeUndefined();
   });
 });
 

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { routingConfigSchema, type RoutingConfig } from "./index.js";
+import {
+  composeClassifierInstructions,
+  ROUTING_CLASSIFIER_BASE_INSTRUCTIONS,
+  routingConfigSchema,
+  type RoutingConfig
+} from "./index.js";
 
 const validConfig = {
   schemaVersion: 1,
@@ -10,7 +15,7 @@ const validConfig = {
   classifier: {
     provider: "openai",
     model: "gpt-5-nano-2025-08-07",
-    instructions: "Classify coding-agent requests into route tiers.",
+    rules: "Keep auth/ and payments/ on hard or deep.",
     timeoutMs: 1500,
     maxAttempts: 2,
     allowRedactedExcerpt: true,
@@ -103,6 +108,42 @@ describe("routingConfigSchema", () => {
     const { systemPrompt: _systemPrompt, ...withoutSystemPrompt } = validConfig;
 
     expect(routingConfigSchema.safeParse(withoutSystemPrompt).success).toBe(true);
+  });
+
+  it("accepts configs without classifier rules", () => {
+    const { rules: _rules, ...classifierWithoutRules } = validConfig.classifier;
+
+    expect(routingConfigSchema.safeParse({
+      ...validConfig,
+      classifier: classifierWithoutRules
+    }).success).toBe(true);
+  });
+
+  it("rejects the pre-cutover classifier.instructions field", () => {
+    const { rules: _rules, ...classifierWithoutRules } = validConfig.classifier;
+    const result = routingConfigSchema.safeParse({
+      ...validConfig,
+      classifier: {
+        ...classifierWithoutRules,
+        instructions: "Classify the coding-agent request."
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(["classifier"]);
+  });
+
+  it("rejects whitespace-only classifier rules", () => {
+    const result = routingConfigSchema.safeParse({
+      ...validConfig,
+      classifier: {
+        ...validConfig.classifier,
+        rules: "   "
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(["classifier", "rules"]);
   });
 
   it("rejects whitespace-only system prompts", () => {
@@ -309,5 +350,23 @@ describe("routingConfigSchema", () => {
 
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.path).toEqual(["limits", "fallbackRoute"]);
+  });
+});
+
+describe("composeClassifierInstructions", () => {
+  it("returns the built-in prompt when no rules are configured", () => {
+    expect(composeClassifierInstructions()).toBe(ROUTING_CLASSIFIER_BASE_INSTRUCTIONS);
+    expect(composeClassifierInstructions("   ")).toBe(ROUTING_CLASSIFIER_BASE_INSTRUCTIONS);
+  });
+
+  it("inserts organization rules before the output-format reminder", () => {
+    const composed = composeClassifierInstructions("  auth/ routes deep.  ");
+
+    expect(composed).toContain("Organization routing rules");
+    expect(composed).toContain("auth/ routes deep.");
+    expect(composed.indexOf("auth/ routes deep.")).toBeGreaterThan(
+      composed.indexOf("Route tiers:")
+    );
+    expect(composed.endsWith("Return only JSON matching the requested schema.")).toBe(true);
   });
 });

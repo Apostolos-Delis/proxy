@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
+import { ROUTING_CLASSIFIER_BASE_INSTRUCTIONS } from "@prompt-proxy/schema";
+
 import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
 import { listen, startAnthropicMock, startOpenAIMock, type MockServer } from "./helpers.js";
@@ -369,9 +371,7 @@ describe("prompt proxy", () => {
     expect(classifierInput.input_chars).toBe("git status".length);
     expect(classifierInput.full_input_chars).toBeGreaterThan(10_000);
     expect(classifierInput.extracted_hints).toEqual([]);
-    expect(classifierCall?.body.instructions).toContain("System design");
-    expect(classifierCall?.body.instructions).toContain("must route deep");
-    expect(classifierCall?.body.instructions).toContain("needs_deep_reasoning=true");
+    expect(classifierCall?.body.instructions).toBe(ROUTING_CLASSIFIER_BASE_INSTRUCTIONS);
     expect(contextEvent.payload.routingInputChars).toBe("git status".length);
     expect(contextEvent.payload.inputChars).toBeGreaterThan(10_000);
   });

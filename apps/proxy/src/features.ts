@@ -1,16 +1,18 @@
+import { ROUTING_HINT_NAMES, type RoutingHintName } from "@prompt-proxy/schema";
+
 import type { RouteContext } from "./types.js";
 import { explicitAlias } from "./catalog.js";
 import { isRecord, roughTokenEstimate, sha256, stableJson } from "./util.js";
 
-const hintPatterns: [string, RegExp][] = [
-  ["quick", /\b(quick|simple|typo|format|rename|one-line)\b/i],
-  ["deep", /\b(think hard|deep review|root cause|prove|exhaustive)\b/i],
-  ["security", /\b(security|auth|oauth|permission|secret|crypto)\b/i],
-  ["migration", /\b(migration|refactor|architecture|schema)\b/i],
-  ["concurrency", /\b(concurrency|race condition|deadlock|lock)\b/i],
-  ["failing_test", /\b(failing test|regression|flaky|stack trace|root cause)\b/i],
-  ["production", /\b(production|data loss|payment|billing)\b/i]
-];
+const hintPatterns: Record<RoutingHintName, RegExp> = {
+  quick: /\b(quick|simple|typo|format|rename|one-line)\b/i,
+  deep: /\b(think hard|deep review|root cause|prove|exhaustive)\b/i,
+  security: /\b(security|auth|oauth|permission|secret|crypto)\b/i,
+  migration: /\b(migration|refactor|architecture|schema)\b/i,
+  concurrency: /\b(concurrency|race condition|deadlock|lock)\b/i,
+  failing_test: /\b(failing test|regression|flaky|stack trace|root cause)\b/i,
+  production: /\b(production|data loss|payment|billing)\b/i
+};
 
 export function buildOpenAIContext(body: unknown, headers: Record<string, string | undefined>): RouteContext {
   const request = isRecord(body) ? body : {};
@@ -176,9 +178,7 @@ function stringifyText(value: unknown): string {
 }
 
 function extractHints(text: string) {
-  return hintPatterns
-    .filter(([, pattern]) => pattern.test(text))
-    .map(([name]) => name);
+  return ROUTING_HINT_NAMES.filter((name) => hintPatterns[name].test(text));
 }
 
 function hasImageInput(value: unknown): boolean {
