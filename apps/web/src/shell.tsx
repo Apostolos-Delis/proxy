@@ -5,6 +5,8 @@ import { useState } from "react";
 
 import { LogoutButton } from "./auth";
 import { OrgSwitcher } from "./orgSwitcher";
+import { SearchPalette } from "./search/SearchPalette";
+import { useSearchShortcut } from "./search/useSearchShortcut";
 
 const workspaceNav = [
   { to: "/", label: "Overview", icon: Gauge },
@@ -41,6 +43,8 @@ export function AppShell() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [searchOpen, setSearchOpen] = useState(false);
+  useSearchShortcut(() => setSearchOpen((value) => !value));
   if (location.pathname === "/login" || location.pathname.startsWith("/invite/")) {
     return (
       <main className="login-shell">
@@ -69,11 +73,11 @@ export function AppShell() {
             {subtitle ? <div className="crumb">{subtitle}</div> : null}
           </div>
           <div className="topbar-spacer" />
-          <div className="input topbar-search">
+          <button type="button" className="input topbar-search" onClick={() => setSearchOpen(true)}>
             <Search />
-            <input placeholder="Search..." aria-label="Search" />
+            <span className="topbar-search-label">Search...</span>
             <span className="kbd"><Command /><span>K</span></span>
-          </div>
+          </button>
           <button
             className="btn btn-ghost btn-icon"
             type="button"
@@ -91,6 +95,7 @@ export function AppShell() {
           <Outlet />
         </div>
       </main>
+      {searchOpen ? <SearchPalette onClose={() => setSearchOpen(false)} /> : null}
     </div>
   );
 }
