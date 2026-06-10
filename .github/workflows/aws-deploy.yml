@@ -16,7 +16,7 @@ on:
         required: false
         type: string
       admin_allowed_cidrs:
-        description: Comma-separated IPv4 or IPv6 CIDRs allowed to access /api/* and /admin/*.
+        description: Optional comma-separated IPv4 or IPv6 CIDRs for private /admin/* staging access. Leave blank for public app-authenticated access.
         required: false
         type: string
       seed:

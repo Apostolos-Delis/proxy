@@ -156,15 +156,18 @@ function handler(event) {
           }
         },
         visibilityConfig: visibility("RateLimit")
-      },
-      {
+      }
+    ];
+
+    if (adminAllowedCidrs.length > 0) {
+      rules.push({
         name: "AdminAccessGate",
         priority: 1,
         action: { block: {} },
         statement: adminAccessStatement(this, config, adminAllowedCidrs),
         visibilityConfig: visibility("AdminAccessGate")
-      }
-    ];
+      });
+    }
 
     return new CfnWebACL(this, "WebAcl", {
       name: resourceName(config, "edge-web-acl"),
@@ -177,7 +180,6 @@ function handler(event) {
 }
 
 function adminAccessStatement(scope: Construct, config: PromptProxyEnvironmentConfig, cidrs: string[]) {
-  if (cidrs.length === 0) return adminPathStatement();
   const ipv4Cidrs = cidrs.filter((cidr) => !cidr.includes(":"));
   const ipv6Cidrs = cidrs.filter((cidr) => cidr.includes(":"));
   const allowedIpStatements: CfnWebACL.StatementProperty[] = [];
@@ -234,18 +236,10 @@ function adminAccessStatement(scope: Construct, config: PromptProxyEnvironmentCo
 
 function adminPathStatement() {
   return {
-    orStatement: {
-      statements: [pathStartsWith("/api/"), pathStartsWith("/admin/")]
-    }
-  };
-}
-
-function pathStartsWith(prefix: string) {
-  return {
     byteMatchStatement: {
       fieldToMatch: { uriPath: {} },
       positionalConstraint: "STARTS_WITH",
-      searchString: prefix,
+      searchString: "/admin/",
       textTransformations: [{ priority: 0, type: "NONE" }]
     }
   };

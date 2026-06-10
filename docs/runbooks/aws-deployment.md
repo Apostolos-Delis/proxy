@@ -9,17 +9,23 @@ This runbook deploys Prompt Proxy to the CDK-managed AWS environment described i
 - `pnpm install` has completed.
 - Docker is available when building the proxy image locally.
 - Provider keys are available locally or in your secret manager.
-- Your current public IPv4 address is known for the temporary admin WAF allowlist. Include IPv6 too if your workstation has it, because CloudFront may prefer IPv6.
+- Optional: current public IPv4/IPv6 CIDRs if you intentionally want to make `/admin/*` private behind a temporary WAF allowlist. Leave this blank for public app-authenticated staging.
 
 ```shell
 export PROMPT_PROXY_DEPLOY_ENV=staging
 export AWS_REGION=us-east-1
+export ADMIN_ALLOWED_CIDR=""
+export IMAGE_TAG="$(git rev-parse --short HEAD)"
+```
+
+To force private admin access for an internal-only environment, set `ADMIN_ALLOWED_CIDR` explicitly:
+
+```shell
 export ADMIN_ALLOWED_CIDR="$(curl -fsS4 https://checkip.amazonaws.com)/32"
 export ADMIN_ALLOWED_IPV6="$(curl -fsS6 https://api64.ipify.org || true)"
 if [ -n "$ADMIN_ALLOWED_IPV6" ]; then
   export ADMIN_ALLOWED_CIDR="${ADMIN_ALLOWED_CIDR},${ADMIN_ALLOWED_IPV6}/128"
 fi
-export IMAGE_TAG="$(git rev-parse --short HEAD)"
 ```
 
 ## First Bootstrap
@@ -131,14 +137,14 @@ Inputs:
 
 - `environment`: `staging` or `prod`.
 - `image_tag`: optional; defaults to the commit SHA.
-- `admin_allowed_cidrs`: comma-separated IPv4 or IPv6 CIDRs for `/api/*` and `/admin/*`.
+- `admin_allowed_cidrs`: optional comma-separated IPv4 or IPv6 CIDRs for private `/admin/*` staging access. Leave blank for public app-authenticated access.
 - `seed`: run the seed task after migrations.
 
-The workflow runs typecheck, tests, image build/push, base CDK deploy, migrations, optional seed, service/edge CDK deploy, web sync, CloudFront invalidation, ECS stability wait, and deployed smoke. The GitHub-hosted runner skips admin smoke because it is normally outside the temporary WAF allowlist.
+The workflow runs typecheck, tests, image build/push, base CDK deploy, migrations, optional seed, service/edge CDK deploy, web sync, CloudFront invalidation, ECS stability wait, and deployed smoke. The GitHub-hosted runner skips admin smoke because admin credentials are not exposed to arbitrary workflow logs.
 
 ## Full Deployed Smoke
 
-Run the full smoke from an allowlisted workstation.
+Run the full smoke from an authenticated workstation.
 
 ```shell
 export PROMPT_PROXY_DEPLOYED_BASE_URL="https://$(aws cloudformation describe-stacks \

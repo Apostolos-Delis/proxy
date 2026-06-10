@@ -123,10 +123,11 @@ Stacks:
   - S3 origin with origin access control.
   - ALB origin for proxy/admin/API traffic.
   - WAF with basic IP rate limits.
+  - Optional WAF admin allowlist for private internal staging only.
   - Optional Route 53/ACM custom domain.
   - SPA fallback to `index.html`.
   - Explicit behavior matrix for static assets, `/v1/*`, `/api/*`, `/admin/*`, and `/healthz`.
-  - Admin path allowlisting or an SSO/access-layer integration before any password-based admin surface is reachable from the public internet.
+  - App-level auth for admin APIs; add SSO/OIDC before treating this as a true production admin surface.
 
 - `OperationsStack`
   - Admin ECS task definition using the same image and secrets as the service.
@@ -225,7 +226,7 @@ Manual workflow:
 8. `cdk deploy` foundation/network/database/secrets if needed.
 9. Run the operations ECS task for `pnpm db:migrate`.
 10. Run `pnpm db:seed` only for initial bootstrapping or explicitly requested seed updates.
-11. Deploy or update admin access controls before making `/api/*` or `/admin/*` reachable from the public internet.
+11. Deploy or update WAF rate limits and optional private-staging admin allowlists.
 12. Deploy or update the ECS service with the new image tag.
 13. Sync web assets to S3.
 14. Invalidate CloudFront for changed web shell assets.
@@ -296,11 +297,11 @@ Minimum before wider company usage:
 - No raw prompts in event payloads or logs.
 - CloudWatch logs redacted of headers and request bodies.
 - WAF rate limiting at the edge.
-- Admin console access restricted until real auth is in place.
+- Admin console uses app-level auth in V1; private-staging WAF allowlists are optional.
 
 Open issue:
 
-- The current admin login is dev-password based. For a true production deployment, add OIDC/Cognito/SSO or put the admin console behind a trusted access layer before removing access allowlists.
+- The current admin login is dev-password based. For a true production deployment, add OIDC/Cognito/SSO or put the admin console behind a trusted access layer.
 
 ## Observability
 
@@ -377,7 +378,7 @@ Break this into PR-sized tickets in [TICKETS.md](TICKETS.md). Do not implement t
 - Codex can use the deployed `/v1` base URL with `supports_websockets = true`.
 - Claude Code can use the deployed Anthropic-compatible base URL.
 - Deployed smoke checks prove SSE, WebSocket upgrade, auth/header forwarding, admin cookie auth, and RDS persistence through CloudFront.
-- Admin access control is in place before `/api/*` or `/admin/*` is publicly reachable.
+- WAF rate limiting and app-level admin auth are in place before `/api/*` or `/admin/*` is publicly reachable.
 - Events and prompt artifacts are persisted to RDS.
 - Provider keys are only loaded from Secrets Manager.
 - Raw prompts do not appear in CloudWatch logs.

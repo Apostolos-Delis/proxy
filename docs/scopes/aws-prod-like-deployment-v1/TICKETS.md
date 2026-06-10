@@ -273,10 +273,9 @@ Scope:
 - Implement the behavior matrix from `PLAN.md`.
 - Disable caching for `/v1/*`, `/api/*`, and `/admin/*`.
 - Forward required auth, cookie, provider version/beta, harness/session, request, and tracing headers.
-- Gate public `/api/*` and `/admin/*` exposure on one access-control choice:
-  - company SSO/trusted access layer
-  - Cognito/OIDC
-  - temporary WAF/CloudFront allowlist for internal staging only
+- Keep public `/api/*` and `/admin/*` behind app-level auth and WAF rate limiting.
+- Support an optional temporary WAF/CloudFront `/admin/*` allowlist for private internal staging only.
+- Replace dev-password admin auth with company SSO, Cognito, OIDC, or a trusted access layer before true production use.
 
 Likely files:
 

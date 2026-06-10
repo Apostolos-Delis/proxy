@@ -65,21 +65,19 @@ describe("PromptProxyEdgeStack", () => {
     });
   });
 
-  it("blocks admin paths closed when no allowlist is configured", () => {
+  it("keeps API and admin routes public when no allowlist is configured", () => {
     const { edge } = createEdgeStack([]);
     const template = Template.fromStack(edge);
 
     expect(template.findResources("AWS::WAFv2::IPSet")).toEqual({});
-    template.hasResourceProperties("AWS::WAFv2::WebACL", {
-      Rules: Match.arrayWith([
-        Match.objectLike({
-          Name: "AdminAccessGate",
-          Statement: Match.objectLike({
-            OrStatement: Match.objectLike({})
-          })
-        })
-      ])
-    });
+    const webAcls = template.findResources("AWS::WAFv2::WebACL");
+    const rules = Object.values(webAcls).flatMap((resource) => resource.Properties.Rules);
+
+    expect(rules).toEqual([
+      expect.objectContaining({
+        Name: "RateLimit"
+      })
+    ]);
   });
 });
 
