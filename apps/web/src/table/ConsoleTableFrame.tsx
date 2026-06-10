@@ -1,5 +1,6 @@
 import { flexRender, type Table } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import type { CSSProperties } from "react";
 
 import { ConsoleTableEmptyState } from "./ConsoleTableEmptyState";
 import type { ConsoleTableRowProps } from "./types";
@@ -23,36 +24,39 @@ export function ConsoleTableFrame<TData>({ table, tableWidth, emptyLabel, filter
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <th key={header.id} style={{ width: header.getSize() }}>
-                  <div className="console-table-th">
-                    {header.isPlaceholder ? null : (
-                      <button type="button" disabled={!header.column.getCanSort()} onClick={header.column.getToggleSortingHandler()}>
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                        <SortIcon sorted={header.column.getIsSorted()} />
-                      </button>
-                    )}
-                    {header.column.getCanResize() ? (
-                      <span
-                        role="separator"
-                        aria-label={`Resize ${header.column.id} column`}
-                        className={`console-column-resizer${header.column.getIsResizing() ? " resizing" : ""}`}
-                        onMouseDown={header.getResizeHandler()}
-                        onTouchStart={header.getResizeHandler()}
-                        onDoubleClick={() => header.column.resetSize()}
-                      />
-                    ) : null}
-                  </div>
-                </th>
-              ))}
+              {headerGroup.headers.map((header) => {
+                const sorted = header.column.getIsSorted();
+                return (
+                  <th key={header.id} style={{ width: header.getSize() }}>
+                    <div className={`console-table-th${sorted ? " sorted" : ""}`}>
+                      {header.isPlaceholder ? null : (
+                        <button type="button" disabled={!header.column.getCanSort()} onClick={header.column.getToggleSortingHandler()}>
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          <SortIcon sorted={sorted} />
+                        </button>
+                      )}
+                      {header.column.getCanResize() ? (
+                        <span
+                          role="separator"
+                          aria-label={`Resize ${header.column.id} column`}
+                          className={`console-column-resizer${header.column.getIsResizing() ? " resizing" : ""}`}
+                          onMouseDown={header.getResizeHandler()}
+                          onTouchStart={header.getResizeHandler()}
+                          onDoubleClick={() => header.column.resetSize()}
+                        />
+                      ) : null}
+                    </div>
+                  </th>
+                );
+              })}
             </tr>
           ))}
         </thead>
         <tbody>
-          {rows.length > 0 ? rows.map((row) => {
+          {rows.length > 0 ? rows.map((row, rowIndex) => {
             const rowProps = getRowProps?.(row.original);
             return (
-              <tr key={row.id} {...rowProps} className={rowProps?.className}>
+              <tr key={row.id} {...rowProps} className={rowProps?.className} style={{ "--row-i": Math.min(rowIndex, 9) } as CSSProperties}>
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} style={{ width: cell.column.getSize() }}>
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}

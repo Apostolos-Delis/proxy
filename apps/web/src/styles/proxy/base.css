@@ -26,6 +26,7 @@
   --glass-2: #171e20;        /* nested / inputs (surface-2) */
   --glass-strong: #12181a;   /* opaque overlays */
   --glass-hover: #1b2325;
+  --accent-text: #2dd4bf;
   --border: rgba(255, 255, 255, 0.075);
   --border-strong: rgba(255, 255, 255, 0.15);
   --fg: #edeeee;
@@ -53,6 +54,7 @@
   --glass-2: #f6f8f8;        /* nested / inputs */
   --glass-strong: #ffffff;
   --glass-hover: #eef1f1;
+  --accent-text: #0f766e;
   --border: rgba(15, 30, 30, 0.10);
   --border-strong: rgba(15, 30, 30, 0.18);
   --fg: #131818;
