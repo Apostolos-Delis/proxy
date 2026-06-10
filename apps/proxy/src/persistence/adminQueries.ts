@@ -202,7 +202,7 @@ export class AdminQueryService {
         eq(providerAccounts.id, apiKeyProviderAccounts.providerAccountId)
       ))
       .where(and(
-        eq(apiKeyProviderAccounts.organizationId, this.organizationId),
+        this.scopedTo(apiKeyProviderAccounts),
         inArray(apiKeyProviderAccounts.apiKeyId, apiKeyIds)
       ));
     for (const row of rows) {
@@ -221,6 +221,8 @@ export class AdminQueryService {
   private async providerAccountBoundKeyCounts(providerAccountIds: string[]) {
     const counts = new Map<string, number>();
     if (providerAccountIds.length === 0) return counts;
+    // Deliberately org-wide (no workspaceScope): provider accounts are an
+    // org-level screen, so the bound-key count covers every workspace.
     const rows = await this.db
       .select({
         providerAccountId: apiKeyProviderAccounts.providerAccountId,
@@ -523,7 +525,7 @@ export class AdminQueryService {
       ))
       .where(and(
         this.scopedTo(promptArtifacts),
-        eq(requests.organizationId, this.organizationId),
+        this.scopedTo(requests),
         eq(promptArtifacts.id, artifactId)
       ))
       .limit(1);
@@ -1096,7 +1098,7 @@ type PromptRow = {
 function promptConditions(organizationId: string, workspaceId: string, filters: PromptListFilters) {
   const conditions = [
     workspaceScope(promptArtifacts, organizationId, workspaceId),
-    eq(requests.organizationId, organizationId)
+    workspaceScope(requests, organizationId, workspaceId)
   ];
   if (filters.userId) conditions.push(eq(requests.userId, filters.userId));
   const surface = surfaceValue(filters.surface);

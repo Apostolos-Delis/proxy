@@ -123,6 +123,7 @@ export class ApiKeyAdminService {
         .set({ revokedAt: now })
         .where(and(
           eq(apiKeys.organizationId, input.organizationId),
+          eq(apiKeys.workspaceId, input.workspaceId),
           eq(apiKeys.id, input.apiKeyId)
         ));
       await appendAdminAuditEvent(tx, {

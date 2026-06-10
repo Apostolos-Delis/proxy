@@ -85,6 +85,7 @@ export class RoutingConfigAdminService {
         })
         .where(and(
           eq(routingConfigs.organizationId, input.organizationId),
+          eq(routingConfigs.workspaceId, input.workspaceId),
           eq(routingConfigs.id, configId)
         ));
       await appendAdminAuditEvent(tx, {
@@ -165,6 +166,7 @@ export class RoutingConfigAdminService {
         .set({ updatedAt: now })
         .where(and(
           eq(routingConfigs.organizationId, input.organizationId),
+          eq(routingConfigs.workspaceId, input.workspaceId),
           eq(routingConfigs.id, input.configId)
         ));
       await appendAdminAuditEvent(tx, {
@@ -224,6 +226,7 @@ export class RoutingConfigAdminService {
         })
         .where(and(
           eq(routingConfigVersions.organizationId, input.organizationId),
+          eq(routingConfigVersions.workspaceId, input.workspaceId),
           eq(routingConfigVersions.routingConfigId, input.configId),
           eq(routingConfigVersions.id, input.versionId)
         ));
@@ -235,6 +238,7 @@ export class RoutingConfigAdminService {
         })
         .where(and(
           eq(routingConfigs.organizationId, input.organizationId),
+          eq(routingConfigs.workspaceId, input.workspaceId),
           eq(routingConfigs.id, input.configId)
         ));
       await appendAdminAuditEvent(tx, {
@@ -308,6 +312,7 @@ export class RoutingConfigAdminService {
         .set({ routingConfigId })
         .where(and(
           eq(apiKeys.organizationId, input.organizationId),
+          eq(apiKeys.workspaceId, input.workspaceId),
           eq(apiKeys.id, input.apiKeyId)
         ));
       await appendAdminAuditEvent(tx, {
@@ -347,7 +352,7 @@ export class RoutingConfigAdminService {
       const configRow = await lockedConfig(tx, input.organizationId, input.workspaceId, input.configId);
       if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
       if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
-      if (await routingConfigInUse(tx, input.organizationId, input.configId)) {
+      if (await routingConfigInUse(tx, input.organizationId, input.workspaceId, input.configId)) {
         throw new RoutingConfigAdminError("routing_config_in_use", 409);
       }
       const activeVersion = configRow.activeVersionId
@@ -362,6 +367,7 @@ export class RoutingConfigAdminService {
         })
         .where(and(
           eq(routingConfigs.organizationId, input.organizationId),
+          eq(routingConfigs.workspaceId, input.workspaceId),
           eq(routingConfigs.id, input.configId)
         ));
       await appendAdminAuditEvent(tx, {
@@ -485,12 +491,18 @@ async function routingConfigVersion(
   return version ?? null;
 }
 
-async function routingConfigInUse(tx: PromptProxyTransaction, organizationId: string, configId: string) {
+async function routingConfigInUse(
+  tx: PromptProxyTransaction,
+  organizationId: string,
+  workspaceId: string,
+  configId: string
+) {
   const [apiKey] = await tx
     .select({ id: apiKeys.id })
     .from(apiKeys)
     .where(and(
       eq(apiKeys.organizationId, organizationId),
+      eq(apiKeys.workspaceId, workspaceId),
       eq(apiKeys.routingConfigId, configId)
     ))
     .limit(1);
@@ -501,6 +513,7 @@ async function routingConfigInUse(tx: PromptProxyTransaction, organizationId: st
     .from(workspaces)
     .where(and(
       eq(workspaces.organizationId, organizationId),
+      eq(workspaces.id, workspaceId),
       eq(workspaces.defaultRoutingConfigId, configId)
     ))
     .limit(1);

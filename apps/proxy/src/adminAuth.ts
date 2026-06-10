@@ -104,23 +104,17 @@ function loginCredentials(body: unknown) {
 }
 
 function switchOrganizationTarget(body: unknown) {
-  if (!body || typeof body !== "object" || Array.isArray(body)) throw badRequest();
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw badRequest("organization_id_required");
   const organizationId = (body as Record<string, unknown>).organizationId;
-  if (typeof organizationId !== "string" || !organizationId.trim()) throw badRequest();
+  if (typeof organizationId !== "string" || !organizationId.trim()) throw badRequest("organization_id_required");
   return organizationId.trim();
 }
 
 function switchWorkspaceTarget(body: unknown) {
-  if (!body || typeof body !== "object" || Array.isArray(body)) throw workspaceBadRequest();
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw badRequest("workspace_id_required");
   const workspaceId = (body as Record<string, unknown>).workspaceId;
-  if (typeof workspaceId !== "string" || !workspaceId.trim()) throw workspaceBadRequest();
+  if (typeof workspaceId !== "string" || !workspaceId.trim()) throw badRequest("workspace_id_required");
   return workspaceId.trim();
-}
-
-function workspaceBadRequest() {
-  const error = new Error("workspace_id_required");
-  (error as Error & { statusCode: number }).statusCode = 400;
-  return error;
 }
 
 function cookieValue(headers: Record<string, unknown>, name: string) {
@@ -145,8 +139,8 @@ function forbidden() {
   return error;
 }
 
-function badRequest() {
-  const error = new Error("organization_id_required");
+function badRequest(message: string) {
+  const error = new Error(message);
   (error as Error & { statusCode: number }).statusCode = 400;
   return error;
 }

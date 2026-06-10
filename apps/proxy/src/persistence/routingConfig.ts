@@ -57,6 +57,7 @@ export class RoutingConfigResolver {
       .from(routingConfigVersions)
       .where(and(
         eq(routingConfigVersions.organizationId, input.organizationId),
+        eq(routingConfigVersions.workspaceId, input.workspaceId),
         eq(routingConfigVersions.routingConfigId, config.id),
         eq(routingConfigVersions.id, config.activeVersionId)
       ))
