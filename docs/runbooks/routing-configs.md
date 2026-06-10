@@ -55,10 +55,12 @@ Each routing config can carry a top-level `systemPrompt`. When a request resolve
 
 Harness-provided prompts are preserved after the config prompt. Omit `systemPrompt` to forward harness prompts unchanged. The seeded default config includes `DEFAULT_ROUTING_SYSTEM_PROMPT` from `@prompt-proxy/schema`; databases seeded before this field existed keep their original v1 until a new version is activated.
 
-The web console edits both the system prompt and the per-tier models (`fast`, `balanced`, `hard`, `deep` for OpenAI and Anthropic):
+The web console edits the system prompt, routing rules, and the per-tier models and efforts (`fast`, `balanced`, `hard`, `deep` for OpenAI and Anthropic):
 
-- Routing configs → New config: clones an active config, then lets you set the system prompt and tier models before creating v1.
-- Routing config detail → Route tier models & system prompt: edits create a new draft version; leave "Activate immediately" checked to promote it in the same step.
+- Routing configs → New config: clones an active config, then lets you set the prompts and tier models before creating v1.
+- Routing config detail → Prompts & route models: edits create a new draft version; leave "Activate immediately" checked to promote it in the same step.
+- Each tier exposes a per-provider effort dropdown with provider-specific levels (OpenAI reasoning: `minimal`–`xhigh`; Anthropic output: `low`–`max`). "Default effort" omits the effort so the model default applies.
+- The UI/JSON toggle on the detail editor switches to the raw config document, VSCode-style. JSON mode edits fields the form does not expose (limits, session, classifier details); both views feed the same save-new-version flow, and JSON is validated server-side against the routing config schema.
 
 Clearing a tier's model removes that provider block from the tier; every tier must keep at least one provider model.
 

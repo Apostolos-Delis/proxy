@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { RoutingConfigDocument } from "./api";
-import { applyDraft, draftError, draftFromConfig } from "./routingConfigEditor";
+import { applyDraft, draftError, draftFromConfig, parseConfigJson } from "./routingConfigEditor";
 
 const baseConfig: RoutingConfigDocument = {
   schemaVersion: 1,
@@ -39,13 +39,23 @@ const baseConfig: RoutingConfigDocument = {
 };
 
 describe("draftFromConfig", () => {
-  it("extracts the prompts and tier models", () => {
+  it("extracts the prompts, tier models, and efforts", () => {
     const draft = draftFromConfig(baseConfig);
 
     expect(draft.systemPrompt).toBe("Follow proxy policy.");
     expect(draft.classifierInstructions).toBe("Classify.");
-    expect(draft.routes.fast).toEqual({ openaiModel: "gpt-fast", anthropicModel: "claude-fast" });
-    expect(draft.routes.deep).toEqual({ openaiModel: "gpt-deep", anthropicModel: "claude-deep" });
+    expect(draft.routes.fast).toEqual({
+      openaiModel: "gpt-fast",
+      openaiEffort: "low",
+      anthropicModel: "claude-fast",
+      anthropicEffort: ""
+    });
+    expect(draft.routes.deep).toEqual({
+      openaiModel: "gpt-deep",
+      openaiEffort: "xhigh",
+      anthropicModel: "claude-deep",
+      anthropicEffort: ""
+    });
   });
 
   it("uses empty strings for missing provider blocks and prompts", () => {
@@ -57,7 +67,12 @@ describe("draftFromConfig", () => {
     const draft = draftFromConfig(config);
 
     expect(draft.systemPrompt).toBe("");
-    expect(draft.routes.fast).toEqual({ openaiModel: "gpt-fast", anthropicModel: "" });
+    expect(draft.routes.fast).toEqual({
+      openaiModel: "gpt-fast",
+      openaiEffort: "",
+      anthropicModel: "",
+      anthropicEffort: ""
+    });
   });
 });
 
@@ -78,6 +93,32 @@ describe("applyDraft", () => {
     });
     expect(next.routes.fast.anthropic).toEqual(baseConfig.routes.fast.anthropic);
     expect(next.routes.fast.description).toBe("Simple tasks");
+  });
+
+  it("sets efforts, creating the effort container when missing", () => {
+    const draft = draftFromConfig(baseConfig);
+    draft.routes.fast.openaiEffort = "xhigh";
+    draft.routes.fast.anthropicEffort = "max";
+    const next = applyDraft(baseConfig, draft);
+
+    expect(next.routes.fast.openai?.reasoning).toEqual({ effort: "xhigh" });
+    expect(next.routes.fast.anthropic).toEqual({
+      model: "claude-fast",
+      thinking: { type: "disabled" },
+      output_config: { effort: "max" }
+    });
+  });
+
+  it("clears efforts and drops empty containers while keeping other settings", () => {
+    const draft = draftFromConfig(baseConfig);
+    draft.routes.fast.openaiEffort = "";
+    const next = applyDraft(baseConfig, draft);
+
+    expect(next.routes.fast.openai).toEqual({
+      model: "gpt-fast",
+      text: { verbosity: "low" }
+    });
+    expect("reasoning" in (next.routes.fast.openai ?? {})).toBe(false);
   });
 
   it("drops a provider block when its model is cleared", () => {
@@ -141,5 +182,26 @@ describe("draftError", () => {
     draft.classifierInstructions = "   ";
 
     expect(draftError(draft)).toContain("Routing rules");
+  });
+});
+
+describe("parseConfigJson", () => {
+  it("parses object documents", () => {
+    const result = parseConfigJson(JSON.stringify(baseConfig, null, 2));
+
+    expect(result.error).toBeUndefined();
+    expect(result.config).toEqual(baseConfig);
+  });
+
+  it("reports invalid JSON", () => {
+    const result = parseConfigJson("{ not json");
+
+    expect(result.config).toBeUndefined();
+    expect(result.error).toContain("Invalid JSON");
+  });
+
+  it("rejects non-object documents", () => {
+    expect(parseConfigJson("[1, 2]").error).toBe("Config JSON must be an object.");
+    expect(parseConfigJson("null").error).toBe("Config JSON must be an object.");
   });
 });

@@ -3,10 +3,12 @@ import type { ReactNode } from "react";
 
 import type { RoutingConfigDocument } from "../api";
 import {
+  ANTHROPIC_EFFORTS,
   editorRouteOrder,
-  effortHint,
+  OPENAI_EFFORTS,
   type ConfigEditorDraft,
-  type EditorRouteName
+  type EditorRouteName,
+  type RouteTierDraft
 } from "../routingConfigEditor";
 import { RouteBadge } from "../ui";
 
@@ -80,12 +82,12 @@ export function RouteMatrixEditor({ draft, baseConfig, onChange }: {
   baseConfig: RoutingConfigDocument;
   onChange: (draft: ConfigEditorDraft) => void;
 }) {
-  const setRouteModel = (route: EditorRouteName, provider: "openaiModel" | "anthropicModel", model: string) => {
+  const setRouteField = (route: EditorRouteName, field: keyof RouteTierDraft, value: string) => {
     onChange({
       ...draft,
       routes: {
         ...draft.routes,
-        [route]: { ...draft.routes[route], [provider]: model }
+        [route]: { ...draft.routes[route], [field]: value }
       }
     });
   };
@@ -101,15 +103,19 @@ export function RouteMatrixEditor({ draft, baseConfig, onChange }: {
             </div>
             <TierModelInput
               provider="openai"
-              value={draft.routes[route].openaiModel}
-              hint={effortHint(tier?.openai)}
-              onChange={(model) => setRouteModel(route, "openaiModel", model)}
+              model={draft.routes[route].openaiModel}
+              effort={draft.routes[route].openaiEffort}
+              efforts={OPENAI_EFFORTS}
+              onModelChange={(model) => setRouteField(route, "openaiModel", model)}
+              onEffortChange={(effort) => setRouteField(route, "openaiEffort", effort)}
             />
             <TierModelInput
               provider="anthropic"
-              value={draft.routes[route].anthropicModel}
-              hint={effortHint(tier?.anthropic)}
-              onChange={(model) => setRouteModel(route, "anthropicModel", model)}
+              model={draft.routes[route].anthropicModel}
+              effort={draft.routes[route].anthropicEffort}
+              efforts={ANTHROPIC_EFFORTS}
+              onModelChange={(model) => setRouteField(route, "anthropicModel", model)}
+              onEffortChange={(effort) => setRouteField(route, "anthropicEffort", effort)}
             />
           </div>
         );
@@ -118,24 +124,36 @@ export function RouteMatrixEditor({ draft, baseConfig, onChange }: {
   );
 }
 
-function TierModelInput({ provider, value, hint, onChange }: {
+function TierModelInput({ provider, model, effort, efforts, onModelChange, onEffortChange }: {
   provider: string;
-  value: string;
-  hint?: string;
-  onChange: (value: string) => void;
+  model: string;
+  effort: string;
+  efforts: readonly string[];
+  onModelChange: (value: string) => void;
+  onEffortChange: (value: string) => void;
 }) {
   return (
-    <label className="tier-model">
+    <div className="tier-model">
       <span className="tier-model-provider">
         {provider}
-        {hint ? <em>{hint}</em> : null}
+        <select
+          className="tier-effort"
+          value={effort}
+          aria-label={`${provider} effort`}
+          onChange={(event) => onEffortChange(event.target.value)}
+        >
+          <option value="">default effort</option>
+          {efforts.map((option) => (
+            <option key={option} value={option}>effort {option}</option>
+          ))}
+        </select>
       </span>
       <input
-        value={value}
+        value={model}
         placeholder="none"
         spellCheck={false}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => onModelChange(event.target.value)}
       />
-    </label>
+    </div>
   );
 }
