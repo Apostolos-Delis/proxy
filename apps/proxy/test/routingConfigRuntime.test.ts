@@ -144,10 +144,44 @@ describe("routing config runtime resolution", () => {
     });
     await response.text();
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("balanced");
     expect(activeFixture.openai.records.filter((record) =>
       record.body.model === "route-classifier-retry-once"
     )).toHaveLength(1);
+  });
+
+  it("escalates past fallback-route surface gaps when the classifier fails", async () => {
+    const organizationId = "org_config_fallback_gap";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: { invalidClassifier: true }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "fallback-gap-token",
+      slug: "fallback-gap",
+      configHash: "sha256:fallback-gap-config",
+      configure: (config) => {
+        delete config.routes.balanced.openai;
+        return config;
+      }
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer fallback-gap-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this failing test",
+        stream: false
+      })
+    });
+    await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
   });
 
   it("uses OpenAI route tier settings from the assigned routing config", async () => {

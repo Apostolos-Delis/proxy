@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
 import {
   providerAttempts,
@@ -31,9 +31,32 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
     const organizationId = routeContext?.organizationId ?? this.organizationId;
     const existing = await this.findRequest(idempotencyKey, organizationId);
     if (existing) {
+      const status = requestStateStatus(existing.status);
+      if (status !== "failed" && status !== "cancelled") {
+        return {
+          state: await this.stateForRequest(existing),
+          duplicate: true
+        };
+      }
+      const claimed = await this.readDb
+        .update(requests)
+        .set({ status: "classifying", completedAt: null })
+        .where(and(
+          eq(requests.organizationId, existing.organizationId),
+          eq(requests.idempotencyKey, idempotencyKey),
+          inArray(requests.status, ["failed", "cancelled"])
+        ))
+        .returning();
+      if (claimed.length === 0) {
+        const current = await this.findRequest(idempotencyKey, organizationId);
+        return {
+          state: await this.stateForRequest(current ?? existing),
+          duplicate: true
+        };
+      }
       return {
-        state: await this.stateForRequest(existing),
-        duplicate: true
+        state: { idempotencyKey, requestId: existing.id, status: "classifying" },
+        duplicate: false
       };
     }
 

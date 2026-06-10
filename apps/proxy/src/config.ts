@@ -77,7 +77,7 @@ const configSchema = z.object({
   ANTHROPIC_DEEP_MODEL: z.string().min(1).default("claude-opus-4-5"),
   CLASSIFIER_PROVIDER: z.literal("openai").default("openai"),
   CLASSIFIER_MODEL: z.string().min(1).default("route-classifier-cheap"),
-  CLASSIFIER_TIMEOUT_MS: z.coerce.number().int().positive().default(1500),
+  CLASSIFIER_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   CLASSIFIER_MAX_ATTEMPTS: z.coerce.number().int().positive().default(2),
   CLASSIFIER_ALLOW_REDACTED_EXCERPT: booleanEnvSchema,
   BUDGET_MAX_ESTIMATED_INPUT_TOKENS: optionalPositiveIntSchema,

@@ -211,11 +211,11 @@ function SettingsForm({
               value={settings.classifier.timeoutMs}
               min={1}
               max={30000}
-              onChange={(value) => setSettings({ ...settings, classifier: { ...settings.classifier, timeoutMs: value ?? 1500 } })}
+              onChange={(value) => setSettings({ ...settings, classifier: { ...settings.classifier, timeoutMs: value ?? 10000 } })}
             />
             <NumberField
               label="Max attempts"
-              info="Classification attempts before the request fails. There is no deterministic fallback route."
+              info="Classification attempts before the request falls back to the balanced route."
               value={settings.classifier.maxAttempts}
               min={1}
               max={5}
