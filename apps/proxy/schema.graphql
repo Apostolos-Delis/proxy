@@ -13,11 +13,19 @@ type ApiKey {
   lastUsedAt: String
   name: String!
   organizationId: String!
+  providerCredentials: [ApiKeyProviderBinding!]!
   revokedAt: String
   routingConfig: ApiKeyRoutingConfigRef
   routingConfigId: String
   scopes: [String!]!
   userId: String
+}
+
+type ApiKeyProviderBinding {
+  name: String
+  provider: String!
+  providerAccountId: String!
+  status: String
 }
 
 type ApiKeyRoutingConfigRef {
@@ -83,6 +91,12 @@ input CreateInvitationInput {
   email: String!
   name: String
   role: MemberRole!
+}
+
+input CreateProviderCredentialInput {
+  apiKey: String!
+  name: String!
+  provider: String!
 }
 
 input CreateRoutingConfigInput {
@@ -161,10 +175,12 @@ type Mutation {
   acceptInvitation(name: String, token: String!): AcceptedInvitation!
   activateRoutingConfigVersion(configId: ID!, versionId: ID!): RoutingConfigDetail!
   archiveRoutingConfig(configId: ID!): RoutingConfigDetail!
+  assignApiKeyProviderAccount(apiKeyId: ID!, provider: String!, providerAccountId: ID): ApiKey!
   assignApiKeyRoutingConfig(apiKeyId: ID!, routingConfigId: ID): ApiKey!
   configurePromptCapture(promptCaptureMode: String!, retentionDays: Int!): PromptCaptureConfig!
   createApiKey(input: CreateApiKeyInput!): CreateApiKeyResult!
   createInvitation(input: CreateInvitationInput!): InvitationActionResult!
+  createProviderCredential(input: CreateProviderCredentialInput!): ProviderAccount
   createRoutingConfig(input: CreateRoutingConfigInput!): RoutingConfigDetail!
   createRoutingConfigVersion(config: JSON!, configId: ID!): RoutingConfigDetail!
   deactivateUser(userId: ID!): UserStatusResult!
@@ -174,6 +190,7 @@ type Mutation {
   resendInvitation(invitationId: ID!): InvitationActionResult!
   revokeApiKey(apiKeyId: ID!): ApiKey!
   revokeInvitation(invitationId: ID!): Invitation
+  revokeProviderCredential(providerAccountId: ID!): ProviderAccount
   switchOrganization(organizationId: ID!): Viewer!
   updateSettings(input: SettingsInput!): Settings!
   updateUserRole(role: MemberRole!, userId: ID!): UpdateUserRoleResult!
@@ -329,6 +346,20 @@ type PromptSummary implements PromptArtifactBase {
   userId: String
 }
 
+type ProviderAccount {
+  authType: String!
+  boundKeyCount: Int!
+  createdAt: String!
+  id: String!
+  lastUsedAt: String
+  name: String!
+  organizationId: String!
+  ownerUserId: String
+  provider: String!
+  secretHint: String
+  status: String!
+}
+
 type ProviderAttempt {
   completedAt: String
   error: String
@@ -379,6 +410,7 @@ type Query {
   prompt(artifactId: ID!): PromptDetail
   promptAccessAudit: [PromptAccessAuditEntry!]!
   prompts(end: String, limit: Int, model: String, offset: Int, route: String, start: String, surface: String, userId: String): PromptPage!
+  providerAccounts: [ProviderAccount!]!
   publicInvitation(token: String!): PublicInvitation
   request(requestId: ID!): RequestDetail!
   requests: [RequestSummary!]!

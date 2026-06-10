@@ -10,6 +10,7 @@ import {
 } from "@prompt-proxy/db";
 
 import { createId } from "../util.js";
+import { AdminMutationError } from "./adminErrors.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
 import {
   routingConfigForAssignment,
@@ -24,15 +25,7 @@ const createApiKeyBodySchema = z.object({
   routingConfigId: z.string().trim().min(1).nullable().optional()
 }).strict();
 
-export class ApiKeyAdminError extends Error {
-  constructor(
-    message: string,
-    readonly statusCode: number,
-    readonly issues?: { path: string; message: string }[]
-  ) {
-    super(message);
-  }
-}
+export class ApiKeyAdminError extends AdminMutationError {}
 
 export class ApiKeyAdminService {
   constructor(private readonly db: PromptProxyTransactionalDatabase) {}

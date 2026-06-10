@@ -46,6 +46,9 @@ export type RequestDetailShape = {
 
 export type ApiKeyModel = Awaited<ReturnType<Q["apiKeys"]>>["data"][number];
 export type ApiKeyRoutingConfigRefModel = NonNullable<ApiKeyModel["routingConfig"]>;
+export type ApiKeyProviderBindingModel = ApiKeyModel["providerCredentials"][number];
+
+export type ProviderAccountModel = Awaited<ReturnType<Q["providerAccounts"]>>["data"][number];
 
 export type RoutingConfigSummaryModel = Awaited<ReturnType<Q["routingConfigs"]>>["data"][number];
 export type RoutingConfigVersionModel = NonNullable<RoutingConfigSummaryModel["activeVersion"]>;

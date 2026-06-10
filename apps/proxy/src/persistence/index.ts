@@ -11,6 +11,8 @@ import { AdminSessionStore } from "./adminSessions.js";
 import { ApiKeyAdminService } from "./apiKeyAdmin.js";
 import { DatabaseEventSink } from "./eventSink.js";
 import { ApiKeyIdentityStore } from "./identity.js";
+import { ProviderCredentialAdminService } from "./providerCredentialAdmin.js";
+import { ProviderCredentialStore } from "./providerCredentials.js";
 import { PromptAccessAuditStore } from "./promptAccessAudit.js";
 import { PromptArtifactStore } from "./promptArtifacts.js";
 import { PersistentRequestStateStore } from "./requestState.js";
@@ -21,6 +23,7 @@ import { UserAdminService } from "./userAdmin.js";
 export type DatabasePersistenceConfig = AdminQueryConfig & {
   defaultOrganizationId: string;
   invitationTtlSeconds: number;
+  providerSecretEncryptionKey?: string;
 };
 
 export function createPostgresPersistence(databaseUrl: string, catalog: ModelCatalog, config: AppConfig) {
@@ -38,6 +41,8 @@ export function createDatabasePersistence(
     apiKeyAdmin: new ApiKeyAdminService(transactional),
     apiKeys: new ApiKeyIdentityStore(db),
     adminSessions: new AdminSessionStore(db),
+    providerCredentials: new ProviderCredentialStore(db, config.providerSecretEncryptionKey),
+    providerCredentialAdmin: new ProviderCredentialAdminService(transactional, config.providerSecretEncryptionKey),
     eventSink: new DatabaseEventSink(transactional, catalog, useAdvisoryLocks),
     promptAccessAudit: new PromptAccessAuditStore(db),
     promptArtifacts: new PromptArtifactStore(transactional, db),

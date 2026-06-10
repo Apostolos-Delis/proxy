@@ -2028,6 +2028,24 @@
   font-size: 12px;
 }
 
+.assignment-section + .assignment-section {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.assignment-section-label {
+  padding: 4px 9px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.assignment-empty {
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
 .billing-kpis {
   display: grid;
   grid-template-columns: minmax(340px, 1.3fr) minmax(260px, 0.8fr) minmax(260px, 0.8fr);

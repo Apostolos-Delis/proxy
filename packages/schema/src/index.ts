@@ -23,6 +23,13 @@ export const PROVIDERS = {
   ANTHROPIC: PROVIDER_NAMES[1]
 } as const;
 
+export const PROVIDER_ACCOUNT_AUTH_TYPES = ["api_key", "oauth"] as const;
+
+export const PROVIDER_ACCOUNT_STATUSES = {
+  ACTIVE: "active",
+  DISABLED: "disabled"
+} as const;
+
 export const OPENAI_REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as const;
 
 export const ANTHROPIC_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
@@ -143,6 +150,8 @@ export function composeClassifierInstructions(rules?: string): string {
 export type RouteName = typeof ROUTE_NAMES[number];
 export type Surface = typeof SURFACE_NAMES[number];
 export type Provider = typeof PROVIDER_NAMES[number];
+export type ProviderAccountAuthType = typeof PROVIDER_ACCOUNT_AUTH_TYPES[number];
+export type ProviderAccountStatus = typeof PROVIDER_ACCOUNT_STATUSES[keyof typeof PROVIDER_ACCOUNT_STATUSES];
 export type OpenAIReasoningEffort = typeof OPENAI_REASONING_EFFORTS[number];
 export type AnthropicEffort = typeof ANTHROPIC_EFFORTS[number];
 export type Verbosity = typeof VERBOSITIES[number];

@@ -220,7 +220,7 @@ function routeTone(route: string) {
 function statusTone(status: string) {
   const value = status.toLowerCase();
   if (value === "completed" || value === "success" || value === "paid" || value === "active" || value === "accepted") return "success";
-  if (value === "failed" || value === "error" || value === "inactive" || value === "revoked" || value === "expired" || value === "deactivated") return "danger";
+  if (value === "failed" || value === "error" || value === "inactive" || value === "revoked" || value === "expired" || value === "deactivated" || value === "disabled") return "danger";
   if (value === "pending" || value === "received" || value === "provider_pending" || value === "invited") return "warn";
   return "default";
 }

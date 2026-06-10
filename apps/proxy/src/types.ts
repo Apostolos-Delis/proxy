@@ -16,6 +16,12 @@ export type RouteName = "fast" | "balanced" | "hard" | "deep";
 export type ReasoningEffort = OpenAIReasoningEffort;
 export type ProviderEffort = OpenAIReasoningEffort | AnthropicEffort;
 
+export type UpstreamCredential = {
+  readonly provider: Provider;
+  readonly token: string;
+  readonly providerAccountId: string;
+};
+
 export type Verbosity = RoutingVerbosity;
 
 export type JsonValue =

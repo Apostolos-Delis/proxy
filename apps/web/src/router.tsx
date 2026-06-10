@@ -6,6 +6,7 @@ import { CostPage } from "./costPage";
 import { InvitePage } from "./invitePage";
 import { KeysPage } from "./keysPage";
 import { OverviewPage } from "./overviewPage";
+import { ProvidersPage } from "./providersPage";
 import { PromptDetailPage } from "./promptDetailPage";
 import { PromptsPage } from "./promptsPage";
 import { RequestsPage } from "./requestsPage";
@@ -104,6 +105,13 @@ const keysRoute = createRoute({
   component: KeysPage
 });
 
+const providerKeysRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/provider-keys",
+  beforeLoad: requireAuth,
+  component: ProvidersPage
+});
+
 const routingConfigsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/routing-configs",
@@ -159,6 +167,7 @@ const routeTree = rootRoute.addChildren([
   logsRoute,
   logDetailRoute,
   keysRoute,
+  providerKeysRoute,
   routingConfigsRoute,
   routingConfigCreateRoute,
   routingConfigDetailRoute,

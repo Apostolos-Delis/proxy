@@ -1,13 +1,15 @@
-import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
 
 import {
   agentSessions,
+  apiKeyProviderAccounts,
   apiKeys,
   events,
   invitations,
   organizationMembers,
   organizations,
   promptArtifacts,
+  providerAccounts,
   providerAttempts,
   requests,
   routeDecisions,
@@ -135,14 +137,95 @@ export class AdminQueryService {
 
   async apiKeys() {
     const rows = await this.apiKeyRows();
+    const bindings = await this.apiKeyProviderBindings(rows.map((row) => row.id));
     return {
-      data: rows.map(apiKeySummary)
+      data: rows.map((row) => apiKeySummary(row, bindings.get(row.id) ?? []))
     };
   }
 
   async apiKeyDetail(apiKeyId: string) {
     const [row] = await this.apiKeyRows(apiKeyId);
-    return row ? { apiKey: apiKeySummary(row) } : null;
+    if (!row) return null;
+    const bindings = await this.apiKeyProviderBindings([apiKeyId]);
+    return { apiKey: apiKeySummary(row, bindings.get(apiKeyId) ?? []) };
+  }
+
+  async providerAccounts() {
+    const rows = await this.db
+      .select({
+        id: providerAccounts.id,
+        organizationId: providerAccounts.organizationId,
+        provider: providerAccounts.provider,
+        name: providerAccounts.name,
+        authType: providerAccounts.authType,
+        status: providerAccounts.status,
+        secretHint: providerAccounts.secretHint,
+        createdByUserId: providerAccounts.createdByUserId,
+        createdAt: providerAccounts.createdAt,
+        lastUsedAt: providerAccounts.lastUsedAt
+      })
+      .from(providerAccounts)
+      .where(and(
+        eq(providerAccounts.organizationId, this.organizationId),
+        isNotNull(providerAccounts.secretCiphertext)
+      ))
+      .orderBy(desc(providerAccounts.createdAt));
+
+    const boundCounts = await this.providerAccountBoundKeyCounts(rows.map((row) => row.id));
+    return {
+      data: rows.map((row) => providerAccountSummary(row, boundCounts.get(row.id) ?? 0))
+    };
+  }
+
+  private async apiKeyProviderBindings(apiKeyIds: string[]) {
+    const bindings = new Map<string, ProviderBindingSummary[]>();
+    if (apiKeyIds.length === 0) return bindings;
+    const rows = await this.db
+      .select({
+        apiKeyId: apiKeyProviderAccounts.apiKeyId,
+        provider: apiKeyProviderAccounts.provider,
+        providerAccountId: apiKeyProviderAccounts.providerAccountId,
+        providerAccountName: providerAccounts.name,
+        providerAccountStatus: providerAccounts.status
+      })
+      .from(apiKeyProviderAccounts)
+      .leftJoin(providerAccounts, and(
+        eq(providerAccounts.organizationId, apiKeyProviderAccounts.organizationId),
+        eq(providerAccounts.id, apiKeyProviderAccounts.providerAccountId)
+      ))
+      .where(and(
+        eq(apiKeyProviderAccounts.organizationId, this.organizationId),
+        inArray(apiKeyProviderAccounts.apiKeyId, apiKeyIds)
+      ));
+    for (const row of rows) {
+      const list = bindings.get(row.apiKeyId) ?? [];
+      list.push({
+        provider: row.provider,
+        providerAccountId: row.providerAccountId,
+        name: row.providerAccountName ?? null,
+        status: row.providerAccountStatus ?? null
+      });
+      bindings.set(row.apiKeyId, list);
+    }
+    return bindings;
+  }
+
+  private async providerAccountBoundKeyCounts(providerAccountIds: string[]) {
+    const counts = new Map<string, number>();
+    if (providerAccountIds.length === 0) return counts;
+    const rows = await this.db
+      .select({
+        providerAccountId: apiKeyProviderAccounts.providerAccountId,
+        count: sql<number>`count(*)`
+      })
+      .from(apiKeyProviderAccounts)
+      .where(and(
+        eq(apiKeyProviderAccounts.organizationId, this.organizationId),
+        inArray(apiKeyProviderAccounts.providerAccountId, providerAccountIds)
+      ))
+      .groupBy(apiKeyProviderAccounts.providerAccountId);
+    for (const row of rows) counts.set(row.providerAccountId, Number(row.count));
+    return counts;
   }
 
   async routingConfigs() {
@@ -921,6 +1004,26 @@ type ApiKeySummaryRow = {
   routingConfigStatus: string | null;
 };
 
+type ProviderBindingSummary = {
+  provider: string;
+  providerAccountId: string;
+  name: string | null;
+  status: string | null;
+};
+
+type ProviderAccountSummaryRow = {
+  id: string;
+  organizationId: string;
+  provider: string;
+  name: string;
+  authType: string;
+  status: string;
+  secretHint: string | null;
+  createdByUserId: string | null;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+};
+
 function routingConfigListSummary(
   row: RoutingConfigRow,
   activeVersion: RoutingConfigVersionRow | undefined,
@@ -990,7 +1093,7 @@ function promptConditions(organizationId: string, filters: PromptListFilters) {
   return conditions;
 }
 
-function apiKeySummary(row: ApiKeySummaryRow) {
+function apiKeySummary(row: ApiKeySummaryRow, providerBindings: ProviderBindingSummary[] = []) {
   return {
     id: row.id,
     organizationId: row.organizationId,
@@ -1005,9 +1108,26 @@ function apiKeySummary(row: ApiKeySummaryRow) {
           status: row.routingConfigStatus ?? null
         }
       : null,
+    providerCredentials: providerBindings,
     createdAt: row.createdAt.toISOString(),
     expiresAt: row.expiresAt?.toISOString() ?? null,
     revokedAt: row.revokedAt?.toISOString() ?? null,
+    lastUsedAt: row.lastUsedAt?.toISOString() ?? null
+  };
+}
+
+function providerAccountSummary(row: ProviderAccountSummaryRow, boundKeyCount: number) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    provider: row.provider,
+    name: row.name,
+    authType: row.authType,
+    status: row.status,
+    secretHint: row.secretHint ?? null,
+    ownerUserId: row.createdByUserId ?? null,
+    boundKeyCount,
+    createdAt: row.createdAt.toISOString(),
     lastUsedAt: row.lastUsedAt?.toISOString() ?? null
   };
 }

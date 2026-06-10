@@ -90,6 +90,16 @@ const configSchema = z.object({
   ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.55),
   EVENT_STORE_PATH: z.string().optional(),
   DATABASE_URL: z.string().optional(),
+  PROVIDER_SECRET_ENCRYPTION_KEY: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z
+      .string()
+      .optional()
+      .refine(
+        (value) => value === undefined || Buffer.from(value, "base64").length === 32,
+        "PROVIDER_SECRET_ENCRYPTION_KEY must be a base64-encoded 32-byte key"
+      )
+  ),
   DEFAULT_ORGANIZATION_ID: z.string().min(1).default("local"),
   ALLOW_DEV_PROXY_TOKEN_FALLBACK: booleanEnvSchema,
   ADMIN_DEV_LOGIN_ENABLED: booleanEnvSchema,
@@ -150,6 +160,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     routeQualityLowConfidenceThreshold: parsed.ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD,
     eventStorePath: parsed.EVENT_STORE_PATH,
     databaseUrl: parsed.DATABASE_URL,
+    providerSecretEncryptionKey: parsed.PROVIDER_SECRET_ENCRYPTION_KEY,
     defaultOrganizationId: parsed.DEFAULT_ORGANIZATION_ID,
     allowDevProxyTokenFallback: parsed.ALLOW_DEV_PROXY_TOKEN_FALLBACK || !parsed.DATABASE_URL,
     adminDevLoginEnabled: parsed.ADMIN_DEV_LOGIN_ENABLED,

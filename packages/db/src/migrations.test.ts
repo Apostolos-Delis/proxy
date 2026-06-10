@@ -79,6 +79,20 @@ describe("database migrations", () => {
         and column_name in ('organization_id', 'email', 'role', 'status', 'token_hash', 'token_prefix', 'invited_by_user_id', 'accepted_user_id', 'expires_at')
       order by column_name
     `);
+    const providerAccountColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'provider_accounts'
+        and column_name in ('auth_type', 'secret_ciphertext', 'secret_hint', 'created_by_user_id', 'last_used_at')
+      order by column_name
+    `);
+    const providerBindingColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'api_key_provider_accounts'
+        and column_name in ('organization_id', 'api_key_id', 'provider', 'provider_account_id')
+      order by column_name
+    `);
     await client.close();
 
     expect(result.rows[0]).toEqual({ count: 0 });
@@ -141,6 +155,19 @@ describe("database migrations", () => {
       "status",
       "token_hash",
       "token_prefix"
+    ]);
+    expect(providerAccountColumns.rows.map((row) => row.column_name)).toEqual([
+      "auth_type",
+      "created_by_user_id",
+      "last_used_at",
+      "secret_ciphertext",
+      "secret_hint"
+    ]);
+    expect(providerBindingColumns.rows.map((row) => row.column_name)).toEqual([
+      "api_key_id",
+      "organization_id",
+      "provider",
+      "provider_account_id"
     ]);
   });
 
@@ -256,6 +283,7 @@ describe("database migrations", () => {
         alter table api_keys drop constraint if exists api_keys_routing_config_fk;
         alter table organization_settings drop constraint if exists organization_settings_default_routing_config_fk;
 
+        drop table if exists api_key_provider_accounts;
         drop table routing_config_versions;
         drop table routing_configs;
         drop table provider_accounts;

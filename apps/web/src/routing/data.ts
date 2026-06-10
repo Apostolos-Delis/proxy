@@ -81,6 +81,12 @@ const RoutingApiKeysDocument = graphql(`
         name
         status
       }
+      providerCredentials {
+        provider
+        providerAccountId
+        name
+        status
+      }
     }
   }
 `);
