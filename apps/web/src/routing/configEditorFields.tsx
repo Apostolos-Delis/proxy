@@ -29,8 +29,8 @@ export function PromptEditors({ draft, onChange }: {
       <PromptEditor
         icon={<ScrollText />}
         title="System prompt"
-        tag="prepended to every request"
-        helper="Injected ahead of the harness system prompt for every request routed through this config. Leave empty to forward harness prompts unchanged."
+        tag="shapes model responses"
+        helper="Prepended to the harness system prompt on every request proxied through this config. It steers how the selected model answers and has no effect on routing. Leave empty to forward harness prompts unchanged."
         value={draft.systemPrompt}
         rows={4}
         placeholder={SYSTEM_PROMPT_PLACEHOLDER}
@@ -40,11 +40,11 @@ export function PromptEditors({ draft, onChange }: {
         icon={<Split />}
         title="Routing rules"
         tag="guides tier selection"
-        helper="Instructions the classifier follows when picking fast, balanced, hard, or deep. Describe workflow patterns, codebase areas, and model preferences."
-        value={draft.classifierInstructions}
+        helper="Optional additions to the built-in classifier prompt that picks fast, balanced, hard, or deep. The proxy already handles common cases; add organization-specific rules like codebase areas that need deeper reasoning or workflows that can stay fast."
+        value={draft.classifierRules}
         rows={6}
         placeholder={ROUTING_RULES_PLACEHOLDER}
-        onChange={(classifierInstructions) => onChange({ ...draft, classifierInstructions })}
+        onChange={(classifierRules) => onChange({ ...draft, classifierRules })}
       />
     </div>
   );

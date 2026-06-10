@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS,
+  composeClassifierInstructions,
   type RoutingConfigClassifier
 } from "@prompt-proxy/schema";
 
@@ -104,7 +104,6 @@ export function defaultClassifierSettings(config: AppConfig): ClassifierSettings
   return {
     provider: config.classifierProvider,
     model: config.classifierModel,
-    instructions: DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS,
     timeoutMs: config.classifierTimeoutMs,
     maxAttempts: config.classifierMaxAttempts,
     allowRedactedExcerpt: config.classifierAllowRedactedExcerpt,
@@ -119,7 +118,7 @@ function classifierRequest(settings: ClassifierSettings, view: unknown) {
   return {
     model: settings.model,
     stream: false,
-    instructions: settings.instructions,
+    instructions: composeClassifierInstructions(settings.rules),
     input: JSON.stringify(view),
     text: {
       format: {

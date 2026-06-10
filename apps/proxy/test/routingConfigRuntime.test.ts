@@ -9,7 +9,7 @@ import {
   routingConfigVersions
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
-import type { RoutingConfig } from "@prompt-proxy/schema";
+import { composeClassifierInstructions, type RoutingConfig } from "@prompt-proxy/schema";
 
 import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
@@ -59,7 +59,7 @@ describe("routing config runtime resolution", () => {
     const assigned = await assignClassifierConfig(activeFixture, organizationId, {
       secret: "assigned-classifier-token",
       model: "route-classifier-alt",
-      instructions: "Custom classifier instructions for assigned API keys.",
+      rules: "Custom classifier rules for assigned API keys.",
       maxAttempts: 1,
       allowRedactedExcerpt: true
     });
@@ -88,7 +88,9 @@ describe("routing config runtime resolution", () => {
 
     expect(response.status).toBe(200);
     expect(classifierCall).toBeTruthy();
-    expect(classifierCall?.body.instructions).toBe("Custom classifier instructions for assigned API keys.");
+    expect(classifierCall?.body.instructions).toBe(
+      composeClassifierInstructions("Custom classifier rules for assigned API keys.")
+    );
     expect(classifierCall?.body.text.format.name).toBe(assigned.config.classifier.structuredOutput.schemaName);
     expect(classifierInput.content_mode).toBe("redacted_excerpt");
     expect(classification?.payload).toEqual(expect.objectContaining({
@@ -122,7 +124,7 @@ describe("routing config runtime resolution", () => {
     await assignClassifierConfig(activeFixture, organizationId, {
       secret: "retry-classifier-token",
       model: "route-classifier-retry-once",
-      instructions: "Retry once for assigned API keys.",
+      rules: "Retry once for assigned API keys.",
       maxAttempts: 1,
       allowRedactedExcerpt: false
     });
@@ -434,7 +436,7 @@ async function assignClassifierConfig(
   input: {
     secret: string;
     model: string;
-    instructions: string;
+    rules: string;
     maxAttempts: number;
     allowRedactedExcerpt: boolean;
   }
@@ -449,7 +451,7 @@ async function assignClassifierConfig(
     classifier: {
       ...defaultVersion.config.classifier,
       model: input.model,
-      instructions: input.instructions,
+      rules: input.rules,
       maxAttempts: input.maxAttempts,
       allowRedactedExcerpt: input.allowRedactedExcerpt
     }

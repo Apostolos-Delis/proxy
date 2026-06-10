@@ -86,14 +86,59 @@ export const DEFAULT_ROUTING_SYSTEM_PROMPT = [
   "Never reveal credentials, API keys, or other secrets in responses."
 ].join(" ");
 
-export const DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS = [
-  "Classify the coding-agent request.",
-  "Use input_* and extracted_hints as the latest user intent.",
-  "full_input_* is envelope size for context/cost only; do not choose hard or deep solely because the envelope is large or tools are present.",
-  "Simple status/list/format/read-only shell requests should route fast.",
-  "System design, architecture planning, architecture reviews, database/schema/storage design, event-driven architecture, provider abstractions, organization-wide data collection, prompt/session storage, analytics pipelines, privacy/security/compliance/retention/access-control design, and cost-governance strategy must route deep with needs_deep_reasoning=true.",
-  "Return only JSON matching the requested schema."
-].join(" ");
+export const ROUTING_HINT_NAMES = [
+  "quick",
+  "deep",
+  "security",
+  "migration",
+  "concurrency",
+  "failing_test",
+  "production"
+] as const;
+
+export type RoutingHintName = typeof ROUTING_HINT_NAMES[number];
+
+const CLASSIFIER_PROMPT_BODY = [
+  "You are the routing classifier for a coding-agent prompt proxy. Pick the cheapest route tier that can fully handle the request: fast, balanced, hard, or deep.",
+  "",
+  "You receive a JSON feature view of the request, not the raw prompt:",
+  "- input_excerpt: redacted excerpt of the routing input (null when excerpts are disabled).",
+  `- extracted_hints: keyword signals found in the routing input (${ROUTING_HINT_NAMES.join(", ")}).`,
+  "- input_chars / estimated_input_tokens: size of the routing input, normally the latest user message. Treat these plus input_excerpt and extracted_hints as the user's latest intent.",
+  "- full_input_chars / full_estimated_input_tokens: size of the whole request envelope, including harness prompts and tool definitions. Use them for context and cost awareness only; never pick hard or deep solely because the envelope is large or tools are present.",
+  "- has_tools / tool_count / has_images / has_previous_response_id: request shape signals.",
+  "",
+  "Route tiers:",
+  "- fast: trivial, low-risk asks. Status checks, reading or listing files, read-only shell commands, formatting, renames, one-line edits, quick factual questions.",
+  "- balanced: the default for routine coding. Small features, straightforward bug fixes, tests that follow existing patterns, focused single-file changes.",
+  "- hard: sustained multi-step reasoning. Debugging from stack traces or failing tests, multi-file edits, refactors, migrations, concurrency and performance work.",
+  "- deep: the highest-stakes reasoning; set needs_deep_reasoning=true. System design, architecture planning and reviews, database/schema/storage design, event-driven architecture, provider abstractions, organization-wide data collection, prompt/session storage, analytics pipelines, privacy/security/compliance/retention/access-control design, and cost-governance strategy.",
+  "",
+  "Decision rules:",
+  "- Classify the latest user intent, not the conversation as a whole.",
+  "- When torn between two tiers, pick the lower one unless risk signals (security, auth, payments, production, data loss) push upward.",
+  "- Set can_use_fast_model=false when a small-looking request still carries risk.",
+  "- complexity is your difficulty estimate; risk lists the risk signals you detected as short snake_case tokens.",
+  "- reason_codes are short snake_case tokens explaining the decision; confidence is your 0-1 estimate."
+].join("\n");
+
+const CLASSIFIER_OUTPUT_REMINDER = "Return only JSON matching the requested schema.";
+
+export const ROUTING_CLASSIFIER_BASE_INSTRUCTIONS =
+  `${CLASSIFIER_PROMPT_BODY}\n\n${CLASSIFIER_OUTPUT_REMINDER}`;
+
+export function composeClassifierInstructions(rules?: string): string {
+  const trimmed = rules?.trim();
+  if (!trimmed) return ROUTING_CLASSIFIER_BASE_INSTRUCTIONS;
+  return [
+    CLASSIFIER_PROMPT_BODY,
+    "",
+    "Organization routing rules (override the defaults above when they conflict):",
+    trimmed,
+    "",
+    CLASSIFIER_OUTPUT_REMINDER
+  ].join("\n");
+}
 
 export type RouteName = typeof ROUTE_NAMES[number];
 export type Surface = typeof SURFACE_NAMES[number];
@@ -146,7 +191,7 @@ export const jsonObjectSchema: z.ZodType<JsonObject> = z.record(z.string(), json
 export const routingConfigClassifierSchema = z.strictObject({
   provider: providerSchema,
   model: routingConfigIdentifierSchema,
-  instructions: routingConfigTextSchema,
+  rules: routingConfigTextSchema.optional(),
   timeoutMs: z.number().int().positive().max(30000),
   maxAttempts: z.number().int().positive().max(5),
   allowRedactedExcerpt: z.boolean(),

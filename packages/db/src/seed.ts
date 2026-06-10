@@ -5,7 +5,6 @@ import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import {
-  DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS,
   DEFAULT_ROUTING_SYSTEM_PROMPT,
   routingConfigSchema,
   type Provider,
@@ -445,7 +444,6 @@ function defaultRoutingConfig(options: SeedOptions): RoutingConfig {
     classifier: {
       provider: "openai",
       model: options.classifierModel,
-      instructions: DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS,
       timeoutMs: options.classifierTimeoutMs,
       maxAttempts: 2,
       allowRedactedExcerpt: options.classifierAllowRedactedExcerpt,

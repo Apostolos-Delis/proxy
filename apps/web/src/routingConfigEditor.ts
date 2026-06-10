@@ -20,7 +20,7 @@ export type RoutingConfigDocument = {
   classifier: {
     provider: string;
     model: string;
-    instructions: string;
+    rules?: string;
     timeoutMs: number;
     maxAttempts: number;
     allowRedactedExcerpt: boolean;
@@ -52,7 +52,7 @@ export type RouteTierDraft = {
 
 export type ConfigEditorDraft = {
   systemPrompt: string;
-  classifierInstructions: string;
+  classifierRules: string;
   routes: Record<EditorRouteName, RouteTierDraft>;
 };
 
@@ -69,7 +69,7 @@ export function draftFromConfig(config: RoutingConfigDocument): ConfigEditorDraf
   }
   return {
     systemPrompt: config.systemPrompt ?? "",
-    classifierInstructions: config.classifier.instructions ?? "",
+    classifierRules: config.classifier.rules ?? "",
     routes
   };
 }
@@ -91,8 +91,11 @@ export function applyDraft(base: RoutingConfigDocument, draft: ConfigEditorDraft
   const next = {
     ...base,
     routes,
-    classifier: { ...base.classifier, instructions: draft.classifierInstructions.trim() }
+    classifier: { ...base.classifier }
   };
+  const rules = draft.classifierRules.trim();
+  if (rules) next.classifier.rules = rules;
+  else delete next.classifier.rules;
   const systemPrompt = draft.systemPrompt.trim();
   if (systemPrompt) next.systemPrompt = systemPrompt;
   else delete next.systemPrompt;
@@ -100,9 +103,6 @@ export function applyDraft(base: RoutingConfigDocument, draft: ConfigEditorDraft
 }
 
 export function draftError(draft: ConfigEditorDraft): string | undefined {
-  if (!draft.classifierInstructions.trim()) {
-    return "Routing rules are required so the classifier knows how to pick a tier.";
-  }
   const missing = editorRouteOrder.filter((route) =>
     !draft.routes[route].openaiModel.trim() && !draft.routes[route].anthropicModel.trim()
   );
