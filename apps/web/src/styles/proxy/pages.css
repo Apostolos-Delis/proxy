@@ -573,6 +573,73 @@
   overflow-x: auto;
 }
 
+.routing-config-create {
+  margin-bottom: 22px;
+}
+
+.routing-config-create form {
+  display: grid;
+  gap: 16px;
+}
+
+.routing-create-head {
+  align-items: flex-start;
+}
+
+.routing-create-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(220px, 1fr);
+  gap: 14px;
+}
+
+.routing-create-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.routing-create-field > span {
+  color: var(--fg-faint);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.routing-create-field input,
+.routing-create-field select,
+.routing-create-field textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+  color: var(--fg);
+  font: inherit;
+}
+
+.routing-create-field input,
+.routing-create-field select {
+  height: 40px;
+  padding: 0 11px;
+}
+
+.routing-create-field textarea {
+  resize: vertical;
+  padding: 10px 11px;
+}
+
+.routing-create-field input:focus,
+.routing-create-field select:focus,
+.routing-create-field textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
+.routing-create-field small {
+  color: var(--danger);
+  font-size: 12px;
+}
+
 .route-matrix-preview {
   display: grid;
   gap: 7px;
