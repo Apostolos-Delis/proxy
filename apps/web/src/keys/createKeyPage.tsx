@@ -90,9 +90,9 @@ export function CreateApiKeyPage() {
   const loadError = configsQuery.error ?? providerAccountsQuery.error;
   if (loadError) return <PageState title="Create API key" label={loadError.message} />;
 
-  const configs = (configsQuery.data ?? []).filter(
-    (config) => isAssignableConfig(config) && !isDefaultConfig(config)
-  );
+  const assignable = (configsQuery.data ?? []).filter(isAssignableConfig);
+  const defaultConfig = assignable.find(isDefaultConfig) ?? null;
+  const configs = assignable.filter((config) => !isDefaultConfig(config));
   const providerAccounts = providerAccountsQuery.data ?? [];
   const blocker = stepBlockerMessage(draft);
 
@@ -137,10 +137,16 @@ export function CreateApiKeyPage() {
         <div className="wizard-panels">
           {draft.stepId === "configure" ? <ConfigureStep draft={draft} onChange={setDraft} /> : null}
           {draft.stepId === "routing" ? (
-            <RoutingStep draft={draft} configs={configs} providerAccounts={providerAccounts} onChange={setDraft} />
+            <RoutingStep
+              draft={draft}
+              configs={configs}
+              defaultConfig={defaultConfig}
+              providerAccounts={providerAccounts}
+              onChange={setDraft}
+            />
           ) : null}
           {draft.stepId === "create" ? (
-            <ReviewStep draft={draft} configs={configs} providerAccounts={providerAccounts} />
+            <ReviewStep draft={draft} configs={configs} defaultConfig={defaultConfig} providerAccounts={providerAccounts} />
           ) : null}
           {draft.stepId === "verify" && created ? <VerifyStep created={created} /> : null}
           <WizardActions

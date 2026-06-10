@@ -5,6 +5,7 @@ import { Badge, GlassCard } from "../ui";
 import { formatDateTime } from "../format";
 import { HarnessSetupGuide } from "../harnessSetupCard";
 import { CopySecret } from "./copySecret";
+import { WizardStepHead } from "./stepHead";
 import type { CreatedKeyResult } from "./wizard";
 
 export function VerifyStep({ created }: { created: CreatedKeyResult }) {
@@ -42,12 +43,10 @@ function VerificationCard({ apiKeyId }: { apiKeyId: string }) {
   const lastUsedAt = verification.data?.lastUsedAt;
   return (
     <GlassCard>
-      <div className="card-head">
-        <div>
-          <div className="card-title">Verify the key works</div>
-          <div className="faint">Launch your agent with the snippet above — this updates as soon as the first request lands.</div>
-        </div>
-      </div>
+      <WizardStepHead
+        title="Verify the key works"
+        sub="Launch your agent with the snippet above — this updates as soon as the first request lands."
+      />
       <div className="verify-status">
         {lastUsedAt ? (
           <Badge variant="success" dot>Verified — first request {formatDateTime(lastUsedAt)}</Badge>

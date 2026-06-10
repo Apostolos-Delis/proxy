@@ -4,9 +4,11 @@ import {
   canVisitStep,
   initialDraft,
   nextStepId,
+  orgDefaultConfigLabel,
   prevStepId,
   stepBlockerMessage,
   stepRailState,
+  withProviderKeyMode,
   type CreateKeyDraft
 } from "./wizard";
 
@@ -20,7 +22,37 @@ describe("initialDraft", () => {
     expect(draft.stepId).toBe("configure");
     expect(draft.scopes).toEqual(["proxy", "harness_identity"]);
     expect(draft.routingConfigId).toBeNull();
+    expect(draft.linkProviderKeys).toBe(false);
     expect(Object.values(draft.providerBindings)).toEqual([null, null]);
+  });
+});
+
+describe("withProviderKeyMode", () => {
+  it("clears bindings when switching back to the company default", () => {
+    const draft = { ...initialDraft(), linkProviderKeys: true };
+    draft.providerBindings.anthropic = "acct_1";
+    const next = withProviderKeyMode(draft, false);
+    expect(next.linkProviderKeys).toBe(false);
+    expect(Object.values(next.providerBindings)).toEqual([null, null]);
+  });
+
+  it("preserves bindings when switching to own keys", () => {
+    const draft = { ...initialDraft(), linkProviderKeys: true };
+    draft.providerBindings.anthropic = "acct_1";
+    const next = withProviderKeyMode(draft, true);
+    expect(next.linkProviderKeys).toBe(true);
+    expect(next.providerBindings.anthropic).toBe("acct_1");
+  });
+});
+
+describe("orgDefaultConfigLabel", () => {
+  it("shows the default config's real name", () => {
+    expect(orgDefaultConfigLabel({ name: "Default routing config" }))
+      .toBe("Default routing config (organization default)");
+  });
+
+  it("falls back when no default config exists", () => {
+    expect(orgDefaultConfigLabel(null)).toBe("Organization default");
   });
 });
 
