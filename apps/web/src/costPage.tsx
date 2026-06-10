@@ -62,7 +62,7 @@ export function CostPage() {
 
   const totals = usage.totals;
   const lookups: GroupLabelLookups = {
-    usersById: new Map((lookupsQuery.data?.users ?? []).map((user) => [user.userId, user])),
+    usersById: new Map((lookupsQuery.data?.members ?? []).map((user) => [user.userId, user])),
     apiKeysById: new Map((lookupsQuery.data?.apiKeys ?? []).map((key) => [key.id, key]))
   };
   const { series, rows } = stackedUsageSeries(timeseries, dimension, "cost", lookups);

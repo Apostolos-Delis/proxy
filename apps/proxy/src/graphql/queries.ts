@@ -11,7 +11,7 @@ import { ApiKey, RoutingConfigDetail, RoutingConfigSummary } from "./types/routi
 import { SearchResult } from "./types/search.js";
 import { SessionDetail, SessionSummary } from "./types/sessions.js";
 import { Settings } from "./types/settings.js";
-import { UserDetail, UserSummary } from "./types/users.js";
+import { OrgMember, UserDetail, UserSummary } from "./types/users.js";
 import { Viewer } from "./types/viewer.js";
 
 const PROMPT_GRAPHQL_ACCESS_PATH = "/admin/graphql#prompt";
@@ -219,6 +219,14 @@ builder.queryFields((t) => ({
         context.identity().organizationId
       );
       return audit.data;
+    }
+  }),
+
+  members: t.field({
+    type: [OrgMember],
+    resolve: async (_root, _args, context) => {
+      const queries = orgQueries(context);
+      return queries ? queries.memberDirectory() : [];
     }
   }),
 

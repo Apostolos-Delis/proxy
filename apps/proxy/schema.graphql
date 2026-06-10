@@ -179,6 +179,13 @@ type Mutation {
   updateUserRole(role: MemberRole!, userId: ID!): UpdateUserRoleResult!
 }
 
+type OrgMember {
+  email: String
+  name: String
+  status: String!
+  userId: String!
+}
+
 type OrganizationSummary {
   id: String!
   name: String!
@@ -367,6 +374,7 @@ type Query {
   apiKey(apiKeyId: ID!): ApiKey
   apiKeys: [ApiKey!]!
   invitations: [Invitation!]!
+  members: [OrgMember!]!
   overview: Overview!
   prompt(artifactId: ID!): PromptDetail
   promptAccessAudit: [PromptAccessAuditEntry!]!

@@ -303,7 +303,7 @@ export type UsageTimeseriesViewQuery = { usageTimeseries: { groupBy: UsageGroupB
 export type UsageLookupsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type UsageLookupsQuery = { users: Array<{ userId: string, name: string | null, email: string | null }>, apiKeys: Array<{ id: string, name: string, revokedAt: string | null }> };
+export type UsageLookupsQuery = { members: Array<{ userId: string, name: string | null, email: string | null }>, apiKeys: Array<{ id: string, name: string, revokedAt: string | null }> };
 
 export type UsersListQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -1390,7 +1390,7 @@ export const UsageTimeseriesViewDocument = new TypedDocumentString(`
 }`) as unknown as TypedDocumentString<UsageTimeseriesViewQuery, UsageTimeseriesViewQueryVariables>;
 export const UsageLookupsDocument = new TypedDocumentString(`
     query UsageLookups {
-  users {
+  members {
     userId
     name
     email

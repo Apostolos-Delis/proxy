@@ -319,6 +319,66 @@ describe("usage analytics admin APIs", () => {
     expect(keyUsage.data[0].requestCount).toBe(1);
   });
 
+  it("keeps concurrent root fields consistent when they share request scans", async () => {
+    const fixture = await setup("org_usage_shared_scan");
+    const createdAt = new Date("2026-06-08T12:00:00.000Z");
+
+    await fixture.db.insert(users).values([{ id: "user_shared" }]);
+    await fixture.db.insert(agentSessions).values({
+      id: "session_shared",
+      organizationId: "org_usage_shared_scan",
+      userId: "user_shared",
+      surface: "openai-responses"
+    });
+    await fixture.db.insert(requests).values(
+      Array.from({ length: 4 }, (_, index) =>
+        usageRequest(`shared_request_${index}`, "org_usage_shared_scan", "user_shared", "session_shared", "openai-responses", createdAt))
+    );
+    await fixture.db.insert(routeDecisions).values(
+      Array.from({ length: 4 }, (_, index) =>
+        usageDecision(`shared_decision_${index}`, `shared_request_${index}`, "org_usage_shared_scan", "fast", "openai", "gpt-fast"))
+    );
+    await fixture.db.insert(providerAttempts).values(
+      Array.from({ length: 4 }, (_, index) =>
+        usageAttempt(`shared_attempt_${index}`, `shared_request_${index}`, "org_usage_shared_scan", "openai-responses", "openai", "gpt-fast", "completed", createdAt))
+    );
+    await fixture.db.insert(usageLedger).values(
+      Array.from({ length: 4 }, (_, index) =>
+        usageRow(`shared_usage_${index}`, `shared_request_${index}`, `shared_attempt_${index}`, "org_usage_shared_scan", "openai", "gpt-fast", "fast", 100, 25, 1000))
+    );
+
+    // One document, four root fields: overview and usage read the full
+    // request scan, requests reads the limited scan, usageTimeseries shares
+    // the usage scan. All must agree on the same underlying rows.
+    const result = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query {
+        overview { requestCount totals { totalTokens } }
+        requests { requestId }
+        usage(groupBy: route) { totals { requestCount usage { totalTokens } } }
+        usageTimeseries(groupBy: route, interval: day) {
+          groups { key requestCount }
+          points { ts totals { requestCount } }
+        }
+      }`
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.overview.requestCount).toBe(4);
+    expect(result.data?.requests).toHaveLength(4);
+    expect(result.data?.usage.totals.requestCount).toBe(4);
+    expect(result.data?.usage.totals.usage.totalTokens).toBe(result.data?.overview.totals.totalTokens);
+    expect(result.data?.usageTimeseries.groups).toEqual([
+      expect.objectContaining({ key: "fast", requestCount: 4 })
+    ]);
+    const pointTotal = result.data?.usageTimeseries.points.reduce(
+      (sum: number, point: { totals: { requestCount: number } }) => sum + point.totals.requestCount,
+      0
+    );
+    expect(pointTotal).toBe(4);
+  });
+
   async function setup(organizationId: string) {
     activeFixture = await captureFixture(organizationId);
     return activeFixture;

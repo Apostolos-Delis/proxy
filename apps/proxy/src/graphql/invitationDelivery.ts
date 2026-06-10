@@ -1,27 +1,26 @@
 import type { AppConfig } from "../config.js";
 import type { EmailService } from "../email.js";
 import { invitationEmail } from "../emailTemplates.js";
-import type { AppPersistence } from "./context.js";
+import type { InvitationModel } from "./models.js";
+import type { OrgAdminQueries } from "./context.js";
 
 export async function sendInvitationEmail(
-  persistence: AppPersistence,
+  queries: OrgAdminQueries,
   config: AppConfig,
   emailService: EmailService,
-  input: { organizationId: string; invitationId: string; token: string; inviterName?: string }
+  input: { invitation: InvitationModel | null; token: string; inviterName?: string }
 ) {
-  const adminQueries = persistence.adminQueries.forOrg(input.organizationId);
-  const detail = await adminQueries.invitationDetail(input.invitationId);
-  if (!detail?.invitation) return { transport: "log" as const, delivered: false, error: "invitation_not_found" };
-  const organizationName = await adminQueries.organizationName();
+  if (!input.invitation) return { transport: "log" as const, delivered: false, error: "invitation_not_found" };
+  const organizationName = await queries.organizationName();
   const message = invitationEmail({
     organizationName,
     inviterName: input.inviterName,
-    role: detail.invitation.role,
+    role: input.invitation.role,
     acceptUrl: inviteUrl(config, input.token),
-    expiresAt: new Date(detail.invitation.expiresAt)
+    expiresAt: new Date(input.invitation.expiresAt)
   });
   return emailService.send({
-    to: detail.invitation.email,
+    to: input.invitation.email,
     subject: message.subject,
     html: message.html,
     text: message.text

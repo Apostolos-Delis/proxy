@@ -68,6 +68,7 @@ export type UsageTimeseriesPointModel = UsageTimeseriesModel["points"][number];
 export type UserSummaryModel = Awaited<ReturnType<Q["users"]>>["data"][number];
 export type UserMembershipModel = NonNullable<UserSummaryModel["membership"]>;
 export type UserDetailModel = NonNullable<Awaited<ReturnType<Q["userDetail"]>>>;
+export type MemberDirectoryEntryModel = Awaited<ReturnType<Q["memberDirectory"]>>[number];
 
 export type SessionSummaryModel = Awaited<ReturnType<Q["sessions"]>>["data"][number];
 export type SessionDetailModel = NonNullable<Awaited<ReturnType<Q["sessionDetail"]>>>;

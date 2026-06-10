@@ -186,6 +186,17 @@ describe("user admin APIs", () => {
       })
     ]));
 
+    const membersResult = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query { members { userId name email } }"
+    );
+    expect(membersResult.data?.members).toEqual(expect.arrayContaining([
+      expect.objectContaining({ userId: acceptedBody.userId, email: "ada@example.com" }),
+      expect.objectContaining({ userId: "local-user", email: "local@example.com" })
+    ]));
+    expect(membersResult.data?.members).toHaveLength(2);
+
     const auditEvents = await fixture.db
       .select()
       .from(events)

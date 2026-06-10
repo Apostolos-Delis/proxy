@@ -60,6 +60,12 @@ export type UsageTimeseriesFilters = UsageAnalyticsFilters & {
 };
 
 export class AdminQueryService {
+  // Instances are created per GraphQL request (see graphql/context.ts), so
+  // these caches dedupe work across root fields of one document — including
+  // concurrent fields, which is why promises are cached rather than values.
+  private readonly requestScopedCache = new Map<string, Promise<unknown>>();
+  private readonly summaryInputsCache = new WeakMap<object, Promise<SummaryInputs>>();
+
   constructor(
     private readonly db: PromptProxyDbSession,
     private readonly catalog: ModelCatalog,
@@ -67,14 +73,23 @@ export class AdminQueryService {
     private readonly config: AdminQueryConfig
   ) {}
 
+  private cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+    const existing = this.requestScopedCache.get(key);
+    if (existing) return existing as Promise<T>;
+    const pending = load().catch((error: unknown) => {
+      // Do not retain failures: a later field in the same request may retry.
+      this.requestScopedCache.delete(key);
+      throw error;
+    });
+    this.requestScopedCache.set(key, pending);
+    return pending;
+  }
+
   async overview() {
     const requestRows = await this.requestRows();
     const requestSummaries = await this.summarizeRequests(requestRows);
     const eventCount = await this.eventCount();
-    const decisions = await this.db
-      .select()
-      .from(routeDecisions)
-      .where(eq(routeDecisions.organizationId, this.organizationId));
+    const lowConfidenceCount = await this.lowConfidenceDecisionCount();
 
     return {
       organizationId: this.organizationId,
@@ -95,10 +110,7 @@ export class AdminQueryService {
         return acc;
       }, { selected: 0, baseline: 0, savings: 0 }),
       routeQuality: {
-        lowConfidenceCount: decisions.filter((decision) =>
-          decision.confidence !== null &&
-            decision.confidence < Math.round(this.config.routeQualityLowConfidenceThreshold * 10_000)
-        ).length,
+        lowConfidenceCount,
         cheaperLikelyWouldWorkCount: requestSummaries.filter((request) =>
           routeIndex(routeValue(request.finalRoute)) > routeIndex("fast") &&
           request.usage.totalTokens < 1000
@@ -321,6 +333,20 @@ export class AdminQueryService {
     };
   }
 
+  memberDirectory() {
+    return this.cached("member-directory", () => this.db
+      .select({
+        userId: organizationMembers.userId,
+        name: usersTable.name,
+        email: usersTable.email,
+        status: organizationMembers.status
+      })
+      .from(organizationMembers)
+      .innerJoin(usersTable, eq(usersTable.id, organizationMembers.userId))
+      .where(eq(organizationMembers.organizationId, this.organizationId))
+      .orderBy(asc(usersTable.name)));
+  }
+
   async invitations() {
     const rows = await this.invitationRows();
     return {
@@ -333,13 +359,15 @@ export class AdminQueryService {
     return row ? { invitation: invitationSummary(row.invitation, row.inviter) } : null;
   }
 
-  async organizationName() {
-    const [row] = await this.db
-      .select({ name: organizations.name })
-      .from(organizations)
-      .where(eq(organizations.id, this.organizationId))
-      .limit(1);
-    return row?.name ?? this.organizationId;
+  organizationName() {
+    return this.cached("org-name", async () => {
+      const [row] = await this.db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, this.organizationId))
+        .limit(1);
+      return row?.name ?? this.organizationId;
+    });
   }
 
   async sessions() {
@@ -369,8 +397,9 @@ export class AdminQueryService {
     const requestIds = requestRows.map((request) => request.id);
     const userRows = session.userId ? await this.userRowsForOrg([session.userId]) : new Map<string, UserRow>();
     const detailRows = await this.sessionDetailRows(sessionId, requestIds);
-    const promptArtifactSummaries = await this.addRoutingConfigNames(detailRows.prompts.map((row) => promptDetail(row)));
-    const routeDecisionSummaries = await this.addRoutingConfigNames(detailRows.routeDecisions.map(routeDecisionSummary));
+    const promptArtifactSummaries = detailRows.prompts.map((row) => promptDetail(row));
+    const routeDecisionSummaries = detailRows.routeDecisions.map(routeDecisionSummary);
+    await this.addRoutingConfigNames([...promptArtifactSummaries, ...routeDecisionSummaries]);
     return {
       session: sessionSummary(session, requestSummaries),
       user: session.userId ? userRows.get(session.userId) ?? null : null,
@@ -458,34 +487,43 @@ export class AdminQueryService {
       .orderBy(desc(apiKeys.createdAt));
   }
 
-  private async requestRows(limit?: number) {
-    if (limit === undefined) {
-      return this.db
+  private requestRows(limit?: number) {
+    return this.cached(limit === undefined ? ALL_REQUEST_ROWS_KEY : `requests:${limit}`, async () => {
+      // Opportunistic: when a full scan was already registered in this
+      // request, a limited read can slice it — rows share the
+      // createdAt-descending order. When the limited read registers first it
+      // issues its own LIMIT query; both paths return complete,
+      // self-consistent row sets.
+      if (limit !== undefined) {
+        const allRows = this.requestScopedCache.get(ALL_REQUEST_ROWS_KEY) as
+          | Promise<RequestRow[]>
+          | undefined;
+        if (allRows) return (await allRows).slice(0, limit);
+      }
+      const query = this.db
         .select()
         .from(requests)
         .where(eq(requests.organizationId, this.organizationId))
         .orderBy(desc(requests.createdAt));
-    }
-
-    return this.db
-      .select()
-      .from(requests)
-      .where(eq(requests.organizationId, this.organizationId))
-      .orderBy(desc(requests.createdAt))
-      .limit(limit);
+      return limit === undefined ? query : query.limit(limit);
+    });
   }
 
-  private async requestRowsForUsage(filters: UsageAnalyticsFilters) {
-    const conditions = [eq(requests.organizationId, this.organizationId)];
+  private requestRowsForUsage(filters: UsageAnalyticsFilters) {
     const start = dateValue(filters.start);
-    if (start) conditions.push(gte(requests.createdAt, start));
     const end = dateValue(filters.end);
-    if (end) conditions.push(lte(requests.createdAt, end));
-    return this.db
-      .select()
-      .from(requests)
-      .where(and(...conditions))
-      .orderBy(desc(requests.createdAt));
+    // An unfiltered usage read is the same scan requestRows() performs.
+    if (!start && !end) return this.requestRows();
+    return this.cached(`requests:usage:${start?.toISOString() ?? ""}:${end?.toISOString() ?? ""}`, () => {
+      const conditions = [eq(requests.organizationId, this.organizationId)];
+      if (start) conditions.push(gte(requests.createdAt, start));
+      if (end) conditions.push(lte(requests.createdAt, end));
+      return this.db
+        .select()
+        .from(requests)
+        .where(and(...conditions))
+        .orderBy(desc(requests.createdAt));
+    });
   }
 
   private async requestRowsForUser(userId: string) {
@@ -510,12 +548,12 @@ export class AdminQueryService {
       .orderBy(desc(requests.createdAt));
   }
 
-  private async sessionRows() {
-    return this.db
+  private sessionRows() {
+    return this.cached("sessions", () => this.db
       .select()
       .from(agentSessions)
       .where(eq(agentSessions.organizationId, this.organizationId))
-      .orderBy(desc(agentSessions.updatedAt));
+      .orderBy(desc(agentSessions.updatedAt)));
   }
 
   private async sessionRowsForUser(userId: string, requestSessionIds: string[]) {
@@ -527,13 +565,13 @@ export class AdminQueryService {
   }
 
   private async userRowsForOrg(candidateUserIds: string[]) {
-    const memberRows = await this.db
+    const memberRows = await this.cached("member-user-rows", () => this.db
       .select({
         user: usersTable
       })
       .from(organizationMembers)
       .innerJoin(usersTable, eq(usersTable.id, organizationMembers.userId))
-      .where(eq(organizationMembers.organizationId, this.organizationId));
+      .where(eq(organizationMembers.organizationId, this.organizationId)));
     const usersById = new Map(memberRows.map((row) => [row.user.id, row.user]));
     const missingUserIds = [...new Set(candidateUserIds)]
       .filter((userId) => userId && !usersById.has(userId));
@@ -547,12 +585,14 @@ export class AdminQueryService {
     return usersById;
   }
 
-  private async memberRowsByUserId() {
-    const rows = await this.db
-      .select()
-      .from(organizationMembers)
-      .where(eq(organizationMembers.organizationId, this.organizationId));
-    return new Map(rows.map((row) => [row.userId, row]));
+  private memberRowsByUserId() {
+    return this.cached("members", async () => {
+      const rows = await this.db
+        .select()
+        .from(organizationMembers)
+        .where(eq(organizationMembers.organizationId, this.organizationId));
+      return new Map(rows.map((row) => [row.userId, row]));
+    });
   }
 
   private async invitationRows(invitationId?: string) {
@@ -631,22 +671,7 @@ export class AdminQueryService {
     options: { aggregateUsageByRequest?: boolean } = {}
   ) {
     if (requestRows.length === 0) return [];
-    const requestIds = requestRows.map((request) => request.id);
-    const decisions = await this.db
-      .select()
-      .from(routeDecisions)
-      .where(inArray(routeDecisions.requestId, requestIds));
-    const attempts = await this.db
-      .select()
-      .from(providerAttempts)
-      .where(inArray(providerAttempts.requestId, requestIds));
-    const attemptIds = attempts.map((attempt) => attempt.id);
-    const usageRows = attemptIds.length > 0
-      ? await this.db
-          .select()
-          .from(usageLedger)
-          .where(inArray(usageLedger.providerAttemptId, attemptIds))
-      : [];
+    const { decisions, attempts, usageRows } = await this.summaryInputsFor(requestRows);
 
     const decisionsByRequest = new Map(decisions.map((decision) => [decision.requestId, decision]));
     const attemptsByRequest = latestAttemptsByRequest(attempts);
@@ -675,21 +700,61 @@ export class AdminQueryService {
     return this.addRoutingConfigNames(summaries);
   }
 
-  private async addRoutingConfigNames<T extends { routingConfig: ReturnType<typeof routingConfigSummary> }>(summaries: T[]) {
-    const configIds = [...new Set(summaries.flatMap((summary) => summary.routingConfig ? [summary.routingConfig.configId] : []))];
-    if (configIds.length === 0) return summaries;
+  // Cached on the row array's identity: memoized row fetches return the same
+  // array instance for repeated reads, so plain and aggregated summaries of
+  // one row set share these three lookups. Callers with different filters
+  // hold different arrays and fetch separately by design.
+  private summaryInputsFor(requestRows: RequestRow[]) {
+    const existing = this.summaryInputsCache.get(requestRows);
+    if (existing) return existing;
+    const pending = (async () => {
+      const requestIds = requestRows.map((request) => request.id);
+      const decisions = await this.db
+        .select()
+        .from(routeDecisions)
+        .where(and(
+          eq(routeDecisions.organizationId, this.organizationId),
+          inArray(routeDecisions.requestId, requestIds)
+        ));
+      const attempts = await this.db
+        .select()
+        .from(providerAttempts)
+        .where(and(
+          eq(providerAttempts.organizationId, this.organizationId),
+          inArray(providerAttempts.requestId, requestIds)
+        ));
+      const attemptIds = attempts.map((attempt) => attempt.id);
+      const usageRows = attemptIds.length > 0
+        ? await this.db
+            .select()
+            .from(usageLedger)
+            .where(inArray(usageLedger.providerAttemptId, attemptIds))
+        : [];
+      return { decisions, attempts, usageRows };
+    })().catch((error: unknown) => {
+      this.summaryInputsCache.delete(requestRows);
+      throw error;
+    });
+    this.summaryInputsCache.set(requestRows, pending);
+    return pending;
+  }
 
-    const rows = await this.db
-      .select({
-        id: routingConfigs.id,
-        name: routingConfigs.name
-      })
-      .from(routingConfigs)
-      .where(and(
-        eq(routingConfigs.organizationId, this.organizationId),
-        inArray(routingConfigs.id, configIds)
-      ));
-    const names = new Map(rows.map((row) => [row.id, row.name]));
+  private async addRoutingConfigNames<T extends { routingConfig: ReturnType<typeof routingConfigSummary> }>(summaries: T[]) {
+    if (!summaries.some((summary) => summary.routingConfig)) return summaries;
+
+    // Organizations hold a handful of configs, so one org-wide name map
+    // serves every lookup in the request regardless of which subset of
+    // config ids each caller references.
+    const names = await this.cached("config-names", async () => {
+      const rows = await this.db
+        .select({
+          id: routingConfigs.id,
+          name: routingConfigs.name
+        })
+        .from(routingConfigs)
+        .where(eq(routingConfigs.organizationId, this.organizationId));
+      return new Map(rows.map((row) => [row.id, row.name]));
+    });
     for (const summary of summaries) {
       if (summary.routingConfig) {
         summary.routingConfig.configName = names.get(summary.routingConfig.configId) ?? null;
@@ -698,14 +763,33 @@ export class AdminQueryService {
     return summaries;
   }
 
-  private async eventCount() {
-    const [row] = await this.db
-      .select({
-        count: sql<number>`count(*)`
-      })
-      .from(events)
-      .where(eq(events.organizationId, this.organizationId));
-    return Number(row?.count ?? 0);
+  private eventCount() {
+    return this.cached("event-count", async () => {
+      const [row] = await this.db
+        .select({
+          count: sql<number>`count(*)`
+        })
+        .from(events)
+        .where(eq(events.organizationId, this.organizationId));
+      return Number(row?.count ?? 0);
+    });
+  }
+
+  private lowConfidenceDecisionCount() {
+    return this.cached("low-confidence-count", async () => {
+      const threshold = Math.round(this.config.routeQualityLowConfidenceThreshold * 10_000);
+      const [row] = await this.db
+        .select({
+          count: sql<number>`count(*)`
+        })
+        .from(routeDecisions)
+        .where(and(
+          eq(routeDecisions.organizationId, this.organizationId),
+          sql`${routeDecisions.confidence} is not null`,
+          sql`${routeDecisions.confidence} < ${threshold}`
+        ));
+      return Number(row?.count ?? 0);
+    });
   }
 
   private async activeRoutingConfigVersions(configRows: RoutingConfigRow[]) {
@@ -1045,6 +1129,11 @@ function requestSummary(row: {
 }
 
 type RequestSummary = ReturnType<typeof requestSummary>;
+type SummaryInputs = {
+  decisions: (typeof routeDecisions.$inferSelect)[];
+  attempts: ProviderAttemptRow[];
+  usageRows: (typeof usageLedger.$inferSelect)[];
+};
 type UsageGroupBy = "user" | "api_key" | "provider" | "model" | "route" | "surface" | "session";
 type UsageInterval = "hour" | "day";
 type UsageAggregate = ReturnType<typeof emptyUsageAggregate>;
@@ -1063,6 +1152,7 @@ type UsageGroup = {
 };
 
 const OTHER_GROUP_KEY = "__other__";
+const ALL_REQUEST_ROWS_KEY = "requests:all";
 
 function userIdsForRequestsAndSessions(requests: RequestSummary[], sessions: SessionRow[]) {
   return [

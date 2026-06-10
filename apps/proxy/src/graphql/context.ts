@@ -24,8 +24,18 @@ export type GraphQLContext = {
   setSessionCookie: (value: string) => void;
 };
 
+// One AdminQueryService per GraphQL request: its request-scoped caches let
+// root fields of a single document (which execute concurrently) share row
+// scans and summaries instead of re-reading the same tables.
+const orgQueriesByContext = new WeakMap<GraphQLContext, OrgAdminQueries>();
+
 export function orgQueries(context: GraphQLContext): OrgAdminQueries | undefined {
-  return context.persistence?.adminQueries.forOrg(context.identity().organizationId);
+  if (!context.persistence) return undefined;
+  const existing = orgQueriesByContext.get(context);
+  if (existing) return existing;
+  const queries = context.persistence.adminQueries.forOrg(context.identity().organizationId);
+  orgQueriesByContext.set(context, queries);
+  return queries;
 }
 
 export async function viewerPayload(

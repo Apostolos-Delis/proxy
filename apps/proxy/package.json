@@ -15,7 +15,8 @@
     "smoke": "node --env-file-if-exists=../../.env dist/scripts/smoke-proxy.js",
     "schema:print": "tsx scripts/print-schema.ts",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "profile:graphql": "tsx scripts/profile-graphql.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.4.5",
