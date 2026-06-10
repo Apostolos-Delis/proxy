@@ -12,6 +12,7 @@ import {
   type RouteTierDraft
 } from "../routingConfigEditor";
 import { RouteBadge } from "../ui";
+import { ModelSelect, type ModelProvider } from "./modelSelect";
 
 const SYSTEM_PROMPT_PLACEHOLDER =
   "You are assisting through the organization's prompt proxy. Never reveal credentials, API keys, or other secrets.";
@@ -102,7 +103,7 @@ export function RouteMatrixEditor({ draft, baseConfig, onChange }: {
               <RouteBadge route={route} />
               <span className="faint">{tier?.description ?? "No description"}</span>
             </div>
-            <TierModelInput
+            <TierModelField
               provider="openai"
               model={draft.routes[route].openaiModel}
               effort={draft.routes[route].openaiEffort}
@@ -110,7 +111,7 @@ export function RouteMatrixEditor({ draft, baseConfig, onChange }: {
               onModelChange={(model) => setRouteField(route, "openaiModel", model)}
               onEffortChange={(effort) => setRouteField(route, "openaiEffort", effort)}
             />
-            <TierModelInput
+            <TierModelField
               provider="anthropic"
               model={draft.routes[route].anthropicModel}
               effort={draft.routes[route].anthropicEffort}
@@ -125,8 +126,8 @@ export function RouteMatrixEditor({ draft, baseConfig, onChange }: {
   );
 }
 
-function TierModelInput({ provider, model, effort, efforts, onModelChange, onEffortChange }: {
-  provider: string;
+function TierModelField({ provider, model, effort, efforts, onModelChange, onEffortChange }: {
+  provider: ModelProvider;
   model: string;
   effort: string;
   efforts: readonly string[];
@@ -148,12 +149,7 @@ function TierModelInput({ provider, model, effort, efforts, onModelChange, onEff
           onChange={onEffortChange}
         />
       </div>
-      <input
-        value={model}
-        placeholder="none"
-        spellCheck={false}
-        onChange={(event) => onModelChange(event.target.value)}
-      />
+      <ModelSelect provider={provider} value={model} onChange={onModelChange} />
     </div>
   );
 }

@@ -1465,6 +1465,139 @@
   text-transform: none;
 }
 
+/* ---------- tier model dropdown ---------- */
+.model-select {
+  position: relative;
+  min-width: 0;
+}
+
+.model-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+  color: var(--fg);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .13s var(--ease);
+}
+
+.model-select-trigger:hover {
+  border-color: var(--border-strong);
+}
+
+.model-select-trigger:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
+.model-select-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-select-trigger svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--fg-faint);
+}
+
+.model-select-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 45;
+  min-width: 100%;
+  width: max-content;
+  max-width: 360px;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--glass-strong);
+  box-shadow: var(--shadow);
+  animation: popover-in .14s var(--ease);
+}
+
+.model-select-popover button {
+  display: block;
+  width: 100%;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-select-popover button:hover,
+.model-select-popover button.active {
+  background: var(--glass-hover);
+  color: var(--fg);
+}
+
+.model-select-popover strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.model-select-popover strong svg {
+  width: 13px;
+  height: 13px;
+  color: var(--accent-2);
+}
+
+.model-select-popover span {
+  display: block;
+  margin-top: 2px;
+  color: var(--fg-faint);
+  font-size: 11.5px;
+}
+
+.tier-editor-row > :last-child .model-select-popover {
+  left: auto;
+  right: 0;
+}
+
+.model-select-footer {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.model-select-footer strong svg {
+  color: var(--fg-faint);
+}
+
+.model-select-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.model-select-custom input {
+  flex: 1;
+}
+
+.model-select-custom .btn-icon {
+  flex: none;
+  height: 36px;
+}
+
 /* ---------- editor view toggle + JSON mode ---------- */
 .editor-view-toggle button {
   display: inline-flex;

@@ -165,7 +165,7 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
   };
 
   return (
-    <GlassCard className="routing-configs-card">
+    <GlassCard>
       <form className="routing-config-edit-form" onSubmit={(event) => {
         event.preventDefault();
         if (!candidate) return;
