@@ -1,13 +1,12 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
-import type { ReactNode } from "react";
 
 import type { UsageGroup, UsageResponse, UserSummary } from "./api";
 import type { ModelUsageRow, UserUsageRow } from "./consoleData";
 import { displayUser } from "./consoleData";
 import { compactId, formatCompact, formatInteger, formatMoney, formatPercent } from "./format";
 import { ConsoleTable, type ConsoleTableColumn } from "./table";
-import { Avatar, GlassCard, ProgressMeter, RouteBadge } from "./ui";
+import { Avatar, BarListRow, GlassCard, ProgressMeter, RouteBadge } from "./ui";
 
 export type UsageDimension = "route" | "provider" | "model" | "user" | "surface" | "session";
 
@@ -51,7 +50,7 @@ export function UsageSideRail({ totals, sideTab, users, modelRows, onSideTab }: 
     ? (user: UserUsageRow) => user.spend
     : (user: UserUsageRow) => user.tokens;
   const topUsers = [...users].sort((left, right) => userMetric(right) - userMetric(left)).slice(0, 6);
-  const topModels = [...modelRows].sort((left, right) => right.tokens - left.tokens).slice(0, 6);
+  const topModels = modelRows.slice(0, 6);
   const maxUserValue = Math.max(...topUsers.map(userMetric), 1);
   const maxModelTokens = Math.max(...topModels.map((row) => row.tokens), 1);
   return (
@@ -84,7 +83,7 @@ export function UsageSideRail({ totals, sideTab, users, modelRows, onSideTab }: 
             <BarListRow
               key={model.label}
               label={model.label}
-              value={formatCompact(model.tokens)}
+              value={`${formatCompact(model.tokens)} tok`}
               width={(model.tokens / maxModelTokens) * 100}
               color={model.color}
               mono
@@ -204,27 +203,6 @@ function ShareCell({ share }: { share: number }) {
 function RateCell({ rate, tone }: { rate: number; tone: "warn-text" | "danger-text" }) {
   if (rate <= 0) return <span className="mono faint">—</span>;
   return <span className={`mono ${tone}`}>{formatPercent(rate)}</span>;
-}
-
-function BarListRow({ label, value, width, avatar, color, mono = false }: {
-  label: string;
-  value: string;
-  width: number;
-  avatar?: ReactNode;
-  color?: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="barlist-row">
-      <div className="barlist-label">
-        {avatar}
-        {color ? <span className="model-dot" style={{ background: color }} /> : null}
-        <span className={mono ? "mono" : undefined}>{label}</span>
-      </div>
-      <div className="barlist-val">{value}</div>
-      <div className="barlist-track"><i style={{ width: `${width}%`, background: color }} /></div>
-    </div>
-  );
 }
 
 function Summary({ label, value, tone }: { label: string; value: string; tone?: string }) {
