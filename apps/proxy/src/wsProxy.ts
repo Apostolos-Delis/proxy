@@ -274,14 +274,15 @@ export class WebSocketRoutingProxy {
       return false;
     }
     if (!isRecord(event)) return false;
-    if (event.type === "response.completed") {
+    if (event.type === "response.completed" || event.type === "response.incomplete") {
       const response = isRecord(event.response) ? event.response : {};
       await this.finishActiveRequest(activeRequest, "completed", response.usage, {
-        upstreamResponseId: typeof response.id === "string" ? response.id : undefined
+        upstreamResponseId: typeof response.id === "string" ? response.id : undefined,
+        upstreamResponseStatus: typeof response.status === "string" ? response.status : undefined
       });
       return true;
     }
-    if (event.type === "error") {
+    if (event.type === "response.failed" || event.type === "error") {
       await this.finishActiveRequest(activeRequest, "failed", undefined, {
         error: jsonPayload(event)
       });

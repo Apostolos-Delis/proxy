@@ -2,6 +2,7 @@ node_modules/
 dist/
 apps/*/dist/
 packages/*/dist/
+infra/cdk/cdk.out/
 .vite/
 .prompt-proxy/
 .env

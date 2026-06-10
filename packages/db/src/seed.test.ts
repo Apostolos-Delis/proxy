@@ -115,6 +115,8 @@ describe("database seed", () => {
         })
       })
     }));
+    expect((routingConfigVersionRows[0]?.config as RoutingConfig).routes.hard.anthropic?.output_config)
+      .toBeUndefined();
     expect(keyRows).toHaveLength(1);
     expect(keyRows[0]?.routingConfigId).toBe("org_seed:routing-config:default");
     expect(keyRows[0]?.userId).toBeNull();
@@ -210,6 +212,73 @@ describe("database seed", () => {
     await client.close();
 
     expect(config?.activeVersionId).toBe("org_active_seed:routing-config:default:v2");
+  });
+
+  it("can explicitly replace and reactivate the seeded routing config version", async () => {
+    const client = new PGlite();
+    const migration = await readFile(
+      fileURLToPath(new URL("../migrations/0000_foundation.sql", import.meta.url)),
+      "utf8"
+    );
+    await client.exec(migration);
+    const db = createPgliteDatabase(client);
+    const initialOptions = seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_replace_seed",
+      SEED_USER_ID: "user_seed",
+      OPENAI_FAST_MODEL: "gpt-initial-fast"
+    });
+    const replacementOptions = seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_replace_seed",
+      SEED_USER_ID: "user_seed",
+      OPENAI_FAST_MODEL: "gpt-replaced-fast",
+      SEED_REPLACE_ROUTING_CONFIG: "true"
+    });
+
+    await seedDatabase(db, initialOptions);
+    const [v1] = await db
+      .select()
+      .from(routingConfigVersions)
+      .where(eq(routingConfigVersions.id, "org_replace_seed:routing-config:default:v1"));
+    await db.insert(routingConfigVersions).values({
+      id: "org_replace_seed:routing-config:default:v2",
+      organizationId: "org_replace_seed",
+      routingConfigId: "org_replace_seed:routing-config:default",
+      version: 2,
+      configHash: "sha256:manual-v2",
+      config: {
+        ...(v1?.config as RoutingConfig),
+        schemaVersion: 1,
+        displayName: "Manual",
+        description: "Manual active version",
+        classifier: {
+          ...(v1?.config as RoutingConfig).classifier,
+          model: "manual"
+        }
+      } as RoutingConfig,
+      status: "active",
+      createdByUserId: "user_seed",
+      activatedAt: new Date("2026-06-08T00:00:00.000Z")
+    });
+    await db
+      .update(routingConfigs)
+      .set({ activeVersionId: "org_replace_seed:routing-config:default:v2" })
+      .where(eq(routingConfigs.id, "org_replace_seed:routing-config:default"));
+
+    await seedDatabase(db, replacementOptions);
+
+    const [config] = await db
+      .select()
+      .from(routingConfigs)
+      .where(eq(routingConfigs.id, "org_replace_seed:routing-config:default"));
+    const [version] = await db
+      .select()
+      .from(routingConfigVersions)
+      .where(eq(routingConfigVersions.id, "org_replace_seed:routing-config:default:v1"));
+    await client.close();
+
+    expect(config?.activeVersionId).toBe("org_replace_seed:routing-config:default:v1");
+    expect(version?.config.routes.fast.openai?.model).toBe("gpt-replaced-fast");
+    expect(version?.config.classifier.timeoutMs).toBe(30000);
   });
 
   it("fails before partial writes when another organization already owns the proxy token", async () => {

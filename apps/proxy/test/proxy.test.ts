@@ -156,6 +156,7 @@ describe("prompt proxy", () => {
     await websocketOpen(ws);
 
     ws.send(JSON.stringify({
+      type: "response.create",
       model: "gpt-5.5",
       input: "fix the failing auth test and find root cause",
       tools: [{ type: "function", name: "shell" }],
@@ -164,6 +165,7 @@ describe("prompt proxy", () => {
     const firstResponseId = await nextCompletedResponseId(ws);
 
     ws.send(JSON.stringify({
+      type: "response.create",
       model: "gpt-5.5",
       previous_response_id: firstResponseId,
       input: "git status",
@@ -185,9 +187,55 @@ describe("prompt proxy", () => {
     expect(providerCalls).toHaveLength(2);
     expect(providerCalls[0].headers.authorization).toBe("Bearer openai-upstream-key");
     expect(providerCalls[0].headers["openai-beta"]).toBe("responses_websockets=2026-02-06");
+    expect(providerCalls[0].body.type).toBe("response.create");
     expect(providerCalls[1].body.previous_response_id).toBe(firstResponseId);
     expect(providerCalls[1].body.reasoning.effort).toBe("high");
     expect(events.filter((event: any) => event.eventType === "provider.response_completed")).toHaveLength(2);
+  });
+
+  it("treats OpenAI WebSocket response.incomplete as terminal usage", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({ wsTerminalEvent: "response.incomplete" });
+    const app = buildServer(
+      loadConfig({
+        ...testEnv(),
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+    const ws = new WebSocket(proxyUrl.replace("http://", "ws://") + "/v1/responses", {
+      headers: {
+        authorization: "Bearer proxy-token",
+        "openai-beta": "responses_websockets=2026-02-06",
+        session_id: "codex-ws-incomplete-session"
+      }
+    });
+    await websocketOpen(ws);
+
+    ws.send(JSON.stringify({
+      type: "response.create",
+      model: "router-auto",
+      input: "reply briefly",
+      stream: true,
+      max_output_tokens: 16
+    }));
+    await nextTerminalResponseId(ws, "response.incomplete");
+    ws.close();
+
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    await app.close();
+
+    expect(events.filter((event: any) => event.eventType === "provider.response_completed")).toHaveLength(1);
+    expect(events.filter((event: any) => event.eventType === "usage.recorded")).toHaveLength(1);
   });
 
   it("parses classifier output from Responses content items", async () => {
@@ -423,6 +471,7 @@ describe("prompt proxy", () => {
     expect(providerCall?.body.model).toBe(config.anthropicHardModel);
     expect(providerCall?.body.output_config.effort).toBe("high");
     expect(providerCall?.body.thinking.type).toBe("adaptive");
+    expect(providerCall?.body.max_tokens).toBe(4096);
     expect(providerCall?.body.tools).toHaveLength(1);
 
     const events = await fetch(`${proxyUrl}/_debug/events`, {
@@ -1281,10 +1330,14 @@ function websocketOpen(ws: WebSocket) {
 }
 
 function nextCompletedResponseId(ws: WebSocket) {
+  return nextTerminalResponseId(ws, "response.completed");
+}
+
+function nextTerminalResponseId(ws: WebSocket, terminalType: "response.completed" | "response.incomplete") {
   return new Promise<string>((resolve, reject) => {
     const onMessage = (data: WebSocket.RawData) => {
       const event = JSON.parse(String(data));
-      if (event.type !== "response.completed") return;
+      if (event.type !== terminalType) return;
       cleanup();
       resolve(event.response.id);
     };

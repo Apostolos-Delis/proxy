@@ -4,15 +4,17 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./schema": "./src/schema.ts",
-    "./migrations": "./src/migrate-runner.ts",
-    "./seed": "./src/seed.ts",
-    "./test": "./src/test.ts"
+    ".": "./dist/src/index.js",
+    "./schema": "./dist/src/schema.js",
+    "./migrations": "./dist/src/migrate-runner.js",
+    "./seed": "./dist/src/seed.js",
+    "./test": "./dist/src/test.js"
   },
   "scripts": {
-    "migrate": "node --env-file-if-exists=../../.env --import tsx src/migrate.ts",
-    "seed": "node --env-file-if-exists=../../.env --import tsx src/seed.ts",
+    "build": "tsc -p tsconfig.json && pnpm copy:migrations",
+    "copy:migrations": "mkdir -p dist/migrations && cp migrations/*.sql dist/migrations/",
+    "migrate": "node --env-file-if-exists=../../.env dist/src/migrate.js",
+    "seed": "node --env-file-if-exists=../../.env dist/src/seed.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -20,11 +22,11 @@
     "@electric-sql/pglite": "0.4.5",
     "@prompt-proxy/schema": "workspace:*",
     "drizzle-orm": "0.45.2",
-    "postgres": "3.4.7",
-    "tsx": "^4.21.0"
+    "postgres": "3.4.7"
   },
   "devDependencies": {
     "drizzle-kit": "0.31.10",
+    "tsx": "^4.21.0",
     "vitest": "^4.0.15"
   }
 }

@@ -27,6 +27,7 @@ export async function startOpenAIMock(
     classifierResponsesShape?: boolean;
     compressedJsonProvider?: boolean;
     slowProvider?: boolean;
+    wsTerminalEvent?: "response.completed" | "response.incomplete";
   } = {}
 ): Promise<MockServer> {
   const records: RecordedRequest[] = [];
@@ -131,10 +132,11 @@ export async function startOpenAIMock(
           response: { id, model: body.model }
         }));
         client.send(JSON.stringify({
-          type: "response.completed",
+          type: options.wsTerminalEvent ?? "response.completed",
           response: {
             id,
             model: body.model,
+            status: options.wsTerminalEvent === "response.incomplete" ? "incomplete" : "completed",
             usage: {
               input_tokens: 100,
               output_tokens: 20,

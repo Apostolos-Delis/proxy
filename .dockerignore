@@ -1,0 +1,10 @@
+.git
+.worktrees
+.conductor
+node_modules
+apps/*/dist
+packages/*/dist
+dist
+.vite
+.env
+.DS_Store

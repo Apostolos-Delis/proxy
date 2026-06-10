@@ -36,7 +36,9 @@ export type SeedOptions = {
   userName?: string;
   classifierModel: string;
   classifierPromptVersion: string;
+  classifierTimeoutMs: number;
   classifierAllowRedactedExcerpt: boolean;
+  replaceRoutingConfigVersion: boolean;
   openaiBaseUrl: string;
   anthropicBaseUrl: string;
   proxyToken: string;
@@ -257,22 +259,41 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
       }
     });
 
-  await db
-    .insert(routingConfigVersions)
-    .values({
-      id: routingConfigVersionId,
-      organizationId: options.organizationId,
-      routingConfigId,
-      version: 1,
-      configHash: routingConfigHash,
-      config: routingConfig,
-      status: "active",
-      createdByUserId: options.userId,
-      activatedAt: now
-    })
-    .onConflictDoNothing({
-      target: routingConfigVersions.id
-    });
+  const versionValues = {
+    id: routingConfigVersionId,
+    organizationId: options.organizationId,
+    routingConfigId,
+    version: 1,
+    configHash: routingConfigHash,
+    config: routingConfig,
+    status: "active",
+    createdByUserId: options.userId,
+    activatedAt: now
+  };
+
+  if (options.replaceRoutingConfigVersion) {
+    await db
+      .insert(routingConfigVersions)
+      .values(versionValues)
+      .onConflictDoUpdate({
+        target: routingConfigVersions.id,
+        set: {
+          configHash: routingConfigHash,
+          config: routingConfig,
+          status: "active",
+          createdByUserId: options.userId,
+          activatedAt: now,
+          archivedAt: null
+        }
+      });
+  } else {
+    await db
+      .insert(routingConfigVersions)
+      .values(versionValues)
+      .onConflictDoNothing({
+        target: routingConfigVersions.id
+      });
+  }
 
   await db
     .update(routingConfigs)
@@ -280,10 +301,12 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
       activeVersionId: routingConfigVersionId,
       updatedAt: now
     })
-    .where(and(
-      eq(routingConfigs.id, routingConfigId),
-      isNull(routingConfigs.activeVersionId)
-    ));
+    .where(options.replaceRoutingConfigVersion
+      ? eq(routingConfigs.id, routingConfigId)
+      : and(
+        eq(routingConfigs.id, routingConfigId),
+        isNull(routingConfigs.activeVersionId)
+      ));
 
   await db
     .insert(apiKeys)
@@ -331,7 +354,9 @@ export function seedOptionsFromEnv(env: NodeJS.ProcessEnv): SeedOptions {
     userName: env.SEED_USER_NAME ?? "Local User",
     classifierModel: env.CLASSIFIER_MODEL ?? "gpt-5-nano-2025-08-07",
     classifierPromptVersion: env.CLASSIFIER_PROMPT_VERSION ?? "2026-06-08",
+    classifierTimeoutMs: positiveIntegerEnv(env.CLASSIFIER_TIMEOUT_MS, 30000),
     classifierAllowRedactedExcerpt: booleanEnv(env.CLASSIFIER_ALLOW_REDACTED_EXCERPT),
+    replaceRoutingConfigVersion: booleanEnv(env.SEED_REPLACE_ROUTING_CONFIG),
     openaiBaseUrl: env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
     anthropicBaseUrl: env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1",
     proxyToken: env.PROMPT_PROXY_TOKEN ?? "dev-proxy-token",
@@ -366,7 +391,7 @@ function defaultRoutingConfig(options: SeedOptions): RoutingConfig {
       provider: "openai",
       model: options.classifierModel,
       instructions: DEFAULT_ROUTING_CLASSIFIER_INSTRUCTIONS,
-      timeoutMs: 1500,
+      timeoutMs: options.classifierTimeoutMs,
       maxAttempts: 2,
       allowRedactedExcerpt: options.classifierAllowRedactedExcerpt,
       structuredOutput: {
@@ -375,10 +400,10 @@ function defaultRoutingConfig(options: SeedOptions): RoutingConfig {
       }
     },
     routes: {
-      fast: routeConfig(options, "fast", "Simple shell/status/read-only tasks", "low", "low"),
-      balanced: routeConfig(options, "balanced", "Default coding tasks", "medium", "medium"),
-      hard: routeConfig(options, "hard", "Debugging, multi-file edits, and migrations", "high", "high"),
-      deep: routeConfig(options, "deep", "Architecture, system design, security, and storage design", "xhigh", "xhigh")
+      fast: routeConfig(options, "fast", "Simple shell/status/read-only tasks", "low"),
+      balanced: routeConfig(options, "balanced", "Default coding tasks", "medium"),
+      hard: routeConfig(options, "hard", "Debugging, multi-file edits, and migrations", "high"),
+      deep: routeConfig(options, "deep", "Architecture, system design, security, and storage design", "xhigh")
     },
     limits: {
       maxRoute: "deep",
@@ -397,8 +422,7 @@ function routeConfig(
   options: SeedOptions,
   route: RouteName,
   description: string,
-  openaiEffort: "low" | "medium" | "high" | "xhigh",
-  anthropicEffort: "low" | "medium" | "high" | "xhigh"
+  openaiEffort: "low" | "medium" | "high" | "xhigh"
 ): RoutingConfig["routes"][RouteName] {
   return {
     description,
@@ -413,10 +437,7 @@ function routeConfig(
     },
     anthropic: {
       model: modelFor(options, "anthropic", route),
-      thinking: route === "fast" ? { type: "disabled" } : { type: "adaptive", display: "omitted" },
-      output_config: {
-        effort: anthropicEffort
-      }
+      thinking: route === "fast" ? { type: "disabled" } : { type: "adaptive", display: "omitted" }
     }
   };
 }
@@ -480,6 +501,15 @@ function booleanEnv(value: string | undefined) {
   if (normalized === "true" || normalized === "1") return true;
   if (normalized === "false" || normalized === "0" || normalized === "") return false;
   throw new Error(`Invalid boolean env value: ${value}`);
+}
+
+function positiveIntegerEnv(value: string | undefined, fallback: number) {
+  if (value === undefined || value.trim() === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid positive integer env value: ${value}`);
+  }
+  return parsed;
 }
 
 function sha256Hex(value: string) {

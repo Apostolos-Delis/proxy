@@ -15,6 +15,7 @@
 - [Routing configs V1 tickets](scopes/routing-configs-v1/TICKETS.md)
 - [AWS prod-like deployment tickets](scopes/aws-prod-like-deployment-v1/TICKETS.md)
 - [Routing configs runbook](runbooks/routing-configs.md)
+- [AWS deployment runbook](runbooks/aws-deployment.md)
 
 ## Future Work
 

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import { createPgliteDatabase } from "@prompt-proxy/db";
@@ -11,10 +11,7 @@ import { createDatabasePersistence } from "../src/persistence/index.js";
 
 export async function createSmokePersistence(config: AppConfig, env: NodeJS.ProcessEnv) {
   const client = new PGlite();
-  const migration = await readFile(
-    fileURLToPath(new URL("../../../packages/db/migrations/0000_foundation.sql", import.meta.url)),
-    "utf8"
-  );
+  const migration = await readFile(join(process.cwd(), "../../packages/db/migrations/0000_foundation.sql"), "utf8");
   await client.exec(migration);
 
   const db = createPgliteDatabase(client);
