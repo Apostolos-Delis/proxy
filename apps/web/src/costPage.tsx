@@ -1,4 +1,4 @@
-import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
@@ -33,35 +33,32 @@ export function CostPage() {
   const [dimension, setDimension] = useState<UsageDimension>("model");
   const [spendTab, setSpendTab] = useState<SpendTab>("user");
   const { start, end, interval } = usageRangeQuery(range, anchor);
-  const [usageQuery, timeseriesQuery, lookupsQuery] = useQueries({
-    queries: [
-      {
-        queryKey: ["usage", dimension, start, end],
-        queryFn: () => fetchUsageReport(dimension, { start, end }),
-        placeholderData: keepPreviousData
-      },
-      {
-        queryKey: ["usage-timeseries", dimension, start, end, interval],
-        queryFn: () => fetchUsageTimeseries(dimension, { start, end, interval }),
-        placeholderData: keepPreviousData
-      },
-      { queryKey: ["usage-lookups"], queryFn: fetchUsageLookups }
-    ]
+  // Individual useQuery calls, not useQueries: useQueries matches observers by query
+  // hash, so a dimension/range switch spins up fresh observers and keepPreviousData
+  // has no previous data to keep — the skeleton swap collapses the page scroll.
+  const usageQuery = useQuery({
+    queryKey: ["usage", dimension, start, end],
+    queryFn: () => fetchUsageReport(dimension, { start, end }),
+    placeholderData: keepPreviousData
   });
+  const timeseriesQuery = useQuery({
+    queryKey: ["usage-timeseries", dimension, start, end, interval],
+    queryFn: () => fetchUsageTimeseries(dimension, { start, end, interval }),
+    placeholderData: keepPreviousData
+  });
+  const lookupsQuery = useQuery({ queryKey: ["usage-lookups"], queryFn: fetchUsageLookups });
   const spendTabQuery = useQuery({
     queryKey: ["usage", spendTab, start, end],
     queryFn: () => fetchUsageReport(spendTab, { start, end }),
     placeholderData: keepPreviousData
   });
-  const loading = (usageQuery.isLoading || timeseriesQuery.isLoading) && !usageQuery.data;
   const error = usageQuery.error ?? timeseriesQuery.error;
 
-  if (loading) return <PageSkeleton blocks={[460, 260]} />;
   if (error) return <PageState title="Cost" label={error.message} />;
 
   const usage = usageQuery.data;
   const timeseries = timeseriesQuery.data;
-  if (!usage || !timeseries) return <PageState title="Cost" label="No cost data" />;
+  if (!usage || !timeseries) return <PageSkeleton blocks={[460, 260]} />;
 
   const totals = usage.totals;
   const lookups: GroupLabelLookups = {

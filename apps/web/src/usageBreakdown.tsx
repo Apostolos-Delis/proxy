@@ -54,7 +54,7 @@ export function UsageBreakdownTable({ mode, dimension, rows, totals, lookups }: 
   ];
   return (
     <ConsoleTable
-      key={`${mode}:${dimension}`}
+      stateKey={`${mode}:${dimension}`}
       data={rows}
       columns={columns}
       search={{ placeholder: `Search ${label.toLowerCase()}...`, getValue: (row) => searchValue(row, dimension, lookups) }}

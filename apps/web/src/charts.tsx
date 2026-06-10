@@ -112,6 +112,8 @@ export function StackedBarsChart({ data, series, height = 280, valueFormatter, t
 }) {
   if (data.length === 0) return <EmptyChart height={height} />;
   const allZero = data.every((row) => row.total === 0);
+  // Sparse windows (7d) leave each bucket very wide; full-width bars there read as blocks.
+  const maxBarSize = data.length <= 10 ? 22 : 36;
 
   return (
     <ChartFrame height={height} className="stacked-chart" note={allZero ? zeroNote ?? "Nothing recorded in this window" : undefined}>
@@ -134,7 +136,7 @@ export function StackedBarsChart({ data, series, height = 280, valueFormatter, t
             dataKey={(row: StackedChartRow) => row.values[item.key] ?? 0}
             name={item.label}
             fill={item.color}
-            maxBarSize={36}
+            maxBarSize={maxBarSize}
             isAnimationActive={false}
           />
         ))}

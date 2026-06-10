@@ -39,6 +39,8 @@ type ConsoleTableProps<TData> = {
   className?: string;
   initialPageSize?: number;
   pageSizeOptions?: number[];
+  /** Resets search/filters/sort/page in place when it changes. Prefer this over a `key` remount, which collapses the page's scroll position. */
+  stateKey?: string;
   actions?: (context: ConsoleTableActionContext<TData>) => ReactNode;
   getRowProps?: (row: TData) => ConsoleTableRowProps;
 };
@@ -54,6 +56,7 @@ export function ConsoleTable<TData>({
   className = "",
   initialPageSize = 10,
   pageSizeOptions = [10, 25, 50],
+  stateKey,
   actions,
   getRowProps
 }: ConsoleTableProps<TData>) {
@@ -65,6 +68,16 @@ export function ConsoleTable<TData>({
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: initialPageSize });
   const [activeViewId, setActiveViewId] = useState<string | null>(views[0]?.id ?? null);
+  const [appliedStateKey, setAppliedStateKey] = useState(stateKey);
+  if (stateKey !== appliedStateKey) {
+    setAppliedStateKey(stateKey);
+    setSearchValue("");
+    setFilterValues({});
+    setAdvancedRules([]);
+    setSorting([]);
+    setActiveViewId(views[0]?.id ?? null);
+    setPagination((current) => ({ ...current, pageIndex: 0 }));
+  }
   const visibleData = applyConsoleTableFilters({ data, search, searchValue, filters, filterValues, advancedFields, advancedRules });
   const normalizedPageSizeOptions = Array.from(new Set([...pageSizeOptions, initialPageSize])).sort((a, b) => a - b);
   const hasFilterControls = Boolean(searchValue) || Object.values(filterValues).some(Boolean) || activeAdvancedRuleCount(advancedRules) > 0;
