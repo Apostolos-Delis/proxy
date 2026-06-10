@@ -31,7 +31,7 @@ export function RoutingConfigsPage() {
         }
       />
       {archived.length > 0 ? (
-        <div>
+        <div className="config-view-toggle">
           <Segmented
             options={[
               { value: "active", label: `Active (${active.length})` },
