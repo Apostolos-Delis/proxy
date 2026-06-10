@@ -17,17 +17,22 @@ type ConsoleTableFrameProps<TData> = {
 export function ConsoleTableFrame<TData>({ table, tableWidth, emptyLabel, filtered, getRowProps, onClear }: ConsoleTableFrameProps<TData>) {
   const rows = table.getRowModel().rows;
   const colSpan = table.getVisibleLeafColumns().length || 1;
+  // When empty, fit the container instead of the configured column widths so the empty
+  // state doesn't force horizontal scroll. Fixed table layout sizes the table to the sum
+  // of the column widths, so the headers must scale to percentages too.
+  const isEmpty = rows.length === 0;
+  const headerWidth = (size: number) => (isEmpty ? `${(size / tableWidth) * 100}%` : size);
 
   return (
     <div className="console-table-scroll">
-      <table className="tbl console-table" style={{ width: tableWidth }}>
+      <table className="tbl console-table" style={{ width: isEmpty ? "100%" : tableWidth }}>
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
                 const sorted = header.column.getIsSorted();
                 return (
-                  <th key={header.id} style={{ width: header.getSize() }}>
+                  <th key={header.id} style={{ width: headerWidth(header.getSize()) }}>
                     <div className={`console-table-th${sorted ? " sorted" : ""}`}>
                       {header.isPlaceholder ? null : (
                         <button type="button" disabled={!header.column.getCanSort()} onClick={header.column.getToggleSortingHandler()}>
