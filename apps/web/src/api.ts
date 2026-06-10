@@ -9,9 +9,17 @@ export type AuthUser = {
   role: string;
 };
 
+export type OrganizationSummary = {
+  id: string;
+  slug: string;
+  name: string;
+  role: string;
+};
+
 export type AuthMe = {
   user: AuthUser;
   organizationId: string;
+  organizations: OrganizationSummary[];
 };
 
 export type Overview = {
@@ -633,6 +641,13 @@ export async function login(email: string, password: string) {
   return fetchJson<AuthMe>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password })
+  });
+}
+
+export async function switchOrganization(organizationId: string) {
+  return fetchJson<AuthMe>("/api/auth/switch-organization", {
+    method: "POST",
+    body: JSON.stringify({ organizationId })
   });
 }
 

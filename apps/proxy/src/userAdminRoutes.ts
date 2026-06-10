@@ -18,9 +18,9 @@ export function registerUserAdminRoutes(app: FastifyInstance, deps: UserAdminRou
   const { config, adminAuth, emailService, persistence } = deps;
 
   app.get("/admin/invitations", async (request) => {
-    await adminAuth.resolve(request.headers);
+    const identity = await adminAuth.resolve(request.headers);
     if (!persistence) return { data: [] };
-    return persistence.adminQueries.invitations();
+    return persistence.adminQueries.forOrg(identity.organizationId).invitations();
   });
 
   app.post("/admin/invitations", async (request, reply) => {
@@ -33,11 +33,12 @@ export function registerUserAdminRoutes(app: FastifyInstance, deps: UserAdminRou
         body: request.body
       });
       const emailDelivery = await sendInvitationEmail(persistence, config, emailService, {
+        organizationId: identity.organizationId,
         invitationId: created.invitationId,
         token: created.token,
         inviterName: identity.name ?? identity.email
       });
-      const detail = await persistence.adminQueries.invitationDetail(created.invitationId);
+      const detail = await persistence.adminQueries.forOrg(identity.organizationId).invitationDetail(created.invitationId);
       reply.code(201);
       return {
         invitation: detail?.invitation ?? null,
@@ -65,11 +66,12 @@ export function registerUserAdminRoutes(app: FastifyInstance, deps: UserAdminRou
         invitationId
       });
       const emailDelivery = await sendInvitationEmail(persistence, config, emailService, {
+        organizationId: identity.organizationId,
         invitationId,
         token: resent.token,
         inviterName: identity.name ?? identity.email
       });
-      const detail = await persistence.adminQueries.invitationDetail(invitationId);
+      const detail = await persistence.adminQueries.forOrg(identity.organizationId).invitationDetail(invitationId);
       return {
         invitation: detail?.invitation ?? null,
         inviteUrl: inviteUrl(config, resent.token),
@@ -95,7 +97,7 @@ export function registerUserAdminRoutes(app: FastifyInstance, deps: UserAdminRou
         actorUserId: identity.userId,
         invitationId
       });
-      return persistence.adminQueries.invitationDetail(invitationId);
+      return persistence.adminQueries.forOrg(identity.organizationId).invitationDetail(invitationId);
     } catch (error) {
       if (sendUserAdminError(error, reply)) return;
       throw error;
@@ -196,11 +198,12 @@ async function sendInvitationEmail(
   persistence: NonNullable<UserAdminRouteDeps["persistence"]>,
   config: AppConfig,
   emailService: EmailService,
-  input: { invitationId: string; token: string; inviterName?: string }
+  input: { organizationId: string; invitationId: string; token: string; inviterName?: string }
 ) {
-  const detail = await persistence.adminQueries.invitationDetail(input.invitationId);
+  const adminQueries = persistence.adminQueries.forOrg(input.organizationId);
+  const detail = await adminQueries.invitationDetail(input.invitationId);
   if (!detail?.invitation) return { transport: "log" as const, delivered: false, error: "invitation_not_found" };
-  const organizationName = await persistence.adminQueries.organizationName();
+  const organizationName = await adminQueries.organizationName();
   const message = invitationEmail({
     organizationName,
     inviterName: input.inviterName,

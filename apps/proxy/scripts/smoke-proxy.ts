@@ -37,6 +37,7 @@ const smokeEnv = {
 const config = loadConfig(smokeEnv);
 const smokePersistence = await createSmokePersistence(config, smokeEnv);
 const app = buildServer(config, { persistence: smokePersistence.persistence });
+const smokeAdminQueries = smokePersistence.persistence.adminQueries.forOrg(config.defaultOrganizationId);
 const defaultRoutingConfigId = `${config.defaultOrganizationId}:routing-config:default`;
 
 try {
@@ -57,14 +58,14 @@ try {
   assertClassifierCalls(2, openaiRecords);
   assertProviderCall(openaiRecords, config.openaiHardModel, "Codex default");
   assertProviderCall(anthropicRecords, config.anthropicHardModel, "Claude default");
-  await assertPersistedRoutingDecision(smokePersistence.persistence, {
+  await assertPersistedRoutingDecision(smokeAdminQueries, {
     label: "Codex default",
     surface: "openai-responses",
     finalRoute: "hard",
     selectedModel: config.openaiHardModel,
     routingConfigId: defaultRoutingConfigId
   });
-  await assertPersistedRoutingDecision(smokePersistence.persistence, {
+  await assertPersistedRoutingDecision(smokeAdminQueries, {
     label: "Claude default",
     surface: "anthropic-messages",
     finalRoute: "hard",
@@ -86,14 +87,14 @@ try {
   assertClassifierCalls(4, openaiRecords);
   assertProviderCall(openaiRecords, config.openaiFastModel, "Codex reassigned");
   assertProviderCall(anthropicRecords, config.anthropicFastModel, "Claude reassigned");
-  await assertPersistedRoutingDecision(smokePersistence.persistence, {
+  await assertPersistedRoutingDecision(smokeAdminQueries, {
     label: "Codex reassigned",
     surface: "openai-responses",
     finalRoute: "hard",
     selectedModel: config.openaiFastModel,
     routingConfigId: assigned.configId
   });
-  await assertPersistedRoutingDecision(smokePersistence.persistence, {
+  await assertPersistedRoutingDecision(smokeAdminQueries, {
     label: "Claude reassigned",
     surface: "anthropic-messages",
     finalRoute: "hard",

@@ -32,8 +32,21 @@ export class AdminAuthService {
     if (!token || !this.sessions) throw unauthorized();
     const identity = await this.sessions.resolve(token);
     if (!identity) throw unauthorized();
-    if (identity.organizationId !== this.config.defaultOrganizationId) throw forbidden();
     return identity;
+  }
+
+  async switchOrganization(headers: Record<string, unknown>, body: unknown) {
+    const identity = await this.resolve(headers);
+    if (!this.sessions) throw forbidden();
+    const session = await this.sessions.create({
+      organizationId: switchOrganizationTarget(body),
+      userId: identity.userId,
+      ttlSeconds: this.config.adminSessionTtlSeconds
+    });
+    if (!session) throw forbidden();
+    const token = this.token(headers);
+    if (token) await this.sessions.revoke(token);
+    return session;
   }
 
   async logout(headers: Record<string, unknown>) {
@@ -75,6 +88,13 @@ function loginCredentials(body: unknown) {
   return { email, password };
 }
 
+function switchOrganizationTarget(body: unknown) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw badRequest();
+  const organizationId = (body as Record<string, unknown>).organizationId;
+  if (typeof organizationId !== "string" || !organizationId.trim()) throw badRequest();
+  return organizationId.trim();
+}
+
 function cookieValue(headers: Record<string, unknown>, name: string) {
   const raw = headerValue(headers, "cookie");
   if (!raw) return undefined;
@@ -94,5 +114,11 @@ function unauthorized() {
 function forbidden() {
   const error = new Error("Forbidden");
   (error as Error & { statusCode: number }).statusCode = 403;
+  return error;
+}
+
+function badRequest() {
+  const error = new Error("organization_id_required");
+  (error as Error & { statusCode: number }).statusCode = 400;
   return error;
 }

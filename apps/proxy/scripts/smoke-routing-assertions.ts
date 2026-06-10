@@ -19,10 +19,10 @@ export type SmokeRequestAssertion = {
 };
 
 export async function assertPersistedRoutingDecision(
-  persistence: { adminQueries: { requests: () => Promise<{ data: SmokeRequestSummary[] }> } },
+  adminQueries: { requests: () => Promise<{ data: SmokeRequestSummary[] }> },
   expected: SmokeRequestAssertion
 ) {
-  const requests = await persistence.adminQueries.requests();
+  const requests = await adminQueries.requests();
   const match = requests.data.find((request) =>
     request.surface === expected.surface &&
     request.selectedModel === expected.selectedModel &&

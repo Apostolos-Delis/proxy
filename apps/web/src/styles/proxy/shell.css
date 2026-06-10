@@ -119,10 +119,12 @@
 }
 
 .sidebar-foot { margin-top: auto; padding-top: 12px; }
+.org-switcher { position: relative; }
 .org-card {
   display: flex; align-items: center; gap: 10px;
-  padding: 10px; border-radius: 12px;
+  width: 100%; padding: 10px; border-radius: 12px;
   border: 1px solid var(--border); background: var(--glass-2);
+  color: inherit; font: inherit; text-align: left;
   cursor: pointer; transition: background .16s var(--ease);
 }
 .org-card:hover { background: var(--glass-hover); }
@@ -132,6 +134,58 @@
   background: var(--accent);
   color: #04211d;
 }
+.org-switcher-chevron {
+  width: 15px; height: 15px; flex: none;
+  margin-left: auto; color: var(--fg-faint);
+}
+.app.collapsed .org-switcher-chevron { display: none; }
+.org-switcher-popover {
+  position: absolute; left: 0; right: 0; z-index: 45;
+  bottom: calc(100% + 8px);
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--glass-strong);
+  box-shadow: var(--shadow);
+  animation: popover-in-up .14s var(--ease);
+}
+.org-switcher-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--fg-faint); padding: 6px 10px 4px; font-weight: 500;
+}
+.org-switcher-option {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 8px 10px;
+  border: 0; border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted); font: inherit; text-align: left;
+  cursor: pointer; transition: background .13s var(--ease), color .13s var(--ease);
+}
+.org-switcher-option:hover, .org-switcher-option.active {
+  background: var(--glass-hover);
+  color: var(--fg);
+}
+.org-switcher-option:disabled { opacity: 0.6; cursor: default; }
+.org-switcher-option .org-avatar {
+  width: 24px; height: 24px; border-radius: 6px; font-size: 11px;
+}
+.org-switcher-option-meta { min-width: 0; }
+.org-switcher-option-meta strong {
+  display: block; font-size: 13px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.org-switcher-option-meta span {
+  display: block; color: var(--fg-faint); font-size: 11px; margin-top: 1px;
+}
+.org-card .brand-text span,
+.org-switcher-option-meta span { text-transform: capitalize; }
+.org-switcher-current {
+  margin-left: auto; flex: none;
+  font-size: 10.5px; color: var(--accent);
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 1px 7px;
+}
+.org-switcher .form-error { margin: 6px 10px; }
 
 /* ---------- Main column ---------- */
 .main { overflow: hidden; display: flex; flex-direction: column; min-width: 0; min-height: 0; }

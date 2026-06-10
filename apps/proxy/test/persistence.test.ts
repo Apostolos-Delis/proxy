@@ -661,8 +661,8 @@ describe("postgres persistence", () => {
       totalCostMicros: 2
     })));
 
-    const overview = await fixture.persistence.adminQueries.overview();
-    const requestPage = await fixture.persistence.adminQueries.requests();
+    const overview = await fixture.persistence.adminQueries.forOrg("org_admin_overview").overview();
+    const requestPage = await fixture.persistence.adminQueries.forOrg("org_admin_overview").requests();
 
     expect(overview.requestCount).toBe(201);
     expect(overview.totals.totalTokens).toBe(201);
@@ -757,8 +757,8 @@ describe("postgres persistence", () => {
       }
     ]);
 
-    const requestsPage = await fixture.persistence.adminQueries.requests();
-    const detail = await fixture.persistence.adminQueries.requestDetail("request_retry");
+    const requestsPage = await fixture.persistence.adminQueries.forOrg("org_admin_retry").requests();
+    const detail = await fixture.persistence.adminQueries.forOrg("org_admin_retry").requestDetail("request_retry");
 
     expect(requestsPage.data).toHaveLength(1);
     expect(requestsPage.data[0]?.terminalStatus).toBe("completed");

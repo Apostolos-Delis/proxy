@@ -33,7 +33,6 @@ import {
 import { routeValue, surfaceValue, usageCostMicros } from "./values.js";
 
 export type AdminQueryConfig = {
-  defaultOrganizationId: string;
   routeQualityLowConfidenceThreshold: number;
 };
 
@@ -58,6 +57,7 @@ export class AdminQueryService {
   constructor(
     private readonly db: PromptProxyDbSession,
     private readonly catalog: ModelCatalog,
+    private readonly organizationId: string,
     private readonly config: AdminQueryConfig
   ) {}
 
@@ -68,10 +68,10 @@ export class AdminQueryService {
     const decisions = await this.db
       .select()
       .from(routeDecisions)
-      .where(eq(routeDecisions.organizationId, this.config.defaultOrganizationId));
+      .where(eq(routeDecisions.organizationId, this.organizationId));
 
     return {
-      organizationId: this.config.defaultOrganizationId,
+      organizationId: this.organizationId,
       eventCount,
       requestCount: requestRows.length,
       totals: requestSummaries.reduce((acc, request) => {
@@ -127,7 +127,7 @@ export class AdminQueryService {
     const configRows = await this.db
       .select()
       .from(routingConfigs)
-      .where(eq(routingConfigs.organizationId, this.config.defaultOrganizationId))
+      .where(eq(routingConfigs.organizationId, this.organizationId))
       .orderBy(desc(routingConfigs.updatedAt));
     const activeVersions = await this.activeRoutingConfigVersions(configRows);
     const assignedKeyCounts = await this.routingConfigApiKeyCounts(configRows.map((row) => row.id));
@@ -144,7 +144,7 @@ export class AdminQueryService {
       .select()
       .from(routingConfigs)
       .where(and(
-        eq(routingConfigs.organizationId, this.config.defaultOrganizationId),
+        eq(routingConfigs.organizationId, this.organizationId),
         eq(routingConfigs.id, configId)
       ))
       .limit(1);
@@ -154,7 +154,7 @@ export class AdminQueryService {
       .select()
       .from(routingConfigVersions)
       .where(and(
-        eq(routingConfigVersions.organizationId, this.config.defaultOrganizationId),
+        eq(routingConfigVersions.organizationId, this.organizationId),
         eq(routingConfigVersions.routingConfigId, config.id)
       ))
       .orderBy(desc(routingConfigVersions.version));
@@ -172,7 +172,7 @@ export class AdminQueryService {
       .select()
       .from(requests)
       .where(and(
-        eq(requests.organizationId, this.config.defaultOrganizationId),
+        eq(requests.organizationId, this.organizationId),
         eq(requests.id, requestId)
       ))
       .limit(1);
@@ -268,9 +268,9 @@ export class AdminQueryService {
     const [row] = await this.db
       .select({ name: organizations.name })
       .from(organizations)
-      .where(eq(organizations.id, this.config.defaultOrganizationId))
+      .where(eq(organizations.id, this.organizationId))
       .limit(1);
-    return row?.name ?? this.config.defaultOrganizationId;
+    return row?.name ?? this.organizationId;
   }
 
   async sessions() {
@@ -289,7 +289,7 @@ export class AdminQueryService {
       .select()
       .from(agentSessions)
       .where(and(
-        eq(agentSessions.organizationId, this.config.defaultOrganizationId),
+        eq(agentSessions.organizationId, this.organizationId),
         eq(agentSessions.id, sessionId)
       ))
       .limit(1);
@@ -331,8 +331,8 @@ export class AdminQueryService {
         eq(routeDecisions.organizationId, requests.organizationId)
       ))
       .where(and(
-        eq(promptArtifacts.organizationId, this.config.defaultOrganizationId),
-        eq(requests.organizationId, this.config.defaultOrganizationId),
+        eq(promptArtifacts.organizationId, this.organizationId),
+        eq(requests.organizationId, this.organizationId),
         eq(promptArtifacts.id, artifactId)
       ))
       .limit(1);
@@ -350,7 +350,7 @@ export class AdminQueryService {
   }
 
   private async apiKeyRows(apiKeyId?: string) {
-    const conditions = [eq(apiKeys.organizationId, this.config.defaultOrganizationId)];
+    const conditions = [eq(apiKeys.organizationId, this.organizationId)];
     if (apiKeyId) conditions.push(eq(apiKeys.id, apiKeyId));
     return this.db
       .select({
@@ -381,20 +381,20 @@ export class AdminQueryService {
       return this.db
         .select()
         .from(requests)
-        .where(eq(requests.organizationId, this.config.defaultOrganizationId))
+        .where(eq(requests.organizationId, this.organizationId))
         .orderBy(desc(requests.createdAt));
     }
 
     return this.db
       .select()
       .from(requests)
-      .where(eq(requests.organizationId, this.config.defaultOrganizationId))
+      .where(eq(requests.organizationId, this.organizationId))
       .orderBy(desc(requests.createdAt))
       .limit(limit);
   }
 
   private async requestRowsForUsage(filters: UsageAnalyticsFilters) {
-    const conditions = [eq(requests.organizationId, this.config.defaultOrganizationId)];
+    const conditions = [eq(requests.organizationId, this.organizationId)];
     const start = dateValue(filters.start);
     if (start) conditions.push(gte(requests.createdAt, start));
     const end = dateValue(filters.end);
@@ -411,7 +411,7 @@ export class AdminQueryService {
       .select()
       .from(requests)
       .where(and(
-        eq(requests.organizationId, this.config.defaultOrganizationId),
+        eq(requests.organizationId, this.organizationId),
         eq(requests.userId, userId)
       ))
       .orderBy(desc(requests.createdAt));
@@ -422,7 +422,7 @@ export class AdminQueryService {
       .select()
       .from(requests)
       .where(and(
-        eq(requests.organizationId, this.config.defaultOrganizationId),
+        eq(requests.organizationId, this.organizationId),
         eq(requests.sessionId, sessionId)
       ))
       .orderBy(desc(requests.createdAt));
@@ -432,7 +432,7 @@ export class AdminQueryService {
     return this.db
       .select()
       .from(agentSessions)
-      .where(eq(agentSessions.organizationId, this.config.defaultOrganizationId))
+      .where(eq(agentSessions.organizationId, this.organizationId))
       .orderBy(desc(agentSessions.updatedAt));
   }
 
@@ -451,7 +451,7 @@ export class AdminQueryService {
       })
       .from(organizationMembers)
       .innerJoin(usersTable, eq(usersTable.id, organizationMembers.userId))
-      .where(eq(organizationMembers.organizationId, this.config.defaultOrganizationId));
+      .where(eq(organizationMembers.organizationId, this.organizationId));
     const usersById = new Map(memberRows.map((row) => [row.user.id, row.user]));
     const missingUserIds = [...new Set(candidateUserIds)]
       .filter((userId) => userId && !usersById.has(userId));
@@ -469,12 +469,12 @@ export class AdminQueryService {
     const rows = await this.db
       .select()
       .from(organizationMembers)
-      .where(eq(organizationMembers.organizationId, this.config.defaultOrganizationId));
+      .where(eq(organizationMembers.organizationId, this.organizationId));
     return new Map(rows.map((row) => [row.userId, row]));
   }
 
   private async invitationRows(invitationId?: string) {
-    const conditions = [eq(invitations.organizationId, this.config.defaultOrganizationId)];
+    const conditions = [eq(invitations.organizationId, this.organizationId)];
     if (invitationId) conditions.push(eq(invitations.id, invitationId));
     return this.db
       .select({
@@ -500,7 +500,7 @@ export class AdminQueryService {
             eq(requests.organizationId, promptArtifacts.organizationId)
           ))
           .where(and(
-            eq(promptArtifacts.organizationId, this.config.defaultOrganizationId),
+            eq(promptArtifacts.organizationId, this.organizationId),
             inArray(promptArtifacts.requestId, requestIds)
           ))
           .orderBy(asc(promptArtifacts.createdAt))
@@ -510,7 +510,7 @@ export class AdminQueryService {
           .select()
           .from(routeDecisions)
           .where(and(
-            eq(routeDecisions.organizationId, this.config.defaultOrganizationId),
+            eq(routeDecisions.organizationId, this.organizationId),
             inArray(routeDecisions.requestId, requestIds)
           ))
           .orderBy(asc(routeDecisions.createdAt))
@@ -520,7 +520,7 @@ export class AdminQueryService {
           .select()
           .from(providerAttempts)
           .where(and(
-            eq(providerAttempts.organizationId, this.config.defaultOrganizationId),
+            eq(providerAttempts.organizationId, this.organizationId),
             inArray(providerAttempts.requestId, requestIds)
           ))
           .orderBy(asc(providerAttempts.startedAt))
@@ -530,7 +530,7 @@ export class AdminQueryService {
           .select()
           .from(usageLedger)
           .where(and(
-            eq(usageLedger.organizationId, this.config.defaultOrganizationId),
+            eq(usageLedger.organizationId, this.organizationId),
             inArray(usageLedger.requestId, requestIds)
           ))
           .orderBy(asc(usageLedger.createdAt))
@@ -604,7 +604,7 @@ export class AdminQueryService {
       })
       .from(routingConfigs)
       .where(and(
-        eq(routingConfigs.organizationId, this.config.defaultOrganizationId),
+        eq(routingConfigs.organizationId, this.organizationId),
         inArray(routingConfigs.id, configIds)
       ));
     const names = new Map(rows.map((row) => [row.id, row.name]));
@@ -622,7 +622,7 @@ export class AdminQueryService {
         count: sql<number>`count(*)`
       })
       .from(events)
-      .where(eq(events.organizationId, this.config.defaultOrganizationId));
+      .where(eq(events.organizationId, this.organizationId));
     return Number(row?.count ?? 0);
   }
 
@@ -634,7 +634,7 @@ export class AdminQueryService {
       .select()
       .from(routingConfigVersions)
       .where(and(
-        eq(routingConfigVersions.organizationId, this.config.defaultOrganizationId),
+        eq(routingConfigVersions.organizationId, this.organizationId),
         inArray(routingConfigVersions.id, versionIds)
       ));
     return new Map(rows.map((row) => [row.id, row]));
@@ -647,7 +647,7 @@ export class AdminQueryService {
       .select({ routingConfigId: apiKeys.routingConfigId })
       .from(apiKeys)
       .where(and(
-        eq(apiKeys.organizationId, this.config.defaultOrganizationId),
+        eq(apiKeys.organizationId, this.organizationId),
         inArray(apiKeys.routingConfigId, configIds)
       ));
     return rows.reduce((counts, row) => {
@@ -658,7 +658,7 @@ export class AdminQueryService {
   }
 
   private async promptRows(filters: PromptListFilters) {
-    const conditions = promptConditions(this.config.defaultOrganizationId, filters);
+    const conditions = promptConditions(this.organizationId, filters);
     return this.db
       .select({
         artifact: promptArtifacts,
@@ -690,7 +690,7 @@ export class AdminQueryService {
       .select()
       .from(events)
       .where(and(
-        eq(events.organizationId, this.config.defaultOrganizationId),
+        eq(events.organizationId, this.organizationId),
         eq(events.scopeId, requestId)
       ))
       .orderBy(events.sequence);
@@ -698,7 +698,7 @@ export class AdminQueryService {
       .select()
       .from(events)
       .where(and(
-        eq(events.organizationId, this.config.defaultOrganizationId),
+        eq(events.organizationId, this.organizationId),
         eq(events.correlationId, requestId)
       ))
       .orderBy(events.createdAt);
@@ -725,7 +725,7 @@ export class AdminQueryService {
       .select()
       .from(events)
       .where(and(
-        eq(events.organizationId, this.config.defaultOrganizationId),
+        eq(events.organizationId, this.organizationId),
         or(...scopeConditions)
       ))
       .orderBy(asc(events.createdAt));

@@ -41,6 +41,7 @@ const smokeEnv = {
 const config = loadConfig(smokeEnv);
 const smokePersistence = await createSmokePersistence(config, smokeEnv);
 const app = buildServer(config, { persistence: smokePersistence.persistence });
+const smokeAdminQueries = smokePersistence.persistence.adminQueries.forOrg(config.defaultOrganizationId);
 const defaultRoutingConfigId = `${config.defaultOrganizationId}:routing-config:default`;
 
 try {
@@ -76,14 +77,14 @@ try {
   if (!anthropicRecords.some((record) => record.body.model === config.anthropicHardModel)) {
     throw new Error("Claude Code CLI did not route to Anthropic hard model.");
   }
-  await assertPersistedRoutingDecision(smokePersistence.persistence, {
+  await assertPersistedRoutingDecision(smokeAdminQueries, {
     label: "Codex CLI",
     surface: "openai-responses",
     finalRoute: "hard",
     selectedModel: config.openaiHardModel,
     routingConfigId: defaultRoutingConfigId
   });
-  await assertPersistedRoutingDecision(smokePersistence.persistence, {
+  await assertPersistedRoutingDecision(smokeAdminQueries, {
     label: "Claude Code CLI",
     surface: "anthropic-messages",
     finalRoute: "hard",
