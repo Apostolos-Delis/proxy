@@ -19,7 +19,6 @@ import { appendAdminAuditEvent } from "./adminAudit.js";
 
 const createConfigBodySchema = z.object({
   name: z.string().trim().min(1),
-  slug: z.string().trim().min(1).optional(),
   description: z.string().trim().min(1).nullable().optional(),
   config: z.unknown()
 }).strict();
@@ -48,7 +47,7 @@ export class RoutingConfigAdminService {
     const now = new Date();
     const configId = createId("routing_config");
     const versionId = createId("routing_config_version");
-    const slug = slugValue(body.data.slug ?? body.data.name);
+    const slug = slugValue(body.data.name);
     const hash = configHash(config);
 
     return this.db.transaction(async (tx) => {
@@ -419,7 +418,7 @@ async function rejectDuplicateSlug(tx: PromptProxyTransaction, organizationId: s
       eq(routingConfigs.slug, slug)
     ))
     .limit(1);
-  if (existing) throw new RoutingConfigAdminError("routing_config_slug_exists", 409);
+  if (existing) throw new RoutingConfigAdminError("routing_config_name_exists", 409);
 }
 
 export async function routingConfigForAssignment(tx: PromptProxyTransaction, organizationId: string, configId: string) {

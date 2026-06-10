@@ -384,7 +384,6 @@ describe("API key admin APIs", () => {
       {
         input: {
           name,
-          slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
           config
         }
       }

@@ -227,7 +227,6 @@ describe("routing config admin APIs", () => {
     const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createMutation, {
       input: {
         name: "Created config",
-        slug: "created-config",
         description: "Created through admin API",
         config: nextConfig
       }
@@ -510,7 +509,6 @@ describe("routing config admin APIs", () => {
     const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createMutation, {
       input: {
         name,
-        slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
         config: {
           ...baseConfig,
           displayName: name

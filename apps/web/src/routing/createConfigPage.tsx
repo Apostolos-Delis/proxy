@@ -22,7 +22,6 @@ import { isUsableKey, KeyPickList } from "./keyAssignment";
 
 type CreateForm = {
   name: string;
-  slug: string;
   description: string;
   sourceConfigId: string;
 };
@@ -58,7 +57,6 @@ function CreateConfigForm({ sourceConfigs, apiKeys }: {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CreateForm>(() => ({
     name: "",
-    slug: "",
     description: "",
     sourceConfigId: sourceConfigs[0]?.id ?? ""
   }));
@@ -109,7 +107,6 @@ function CreateConfigForm({ sourceConfigs, apiKeys }: {
     createMutation.mutate({
       create: {
         name: form.name.trim(),
-        slug: form.slug.trim(),
         description: description || null,
         config: {
           ...applyDraft(sourceVersion.config, draft),
@@ -136,19 +133,14 @@ function CreateConfigForm({ sourceConfigs, apiKeys }: {
           <div className="routing-basics">
           <div className="routing-create-grid">
             <Field label="Name" error={errors.name}>
-              <input value={form.name} placeholder="Production coding agents" onChange={(event) => {
-                const name = event.target.value;
-                setForm((value) => {
-                  const syncSlug = !value.slug || value.slug === slugFor(value.name);
-                  return { ...value, name, slug: syncSlug ? slugFor(name) : value.slug };
-                });
-              }} />
-            </Field>
-            <Field label="Slug" error={errors.slug}>
-              <input value={form.slug} placeholder="production-coding-agents" onChange={(event) => {
-                const slug = slugFor(event.target.value);
-                setForm((value) => ({ ...value, slug }));
-              }} />
+              <input
+                value={form.name}
+                placeholder="Production coding agents"
+                onChange={(event) => {
+                  const name = event.target.value;
+                  setForm((value) => ({ ...value, name }));
+                }}
+              />
             </Field>
             <div className="routing-create-field">
               <span>Clone from</span>
@@ -257,14 +249,6 @@ function Field({ label, error, children }: { label: string; error?: string; chil
 function validateCreateForm(form: CreateForm) {
   const errors: CreateErrors = {};
   if (!form.name.trim()) errors.name = "Name is required.";
-  if (!form.slug.trim()) errors.slug = "Slug is required.";
-  if (form.slug.trim() && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug.trim())) {
-    errors.slug = "Use lowercase letters, numbers, and single hyphens.";
-  }
   if (!form.sourceConfigId) errors.sourceConfigId = "Choose an active source config.";
   return errors;
-}
-
-function slugFor(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
