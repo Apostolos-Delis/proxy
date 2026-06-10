@@ -299,8 +299,12 @@
 }
 
 .logs-table-card .console-table tbody td {
-  padding-top: 9px;
-  padding-bottom: 9px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.logs-table-card .user-cell {
+  gap: 9px;
 }
 
 .console-table-th {
