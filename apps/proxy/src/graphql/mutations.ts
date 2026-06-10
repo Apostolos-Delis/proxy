@@ -1,11 +1,12 @@
 import { writeSettingsFile } from "../settings.js";
 import { builder } from "./builder.js";
-import { orgQueries } from "./context.js";
+import { orgQueries, viewerPayload } from "./context.js";
 import { adminGraphQLError, mapAdminError, notFoundError } from "./errors.js";
 import { inviteUrl, sendInvitationEmail } from "./invitationDelivery.js";
 import { promptCaptureSettings, settingsResponse } from "./settingsPayload.js";
 import { MemberRole } from "./types/core.js";
 import {
+  AcceptedInvitation,
   Invitation,
   InvitationActionResult,
   UpdateUserRoleResult,
@@ -13,6 +14,7 @@ import {
 } from "./types/invitations.js";
 import { ApiKey, CreateApiKeyResult, RoutingConfigDetail } from "./types/routing.js";
 import { PromptCaptureConfig, Settings, SettingsInput } from "./types/settings.js";
+import { Viewer } from "./types/viewer.js";
 
 const CreateRoutingConfigInput = builder.inputType("CreateRoutingConfigInput", {
   fields: (t) => ({
@@ -50,6 +52,73 @@ function mapSettingsError(error: unknown): never {
 }
 
 builder.mutationFields((t) => ({
+  login: t.field({
+    type: Viewer,
+    args: {
+      email: t.arg.string({ required: true }),
+      password: t.arg.string({ required: true })
+    },
+    resolve: async (_root, args, context) => {
+      try {
+        const session = await context.adminAuth.login({
+          email: args.email,
+          password: args.password
+        });
+        context.setSessionCookie(
+          context.adminAuth.sessionCookie(session.token, session.expiresAt)
+        );
+        return await viewerPayload(session.identity, context.persistence);
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  logout: t.boolean({
+    resolve: async (_root, _args, context) => {
+      await context.adminAuth.logout(context.requestHeaders);
+      context.setSessionCookie(context.adminAuth.clearCookie());
+      return true;
+    }
+  }),
+
+  switchOrganization: t.field({
+    type: Viewer,
+    args: { organizationId: t.arg.id({ required: true }) },
+    resolve: async (_root, args, context) => {
+      try {
+        const session = await context.adminAuth.switchOrganization(context.requestHeaders, {
+          organizationId: String(args.organizationId)
+        });
+        context.setSessionCookie(
+          context.adminAuth.sessionCookie(session.token, session.expiresAt)
+        );
+        return await viewerPayload(session.identity, context.persistence);
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  acceptInvitation: t.field({
+    type: AcceptedInvitation,
+    args: {
+      token: t.arg.string({ required: true }),
+      name: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("invitation_not_found");
+      try {
+        const accepted = await context.persistence.userAdmin.acceptInvitation({
+          body: args.name ? { token: args.token, name: args.name } : { token: args.token }
+        });
+        return { ok: true, ...accepted };
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
   updateSettings: t.field({
     type: Settings,
     args: { input: t.arg({ type: SettingsInput, required: true }) },
@@ -62,14 +131,14 @@ builder.mutationFields((t) => ({
           settings.promptCapture.retentionDays !== undefined
         ) {
           await context.persistence.promptArtifacts.configure({
-            organizationId: context.identity.organizationId,
+            organizationId: context.identity().organizationId,
             promptCaptureMode: settings.promptCapture.promptCaptureMode,
             retentionDays: settings.promptCapture.retentionDays
           });
         }
         return await settingsResponse(
           context.config,
-          context.identity.organizationId,
+          context.identity().organizationId,
           settings,
           context.persistence
         );
@@ -89,7 +158,7 @@ builder.mutationFields((t) => ({
       if (!context.persistence) throw notFoundError("prompt_capture_settings_not_found");
       try {
         return await context.persistence.promptArtifacts.configure({
-          organizationId: context.identity.organizationId,
+          organizationId: context.identity().organizationId,
           ...promptCaptureSettings({
             promptCaptureMode: args.promptCaptureMode,
             retentionDays: args.retentionDays
@@ -108,8 +177,8 @@ builder.mutationFields((t) => ({
       if (!context.persistence) throw notFoundError("routing_configs_not_found");
       try {
         const created = await context.persistence.routingConfigAdmin.createConfig({
-          organizationId: context.identity.organizationId,
-          actorUserId: context.identity.userId,
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
           body: {
             name: args.input.name,
             slug: args.input.slug,
@@ -137,8 +206,8 @@ builder.mutationFields((t) => ({
       const configId = String(args.configId);
       try {
         await context.persistence.routingConfigAdmin.createVersion({
-          organizationId: context.identity.organizationId,
-          actorUserId: context.identity.userId,
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
           configId,
           body: { config: args.config }
         });
@@ -162,8 +231,8 @@ builder.mutationFields((t) => ({
       const configId = String(args.configId);
       try {
         await context.persistence.routingConfigAdmin.activateVersion({
-          organizationId: context.identity.organizationId,
-          actorUserId: context.identity.userId,
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
           configId,
           versionId: String(args.versionId)
         });
@@ -184,8 +253,8 @@ builder.mutationFields((t) => ({
       const configId = String(args.configId);
       try {
         await context.persistence.routingConfigAdmin.archiveConfig({
-          organizationId: context.identity.organizationId,
-          actorUserId: context.identity.userId,
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
           configId
         });
         const detail = await orgQueries(context)?.routingConfigDetail(configId);
@@ -204,8 +273,8 @@ builder.mutationFields((t) => ({
       if (!context.persistence) throw notFoundError("api_keys_not_found");
       try {
         const created = await context.persistence.apiKeyAdmin.createApiKey({
-          organizationId: context.identity.organizationId,
-          actorUserId: context.identity.userId,
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
           body: {
             name: args.input.name,
             scopes: args.input.scopes ?? undefined,
@@ -231,8 +300,8 @@ builder.mutationFields((t) => ({
       const apiKeyId = String(args.apiKeyId);
       try {
         await context.persistence.apiKeyAdmin.revokeApiKey({
-          organizationId: context.identity.organizationId,
-          actorUserId: context.identity.userId,
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
           apiKeyId
         });
         const detail = await orgQueries(context)?.apiKeyDetail(apiKeyId);
@@ -255,8 +324,8 @@ builder.mutationFields((t) => ({
       const apiKeyId = String(args.apiKeyId);
       try {
         await context.persistence.routingConfigAdmin.assignApiKeyRoutingConfig({
-          organizationId: context.identity.organizationId,
-          actorUserId: context.identity.userId,
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
           apiKeyId,
           body: { routingConfigId: args.routingConfigId ? String(args.routingConfigId) : null }
         });
@@ -276,8 +345,8 @@ builder.mutationFields((t) => ({
       if (!context.persistence) throw notFoundError("invitations_not_found");
       try {
         const created = await context.persistence.userAdmin.createInvitation({
-          organizationId: context.identity.organizationId,
-          actorUserId: context.identity.userId,
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
           body: {
             email: args.input.email,
             name: args.input.name ?? undefined,
@@ -289,10 +358,10 @@ builder.mutationFields((t) => ({
           context.config,
           context.emailService,
           {
-            organizationId: context.identity.organizationId,
+            organizationId: context.identity().organizationId,
             invitationId: created.invitationId,
             token: created.token,
-            inviterName: context.identity.name ?? context.identity.email
+            inviterName: context.identity().name ?? context.identity().email
           }
         );
         const detail = await orgQueries(context)?.invitationDetail(created.invitationId);
@@ -315,8 +384,8 @@ builder.mutationFields((t) => ({
       const invitationId = String(args.invitationId);
       try {
         const resent = await context.persistence.userAdmin.resendInvitation({
-          organizationId: context.identity.organizationId,
-          actorUserId: context.identity.userId,
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
           invitationId
         });
         const emailDelivery = await sendInvitationEmail(
@@ -324,10 +393,10 @@ builder.mutationFields((t) => ({
           context.config,
           context.emailService,
           {
-            organizationId: context.identity.organizationId,
+            organizationId: context.identity().organizationId,
             invitationId,
             token: resent.token,
-            inviterName: context.identity.name ?? context.identity.email
+            inviterName: context.identity().name ?? context.identity().email
           }
         );
         const detail = await orgQueries(context)?.invitationDetail(invitationId);
@@ -351,8 +420,8 @@ builder.mutationFields((t) => ({
       const invitationId = String(args.invitationId);
       try {
         await context.persistence.userAdmin.revokeInvitation({
-          organizationId: context.identity.organizationId,
-          actorUserId: context.identity.userId,
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
           invitationId
         });
         const detail = await orgQueries(context)?.invitationDetail(invitationId);
@@ -373,8 +442,8 @@ builder.mutationFields((t) => ({
       if (!context.persistence) throw notFoundError("member_not_found");
       try {
         return await context.persistence.userAdmin.updateMemberRole({
-          organizationId: context.identity.organizationId,
-          actorUserId: context.identity.userId,
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
           userId: String(args.userId),
           body: { role: args.role }
         });
@@ -391,8 +460,8 @@ builder.mutationFields((t) => ({
       if (!context.persistence) throw notFoundError("member_not_found");
       try {
         return await context.persistence.userAdmin.deactivateMember({
-          organizationId: context.identity.organizationId,
-          actorUserId: context.identity.userId,
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
           userId: String(args.userId)
         });
       } catch (error) {
@@ -408,8 +477,8 @@ builder.mutationFields((t) => ({
       if (!context.persistence) throw notFoundError("member_not_found");
       try {
         return await context.persistence.userAdmin.reactivateMember({
-          organizationId: context.identity.organizationId,
-          actorUserId: context.identity.userId,
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
           userId: String(args.userId)
         });
       } catch (error) {

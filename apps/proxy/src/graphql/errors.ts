@@ -9,8 +9,20 @@ const CODES: Record<number, string> = {
   401: "UNAUTHENTICATED",
   403: "FORBIDDEN",
   404: "NOT_FOUND",
-  409: "CONFLICT"
+  409: "CONFLICT",
+  410: "GONE"
 };
+
+// Drives the same HTTP 401 the REST endpoints returned, so the console's
+// redirect-to-login path and status assertions keep working unchanged.
+export function unauthenticatedError() {
+  return createGraphQLError("Unauthorized", {
+    extensions: {
+      code: "UNAUTHENTICATED",
+      http: { status: 401 }
+    }
+  });
+}
 
 function codeForStatus(statusCode: number) {
   return CODES[statusCode] ?? "INTERNAL_SERVER_ERROR";

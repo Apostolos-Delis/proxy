@@ -1,6 +1,6 @@
 import type { TypedDocumentString } from "./gql/graphql";
 
-const apiBase = import.meta.env.VITE_PROMPT_PROXY_API_BASE ?? "http://127.0.0.1:8787";
+export const apiBase = import.meta.env.VITE_PROMPT_PROXY_API_BASE ?? "http://127.0.0.1:8787";
 
 type GraphQLErrorPayload = {
   message: string;
@@ -23,15 +23,15 @@ export async function gqlFetch<TResult, TVariables>(
     },
     body: JSON.stringify({ query: document.toString(), variables })
   });
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
-  }
-  const payload = await response.json() as {
+  const payload = await response.json().catch(() => null) as {
     data?: TResult;
     errors?: GraphQLErrorPayload[];
-  };
-  if (payload.errors && payload.errors.length > 0) {
+  } | null;
+  if (payload?.errors && payload.errors.length > 0) {
     throw new Error(formatGraphQLError(payload.errors[0]));
+  }
+  if (!response.ok || !payload) {
+    throw new Error(`${response.status} ${response.statusText}`);
   }
   if (payload.data === undefined || payload.data === null) {
     throw new Error("GraphQL response contained no data.");

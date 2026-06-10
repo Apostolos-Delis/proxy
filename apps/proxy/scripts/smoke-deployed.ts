@@ -311,14 +311,19 @@ async function loginAdmin() {
   if (!adminEmail || !adminPassword) {
     throw new Error("admin smoke requires PROMPT_PROXY_DEPLOYED_ADMIN_COOKIE or PROMPT_PROXY_DEPLOYED_ADMIN_EMAIL/PROMPT_PROXY_DEPLOYED_ADMIN_PASSWORD. Set PROMPT_PROXY_DEPLOYED_SKIP_ADMIN=true to skip persistence checks.");
   }
-  const response = await fetch(`${baseUrl}/api/auth/login`, {
+  const response = await fetch(`${baseUrl}/admin/graphql`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: adminEmail, password: adminPassword }),
+    body: JSON.stringify({
+      query: "mutation Login($email: String!, $password: String!) { login(email: $email, password: $password) { organizationId } }",
+      variables: { email: adminEmail, password: adminPassword }
+    }),
     signal: AbortSignal.timeout(15000)
   });
   const body = await response.text();
   assertOk(response, body, "admin login");
+  const errors = recordArray(parseJson(body), "errors");
+  if (errors.length > 0) throw new Error(`admin login failed: ${JSON.stringify(errors[0])}`);
   const cookie = response.headers.get("set-cookie")?.split(";")[0];
   if (!cookie) throw new Error("admin login did not return a session cookie");
   return cookie;

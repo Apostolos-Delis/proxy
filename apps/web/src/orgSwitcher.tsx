@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
 
-import { fetchMe, switchOrganization, type AuthMe } from "./api";
+import { fetchMe, switchOrganization, type AuthMe } from "./session";
 import { PopoverShell } from "./table/PopoverShell";
 
 export function OrgSwitcher() {

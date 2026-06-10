@@ -1,3 +1,11 @@
+type AcceptedInvitation {
+  email: String!
+  ok: Boolean!
+  organizationId: String!
+  role: String!
+  userId: String!
+}
+
 type ApiKey {
   createdAt: String!
   expiresAt: String
@@ -150,6 +158,7 @@ enum MemberRole {
 }
 
 type Mutation {
+  acceptInvitation(name: String, token: String!): AcceptedInvitation!
   activateRoutingConfigVersion(configId: ID!, versionId: ID!): RoutingConfigDetail!
   archiveRoutingConfig(configId: ID!): RoutingConfigDetail!
   assignApiKeyRoutingConfig(apiKeyId: ID!, routingConfigId: ID): ApiKey!
@@ -159,10 +168,13 @@ type Mutation {
   createRoutingConfig(input: CreateRoutingConfigInput!): RoutingConfigDetail!
   createRoutingConfigVersion(config: JSON!, configId: ID!): RoutingConfigDetail!
   deactivateUser(userId: ID!): UserStatusResult!
+  login(email: String!, password: String!): Viewer!
+  logout: Boolean!
   reactivateUser(userId: ID!): UserStatusResult!
   resendInvitation(invitationId: ID!): InvitationActionResult!
   revokeApiKey(apiKeyId: ID!): ApiKey!
   revokeInvitation(invitationId: ID!): Invitation
+  switchOrganization(organizationId: ID!): Viewer!
   updateSettings(input: SettingsInput!): Settings!
   updateUserRole(role: MemberRole!, userId: ID!): UpdateUserRoleResult!
 }
@@ -341,6 +353,16 @@ type ProxyEvent {
   tenantId: String!
 }
 
+type PublicInvitation {
+  email: String!
+  expiresAt: String!
+  inviterName: String
+  name: String
+  organizationName: String!
+  role: String!
+  status: String!
+}
+
 type Query {
   apiKey(apiKeyId: ID!): ApiKey
   apiKeys: [ApiKey!]!
@@ -349,6 +371,7 @@ type Query {
   prompt(artifactId: ID!): PromptDetail
   promptAccessAudit: [PromptAccessAuditEntry!]!
   prompts(end: String, limit: Int, model: String, offset: Int, route: String, start: String, surface: String, userId: String): PromptPage!
+  publicInvitation(token: String!): PublicInvitation
   request(requestId: ID!): RequestDetail!
   requests: [RequestSummary!]!
   routingConfig(configId: ID!): RoutingConfigDetail

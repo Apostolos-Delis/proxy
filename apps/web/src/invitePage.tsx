@@ -3,21 +3,51 @@ import { Link } from "@tanstack/react-router";
 import { ArrowRight, CheckCircle2, MailX } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { acceptInvitation, resolveInvitation, type PublicInvitation } from "./api";
 import { formatDateTime } from "./format";
+import { graphql } from "./gql";
+import type { PublicInvitationQuery } from "./gql/graphql";
+import { gqlFetch } from "./graphql";
 import { Badge, ConsoleButton } from "./ui";
+
+const PublicInvitationDocument = graphql(`
+  query PublicInvitation($token: String!) {
+    publicInvitation(token: $token) {
+      organizationName
+      email
+      name
+      role
+      status
+      inviterName
+      expiresAt
+    }
+  }
+`);
+
+const AcceptInvitationDocument = graphql(`
+  mutation AcceptInvitation($token: String!, $name: String) {
+    acceptInvitation(token: $token, name: $name) {
+      ok
+      organizationId
+      userId
+      email
+      role
+    }
+  }
+`);
+
+type PublicInvitation = NonNullable<PublicInvitationQuery["publicInvitation"]>;
 
 export function InvitePage({ token }: { token: string }) {
   const query = useQuery({
     queryKey: ["invitation", token],
-    queryFn: () => resolveInvitation(token),
+    queryFn: async () => (await gqlFetch(PublicInvitationDocument, { token })).publicInvitation,
     retry: false
   });
 
   if (query.isLoading) {
     return <InviteShell heading="Invitation"><p className="invite-note">Checking invitation…</p></InviteShell>;
   }
-  const invitation = query.data?.invitation;
+  const invitation = query.data;
   if (!invitation) {
     return (
       <InviteShell heading="Invitation not found">
@@ -55,7 +85,8 @@ function InviteBody({ invitation, token }: { invitation: PublicInvitation; token
 function AcceptForm({ invitation, token }: { invitation: PublicInvitation; token: string }) {
   const [name, setName] = useState(invitation.name ?? "");
   const mutation = useMutation({
-    mutationFn: () => acceptInvitation(token, name.trim() || undefined)
+    mutationFn: async () =>
+      (await gqlFetch(AcceptInvitationDocument, { token, name: name.trim() || undefined })).acceptInvitation
   });
 
   if (mutation.isSuccess) {

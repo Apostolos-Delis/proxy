@@ -21,7 +21,6 @@ import { buildModelCatalog } from "./catalog.js";
 import { LlmClassifier } from "./classifier.js";
 import { EmailService } from "./email.js";
 import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStateGate } from "./events.js";
-import { viewerPayload } from "./graphql/context.js";
 import { registerAdminGraphQL } from "./graphql/route.js";
 import { BudgetService, SessionRouteStore } from "./policy.js";
 import { createPostgresPersistence } from "./persistence/index.js";
@@ -30,7 +29,6 @@ import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
 import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
-import { registerPublicInvitationRoutes } from "./publicInvitationRoutes.js";
 import type { Surface } from "./types.js";
 import { createId, headerValue, idempotencyFrom, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
@@ -46,7 +44,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   void app.register(cors, {
     origin: config.adminCorsOrigins,
     credentials: true,
-    methods: ["GET", "HEAD", "POST", "PATCH", "DELETE"]
+    methods: ["GET", "HEAD", "POST"]
   });
   const persistence = options.persistence ?? (config.databaseUrl
     ? createPostgresPersistence(config.databaseUrl, modelCatalog, config)
@@ -109,29 +107,10 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   );
   const projections = new ProjectionService(modelCatalog, config);
   const emailService = new EmailService(config, app.log);
-  registerPublicInvitationRoutes(app, { persistence });
   registerAdminGraphQL(app, { config, adminAuth, emailService, events, projections, persistence });
   wsProxy.register(app.server);
 
   app.get("/healthz", async () => ({ status: "ok" }));
-
-  app.post("/api/auth/login", async (request, reply) => {
-    const session = await adminAuth.login(request.body);
-    reply.header("set-cookie", adminAuth.sessionCookie(session.token, session.expiresAt));
-    return viewerPayload(session.identity, persistence);
-  });
-
-  app.post("/api/auth/logout", async (request, reply) => {
-    await adminAuth.logout(request.headers);
-    reply.header("set-cookie", adminAuth.clearCookie());
-    return { ok: true };
-  });
-
-  app.post("/api/auth/switch-organization", async (request, reply) => {
-    const session = await adminAuth.switchOrganization(request.headers, request.body);
-    reply.header("set-cookie", adminAuth.sessionCookie(session.token, session.expiresAt));
-    return viewerPayload(session.identity, persistence);
-  });
 
   app.get("/v1/models", async () => ({
     object: "list",

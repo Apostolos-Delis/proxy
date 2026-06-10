@@ -4,6 +4,13 @@ import { organizationMembers, organizations, requests } from "@prompt-proxy/db";
 
 import { adminGql, captureFixture, usageRequest, type PromptTestFixture } from "./promptTestFixture.js";
 
+const switchMutation = `mutation Switch($organizationId: ID!) {
+  switchOrganization(organizationId: $organizationId) {
+    organizationId
+    user { organizationId userId role }
+  }
+}`;
+
 describe("organization switching", () => {
   let activeFixture: PromptTestFixture | undefined;
 
@@ -31,15 +38,13 @@ describe("organization switching", () => {
   it("switches the session to another organization", async () => {
     const fixture = await setup("org_switch_happy");
 
-    const response = await fetch(`${fixture.proxyUrl}/api/auth/switch-organization`, {
-      method: "POST",
-      headers: { ...fixture.adminHeaders, "content-type": "application/json" },
-      body: JSON.stringify({ organizationId: "org_switch_happy-sandbox" })
+    const response = await adminGql(fixture.proxyUrl, fixture.adminHeaders, switchMutation, {
+      organizationId: "org_switch_happy-sandbox"
     });
-    const body = await response.json();
-    const newCookie = response.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const body = response.data?.switchOrganization;
+    const newCookie = response.setCookie?.split(";")[0] ?? "";
 
-    expect(response.status).toBe(200);
+    expect(response.errors).toBeUndefined();
     expect(body.organizationId).toBe("org_switch_happy-sandbox");
     expect(body.user).toEqual(expect.objectContaining({
       organizationId: "org_switch_happy-sandbox",
@@ -78,19 +83,16 @@ describe("organization switching", () => {
     });
 
     for (const organizationId of ["org_missing", "org_no_membership", "org_deactivated"]) {
-      const response = await fetch(`${fixture.proxyUrl}/api/auth/switch-organization`, {
-        method: "POST",
-        headers: { ...fixture.adminHeaders, "content-type": "application/json" },
-        body: JSON.stringify({ organizationId })
+      const response = await adminGql(fixture.proxyUrl, fixture.adminHeaders, switchMutation, {
+        organizationId
       });
-      expect(response.status).toBe(403);
+      expect(response.errors?.[0]?.message).toBe("Forbidden");
+      expect(response.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
     }
 
-    const invalidBody = await fetch(`${fixture.proxyUrl}/api/auth/switch-organization`, {
-      method: "POST",
-      headers: { ...fixture.adminHeaders, "content-type": "application/json" },
-      body: JSON.stringify({})
-    });
+    // organizationId is a required argument, so a missing value fails GraphQL
+    // validation before the resolver runs.
+    const invalidBody = await adminGql(fixture.proxyUrl, fixture.adminHeaders, switchMutation, {});
     expect(invalidBody.status).toBe(400);
 
     const me = (await adminGql(
@@ -115,12 +117,10 @@ describe("organization switching", () => {
     )).data?.requests;
     expect(primaryRequests.map((item: { requestId: string }) => item.requestId)).toEqual(["request_primary"]);
 
-    const switched = await fetch(`${fixture.proxyUrl}/api/auth/switch-organization`, {
-      method: "POST",
-      headers: { ...fixture.adminHeaders, "content-type": "application/json" },
-      body: JSON.stringify({ organizationId: "org_switch_scope-sandbox" })
+    const switched = await adminGql(fixture.proxyUrl, fixture.adminHeaders, switchMutation, {
+      organizationId: "org_switch_scope-sandbox"
     });
-    const newCookie = switched.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const newCookie = switched.setCookie?.split(";")[0] ?? "";
 
     const sandboxRequests = (await adminGql(
       fixture.proxyUrl,

@@ -54,6 +54,30 @@ const reactivateUserMutation = `mutation ReactivateUser($userId: ID!) {
   reactivateUser(userId: $userId) { userId status }
 }`;
 
+const publicInvitationQuery = `query PublicInvitation($token: String!) {
+  publicInvitation(token: $token) {
+    organizationName
+    email
+    name
+    role
+    status
+    inviterName
+    expiresAt
+  }
+}`;
+
+const acceptInvitationMutation = `mutation AcceptInvitation($token: String!, $name: String) {
+  acceptInvitation(token: $token, name: $name) { ok organizationId userId email role }
+}`;
+
+function resolveInvite(fixture: PromptTestFixture, token: string) {
+  return adminGql(fixture.proxyUrl, {}, publicInvitationQuery, { token });
+}
+
+function acceptInvite(fixture: PromptTestFixture, token: string, name?: string) {
+  return adminGql(fixture.proxyUrl, {}, acceptInvitationMutation, name ? { token, name } : { token });
+}
+
 describe("user admin APIs", () => {
   let activeFixture: PromptTestFixture | undefined;
   let closeMock: (() => Promise<void>) | undefined;
@@ -114,10 +138,9 @@ describe("user admin APIs", () => {
     expect(serializedList).not.toContain(sha256(token));
     expect(serializedList).not.toContain("tokenHash");
 
-    const resolved = await publicPost(fixture, "/api/invitations/resolve", { token });
-    const resolvedBody = await resolved.json();
-    expect(resolved.status).toBe(200);
-    expect(resolvedBody.invitation).toEqual(expect.objectContaining({
+    const resolved = await resolveInvite(fixture, token);
+    expect(resolved.errors).toBeUndefined();
+    expect(resolved.data?.publicInvitation).toEqual(expect.objectContaining({
       organizationName: "org_user_admin_invite",
       email: "ada@example.com",
       role: "member",
@@ -125,9 +148,9 @@ describe("user admin APIs", () => {
       inviterName: "Local User"
     }));
 
-    const accepted = await publicPost(fixture, "/api/invitations/accept", { token, name: "Ada L" });
-    const acceptedBody = await accepted.json();
-    expect(accepted.status).toBe(200);
+    const accepted = await acceptInvite(fixture, token, "Ada L");
+    const acceptedBody = accepted.data?.acceptInvitation;
+    expect(accepted.errors).toBeUndefined();
     expect(acceptedBody).toEqual(expect.objectContaining({
       ok: true,
       organizationId: "org_user_admin_invite",
@@ -146,9 +169,9 @@ describe("user admin APIs", () => {
     expect(userRow).toEqual(expect.objectContaining({ id: acceptedBody.userId, name: "Ada L" }));
     expect(memberRow).toEqual(expect.objectContaining({ role: "member", status: "active" }));
 
-    const reaccepted = await publicPost(fixture, "/api/invitations/accept", { token });
-    expect(reaccepted.status).toBe(409);
-    expect((await reaccepted.json()).error).toBe("invitation_already_accepted");
+    const reaccepted = await acceptInvite(fixture, token);
+    expect(reaccepted.errors?.[0]?.message).toBe("invitation_already_accepted");
+    expect(reaccepted.errors?.[0]?.extensions?.code).toBe("CONFLICT");
 
     const usersResult = await adminGql(fixture.proxyUrl, fixture.adminHeaders, usersQuery);
     expect(usersResult.data?.users).toEqual(expect.arrayContaining([
@@ -188,13 +211,14 @@ describe("user admin APIs", () => {
     expect(resent.errors).toBeUndefined();
     expect(secondToken).not.toBe(firstToken);
 
-    const staleResolve = await publicPost(fixture, "/api/invitations/resolve", { token: firstToken });
-    expect(staleResolve.status).toBe(404);
-    const staleAccept = await publicPost(fixture, "/api/invitations/accept", { token: firstToken });
-    expect(staleAccept.status).toBe(404);
+    const staleResolve = await resolveInvite(fixture, firstToken);
+    expect(staleResolve.data?.publicInvitation).toBeNull();
+    const staleAccept = await acceptInvite(fixture, firstToken);
+    expect(staleAccept.errors?.[0]?.message).toBe("invitation_not_found");
+    expect(staleAccept.errors?.[0]?.extensions?.code).toBe("NOT_FOUND");
 
-    const freshAccept = await publicPost(fixture, "/api/invitations/accept", { token: secondToken });
-    expect(freshAccept.status).toBe(200);
+    const freshAccept = await acceptInvite(fixture, secondToken);
+    expect(freshAccept.errors).toBeUndefined();
 
     const second = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, createInvitationMutation, {
       input: { email: "revoke@example.com", role: "member" }
@@ -206,9 +230,9 @@ describe("user admin APIs", () => {
     expect(revoked.errors).toBeUndefined();
     expect(revoked.data?.revokeInvitation.status).toBe("revoked");
 
-    const revokedAccept = await publicPost(fixture, "/api/invitations/accept", { token: revokeToken });
-    expect(revokedAccept.status).toBe(410);
-    expect((await revokedAccept.json()).error).toBe("invitation_revoked");
+    const revokedAccept = await acceptInvite(fixture, revokeToken);
+    expect(revokedAccept.errors?.[0]?.message).toBe("invitation_revoked");
+    expect(revokedAccept.errors?.[0]?.extensions?.code).toBe("GONE");
     const revokedResend = await adminGql(fixture.proxyUrl, fixture.adminHeaders, resendInvitationMutation, {
       invitationId: second.invitation.id
     });
@@ -226,20 +250,21 @@ describe("user admin APIs", () => {
       invitedByUserId: "local-user",
       expiresAt: new Date(Date.now() - 1000)
     });
-    const expiredResolve = await publicPost(fixture, "/api/invitations/resolve", { token: "expired-token" });
-    expect((await expiredResolve.json()).invitation.status).toBe("expired");
-    const expiredAccept = await publicPost(fixture, "/api/invitations/accept", { token: "expired-token" });
-    expect(expiredAccept.status).toBe(410);
-    expect((await expiredAccept.json()).error).toBe("invitation_expired");
+    const expiredResolve = await resolveInvite(fixture, "expired-token");
+    expect(expiredResolve.data?.publicInvitation?.status).toBe("expired");
+    const expiredAccept = await acceptInvite(fixture, "expired-token");
+    expect(expiredAccept.errors?.[0]?.message).toBe("invitation_expired");
+    expect(expiredAccept.errors?.[0]?.extensions?.code).toBe("GONE");
 
     const renewed = await adminGql(fixture.proxyUrl, fixture.adminHeaders, resendInvitationMutation, {
       invitationId: "invitation_expired"
     });
     expect(renewed.errors).toBeUndefined();
-    const renewedAccept = await publicPost(fixture, "/api/invitations/accept", {
-      token: tokenFromInviteUrl(renewed.data?.resendInvitation.inviteUrl)
-    });
-    expect(renewedAccept.status).toBe(200);
+    const renewedAccept = await acceptInvite(
+      fixture,
+      tokenFromInviteUrl(renewed.data?.resendInvitation.inviteUrl)
+    );
+    expect(renewedAccept.errors).toBeUndefined();
   });
 
   it("changes member roles with last-owner protection", async () => {
@@ -417,20 +442,9 @@ async function acceptInvitedUser(fixture: PromptTestFixture, email: string, role
   const created = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, createInvitationMutation, {
     input: { email, role }
   })).data?.createInvitation;
-  const accepted = await publicPost(fixture, "/api/invitations/accept", {
-    token: tokenFromInviteUrl(created.inviteUrl)
-  });
-  expect(accepted.status).toBe(200);
-  const body = await accepted.json();
-  return body.userId as string;
-}
-
-function publicPost(fixture: PromptTestFixture, path: string, body: unknown) {
-  return fetch(`${fixture.proxyUrl}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body)
-  });
+  const accepted = await acceptInvite(fixture, tokenFromInviteUrl(created.inviteUrl));
+  expect(accepted.errors).toBeUndefined();
+  return accepted.data?.acceptInvitation.userId as string;
 }
 
 function tokenFromInviteUrl(inviteUrl: string) {

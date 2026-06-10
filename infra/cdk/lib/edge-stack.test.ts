@@ -21,7 +21,6 @@ describe("PromptProxyEdgeStack", () => {
         CacheBehaviors: Match.arrayWith([
           Match.objectLike(apiBehavior("/healthz")),
           Match.objectLike(apiBehavior("/v1/*")),
-          Match.objectLike(apiBehavior("/api/*")),
           Match.objectLike(apiBehavior("/admin/*"))
         ])
       })

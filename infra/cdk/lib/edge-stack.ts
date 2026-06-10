@@ -64,7 +64,7 @@ export class PromptProxyEdgeStack extends Stack {
 function handler(event) {
   var request = event.request;
   var uri = request.uri;
-  if (uri.indexOf("/api/") === 0 || uri.indexOf("/admin/") === 0 || uri.indexOf("/v1/") === 0) {
+  if (uri.indexOf("/admin/") === 0 || uri.indexOf("/v1/") === 0) {
     return request;
   }
   if (uri === "/" || uri.indexOf(".") === -1) {
@@ -95,7 +95,6 @@ function handler(event) {
       additionalBehaviors: {
         "/healthz": apiBehavior,
         "/v1/*": apiBehavior,
-        "/api/*": apiBehavior,
         "/admin/*": apiBehavior
       }
     });

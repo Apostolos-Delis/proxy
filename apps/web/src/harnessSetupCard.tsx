@@ -1,7 +1,7 @@
 import { Check, Copy, TerminalSquare } from "lucide-react";
 import { useState } from "react";
 
-import { apiBase } from "./api";
+import { apiBase } from "./graphql";
 import { GlassCard, Segmented } from "./ui";
 
 type Harness = "claude-code" | "codex";
