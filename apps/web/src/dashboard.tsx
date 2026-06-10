@@ -79,36 +79,6 @@ export function InspectorPanel({ title, subtitle, rows, action }: {
   );
 }
 
-export function FilterMenu({ icon, label, open, active, options, onOpenChange, onSelect }: {
-  icon?: ReactNode;
-  label: string;
-  open: boolean;
-  active: boolean;
-  options: string[];
-  onOpenChange: (value: boolean) => void;
-  onSelect: (value: string) => void;
-}) {
-  return (
-    <div className="filter-menu">
-      <button className={`chip${active ? " active" : ""}`} type="button" onClick={() => onOpenChange(!open)}>
-        {icon}{label}
-      </button>
-      {open ? (
-        <div className="filter-popover">
-          {options.map((option) => (
-            <button key={option} type="button" onClick={() => {
-              onSelect(option);
-              onOpenChange(false);
-            }}>
-              {option === "all" ? "All" : option}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export function downloadJson(filename: string, value: unknown) {
   const payload = encodeURIComponent(JSON.stringify(value, null, 2));
   window.open(`data:application/json;charset=utf-8,${payload}`, filename, "noopener,noreferrer");

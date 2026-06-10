@@ -62,16 +62,6 @@
   stroke-linejoin: round;
 }
 
-.area-chart .recharts-area-dot {
-  cursor: pointer;
-}
-
-.selected-area-dot {
-  fill: var(--bg-0);
-  stroke: var(--accent-2);
-  stroke-width: 2;
-}
-
 .chart-controls {
   display: flex;
   align-items: center;
