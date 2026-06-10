@@ -11,7 +11,7 @@ import {
 import { ApplicationLoadBalancer } from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config";
+import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
 
 export type PromptProxyNetworkStackProps = StackProps & {
   config: PromptProxyEnvironmentConfig;

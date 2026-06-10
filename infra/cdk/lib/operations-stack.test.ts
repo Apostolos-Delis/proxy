@@ -1,9 +1,9 @@
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, it } from "vitest";
 
-import { stackName } from "./config";
-import { PromptProxyOperationsStack } from "./operations-stack";
-import { createRuntimeStacks } from "./test-helpers";
+import { stackName } from "./config.js";
+import { PromptProxyOperationsStack } from "./operations-stack.js";
+import { createRuntimeStacks } from "./test-helpers.js";
 
 describe("PromptProxyOperationsStack", () => {
   it("creates a public-subnet operations task for migrations and seed overrides", () => {

@@ -10,8 +10,8 @@ import {
 import { Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config";
-import type { PromptProxyNetworkStack } from "./network-stack";
+import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
+import type { PromptProxyNetworkStack } from "./network-stack.js";
 
 export type PromptProxyDatabaseStackProps = StackProps & {
   config: PromptProxyEnvironmentConfig;

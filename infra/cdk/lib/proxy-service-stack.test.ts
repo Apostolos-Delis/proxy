@@ -1,7 +1,7 @@
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, it } from "vitest";
 
-import { createRuntimeStacks } from "./test-helpers";
+import { createRuntimeStacks } from "./test-helpers.js";
 
 describe("PromptProxyServiceStack", () => {
   it("runs the proxy behind the ALB with public-subnet egress", () => {
