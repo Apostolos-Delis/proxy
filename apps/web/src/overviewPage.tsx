@@ -3,12 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowUp, ArrowUpRight, Coins, Download, KeyRound, Send, Sparkles, Zap } from "lucide-react";
 import { useState } from "react";
 
-import { fetchOverview, fetchRequests, fetchUsage } from "./api";
+import { fetchMe, fetchOverview, fetchRequests, fetchUsage } from "./api";
 import { AreaChart, type ChartSelection, MiniBars, Sparkline } from "./charts";
-import { modelRowsFromUsage, seriesFromRequests } from "./consoleData";
+import { modelRowsFromUsage, periodDelta, seriesFromRequests } from "./consoleData";
 import { downloadJson, InspectorPanel, InteractiveStatCard, type InspectorRow } from "./dashboard";
 import { formatCompact, formatInteger, formatMoney, formatPercent } from "./format";
-import { ConsoleButton, GlassCard, PageState, ProgressMeter, Segmented } from "./ui";
+import { ConsoleButton, GlassCard, PageSkeleton, PageState, ProgressMeter, Segmented } from "./ui";
 
 type OverviewSelection = {
   title: string;
@@ -30,10 +30,11 @@ export function OverviewPage() {
   const overviewQuery = useQuery({ queryKey: ["overview"], queryFn: fetchOverview });
   const requestsQuery = useQuery({ queryKey: ["requests"], queryFn: fetchRequests });
   const modelUsageQuery = useQuery({ queryKey: ["usage", "model"], queryFn: () => fetchUsage("model") });
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: fetchMe });
   const loading = overviewQuery.isLoading || requestsQuery.isLoading || modelUsageQuery.isLoading;
   const error = overviewQuery.error ?? requestsQuery.error ?? modelUsageQuery.error;
 
-  if (loading) return <PageState title="Overview" label="Loading overview" />;
+  if (loading) return <PageSkeleton blocks={[186, 380, 150]} />;
   if (error) return <PageState title="Overview" label={error.message} />;
   if (!overviewQuery.data) return <PageState title="Overview" label="No overview data" />;
 
@@ -43,6 +44,10 @@ export function OverviewPage() {
   const spendSeries = seriesFromRequests(requests, "cost", days);
   const tokenSeries = seriesFromRequests(requests, "tokens", days);
   const requestSeries = seriesFromRequests(requests, "requests", days);
+  // Deltas compare the last 7 days against the 7 days before, independent of the selected range.
+  const tokenDelta = periodDelta(seriesFromRequests(requests, "tokens", 14));
+  const requestDelta = periodDelta(seriesFromRequests(requests, "requests", 14));
+  const spendDelta = periodDelta(seriesFromRequests(requests, "cost", 14));
   const modelRows = modelRowsFromUsage(modelUsageQuery.data?.data ?? []);
   const comparison = Math.max(overview.cost.baseline, overview.cost.selected);
   const comparisonPct = comparison > 0 ? Math.min(100, (overview.cost.selected / comparison) * 100) : 0;
@@ -89,7 +94,7 @@ export function OverviewPage() {
     <div className="page page-enter">
       <div className="row gap-12 page-hero-row">
         <div>
-          <div className="hero-greeting">Good evening, Apostolos</div>
+          <div className="hero-greeting">{greetingFor(meQuery.data?.user)}</div>
           <div className="muted">Here's what's happening across Proxy Labs.</div>
         </div>
         <div className="row gap-8">
@@ -101,17 +106,17 @@ export function OverviewPage() {
 
       <div className="overview-kpis">
         <InteractiveStatCard
-          metric={{ label: "Total tokens", value: formatCompact(overview.totals.totalTokens), icon: <Zap />, delta: 18.4 }}
+          metric={{ label: "Total tokens", value: formatCompact(overview.totals.totalTokens), icon: <Zap />, delta: tokenDelta }}
           chart={<Sparkline data={tokenSeries.slice(-7)} />}
           to="/usage"
         />
         <InteractiveStatCard
-          metric={{ label: "Requests", value: formatInteger(overview.requestCount), icon: <Send />, delta: 9.1 }}
+          metric={{ label: "Requests", value: formatInteger(overview.requestCount), icon: <Send />, delta: requestDelta }}
           chart={<MiniBars data={requestSeries.slice(-7)} />}
           to="/logs"
         />
         <InteractiveStatCard
-          metric={{ label: "Spend", value: formatMoney(overview.cost.selected, 0), icon: <Coins />, delta: -4.2 }}
+          metric={{ label: "Spend", value: formatMoney(overview.cost.selected, 0), icon: <Coins />, delta: spendDelta, deltaPositiveIsGood: false }}
           chart={<Sparkline data={spendSeries.slice(-7)} />}
           to="/billing"
         />
@@ -137,7 +142,7 @@ export function OverviewPage() {
         </GlassCard>
 
         <GlassCard>
-          <div className="card-title">June spend</div>
+          <div className="card-title">Total spend</div>
           <div className="stat-value spend-value">{formatMoney(overview.cost.selected)}</div>
           <div className="stat-sub">against {formatMoney(overview.cost.baseline)} baseline</div>
           <ProgressMeter value={overview.cost.selected} max={comparison} />
@@ -199,6 +204,15 @@ export function OverviewPage() {
 
 function rangeLabel(value: "1" | "7" | "30" | "90") {
   return value === "1" ? "24h" : `${value}d`;
+}
+
+function greetingFor(user?: { name?: string; email?: string }) {
+  const hour = new Date().getHours();
+  let timeOfDay = "evening";
+  if (hour < 12) timeOfDay = "morning";
+  else if (hour < 18) timeOfDay = "afternoon";
+  const name = user?.name ?? user?.email?.split("@")[0];
+  return name ? `Good ${timeOfDay}, ${name.split(/\s+/)[0]}` : `Good ${timeOfDay}`;
 }
 
 function chartSelection(selection: ChartSelection): OverviewSelection {

@@ -23,12 +23,16 @@ export const usageDimensions: { value: UsageDimension; label: string }[] = [
 ];
 
 export function UsageSummaryStrip({ totals }: { totals: UsageGroup }) {
-  const averageCost = totals.cost.selected / Math.max(totals.requestCount, 1);
+  const requestCount = Math.max(totals.requestCount, 1);
+  // Average spend per request, falling back to tokens while pricing is unset and every cost is $0.
+  const average = totals.cost.selected > 0
+    ? formatMoney(totals.cost.selected / requestCount)
+    : `${formatCompact(totals.usage.totalTokens / requestCount)} tok`;
   return (
     <div className="usage-summary-strip">
       <Summary label="Requests" value={formatInteger(totals.requestCount)} />
       <Summary label="Tokens" value={formatCompact(totals.usage.totalTokens)} />
-      <Summary label="Avg / request" value={formatMoney(averageCost)} />
+      <Summary label="Avg / request" value={average} />
       <Summary label="Failure rate" value={formatPercent(totals.failureRate)} tone={totals.failureRate > 0 ? "danger-text" : undefined} />
     </div>
   );

@@ -79,6 +79,11 @@ export function ConsoleTable<TData>({
   const table = useReactTable({
     data: visibleData,
     columns,
+    // Callers pass freshly built data/columns arrays on every render. TanStack's auto-reset
+    // queues a pagination state update whenever data identity changes, which re-renders the
+    // caller, which builds a new array again — an unbounded microtask loop that freezes the
+    // page. Page index is reset explicitly in the search/filter/view handlers instead.
+    autoResetAll: false,
     columnResizeMode: "onChange",
     defaultColumn: { minSize: 96, size: 180, maxSize: 680 },
     state: { sorting, columnVisibility, columnSizing, pagination },

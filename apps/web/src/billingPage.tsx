@@ -5,7 +5,7 @@ import { useState } from "react";
 import { fetchOverview, fetchSettings } from "./api";
 import { InspectorPanel, type InspectorRow } from "./dashboard";
 import { formatMoney } from "./format";
-import { GlassCard, JsonPanel, PageState, PageTitle, ProgressMeter } from "./ui";
+import { GlassCard, JsonPanel, PageSkeleton, PageState, PageTitle, ProgressMeter } from "./ui";
 
 type BillingSelection = {
   title: string;
@@ -24,7 +24,7 @@ export function BillingPage() {
   const loading = overviewQuery.isLoading || settingsQuery.isLoading;
   const error = overviewQuery.error ?? settingsQuery.error;
 
-  if (loading) return <PageState title="Billing" label="Loading billing" />;
+  if (loading) return <PageSkeleton blocks={[150, 280, 160]} />;
   if (error) return <PageState title="Billing" label={error.message} />;
 
   const overview = overviewQuery.data;

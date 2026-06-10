@@ -1,3 +1,4 @@
+import { BarChart3 } from "lucide-react";
 import {
   Area,
   AreaChart as RechartsAreaChart,
@@ -13,6 +14,8 @@ import {
   XAxis,
   YAxis
 } from "recharts";
+
+import { formatCompact } from "./format";
 
 type Point = {
   label: string;
@@ -34,24 +37,40 @@ type InteractiveChartProps = {
   valueFormatter?: (value: number) => string;
 };
 
-export function SpendBaselineChart({ data, baseline, height = 300, valueFormatter }: {
+export function SpendBaselineChart({ data, baseline, height = 300, valueFormatter, tickFormatter, zeroNote }: {
   data: Point[];
   baseline: Point[];
   height?: number;
   valueFormatter?: (value: number) => string;
+  tickFormatter?: (value: number) => string;
+  zeroNote?: string;
 }) {
   const rows = chartData(data).map((row, index) => ({ ...row, baseline: baseline[index]?.value ?? 0 }));
   if (rows.length === 0) return <EmptyChart height={height} />;
   const hasBaseline = rows.some((row) => row.baseline > 0);
+  const allZero = rows.every((row) => row.value === 0 && row.baseline === 0);
 
   return (
-    <ChartFrame height={height} className="spend-chart">
+    <ChartFrame height={height} className="spend-chart" note={allZero ? zeroNote ?? "Nothing recorded in this window" : undefined}>
       <ComposedChart data={rows} margin={{ top: 16, right: 10, bottom: 8, left: 4 }} barCategoryGap="28%">
+        <defs>
+          <linearGradient id="proxy-bar-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.95} />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.45} />
+          </linearGradient>
+        </defs>
         <CartesianGrid vertical={false} />
-        <XAxis dataKey="label" tickLine={false} axisLine={false} interval="preserveStartEnd" />
-        <YAxis hide domain={[0, "dataMax"]} />
+        <XAxis dataKey="label" tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={26} />
+        <YAxis
+          width={48}
+          tickLine={false}
+          axisLine={false}
+          tickCount={4}
+          domain={[0, "auto"]}
+          tickFormatter={tickFormatter ?? formatCompact}
+        />
         <Tooltip cursor={{ fill: "var(--glass-hover)" }} content={<SpendTooltip valueFormatter={valueFormatter} />} />
-        <Bar dataKey="value" radius={[4, 4, 2, 2]} className="chart-cell" />
+        <Bar dataKey="value" radius={[4, 4, 2, 2]} fill="url(#proxy-bar-fill)" maxBarSize={36} className="chart-cell" />
         {hasBaseline ? (
           <Line dataKey="baseline" type="stepAfter" dot={false} strokeWidth={1.5} isAnimationActive={false} className="baseline-line" />
         ) : null}
@@ -91,7 +110,7 @@ export function MiniBars({ data, height = 42 }: { data: Point[] | number[]; widt
     <ChartFrame height={height} className="mini-bars-chart">
       <RechartsBarChart data={rows} margin={{ top: 2, right: 0, bottom: 0, left: 0 }} barCategoryGap="24%">
         <YAxis hide domain={[0, "dataMax"]} />
-        <Bar dataKey="value" radius={[2, 2, 1, 1]} isAnimationActive={false} />
+        <Bar dataKey="value" radius={[2, 2, 1, 1]} fill="var(--accent)" isAnimationActive={false} />
       </RechartsBarChart>
     </ChartFrame>
   );
@@ -116,10 +135,12 @@ export function AreaChart({
   height = 310,
   selectedIndex,
   onSelect,
-  valueFormatter
+  valueFormatter,
+  tickFormatter
 }: {
   data: Point[];
   height?: number;
+  tickFormatter?: (value: number) => string;
 } & InteractiveChartProps) {
   const rows = chartData(data);
   if (rows.length === 0) return <EmptyChart height={height} />;
@@ -135,8 +156,15 @@ export function AreaChart({
           </linearGradient>
         </defs>
         <CartesianGrid vertical={false} />
-        <XAxis dataKey="label" tickLine={false} axisLine={false} interval="preserveStartEnd" />
-        <YAxis hide domain={["dataMin", "dataMax"]} />
+        <XAxis dataKey="label" tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={26} />
+        <YAxis
+          width={48}
+          tickLine={false}
+          axisLine={false}
+          tickCount={4}
+          domain={[0, "auto"]}
+          tickFormatter={tickFormatter ?? formatCompact}
+        />
         <Tooltip cursor={{ stroke: "var(--accent-2)", strokeWidth: 1 }} content={<ChartTooltip valueFormatter={valueFormatter} />} />
         <Area dataKey="value" type="monotone" fill="url(#proxy-area-fill)" stroke="var(--accent)" strokeWidth={3} activeDot={{ r: 5 }} dot={false} />
         {selectedPoint ? <ReferenceDot x={selectedPoint.label} y={selectedPoint.value} r={5} className="selected-area-dot" /> : null}
@@ -145,12 +173,18 @@ export function AreaChart({
   );
 }
 
-function ChartFrame({ children, height, className = "" }: { children: React.ReactNode; height: number; className?: string }) {
+function ChartFrame({ children, height, className = "", note }: {
+  children: React.ReactNode;
+  height: number;
+  className?: string;
+  note?: string;
+}) {
   return (
     <div className={`chart-frame ${className}`} style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         {children}
       </ResponsiveContainer>
+      {note ? <div className="chart-zero-note">{note}</div> : null}
     </div>
   );
 }
@@ -158,7 +192,9 @@ function ChartFrame({ children, height, className = "" }: { children: React.Reac
 function EmptyChart({ height }: { height: number }) {
   return (
     <div className="chart-frame empty-chart" style={{ height }}>
-      <span>No request data yet</span>
+      <BarChart3 />
+      <strong>No request data yet</strong>
+      <span>Traffic through the proxy will chart here automatically.</span>
     </div>
   );
 }
