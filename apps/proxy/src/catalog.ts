@@ -150,7 +150,7 @@ function anthropicModel(
 }
 
 function model(
-  config: AppConfig,
+  _config: AppConfig,
   id: string,
   provider: Provider,
   upstreamModel: string,
@@ -158,10 +158,6 @@ function model(
   supportsMessages: boolean,
   efforts: ReasoningEffort[]
 ): ModelCatalogEntry {
-  const cost = config.modelCosts[upstreamModel] ?? {
-    inputCostPerMtok: 0,
-    outputCostPerMtok: 0
-  };
   return Object.freeze({
     id,
     provider,
@@ -173,8 +169,6 @@ function model(
     supportsReasoning: true,
     supportedReasoningEfforts: Object.freeze([...efforts]),
     supportsVerbosity: provider === "openai",
-    contextWindow: 400000,
-    inputCostPerMtok: cost.inputCostPerMtok,
-    outputCostPerMtok: cost.outputCostPerMtok
+    contextWindow: 400000
   });
 }

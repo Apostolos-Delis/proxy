@@ -12,6 +12,7 @@ import {
   UpdateUserRoleResult,
   UserStatusResult
 } from "./types/invitations.js";
+import { ModelPricingEntry } from "./types/pricing.js";
 import { ApiKey, CreateApiKeyResult, ProviderAccount, RoutingConfigDetail } from "./types/routing.js";
 import { PromptCaptureConfig, Settings, SettingsInput } from "./types/settings.js";
 import { Viewer, WorkspaceSummary } from "./types/viewer.js";
@@ -53,6 +54,17 @@ const CreateInvitationInput = builder.inputType("CreateInvitationInput", {
     email: t.string({ required: true }),
     name: t.string(),
     role: t.field({ type: MemberRole, required: true })
+  })
+});
+
+const SetModelPricingInput = builder.inputType("SetModelPricingInput", {
+  fields: (t) => ({
+    provider: t.string({ required: true }),
+    model: t.string({ required: true }),
+    inputCostPerMtok: t.float({ required: true }),
+    outputCostPerMtok: t.float({ required: true }),
+    cacheReadCostPerMtok: t.float(),
+    cacheWriteCostPerMtok: t.float()
   })
 });
 
@@ -227,6 +239,59 @@ builder.mutationFields((t) => ({
             retentionDays: args.retentionDays
           })
         });
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  setModelPricing: t.field({
+    type: [ModelPricingEntry],
+    args: { input: t.arg({ type: SetModelPricingInput, required: true }) },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (!context.persistence || !queries) throw notFoundError("model_pricing_unavailable");
+      try {
+        await context.persistence.modelPricingAdmin.setPricing({
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
+          body: {
+            provider: args.input.provider,
+            model: args.input.model,
+            inputCostPerMtok: args.input.inputCostPerMtok,
+            outputCostPerMtok: args.input.outputCostPerMtok,
+            ...(args.input.cacheReadCostPerMtok == null ? {} : { cacheReadCostPerMtok: args.input.cacheReadCostPerMtok }),
+            ...(args.input.cacheWriteCostPerMtok == null ? {} : { cacheWriteCostPerMtok: args.input.cacheWriteCostPerMtok })
+          }
+        });
+        queries.invalidateModelPricing();
+        return await queries.modelPricing();
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  clearModelPricing: t.field({
+    type: [ModelPricingEntry],
+    args: {
+      provider: t.arg.string({ required: true }),
+      model: t.arg.string({ required: true })
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (!context.persistence || !queries) throw notFoundError("model_pricing_unavailable");
+      try {
+        await context.persistence.modelPricingAdmin.clearPricing({
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
+          body: {
+            provider: args.provider,
+            model: args.model
+          }
+        });
+        queries.invalidateModelPricing();
+        return await queries.modelPricing();
       } catch (error) {
         mapAdminError(error);
       }

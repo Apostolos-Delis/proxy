@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { buildModelPricingTable } from "./pricing.js";
 import {
   readSettingsFileSync,
   settingsPathFromEnv,
@@ -56,7 +57,9 @@ const modelCostsSchema = z.preprocess((value) => {
   return JSON.parse(value);
 }, z.record(z.string(), z.object({
   inputCostPerMtok: z.coerce.number().nonnegative().default(0),
-  outputCostPerMtok: z.coerce.number().nonnegative().default(0)
+  outputCostPerMtok: z.coerce.number().nonnegative().default(0),
+  cacheReadCostPerMtok: z.coerce.number().nonnegative().optional(),
+  cacheWriteCostPerMtok: z.coerce.number().nonnegative().optional()
 })).default({}));
 
 const configSchema = z.object({
@@ -156,7 +159,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     budgetUserEstimatedInputLimits: parsed.BUDGET_USER_ESTIMATED_INPUT_LIMITS,
     budgetTeamEstimatedInputLimits: parsed.BUDGET_TEAM_ESTIMATED_INPUT_LIMITS,
     budgetRouteEstimatedInputLimits: parsed.BUDGET_ROUTE_ESTIMATED_INPUT_LIMITS as Partial<Record<RouteName, number>>,
-    modelCosts: parsed.MODEL_COSTS_JSON,
+    modelCosts: buildModelPricingTable(parsed.MODEL_COSTS_JSON),
+    modelCostsFromEnv: Object.keys(parsed.MODEL_COSTS_JSON),
     routeQualityLowConfidenceThreshold: parsed.ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD,
     eventStorePath: parsed.EVENT_STORE_PATH,
     databaseUrl: parsed.DATABASE_URL,

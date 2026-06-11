@@ -1,9 +1,11 @@
+import { compareModelPricingEntries, staticPricingEntries } from "../pricing.js";
 import { readSettingsFile } from "../settings.js";
 import { builder } from "./builder.js";
 import { scopedQueries, viewerPayload } from "./context.js";
 import type { RequestSummaryShape, UsageReportModel, UsageTimeseriesModel } from "./models.js";
 import { settingsResponse } from "./settingsPayload.js";
 import { Overview, UsageGroupBy, UsageInterval, UsageReport, UsageTimeseries } from "./types/analytics.js";
+import { ModelPricingEntry } from "./types/pricing.js";
 import { Invitation, PublicInvitation } from "./types/invitations.js";
 import { PromptAccessAuditEntry, PromptDetail, PromptPage } from "./types/prompts.js";
 import { RequestDetail, RequestSummary } from "./types/requests.js";
@@ -31,6 +33,7 @@ function emptyUsageReport(): UsageReportModel {
       usage: {
         inputTokens: 0,
         cachedInputTokens: 0,
+        cacheCreationInputTokens: 0,
         outputTokens: 0,
         reasoningTokens: 0,
         totalTokens: 0
@@ -328,6 +331,18 @@ builder.queryFields((t) => ({
       const queries = scopedQueries(context);
       if (!queries) return { query: args.query, results: [] };
       return queries.search(args.query);
+    }
+  }),
+
+  modelPricing: t.field({
+    type: [ModelPricingEntry],
+    resolve: async (_root, _args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) return queries.modelPricing();
+      return staticPricingEntries(
+        context.config.modelCosts,
+        context.config.modelCostsFromEnv
+      ).sort(compareModelPricingEntries);
     }
   }),
 

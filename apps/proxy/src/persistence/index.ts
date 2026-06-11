@@ -11,6 +11,7 @@ import { AdminSessionStore } from "./adminSessions.js";
 import { ApiKeyAdminService } from "./apiKeyAdmin.js";
 import { DatabaseEventSink } from "./eventSink.js";
 import { ApiKeyIdentityStore } from "./identity.js";
+import { ModelPricingAdminService } from "./modelPricingAdmin.js";
 import { OrganizationSettingsStore } from "./organizationSettings.js";
 import { ProviderCredentialAdminService } from "./providerCredentialAdmin.js";
 import { ProviderCredentialStore } from "./providerCredentials.js";
@@ -46,7 +47,8 @@ export function createDatabasePersistence(
     adminSessions: new AdminSessionStore(db),
     providerCredentials: new ProviderCredentialStore(db, config.providerSecretEncryptionKey),
     providerCredentialAdmin: new ProviderCredentialAdminService(transactional, config.providerSecretEncryptionKey),
-    eventSink: new DatabaseEventSink(transactional, catalog, useAdvisoryLocks),
+    eventSink: new DatabaseEventSink(transactional, config.modelCosts, useAdvisoryLocks),
+    modelPricingAdmin: new ModelPricingAdminService(transactional),
     organizationSettings: new OrganizationSettingsStore(db),
     promptAccessAudit: new PromptAccessAuditStore(db),
     promptArtifacts: new PromptArtifactStore(transactional, db),
@@ -59,7 +61,9 @@ export function createDatabasePersistence(
     adminQueries: {
       forScope: (organizationId: string, workspaceId: string) =>
         new AdminQueryService(db, catalog, organizationId, workspaceId, {
-          routeQualityLowConfidenceThreshold: config.routeQualityLowConfidenceThreshold
+          routeQualityLowConfidenceThreshold: config.routeQualityLowConfidenceThreshold,
+          modelCosts: config.modelCosts,
+          modelCostsFromEnv: config.modelCostsFromEnv
         })
     }
   };

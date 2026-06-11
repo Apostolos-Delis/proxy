@@ -53,6 +53,12 @@ export type MemberRole =
   | 'owner'
   | 'viewer';
 
+export type ModelPricingSource =
+  | 'custom'
+  | 'default'
+  | 'env'
+  | 'unpriced';
+
 export type PromptCaptureSettingsInput = {
   promptCaptureMode?: string | null | undefined;
   retentionDays?: number | null | undefined;
@@ -68,6 +74,15 @@ export type SearchHitKind =
   | 'routing_config'
   | 'session'
   | 'user';
+
+export type SetModelPricingInput = {
+  cacheReadCostPerMtok?: number | null | undefined;
+  cacheWriteCostPerMtok?: number | null | undefined;
+  inputCostPerMtok: number;
+  model: string;
+  outputCostPerMtok: number;
+  provider: string;
+};
 
 export type SettingsInput = {
   budgets?: BudgetSettingsInput | null | undefined;
@@ -136,6 +151,26 @@ export type CreateInvitationMutationVariables = Exact<{
 
 
 export type CreateInvitationMutation = { createInvitation: { inviteUrl: string, emailDelivery: { transport: string, delivered: boolean, error: string | null } } };
+
+export type ModelPricingCardQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type ModelPricingCardQuery = { modelPricing: Array<{ model: string, provider: string | null, source: ModelPricingSource, seenInTraffic: boolean, inputCostPerMtok: number | null, outputCostPerMtok: number | null, cacheReadCostPerMtok: number | null, cacheWriteCostPerMtok: number | null, updatedAt: string | null }> };
+
+export type SetModelPricingMutationVariables = Exact<{
+  input: SetModelPricingInput;
+}>;
+
+
+export type SetModelPricingMutation = { setModelPricing: Array<{ model: string, provider: string | null, source: ModelPricingSource, seenInTraffic: boolean, inputCostPerMtok: number | null, outputCostPerMtok: number | null, cacheReadCostPerMtok: number | null, cacheWriteCostPerMtok: number | null, updatedAt: string | null }> };
+
+export type ClearModelPricingMutationVariables = Exact<{
+  provider: string;
+  model: string;
+}>;
+
+
+export type ClearModelPricingMutation = { clearModelPricing: Array<{ model: string, provider: string | null, source: ModelPricingSource, seenInTraffic: boolean, inputCostPerMtok: number | null, outputCostPerMtok: number | null, cacheReadCostPerMtok: number | null, cacheWriteCostPerMtok: number | null, updatedAt: string | null }> };
 
 export type OverviewPageQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -620,6 +655,51 @@ export const CreateInvitationDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CreateInvitationMutation, CreateInvitationMutationVariables>;
+export const ModelPricingCardDocument = new TypedDocumentString(`
+    query ModelPricingCard {
+  modelPricing {
+    model
+    provider
+    source
+    seenInTraffic
+    inputCostPerMtok
+    outputCostPerMtok
+    cacheReadCostPerMtok
+    cacheWriteCostPerMtok
+    updatedAt
+  }
+}
+    `) as unknown as TypedDocumentString<ModelPricingCardQuery, ModelPricingCardQueryVariables>;
+export const SetModelPricingDocument = new TypedDocumentString(`
+    mutation SetModelPricing($input: SetModelPricingInput!) {
+  setModelPricing(input: $input) {
+    model
+    provider
+    source
+    seenInTraffic
+    inputCostPerMtok
+    outputCostPerMtok
+    cacheReadCostPerMtok
+    cacheWriteCostPerMtok
+    updatedAt
+  }
+}
+    `) as unknown as TypedDocumentString<SetModelPricingMutation, SetModelPricingMutationVariables>;
+export const ClearModelPricingDocument = new TypedDocumentString(`
+    mutation ClearModelPricing($provider: String!, $model: String!) {
+  clearModelPricing(provider: $provider, model: $model) {
+    model
+    provider
+    source
+    seenInTraffic
+    inputCostPerMtok
+    outputCostPerMtok
+    cacheReadCostPerMtok
+    cacheWriteCostPerMtok
+    updatedAt
+  }
+}
+    `) as unknown as TypedDocumentString<ClearModelPricingMutation, ClearModelPricingMutationVariables>;
 export const OverviewPageDocument = new TypedDocumentString(`
     query OverviewPage {
   overview {

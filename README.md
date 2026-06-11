@@ -162,6 +162,18 @@ Editable runtime settings live as JSON at `.prompt-proxy/settings.json` (or `PRO
 
 When seeding multiple organizations into one database, use a distinct `PROMPT_PROXY_TOKEN` per org.
 
+## Spend and routing savings
+
+Providers return token counts, not dollar amounts, so the proxy computes spend locally: every usage ledger row is priced as `uncached input + cache reads + cache writes + output`, each at its own per-MTok rate. Anthropic usage reports cache reads and writes outside `input_tokens`; the proxy folds them back in, so dashboard token totals always mean total input presented to the model. Routing savings compare each request's actual cost against replaying the same tokens through the balanced route model (the cost of not routing).
+
+Pricing resolves in three layers, most specific wins per model:
+
+1. Built-in defaults for the models the proxy ships configured with (`apps/proxy/src/pricing.ts`).
+2. `MODEL_COSTS_JSON` at boot, e.g. `{"claude-haiku-4-5": {"inputCostPerMtok": 1, "outputCostPerMtok": 5, "cacheReadCostPerMtok": 0.1, "cacheWriteCostPerMtok": 1.25}}`. Cache rates default to 10% and 125% of the input rate when omitted.
+3. Per-organization overrides edited live on the console's Billing page (stored in `model_catalog.pricing`), which also lists unpriced models seen in traffic.
+
+Dated identifiers such as `claude-sonnet-4-5-20250929` fall back to their undated pricing entry. Ledger rows keep the rates in effect when they were written; dashboards recompute baselines with current pricing.
+
 ## Verification
 
 ```shell

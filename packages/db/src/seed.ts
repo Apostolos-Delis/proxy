@@ -256,17 +256,20 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
       });
   }
 
+  // Conflict target is the natural key because the admin console also creates
+  // rows here (with generated ids) for model pricing overrides. pricing is
+  // intentionally not refreshed on conflict so re-seeding keeps operator-set
+  // pricing.
   const modelRows = modelCatalogRows(options);
   for (const row of modelRows) {
     await db
       .insert(modelCatalog)
       .values(row)
       .onConflictDoUpdate({
-        target: modelCatalog.id,
+        target: [modelCatalog.organizationId, modelCatalog.provider, modelCatalog.model],
         set: {
           route: row.route,
           capabilities: row.capabilities,
-          pricing: row.pricing,
           updatedAt: now
         }
       });

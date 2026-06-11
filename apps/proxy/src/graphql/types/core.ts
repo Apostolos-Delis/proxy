@@ -14,6 +14,7 @@ export const TokenTotals = builder.objectRef<TokenTotalsModel>("TokenTotals").im
   fields: (t) => ({
     inputTokens: t.exposeFloat("inputTokens"),
     cachedInputTokens: t.exposeFloat("cachedInputTokens"),
+    cacheCreationInputTokens: t.exposeFloat("cacheCreationInputTokens"),
     outputTokens: t.exposeFloat("outputTokens"),
     reasoningTokens: t.exposeFloat("reasoningTokens"),
     totalTokens: t.exposeFloat("totalTokens")
