@@ -20,3 +20,4 @@
 ## Future Work
 
 - [GEPA-inspired prompt optimization](future/gepa-prompt-optimization.md)
+- [Token cost reduction](future/token-cost-reduction.md)
