@@ -423,21 +423,9 @@ function sendDuplicateRequest(
 ) {
   if (!gate.duplicate) return false;
 
-  if (gate.state.status === "classifying" || gate.state.status === "provider_pending") {
-    reply.code(409).send({
-      error: "Duplicate request is still active.",
-      status: gate.state.status
-    });
-    return true;
-  }
-
-  reply.send({
-    duplicate: true,
-    status: gate.state.status,
-    provider_attempt_id: gate.state.providerAttemptId ?? null,
-    usage: gate.state.usage ?? null,
-    upstream_request_id: gate.state.upstreamRequestId ?? null,
-    error: gate.state.error ?? null
+  reply.code(409).send({
+    error: "Duplicate request is still active.",
+    status: gate.state.status
   });
   return true;
 }

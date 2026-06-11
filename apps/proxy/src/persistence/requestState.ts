@@ -32,7 +32,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
     const existing = await this.findRequest(idempotencyKey, organizationId);
     if (existing) {
       const status = requestStateStatus(existing.status);
-      if (status !== "failed" && status !== "cancelled") {
+      if (status === "classifying" || status === "provider_pending") {
         return {
           state: await this.stateForRequest(existing),
           duplicate: true
@@ -44,7 +44,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
         .where(and(
           eq(requests.organizationId, existing.organizationId),
           eq(requests.idempotencyKey, idempotencyKey),
-          inArray(requests.status, ["failed", "cancelled"])
+          inArray(requests.status, ["failed", "cancelled", "completed"])
         ))
         .returning();
       if (claimed.length === 0) {

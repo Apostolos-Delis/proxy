@@ -189,7 +189,7 @@ export class ProviderAttemptStore {
     const existingId = this.idempotency.get(input.idempotencyKey);
     if (existingId) {
       const existing = this.attempts.get(existingId);
-      if (existing && existing.terminalStatus !== "failed" && existing.terminalStatus !== "cancelled") {
+      if (existing && existing.terminalStatus === "pending") {
         return { attempt: existing, duplicate: true };
       }
     }
@@ -251,7 +251,7 @@ export class RequestStateStore {
 
   begin(idempotencyKey: string, requestId?: string) {
     const existing = this.states.get(idempotencyKey);
-    if (existing && existing.status !== "failed" && existing.status !== "cancelled") {
+    if (existing && (existing.status === "classifying" || existing.status === "provider_pending")) {
       return { state: existing, duplicate: true };
     }
 
