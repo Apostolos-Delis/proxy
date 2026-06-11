@@ -16,6 +16,16 @@
     width: 38px;
   }
 
+  .app .org-card,
+  .app .logout-button {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .app .org-switcher-chevron {
+    display: none;
+  }
+
   .app .brand {
     justify-content: center;
     padding-inline: 0;
