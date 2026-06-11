@@ -2587,6 +2587,12 @@ input[type="checkbox"][role="switch"]:focus-visible {
   background: var(--glass-2);
 }
 
+/* Options otherwise inherit the 16px body default; 13px matches the
+   console's other dropdowns (settings rows, .btn). */
+.routing-create-field .menu-select-popover {
+  font-size: 13px;
+}
+
 .routing-create-field small {
   color: var(--danger);
   font-size: 12px;
