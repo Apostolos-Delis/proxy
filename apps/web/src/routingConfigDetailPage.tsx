@@ -18,7 +18,7 @@ import { RoutingRulesEditor, RouteMatrixEditor } from "./routing/configEditorFie
 import { ArchivePanel, VersionHistory } from "./routing/versionHistory";
 import { applyDraft, draftError, draftFromConfig, parseConfigJson } from "./routingConfigEditor";
 import { JsonEditor } from "./jsonView";
-import { GlassCard, PageState, PageTitle, StatusBadge } from "./ui";
+import { GlassCard, PageState, StatusBadge } from "./ui";
 
 export function RoutingConfigDetailPage({ configId }: { configId: string }) {
   const queryClient = useQueryClient();
@@ -48,16 +48,18 @@ export function RoutingConfigDetailPage({ configId }: { configId: string }) {
   const activeVersion = query.data.versions.find((version) => version.active);
   return (
     <div className="page page-enter routing-detail-stack">
-      <PageTitle
-        title={query.data.config.name}
-        subtitle={query.data.config.description ?? "No description"}
-        actions={
-          <>
+      <div className="routing-back-row">
+        <Link to="/routing-configs" className="btn btn-sm"><ArrowLeft />All configs</Link>
+      </div>
+      <div className="page-title-row routing-detail-title">
+        <div>
+          <div className="routing-detail-name">
+            <h2>{query.data.config.name}</h2>
             <StatusBadge status={query.data.config.status} />
-            <Link to="/routing-configs" className="btn"><ArrowLeft />All configs</Link>
-          </>
-        }
-      />
+          </div>
+          <div className="muted">{query.data.config.description ?? "No description"}</div>
+        </div>
+      </div>
       <FactsStrip detail={query.data} activeVersion={activeVersion} />
       <ConfigApiKeysCard configId={configId} />
       {activeVersion ? <ConfigEditorCard key={activeVersion.id} configId={configId} version={activeVersion} /> : <MissingActiveConfig />}

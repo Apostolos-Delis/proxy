@@ -2223,11 +2223,6 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 /* ---------- routing config cards (list page) ---------- */
-.config-view-toggle {
-  display: flex;
-  margin-bottom: 22px;
-}
-
 .config-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
@@ -2238,7 +2233,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  transition: border-color .14s var(--ease), background .14s var(--ease);
+  transition: border-color .14s var(--ease), background .14s var(--ease), opacity .15s var(--ease);
 }
 
 .config-card:hover {
@@ -2246,20 +2241,42 @@ input[type="checkbox"][role="switch"]:focus-visible {
   background: var(--glass-hover);
 }
 
+.config-card-archived {
+  opacity: 0.62;
+}
+
+.config-card-archived:hover {
+  opacity: 1;
+}
+
 .config-card-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.config-card-head > div {
+.config-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
+}
+
+.config-card-chevron {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--fg-faint);
 }
 
 .config-card-name {
   font-size: 15.5px;
   font-weight: 600;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .config-card-meta {
@@ -2267,7 +2284,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: -6px;
 }
 
 /* Slugs are unbounded user input; inline-block so text-overflow can apply. */
@@ -2278,22 +2295,10 @@ input[type="checkbox"][role="switch"]:focus-visible {
   text-overflow: ellipsis;
 }
 
-.config-card-description {
-  margin: -4px 0 0;
-  color: var(--fg-muted);
-  font-size: 13px;
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
 .config-card-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 3px;
   font-size: 12px;
   font-weight: 500;
   color: var(--fg-faint);
@@ -2307,122 +2312,135 @@ input[type="checkbox"][role="switch"]:focus-visible {
   background: currentColor;
 }
 
+/* tier → provider matrix: bordered table, one accent, ordinal gauges */
 .config-card-matrix {
-  display: grid;
-  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .config-card-matrix-row {
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 104px minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  padding: 9px 12px;
 }
 
-.config-card-matrix-row > .tag {
-  justify-self: start;
+.config-card-matrix-row + .config-card-matrix-row {
+  border-top: 1px solid var(--border);
 }
 
 .config-card-matrix-header {
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
+  padding: 7px 12px;
+  background: var(--glass-2);
 }
 
 .config-card-matrix-header span {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-family: var(--mono);
+  font-size: 10px;
   font-weight: 500;
-}
-
-.config-card-provider-header {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.config-card-provider-header::before {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex: none;
-}
-
-.config-card-provider-openai::before {
-  background: #10a37f;
-}
-
-.config-card-provider-anthropic::before {
-  background: #d97706;
+  letter-spacing: 0.08em;
 }
 
 .config-card-model {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
-.config-card-model > span:first-child {
+.config-card-model > .mono {
+  font-size: 12.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
 
-/* Effort chips in the matrix */
-.effort-chip {
+/* ---------- tier gauge + effort meter (single-hue ordinal signals) ---------- */
+.tier-gauge {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tier-gauge-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
   flex: none;
+}
+
+.tier-gauge-bars i {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--track);
+}
+
+.tier-gauge-bars i:nth-child(1) { height: 5px; }
+.tier-gauge-bars i:nth-child(2) { height: 8px; }
+.tier-gauge-bars i:nth-child(3) { height: 11px; }
+.tier-gauge-bars i:nth-child(4) { height: 14px; }
+
+.tier-gauge-bars i.on {
+  background: var(--accent);
+}
+
+.tier-gauge.dim .tier-gauge-bars i.on {
+  background: var(--fg-faint);
+}
+
+.tier-gauge-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tier-gauge.dim .tier-gauge-label {
+  color: var(--fg-faint);
+}
+
+.effort-meter {
   display: inline-flex;
   align-items: center;
-  padding: 1px 5px;
-  border-radius: 4px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.effort-meter-lines {
+  display: inline-flex;
+  gap: 2px;
+  flex: none;
+}
+
+.effort-meter-lines i {
+  width: 6px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--track);
+}
+
+.effort-meter-lines i.on {
+  background: var(--accent);
+}
+
+.effort-meter.dim .effort-meter-lines i.on {
+  background: var(--fg-faint);
+}
+
+.effort-meter-label {
+  color: var(--fg-faint);
   font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 500;
-  border: 1px solid transparent;
-  line-height: 1.5;
-}
-
-.effort-low {
-  color: #6ee7b7;
-  background: rgba(110, 231, 183, 0.10);
-  border-color: rgba(110, 231, 183, 0.20);
-}
-
-.effort-medium {
-  color: #93c5fd;
-  background: rgba(147, 197, 253, 0.10);
-  border-color: rgba(147, 197, 253, 0.20);
-}
-
-.effort-high {
-  color: #fcd34d;
-  background: rgba(252, 211, 77, 0.10);
-  border-color: rgba(252, 211, 77, 0.20);
-}
-
-.effort-xhigh {
-  color: #f0abfc;
-  background: rgba(240, 171, 252, 0.10);
-  border-color: rgba(240, 171, 252, 0.20);
-}
-
-.config-card-prompt {
-  margin: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--code-bg);
-  color: var(--fg-muted);
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  font-size: 10.5px;
+  white-space: nowrap;
 }
 
 .config-card-foot {
@@ -2433,13 +2451,46 @@ input[type="checkbox"][role="switch"]:focus-visible {
   margin-top: auto;
   padding-top: 14px;
   border-top: 1px solid var(--border);
-  font-size: 12.5px;
+  font-size: 11.5px;
+}
+
+.config-card-usage {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.config-card-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--fg-muted);
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+.config-card-keys.none {
+  color: var(--fg-faint);
 }
 
 .config-card-keys svg {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   color: var(--fg-faint);
+}
+
+.config-card-traffic {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.config-card-traffic .meter {
+  width: 56px;
+  height: 4px;
+  flex: none;
 }
 
 /* ---------- create config page ---------- */
@@ -2828,32 +2879,52 @@ input[type="checkbox"][role="switch"]:focus-visible {
   color: var(--fg-faint);
 }
 
-/* ---------- route tier matrix editor ---------- */
-.tier-editor {
-  display: grid;
-  gap: 10px;
+/* ---------- route tier matrix editor (bordered table) ---------- */
+.tier-table {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
-.tier-editor-row {
+.tier-table-header {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 8px 14px;
+  background: var(--glass-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.tier-table-header span {
+  color: var(--fg-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.tier-table-row {
   display: grid;
   grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
-  padding: 13px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--glass-2);
+  padding: 14px;
 }
 
-.tier-editor-head {
+.tier-table-row + .tier-table-row {
+  border-top: 1px solid var(--border);
+}
+
+.tier-table-tier {
   display: grid;
   gap: 7px;
   justify-items: start;
 }
 
-.tier-editor-head .faint {
-  font-size: 12px;
-  line-height: 1.45;
+.tier-table-tier .faint {
+  font-size: 11.5px;
+  line-height: 1.5;
+  padding-right: 10px;
 }
 
 .tier-model {
@@ -2862,23 +2933,12 @@ input[type="checkbox"][role="switch"]:focus-visible {
   min-width: 0;
 }
 
-.tier-model-provider {
+.tier-model-effort {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
-  color: var(--fg-faint);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.tier-model-provider em {
-  font-style: normal;
-  font-size: 11px;
-  letter-spacing: 0;
-  text-transform: none;
+  padding-left: 2px;
 }
 
 .tier-model input {
@@ -3040,7 +3100,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font-size: 11.5px;
 }
 
-.tier-editor-row > :last-child .model-select-popover {
+.tier-table-row > :last-child .model-select-popover {
   left: auto;
   right: 0;
 }
@@ -3102,10 +3162,38 @@ input[type="checkbox"][role="switch"]:focus-visible {
   margin-bottom: 22px;
 }
 
+.routing-back-row {
+  margin-bottom: 16px;
+}
+
+.routing-detail-title {
+  margin-bottom: 18px;
+}
+
+.routing-detail-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  margin-bottom: 6px;
+}
+
+.routing-detail-name h2 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .config-facts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
+}
+
+.config-facts .routing-metric + .routing-metric {
+  border-left: 1px solid var(--border);
+  padding-left: 18px;
 }
 
 /* ---------- API key assignment ---------- */
@@ -3207,12 +3295,43 @@ input[type="checkbox"][role="switch"]:focus-visible {
   color: var(--fg-faint);
 }
 
+.routing-metric span {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.routing-metric small {
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+
 .routing-metric strong {
   display: block;
   margin-top: 6px;
   font-family: var(--mono);
   font-size: 18px;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--accent-text);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.version-current svg {
+  width: 14px;
+  height: 14px;
 }
 
 .action-error {

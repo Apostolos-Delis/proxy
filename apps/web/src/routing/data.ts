@@ -51,6 +51,7 @@ const RoutingConfigsListDocument = graphql(`
   query RoutingConfigsList {
     routingConfigs {
       ...RoutingConfigSummaryFields
+      trafficShare
     }
   }
 `);

@@ -261,7 +261,7 @@ export type RoutingConfigDetailFieldsFragment = { config: { id: string, name: st
 export type RoutingConfigsListQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type RoutingConfigsListQuery = { routingConfigs: Array<{ id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routeMatrix: Array<{ route: string, description: string | null, openaiModel: string | null, openaiEffort: string | null, anthropicModel: string | null, anthropicEffort: string | null }> }> };
+export type RoutingConfigsListQuery = { routingConfigs: Array<{ trafficShare: number, id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routeMatrix: Array<{ route: string, description: string | null, openaiModel: string | null, openaiEffort: string | null, anthropicModel: string | null, anthropicEffort: string | null }> }> };
 
 export type RoutingConfigDetailViewQueryVariables = Exact<{
   configId: string | number;
@@ -1120,6 +1120,7 @@ export const RoutingConfigsListDocument = new TypedDocumentString(`
     query RoutingConfigsList {
   routingConfigs {
     ...RoutingConfigSummaryFields
+    trafficShare
   }
 }
     fragment RoutingConfigSummaryFields on RoutingConfigSummary {

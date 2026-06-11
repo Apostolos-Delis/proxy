@@ -32,13 +32,13 @@ function VersionRow({ version, pending, onActivate }: {
   return (
     <tr>
       <td><span className="mono">v{version.version}</span></td>
-      <td>{version.active ? <Badge variant="success" dot>Active</Badge> : <StatusBadge status={version.status} />}</td>
+      <td><VersionStatus version={version} /></td>
       <td><span className="mono faint">{compactId(version.configHash, 12)}</span></td>
       <td>{formatDateTime(version.createdAt)}</td>
       <td>{version.activatedAt ? formatDateTime(version.activatedAt) : <span className="faint">never</span>}</td>
       <td>
         {version.active ? (
-          <span className="row gap-8 faint"><CheckCircle2 />Current</span>
+          <span className="version-current"><CheckCircle2 />Current</span>
         ) : (
           <button className="btn btn-sm" type="button" disabled={pending || version.status === "archived"} onClick={() => onActivate(version.id)}>
             {pending ? "Activating" : "Activate"}
@@ -47,6 +47,14 @@ function VersionRow({ version, pending, onActivate }: {
       </td>
     </tr>
   );
+}
+
+// A version keeps status "active" after a newer version replaces it; only the
+// config's pointer marks the current one, so label the others "superseded".
+function VersionStatus({ version }: { version: RoutingConfigVersionDetail }) {
+  if (version.active) return <Badge variant="success" dot>Active</Badge>;
+  if (version.status === "active") return <Badge>superseded</Badge>;
+  return <StatusBadge status={version.status} />;
 }
 
 export function ArchivePanel({ detail, pending, error, onArchive }: {

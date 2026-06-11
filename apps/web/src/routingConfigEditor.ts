@@ -42,6 +42,10 @@ export const OPENAI_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as c
 
 export const ANTHROPIC_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
+// Both provider scales merged into one ordinal ladder; display meters rank
+// any effort value against it.
+export const EFFORT_SCALE = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
 export type RouteTierDraft = {
   openaiModel: string;
   openaiEffort: string;
