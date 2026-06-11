@@ -2,7 +2,7 @@ import { bashOutputRule } from "./compressionRules/bashOutput.js";
 import { mcpJsonRule } from "./compressionRules/mcpJson.js";
 import type { EventService } from "./events.js";
 import type { JsonObject, Surface } from "./types.js";
-import { isRecord, stableJson } from "./util.js";
+import { isRecord, stableJson, stringField } from "./util.js";
 
 // Deterministic compression of tool-result content before it reaches the
 // provider. Determinism is non-negotiable: the harness re-sends the full
@@ -53,14 +53,11 @@ export function compressToolResults(
   rules: CompressionRule[] = compressionRules
 ): CompressionResult {
   if (rules.length === 0 || !isRecord(body)) return { body, records: [] };
-  const request = structuredClone(body);
   const records: CompressionRecord[] = [];
-  if (surface === "anthropic-messages") {
-    compressAnthropic(request, rules, records);
-  } else {
-    compressOpenAI(request, rules, records);
-  }
-  return { body: request, records };
+  const compressed = surface === "anthropic-messages"
+    ? compressAnthropic(body, rules, records)
+    : compressOpenAI(body, rules, records);
+  return { body: compressed, records };
 }
 
 // Compress deterministically, falling back to the original body if the filter
@@ -129,33 +126,51 @@ export async function compressForForward(input: {
   return body;
 }
 
-function compressAnthropic(request: Record<string, unknown>, rules: CompressionRule[], records: CompressionRecord[]) {
+// Both walkers rebuild only the spine that leads to a rewritten block —
+// untouched messages/items keep their original references. Bodies reach tens
+// of MB and most requests have nothing eligible to compress, so a deep clone
+// per request would be an avoidable hot-path allocation. The input body is
+// never mutated; spreading a rewritten block preserves its other fields,
+// including any cache_control markers.
+function compressAnthropic(request: Record<string, unknown>, rules: CompressionRule[], records: CompressionRecord[]): unknown {
+  if (!Array.isArray(request.messages)) return request;
   const toolNames = anthropicToolNames(request.messages);
-  if (!Array.isArray(request.messages)) return;
-  for (const message of request.messages) {
-    if (!isRecord(message) || message.role !== "user" || !Array.isArray(message.content)) continue;
-    for (const block of message.content) {
-      if (!isRecord(block) || block.type !== "tool_result") continue;
+  let changed = false;
+  const messages = request.messages.map((message) => {
+    if (!isRecord(message) || message.role !== "user" || !Array.isArray(message.content)) return message;
+    let messageChanged = false;
+    const content = message.content.map((block) => {
+      if (!isRecord(block) || block.type !== "tool_result") return block;
       const toolUseId = stringField(block, "tool_use_id");
       const ref = toolUseId ? toolNames.get(toolUseId) : undefined;
       const toolName = ref?.name ?? "unknown";
       const replaced = applyRules(rules, toolName, ref?.input, block.content, records);
-      if (replaced !== undefined) block.content = replaced;
-    }
-  }
+      if (replaced === undefined) return block;
+      messageChanged = true;
+      return { ...block, content: replaced };
+    });
+    if (!messageChanged) return message;
+    changed = true;
+    return { ...message, content };
+  });
+  return changed ? { ...request, messages } : request;
 }
 
-function compressOpenAI(request: Record<string, unknown>, rules: CompressionRule[], records: CompressionRecord[]) {
-  if (!Array.isArray(request.input)) return;
+function compressOpenAI(request: Record<string, unknown>, rules: CompressionRule[], records: CompressionRecord[]): unknown {
+  if (!Array.isArray(request.input)) return request;
   const callNames = openAICallNames(request.input);
-  for (const item of request.input) {
-    if (!isRecord(item) || item.type !== "function_call_output") continue;
+  let changed = false;
+  const input = request.input.map((item) => {
+    if (!isRecord(item) || item.type !== "function_call_output") return item;
     const callId = stringField(item, "call_id");
     const ref = callId ? callNames.get(callId) : undefined;
     const toolName = ref?.name ?? "unknown";
     const replaced = applyRules(rules, toolName, ref?.input, item.output, records);
-    if (replaced !== undefined) item.output = replaced;
-  }
+    if (replaced === undefined) return item;
+    changed = true;
+    return { ...item, output: replaced };
+  });
+  return changed ? { ...request, input } : request;
 }
 
 // Apply the first matching rule to a tool-result content payload. Records the
@@ -235,9 +250,4 @@ function contentChars(value: unknown): number {
   if (value === null || value === undefined) return 0;
   if (typeof value === "string") return value.length;
   return stableJson(value).length;
-}
-
-function stringField(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-  return typeof value === "string" ? value : undefined;
 }

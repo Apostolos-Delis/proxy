@@ -38,6 +38,11 @@ export function roughTokenEstimate(chars: number) {
   return Math.ceil(chars / 4);
 }
 
+export function stringField(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}
+
 export function lowerHeaders(headers: Record<string, unknown>) {
   const result: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(headers)) {

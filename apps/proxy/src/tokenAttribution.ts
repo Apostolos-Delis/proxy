@@ -1,7 +1,7 @@
 import { actorForIdentity, type RequestIdentity } from "./auth.js";
 import { jsonPayload, type EventService } from "./events.js";
 import type { JsonObject, Surface } from "./types.js";
-import { isRecord, roughTokenEstimate, stableJson } from "./util.js";
+import { isRecord, roughTokenEstimate, stableJson, stringField } from "./util.js";
 
 // Bounds the per-name lists so a tool-heavy request cannot bloat the event
 // payload; overflow rolls up into a synthetic __other entry.
@@ -296,9 +296,4 @@ function capEntries(byName: Map<string, number>) {
   const otherChars = sorted.slice(MAX_NAMED_ENTRIES).reduce((sum, [, chars]) => sum + chars, 0);
   kept.push(["__other", otherChars]);
   return kept;
-}
-
-function stringField(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-  return typeof value === "string" ? value : undefined;
 }
