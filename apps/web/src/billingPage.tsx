@@ -6,6 +6,7 @@ import { InspectorPanel, type InspectorRow } from "./dashboard";
 import { formatMoney } from "./format";
 import { graphql } from "./gql";
 import { gqlFetch } from "./graphql";
+import { ModelPricingCard } from "./modelPricingCard";
 import { GlassCard, JsonPanel, PageSkeleton, PageState, PageTitle, ProgressMeter } from "./ui";
 
 const BillingPageDocument = graphql(`
@@ -84,6 +85,7 @@ export function BillingPage() {
           <div className="stat-sub">from the usage ledger</div>
         </GlassCard>
       </div>
+      <ModelPricingCard />
       <div className="billing-grid">
         <GlassCard>
           <div className="card-title"><AlertTriangle />Spend controls</div>
