@@ -14,7 +14,7 @@ import { ApiKeyIdentityStore } from "./identity.js";
 import { ModelPricingAdminService } from "./modelPricingAdmin.js";
 import { OrganizationSettingsStore } from "./organizationSettings.js";
 import { ProviderCredentialAdminService } from "./providerCredentialAdmin.js";
-import { ProviderCredentialStore } from "./providerCredentials.js";
+import { ProviderCredentialStore, type ProviderCredentialOptions } from "./providerCredentials.js";
 import { PromptAccessAuditStore } from "./promptAccessAudit.js";
 import { PromptArtifactStore } from "./promptArtifacts.js";
 import { PersistentRequestStateStore } from "./requestState.js";
@@ -29,6 +29,7 @@ export type DatabasePersistenceConfig = AdminQueryConfig & {
   defaultOrganizationId: string;
   invitationTtlSeconds: number;
   providerSecretEncryptionKey?: string;
+  subscriptionOAuthEnabled: boolean;
 };
 
 export function createPostgresPersistence(databaseUrl: string, catalog: ModelCatalog, config: AppConfig) {
@@ -42,12 +43,20 @@ export function createDatabasePersistence(
   useAdvisoryLocks: boolean
 ) {
   const transactional = createTransactionalDatabase(db);
+  // Getter, not a snapshot: a kill-switch flip must reach the create, resolve,
+  // and forward layers together (headersFor already reads config live).
+  const credentialOptions: ProviderCredentialOptions = {
+    encryptionKey: config.providerSecretEncryptionKey,
+    get subscriptionOAuthEnabled() {
+      return config.subscriptionOAuthEnabled;
+    }
+  };
   return {
     apiKeyAdmin: new ApiKeyAdminService(transactional),
     apiKeys: new ApiKeyIdentityStore(db),
     adminSessions: new AdminSessionStore(db),
-    providerCredentials: new ProviderCredentialStore(db, config.providerSecretEncryptionKey),
-    providerCredentialAdmin: new ProviderCredentialAdminService(transactional, config.providerSecretEncryptionKey),
+    providerCredentials: new ProviderCredentialStore(db, credentialOptions),
+    providerCredentialAdmin: new ProviderCredentialAdminService(transactional, credentialOptions),
     eventSink: new DatabaseEventSink(transactional, config.modelCosts, useAdvisoryLocks),
     modelPricingAdmin: new ModelPricingAdminService(transactional, config.modelCosts),
     organizationSettings: new OrganizationSettingsStore(db),

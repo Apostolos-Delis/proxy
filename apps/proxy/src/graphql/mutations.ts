@@ -5,7 +5,7 @@ import { scopedQueries, viewerPayload } from "./context.js";
 import { adminGraphQLError, mapAdminError, notFoundError } from "./errors.js";
 import { inviteUrl, sendInvitationEmail } from "./invitationDelivery.js";
 import { promptCaptureSettings, settingsResponse } from "./settingsPayload.js";
-import { MemberRole } from "./types/core.js";
+import { MemberRole, ProviderAccountAuthType } from "./types/core.js";
 import {
   AcceptedInvitation,
   Invitation,
@@ -38,6 +38,8 @@ const CreateProviderCredentialInput = builder.inputType("CreateProviderCredentia
   fields: (t) => ({
     provider: t.string({ required: true }),
     name: t.string({ required: true }),
+    authType: t.field({ type: ProviderAccountAuthType }),
+    // Carries the API key or, for authType "oauth", the subscription token.
     apiKey: t.string({ required: true })
   })
 });
@@ -526,7 +528,12 @@ builder.mutationFields((t) => ({
         const created = await context.persistence.providerCredentialAdmin.createCredential({
           organizationId: context.identity().organizationId,
           actorUserId: context.identity().userId,
-          body: { provider: args.input.provider, name: args.input.name, apiKey: args.input.apiKey }
+          body: {
+            provider: args.input.provider,
+            name: args.input.name,
+            authType: args.input.authType ?? undefined,
+            apiKey: args.input.apiKey
+          }
         });
         const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
         return accounts.find((account) => account.id === created.providerAccountId) ?? null;

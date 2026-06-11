@@ -36,6 +36,8 @@ import {
   type ModelPricingEntry,
   type ModelPricingTable
 } from "../pricing.js";
+import type { ProviderAccountAuthType } from "@prompt-proxy/schema";
+
 import type { JsonObject, RouteName } from "../types.js";
 import { searchAdminEntities } from "./adminSearch.js";
 import { workspaceScope } from "./scope.js";
@@ -1339,7 +1341,7 @@ type ProviderAccountSummaryRow = {
   organizationId: string;
   provider: string;
   name: string;
-  authType: string;
+  authType: ProviderAccountAuthType;
   status: string;
   secretHint: string | null;
   createdByUserId: string | null;

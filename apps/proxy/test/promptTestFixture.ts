@@ -137,6 +137,9 @@ export async function captureFixture(
   return {
     db,
     persistence,
+    // Live server config: tests may mutate flags (e.g. the oauth kill switch).
+    // Safe only because fixtures are per-test and closed in afterEach.
+    config,
     proxyUrl,
     app,
     openai,

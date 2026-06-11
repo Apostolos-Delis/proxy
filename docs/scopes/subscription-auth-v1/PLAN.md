@@ -59,7 +59,8 @@ api_keys                   caller identity, already has:
 api_key_provider_accounts  binds (org, api_key, provider) -> provider_account  (at most one per provider per key)
 ```
 
-Relevant code (all line refs verified against the current branch):
+Relevant code (line refs verified at planning time — this section describes the **pre-implementation**
+starting point, not the shipped state):
 
 ```text
 packages/schema/src/index.ts:26          PROVIDER_ACCOUNT_AUTH_TYPES = ["api_key", "oauth"]  (already exists)

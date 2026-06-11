@@ -50,6 +50,7 @@ export async function settingsResponse(
   return {
     organizationId,
     databaseEnabled: Boolean(config.databaseUrl),
+    subscriptionOAuthEnabled: config.subscriptionOAuthEnabled,
     classifier: {
       provider: config.classifierProvider,
       model: config.classifierModel,

@@ -86,6 +86,7 @@ function providerAccountColumns({
   return [
     { id: "name", header: "Name", size: 240, accessorFn: (account) => account.name, cell: ({ row }) => <ProviderKeyNameCell account={row.original} onOpen={() => onOpen(row.original.id)} /> },
     { id: "provider", header: "Provider", size: 130, accessorFn: (account) => account.provider, cell: ({ row }) => <span className="code-pill">{row.original.provider}</span> },
+    { id: "auth", header: "Auth", size: 130, accessorFn: (account) => authTypeLabel(account), cell: ({ row }) => <span className="code-pill">{authTypeLabel(row.original)}</span> },
     { id: "owner", header: "Owner", size: 160, accessorFn: (account) => account.ownerUserId ?? "", cell: ({ row }) => ownerCell(row.original) },
     { id: "status", header: "Status", size: 120, accessorFn: (account) => account.status, cell: ({ row }) => <StatusBadge status={row.original.status} /> },
     { id: "secret", header: "Secret", size: 130, enableSorting: false, accessorFn: (account) => account.secretHint ?? "", cell: ({ row }) => <span className="mono faint">{row.original.secretHint ?? "—"}</span> },
@@ -101,6 +102,10 @@ function providerAccountColumns({
       />
     ) }
   ];
+}
+
+function authTypeLabel(account: ProviderAccountSummary) {
+  return account.authType === "oauth" ? "subscription" : "api key";
 }
 
 function ownerCell(account: ProviderAccountSummary) {
@@ -165,7 +170,7 @@ function revokeLabel(pending: boolean, confirming: boolean) {
 }
 
 function providerAccountSearchValue(account: ProviderAccountSummary) {
-  return [account.id, account.name, account.provider, account.ownerUserId, account.secretHint]
+  return [account.id, account.name, account.provider, authTypeLabel(account), account.ownerUserId, account.secretHint]
     .filter((value): value is string => Boolean(value));
 }
 
@@ -177,6 +182,13 @@ function providerAccountFilters(accounts: ProviderAccountSummary[]): ConsoleTabl
       allLabel: "All providers",
       options: optionItems(accounts.map((account) => account.provider)),
       getValue: (account) => account.provider
+    },
+    {
+      id: "auth",
+      label: "Auth",
+      allLabel: "All auth types",
+      options: optionItems(accounts.map((account) => authTypeLabel(account))),
+      getValue: (account) => authTypeLabel(account)
     },
     {
       id: "status",

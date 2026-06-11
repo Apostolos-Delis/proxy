@@ -308,7 +308,18 @@ export class ProviderProxy implements ProviderAdapter {
       return headers;
     }
 
-    headers["x-api-key"] = byok?.token ?? this.config.anthropicApiKey;
+    if (byok?.authType === "oauth") {
+      // Forward-time kill-switch re-check: cached oauth credentials must die
+      // the moment the flag is off, and the subscription token must never go
+      // out as an x-api-key.
+      if (this.config.subscriptionOAuthEnabled) {
+        headers.authorization = `Bearer ${byok.token}`;
+      } else {
+        headers["x-api-key"] = this.config.anthropicApiKey;
+      }
+    } else {
+      headers["x-api-key"] = byok?.token ?? this.config.anthropicApiKey;
+    }
     headers["anthropic-version"] = incoming["anthropic-version"] ?? "2023-06-01";
     copyIfPresent(incoming, headers, "anthropic-beta");
     copyIfPresent(incoming, headers, "x-claude-code-session-id");

@@ -1,3 +1,5 @@
+import { PROVIDER_ACCOUNT_AUTH_TYPES } from "@prompt-proxy/schema";
+
 import { builder } from "../builder.js";
 import type {
   CostTotalsModel,
@@ -8,6 +10,10 @@ import type {
 
 export const MemberRole = builder.enumType("MemberRole", {
   values: ["owner", "admin", "member", "viewer"] as const
+});
+
+export const ProviderAccountAuthType = builder.enumType("ProviderAccountAuthType", {
+  values: PROVIDER_ACCOUNT_AUTH_TYPES
 });
 
 export const TokenTotals = builder.objectRef<TokenTotalsModel>("TokenTotals").implement({

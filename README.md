@@ -132,7 +132,9 @@ The web app at `:5173` is an org-scoped operations console (with a ⌘K global s
 
 By default the proxy forwards upstream calls with the company keys from env (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`). A customer can instead add their own key on the **Provider keys** screen and bind it to one of their prompt-proxy API keys (at most one credential per provider per key). Requests authenticated with that key then forward using the customer's credential; unbound keys keep using the company key.
 
-Customer secrets are encrypted at rest with AES-256-GCM using `PROVIDER_SECRET_ENCRYPTION_KEY` (base64, 32 bytes — `openssl rand -base64 32`) and are never returned by the admin API, only a masked hint. BYOK applies to the HTTP forward surfaces; the OpenAI realtime WebSocket always uses the company key for now. Claude subscription/OAuth tokens are a planned follow-up.
+Customer secrets are encrypted at rest with AES-256-GCM using `PROVIDER_SECRET_ENCRYPTION_KEY` (base64, 32 bytes — `openssl rand -base64 32`) and are never returned by the admin API, only a masked hint. BYOK applies to the HTTP forward surfaces; the OpenAI realtime WebSocket always uses the company key for now.
+
+**Claude subscription tokens (internal-only, default off):** with `SUBSCRIPTION_OAUTH_ENABLED=true`, an engineer can run `claude setup-token` on a Pro/Max account, paste the printed `sk-ant-oat01-…` token as a "Claude subscription" credential, and bind it to an API key they own — the proxy then forwards their traffic as `Authorization: Bearer` instead of `x-api-key`. Anthropic-only, hard-rejected on keys the engineer doesn't own (no pooling), and disabled wholesale by unsetting the flag. This is against the letter of Anthropic's ToS and must never be exposed to external customers — read the [subscription auth runbook](docs/runbooks/subscription-auth.md) before enabling (risk rationale: [scope plan](docs/scopes/subscription-auth-v1/PLAN.md)).
 
 ## API surface
 

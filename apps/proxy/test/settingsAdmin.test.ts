@@ -213,6 +213,38 @@ describe("persistent settings admin APIs", () => {
     await expect(readFile(settingsPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("exposes the subscription oauth flag on the settings query when enabled", async () => {
+    const app = buildServer(
+      loadConfig({ SUBSCRIPTION_OAUTH_ENABLED: "true", LOG_LEVEL: "fatal" }),
+      { persistence: fakePersistence() }
+    );
+    const response = await app.inject({
+      method: "POST",
+      url: "/admin/graphql",
+      headers: adminHeaders(),
+      payload: { query: "query { settings { subscriptionOAuthEnabled } }" }
+    });
+    await app.close();
+
+    expect(response.json().data?.settings?.subscriptionOAuthEnabled).toBe(true);
+  });
+
+  it("defaults the subscription oauth flag to false on the settings query", async () => {
+    const app = buildServer(
+      loadConfig({ LOG_LEVEL: "fatal" }),
+      { persistence: fakePersistence() }
+    );
+    const response = await app.inject({
+      method: "POST",
+      url: "/admin/graphql",
+      headers: adminHeaders(),
+      payload: { query: "query { settings { subscriptionOAuthEnabled } }" }
+    });
+    await app.close();
+
+    expect(response.json().data?.settings?.subscriptionOAuthEnabled).toBe(false);
+  });
+
   async function tempSettingsPath() {
     tempDir = await mkdtemp(join(tmpdir(), "prompt-proxy-settings-"));
     return join(tempDir, "settings.json");
