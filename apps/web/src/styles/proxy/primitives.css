@@ -213,7 +213,7 @@
   position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.55);
 }
 .drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 41; width: 560px; max-width: 92vw;
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 41; width: 680px; max-width: 92vw;
   background: var(--glass);
   border-left: 1px solid var(--border-strong);
   box-shadow: var(--shadow); padding: 26px 28px; overflow-y: auto;
