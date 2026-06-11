@@ -77,7 +77,8 @@ describe("totalsPointSeries", () => {
 
 describe("cacheHitRate", () => {
   it("is the cached share of all prompt tokens, counting cache writes as misses", () => {
-    const rate = cacheHitRate(group({ usage: { inputTokens: 200, cachedInputTokens: 600, cacheCreationInputTokens: 200 } }));
+    // inputTokens is the normalized total: 600 reads + 200 writes + 200 fresh.
+    const rate = cacheHitRate(group({ usage: { inputTokens: 1000, cachedInputTokens: 600, cacheCreationInputTokens: 200 } }));
     expect(rate).toBeCloseTo(0.6);
   });
 
@@ -88,7 +89,7 @@ describe("cacheHitRate", () => {
 
   it("charts bucket rates as 0-100 with empty buckets at zero", () => {
     const series = timeseries([
-      { ts: "2026-06-01T00:00:00.000Z", totals: group({ usage: { inputTokens: 25, cachedInputTokens: 75 } }) },
+      { ts: "2026-06-01T00:00:00.000Z", totals: group({ usage: { inputTokens: 100, cachedInputTokens: 75 } }) },
       { ts: "2026-06-02T00:00:00.000Z", totals: group() }
     ]);
     expect(cacheHitPointSeries(series).map((point) => point.value)).toEqual([75, 0]);
