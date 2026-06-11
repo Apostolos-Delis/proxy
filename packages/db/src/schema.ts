@@ -13,6 +13,7 @@ import type {
   RequestStatus,
   RoutingConfig,
   RouteName,
+  SessionPinnedSettings,
   Surface
 } from "@prompt-proxy/schema";
 
@@ -359,6 +360,8 @@ export const agentSessions = pgTable(
     surface: text("surface").$type<Surface>().notNull(),
     externalSessionId: text("external_session_id"),
     currentRoute: text("current_route").$type<RouteName>(),
+    pinnedSettings: jsonb("pinned_settings").$type<SessionPinnedSettings>(),
+    routingConfigVersionId: text("routing_config_version_id"),
     requestCount: integer("request_count").notNull().default(0),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),

@@ -232,6 +232,8 @@ CREATE TABLE agent_sessions (
   surface text NOT NULL,
   external_session_id text,
   current_route text,
+  pinned_settings jsonb,
+  routing_config_version_id text,
   request_count integer NOT NULL DEFAULT 0,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   started_at timestamp with time zone NOT NULL DEFAULT now(),
