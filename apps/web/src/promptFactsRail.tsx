@@ -45,11 +45,15 @@ export function FactsRail({ artifact, request }: { artifact: PromptArtifactDetai
         <FactSection title="Usage">
           <div className="fact-grid">
             <Fact label="Input tokens"><span className="mono">{formatCompact(request?.usage.inputTokens ?? 0)}</span></Fact>
-            <Fact label="Cached"><span className="mono">{formatCompact(request?.usage.cachedInputTokens ?? 0)}</span></Fact>
+            <Fact label="Cached">
+              <span className={`mono${(request?.usage.cachedInputTokens ?? 0) > 0 ? " fact-accent" : ""}`}>
+                {formatCompact(request?.usage.cachedInputTokens ?? 0)}
+              </span>
+            </Fact>
             <Fact label="Output"><span className="mono">{formatCompact(request?.usage.outputTokens ?? 0)}</span></Fact>
             <Fact label="Reasoning"><span className="mono">{formatCompact(request?.usage.reasoningTokens ?? 0)}</span></Fact>
             <Fact label="Total"><span className="mono">{formatCompact(request?.usage.totalTokens ?? 0)}</span></Fact>
-            <Fact label="Cost"><span className="mono">{formatMoney(request?.selectedCost ?? artifact.cost.selected)}</span></Fact>
+            <Fact label="Cost"><span className="mono fact-accent">{formatMoney(request?.selectedCost ?? artifact.cost.selected)}</span></Fact>
           </div>
         </FactSection>
         <FactSection title="Capture">
@@ -72,7 +76,6 @@ function RouteFlow({ requested, served, provider, route, classifier }: {
   route?: string | null;
   classifier?: ClassifierSnapshot;
 }) {
-  const rerouted = requested != null && requested !== served;
   const recommended = classifier?.recommendedRoute;
   const decision = route || classifier?.model ? (
     <div className="route-flow-decision">
@@ -90,16 +93,16 @@ function RouteFlow({ requested, served, provider, route, classifier }: {
   ) : null;
   const servedStep = (
     <div className={`route-flow-step${served ? " route-flow-served" : ""}`}>
-      <span className="route-flow-label">{rerouted ? "Served" : "Model"}</span>
+      <span className="route-flow-label">{requested != null ? "Served" : "Model"}</span>
       <span className={`mono route-flow-model${served ? "" : " faint"}`}>{served ?? "unknown"}</span>
       {provider ? <span className="route-flow-provider">{provider}</span> : null}
     </div>
   );
-  if (!rerouted) {
+  if (requested == null) {
     return <div className="route-flow">{servedStep}{decision}</div>;
   }
   return (
-    <div className="route-flow route-flow-rerouted">
+    <div className="route-flow route-flow-pipeline">
       <div className="route-flow-step">
         <span className="route-flow-label">Requested</span>
         <span className="mono route-flow-model">{requested}</span>
