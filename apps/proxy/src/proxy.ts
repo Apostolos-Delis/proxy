@@ -103,17 +103,20 @@ export class ProviderProxy implements ProviderAdapter {
       const text = await upstream.text();
       const status = upstream.ok ? "completed" : "failed";
       const usage = tryExtractUsage(text);
+      const error = upstream.ok ? undefined : errorExcerpt(text);
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
 
-      await this.appendTerminal(input, attempt.id, status, usage, upstream.status);
+      await this.appendTerminal(input, attempt.id, status, usage, upstream.status, error ? { error } : {});
       this.attempts.update(attempt.id, {
         terminalStatus: status,
-        usage: usage === undefined ? undefined : jsonPayload(usage)
+        usage: usage === undefined ? undefined : jsonPayload(usage),
+        error
       });
       await this.requestStates.finish(input.idempotencyKey, status, {
         providerAttemptId: attempt.id,
-        usage: usage === undefined ? undefined : jsonPayload(usage)
+        usage: usage === undefined ? undefined : jsonPayload(usage),
+        error
       });
       input.reply.send(text);
       if (status === "completed" && input.onAssistantText) {
@@ -359,6 +362,23 @@ function copyIfPresent(
 ) {
   const value = from[key.toLowerCase()] ?? from[key];
   if (value) to[key] = value;
+}
+
+// Prefer the provider's structured error message over the raw body so event
+// payloads stay small and free of incidental request content.
+function errorExcerpt(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) return undefined;
+  const parsed = tryParseJson(trimmed);
+  if (parsed && typeof parsed === "object") {
+    const error = (parsed as { error?: unknown }).error;
+    if (error && typeof error === "object") {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) return message.slice(0, 500);
+    }
+    if (typeof error === "string" && error.trim()) return error.slice(0, 500);
+  }
+  return trimmed.slice(0, 500);
 }
 
 function tryExtractUsage(text: string) {

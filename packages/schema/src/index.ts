@@ -199,6 +199,7 @@ export const routingConfigClassifierSchema = z.strictObject({
   provider: providerSchema,
   model: routingConfigIdentifierSchema,
   rules: routingConfigTextSchema.optional(),
+  reasoningEffort: openAIReasoningEffortSchema.optional(),
   timeoutMs: z.number().int().positive().max(30000),
   maxAttempts: z.number().int().positive().max(5),
   allowRedactedExcerpt: z.boolean(),

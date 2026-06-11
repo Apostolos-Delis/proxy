@@ -26,6 +26,8 @@ import type {
 import type { AnthropicEffort, RoutingConfig } from "@prompt-proxy/schema";
 
 const classifierFailureFallbackRoute: RouteName = "balanced";
+const classificationCacheTtlMs = 5 * 60 * 1000;
+const classificationCacheMaxEntries = 500;
 
 type ResolvedRouteSettings = {
   selectedModel: string;
@@ -60,6 +62,11 @@ function settingsForSurface(
 }
 
 export class RoutingService {
+  private readonly classificationCache = new Map<
+    string,
+    { result: ClassificationResult; expiresAt: number }
+  >();
+
   constructor(
     private readonly config: AppConfig,
     private readonly classifier: LlmClassifier,
@@ -122,18 +129,36 @@ export class RoutingService {
     if (explicit) {
       requestedRoute = explicit;
     } else {
-      try {
-        classification = await this.classify(
+      const cacheKey = context.organizationId
+        ? classificationCacheKey(context.organizationId, context, routingConfigSnapshot)
+        : undefined;
+      const cached = cacheKey ? this.cachedClassification(cacheKey) : undefined;
+      if (cached) {
+        classification = cached;
+        requestedRoute = cached.output.recommended_route;
+        await this.appendClassificationRecorded(
           requestId,
-          context,
           idempotencyKey,
           classifierSettings,
-          routingConfigSnapshot
+          cached,
+          routingConfigSnapshot,
+          { cached: true }
         );
-        requestedRoute = classification.output.recommended_route;
-      } catch {
-        classifierFailed = true;
-        requestedRoute = classifierFailureFallbackRoute;
+      } else {
+        try {
+          classification = await this.classify(
+            requestId,
+            context,
+            idempotencyKey,
+            classifierSettings,
+            routingConfigSnapshot
+          );
+          requestedRoute = classification.output.recommended_route;
+          if (cacheKey) this.storeClassification(cacheKey, classification);
+        } catch {
+          classifierFailed = true;
+          requestedRoute = classifierFailureFallbackRoute;
+        }
       }
     }
 
@@ -254,30 +279,14 @@ export class RoutingService {
   ) {
     try {
       const result = await this.classifier.classify(context, classifierSettings);
-      await this.events.append({
-        scopeType: "request",
-        scopeId: requestId,
-        correlationId: requestId,
+      await this.appendClassificationRecorded(
+        requestId,
         idempotencyKey,
-        producer: "prompt-proxy.classifier",
-        eventType: "routing.classification_recorded",
-        payload: {
-          model: classifierSettings.model,
-          attempts: result.attempts,
-          confidence: result.output.confidence,
-          recommendedRoute: result.output.recommended_route,
-          reasonCodes: result.output.reason_codes,
-          risk: result.output.risk,
-          routingConfig: routingConfig ? jsonPayload(routingConfig) : null
-        },
-        metadata: {
-          contentMode: classifierSettings.allowRedactedExcerpt
-            ? "redacted_excerpt"
-            : "features_only",
-          redactionState: "redacted",
-          provider: classifierSettings.provider
-        }
-      });
+        classifierSettings,
+        result,
+        routingConfig,
+        { cached: false }
+      );
       return result;
     } catch (error) {
       await this.events.append({
@@ -295,6 +304,65 @@ export class RoutingService {
       });
       throw error;
     }
+  }
+
+  private async appendClassificationRecorded(
+    requestId: string,
+    idempotencyKey: string,
+    classifierSettings: ClassifierSettings,
+    result: ClassificationResult,
+    routingConfig: RoutingConfigSnapshot | undefined,
+    options: { cached: boolean }
+  ) {
+    await this.events.append({
+      scopeType: "request",
+      scopeId: requestId,
+      correlationId: requestId,
+      idempotencyKey,
+      producer: "prompt-proxy.classifier",
+      eventType: "routing.classification_recorded",
+      payload: {
+        model: classifierSettings.model,
+        attempts: options.cached ? 0 : result.attempts,
+        cached: options.cached,
+        confidence: result.output.confidence,
+        recommendedRoute: result.output.recommended_route,
+        reasonCodes: result.output.reason_codes,
+        risk: result.output.risk,
+        routingConfig: routingConfig ? jsonPayload(routingConfig) : null
+      },
+      metadata: {
+        contentMode: classifierSettings.allowRedactedExcerpt
+          ? "redacted_excerpt"
+          : "features_only",
+        redactionState: "redacted",
+        provider: classifierSettings.provider
+      }
+    });
+  }
+
+  private cachedClassification(key: string) {
+    const entry = this.classificationCache.get(key);
+    if (!entry) return undefined;
+    if (entry.expiresAt <= Date.now()) {
+      this.classificationCache.delete(key);
+      return undefined;
+    }
+    // Re-insert so eviction order tracks recency of use, not just insertion.
+    this.classificationCache.delete(key);
+    this.classificationCache.set(key, entry);
+    return entry.result;
+  }
+
+  private storeClassification(key: string, result: ClassificationResult) {
+    if (this.classificationCache.size >= classificationCacheMaxEntries) {
+      const oldest = this.classificationCache.keys().next().value;
+      if (oldest !== undefined) this.classificationCache.delete(oldest);
+    }
+    this.classificationCache.set(key, {
+      result,
+      expiresAt: Date.now() + classificationCacheTtlMs
+    });
   }
 
   private async resolveRoute(
@@ -546,4 +614,26 @@ export class RoutingService {
       errorStatus
     };
   }
+}
+
+// Must cover every context field that feeds classifierView, or distinct
+// classifier inputs would share a cache entry.
+function classificationCacheKey(
+  organizationId: string,
+  context: RouteContext,
+  snapshot?: RoutingConfigSnapshot
+) {
+  return [
+    organizationId,
+    context.userId ?? "",
+    context.teamId ?? "",
+    context.surface,
+    context.requestedModel,
+    context.inputHash,
+    context.hasTools,
+    context.toolCount,
+    context.hasImages,
+    context.hasPreviousResponseId,
+    snapshot?.configHash ?? "default"
+  ].join("|");
 }
