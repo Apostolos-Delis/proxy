@@ -10,15 +10,23 @@ import {
   type PromptProxyTransaction,
   type PromptProxyTransactionalDatabase
 } from "@prompt-proxy/db";
-import { PROVIDER_ACCOUNT_STATUSES, PROVIDER_NAMES } from "@prompt-proxy/schema";
+import {
+  CLAUDE_SUBSCRIPTION_TOKEN_PREFIX,
+  PROVIDER_ACCOUNT_AUTH_TYPES,
+  PROVIDER_ACCOUNT_STATUSES,
+  PROVIDER_NAMES,
+  PROVIDERS
+} from "@prompt-proxy/schema";
 
 import { createId } from "../util.js";
 import { AdminMutationError } from "./adminErrors.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
+import type { ProviderCredentialOptions } from "./providerCredentials.js";
 
 const createCredentialBodySchema = z.object({
   provider: z.enum(PROVIDER_NAMES),
   name: z.string().trim().min(1),
+  authType: z.enum(PROVIDER_ACCOUNT_AUTH_TYPES).default("api_key"),
   apiKey: z.string().trim().min(1)
 }).strict();
 
@@ -32,7 +40,7 @@ export class ProviderCredentialAdminError extends AdminMutationError {}
 export class ProviderCredentialAdminService {
   constructor(
     private readonly db: PromptProxyTransactionalDatabase,
-    private readonly encryptionKey: string | undefined
+    private readonly options: ProviderCredentialOptions
   ) {}
 
   async createCredential(input: {
@@ -42,13 +50,35 @@ export class ProviderCredentialAdminService {
   }) {
     const body = createCredentialBodySchema.safeParse(input.body);
     if (!body.success) throw validationError("invalid_provider_credential_request", body.error);
-    if (!this.encryptionKey) {
+    const encryptionKey = this.options.encryptionKey;
+    if (!encryptionKey) {
       throw new ProviderCredentialAdminError("provider_secret_encryption_key_missing", 503);
+    }
+    if (body.data.authType === "oauth") {
+      if (!this.options.subscriptionOAuthEnabled) {
+        throw new ProviderCredentialAdminError("subscription_oauth_disabled", 400);
+      }
+      if (body.data.provider !== PROVIDERS.ANTHROPIC) {
+        throw new ProviderCredentialAdminError("subscription_oauth_unsupported_provider", 400, [
+          { path: "provider", message: "Subscription tokens are supported for Anthropic only." }
+        ]);
+      }
+      if (!body.data.apiKey.startsWith(CLAUDE_SUBSCRIPTION_TOKEN_PREFIX)) {
+        throw new ProviderCredentialAdminError("invalid_subscription_token", 400, [
+          {
+            path: "apiKey",
+            message: `Expected a \`claude setup-token\` value starting with ${CLAUDE_SUBSCRIPTION_TOKEN_PREFIX}.`
+          }
+        ]);
+      }
     }
 
     const providerAccountId = createId("provider_account");
-    const ciphertext = encryptSecret(body.data.apiKey, this.encryptionKey);
+    const ciphertext = encryptSecret(body.data.apiKey, encryptionKey);
     const hint = secretHint(body.data.apiKey);
+    const settings = body.data.authType === "oauth"
+      ? { tokenKind: "claude_oauth", source: "setup-token" }
+      : undefined;
     const now = new Date();
 
     return this.db.transaction(async (tx) => {
@@ -69,7 +99,8 @@ export class ProviderCredentialAdminService {
         organizationId: input.organizationId,
         provider: body.data.provider,
         name: body.data.name,
-        authType: "api_key",
+        authType: body.data.authType,
+        settings,
         secretCiphertext: ciphertext,
         secretHint: hint,
         createdByUserId: input.actorUserId,
@@ -89,7 +120,7 @@ export class ProviderCredentialAdminService {
           providerAccountId,
           provider: body.data.provider,
           name: body.data.name,
-          authType: "api_key",
+          authType: body.data.authType,
           secretHint: hint
         },
         createdAt: now
@@ -157,7 +188,7 @@ export class ProviderCredentialAdminService {
 
     return this.db.transaction(async (tx) => {
       const [apiKey] = await tx
-        .select({ id: apiKeys.id })
+        .select({ id: apiKeys.id, userId: apiKeys.userId })
         .from(apiKeys)
         .where(and(
           eq(apiKeys.organizationId, input.organizationId),
@@ -180,6 +211,15 @@ export class ProviderCredentialAdminService {
         if (!account) throw new ProviderCredentialAdminError("provider_credential_not_found", 404);
         if (account.status !== PROVIDER_ACCOUNT_STATUSES.ACTIVE) throw new ProviderCredentialAdminError("provider_credential_revoked", 409);
         if (account.provider !== provider) throw new ProviderCredentialAdminError("provider_credential_provider_mismatch", 409);
+        // Anti-pooling guardrail: a subscription token may only serve traffic
+        // on a key owned by the engineer who pasted it. Ownerless (org-shared)
+        // keys are rejected outright, not allowed through.
+        if (
+          account.authType === "oauth" &&
+          (!apiKey.userId || apiKey.userId !== account.createdByUserId)
+        ) {
+          throw new ProviderCredentialAdminError("provider_credential_owner_mismatch", 409);
+        }
 
         await tx
           .insert(apiKeyProviderAccounts)
@@ -228,6 +268,8 @@ async function byokAccount(tx: PromptProxyTransaction, organizationId: string, p
       provider: providerAccounts.provider,
       name: providerAccounts.name,
       status: providerAccounts.status,
+      authType: providerAccounts.authType,
+      createdByUserId: providerAccounts.createdByUserId,
       secretCiphertext: providerAccounts.secretCiphertext
     })
     .from(providerAccounts)

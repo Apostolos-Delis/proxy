@@ -1,6 +1,7 @@
 import type {
   AnthropicEffort,
   OpenAIReasoningEffort,
+  ProviderAccountAuthType,
   RoutingConfig,
   SessionPinnedSettings,
   Verbosity as RoutingVerbosity
@@ -19,6 +20,7 @@ export type UpstreamCredential = {
   readonly provider: Provider;
   readonly token: string;
   readonly providerAccountId: string;
+  readonly authType: ProviderAccountAuthType;
 };
 
 export type Verbosity = RoutingVerbosity;

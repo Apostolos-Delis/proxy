@@ -1,4 +1,5 @@
 import { builder } from "../builder.js";
+import { ProviderAccountAuthType } from "./core.js";
 import type {
   ApiKeyModel,
   ApiKeyProviderBindingModel,
@@ -139,7 +140,7 @@ export const ProviderAccount = builder.objectRef<ProviderAccountModel>("Provider
     organizationId: t.exposeString("organizationId"),
     provider: t.exposeString("provider"),
     name: t.exposeString("name"),
-    authType: t.exposeString("authType"),
+    authType: t.expose("authType", { type: ProviderAccountAuthType }),
     status: t.exposeString("status"),
     secretHint: t.exposeString("secretHint", { nullable: true }),
     ownerUserId: t.exposeString("ownerUserId", { nullable: true }),

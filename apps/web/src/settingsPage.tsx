@@ -9,6 +9,7 @@ graphql(`
   fragment SettingsViewFields on Settings {
     organizationId
     databaseEnabled
+    subscriptionOAuthEnabled
     restartRequiredFor
     storage {
       path

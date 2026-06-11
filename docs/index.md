@@ -8,14 +8,17 @@
 - [TanStack admin app scope](scopes/tanstack-admin-app-v1/PLAN.md)
 - [Routing configs scope](scopes/routing-configs-v1/PLAN.md)
 - [AWS prod-like deployment scope](scopes/aws-prod-like-deployment-v1/PLAN.md)
+- [Subscription auth scope](scopes/subscription-auth-v1/PLAN.md)
 
 ## Execution
 
 - [Implementation tickets](implementation-tickets.md)
 - [Routing configs V1 tickets](scopes/routing-configs-v1/TICKETS.md)
 - [AWS prod-like deployment tickets](scopes/aws-prod-like-deployment-v1/TICKETS.md)
+- [Subscription auth V1 tickets](scopes/subscription-auth-v1/TICKETS.md)
 - [Routing configs runbook](runbooks/routing-configs.md)
 - [AWS deployment runbook](runbooks/aws-deployment.md)
+- [Subscription auth runbook](runbooks/subscription-auth.md)
 
 ## Future Work
 

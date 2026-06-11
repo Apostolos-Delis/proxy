@@ -131,6 +131,7 @@ input CreateInvitationInput {
 
 input CreateProviderCredentialInput {
   apiKey: String!
+  authType: ProviderAccountAuthType
   name: String!
   provider: String!
 }
@@ -430,7 +431,7 @@ type PromptSummary implements PromptArtifactBase {
 }
 
 type ProviderAccount {
-  authType: String!
+  authType: ProviderAccountAuthType!
   boundKeyCount: Int!
   createdAt: String!
   id: String!
@@ -441,6 +442,11 @@ type ProviderAccount {
   provider: String!
   secretHint: String
   status: String!
+}
+
+enum ProviderAccountAuthType {
+  api_key
+  oauth
 }
 
 type ProviderAttempt {
@@ -742,6 +748,7 @@ type Settings {
   runtime: RuntimeSettings!
   settings: EditableSettings!
   storage: StorageInfo!
+  subscriptionOAuthEnabled: Boolean!
 }
 
 input SettingsInput {

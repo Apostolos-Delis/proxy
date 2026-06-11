@@ -1,8 +1,16 @@
 import { graphql } from "../gql";
-import type { ProviderAccountsQuery } from "../gql/graphql";
+import type { ProviderAccountAuthType, ProviderAccountsQuery } from "../gql/graphql";
 import { gqlFetch } from "../graphql";
 
 export type ProviderName = "anthropic" | "openai";
+
+const SubscriptionAuthSettingDocument = graphql(`
+  query SubscriptionAuthSetting {
+    settings {
+      subscriptionOAuthEnabled
+    }
+  }
+`);
 
 const ProviderAccountsDocument = graphql(`
   query ProviderAccounts {
@@ -59,11 +67,16 @@ export type ProviderAccountSummary = ProviderAccountsQuery["providerAccounts"][n
 export type CreateProviderCredentialInput = {
   provider: ProviderName;
   name: string;
+  authType: ProviderAccountAuthType;
   apiKey: string;
 };
 
 export async function fetchProviderAccounts() {
   return (await gqlFetch(ProviderAccountsDocument)).providerAccounts;
+}
+
+export async function fetchSubscriptionOAuthEnabled() {
+  return (await gqlFetch(SubscriptionAuthSettingDocument)).settings.subscriptionOAuthEnabled;
 }
 
 export async function createProviderCredential(input: CreateProviderCredentialInput) {

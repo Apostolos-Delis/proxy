@@ -120,6 +120,7 @@ export const Settings = builder.objectRef<SettingsPayload>("Settings").implement
   fields: (t) => ({
     organizationId: t.exposeString("organizationId"),
     databaseEnabled: t.exposeBoolean("databaseEnabled"),
+    subscriptionOAuthEnabled: t.exposeBoolean("subscriptionOAuthEnabled"),
     classifier: t.expose("classifier", { type: ClassifierRuntime }),
     budgets: t.expose("budgets", { type: BudgetSettings }),
     promptCapture: t.expose("promptCapture", { type: PromptCaptureState }),

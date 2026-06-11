@@ -25,6 +25,10 @@ export const PROVIDERS = {
 
 export const PROVIDER_ACCOUNT_AUTH_TYPES = ["api_key", "oauth"] as const;
 
+// Claude subscription tokens minted by `claude setup-token`. Anthropic has
+// rotated token prefixes before — keep every prefix check on this constant.
+export const CLAUDE_SUBSCRIPTION_TOKEN_PREFIX = "sk-ant-oat01-";
+
 export const PROVIDER_ACCOUNT_STATUSES = {
   ACTIVE: "active",
   DISABLED: "disabled"

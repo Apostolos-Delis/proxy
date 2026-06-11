@@ -36,6 +36,7 @@ export type CreateInvitationInput = {
 
 export type CreateProviderCredentialInput = {
   apiKey: string;
+  authType?: ProviderAccountAuthType | null | undefined;
   name: string;
   provider: string;
 };
@@ -68,6 +69,10 @@ export type PromptCaptureSettingsInput = {
   promptCaptureMode?: string | null | undefined;
   retentionDays?: number | null | undefined;
 };
+
+export type ProviderAccountAuthType =
+  | 'api_key'
+  | 'oauth';
 
 export type RouteQualitySettingsInput = {
   lowConfidenceThreshold?: number | null | undefined;
@@ -207,10 +212,15 @@ export type PromptsListQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type PromptsListQuery = { prompts: { data: Array<{ artifactId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, preview: string | null, finalRoute: string | null, selectedModel: string | null, createdAt: string, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }> } };
 
+export type SubscriptionAuthSettingQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type SubscriptionAuthSettingQuery = { settings: { subscriptionOAuthEnabled: boolean } };
+
 export type ProviderAccountsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type ProviderAccountsQuery = { providerAccounts: Array<{ id: string, organizationId: string, provider: string, name: string, authType: string, status: string, secretHint: string | null, ownerUserId: string | null, boundKeyCount: number, createdAt: string, lastUsedAt: string | null }> };
+export type ProviderAccountsQuery = { providerAccounts: Array<{ id: string, organizationId: string, provider: string, name: string, authType: ProviderAccountAuthType, status: string, secretHint: string | null, ownerUserId: string | null, boundKeyCount: number, createdAt: string, lastUsedAt: string | null }> };
 
 export type CreateProviderCredentialMutationVariables = Exact<{
   input: CreateProviderCredentialInput;
@@ -384,19 +394,19 @@ export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, requestCount: number, startedAt: string, endedAt: string | null, recentActivity: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
-export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
+export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
 
 export type SettingsViewQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type UpdateSettingsMutationVariables = Exact<{
   input: SettingsInput;
 }>;
 
 
-export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type ActiveSessionsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -606,6 +616,7 @@ export const SettingsViewFieldsFragmentDoc = new TypedDocumentString(`
     fragment SettingsViewFields on Settings {
   organizationId
   databaseEnabled
+  subscriptionOAuthEnabled
   restartRequiredFor
   storage {
     path
@@ -994,6 +1005,13 @@ export const PromptsListDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<PromptsListQuery, PromptsListQueryVariables>;
+export const SubscriptionAuthSettingDocument = new TypedDocumentString(`
+    query SubscriptionAuthSetting {
+  settings {
+    subscriptionOAuthEnabled
+  }
+}
+    `) as unknown as TypedDocumentString<SubscriptionAuthSettingQuery, SubscriptionAuthSettingQueryVariables>;
 export const ProviderAccountsDocument = new TypedDocumentString(`
     query ProviderAccounts {
   providerAccounts {
@@ -1649,6 +1667,7 @@ export const SettingsViewDocument = new TypedDocumentString(`
     fragment SettingsViewFields on Settings {
   organizationId
   databaseEnabled
+  subscriptionOAuthEnabled
   restartRequiredFor
   storage {
     path
@@ -1692,6 +1711,7 @@ export const UpdateSettingsDocument = new TypedDocumentString(`
     fragment SettingsViewFields on Settings {
   organizationId
   databaseEnabled
+  subscriptionOAuthEnabled
   restartRequiredFor
   storage {
     path

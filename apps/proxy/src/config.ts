@@ -107,6 +107,10 @@ const configSchema = z.object({
       )
   ),
   DEFAULT_ORGANIZATION_ID: z.string().min(1).default("local"),
+  // Operator-level kill switch for Claude subscription-token auth. Env-only by
+  // design (never settings-file editable) and internal-only — must not be
+  // surfaced to external customers. See docs/scopes/subscription-auth-v1/PLAN.md.
+  SUBSCRIPTION_OAUTH_ENABLED: booleanEnvSchema,
   ALLOW_DEV_PROXY_TOKEN_FALLBACK: booleanEnvSchema,
   ADMIN_DEV_LOGIN_ENABLED: booleanEnvSchema,
   ADMIN_GRAPHIQL_ENABLED: enabledBooleanEnvSchema,
@@ -169,6 +173,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     databaseUrl: parsed.DATABASE_URL,
     providerSecretEncryptionKey: parsed.PROVIDER_SECRET_ENCRYPTION_KEY,
     defaultOrganizationId: parsed.DEFAULT_ORGANIZATION_ID,
+    subscriptionOAuthEnabled: parsed.SUBSCRIPTION_OAUTH_ENABLED,
     allowDevProxyTokenFallback: parsed.ALLOW_DEV_PROXY_TOKEN_FALLBACK || !parsed.DATABASE_URL,
     adminDevLoginEnabled: parsed.ADMIN_DEV_LOGIN_ENABLED,
     adminGraphiqlEnabled: parsed.ADMIN_GRAPHIQL_ENABLED,
