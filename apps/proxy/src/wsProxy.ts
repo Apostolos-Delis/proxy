@@ -32,6 +32,10 @@ type ActiveRequest = {
   sessionId?: string;
 };
 
+// Structural subset of the Fastify/pino logger, so the proxy can warn without
+// depending on the logger implementation.
+type WsLogger = { warn: (obj: unknown, msg?: string) => void };
+
 export class WebSocketRoutingProxy {
   constructor(
     private readonly config: AppConfig,
@@ -41,7 +45,8 @@ export class WebSocketRoutingProxy {
     private readonly attempts: ProviderAttemptStore,
     private readonly requestStates: RequestStateStoreLike,
     private readonly promptArtifacts?: PromptArtifactStore,
-    private readonly routingConfigs?: RoutingConfigResolver
+    private readonly routingConfigs?: RoutingConfigResolver,
+    private readonly log?: WsLogger
   ) {}
 
   register(server: Server) {
@@ -215,7 +220,7 @@ export class WebSocketRoutingProxy {
       surface: openAIResponsesSurface.surface,
       body: routeBody,
       orgSystemPrompt: resolved.systemPrompt,
-      warn: () => {}
+      warn: (err, message) => this.log?.warn({ err, requestId }, message)
     });
     const decision = await this.routing.decide({
       requestId,
@@ -281,12 +286,10 @@ export class WebSocketRoutingProxy {
       surface: openAIResponsesSurface.surface,
       body: routeBody,
       enabled: resolved.toolResultCompression,
-      // No request logger on the WS surface; compressForForward already falls
-      // back to the original body on failure, so swallow here.
-      warn: () => {}
+      warn: (err, message) => this.log?.warn({ err, requestId }, message)
     });
     return {
-      body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt),
+      body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade }),
       decision,
       activeRequest: {
         requestId,

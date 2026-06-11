@@ -107,7 +107,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     attempts,
     requestStates,
     persistence?.promptArtifacts,
-    persistence?.routingConfigs
+    persistence?.routingConfigs,
+    app.log
   );
   const projections = new ProjectionService(modelCatalog, config);
   const emailService = new EmailService(config, app.log);
