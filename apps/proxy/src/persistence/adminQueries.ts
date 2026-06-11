@@ -280,10 +280,16 @@ export class AdminQueryService {
       .orderBy(desc(routingConfigs.updatedAt));
     const activeVersions = await this.activeRoutingConfigVersions(configRows);
     const assignedKeyCounts = await this.routingConfigApiKeyCounts(configRows.map((row) => row.id));
+    const trafficShares = await this.routingConfigTrafficShares();
 
     return {
       data: configRows.map((row) =>
-        routingConfigListSummary(row, activeVersions.get(row.activeVersionId ?? ""), assignedKeyCounts.get(row.id) ?? 0)
+        routingConfigListSummary(
+          row,
+          activeVersions.get(row.activeVersionId ?? ""),
+          assignedKeyCounts.get(row.id) ?? 0,
+          trafficShares.get(row.id) ?? 0
+        )
       )
     };
   }
@@ -309,9 +315,15 @@ export class AdminQueryService {
       .orderBy(desc(routingConfigVersions.version));
     const activeVersion = versions.find((version) => version.id === config.activeVersionId);
     const assignedKeyCounts = await this.routingConfigApiKeyCounts([config.id]);
+    const trafficShares = await this.routingConfigTrafficShares();
 
     return {
-      config: routingConfigListSummary(config, activeVersion, assignedKeyCounts.get(config.id) ?? 0),
+      config: routingConfigListSummary(
+        config,
+        activeVersion,
+        assignedKeyCounts.get(config.id) ?? 0,
+        trafficShares.get(config.id) ?? 0
+      ),
       versions: versions.map((version) => routingConfigVersionDetail(version, version.id === config.activeVersionId))
     };
   }
@@ -1222,6 +1234,33 @@ export class AdminQueryService {
     }, new Map<string, number>());
   }
 
+  // Share of routed requests per config over the trailing seven days. The
+  // window keeps the number current without scanning full request history.
+  private async routingConfigTrafficShares() {
+    return this.cached("routing-config-traffic-shares", async () => {
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const rows = await this.db
+        .select({
+          routingConfigId: requests.routingConfigId,
+          count: sql<number>`count(*)`
+        })
+        .from(requests)
+        .where(and(
+          this.scopedTo(requests),
+          isNotNull(requests.routingConfigId),
+          gte(requests.createdAt, since)
+        ))
+        .groupBy(requests.routingConfigId);
+      const total = rows.reduce((sum, row) => sum + Number(row.count), 0);
+      const shares = new Map<string, number>();
+      if (total === 0) return shares;
+      for (const row of rows) {
+        if (row.routingConfigId) shares.set(row.routingConfigId, Number(row.count) / total);
+      }
+      return shares;
+    });
+  }
+
   private async promptRows(filters: PromptListFilters) {
     const conditions = promptConditions(this.organizationId, this.workspaceId, filters);
     return this.db
@@ -1352,7 +1391,8 @@ type ProviderAccountSummaryRow = {
 function routingConfigListSummary(
   row: RoutingConfigRow,
   activeVersion: RoutingConfigVersionRow | undefined,
-  assignedApiKeyCount: number
+  assignedApiKeyCount: number,
+  trafficShare: number
 ) {
   return {
     id: row.id,
@@ -1365,6 +1405,7 @@ function routingConfigListSummary(
     activeVersion: activeVersion ? routingConfigVersionSummary(activeVersion, true) : null,
     routeMatrix: activeVersion ? routeMatrixSummary(activeVersion.config) : [],
     assignedApiKeyCount,
+    trafficShare,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString()
   };

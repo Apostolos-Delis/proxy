@@ -634,6 +634,11 @@ type RoutingConfigSummary {
   routeMatrix: [RouteMatrixRow!]!
   slug: String!
   status: String!
+
+  """
+  Share of routed requests handled by this config over the trailing 7 days (0..1).
+  """
+  trafficShare: Float!
   updatedAt: String!
 }
 
