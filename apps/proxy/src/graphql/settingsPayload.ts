@@ -22,6 +22,7 @@ export async function settingsResponse(
     : {
         systemPrompt: null,
         cacheTtlUpgrade: false,
+        automaticCaching: false,
         toolResultCompression: false,
         costBaseline: defaultCostBaseline
       };
@@ -29,6 +30,7 @@ export async function settingsResponse(
     schemaVersion: 1,
     systemPrompt: editable.systemPrompt,
     cacheTtlUpgrade: editable.cacheTtlUpgrade,
+    automaticCaching: editable.automaticCaching,
     toolResultCompression: editable.toolResultCompression,
     costBaseline: editable.costBaseline,
     classifier: {

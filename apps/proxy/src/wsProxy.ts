@@ -289,7 +289,7 @@ export class WebSocketRoutingProxy {
       warn: (err, message) => this.log?.warn({ err, requestId }, message)
     });
     return {
-      body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade }),
+      body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
       decision,
       activeRequest: {
         requestId,

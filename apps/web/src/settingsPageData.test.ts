@@ -15,6 +15,7 @@ function makeSettings(overrides: Partial<EditableSettings> = {}): EditableSettin
     schemaVersion: 1,
     systemPrompt: null,
     cacheTtlUpgrade: false,
+    automaticCaching: false,
     toolResultCompression: false,
     costBaseline: { anthropicModel: "claude-fable-5", openaiModel: "gpt-5.5" },
     classifier: { model: "gpt-5-nano", timeoutMs: 4000, maxAttempts: 2, allowRedactedExcerpt: true },
