@@ -47,8 +47,17 @@ import {
   routingConfigSummary,
   usageLedgerSummary
 } from "./adminSerializers.js";
+import { CACHE_TTL_DEFAULT_MS } from "../cacheWindows.js";
+import { CACHE_BUST_SAMPLE_CAP, detectCacheBusts } from "./cacheBusts.js";
+import { aggregateIdleGaps, IDLE_GAP_SAMPLE_CAP } from "./idleGaps.js";
 import { orgPricingOverrides, type OrgPricingOverride } from "./modelPricing.js";
+import { aggregateTokenAttribution, TOKEN_ATTRIBUTION_SAMPLE_CAP } from "./tokenAttributionReport.js";
 import { routeValue, surfaceValue } from "./values.js";
+
+type DateRangeFilters = {
+  start?: string;
+  end?: string;
+};
 
 export type AdminQueryConfig = {
   routeQualityLowConfidenceThreshold: number;
@@ -1015,6 +1024,131 @@ export class AdminQueryService {
     return summaries;
   }
 
+  // Output tokens per route — the lever for effort/verbosity tuning. Output is
+  // 5x input price, so a route with high average output is the first place to
+  // dial effort down. Reasoning share flags routes spending output on thinking.
+  async routeOutputReport(filters: DateRangeFilters = {}) {
+    const start = dateValue(filters.start);
+    const end = dateValue(filters.end);
+    const conditions = [this.scopedTo(usageLedger), isNotNull(usageLedger.route)];
+    if (start) conditions.push(gte(usageLedger.createdAt, start));
+    if (end) conditions.push(lte(usageLedger.createdAt, end));
+    const rows = await this.db
+      .select({
+        route: usageLedger.route,
+        requests: sql<number>`count(*)`,
+        outputTokens: sql<number>`coalesce(sum(${usageLedger.outputTokens}), 0)`,
+        reasoningTokens: sql<number>`coalesce(sum(${usageLedger.reasoningTokens}), 0)`,
+        outputCostMicros: sql<number>`coalesce(sum(${usageLedger.outputCostMicros}), 0)`
+      })
+      .from(usageLedger)
+      .where(and(...conditions))
+      .groupBy(usageLedger.route);
+
+    const routes = rows.map((row) => {
+      const requests = Number(row.requests);
+      const outputTokens = Number(row.outputTokens);
+      const reasoningTokens = Number(row.reasoningTokens);
+      return {
+        route: row.route ?? "unknown",
+        requests,
+        outputTokens,
+        reasoningTokens,
+        avgOutputTokens: requests > 0 ? outputTokens / requests : 0,
+        reasoningShare: outputTokens > 0 ? reasoningTokens / outputTokens : 0,
+        outputCost: Number(row.outputCostMicros) / 1_000_000
+      };
+    });
+    routes.sort((left, right) => routeIndex(routeValue(left.route)) - routeIndex(routeValue(right.route)));
+    return { routes };
+  }
+
+  // Sessions with a request inside the cache-warm window. Editing the org
+  // system prompt shifts the front of every prefix, so each of these sessions
+  // pays a full cache rebuild on its next request — this is the blast radius.
+  async activeSessionCount(withinMs = CACHE_TTL_DEFAULT_MS) {
+    const since = new Date(Date.now() - withinMs);
+    const [row] = await this.db
+      .select({ count: sql<number>`count(distinct ${requests.sessionId})` })
+      .from(requests)
+      .where(and(
+        this.scopedTo(requests),
+        isNotNull(requests.sessionId),
+        gte(requests.createdAt, since)
+      ));
+    return { activeSessions: Number(row?.count ?? 0), windowMs: withinMs };
+  }
+
+  async idleGaps(filters: DateRangeFilters = {}) {
+    const start = dateValue(filters.start);
+    const end = dateValue(filters.end);
+    const conditions = [this.scopedTo(requests), isNotNull(requests.sessionId)];
+    if (start) conditions.push(gte(requests.createdAt, start));
+    if (end) conditions.push(lte(requests.createdAt, end));
+    const rows = await this.db
+      .select({ sessionId: requests.sessionId, createdAt: requests.createdAt })
+      .from(requests)
+      .where(and(...conditions))
+      .orderBy(desc(requests.createdAt))
+      .limit(IDLE_GAP_SAMPLE_CAP);
+    return aggregateIdleGaps(
+      rows.map((row) => ({ sessionId: row.sessionId ?? "", createdAt: row.createdAt })),
+      rows.length === IDLE_GAP_SAMPLE_CAP
+    );
+  }
+
+  async cacheBusts(filters: DateRangeFilters = {}) {
+    const start = dateValue(filters.start);
+    const end = dateValue(filters.end);
+    const conditions = [this.scopedTo(usageLedger), isNotNull(usageLedger.sessionId)];
+    if (start) conditions.push(gte(usageLedger.createdAt, start));
+    if (end) conditions.push(lte(usageLedger.createdAt, end));
+    const rows = await this.db
+      .select({
+        sessionId: usageLedger.sessionId,
+        requestId: usageLedger.requestId,
+        provider: usageLedger.provider,
+        model: usageLedger.model,
+        inputTokens: usageLedger.inputTokens,
+        cachedInputTokens: usageLedger.cachedInputTokens,
+        cacheCreationInputTokens: usageLedger.cacheCreationInputTokens,
+        createdAt: usageLedger.createdAt
+      })
+      .from(usageLedger)
+      .where(and(...conditions))
+      .orderBy(desc(usageLedger.createdAt))
+      .limit(CACHE_BUST_SAMPLE_CAP);
+    const report = detectCacheBusts(rows.map((row) => ({
+      sessionId: row.sessionId ?? "",
+      requestId: row.requestId,
+      provider: row.provider,
+      model: row.model,
+      inputTokens: row.inputTokens,
+      cachedInputTokens: row.cachedInputTokens,
+      cacheCreationInputTokens: row.cacheCreationInputTokens,
+      createdAt: row.createdAt
+    })));
+    return { ...report, sampled: rows.length === CACHE_BUST_SAMPLE_CAP };
+  }
+
+  async tokenAttribution(filters: DateRangeFilters = {}) {
+    const start = dateValue(filters.start);
+    const end = dateValue(filters.end);
+    const conditions = [this.scopedTo(events), eq(events.eventType, "tokens.attributed")];
+    if (start) conditions.push(gte(events.createdAt, start));
+    if (end) conditions.push(lte(events.createdAt, end));
+    const rows = await this.db
+      .select({ payload: events.payload })
+      .from(events)
+      .where(and(...conditions))
+      .orderBy(desc(events.createdAt))
+      .limit(TOKEN_ATTRIBUTION_SAMPLE_CAP);
+    return aggregateTokenAttribution(
+      rows.map((row) => row.payload),
+      rows.length === TOKEN_ATTRIBUTION_SAMPLE_CAP
+    );
+  }
+
   private eventCount() {
     return this.cached("event-count", async () => {
       const [row] = await this.db
@@ -1522,6 +1656,7 @@ function sessionSummary(session: SessionRow, allRequests: RequestSummary[]) {
     routeMix: countBy(requests, (request) => request.finalRoute ?? "unknown"),
     terminalStatusSummary: countBy(requests, (request) => request.terminalStatus),
     usage: usageTotals(requests),
+    cacheHitRate: cacheHitRate(requests),
     cost: costTotals(requests),
     recentActivity: recentActivity(requests, [session]),
     startedAt: session.startedAt.toISOString(),
@@ -1544,6 +1679,24 @@ function addUsageTotals(target: ReturnType<typeof emptyUsage>, usage: ReturnType
   target.outputTokens += usage.outputTokens;
   target.reasoningTokens += usage.reasoningTokens;
   target.totalTokens += usage.totalTokens;
+}
+
+// Hit rate over total prompt input. Anthropic reports input_tokens exclusive
+// of cache reads/writes when caching applies; OpenAI reports cached_tokens as
+// a subset of input_tokens. Requests without a known provider are skipped —
+// their denominator semantics are ambiguous.
+function cacheHitRate(requests: RequestSummary[]) {
+  let hits = 0;
+  let total = 0;
+  for (const request of requests) {
+    if (request.provider !== "anthropic" && request.provider !== "openai") continue;
+    const usage = request.usage;
+    hits += usage.cachedInputTokens;
+    total += request.provider === "anthropic"
+      ? usage.inputTokens + usage.cachedInputTokens + usage.cacheCreationInputTokens
+      : usage.inputTokens;
+  }
+  return total > 0 ? hits / total : null;
 }
 
 function costTotals(requests: RequestSummary[]) {

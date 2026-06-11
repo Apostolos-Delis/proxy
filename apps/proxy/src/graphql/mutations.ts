@@ -192,7 +192,7 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: SettingsInput, required: true }) },
     resolve: async (_root, args, context) => {
       try {
-        const { systemPrompt, ...fileInput } = args.input;
+        const { systemPrompt, cacheTtlUpgrade, toolResultCompression, ...fileInput } = args.input;
         const settings = await writeSettingsFile(context.config.settingsPath, fileInput);
         if (
           context.persistence &&
@@ -209,6 +209,18 @@ builder.mutationFields((t) => ({
           await context.persistence.organizationSettings.setSystemPrompt(
             context.identity().organizationId,
             systemPrompt?.trim() ? systemPrompt.trim() : null
+          );
+        }
+        if (context.persistence && cacheTtlUpgrade !== undefined && cacheTtlUpgrade !== null) {
+          await context.persistence.organizationSettings.setCacheTtlUpgrade(
+            context.identity().organizationId,
+            cacheTtlUpgrade
+          );
+        }
+        if (context.persistence && toolResultCompression !== undefined && toolResultCompression !== null) {
+          await context.persistence.organizationSettings.setToolResultCompression(
+            context.identity().organizationId,
+            toolResultCompression
           );
         }
         return await settingsResponse(

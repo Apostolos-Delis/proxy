@@ -318,6 +318,93 @@ describe("session replay admin APIs", () => {
     ]));
   });
 
+  it("reports per-session cache hit rate from ledger cache fields", async () => {
+    const fixture = await setup("org_cache_sessions");
+    const at = new Date("2026-06-08T12:00:00.000Z");
+
+    await fixture.db.insert(users).values([
+      { id: "user_cache", email: "cache@example.com", name: "Cache User" }
+    ]);
+    await fixture.db.insert(agentSessions).values([
+      {
+        id: "session_cache",
+        organizationId: "org_cache_sessions",
+        workspaceId: defaultWorkspaceId("org_cache_sessions"),
+        userId: "user_cache",
+        surface: "anthropic-messages",
+        externalSessionId: "claude-session",
+        startedAt: at,
+        updatedAt: at
+      },
+      {
+        id: "session_cache_openai",
+        organizationId: "org_cache_sessions",
+        workspaceId: defaultWorkspaceId("org_cache_sessions"),
+        userId: "user_cache",
+        surface: "openai-responses",
+        externalSessionId: "codex-session",
+        startedAt: at,
+        updatedAt: at
+      }
+    ]);
+    await fixture.db.insert(requests).values([
+      usageRequest("cache_request", "org_cache_sessions", "user_cache", "session_cache", "anthropic-messages", at),
+      usageRequest("cache_request_openai", "org_cache_sessions", "user_cache", "session_cache_openai", "openai-responses", at)
+    ]);
+    await fixture.db.insert(routeDecisions).values([
+      usageDecision("cache_decision", "cache_request", "org_cache_sessions", "hard", "anthropic", "claude-hard"),
+      usageDecision("cache_decision_openai", "cache_request_openai", "org_cache_sessions", "hard", "openai", "gpt-hard")
+    ]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("cache_attempt", "cache_request", "org_cache_sessions", "anthropic-messages", "anthropic", "claude-hard", "completed", at),
+      usageAttempt("cache_attempt_openai", "cache_request_openai", "org_cache_sessions", "openai-responses", "openai", "gpt-hard", "completed", at)
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      {
+        ...usageRow("cache_usage", "cache_request", "cache_attempt", "org_cache_sessions", "anthropic", "claude-hard", "hard", 100, 50, 2000),
+        cachedInputTokens: 800,
+        cacheCreationInputTokens: 100,
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_read_input_tokens: 800,
+          cache_creation_input_tokens: 100
+        }
+      },
+      {
+        // OpenAI reports cached tokens as a subset of input_tokens.
+        ...usageRow("cache_usage_openai", "cache_request_openai", "cache_attempt_openai", "org_cache_sessions", "openai", "gpt-hard", "hard", 1000, 50, 1500),
+        cachedInputTokens: 250,
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 50,
+          input_tokens_details: { cached_tokens: 250 }
+        }
+      }
+    ]);
+
+    const sessions = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { sessions {
+        sessionId
+        cacheHitRate
+        usage { cachedInputTokens cacheCreationInputTokens }
+        cost { selected }
+      } }`
+    )).data?.sessions;
+
+    expect(sessions).toHaveLength(2);
+    const bySession = Object.fromEntries(sessions.map((session: any) => [session.sessionId, session]));
+    expect(bySession.session_cache.usage.cachedInputTokens).toBe(800);
+    expect(bySession.session_cache.usage.cacheCreationInputTokens).toBe(100);
+    // anthropic denominator = input (100) + reads (800) + writes (100)
+    expect(bySession.session_cache.cacheHitRate).toBe(0.8);
+    expect(bySession.session_cache.cost.selected).toBeCloseTo(0.002, 6);
+    // openai denominator = input_tokens (1000); cached (250) is a subset
+    expect(bySession.session_cache_openai.cacheHitRate).toBe(0.25);
+  });
+
   async function setup(organizationId: string) {
     activeFixture = await captureFixture(organizationId);
     return activeFixture;

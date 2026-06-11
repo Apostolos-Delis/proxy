@@ -16,12 +16,14 @@ export async function settingsResponse(
         promptCaptureMode: fileSettings.promptCapture.promptCaptureMode ?? "raw_text",
         retentionDays: fileSettings.promptCapture.retentionDays ?? 30
       };
-  const systemPrompt = persistence
-    ? await persistence.organizationSettings.systemPrompt(organizationId)
-    : null;
+  const editable = persistence
+    ? await persistence.organizationSettings.editable(organizationId)
+    : { systemPrompt: null, cacheTtlUpgrade: false, toolResultCompression: false };
   const settings = {
     schemaVersion: 1,
-    systemPrompt,
+    systemPrompt: editable.systemPrompt,
+    cacheTtlUpgrade: editable.cacheTtlUpgrade,
+    toolResultCompression: editable.toolResultCompression,
     classifier: {
       model: fileSettings.classifier.model ?? config.classifierModel,
       timeoutMs: fileSettings.classifier.timeoutMs ?? config.classifierTimeoutMs,

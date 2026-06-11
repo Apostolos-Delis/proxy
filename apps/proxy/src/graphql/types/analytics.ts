@@ -1,8 +1,18 @@
 import { builder } from "../builder.js";
 import type {
+  ActiveSessionCountModel,
+  CacheBustModel,
+  CacheBustReportModel,
+  IdleGapBucketModel,
+  IdleGapReportModel,
   LatencySummaryModel,
+  RouteOutputReportModel,
+  RouteOutputRowModel,
   OverviewModel,
   RouteQualityModel,
+  TokenAttributionBucketModel,
+  TokenAttributionOffenderModel,
+  TokenAttributionReportModel,
   UsageGroupModel,
   UsageReportModel,
   UsageTimeseriesModel,
@@ -86,5 +96,107 @@ export const UsageReport = builder.objectRef<UsageReportModel>("UsageReport").im
     groupBy: t.field({ type: UsageGroupBy, resolve: (report) => report.groupBy }),
     data: t.expose("data", { type: [UsageGroup] }),
     totals: t.expose("totals", { type: UsageGroup })
+  })
+});
+
+export const TokenAttributionBucket = builder
+  .objectRef<TokenAttributionBucketModel>("TokenAttributionBucket")
+  .implement({
+    fields: (t) => ({
+      key: t.exposeString("key"),
+      chars: t.exposeFloat("chars"),
+      estimatedTokens: t.exposeFloat("estimatedTokens")
+    })
+  });
+
+export const TokenAttributionOffender = builder
+  .objectRef<TokenAttributionOffenderModel>("TokenAttributionOffender")
+  .implement({
+    fields: (t) => ({
+      name: t.exposeString("name"),
+      chars: t.exposeFloat("chars"),
+      estimatedTokens: t.exposeFloat("estimatedTokens"),
+      blocks: t.exposeFloat("blocks", { nullable: true })
+    })
+  });
+
+export const TokenAttributionReport = builder
+  .objectRef<TokenAttributionReportModel>("TokenAttributionReport")
+  .implement({
+    fields: (t) => ({
+      requestCount: t.exposeFloat("requestCount"),
+      sampled: t.exposeBoolean("sampled"),
+      buckets: t.expose("buckets", { type: [TokenAttributionBucket] }),
+      toolSchemas: t.expose("toolSchemas", { type: [TokenAttributionOffender] }),
+      toolResults: t.expose("toolResults", { type: [TokenAttributionOffender] })
+    })
+  });
+
+export const ActiveSessionCount = builder
+  .objectRef<ActiveSessionCountModel>("ActiveSessionCount")
+  .implement({
+    fields: (t) => ({
+      activeSessions: t.exposeFloat("activeSessions"),
+      windowMs: t.exposeFloat("windowMs")
+    })
+  });
+
+export const RouteOutputRow = builder.objectRef<RouteOutputRowModel>("RouteOutputRow").implement({
+  fields: (t) => ({
+    route: t.exposeString("route"),
+    requests: t.exposeFloat("requests"),
+    outputTokens: t.exposeFloat("outputTokens"),
+    reasoningTokens: t.exposeFloat("reasoningTokens"),
+    avgOutputTokens: t.exposeFloat("avgOutputTokens"),
+    reasoningShare: t.exposeFloat("reasoningShare"),
+    outputCost: t.exposeFloat("outputCost")
+  })
+});
+
+export const RouteOutputReport = builder.objectRef<RouteOutputReportModel>("RouteOutputReport").implement({
+  fields: (t) => ({
+    routes: t.expose("routes", { type: [RouteOutputRow] })
+  })
+});
+
+export const IdleGapBucket = builder.objectRef<IdleGapBucketModel>("IdleGapBucket").implement({
+  fields: (t) => ({
+    key: t.exposeString("key"),
+    label: t.exposeString("label"),
+    count: t.exposeFloat("count")
+  })
+});
+
+export const IdleGapReport = builder.objectRef<IdleGapReportModel>("IdleGapReport").implement({
+  fields: (t) => ({
+    buckets: t.expose("buckets", { type: [IdleGapBucket] }),
+    totalGaps: t.exposeFloat("totalGaps"),
+    overTtl: t.exposeFloat("overTtl"),
+    recoverableByOneHourTtl: t.exposeFloat("recoverableByOneHourTtl"),
+    sessionsScanned: t.exposeFloat("sessionsScanned"),
+    sampled: t.exposeBoolean("sampled")
+  })
+});
+
+export const CacheBust = builder.objectRef<CacheBustModel>("CacheBust").implement({
+  fields: (t) => ({
+    sessionId: t.exposeString("sessionId"),
+    requestId: t.exposeString("requestId"),
+    at: t.exposeString("at"),
+    cause: t.exposeString("cause"),
+    droppedCacheReadTokens: t.exposeFloat("droppedCacheReadTokens"),
+    rebuiltTokens: t.exposeFloat("rebuiltTokens"),
+    model: t.exposeString("model"),
+    previousModel: t.exposeString("previousModel"),
+    gapMs: t.exposeFloat("gapMs")
+  })
+});
+
+export const CacheBustReport = builder.objectRef<CacheBustReportModel>("CacheBustReport").implement({
+  fields: (t) => ({
+    busts: t.expose("busts", { type: [CacheBust] }),
+    countsByCause: t.field({ type: "JSON", resolve: (report) => report.countsByCause }),
+    sessionsScanned: t.exposeFloat("sessionsScanned"),
+    sampled: t.exposeBoolean("sampled")
   })
 });

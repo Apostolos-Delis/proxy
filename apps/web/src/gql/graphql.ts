@@ -86,11 +86,13 @@ export type SetModelPricingInput = {
 
 export type SettingsInput = {
   budgets?: BudgetSettingsInput | null | undefined;
+  cacheTtlUpgrade?: boolean | null | undefined;
   classifier?: ClassifierSettingsInput | null | undefined;
   promptCapture?: PromptCaptureSettingsInput | null | undefined;
   routeQuality?: RouteQualitySettingsInput | null | undefined;
   schemaVersion?: number | null | undefined;
   systemPrompt?: string | null | undefined;
+  toolResultCompression?: boolean | null | undefined;
 };
 
 export type UsageGroupBy =
@@ -376,21 +378,58 @@ export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, requestCount: number, startedAt: string, recentActivity: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
-export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
+export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, toolResultCompression: boolean, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
 
 export type SettingsViewQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, toolResultCompression: boolean, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type UpdateSettingsMutationVariables = Exact<{
   input: SettingsInput;
 }>;
 
 
-export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, toolResultCompression: boolean, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
-export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } };
+export type ActiveSessionsQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type ActiveSessionsQuery = { activeSessionCount: { activeSessions: number, windowMs: number } };
+
+export type TokenAttributionViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+}>;
+
+
+export type TokenAttributionViewQuery = { tokenAttribution: { requestCount: number, sampled: boolean, buckets: Array<{ key: string, chars: number, estimatedTokens: number }>, toolSchemas: Array<{ name: string, chars: number, estimatedTokens: number, blocks: number | null }>, toolResults: Array<{ name: string, chars: number, estimatedTokens: number, blocks: number | null }> } };
+
+export type IdleGapsViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+}>;
+
+
+export type IdleGapsViewQuery = { idleGaps: { totalGaps: number, overTtl: number, recoverableByOneHourTtl: number, sessionsScanned: number, sampled: boolean, buckets: Array<{ key: string, label: string, count: number }> } };
+
+export type CacheBustsViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+}>;
+
+
+export type CacheBustsViewQuery = { cacheBusts: { countsByCause: unknown, sessionsScanned: number, sampled: boolean, busts: Array<{ sessionId: string, requestId: string, at: string, cause: string, droppedCacheReadTokens: number, rebuiltTokens: number, gapMs: number }> } };
+
+export type RouteOutputViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+}>;
+
+
+export type RouteOutputViewQuery = { routeOutputReport: { routes: Array<{ route: string, requests: number, outputTokens: number, avgOutputTokens: number, reasoningShare: number, outputCost: number }> } };
+
+export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } };
 
 export type UsageReportViewQueryVariables = Exact<{
   groupBy: UsageGroupBy;
@@ -399,7 +438,7 @@ export type UsageReportViewQueryVariables = Exact<{
 }>;
 
 
-export type UsageReportViewQuery = { usage: { groupBy: UsageGroupBy, data: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } } };
+export type UsageReportViewQuery = { usage: { groupBy: UsageGroupBy, data: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } } };
 
 export type UsageTimeseriesViewQueryVariables = Exact<{
   groupBy: UsageGroupBy;
@@ -410,7 +449,7 @@ export type UsageTimeseriesViewQueryVariables = Exact<{
 }>;
 
 
-export type UsageTimeseriesViewQuery = { usageTimeseries: { groupBy: UsageGroupBy, interval: UsageInterval, start: string, end: string, groups: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, points: Array<{ ts: string, groups: unknown, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } }> } };
+export type UsageTimeseriesViewQuery = { usageTimeseries: { groupBy: UsageGroupBy, interval: UsageInterval, start: string, end: string, groups: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, points: Array<{ ts: string, groups: unknown, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } }> } };
 
 export type UsageLookupsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -569,6 +608,8 @@ export const SettingsViewFieldsFragmentDoc = new TypedDocumentString(`
   settings {
     schemaVersion
     systemPrompt
+    cacheTtlUpgrade
+    toolResultCompression
     classifier {
       model
       timeoutMs
@@ -605,6 +646,7 @@ export const UsageGroupFieldsFragmentDoc = new TypedDocumentString(`
   usage {
     inputTokens
     cachedInputTokens
+    cacheCreationInputTokens
     outputTokens
     reasoningTokens
     totalTokens
@@ -1598,6 +1640,8 @@ export const SettingsViewDocument = new TypedDocumentString(`
   settings {
     schemaVersion
     systemPrompt
+    cacheTtlUpgrade
+    toolResultCompression
     classifier {
       model
       timeoutMs
@@ -1635,6 +1679,8 @@ export const UpdateSettingsDocument = new TypedDocumentString(`
   settings {
     schemaVersion
     systemPrompt
+    cacheTtlUpgrade
+    toolResultCompression
     classifier {
       model
       timeoutMs
@@ -1655,6 +1701,87 @@ export const UpdateSettingsDocument = new TypedDocumentString(`
     }
   }
 }`) as unknown as TypedDocumentString<UpdateSettingsMutation, UpdateSettingsMutationVariables>;
+export const ActiveSessionsDocument = new TypedDocumentString(`
+    query ActiveSessions {
+  activeSessionCount {
+    activeSessions
+    windowMs
+  }
+}
+    `) as unknown as TypedDocumentString<ActiveSessionsQuery, ActiveSessionsQueryVariables>;
+export const TokenAttributionViewDocument = new TypedDocumentString(`
+    query TokenAttributionView($start: String, $end: String) {
+  tokenAttribution(start: $start, end: $end) {
+    requestCount
+    sampled
+    buckets {
+      key
+      chars
+      estimatedTokens
+    }
+    toolSchemas {
+      name
+      chars
+      estimatedTokens
+      blocks
+    }
+    toolResults {
+      name
+      chars
+      estimatedTokens
+      blocks
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<TokenAttributionViewQuery, TokenAttributionViewQueryVariables>;
+export const IdleGapsViewDocument = new TypedDocumentString(`
+    query IdleGapsView($start: String, $end: String) {
+  idleGaps(start: $start, end: $end) {
+    buckets {
+      key
+      label
+      count
+    }
+    totalGaps
+    overTtl
+    recoverableByOneHourTtl
+    sessionsScanned
+    sampled
+  }
+}
+    `) as unknown as TypedDocumentString<IdleGapsViewQuery, IdleGapsViewQueryVariables>;
+export const CacheBustsViewDocument = new TypedDocumentString(`
+    query CacheBustsView($start: String, $end: String) {
+  cacheBusts(start: $start, end: $end) {
+    busts {
+      sessionId
+      requestId
+      at
+      cause
+      droppedCacheReadTokens
+      rebuiltTokens
+      gapMs
+    }
+    countsByCause
+    sessionsScanned
+    sampled
+  }
+}
+    `) as unknown as TypedDocumentString<CacheBustsViewQuery, CacheBustsViewQueryVariables>;
+export const RouteOutputViewDocument = new TypedDocumentString(`
+    query RouteOutputView($start: String, $end: String) {
+  routeOutputReport(start: $start, end: $end) {
+    routes {
+      route
+      requests
+      outputTokens
+      avgOutputTokens
+      reasoningShare
+      outputCost
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<RouteOutputViewQuery, RouteOutputViewQueryVariables>;
 export const UsageReportViewDocument = new TypedDocumentString(`
     query UsageReportView($groupBy: UsageGroupBy!, $start: String, $end: String) {
   usage(groupBy: $groupBy, start: $start, end: $end) {
@@ -1681,6 +1808,7 @@ export const UsageReportViewDocument = new TypedDocumentString(`
   usage {
     inputTokens
     cachedInputTokens
+    cacheCreationInputTokens
     outputTokens
     reasoningTokens
     totalTokens
@@ -1731,6 +1859,7 @@ export const UsageTimeseriesViewDocument = new TypedDocumentString(`
   usage {
     inputTokens
     cachedInputTokens
+    cacheCreationInputTokens
     outputTokens
     reasoningTokens
     totalTokens

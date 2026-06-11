@@ -27,6 +27,8 @@ import { createPostgresPersistence } from "./persistence/index.js";
 import { resolveRoutingSelection } from "./persistence/routingConfig.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
+import { appendTokensAttributed } from "./tokenAttribution.js";
+import { compressForForward, compressOrFallback } from "./toolResultCompression.js";
 import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
 import { buildSetupScript } from "./setupScript.js";
@@ -105,7 +107,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     attempts,
     requestStates,
     persistence?.promptArtifacts,
-    persistence?.routingConfigs
+    persistence?.routingConfigs,
+    app.log
   );
   const projections = new ProjectionService(modelCatalog, config);
   const emailService = new EmailService(config, app.log);
@@ -209,6 +212,17 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
 
       const resolved = await resolveRoutingConfig(persistence, identity, identity.routingConfigId);
+      await appendTokensAttributed({
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: openAIResponsesSurface.surface,
+        body: request.body,
+        orgSystemPrompt: resolved.systemPrompt,
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
       const decision = await routing.decide({
         requestId,
         context,
@@ -222,12 +236,24 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         return;
       }
 
+      const compressedBody = await compressForForward({
+        events,
+        tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: openAIResponsesSurface.surface,
+        body: request.body,
+        enabled: resolved.toolResultCompression,
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
       await proxy.forward({
         requestId,
         idempotencyKey,
         surface: openAIResponsesSurface.surface,
         provider: openAIResponsesSurface.provider,
-        body: rewriteSurfaceRequest(request.body, decision, resolved.systemPrompt),
+        body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade }),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
@@ -294,6 +320,17 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
 
       const resolved = await resolveRoutingConfig(persistence, identity, identity.routingConfigId);
+      await appendTokensAttributed({
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: anthropicMessagesSurface.surface,
+        body: request.body,
+        orgSystemPrompt: resolved.systemPrompt,
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
       const decision = await routing.decide({
         requestId,
         context,
@@ -307,12 +344,24 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         return;
       }
 
+      const compressedBody = await compressForForward({
+        events,
+        tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: anthropicMessagesSurface.surface,
+        body: request.body,
+        enabled: resolved.toolResultCompression,
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
       await proxy.forward({
         requestId,
         idempotencyKey,
         surface: anthropicMessagesSurface.surface,
         provider: anthropicMessagesSurface.provider,
-        body: rewriteSurfaceRequest(request.body, decision, resolved.systemPrompt),
+        body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade }),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
@@ -368,12 +417,23 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         return;
       }
 
+      // count_tokens applies the identical compression so the harness's token
+      // count reflects what it will actually send — through the same guarded
+      // path as /v1/messages so a throwing filter degrades identically — but
+      // does not emit a compression.recorded event (that would double-count
+      // against the paired /v1/messages call).
+      const { body: countBody } = compressOrFallback(
+        anthropicMessagesSurface.surface,
+        request.body,
+        resolved.toolResultCompression,
+        (err, message) => app.log.warn({ err, requestId }, message)
+      );
       await proxy.forward({
         requestId,
         idempotencyKey,
         surface: anthropicMessagesSurface.surface,
         provider: anthropicMessagesSurface.provider,
-        body: rewriteTokenCountRequest(request.body, decision, resolved.systemPrompt),
+        body: rewriteTokenCountRequest(countBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade }),
         headers: lowerHeaders(request.headers),
         decision,
         reply,

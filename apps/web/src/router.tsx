@@ -18,6 +18,7 @@ import { SessionDetailPage } from "./sessionDetailPage";
 import { SessionsPage } from "./sessionsPage";
 import { SettingsPage } from "./settingsPage";
 import { AppShell } from "./shell";
+import { TokensPage } from "./tokensPage";
 import { UsagePage } from "./usagePage";
 import { UsersPage } from "./usersPage";
 
@@ -56,6 +57,13 @@ const costRoute = createRoute({
   path: "/cost",
   beforeLoad: requireAuth,
   component: CostPage
+});
+
+const tokensRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tokens",
+  beforeLoad: requireAuth,
+  component: TokensPage
 });
 
 const promptsRoute = createRoute({
@@ -169,6 +177,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   usageRoute,
   costRoute,
+  tokensRoute,
   promptsRoute,
   promptDetailRoute,
   sessionsRoute,

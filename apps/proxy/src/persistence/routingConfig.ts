@@ -20,6 +20,8 @@ export type ResolvedRoutingConfig = {
   configHash: string;
   config: RoutingConfig;
   organizationSystemPrompt?: string;
+  cacheTtlUpgrade: boolean;
+  toolResultCompression: boolean;
 };
 
 export class RoutingConfigResolutionError extends Error {
@@ -83,14 +85,17 @@ export class RoutingConfigResolver {
       version: version.version,
       configHash: version.configHash,
       config: parsed.data,
-      organizationSystemPrompt: orgSettings?.systemPrompt ?? undefined
+      organizationSystemPrompt: orgSettings?.systemPrompt ?? undefined,
+      cacheTtlUpgrade: orgSettings?.settings?.cacheTtlUpgrade === true,
+      toolResultCompression: orgSettings?.settings?.toolResultCompression === true
     };
   }
 
   private async organizationSettings(organizationId: string) {
     const [settings] = await this.db
       .select({
-        systemPrompt: organizationSettings.systemPrompt
+        systemPrompt: organizationSettings.systemPrompt,
+        settings: organizationSettings.settings
       })
       .from(organizationSettings)
       .where(eq(organizationSettings.organizationId, organizationId))
@@ -121,15 +126,22 @@ export function routingConfigSnapshot(resolved: ResolvedRoutingConfig): RoutingC
 export async function resolveRoutingSelection(
   resolver: RoutingConfigResolver | undefined,
   input: { organizationId: string; workspaceId: string; routingConfigId?: string | null }
-): Promise<{ routingConfig?: RoutingConfigSelection; systemPrompt?: string }> {
+): Promise<{
+  routingConfig?: RoutingConfigSelection;
+  systemPrompt?: string;
+  cacheTtlUpgrade: boolean;
+  toolResultCompression: boolean;
+}> {
   const resolved = await resolver?.resolve(input);
-  if (!resolved) return {};
+  if (!resolved) return { cacheTtlUpgrade: false, toolResultCompression: false };
   return {
     routingConfig: {
       snapshot: routingConfigSnapshot(resolved),
       config: resolved.config
     },
-    systemPrompt: resolved.organizationSystemPrompt
+    systemPrompt: resolved.organizationSystemPrompt,
+    cacheTtlUpgrade: resolved.cacheTtlUpgrade,
+    toolResultCompression: resolved.toolResultCompression
   };
 }
 

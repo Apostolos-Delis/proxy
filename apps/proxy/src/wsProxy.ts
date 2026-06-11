@@ -4,6 +4,8 @@ import type { Duplex } from "node:stream";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
 import { openAIResponsesSurface, rewriteSurfaceRequest } from "./adapters.js";
+import { appendTokensAttributed } from "./tokenAttribution.js";
+import { compressForForward } from "./toolResultCompression.js";
 import {
   actorForIdentity,
   contextForIdentity,
@@ -30,6 +32,10 @@ type ActiveRequest = {
   sessionId?: string;
 };
 
+// Structural subset of the Fastify/pino logger, so the proxy can warn without
+// depending on the logger implementation.
+type WsLogger = { warn: (obj: unknown, msg?: string) => void };
+
 export class WebSocketRoutingProxy {
   constructor(
     private readonly config: AppConfig,
@@ -39,7 +45,8 @@ export class WebSocketRoutingProxy {
     private readonly attempts: ProviderAttemptStore,
     private readonly requestStates: RequestStateStoreLike,
     private readonly promptArtifacts?: PromptArtifactStore,
-    private readonly routingConfigs?: RoutingConfigResolver
+    private readonly routingConfigs?: RoutingConfigResolver,
+    private readonly log?: WsLogger
   ) {}
 
   register(server: Server) {
@@ -204,6 +211,17 @@ export class WebSocketRoutingProxy {
     });
 
     const resolved = await this.resolveRoutingConfig(identity);
+    await appendTokensAttributed({
+      events: this.events,
+      identity,
+      requestId,
+      idempotencyKey,
+      sessionId: context.sessionId,
+      surface: openAIResponsesSurface.surface,
+      body: routeBody,
+      orgSystemPrompt: resolved.systemPrompt,
+      warn: (err, message) => this.log?.warn({ err, requestId }, message)
+    });
     const decision = await this.routing.decide({
       requestId,
       context,
@@ -258,8 +276,20 @@ export class WebSocketRoutingProxy {
       }
     });
 
+    const compressedBody = await compressForForward({
+      events: this.events,
+      tenantId: identity.organizationId,
+      workspaceId: identity.workspaceId,
+      requestId,
+      idempotencyKey,
+      sessionId: context.sessionId,
+      surface: openAIResponsesSurface.surface,
+      body: routeBody,
+      enabled: resolved.toolResultCompression,
+      warn: (err, message) => this.log?.warn({ err, requestId }, message)
+    });
     return {
-      body: rewriteSurfaceRequest(routeBody, decision, resolved.systemPrompt),
+      body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade }),
       decision,
       activeRequest: {
         requestId,

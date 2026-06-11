@@ -6,6 +6,11 @@ type AcceptedInvitation {
   userId: String!
 }
 
+type ActiveSessionCount {
+  activeSessions: Float!
+  windowMs: Float!
+}
+
 type ApiKey {
   createdAt: String!
   expiresAt: String
@@ -54,6 +59,25 @@ input BudgetSettingsInput {
   maxEstimatedInputTokens: Float
   maxRoute: String
   warningEstimatedInputTokens: Float
+}
+
+type CacheBust {
+  at: String!
+  cause: String!
+  droppedCacheReadTokens: Float!
+  gapMs: Float!
+  model: String!
+  previousModel: String!
+  rebuiltTokens: Float!
+  requestId: String!
+  sessionId: String!
+}
+
+type CacheBustReport {
+  busts: [CacheBust!]!
+  countsByCause: JSON!
+  sampled: Boolean!
+  sessionsScanned: Float!
 }
 
 type ClassifierRuntime {
@@ -122,17 +146,34 @@ type EditableClassifier {
 
 type EditableSettings {
   budgets: BudgetSettings!
+  cacheTtlUpgrade: Boolean!
   classifier: EditableClassifier!
   promptCapture: PromptCaptureState!
   routeQuality: RouteQualitySettings!
   schemaVersion: Int!
   systemPrompt: String
+  toolResultCompression: Boolean!
 }
 
 type EmailDelivery {
   delivered: Boolean!
   error: String
   transport: String!
+}
+
+type IdleGapBucket {
+  count: Float!
+  key: String!
+  label: String!
+}
+
+type IdleGapReport {
+  buckets: [IdleGapBucket!]!
+  overTtl: Float!
+  recoverableByOneHourTtl: Float!
+  sampled: Boolean!
+  sessionsScanned: Float!
+  totalGaps: Float!
 }
 
 type Invitation {
@@ -433,8 +474,11 @@ type PublicInvitation {
 }
 
 type Query {
+  activeSessionCount: ActiveSessionCount!
   apiKey(apiKeyId: ID!): ApiKey
   apiKeys: [ApiKey!]!
+  cacheBusts(end: String, start: String): CacheBustReport!
+  idleGaps(end: String, start: String): IdleGapReport!
   invitations: [Invitation!]!
   members: [OrgMember!]!
   modelPricing: [ModelPricingEntry!]!
@@ -446,12 +490,14 @@ type Query {
   publicInvitation(token: String!): PublicInvitation
   request(requestId: ID!): RequestDetail!
   requests(end: String, limit: Int, start: String): [RequestSummary!]!
+  routeOutputReport(end: String, start: String): RouteOutputReport!
   routingConfig(configId: ID!): RoutingConfigDetail
   routingConfigs: [RoutingConfigSummary!]!
   search(query: String!): SearchResult!
   session(sessionId: ID!): SessionDetail
   sessions: [SessionSummary!]!
   settings: Settings!
+  tokenAttribution(end: String, start: String): TokenAttributionReport!
   usage(end: String, groupBy: UsageGroupBy, start: String): UsageReport!
   usageTimeseries(end: String, groupBy: UsageGroupBy, interval: UsageInterval, limit: Int, start: String): UsageTimeseries!
   user(userId: ID!): UserDetail
@@ -515,6 +561,20 @@ type RouteMatrixRow {
   description: String
   openaiEffort: String
   openaiModel: String
+  route: String!
+}
+
+type RouteOutputReport {
+  routes: [RouteOutputRow!]!
+}
+
+type RouteOutputRow {
+  avgOutputTokens: Float!
+  outputCost: Float!
+  outputTokens: Float!
+  reasoningShare: Float!
+  reasoningTokens: Float!
+  requests: Float!
   route: String!
 }
 
@@ -629,6 +689,7 @@ type SessionDetail {
 }
 
 type SessionSummary {
+  cacheHitRate: Float
   cost: CostTotals!
   currentRoute: String
   endedAt: String
@@ -674,17 +735,40 @@ type Settings {
 
 input SettingsInput {
   budgets: BudgetSettingsInput
+  cacheTtlUpgrade: Boolean
   classifier: ClassifierSettingsInput
   promptCapture: PromptCaptureSettingsInput
   routeQuality: RouteQualitySettingsInput
   schemaVersion: Int
   systemPrompt: String
+  toolResultCompression: Boolean
 }
 
 type StorageInfo {
   format: String!
   path: String!
   reason: String!
+}
+
+type TokenAttributionBucket {
+  chars: Float!
+  estimatedTokens: Float!
+  key: String!
+}
+
+type TokenAttributionOffender {
+  blocks: Float
+  chars: Float!
+  estimatedTokens: Float!
+  name: String!
+}
+
+type TokenAttributionReport {
+  buckets: [TokenAttributionBucket!]!
+  requestCount: Float!
+  sampled: Boolean!
+  toolResults: [TokenAttributionOffender!]!
+  toolSchemas: [TokenAttributionOffender!]!
 }
 
 type TokenTotals {

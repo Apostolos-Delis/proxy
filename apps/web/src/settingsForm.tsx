@@ -27,6 +27,8 @@ export function SettingsForm({
   storagePath,
   storageReason,
   restartRequiredFor,
+  activeSessions,
+  activeWindowMs,
   saving,
   justSaved,
   saveError,
@@ -37,6 +39,8 @@ export function SettingsForm({
   storagePath: string;
   storageReason: string;
   restartRequiredFor: string[];
+  activeSessions: number | null;
+  activeWindowMs: number | null;
   saving: boolean;
   justSaved: boolean;
   saveError?: string;
@@ -47,6 +51,9 @@ export function SettingsForm({
   const validation = validate(settings);
   const groups = useMemo(() => visibleGroups(search), [search]);
   const dirty = JSON.stringify(settings) !== JSON.stringify(initial);
+  // Compare trimmed: the save path trims, so a whitespace-only change is a
+  // no-op that does not actually shift the cached prefix.
+  const systemPromptEdited = (settings.systemPrompt ?? "").trim() !== (initial.systemPrompt ?? "").trim();
 
   return (
     <form className="settings-layout" onSubmit={(event) => {
@@ -78,6 +85,26 @@ export function SettingsForm({
               value={settings.systemPrompt ?? ""}
               placeholder="Organization-wide guidance injected ahead of every model request."
               onChange={(value) => setSettings({ ...settings, systemPrompt: value })}
+            />
+            {systemPromptEdited && activeSessions !== null && activeSessions > 0 ? (
+              <div className="settings-warning">
+                Editing the system prompt shifts the front of every cached prefix.
+                {" "}
+                <strong>{activeSessions}</strong> {activeSessions === 1 ? "session" : "sessions"} active in the
+                {" "}{windowLabel(activeWindowMs)} as of page load will pay a full cache rebuild on the next request.
+              </div>
+            ) : null}
+            <ToggleField
+              label="Upgrade cache TTL to 1 hour"
+              info="Rewrites Anthropic ephemeral cache breakpoints to a 1-hour TTL. Costs 2x to write vs 1.25x for the 5-minute default, but breaks even at 3 reads — worth it when sessions have idle gaps past 5 minutes."
+              checked={settings.cacheTtlUpgrade}
+              onChange={(value) => setSettings({ ...settings, cacheTtlUpgrade: value })}
+            />
+            <ToggleField
+              label="Compress MCP tool results"
+              info="Strips insignificant whitespace from pretty-printed JSON returned by MCP tools before forwarding. Lossless — numbers, nulls, keys, and ordering are preserved exactly; only formatting whitespace is removed. Reduces tokens on MCP-heavy sessions."
+              checked={settings.toolResultCompression}
+              onChange={(value) => setSettings({ ...settings, toolResultCompression: value })}
             />
           </SettingsSection>
         ) : null}
@@ -190,6 +217,15 @@ export function SettingsForm({
       </div>
     </form>
   );
+}
+
+function windowLabel(windowMs: number | null) {
+  const minutes = Math.round((windowMs ?? 5 * 60 * 1000) / 60000);
+  if (minutes >= 60 && minutes % 60 === 0) {
+    const hours = minutes / 60;
+    return `last ${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  return `last ${minutes} minutes`;
 }
 
 function saveStatus(dirty: boolean, justSaved: boolean) {

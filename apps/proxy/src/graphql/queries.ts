@@ -1,10 +1,24 @@
+import { CACHE_TTL_DEFAULT_MS, CACHE_TTL_UPGRADED_MS } from "../cacheWindows.js";
+import { aggregateIdleGaps } from "../persistence/idleGaps.js";
+import { aggregateTokenAttribution } from "../persistence/tokenAttributionReport.js";
 import { compareModelPricingEntries, staticPricingEntries } from "../pricing.js";
 import { readSettingsFile } from "../settings.js";
 import { builder } from "./builder.js";
 import { scopedQueries, viewerPayload } from "./context.js";
 import type { RequestSummaryShape, UsageReportModel, UsageTimeseriesModel } from "./models.js";
 import { settingsResponse } from "./settingsPayload.js";
-import { Overview, UsageGroupBy, UsageInterval, UsageReport, UsageTimeseries } from "./types/analytics.js";
+import {
+  ActiveSessionCount,
+  CacheBustReport,
+  IdleGapReport,
+  Overview,
+  RouteOutputReport,
+  TokenAttributionReport,
+  UsageGroupBy,
+  UsageInterval,
+  UsageReport,
+  UsageTimeseries
+} from "./types/analytics.js";
 import { ModelPricingEntry } from "./types/pricing.js";
 import { Invitation, PublicInvitation } from "./types/invitations.js";
 import { PromptAccessAuditEntry, PromptDetail, PromptPage } from "./types/prompts.js";
@@ -160,6 +174,101 @@ builder.queryFields((t) => ({
         points: []
       };
       return empty;
+    }
+  }),
+
+  routeOutputReport: t.field({
+    type: RouteOutputReport,
+    args: {
+      start: t.arg.string(),
+      end: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) {
+        return queries.routeOutputReport({
+          start: args.start ?? undefined,
+          end: args.end ?? undefined
+        });
+      }
+      return { routes: [] };
+    }
+  }),
+
+  activeSessionCount: t.field({
+    type: ActiveSessionCount,
+    resolve: async (_root, _args, context) => {
+      const queries = scopedQueries(context);
+      if (!queries) return { activeSessions: 0, windowMs: CACHE_TTL_DEFAULT_MS };
+      // The warm window is the org's effective cache TTL: with the 1h upgrade
+      // on, a prompt edit busts every session active within the last hour, not
+      // just five minutes.
+      const upgraded = await context.persistence?.organizationSettings
+        .cacheTtlUpgrade(context.identity().organizationId);
+      return queries.activeSessionCount(upgraded ? CACHE_TTL_UPGRADED_MS : CACHE_TTL_DEFAULT_MS);
+    }
+  }),
+
+  idleGaps: t.field({
+    type: IdleGapReport,
+    args: {
+      start: t.arg.string(),
+      end: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) {
+        return queries.idleGaps({
+          start: args.start ?? undefined,
+          end: args.end ?? undefined
+        });
+      }
+      return aggregateIdleGaps([], false);
+    }
+  }),
+
+  cacheBusts: t.field({
+    type: CacheBustReport,
+    args: {
+      start: t.arg.string(),
+      end: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) {
+        return queries.cacheBusts({
+          start: args.start ?? undefined,
+          end: args.end ?? undefined
+        });
+      }
+      return {
+        busts: [],
+        countsByCause: { ttl_expiry: 0, model_switch: 0, provider_switch: 0, unknown: 0 },
+        sessionsScanned: 0,
+        sampled: false
+      };
+    }
+  }),
+
+  tokenAttribution: t.field({
+    type: TokenAttributionReport,
+    args: {
+      start: t.arg.string(),
+      end: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) {
+        return queries.tokenAttribution({
+          start: args.start ?? undefined,
+          end: args.end ?? undefined
+        });
+      }
+      const payloads = context.events
+        .listEvents()
+        .filter((event) => event.eventType === "tokens.attributed")
+        .map((event) => event.payload);
+      return aggregateTokenAttribution(payloads, false);
     }
   }),
 
