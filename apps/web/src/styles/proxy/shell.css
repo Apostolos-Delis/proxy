@@ -139,9 +139,11 @@
   margin-left: auto; color: var(--fg-faint);
 }
 .app.collapsed .org-switcher-chevron { display: none; }
+/* Rendered inside AnchoredPopover's .cell-popover (portaled to body) so the
+   collapsed sidebar's overflow can't clip it. Width matches popoverWidth in
+   PopoverShell.tsx. */
 .org-switcher-popover {
-  position: absolute; left: 0; right: 0; z-index: 45;
-  bottom: calc(100% + 8px);
+  width: 280px;
   padding: 6px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
@@ -204,9 +206,7 @@
 }
 .app.collapsed .workspace-card { justify-content: center; padding-inline: 0; }
 .workspace-switcher-popover {
-  position: absolute; left: 0; right: 0; z-index: 45;
-  min-width: 220px;
-  top: calc(100% + 8px);
+  width: 280px;
   padding: 6px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
