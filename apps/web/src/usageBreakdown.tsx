@@ -5,10 +5,13 @@ import { displayUser } from "./consoleData";
 import type { UsageGroup, UsageLookupApiKey, UsageLookupUser } from "./usageData";
 import { compactId, formatCompact, formatInteger, formatMoney, formatPercent } from "./format";
 import { ConsoleTable, type ConsoleTableColumn } from "./table";
-import { Avatar, RouteBadge } from "./ui";
+import { Avatar, BarListRow, RouteBadge } from "./ui";
 import {
   OTHER_GROUP_KEY,
   dimensionLabel,
+  groupKeyLabel,
+  hasPricedSpend,
+  seriesColor,
   spendShareOf,
   tokenShareOf,
   usageDimensions,
@@ -35,6 +38,44 @@ export function UsageDimensionTabs({ dimension, onDimension }: {
         </button>
       ))}
       <Link to="/logs" className="usage-breakdown-link">Open logs<ArrowUpRight /></Link>
+    </div>
+  );
+}
+
+/** Top groups as a bar list, ranked by spend with a token fallback while pricing is unset. */
+export function TopGroupsList({ dimension, rows, lookups, limit, emptyLabel }: {
+  dimension: UsageDimension;
+  rows: UsageGroup[];
+  lookups: GroupLabelLookups;
+  limit: number;
+  emptyLabel: string;
+}) {
+  const priced = hasPricedSpend(rows);
+  const valueOf = priced
+    ? (row: UsageGroup) => row.cost.selected
+    : (row: UsageGroup) => row.usage.totalTokens;
+  const top = rows
+    .filter((row) => valueOf(row) > 0)
+    .sort((left, right) => valueOf(right) - valueOf(left))
+    .slice(0, limit);
+  const max = Math.max(...top.map(valueOf), 1);
+  return (
+    <div className="barlist usage-top-list">
+      {top.map((row, index) => {
+        const label = groupKeyLabel(dimension, row.key, lookups);
+        return (
+          <BarListRow
+            key={row.key}
+            label={label}
+            value={priced ? formatMoney(row.cost.selected, row.cost.selected < 1 ? undefined : 0) : `${formatCompact(row.usage.totalTokens)} tok`}
+            width={(valueOf(row) / max) * 100}
+            avatar={dimension === "user" ? <Avatar label={label} size={22} /> : undefined}
+            color={dimension === "user" ? undefined : seriesColor(index, row.key)}
+            mono={dimension === "model"}
+          />
+        );
+      })}
+      {top.length === 0 ? <div className="empty compact-empty">{emptyLabel}</div> : null}
     </div>
   );
 }

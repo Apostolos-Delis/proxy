@@ -37,6 +37,16 @@ export function usageRangeQuery(range: UsageRangeKey, anchor: Date) {
   };
 }
 
+/** The equal-length window immediately before the selected one, for period-over-period deltas. */
+export function usagePreviousRangeQuery(range: UsageRangeKey, anchor: Date) {
+  const days = Number(range);
+  const end = anchor.getTime() - days * 86_400_000;
+  return {
+    start: new Date(end - days * 86_400_000).toISOString(),
+    end: new Date(end).toISOString()
+  };
+}
+
 export const OTHER_GROUP_KEY = "__other__";
 
 const seriesPalette = [
@@ -124,6 +134,43 @@ export function stackedUsageSeries(
     )
   }));
   return { series, rows };
+}
+
+export type SeriesPoint = { label: string; value: number };
+
+/** Whole-window totals per bucket; the same regardless of the grouping dimension. */
+export function totalsPointSeries(timeseries: UsageTimeseries, metric: UsageMetric): SeriesPoint[] {
+  return timeseries.points.map((point) => ({
+    label: bucketLabel(point.ts, timeseries.interval),
+    value: metricValue(point.totals, metric)
+  }));
+}
+
+/** Share of prompt tokens read from cache; null when the window carried no input tokens. */
+export function cacheHitRate(group: UsageGroup | null | undefined): number | null {
+  if (!group) return null;
+  const promptTokens = group.usage.inputTokens + group.usage.cachedInputTokens + group.usage.cacheCreationInputTokens;
+  if (promptTokens <= 0) return null;
+  return group.usage.cachedInputTokens / promptTokens;
+}
+
+/** Per-bucket cache hit rate scaled to 0-100 so mini bar heights read as percentages. */
+export function cacheHitPointSeries(timeseries: UsageTimeseries): SeriesPoint[] {
+  return timeseries.points.map((point) => ({
+    label: bucketLabel(point.ts, timeseries.interval),
+    value: (cacheHitRate(point.totals) ?? 0) * 100
+  }));
+}
+
+/** Relative change in percent; undefined (delta hidden) when there is no prior signal. */
+export function percentDelta(current: number, previous: number | null | undefined): number | undefined {
+  if (previous === null || previous === undefined || previous <= 0) return undefined;
+  return ((current - previous) / previous) * 100;
+}
+
+/** Whether any group carries priced spend; spend widgets fall back to tokens when not. */
+export function hasPricedSpend(groups: UsageGroup[] | undefined) {
+  return (groups ?? []).some((row) => row.cost.selected > 0);
 }
 
 /** Day buckets are UTC dates; render them as UTC so bars do not bleed across local midnight. */

@@ -351,6 +351,85 @@
   font-style: normal;
 }
 
+.usage-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.usage-toolbar-label {
+  font-size: 11.5px;
+}
+
+.usage-grid-range {
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.usage-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  margin-bottom: 22px;
+}
+
+.usage-kpi-grid .stat-card {
+  min-height: 160px;
+}
+
+.usage-grid-split,
+.usage-focus-split {
+  display: grid;
+  gap: 22px;
+  align-items: start;
+  margin-top: 22px;
+}
+
+.usage-grid-split {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.usage-focus-split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+}
+
+.usage-focus-hero {
+  padding: 28px;
+}
+
+.usage-focus-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.usage-focus-value {
+  margin-top: 18px;
+}
+
+.usage-focus-delta {
+  margin-top: 10px;
+}
+
+.usage-focus-table {
+  padding: 0;
+  overflow: hidden;
+}
+
+.donut-card-title {
+  margin-bottom: 18px;
+}
+
+.inline-skeleton {
+  border-radius: var(--radius);
+  background: var(--glass-2);
+}
+
 .usage-breakdown {
   display: grid;
   gap: 16px;

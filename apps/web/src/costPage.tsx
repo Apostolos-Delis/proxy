@@ -2,14 +2,12 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
-import { fetchUnpricedModels, fetchUsageLookups, fetchUsageReport, fetchUsageTimeseries, type UnpricedModel, type UsageGroup } from "./usageData";
+import { fetchUnpricedModels, fetchUsageLookups, fetchUsageReport, fetchUsageTimeseries, type UnpricedModel } from "./usageData";
 import { ChartLegend, StackedBarsChart } from "./charts";
 import { downloadJson } from "./dashboard";
-import { formatCompact, formatCompactMoney, formatMoney, formatPercent } from "./format";
-import { Avatar, BarListRow, GlassCard, InfoHint, PageSkeleton, PageState, ProgressMeter, Segmented } from "./ui";
+import { formatCompactMoney, formatMoney, formatPercent } from "./format";
+import { GlassCard, InfoHint, PageSkeleton, PageState, ProgressMeter, Segmented } from "./ui";
 import {
-  groupKeyLabel,
-  seriesColor,
   stackedUsageSeries,
   usageRangeOptions,
   usageRangeQuery,
@@ -17,7 +15,7 @@ import {
   type UsageDimension,
   type UsageRangeKey
 } from "./usageAnalytics";
-import { UsageBreakdownTable, UsageDimensionTabs } from "./usageBreakdown";
+import { TopGroupsList, UsageBreakdownTable, UsageDimensionTabs } from "./usageBreakdown";
 
 const spendTabs = [
   { value: "user", label: "Top users" },
@@ -149,7 +147,7 @@ export function CostPage() {
                 </button>
               ))}
             </div>
-            <TopSpendList dimension={spendTab} rows={spendTabQuery.data?.data ?? []} lookups={lookups} />
+            <TopGroupsList dimension={spendTab} rows={spendTabQuery.data?.data ?? []} lookups={lookups} limit={6} emptyLabel="No spend recorded yet." />
           </GlassCard>
         </div>
       </div>
@@ -158,38 +156,6 @@ export function CostPage() {
         <UsageDimensionTabs dimension={dimension} onDimension={setDimension} />
         <UsageBreakdownTable mode="cost" dimension={dimension} range={range} rows={usage.data} totals={totals} lookups={lookups} />
       </section>
-    </div>
-  );
-}
-
-function TopSpendList({ dimension, rows, lookups }: {
-  dimension: SpendTab;
-  rows: UsageGroup[];
-  lookups: GroupLabelLookups;
-}) {
-  const top = rows.slice(0, 6);
-  const priced = top.some((row) => row.cost.selected > 0);
-  const valueOf = priced
-    ? (row: UsageGroup) => row.cost.selected
-    : (row: UsageGroup) => row.usage.totalTokens;
-  const max = Math.max(...top.map(valueOf), 1);
-  return (
-    <div className="barlist usage-top-list">
-      {top.map((row, index) => {
-        const label = groupKeyLabel(dimension, row.key, lookups);
-        return (
-          <BarListRow
-            key={row.key}
-            label={label}
-            value={priced ? formatMoney(row.cost.selected, row.cost.selected < 1 ? undefined : 0) : `${formatCompact(row.usage.totalTokens)} tok`}
-            width={(valueOf(row) / max) * 100}
-            avatar={dimension === "user" ? <Avatar label={label} size={22} /> : undefined}
-            color={dimension === "user" ? undefined : seriesColor(index, row.key)}
-            mono={dimension === "model"}
-          />
-        );
-      })}
-      {top.length === 0 ? <div className="empty compact-empty">No spend recorded yet.</div> : null}
     </div>
   );
 }
