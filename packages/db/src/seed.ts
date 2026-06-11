@@ -474,6 +474,7 @@ function defaultRoutingConfig(options: SeedOptions): RoutingConfig {
     classifier: {
       provider: "openai",
       model: options.classifierModel,
+      reasoningEffort: "minimal",
       timeoutMs: options.classifierTimeoutMs,
       maxAttempts: 2,
       allowRedactedExcerpt: options.classifierAllowRedactedExcerpt,
@@ -520,7 +521,9 @@ function routeConfig(
     },
     anthropic: {
       model: modelFor(options, "anthropic", route),
-      thinking: route === "fast" ? { type: "disabled" } : { type: "adaptive", display: "omitted" }
+      // Fast omits thinking: "disabled" is rejected by adaptive-only models,
+      // while omitting the field lets the provider apply its default.
+      ...(route === "fast" ? {} : { thinking: { type: "adaptive" as const, display: "omitted" as const } })
     }
   };
 }

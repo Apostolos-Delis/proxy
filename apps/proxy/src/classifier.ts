@@ -115,9 +115,11 @@ export function defaultClassifierSettings(config: AppConfig): ClassifierSettings
 }
 
 function classifierRequest(settings: ClassifierSettings, view: unknown) {
+  const reasoningEffort = settings.reasoningEffort ?? defaultReasoningEffort(settings.model);
   return {
     model: settings.model,
     stream: false,
+    ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
     instructions: composeClassifierInstructions(settings.rules),
     input: JSON.stringify(view),
     text: {
@@ -149,6 +151,12 @@ function classifierRequest(settings: ClassifierSettings, view: unknown) {
       }
     }
   };
+}
+
+// Non-reasoning models reject the reasoning parameter outright, so only
+// default to minimal effort for model families known to accept it.
+function defaultReasoningEffort(model: string) {
+  return /^(gpt-5|o\d)/.test(model) ? ("minimal" as const) : undefined;
 }
 
 function extractStructuredOutput(json: unknown): unknown {
