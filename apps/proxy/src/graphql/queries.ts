@@ -1,10 +1,18 @@
+import { aggregateTokenAttribution } from "../persistence/tokenAttributionReport.js";
 import { compareModelPricingEntries, staticPricingEntries } from "../pricing.js";
 import { readSettingsFile } from "../settings.js";
 import { builder } from "./builder.js";
 import { scopedQueries, viewerPayload } from "./context.js";
 import type { RequestSummaryShape, UsageReportModel, UsageTimeseriesModel } from "./models.js";
 import { settingsResponse } from "./settingsPayload.js";
-import { Overview, UsageGroupBy, UsageInterval, UsageReport, UsageTimeseries } from "./types/analytics.js";
+import {
+  Overview,
+  TokenAttributionReport,
+  UsageGroupBy,
+  UsageInterval,
+  UsageReport,
+  UsageTimeseries
+} from "./types/analytics.js";
 import { ModelPricingEntry } from "./types/pricing.js";
 import { Invitation, PublicInvitation } from "./types/invitations.js";
 import { PromptAccessAuditEntry, PromptDetail, PromptPage } from "./types/prompts.js";
@@ -160,6 +168,28 @@ builder.queryFields((t) => ({
         points: []
       };
       return empty;
+    }
+  }),
+
+  tokenAttribution: t.field({
+    type: TokenAttributionReport,
+    args: {
+      start: t.arg.string(),
+      end: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) {
+        return queries.tokenAttribution({
+          start: args.start ?? undefined,
+          end: args.end ?? undefined
+        });
+      }
+      const payloads = context.events
+        .listEvents()
+        .filter((event) => event.eventType === "tokens.attributed")
+        .map((event) => event.payload);
+      return aggregateTokenAttribution(payloads, false);
     }
   }),
 

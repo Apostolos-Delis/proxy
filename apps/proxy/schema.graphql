@@ -452,6 +452,7 @@ type Query {
   session(sessionId: ID!): SessionDetail
   sessions: [SessionSummary!]!
   settings: Settings!
+  tokenAttribution(end: String, start: String): TokenAttributionReport!
   usage(end: String, groupBy: UsageGroupBy, start: String): UsageReport!
   usageTimeseries(end: String, groupBy: UsageGroupBy, interval: UsageInterval, limit: Int, start: String): UsageTimeseries!
   user(userId: ID!): UserDetail
@@ -686,6 +687,27 @@ type StorageInfo {
   format: String!
   path: String!
   reason: String!
+}
+
+type TokenAttributionBucket {
+  chars: Float!
+  estimatedTokens: Float!
+  key: String!
+}
+
+type TokenAttributionOffender {
+  blocks: Float
+  chars: Float!
+  estimatedTokens: Float!
+  name: String!
+}
+
+type TokenAttributionReport {
+  buckets: [TokenAttributionBucket!]!
+  requestCount: Float!
+  sampled: Boolean!
+  toolResults: [TokenAttributionOffender!]!
+  toolSchemas: [TokenAttributionOffender!]!
 }
 
 type TokenTotals {

@@ -64,6 +64,10 @@ export type PromptArtifactDetailModel = PromptDetailModel["artifact"];
 
 export type ModelPricingEntryModel = Awaited<ReturnType<Q["modelPricing"]>>[number];
 
+export type TokenAttributionReportModel = Awaited<ReturnType<Q["tokenAttribution"]>>;
+export type TokenAttributionBucketModel = TokenAttributionReportModel["buckets"][number];
+export type TokenAttributionOffenderModel = TokenAttributionReportModel["toolSchemas"][number];
+
 export type UsageReportModel = Awaited<ReturnType<Q["usage"]>>;
 export type UsageGroupModel = UsageReportModel["totals"];
 export type LatencySummaryModel = UsageGroupModel["latency"];

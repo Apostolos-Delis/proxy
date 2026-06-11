@@ -48,6 +48,11 @@ import {
   usageLedgerSummary
 } from "./adminSerializers.js";
 import { orgPricingOverrides, type OrgPricingOverride } from "./modelPricing.js";
+import {
+  aggregateTokenAttribution,
+  TOKEN_ATTRIBUTION_SAMPLE_CAP,
+  type TokenAttributionFilters
+} from "./tokenAttributionReport.js";
 import { routeValue, surfaceValue } from "./values.js";
 
 export type AdminQueryConfig = {
@@ -1013,6 +1018,24 @@ export class AdminQueryService {
       }
     }
     return summaries;
+  }
+
+  async tokenAttribution(filters: TokenAttributionFilters = {}) {
+    const start = dateValue(filters.start);
+    const end = dateValue(filters.end);
+    const conditions = [this.scopedTo(events), eq(events.eventType, "tokens.attributed")];
+    if (start) conditions.push(gte(events.createdAt, start));
+    if (end) conditions.push(lte(events.createdAt, end));
+    const rows = await this.db
+      .select({ payload: events.payload })
+      .from(events)
+      .where(and(...conditions))
+      .orderBy(desc(events.createdAt))
+      .limit(TOKEN_ATTRIBUTION_SAMPLE_CAP);
+    return aggregateTokenAttribution(
+      rows.map((row) => row.payload),
+      rows.length === TOKEN_ATTRIBUTION_SAMPLE_CAP
+    );
   }
 
   private eventCount() {

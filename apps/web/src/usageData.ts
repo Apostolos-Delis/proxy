@@ -17,6 +17,7 @@ graphql(`
     usage {
       inputTokens
       cachedInputTokens
+      cacheCreationInputTokens
       outputTokens
       reasoningTokens
       totalTokens

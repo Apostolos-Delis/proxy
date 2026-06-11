@@ -3,6 +3,9 @@ import type {
   LatencySummaryModel,
   OverviewModel,
   RouteQualityModel,
+  TokenAttributionBucketModel,
+  TokenAttributionOffenderModel,
+  TokenAttributionReportModel,
   UsageGroupModel,
   UsageReportModel,
   UsageTimeseriesModel,
@@ -88,3 +91,36 @@ export const UsageReport = builder.objectRef<UsageReportModel>("UsageReport").im
     totals: t.expose("totals", { type: UsageGroup })
   })
 });
+
+export const TokenAttributionBucket = builder
+  .objectRef<TokenAttributionBucketModel>("TokenAttributionBucket")
+  .implement({
+    fields: (t) => ({
+      key: t.exposeString("key"),
+      chars: t.exposeFloat("chars"),
+      estimatedTokens: t.exposeFloat("estimatedTokens")
+    })
+  });
+
+export const TokenAttributionOffender = builder
+  .objectRef<TokenAttributionOffenderModel>("TokenAttributionOffender")
+  .implement({
+    fields: (t) => ({
+      name: t.exposeString("name"),
+      chars: t.exposeFloat("chars"),
+      estimatedTokens: t.exposeFloat("estimatedTokens"),
+      blocks: t.exposeFloat("blocks", { nullable: true })
+    })
+  });
+
+export const TokenAttributionReport = builder
+  .objectRef<TokenAttributionReportModel>("TokenAttributionReport")
+  .implement({
+    fields: (t) => ({
+      requestCount: t.exposeFloat("requestCount"),
+      sampled: t.exposeBoolean("sampled"),
+      buckets: t.expose("buckets", { type: [TokenAttributionBucket] }),
+      toolSchemas: t.expose("toolSchemas", { type: [TokenAttributionOffender] }),
+      toolResults: t.expose("toolResults", { type: [TokenAttributionOffender] })
+    })
+  });
