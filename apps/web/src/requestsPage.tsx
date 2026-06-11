@@ -1,6 +1,7 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Boxes, Download, Shield, Users } from "lucide-react";
+import { useState } from "react";
 
 import { isListedPromptArtifact, promptArtifactRank } from "./artifactKinds";
 import { displayUser } from "./consoleData";
@@ -12,11 +13,12 @@ import { gqlFetch } from "./graphql";
 import { promptDetailQueryOptions } from "./promptDetailPage";
 import { RoutingConfigMicro } from "./routingSnapshot";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
-import { PageState, StatusBadge, UserCell } from "./ui";
+import { usageRangeOptions, usageRangeQuery, type UsageRangeKey } from "./usageAnalytics";
+import { PageState, PageTitle, Segmented, StatusBadge, UserCell } from "./ui";
 
 const RequestsPageDocument = graphql(`
-  query RequestsPage {
-    prompts {
+  query RequestsPage($start: String, $end: String, $limit: Int) {
+    prompts(start: $start, end: $end, limit: $limit) {
       data {
         artifactId
         requestId
@@ -28,6 +30,7 @@ const RequestsPageDocument = graphql(`
         tokenEstimate
         selectedModel
         finalRoute
+        provider
         routingConfig {
           configId
           configName
@@ -39,12 +42,15 @@ const RequestsPageDocument = graphql(`
         }
       }
     }
-    requests {
+    requests(start: $start, end: $end, limit: $limit) {
       requestId
       selectedModel
       terminalStatus
       latencyMs
       finalRoute
+      provider
+      apiKeyId
+      sessionId
       selectedCost
       usage {
         totalTokens
@@ -64,6 +70,16 @@ const RequestsPageDocument = graphql(`
   }
 `);
 
+const LOGS_RANGE_ALL = "all";
+type LogsRange = UsageRangeKey | typeof LOGS_RANGE_ALL;
+const logsRangeOptions = [...usageRangeOptions, { value: LOGS_RANGE_ALL, label: "All" }] as const;
+// Wider than the default 50-prompt page so a multi-day window isn't silently truncated.
+const SCOPED_LOG_LIMIT = 200;
+
+function isLogsRange(value: unknown): value is LogsRange {
+  return logsRangeOptions.some((option) => option.value === value);
+}
+
 type PromptSummary = RequestsPageQuery["prompts"]["data"][number];
 type RequestSummary = RequestsPageQuery["requests"][number];
 
@@ -74,7 +90,20 @@ type PromptLogRow = {
 };
 
 export function RequestsPage() {
-  const query = useQuery({ queryKey: ["requests-page"], queryFn: () => gqlFetch(RequestsPageDocument) });
+  const search = useSearch({ strict: false }) as { range?: unknown };
+  const range: LogsRange = isLogsRange(search.range) ? search.range : LOGS_RANGE_ALL;
+  // Pin "now" on mount so the query key stays stable across re-renders/refetches.
+  const [anchor] = useState(() => new Date());
+  const window = range === LOGS_RANGE_ALL ? undefined : usageRangeQuery(range, anchor);
+  const variables = {
+    start: window?.start,
+    end: window?.end,
+    limit: window ? SCOPED_LOG_LIMIT : undefined
+  };
+  const query = useQuery({
+    queryKey: ["requests-page", range, window?.start ?? null, window?.end ?? null],
+    queryFn: () => gqlFetch(RequestsPageDocument, variables)
+  });
 
   if (query.isLoading) return <PageState title="Request logs" label="Loading prompts" />;
   if (query.error) return <PageState title="Request logs" label={query.error.message} />;
@@ -82,6 +111,11 @@ export function RequestsPage() {
   const rows = promptRows(query.data?.prompts.data ?? [], query.data?.requests ?? [], query.data?.users ?? []);
   return (
     <div className="page page-enter">
+      <PageTitle
+        title="Request logs"
+        subtitle={range === LOGS_RANGE_ALL ? "Recent prompts and requests across all time." : `Prompts and requests from the ${rangeLabel(range)}.`}
+        actions={<LogsRangeControl range={range} />}
+      />
       <ConsoleTable
         className="logs-table-card"
         urlState
@@ -99,6 +133,23 @@ export function RequestsPage() {
       />
     </div>
   );
+}
+
+function LogsRangeControl({ range }: { range: LogsRange }) {
+  const navigate = useNavigate();
+  return (
+    <Segmented
+      options={logsRangeOptions}
+      value={range}
+      onChange={(next) =>
+        void navigate({ to: ".", search: (current) => ({ ...current, range: next === LOGS_RANGE_ALL ? undefined : next }), replace: true })
+      }
+    />
+  );
+}
+
+function rangeLabel(range: UsageRangeKey) {
+  return `last ${usageRangeOptions.find((option) => option.value === range)?.label ?? range}`;
 }
 
 const requestColumns: ConsoleTableColumn<PromptLogRow>[] = [
@@ -119,6 +170,9 @@ const requestAdvancedFields: ConsoleTableAdvancedField<PromptLogRow>[] = [
   { id: "status", label: "Status", getValue: terminalStatus },
   { id: "surface", label: "Surface", getValue: (row) => row.prompt.surface },
   { id: "route", label: "Route", getValue: (row) => row.prompt.finalRoute ?? row.request?.finalRoute },
+  { id: "provider", label: "Provider", getValue: (row) => row.prompt.provider ?? row.request?.provider },
+  { id: "session", label: "Session", getValue: (row) => row.prompt.sessionId ?? row.request?.sessionId },
+  { id: "apiKey", label: "API key", getValue: (row) => row.request?.apiKeyId },
   { id: "routingConfig", label: "Routing config", getValue: (row) => row.prompt.routingConfig?.configName ?? row.request?.routingConfig?.configName }
 ];
 

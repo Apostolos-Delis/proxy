@@ -476,6 +476,43 @@ describe("usage analytics admin APIs", () => {
     expect(row.totalCostMicros).toBe(56);
   });
 
+  it("scopes the requests list to the start/end window", async () => {
+    const fixture = await setup("org_requests_window");
+    const inside = new Date("2026-06-08T12:00:00.000Z");
+    const outside = new Date("2026-06-01T12:00:00.000Z");
+
+    await fixture.db.insert(users).values([{ id: "user_window" }]);
+    await fixture.db.insert(agentSessions).values({
+      id: "session_window",
+      organizationId: "org_requests_window",
+      workspaceId: defaultWorkspaceId("org_requests_window"),
+      userId: "user_window",
+      surface: "openai-responses"
+    });
+    await fixture.db.insert(requests).values([
+      usageRequest("window_request_inside", "org_requests_window", "user_window", "session_window", "openai-responses", inside),
+      usageRequest("window_request_outside", "org_requests_window", "user_window", "session_window", "openai-responses", outside)
+    ]);
+
+    const scoped = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { requests(start: "2026-06-08T00:00:00.000Z", end: "2026-06-09T00:00:00.000Z") { requestId } }`
+    );
+    const unscoped = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { requests { requestId } }`
+    );
+
+    expect(scoped.errors).toBeUndefined();
+    expect(scoped.data?.requests.map((item: any) => item.requestId)).toEqual(["window_request_inside"]);
+    expect(unscoped.data?.requests.map((item: any) => item.requestId).sort()).toEqual([
+      "window_request_inside",
+      "window_request_outside"
+    ]);
+  });
+
   async function setup(organizationId: string) {
     activeFixture = await captureFixture(organizationId);
     return activeFixture;

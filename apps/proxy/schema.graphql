@@ -445,7 +445,7 @@ type Query {
   providerAccounts: [ProviderAccount!]!
   publicInvitation(token: String!): PublicInvitation
   request(requestId: ID!): RequestDetail!
-  requests: [RequestSummary!]!
+  requests(end: String, limit: Int, start: String): [RequestSummary!]!
   routingConfig(configId: ID!): RoutingConfigDetail
   routingConfigs: [RoutingConfigSummary!]!
   search(query: String!): SearchResult!
