@@ -1,3 +1,4 @@
+import { bashOutputRule } from "./compressionRules/bashOutput.js";
 import { mcpJsonRule } from "./compressionRules/mcpJson.js";
 import type { EventService } from "./events.js";
 import type { JsonObject, Surface } from "./types.js";
@@ -44,7 +45,7 @@ export const MIN_COMPRESSIBLE_CHARS = 2048;
 
 // Registered rules, evaluated in order; first match wins. Only applied for
 // orgs that have opted into tool-result compression.
-export const compressionRules: CompressionRule[] = [mcpJsonRule];
+export const compressionRules: CompressionRule[] = [mcpJsonRule, bashOutputRule];
 
 export function compressToolResults(
   surface: Surface,

@@ -188,10 +188,12 @@ describe("compressToolResults", () => {
 });
 
 describe("compressForForward", () => {
+  // Uses a tool name no real registered rule matches, so the pushed stub rule
+  // is the only matcher regardless of registration order.
   function body() {
     return {
       messages: [
-        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] },
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "StubTool", input: {} }] },
         { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: big }] }
       ]
     };
@@ -255,6 +257,6 @@ describe("compressForForward", () => {
 
 const truncateForward: CompressionRule = {
   label: "forward-truncate",
-  matches: (name) => name === "Bash",
+  matches: (name) => name === "StubTool",
   filter: ({ content }) => (typeof content === "string" ? `${content.slice(0, 10)}…[truncated]` : undefined)
 };
