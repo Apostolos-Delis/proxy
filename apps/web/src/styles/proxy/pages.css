@@ -2762,10 +2762,38 @@ input[type="checkbox"][role="switch"]:focus-visible {
   display: block;
 }
 
+.assignment-popover strong {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
 .assignment-popover span {
   margin-top: 3px;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: 11.5px;
+}
+
+.assignment-blank {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 9px;
+}
+
+.assignment-blank strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.assignment-blank span {
+  color: var(--fg-faint);
+  font-size: 11.5px;
+}
+
+.assignment-blank .btn {
+  margin-top: 8px;
 }
 
 .assignment-section + .assignment-section {
