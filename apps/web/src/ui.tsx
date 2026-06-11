@@ -213,6 +213,16 @@ export function CompactId({ value }: { value: string }) {
   return <span className="mono faint">{compactId(value)}</span>;
 }
 
+export function FormField({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
+  return (
+    <label className="routing-create-field">
+      <span>{label}</span>
+      {children}
+      {error ? <small>{error}</small> : null}
+    </label>
+  );
+}
+
 function initials(value: string) {
   return value.split(/[\s._-]+/).map((word) => word[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
 }

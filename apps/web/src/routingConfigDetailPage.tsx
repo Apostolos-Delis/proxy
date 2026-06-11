@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Braces, Layers, PenLine, SlidersHorizontal } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   activateRoutingConfigVersion,
@@ -145,9 +145,10 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
     }
   });
 
+  const savedConfigJson = useMemo(() => JSON.stringify(version.config), [version.config]);
   const jsonResult = view === "json" ? parseConfigJson(jsonText) : undefined;
   const candidate = view === "form" ? applyDraft(baseConfig, draft) : jsonResult?.config;
-  const dirty = candidate !== undefined && JSON.stringify(candidate) !== JSON.stringify(version.config);
+  const dirty = candidate !== undefined && JSON.stringify(candidate) !== savedConfigJson;
   const error = validationError ?? jsonResult?.error ?? saveMutation.error?.message;
 
   const switchView = (next: "form" | "json") => {
