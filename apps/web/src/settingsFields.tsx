@@ -1,152 +1,121 @@
-import { Info, RotateCw } from "lucide-react";
-import type { ReactNode } from "react";
+import { RotateCw } from "lucide-react";
+import type { ComponentType, ReactNode } from "react";
 
 import { MenuSelect } from "./table/MenuSelect";
-import { GlassCard } from "./ui";
+import { rowChanged, type EditableSettings, type SettingRowDef, type SettingsSectionDef } from "./settingsPageData";
 
-export function InfoTip({ text }: { text: string }) {
-  return (
-    <span className="info-tip" tabIndex={0} aria-label={text}>
-      <Info />
-      <span role="tooltip">{text}</span>
-    </span>
-  );
-}
-
-export function SettingsSection({ title, description, restartRequired = false, children }: {
-  title: string;
-  description: string;
-  restartRequired?: boolean;
+export function SettingsSectionCard({ section, icon: Icon, restartRequired, children }: {
+  section: SettingsSectionDef;
+  icon: ComponentType;
+  restartRequired: boolean;
   children: ReactNode;
 }) {
   return (
-    <GlassCard className="settings-section">
+    <section className="glass card settings-section" id={`settings-sec-${section.id}`}>
       <div className="settings-section-head">
-        <div>
-          <h3>{title}</h3>
-          <p>{description}</p>
+        <div className="settings-section-title">
+          <Icon />
+          <h3>{section.title}</h3>
+          {restartRequired ? (
+            <span className="settings-restart"><RotateCw />applies after restart</span>
+          ) : null}
         </div>
-        {restartRequired ? (
-          <span className="settings-restart info-tip" tabIndex={0}>
-            <RotateCw />
-            Restart required
-            <span role="tooltip">Edits here are saved immediately but only take effect after the proxy restarts.</span>
-          </span>
-        ) : null}
+        <p>{section.description}</p>
       </div>
-      <div className="settings-fields">{children}</div>
-    </GlassCard>
+      <div className="settings-rows">{children}</div>
+    </section>
   );
 }
 
-function FieldCaption({ label, info }: { label: string; info: string }) {
-  return (
-    <span className="settings-field-label">
-      {label}
-      <InfoTip text={info} />
-    </span>
-  );
-}
-
-export function TextField({ label, info, value, onChange }: {
-  label: string;
-  info: string;
-  value: string;
-  onChange: (value: string) => void;
+export function SettingRow({ row, settings, initial, onChange }: {
+  row: SettingRowDef;
+  settings: EditableSettings;
+  initial: EditableSettings;
+  onChange: (next: EditableSettings) => void;
 }) {
+  const changed = rowChanged(row, settings, initial);
+  const block = row.type === "textarea";
   return (
-    <div className="settings-field">
-      <FieldCaption label={label} info={info} />
-      <input value={value} aria-label={label} onChange={(event) => onChange(event.target.value)} />
-    </div>
-  );
-}
-
-export function TextAreaField({ label, info, value, placeholder, onChange }: {
-  label: string;
-  info: string;
-  value: string;
-  placeholder?: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="settings-field settings-field-wide">
-      <FieldCaption label={label} info={info} />
-      <textarea
-        value={value}
-        rows={4}
-        placeholder={placeholder}
-        spellCheck={false}
-        aria-label={label}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </div>
-  );
-}
-
-export function NumberField({ label, info, value, min, max, step = 1, suffix, placeholder, onChange }: {
-  label: string;
-  info: string;
-  value: number | null;
-  min: number;
-  max?: number;
-  step?: number;
-  suffix?: string;
-  placeholder?: string;
-  onChange: (value: number | null) => void;
-}) {
-  return (
-    <div className="settings-field">
-      <FieldCaption label={label} info={info} />
-      <div className="settings-number">
-        <input
-          type="number"
-          value={value ?? ""}
-          min={min}
-          max={max}
-          step={step}
-          placeholder={placeholder}
-          aria-label={label}
-          onChange={(event) => onChange(numberOrNull(event.target.value))}
-        />
-        {suffix ? <em>{suffix}</em> : null}
+    <div className={`settings-row${block ? " block" : ""}`}>
+      <div className="settings-row-info">
+        <div className="settings-row-label">
+          <span>{row.label}</span>
+          {changed ? <span className="settings-dirty-dot" title="Unsaved change" /> : null}
+        </div>
+        <p>{row.desc}</p>
+      </div>
+      <div className={`settings-row-control${row.type === "toggle" ? " toggle" : ""}`}>
+        <SettingControl row={row} settings={settings} onChange={onChange} />
       </div>
     </div>
   );
 }
 
-export function SelectField({ label, info, value, options, onChange }: {
-  label: string;
-  info: string;
-  value: string;
-  options: readonly { value: string; label: string }[];
-  onChange: (value: string) => void;
+function SettingControl({ row, settings, onChange }: {
+  row: SettingRowDef;
+  settings: EditableSettings;
+  onChange: (next: EditableSettings) => void;
 }) {
-  return (
-    <div className="settings-field">
-      <FieldCaption label={label} info={info} />
-      <MenuSelect value={value} options={[...options]} ariaLabel={label} onChange={onChange} />
-    </div>
-  );
-}
-
-export function ToggleField({ label, info, checked, onChange }: {
-  label: string;
-  info: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <div className="settings-toggle">
-      <FieldCaption label={label} info={info} />
+  if (row.type === "toggle") {
+    return (
       <input
         type="checkbox"
         role="switch"
-        checked={checked}
-        aria-label={label}
-        onChange={(event) => onChange(event.target.checked)}
+        checked={row.get(settings)}
+        aria-label={row.label}
+        onChange={(event) => onChange(row.set(settings, event.target.checked))}
       />
-    </div>
+    );
+  }
+  if (row.type === "select") {
+    return (
+      <MenuSelect
+        value={row.get(settings)}
+        options={[...row.options]}
+        ariaLabel={row.label}
+        onChange={(value) => onChange(row.set(settings, value))}
+      />
+    );
+  }
+  if (row.type === "textarea") {
+    return (
+      <textarea
+        className="settings-textarea"
+        value={row.get(settings)}
+        rows={4}
+        placeholder={row.placeholder}
+        spellCheck={false}
+        aria-label={row.label}
+        onChange={(event) => onChange(row.set(settings, event.target.value))}
+      />
+    );
+  }
+  if (row.type === "number") {
+    return (
+      <label className="input settings-input">
+        <input
+          type="number"
+          value={row.get(settings) ?? ""}
+          min={row.min}
+          max={row.max}
+          step={row.step ?? 1}
+          placeholder={row.placeholder}
+          aria-label={row.label}
+          onChange={(event) => onChange(row.set(settings, numberOrNull(event.target.value)))}
+        />
+        {row.unit ? <em>{row.unit}</em> : null}
+      </label>
+    );
+  }
+  return (
+    <label className="input settings-input">
+      <input
+        className={row.mono ? "mono" : undefined}
+        value={row.get(settings)}
+        aria-label={row.label}
+        onChange={(event) => onChange(row.set(settings, event.target.value))}
+      />
+    </label>
   );
 }
 

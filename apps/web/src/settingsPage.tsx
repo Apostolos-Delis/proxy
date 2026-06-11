@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+
 import { graphql } from "./gql";
 import { gqlFetch } from "./graphql";
 import { SettingsForm } from "./settingsForm";
 import { settingsInput, type EditableSettings } from "./settingsPageData";
-import { Badge, PageState, PageTitle } from "./ui";
+import { PageState } from "./ui";
 
 graphql(`
   fragment SettingsViewFields on Settings {
@@ -72,6 +74,7 @@ const ActiveSessionsDocument = graphql(`
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
+  const [savedNeedsRestart, setSavedNeedsRestart] = useState(false);
   const query = useQuery({
     queryKey: ["settings"],
     queryFn: async () => (await gqlFetch(SettingsViewDocument)).settings
@@ -92,11 +95,6 @@ export function SettingsPage() {
 
   return (
     <div className="page page-enter">
-      <PageTitle
-        title="Settings"
-        subtitle={`Proxy runtime settings for ${query.data.organizationId}.`}
-        actions={<Badge variant={query.data.databaseEnabled ? "success" : "warn"} dot>{query.data.databaseEnabled ? "Database on" : "File only"}</Badge>}
-      />
       <SettingsForm
         key={JSON.stringify(query.data.settings)}
         initial={query.data.settings}
@@ -108,8 +106,12 @@ export function SettingsPage() {
         activeWindowMs={activeSessionsQuery.data?.windowMs ?? null}
         saving={mutation.isPending}
         justSaved={mutation.isSuccess}
+        justSavedRestart={savedNeedsRestart}
         saveError={mutation.error?.message}
-        onSave={(settings) => mutation.mutate(settings)}
+        onSave={(settings, needsRestart) => {
+          setSavedNeedsRestart(needsRestart);
+          mutation.mutate(settings);
+        }}
       />
     </div>
   );
