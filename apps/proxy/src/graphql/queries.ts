@@ -32,9 +32,6 @@ import { Viewer } from "./types/viewer.js";
 
 const PROMPT_GRAPHQL_ACCESS_PATH = "/admin/graphql#prompt";
 
-const FIVE_MINUTES_MS = CACHE_TTL_DEFAULT_MS;
-const ONE_HOUR_MS = CACHE_TTL_UPGRADED_MS;
-
 function emptyUsageReport(): UsageReportModel {
   return {
     groupBy: "route",
@@ -202,13 +199,13 @@ builder.queryFields((t) => ({
     type: ActiveSessionCount,
     resolve: async (_root, _args, context) => {
       const queries = scopedQueries(context);
-      if (!queries) return { activeSessions: 0, windowMs: FIVE_MINUTES_MS };
+      if (!queries) return { activeSessions: 0, windowMs: CACHE_TTL_DEFAULT_MS };
       // The warm window is the org's effective cache TTL: with the 1h upgrade
       // on, a prompt edit busts every session active within the last hour, not
       // just five minutes.
       const upgraded = await context.persistence?.organizationSettings
         .cacheTtlUpgrade(context.identity().organizationId);
-      return queries.activeSessionCount(upgraded ? ONE_HOUR_MS : FIVE_MINUTES_MS);
+      return queries.activeSessionCount(upgraded ? CACHE_TTL_UPGRADED_MS : CACHE_TTL_DEFAULT_MS);
     }
   }),
 

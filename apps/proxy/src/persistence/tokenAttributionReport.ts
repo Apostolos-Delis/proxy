@@ -1,10 +1,5 @@
 import { isRecord } from "../util.js";
 
-export type TokenAttributionFilters = {
-  start?: string;
-  end?: string;
-};
-
 // Newest-first sample cap: bounds memory for orgs with deep event history.
 // When the cap is hit the report is flagged sampled so the console can say so.
 export const TOKEN_ATTRIBUTION_SAMPLE_CAP = 5000;
@@ -21,6 +16,10 @@ const BUCKET_KEYS = [
 ] as const;
 
 type Totals = { chars: number; estimatedTokens: number };
+
+// Tool schemas have no notion of blocks, so the shared row type carries a
+// nullable count rather than splitting into two shapes.
+type OffenderRow = { name: string; chars: number; estimatedTokens: number; blocks: number | null };
 
 export function aggregateTokenAttribution(payloads: unknown[], sampled: boolean) {
   const buckets = new Map<string, Totals>(BUCKET_KEYS.map((key) => [key, { chars: 0, estimatedTokens: 0 }]));
@@ -59,17 +58,17 @@ export function aggregateTokenAttribution(payloads: unknown[], sampled: boolean)
     requestCount: payloads.length,
     sampled,
     buckets: BUCKET_KEYS.map((key) => ({ key, ...buckets.get(key)! })),
-    toolSchemas: topEntries(toolSchemas).map(([name, totals]) => ({
+    toolSchemas: topEntries(toolSchemas).map(([name, totals]): OffenderRow => ({
       name,
       chars: totals.chars,
       estimatedTokens: totals.estimatedTokens,
-      blocks: null as number | null
+      blocks: null
     })),
-    toolResults: topEntries(toolResults).map(([name, totals]) => ({
+    toolResults: topEntries(toolResults).map(([name, totals]): OffenderRow => ({
       name,
       chars: totals.chars,
       estimatedTokens: totals.estimatedTokens,
-      blocks: totals.blocks as number | null
+      blocks: totals.blocks
     }))
   };
 }

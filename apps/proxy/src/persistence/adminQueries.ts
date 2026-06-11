@@ -47,15 +47,17 @@ import {
   routingConfigSummary,
   usageLedgerSummary
 } from "./adminSerializers.js";
+import { CACHE_TTL_DEFAULT_MS } from "../cacheWindows.js";
 import { CACHE_BUST_SAMPLE_CAP, detectCacheBusts } from "./cacheBusts.js";
 import { aggregateIdleGaps, IDLE_GAP_SAMPLE_CAP } from "./idleGaps.js";
 import { orgPricingOverrides, type OrgPricingOverride } from "./modelPricing.js";
-import {
-  aggregateTokenAttribution,
-  TOKEN_ATTRIBUTION_SAMPLE_CAP,
-  type TokenAttributionFilters
-} from "./tokenAttributionReport.js";
+import { aggregateTokenAttribution, TOKEN_ATTRIBUTION_SAMPLE_CAP } from "./tokenAttributionReport.js";
 import { routeValue, surfaceValue } from "./values.js";
+
+type DateRangeFilters = {
+  start?: string;
+  end?: string;
+};
 
 export type AdminQueryConfig = {
   routeQualityLowConfidenceThreshold: number;
@@ -1025,7 +1027,7 @@ export class AdminQueryService {
   // Output tokens per route — the lever for effort/verbosity tuning. Output is
   // 5x input price, so a route with high average output is the first place to
   // dial effort down. Reasoning share flags routes spending output on thinking.
-  async routeOutputReport(filters: TokenAttributionFilters = {}) {
+  async routeOutputReport(filters: DateRangeFilters = {}) {
     const start = dateValue(filters.start);
     const end = dateValue(filters.end);
     const conditions = [this.scopedTo(usageLedger), isNotNull(usageLedger.route)];
@@ -1064,7 +1066,7 @@ export class AdminQueryService {
   // Sessions with a request inside the cache-warm window. Editing the org
   // system prompt shifts the front of every prefix, so each of these sessions
   // pays a full cache rebuild on its next request — this is the blast radius.
-  async activeSessionCount(withinMs = 5 * 60 * 1000) {
+  async activeSessionCount(withinMs = CACHE_TTL_DEFAULT_MS) {
     const since = new Date(Date.now() - withinMs);
     const [row] = await this.db
       .select({ count: sql<number>`count(distinct ${requests.sessionId})` })
@@ -1077,7 +1079,7 @@ export class AdminQueryService {
     return { activeSessions: Number(row?.count ?? 0), windowMs: withinMs };
   }
 
-  async idleGaps(filters: TokenAttributionFilters = {}) {
+  async idleGaps(filters: DateRangeFilters = {}) {
     const start = dateValue(filters.start);
     const end = dateValue(filters.end);
     const conditions = [this.scopedTo(requests), isNotNull(requests.sessionId)];
@@ -1095,7 +1097,7 @@ export class AdminQueryService {
     );
   }
 
-  async cacheBusts(filters: TokenAttributionFilters = {}) {
+  async cacheBusts(filters: DateRangeFilters = {}) {
     const start = dateValue(filters.start);
     const end = dateValue(filters.end);
     const conditions = [this.scopedTo(usageLedger), isNotNull(usageLedger.sessionId)];
@@ -1129,7 +1131,7 @@ export class AdminQueryService {
     return { ...report, sampled: rows.length === CACHE_BUST_SAMPLE_CAP };
   }
 
-  async tokenAttribution(filters: TokenAttributionFilters = {}) {
+  async tokenAttribution(filters: DateRangeFilters = {}) {
     const start = dateValue(filters.start);
     const end = dateValue(filters.end);
     const conditions = [this.scopedTo(events), eq(events.eventType, "tokens.attributed")];

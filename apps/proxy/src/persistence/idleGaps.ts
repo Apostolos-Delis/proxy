@@ -13,14 +13,11 @@ export type IdleGapRequestRow = {
 // Newest-first sample cap applied by the caller's query.
 export const IDLE_GAP_SAMPLE_CAP = 20_000;
 
-const TTL_MS = CACHE_TTL_DEFAULT_MS;
-const HOUR_MS = CACHE_TTL_UPGRADED_MS;
-
 const GAP_BUCKETS = [
   { key: "lt_1m", label: "< 1m", maxMs: 60 * 1000 },
-  { key: "1m_5m", label: "1–5m", maxMs: TTL_MS },
+  { key: "1m_5m", label: "1–5m", maxMs: CACHE_TTL_DEFAULT_MS },
   { key: "5m_15m", label: "5–15m", maxMs: 15 * 60 * 1000 },
-  { key: "15m_60m", label: "15–60m", maxMs: HOUR_MS },
+  { key: "15m_60m", label: "15–60m", maxMs: CACHE_TTL_UPGRADED_MS },
   { key: "gt_60m", label: "> 60m", maxMs: Number.POSITIVE_INFINITY }
 ] as const;
 
@@ -42,8 +39,8 @@ export function aggregateIdleGaps(rows: IdleGapRequestRow[], sampled: boolean) {
     for (let index = 1; index < times.length; index += 1) {
       const gapMs = times[index] - times[index - 1];
       totalGaps += 1;
-      if (gapMs >= TTL_MS) overTtl += 1;
-      if (gapMs >= TTL_MS && gapMs < HOUR_MS) recoverableByOneHourTtl += 1;
+      if (gapMs >= CACHE_TTL_DEFAULT_MS) overTtl += 1;
+      if (gapMs >= CACHE_TTL_DEFAULT_MS && gapMs < CACHE_TTL_UPGRADED_MS) recoverableByOneHourTtl += 1;
       const bucket = GAP_BUCKETS.find((candidate) => gapMs < candidate.maxMs) ?? GAP_BUCKETS[GAP_BUCKETS.length - 1];
       counts.set(bucket.key, (counts.get(bucket.key) ?? 0) + 1);
     }

@@ -33,6 +33,8 @@ function compactJsonString(text: string): string | undefined {
     return undefined;
   }
   const stripped = stripJsonWhitespace(trimmed);
+  // Compared against the untrimmed input deliberately: outer padding is
+  // formatting too, so already-compact JSON wrapped in whitespace still shrinks.
   return stripped.length < text.length ? stripped : undefined;
 }
 

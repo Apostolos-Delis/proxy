@@ -271,7 +271,7 @@ function RouteOutput({ report }: { report: RouteOutputReport | undefined }) {
 
 function offenderValue(row: TokenAttributionOffender, unit: "schema" | "result") {
   const tokens = `${formatCompact(row.estimatedTokens)} tok`;
-  if (unit === "result" && row.blocks !== null && row.blocks !== undefined) {
+  if (unit === "result" && row.blocks !== null) {
     return `${tokens} · ${formatCompact(row.blocks)} blocks`;
   }
   return tokens;

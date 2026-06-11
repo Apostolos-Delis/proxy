@@ -10,6 +10,7 @@ import { mapTextContent, type CompressionRule } from "../toolResultCompression.j
 // We do NOT drop or summarize actual output lines — that would be lossy and
 // command-specific guesswork. This stays a pure function of the input bytes.
 
+// Per harness: Bash (Claude Code), shell/local_shell (Codex), run_terminal_cmd (Cursor).
 const SHELL_TOOL_NAMES = new Set(["Bash", "shell", "local_shell", "run_terminal_cmd"]);
 
 // ANSI escape sequences, every alternative anchored on the ESC control byte
