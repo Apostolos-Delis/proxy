@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Boxes, Download, Shield, Users } from "lucide-react";
 
+import { isListedPromptArtifact, promptArtifactRank } from "./artifactKinds";
 import { displayUser } from "./consoleData";
 import { downloadJson } from "./dashboard";
 import { compactId, formatCompact, formatMoney } from "./format";
@@ -227,11 +228,11 @@ function promptRows(prompts: PromptSummary[], requests: RequestSummary[], users:
 }
 
 function isVisiblePromptArtifact(prompt: PromptSummary) {
-  return prompt.kind !== "tool_schema_metadata" && prompt.kind !== "request_input" && prompt.kind !== "assistant_response";
+  return isListedPromptArtifact(prompt.kind);
 }
 
 function artifactRank(prompt: PromptSummary) {
-  return prompt.kind === "latest_user_message" ? 0 : 1;
+  return promptArtifactRank(prompt.kind);
 }
 
 function formatLatency(value?: number | null) {

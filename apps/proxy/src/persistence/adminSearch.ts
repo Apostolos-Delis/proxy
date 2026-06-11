@@ -32,7 +32,14 @@ export type AdminSearchResult = {
 
 const HITS_PER_KIND = 5;
 const MIN_QUERY_LENGTH = 2;
-const HIDDEN_ARTIFACT_KINDS = ["tool_schema_metadata", "request_input", "assistant_response"];
+const HIDDEN_ARTIFACT_KINDS = [
+  "tool_schema_metadata",
+  "request_input",
+  "assistant_response",
+  "tool_use",
+  "tool_result",
+  "injected_context"
+];
 
 // Patterns for the two classes of searchable columns. Opaque ids (primary keys,
 // request ids) only match queries that look like id fragments — every id contains

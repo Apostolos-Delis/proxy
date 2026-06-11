@@ -148,7 +148,7 @@ describe("admin prompt APIs", () => {
       limit: 10,
       offset: 0
     })).data?.prompts;
-    const latestUser = prompts.data.find((item: any) => item.kind === "latest_user_message");
+    const latestUser = prompts.data.find((item: any) => item.kind === "user_message");
     const usageBeforeDetail = await adminGql(
       fixture.proxyUrl,
       fixture.adminHeaders,
@@ -185,7 +185,7 @@ describe("admin prompt APIs", () => {
       organizationId: "org_other",
       workspaceId: defaultWorkspaceId("org_other"),
       requestId: "request_other",
-      kind: "latest_user_message",
+      kind: "user_message",
       storageMode: "raw_text",
       contentHash: "sha256:other",
       rawText: "other org prompt"
@@ -295,7 +295,7 @@ describe("admin prompt APIs", () => {
       route: "hard",
       model: "claude-sonnet-4-5"
     })).data?.prompts;
-    const latestUser = prompts.data.find((item: any) => item.kind === "latest_user_message");
+    const latestUser = prompts.data.find((item: any) => item.kind === "user_message");
     const detail = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptDetailQuery, {
       artifactId: latestUser.artifactId
     })).data?.prompt;

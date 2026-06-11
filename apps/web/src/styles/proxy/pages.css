@@ -1112,6 +1112,19 @@ input[type="checkbox"][role="switch"]:focus-visible {
   background: transparent;
 }
 
+.convo-bubble.convo-context {
+  border-style: dashed;
+  background: transparent;
+}
+
+.convo-bubble.convo-context p,
+.convo-bubble.convo-tool p {
+  max-height: 180px;
+  color: var(--fg-muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
 .convo-bubble.convo-focused {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
   box-shadow: 0 0 0 1px var(--accent-soft);
