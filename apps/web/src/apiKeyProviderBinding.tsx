@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { ChevronDown } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -49,15 +50,23 @@ export function ApiKeyProviderBinding({ apiKey, providerAccounts }: {
       {open ? (
         <AnchoredPopover anchorRef={triggerRef} onDismiss={() => setOpen(false)}>
           <div className="assignment-popover">
-            {PROVIDER_ORDER.map((provider) => (
-              <ProviderSection
-                key={provider}
-                provider={provider}
-                accounts={activeAccounts.filter((account) => account.provider === provider)}
-                boundId={boundByProvider.get(provider)?.providerAccountId ?? null}
-                onAssign={(providerAccountId) => assignMutation.mutate({ provider, providerAccountId })}
-              />
-            ))}
+            {activeAccounts.length === 0 ? (
+              <div className="assignment-blank">
+                <strong>No provider keys</strong>
+                <span>Upstream traffic uses the platform keys.</span>
+                <Link to="/provider-keys" className="btn btn-sm" onClick={() => setOpen(false)}>Add provider keys</Link>
+              </div>
+            ) : (
+              PROVIDER_ORDER.map((provider) => (
+                <ProviderSection
+                  key={provider}
+                  provider={provider}
+                  accounts={activeAccounts.filter((account) => account.provider === provider)}
+                  boundId={boundByProvider.get(provider)?.providerAccountId ?? null}
+                  onAssign={(providerAccountId) => assignMutation.mutate({ provider, providerAccountId })}
+                />
+              ))
+            )}
             {assignMutation.error ? <div className="action-error">{assignMutation.error.message}</div> : null}
           </div>
         </AnchoredPopover>
@@ -76,7 +85,7 @@ function ProviderSection({ provider, accounts, boundId, onAssign }: {
     <div className="assignment-section">
       <div className="assignment-section-label faint">{provider}</div>
       <button type="button" className={boundId === null ? "active" : ""} onClick={() => onAssign(null)}>
-        <strong>Company default</strong>
+        <strong>None</strong>
         <span>Use the platform key</span>
       </button>
       {accounts.map((account) => (
