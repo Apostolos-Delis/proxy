@@ -120,6 +120,35 @@ export type BillingPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type BillingPageQuery = { overview: { requestCount: number, cost: { selected: number, baseline: number, savings: number } }, settings: { budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null } } };
 
+export type TokenAttributionViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+}>;
+
+
+export type TokenAttributionViewQuery = { tokenAttribution: { requestCount: number, sampled: boolean, buckets: Array<{ key: string, chars: number, estimatedTokens: number }>, toolSchemas: Array<{ name: string, chars: number, estimatedTokens: number, blocks: number | null }>, toolResults: Array<{ name: string, chars: number, estimatedTokens: number, blocks: number | null }> } };
+
+export type IdleGapsViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+}>;
+
+
+export type IdleGapsViewQuery = { idleGaps: { totalGaps: number, overTtl: number, recoverableByOneHourTtl: number, sessionsScanned: number, sampled: boolean, buckets: Array<{ key: string, label: string, count: number }> } };
+
+export type CacheBustsViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+}>;
+
+
+export type CacheBustsViewQuery = { cacheBusts: { countsByCause: unknown, sessionsScanned: number, sampled: boolean, busts: Array<{ sessionId: string, requestId: string, at: string, cause: string, droppedCacheReadTokens: number, rebuiltTokens: number, model: string, gapMs: number }> } };
+
+export type CachePricingRatesQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type CachePricingRatesQuery = { modelPricing: Array<{ model: string, inputCostPerMtok: number | null, cacheReadCostPerMtok: number | null, cacheWriteCostPerMtok: number | null }> };
+
 export type InvitationsListQueryVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -403,38 +432,6 @@ export type ActiveSessionsQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type ActiveSessionsQuery = { activeSessionCount: { activeSessions: number, windowMs: number } };
 
-export type TokenAttributionViewQueryVariables = Exact<{
-  start?: string | null | undefined;
-  end?: string | null | undefined;
-}>;
-
-
-export type TokenAttributionViewQuery = { tokenAttribution: { requestCount: number, sampled: boolean, buckets: Array<{ key: string, chars: number, estimatedTokens: number }>, toolSchemas: Array<{ name: string, chars: number, estimatedTokens: number, blocks: number | null }>, toolResults: Array<{ name: string, chars: number, estimatedTokens: number, blocks: number | null }> } };
-
-export type IdleGapsViewQueryVariables = Exact<{
-  start?: string | null | undefined;
-  end?: string | null | undefined;
-}>;
-
-
-export type IdleGapsViewQuery = { idleGaps: { totalGaps: number, overTtl: number, recoverableByOneHourTtl: number, sessionsScanned: number, sampled: boolean, buckets: Array<{ key: string, label: string, count: number }> } };
-
-export type CacheBustsViewQueryVariables = Exact<{
-  start?: string | null | undefined;
-  end?: string | null | undefined;
-}>;
-
-
-export type CacheBustsViewQuery = { cacheBusts: { countsByCause: unknown, sessionsScanned: number, sampled: boolean, busts: Array<{ sessionId: string, requestId: string, at: string, cause: string, droppedCacheReadTokens: number, rebuiltTokens: number, gapMs: number }> } };
-
-export type RouteOutputViewQueryVariables = Exact<{
-  start?: string | null | undefined;
-  end?: string | null | undefined;
-}>;
-
-
-export type RouteOutputViewQuery = { routeOutputReport: { routes: Array<{ route: string, requests: number, outputTokens: number, avgOutputTokens: number, reasoningShare: number, outputCost: number }> } };
-
 export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } };
 
 export type UsageReportViewQueryVariables = Exact<{
@@ -688,6 +685,76 @@ export const BillingPageDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<BillingPageQuery, BillingPageQueryVariables>;
+export const TokenAttributionViewDocument = new TypedDocumentString(`
+    query TokenAttributionView($start: String, $end: String) {
+  tokenAttribution(start: $start, end: $end) {
+    requestCount
+    sampled
+    buckets {
+      key
+      chars
+      estimatedTokens
+    }
+    toolSchemas {
+      name
+      chars
+      estimatedTokens
+      blocks
+    }
+    toolResults {
+      name
+      chars
+      estimatedTokens
+      blocks
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<TokenAttributionViewQuery, TokenAttributionViewQueryVariables>;
+export const IdleGapsViewDocument = new TypedDocumentString(`
+    query IdleGapsView($start: String, $end: String) {
+  idleGaps(start: $start, end: $end) {
+    buckets {
+      key
+      label
+      count
+    }
+    totalGaps
+    overTtl
+    recoverableByOneHourTtl
+    sessionsScanned
+    sampled
+  }
+}
+    `) as unknown as TypedDocumentString<IdleGapsViewQuery, IdleGapsViewQueryVariables>;
+export const CacheBustsViewDocument = new TypedDocumentString(`
+    query CacheBustsView($start: String, $end: String) {
+  cacheBusts(start: $start, end: $end) {
+    busts {
+      sessionId
+      requestId
+      at
+      cause
+      droppedCacheReadTokens
+      rebuiltTokens
+      model
+      gapMs
+    }
+    countsByCause
+    sessionsScanned
+    sampled
+  }
+}
+    `) as unknown as TypedDocumentString<CacheBustsViewQuery, CacheBustsViewQueryVariables>;
+export const CachePricingRatesDocument = new TypedDocumentString(`
+    query CachePricingRates {
+  modelPricing {
+    model
+    inputCostPerMtok
+    cacheReadCostPerMtok
+    cacheWriteCostPerMtok
+  }
+}
+    `) as unknown as TypedDocumentString<CachePricingRatesQuery, CachePricingRatesQueryVariables>;
 export const InvitationsListDocument = new TypedDocumentString(`
     query InvitationsList {
   invitations {
@@ -1734,79 +1801,6 @@ export const ActiveSessionsDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<ActiveSessionsQuery, ActiveSessionsQueryVariables>;
-export const TokenAttributionViewDocument = new TypedDocumentString(`
-    query TokenAttributionView($start: String, $end: String) {
-  tokenAttribution(start: $start, end: $end) {
-    requestCount
-    sampled
-    buckets {
-      key
-      chars
-      estimatedTokens
-    }
-    toolSchemas {
-      name
-      chars
-      estimatedTokens
-      blocks
-    }
-    toolResults {
-      name
-      chars
-      estimatedTokens
-      blocks
-    }
-  }
-}
-    `) as unknown as TypedDocumentString<TokenAttributionViewQuery, TokenAttributionViewQueryVariables>;
-export const IdleGapsViewDocument = new TypedDocumentString(`
-    query IdleGapsView($start: String, $end: String) {
-  idleGaps(start: $start, end: $end) {
-    buckets {
-      key
-      label
-      count
-    }
-    totalGaps
-    overTtl
-    recoverableByOneHourTtl
-    sessionsScanned
-    sampled
-  }
-}
-    `) as unknown as TypedDocumentString<IdleGapsViewQuery, IdleGapsViewQueryVariables>;
-export const CacheBustsViewDocument = new TypedDocumentString(`
-    query CacheBustsView($start: String, $end: String) {
-  cacheBusts(start: $start, end: $end) {
-    busts {
-      sessionId
-      requestId
-      at
-      cause
-      droppedCacheReadTokens
-      rebuiltTokens
-      gapMs
-    }
-    countsByCause
-    sessionsScanned
-    sampled
-  }
-}
-    `) as unknown as TypedDocumentString<CacheBustsViewQuery, CacheBustsViewQueryVariables>;
-export const RouteOutputViewDocument = new TypedDocumentString(`
-    query RouteOutputView($start: String, $end: String) {
-  routeOutputReport(start: $start, end: $end) {
-    routes {
-      route
-      requests
-      outputTokens
-      avgOutputTokens
-      reasoningShare
-      outputCost
-    }
-  }
-}
-    `) as unknown as TypedDocumentString<RouteOutputViewQuery, RouteOutputViewQueryVariables>;
 export const UsageReportViewDocument = new TypedDocumentString(`
     query UsageReportView($groupBy: UsageGroupBy!, $start: String, $end: String) {
   usage(groupBy: $groupBy, start: $start, end: $end) {

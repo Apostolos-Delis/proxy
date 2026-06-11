@@ -5,6 +5,7 @@ import {
   Gauge,
   GitBranch,
   KeyRound,
+  Layers,
   Logs,
   MessagesSquare,
   ScrollText,
@@ -29,6 +30,7 @@ import { formatDateTime } from "../format";
 export type PalettePagePath =
   | "/"
   | "/usage"
+  | "/caching"
   | "/logs"
   | "/sessions"
   | "/prompts"
@@ -81,6 +83,7 @@ export const MIN_SEARCH_LENGTH = 2;
 export const palettePages: PalettePage[] = [
   { path: "/", title: "Overview", subtitle: "Spend, savings & route quality", keywords: ["dashboard", "home", "metrics", "savings"], icon: Gauge },
   { path: "/usage", title: "Usage", subtitle: "Token metering & spend", keywords: ["tokens", "cost", "spend", "metering", "analytics"], icon: BarChart3 },
+  { path: "/caching", title: "Caching", subtitle: "Prompt-cache performance", keywords: ["cache", "hit rate", "savings", "prefix", "ttl", "tokens"], icon: Layers },
   { path: "/logs", title: "Logs", subtitle: "Request stream", keywords: ["requests", "traffic", "prompts", "stream"], icon: Logs },
   { path: "/sessions", title: "Sessions", subtitle: "Agent session replay", keywords: ["replay", "conversations", "agents", "turns"], icon: MessagesSquare },
   { path: "/prompts", title: "Prompts", subtitle: "Captured prompt artifacts", keywords: ["artifacts", "raw text", "capture"], icon: ScrollText },
