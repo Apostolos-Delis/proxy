@@ -442,6 +442,19 @@ function sendDuplicateRequest(
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const config = loadConfig();
-  const app = buildServer(config);
+  const persistence = config.databaseUrl
+    ? createPostgresPersistence(config.databaseUrl, buildModelCatalog(config), config)
+    : undefined;
+  const app = buildServer(config, { persistence });
   await app.listen({ port: config.port, host: "0.0.0.0" });
+  // Heal usage rows that booked $0 before their model's rate existed — e.g.
+  // traffic served before a default-pricing-table addition shipped.
+  if (persistence) {
+    void persistence.repriceZeroCostUsage().then(
+      (repriced) => {
+        if (repriced > 0) app.log.info({ repriced }, "repriced zero-cost usage ledger rows");
+      },
+      (error) => app.log.warn({ err: error }, "zero-cost usage repricing failed")
+    );
+  }
 }

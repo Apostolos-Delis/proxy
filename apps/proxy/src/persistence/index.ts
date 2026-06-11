@@ -21,6 +21,7 @@ import { PersistentRequestStateStore } from "./requestState.js";
 import { RoutingConfigAdminService } from "./routingConfigAdmin.js";
 import { RoutingConfigResolver } from "./routingConfig.js";
 import { createSessionPinLoader } from "./sessionRoute.js";
+import { repriceZeroCostUsage } from "./usageRepricing.js";
 import { UserAdminService } from "./userAdmin.js";
 import { WorkspaceAdminService } from "./workspaceAdmin.js";
 
@@ -48,7 +49,7 @@ export function createDatabasePersistence(
     providerCredentials: new ProviderCredentialStore(db, config.providerSecretEncryptionKey),
     providerCredentialAdmin: new ProviderCredentialAdminService(transactional, config.providerSecretEncryptionKey),
     eventSink: new DatabaseEventSink(transactional, config.modelCosts, useAdvisoryLocks),
-    modelPricingAdmin: new ModelPricingAdminService(transactional),
+    modelPricingAdmin: new ModelPricingAdminService(transactional, config.modelCosts),
     organizationSettings: new OrganizationSettingsStore(db),
     promptAccessAudit: new PromptAccessAuditStore(db),
     promptArtifacts: new PromptArtifactStore(transactional, db),
@@ -58,6 +59,7 @@ export function createDatabasePersistence(
     sessionPins: createSessionPinLoader(db),
     userAdmin: new UserAdminService(transactional, { invitationTtlSeconds: config.invitationTtlSeconds }),
     workspaceAdmin: new WorkspaceAdminService(transactional),
+    repriceZeroCostUsage: () => repriceZeroCostUsage(db, config.modelCosts),
     adminQueries: {
       forScope: (organizationId: string, workspaceId: string) =>
         new AdminQueryService(db, catalog, organizationId, workspaceId, {

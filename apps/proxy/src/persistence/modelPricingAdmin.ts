@@ -6,10 +6,11 @@ import {
   type PromptProxyTransactionalDatabase
 } from "@prompt-proxy/db";
 
-import { completeModelPricing } from "../pricing.js";
+import { completeModelPricing, type ModelPricingTable } from "../pricing.js";
 import { createId } from "../util.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
 import { AdminMutationError } from "./adminErrors.js";
+import { repriceZeroCostUsage } from "./usageRepricing.js";
 
 const setPricingBodySchema = z.object({
   provider: z.enum(["openai", "anthropic"]),
@@ -28,7 +29,10 @@ const clearPricingBodySchema = z.object({
 export class ModelPricingAdminError extends AdminMutationError {}
 
 export class ModelPricingAdminService {
-  constructor(private readonly db: PromptProxyTransactionalDatabase) {}
+  constructor(
+    private readonly db: PromptProxyTransactionalDatabase,
+    private readonly staticPricing: ModelPricingTable
+  ) {}
 
   async setPricing(input: {
     organizationId: string;
@@ -73,6 +77,13 @@ export class ModelPricingAdminService {
           ...pricing
         },
         createdAt: now
+      });
+      // Heal traffic that booked $0 while this model had no rate; rows priced
+      // at ingest keep their snapshot.
+      await repriceZeroCostUsage(tx, this.staticPricing, {
+        organizationId: input.organizationId,
+        provider,
+        model
       });
       return { provider, model, pricing };
     });
