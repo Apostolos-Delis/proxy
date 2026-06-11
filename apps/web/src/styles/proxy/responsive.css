@@ -16,6 +16,16 @@
     width: 38px;
   }
 
+  .app .settings-rail .nav-item {
+    justify-content: flex-start;
+    padding-inline: 11px;
+    width: 100%;
+  }
+
+  .app .settings-rail .nav-item span {
+    display: inline;
+  }
+
   .app .org-card,
   .app .logout-button {
     justify-content: center;
@@ -144,9 +154,7 @@
   .request-detail-grid,
   .detail-grid,
   .snapshot-grid,
-  .settings-grid,
-  .settings-toolbar,
-  .settings-sections,
+  .settings-layout,
   .routing-create-grid,
   .wizard-provider-grid,
   .config-facts,
@@ -156,6 +164,35 @@
   .usage-kpi-grid,
   .usage-side-rail {
     grid-template-columns: 1fr;
+  }
+
+  .settings-rail {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .settings-rail-filter {
+    flex-basis: 100%;
+    margin-bottom: 4px;
+  }
+
+  .settings-rail .nav-item {
+    width: auto;
+  }
+
+  .settings-rail .nav-item.active::before {
+    display: none;
+  }
+
+  .settings-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .settings-row-control.toggle {
+    justify-content: flex-start;
   }
 
   .usage-toolbar {
