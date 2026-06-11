@@ -363,6 +363,7 @@ describe("session replay admin APIs", () => {
       {
         ...usageRow("cache_usage", "cache_request", "cache_attempt", "org_cache_sessions", "anthropic", "claude-hard", "hard", 100, 50, 2000),
         cachedInputTokens: 800,
+        cacheCreationInputTokens: 100,
         usage: {
           input_tokens: 100,
           output_tokens: 50,

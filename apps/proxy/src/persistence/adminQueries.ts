@@ -1109,7 +1109,7 @@ export class AdminQueryService {
         model: usageLedger.model,
         inputTokens: usageLedger.inputTokens,
         cachedInputTokens: usageLedger.cachedInputTokens,
-        usage: usageLedger.usage,
+        cacheCreationInputTokens: usageLedger.cacheCreationInputTokens,
         createdAt: usageLedger.createdAt
       })
       .from(usageLedger)
@@ -1123,7 +1123,7 @@ export class AdminQueryService {
       model: row.model,
       inputTokens: row.inputTokens,
       cachedInputTokens: row.cachedInputTokens,
-      cacheCreationInputTokens: cacheCreationTokens(row.usage),
+      cacheCreationInputTokens: row.cacheCreationInputTokens,
       createdAt: row.createdAt
     })));
     return { ...report, sampled: rows.length === CACHE_BUST_SAMPLE_CAP };

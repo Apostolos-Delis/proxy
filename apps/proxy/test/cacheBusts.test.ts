@@ -182,7 +182,7 @@ describe("cacheBusts admin query", () => {
         ...usageRow("bust_usage_2", "bust_request_2", "bust_attempt_2", "org_cache_busts", "anthropic", "claude-hard", "hard", 200, 50, 1000),
         sessionId: "session_bust",
         cachedInputTokens: 0,
-        usage: { cache_creation_input_tokens: 55_000 },
+        cacheCreationInputTokens: 55_000,
         createdAt: second
       }
     ]);
