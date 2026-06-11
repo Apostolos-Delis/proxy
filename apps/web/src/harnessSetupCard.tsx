@@ -1,8 +1,9 @@
 import { Check, Copy, TerminalSquare } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { apiBase } from "./graphql";
-import { buildManualSteps, buildSetupCommand, keyPlaceholder } from "./keys/setupSnippets";
+import { buildManualSteps, buildSetupCommand, keyPlaceholder, type SnippetLanguage } from "./keys/setupSnippets";
+import { highlightSnippet } from "./keys/snippetHighlight";
 import { WizardStepHead } from "./keys/stepHead";
 
 export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
@@ -26,7 +27,7 @@ export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
         ) : null}
         <li>
           Run this on your machine — or paste it into Claude Code or Codex and let the agent run it for you:
-          <Snippet text={buildSetupCommand({ apiBase, secret })} />
+          <Snippet text={buildSetupCommand({ apiBase, secret })} language="shell" />
           <div className="faint setup-explainer">
             It fetches the <a href={`${apiBase}/setup.sh`} target="_blank" rel="noreferrer">setup script</a> from
             the proxy, stores the key at <span className="code-pill">~/.prompt-proxy/token</span>, and points both
@@ -50,7 +51,7 @@ export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
           {buildManualSteps({ apiBase, secret }).map((step) => (
             <li key={step.title}>
               <span className="setup-manual-title">{step.title}.</span> {step.detail}
-              <Snippet text={step.snippet} />
+              <Snippet text={step.snippet} language={step.language} />
             </li>
           ))}
         </ol>
@@ -59,11 +60,12 @@ export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
   );
 }
 
-function Snippet({ text }: { text: string }) {
+function Snippet({ text, language }: { text: string; language: SnippetLanguage }) {
   const [copied, setCopied] = useState(false);
+  const nodes = useMemo(() => highlightSnippet(text, language), [text, language]);
   return (
     <div className="setup-snippet">
-      <pre>{text}</pre>
+      <pre>{nodes}</pre>
       <button
         className="btn btn-sm snippet-copy"
         type="button"

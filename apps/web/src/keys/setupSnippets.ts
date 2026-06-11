@@ -1,3 +1,5 @@
+export type SnippetLanguage = "shell" | "json" | "toml";
+
 export const keyPlaceholder = "<your-api-key>";
 
 // Escapes a value for a single-quoted bash context ('...').
@@ -16,6 +18,7 @@ export type ManualStep = {
   title: string;
   detail: string;
   snippet: string;
+  language: SnippetLanguage;
 };
 
 // The same four things the hosted script does, as do-it-by-hand steps.
@@ -29,7 +32,8 @@ export function buildManualSteps({ apiBase, secret }: { apiBase: string; secret:
         "mkdir -p ~/.prompt-proxy",
         `printf '%s\\n' ${singleQuote(key)} > ~/.prompt-proxy/token`,
         "chmod 600 ~/.prompt-proxy/token"
-      ].join("\n")
+      ].join("\n"),
+      language: "shell"
     },
     {
       title: "Point Claude Code at the proxy",
@@ -45,12 +49,14 @@ export function buildManualSteps({ apiBase, secret }: { apiBase: string; secret:
         },
         null,
         2
-      )
+      ),
+      language: "json"
     },
     {
       title: "Export the key for Codex",
       detail: "Add this line to ~/.zshrc (or ~/.bashrc) — Codex reads the key from PROMPT_PROXY_TOKEN.",
-      snippet: `export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"`
+      snippet: `export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"`,
+      language: "shell"
     },
     {
       title: "Register the Codex provider",
@@ -65,7 +71,8 @@ export function buildManualSteps({ apiBase, secret }: { apiBase: string; secret:
         `env_key = "PROMPT_PROXY_TOKEN"`,
         `wire_api = "responses"`,
         "supports_websockets = true"
-      ].join("\n")
+      ].join("\n"),
+      language: "toml"
     }
   ];
 }
