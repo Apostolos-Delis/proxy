@@ -19,6 +19,7 @@ import { PromptArtifactStore } from "./promptArtifacts.js";
 import { PersistentRequestStateStore } from "./requestState.js";
 import { RoutingConfigAdminService } from "./routingConfigAdmin.js";
 import { RoutingConfigResolver } from "./routingConfig.js";
+import { createSessionPinLoader } from "./sessionRoute.js";
 import { UserAdminService } from "./userAdmin.js";
 
 export type DatabasePersistenceConfig = AdminQueryConfig & {
@@ -51,6 +52,7 @@ export function createDatabasePersistence(
     requestStates: new PersistentRequestStateStore(transactional, db, config.defaultOrganizationId),
     routingConfigAdmin: new RoutingConfigAdminService(transactional),
     routingConfigs: new RoutingConfigResolver(db),
+    sessionPins: createSessionPinLoader(db),
     userAdmin: new UserAdminService(transactional, { invitationTtlSeconds: config.invitationTtlSeconds }),
     adminQueries: {
       forOrg: (organizationId: string) =>

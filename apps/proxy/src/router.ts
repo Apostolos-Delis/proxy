@@ -13,6 +13,7 @@ import type { AppConfig } from "./config.js";
 import type { BudgetResult, BudgetService, SessionRouteStore } from "./policy.js";
 import type {
   JsonObject,
+  Provider,
   ProviderEffort,
   RouteContext,
   RouteDecision,
@@ -33,6 +34,30 @@ type ResolvedRouteSettings = {
   verbosity?: Verbosity;
   provider: SelectedRouteSettings["provider"];
 };
+
+function settingsForSurface(
+  selected: SelectedRouteSettings,
+  surface: RouteContext["surface"]
+): ResolvedRouteSettings | undefined {
+  if (surface === "openai-responses" && selected.provider === "openai") {
+    return {
+      selectedModel: selected.model,
+      provider: "openai",
+      reasoningEffort: selected.openai.reasoning?.effort,
+      verbosity: selected.openai.text?.verbosity,
+      providerSettings: selected
+    };
+  }
+  if (surface === "anthropic-messages" && selected.provider === "anthropic") {
+    return {
+      selectedModel: selected.model,
+      provider: "anthropic",
+      reasoningEffort: selected.anthropic.output_config?.effort,
+      providerSettings: selected
+    };
+  }
+  return undefined;
+}
 
 export class RoutingService {
   constructor(
@@ -112,7 +137,7 @@ export class RoutingService {
       }
     }
 
-    let decision = this.resolveRoute(
+    let decision = await this.resolveRoute(
       context,
       requestedRoute,
       classification,
@@ -123,7 +148,7 @@ export class RoutingService {
       if (decision.outcome === "reject" && decision.error === "route_not_available_for_surface") {
         for (const route of routeOrder) {
           if (route === requestedRoute) continue;
-          const candidate = this.resolveRoute(context, route, classification, routingConfig, classifierSettings);
+          const candidate = await this.resolveRoute(context, route, classification, routingConfig, classifierSettings);
           if (candidate.outcome === "route") {
             decision = candidate;
             break;
@@ -155,6 +180,7 @@ export class RoutingService {
         previousRoute: decision.session.previousRoute,
         currentRoute: decision.session.currentRoute,
         selectedRoute: decision.session.currentRoute,
+        pin: decision.session.pin,
         action: decision.session.action
       });
       await this.events.append({
@@ -270,13 +296,13 @@ export class RoutingService {
     }
   }
 
-  private resolveRoute(
+  private async resolveRoute(
     context: RouteContext,
     classifierRoute: RouteName,
     classification?: ClassificationResult,
     routingConfig?: RoutingConfigSelection,
     classifierSettings: ClassifierSettings = defaultClassifierSettings(this.config)
-  ): RouteDecision {
+  ): Promise<RouteDecision> {
     let finalRoute = classifierRoute;
     const guardrailActions: string[] = [];
     const routingConfigSnapshot = routingConfig?.snapshot;
@@ -312,7 +338,7 @@ export class RoutingService {
       }
     }
 
-    const session = this.sessions.plan(context, finalRoute);
+    const session = await this.sessions.plan(context, finalRoute);
     if (session) {
       finalRoute = session.selectedRoute;
       if (session.action === "kept") guardrailActions.push("session_route_kept");
@@ -320,8 +346,37 @@ export class RoutingService {
       if (session.action === "explicit_override") guardrailActions.push("session_explicit_route_override");
     }
 
-    const routeSettings = this.resolveProviderSettings(context, finalRoute, routingConfig?.config);
+    // Reuse the session's pinned provider settings on kept routes so the
+    // upstream request shape stays byte-stable and provider prompt caches
+    // survive routing-config publishes mid-session.
+    let pinnedRouteSettings: ResolvedRouteSettings | undefined;
+    let invalidatedPin: { provider: Provider; routingConfigVersionId?: string } | undefined;
+    if (session?.action === "kept" && session.pin) {
+      pinnedRouteSettings = settingsForSurface(session.pin.settings, context.surface);
+      if (pinnedRouteSettings) {
+        guardrailActions.push("session_settings_pinned");
+      } else {
+        guardrailActions.push("session_pin_invalidated");
+        invalidatedPin = {
+          provider: session.pin.settings.provider,
+          routingConfigVersionId: session.pin.routingConfigVersionId
+        };
+      }
+    }
+
+    const routeSettings =
+      pinnedRouteSettings ?? this.resolveProviderSettings(context, finalRoute, routingConfig?.config);
     if (!routeSettings) return this.reject(context, "route_not_available_for_surface");
+
+    let sessionPin: NonNullable<RouteDecision["session"]>["pin"];
+    if (session) {
+      sessionPin = pinnedRouteSettings && session.pin
+        ? session.pin
+        : {
+            settings: routeSettings.providerSettings,
+            routingConfigVersionId: routingConfig?.snapshot.versionId
+          };
+    }
 
     return {
       outcome: "route",
@@ -345,6 +400,8 @@ export class RoutingService {
             teamId: session.teamId,
             previousRoute: session.previousRoute,
             currentRoute: session.currentRoute,
+            pin: sessionPin,
+            invalidatedPin,
             action: session.action
           }
         : undefined,
@@ -374,29 +431,16 @@ export class RoutingService {
       const routeConfig = routingConfig.routes[route];
       if (context.surface === "openai-responses") {
         if (!routeConfig.openai) return undefined;
-        return {
-          selectedModel: routeConfig.openai.model,
-          provider: "openai",
-          reasoningEffort: routeConfig.openai.reasoning?.effort,
-          verbosity: routeConfig.openai.text?.verbosity,
-          providerSettings: {
-            provider: "openai",
-            model: routeConfig.openai.model,
-            openai: routeConfig.openai
-          }
-        };
+        return settingsForSurface(
+          { provider: "openai", model: routeConfig.openai.model, openai: routeConfig.openai },
+          context.surface
+        );
       }
       if (!routeConfig.anthropic) return undefined;
-      return {
-        selectedModel: routeConfig.anthropic.model,
-        provider: "anthropic",
-        reasoningEffort: routeConfig.anthropic.output_config?.effort,
-        providerSettings: {
-          provider: "anthropic",
-          model: routeConfig.anthropic.model,
-          anthropic: routeConfig.anthropic
-        }
-      };
+      return settingsForSurface(
+        { provider: "anthropic", model: routeConfig.anthropic.model, anthropic: routeConfig.anthropic },
+        context.surface
+      );
     }
 
     const model = modelForRoute(this.modelCatalog, route, context.surface);
