@@ -53,10 +53,6 @@
   cursor: default;
 }
 
-.sparkline .recharts-line-curve {
-  stroke: var(--accent);
-}
-
 .area-chart .recharts-area-curve {
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -206,6 +202,98 @@
   height: 10px;
   border-radius: 3px;
   opacity: 0.85;
+}
+
+.donut-chart {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.donut-figure {
+  position: relative;
+  flex: none;
+}
+
+.donut-figure svg {
+  display: block;
+  overflow: visible; /* hover grows the stroke 4px past the viewBox */
+  transform: rotate(-90deg);
+}
+
+.donut-seg {
+  cursor: pointer;
+  transition: opacity .15s var(--ease), stroke-width .15s var(--ease);
+}
+
+.donut-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.donut-center strong {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.donut-center span {
+  display: block;
+  max-width: 110px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+.donut-legend {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 150px;
+}
+
+.donut-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  transition: opacity .15s var(--ease);
+}
+
+.donut-legend-row.dim {
+  opacity: 0.5;
+}
+
+.donut-legend-row i {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.donut-legend-row .mono {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donut-legend-row em {
+  color: var(--fg-faint);
+  font-size: 12.5px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
 }
 
 .empty-chart {

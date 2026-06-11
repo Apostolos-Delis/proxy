@@ -39,15 +39,17 @@ export function EmptyChart({ height }: { height: number }) {
 
 export function ChartTooltip({ active, payload, label, valueFormatter }: {
   active?: boolean;
-  payload?: { value?: number }[];
-  label?: string;
+  payload?: { value?: number; payload?: { label?: string } }[];
+  label?: string | number;
   valueFormatter?: (value: number) => string;
 }) {
   if (!active || !payload?.length) return null;
   const value = Number(payload[0]?.value ?? 0);
+  // Index-keyed axes pass the index as `label`; only the datum's own label is displayable.
+  const datumLabel = payload[0]?.payload?.label ?? (typeof label === "string" ? label : "");
   return (
     <div className="chart-tooltip">
-      <span>{label}</span>
+      <span>{datumLabel}</span>
       <strong>{formatChartValue(value, valueFormatter)}</strong>
     </div>
   );
