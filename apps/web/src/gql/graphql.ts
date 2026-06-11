@@ -477,6 +477,11 @@ export type UnpricedModelsQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type UnpricedModelsQuery = { modelPricing: Array<{ model: string, provider: string | null, source: ModelPricingSource, seenInTraffic: boolean }> };
 
+export type UserDirectoryQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type UserDirectoryQuery = { users: Array<{ userId: string, name: string | null, email: string | null }> };
+
 export type DeactivateUserMutationVariables = Exact<{
   userId: string | number;
 }>;
@@ -1941,6 +1946,15 @@ export const UnpricedModelsDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<UnpricedModelsQuery, UnpricedModelsQueryVariables>;
+export const UserDirectoryDocument = new TypedDocumentString(`
+    query UserDirectory {
+  users {
+    userId
+    name
+    email
+  }
+}
+    `) as unknown as TypedDocumentString<UserDirectoryQuery, UserDirectoryQueryVariables>;
 export const DeactivateUserDocument = new TypedDocumentString(`
     mutation DeactivateUser($userId: ID!) {
   deactivateUser(userId: $userId) {

@@ -19,6 +19,7 @@ import { ApiKeyDetailPanel } from "./keys/detailPanel";
 import { apiKeySearchValue, apiKeyStatus, routingConfigFilterValue, routingConfigLabel } from "./keys/apiKeyTableData";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableFilter } from "./table";
 import { PageState, PageTitle } from "./ui";
+import { fetchUserDirectory, ownerLabel, type UserDirectory } from "./userDirectory";
 
 type AssignmentVariables = {
   apiKeyId: string;
@@ -35,11 +36,12 @@ export function KeysPage() {
   const setInspectKeyId = (apiKeyId: string | null) =>
     void navigate({ to: ".", search: (current) => ({ ...current, key: apiKeyId ?? undefined }), replace: true });
   const queryClient = useQueryClient();
-  const [keysQuery, configsQuery, providerAccountsQuery] = useQueries({
+  const [keysQuery, configsQuery, providerAccountsQuery, usersQuery] = useQueries({
     queries: [
       { queryKey: ["api-keys"], queryFn: fetchApiKeys },
       { queryKey: ["routing-configs"], queryFn: fetchRoutingConfigs },
-      { queryKey: ["provider-accounts"], queryFn: fetchProviderAccounts }
+      { queryKey: ["provider-accounts"], queryFn: fetchProviderAccounts },
+      { queryKey: ["user-directory"], queryFn: fetchUserDirectory }
     ]
   });
   const assignmentMutation = useMutation({
@@ -57,8 +59,8 @@ export function KeysPage() {
       queryClient.invalidateQueries({ queryKey: ["routing-configs"] });
     }
   });
-  const loading = keysQuery.isLoading || configsQuery.isLoading || providerAccountsQuery.isLoading;
-  const error = keysQuery.error ?? configsQuery.error ?? providerAccountsQuery.error;
+  const loading = keysQuery.isLoading || configsQuery.isLoading || providerAccountsQuery.isLoading || usersQuery.isLoading;
+  const error = keysQuery.error ?? configsQuery.error ?? providerAccountsQuery.error ?? usersQuery.error;
 
   if (loading) return <PageState title="API keys" label="Loading API keys" />;
   if (error) return <PageState title="API keys" label={error.message} />;
@@ -66,6 +68,7 @@ export function KeysPage() {
   const keys = keysQuery.data ?? [];
   const configs = (configsQuery.data ?? []).filter(isAssignableConfig);
   const providerAccounts = providerAccountsQuery.data ?? [];
+  const users: UserDirectory = usersQuery.data ?? new Map();
   const inspectKey = keys.find((apiKey) => apiKey.id === inspectKeyId);
   return (
     <div className="page page-enter">
@@ -96,6 +99,7 @@ export function KeysPage() {
         columns={apiKeyColumns({
           configs,
           providerAccounts,
+          users,
           openKeyId,
           pendingKeyId: assignmentMutation.isPending ? assignmentMutation.variables?.apiKeyId : undefined,
           errorKeyId: assignmentMutation.variables?.apiKeyId,
@@ -108,23 +112,25 @@ export function KeysPage() {
           revokeErrorMessage: revokeMutation.error?.message,
           onRevoke: (apiKeyId) => revokeMutation.mutate(apiKeyId)
         })}
-        search={{ placeholder: "Search keys, scopes, owners...", getValue: apiKeySearchValue }}
+        search={{ placeholder: "Search keys, scopes, owners...", getValue: (apiKey) => [...apiKeySearchValue(apiKey), ownerLabel(users, apiKey.userId)] }}
         filters={apiKeyFilters(keys)}
-        advancedFields={apiKeyAdvancedFields}
+        advancedFields={apiKeyAdvancedFields(users)}
         emptyLabel="No API keys found."
       />
     </div>
   );
 }
 
-const apiKeyAdvancedFields: ConsoleTableAdvancedField<ApiKeySummary>[] = [
-  { id: "name", label: "Name", getValue: (apiKey) => apiKey.name },
-  { id: "keyId", label: "Key ID", getValue: (apiKey) => apiKey.id },
-  { id: "status", label: "Status", getValue: apiKeyStatus },
-  { id: "routingConfig", label: "Routing", getValue: routingConfigLabel },
-  { id: "owner", label: "Owner", getValue: (apiKey) => apiKey.userId ?? "organization" },
-  { id: "scopes", label: "Scopes", getValue: (apiKey) => apiKey.scopes }
-];
+function apiKeyAdvancedFields(users: UserDirectory): ConsoleTableAdvancedField<ApiKeySummary>[] {
+  return [
+    { id: "name", label: "Name", getValue: (apiKey) => apiKey.name },
+    { id: "keyId", label: "Key ID", getValue: (apiKey) => apiKey.id },
+    { id: "status", label: "Status", getValue: apiKeyStatus },
+    { id: "routingConfig", label: "Routing", getValue: routingConfigLabel },
+    { id: "owner", label: "Owner", getValue: (apiKey) => ownerLabel(users, apiKey.userId) },
+    { id: "scopes", label: "Scopes", getValue: (apiKey) => apiKey.scopes }
+  ];
+}
 
 function apiKeyFilters(keys: ApiKeySummary[]): ConsoleTableFilter<ApiKeySummary>[] {
   const routingValues = keys.map((apiKey) => ({ value: routingConfigFilterValue(apiKey), label: routingConfigLabel(apiKey) }));
