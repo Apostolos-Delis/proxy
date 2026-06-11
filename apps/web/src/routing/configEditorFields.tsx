@@ -11,8 +11,8 @@ import {
   type EditorRouteName,
   type RouteTierDraft
 } from "../routingConfigEditor";
-import { RouteBadge } from "../ui";
 import { ModelSelect, type ModelProvider } from "./modelSelect";
+import { EffortMeter, TierGauge } from "./tierViz";
 
 const ROUTING_RULES_PLACEHOLDER =
   "Routine refactors, formatting, and doc updates route fast. auth/ and payments/ need deeper reasoning, keep them on hard or deep.";
@@ -81,13 +81,18 @@ export function RouteMatrixEditor({ draft, baseConfig, onChange }: {
     });
   };
   return (
-    <div className="tier-editor">
+    <div className="tier-table">
+      <div className="tier-table-header">
+        <span>TIER</span>
+        <span>OPENAI</span>
+        <span>ANTHROPIC</span>
+      </div>
       {editorRouteOrder.map((route) => {
         const tier = baseConfig.routes[route];
         return (
-          <div key={route} className="tier-editor-row">
-            <div className="tier-editor-head">
-              <RouteBadge route={route} />
+          <div key={route} className="tier-table-row">
+            <div className="tier-table-tier">
+              <TierGauge route={route} />
               <span className="faint">{tier?.description ?? "No description"}</span>
             </div>
             <TierModelField
@@ -122,9 +127,12 @@ function TierModelField({ provider, model, effort, efforts, onModelChange, onEff
   onEffortChange: (value: string) => void;
 }) {
   return (
-    <div className="tier-model">
-      <div className="tier-model-provider">
-        {provider}
+    // responsive.css renders attr(data-provider) as the cell label once the
+    // table header collapses on narrow screens.
+    <div className="tier-model" data-provider={provider}>
+      <ModelSelect provider={provider} value={model} onChange={onModelChange} />
+      <div className="tier-model-effort">
+        <EffortMeter effort={effort} label={false} />
         <MenuSelect
           className="tier-effort"
           value={effort}
@@ -136,7 +144,6 @@ function TierModelField({ provider, model, effort, efforts, onModelChange, onEff
           onChange={onEffortChange}
         />
       </div>
-      <ModelSelect provider={provider} value={model} onChange={onModelChange} />
     </div>
   );
 }

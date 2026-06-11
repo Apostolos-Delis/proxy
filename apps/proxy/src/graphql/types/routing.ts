@@ -78,6 +78,9 @@ export const RoutingConfigSummary = builder
       }),
       routeMatrix: t.expose("routeMatrix", { type: [RouteMatrixRow] }),
       assignedApiKeyCount: t.exposeInt("assignedApiKeyCount"),
+      trafficShare: t.exposeFloat("trafficShare", {
+        description: "Share of routed requests handled by this config over the trailing 7 days (0..1)."
+      }),
       createdAt: t.exposeString("createdAt"),
       updatedAt: t.exposeString("updatedAt")
     })

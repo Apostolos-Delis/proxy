@@ -159,7 +159,7 @@
   .wizard-provider-grid,
   .config-facts,
   .config-card-grid,
-  .tier-editor-row,
+  .tier-table-row,
   .billing-kpis,
   .usage-kpi-grid,
   .usage-side-rail {
@@ -193,6 +193,26 @@
 
   .settings-row-control.toggle {
     justify-content: flex-start;
+  }
+
+  .tier-table-header {
+    display: none;
+  }
+
+  /* The table header is hidden, so label each provider cell instead. */
+  .tier-model::before {
+    content: attr(data-provider);
+    color: var(--fg-faint);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .config-facts .routing-metric + .routing-metric {
+    border-left: 0;
+    padding-left: 0;
   }
 
   .usage-toolbar {

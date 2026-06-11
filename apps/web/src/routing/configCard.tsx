@@ -1,44 +1,52 @@
 import { Link } from "@tanstack/react-router";
-import { KeyRound } from "lucide-react";
+import { ChevronRight, KeyRound } from "lucide-react";
 
 import type { RouteMatrixRow, RoutingConfigSummary } from "./data";
 import { formatDateTime, formatInteger } from "../format";
-import { Badge, RouteBadge } from "../ui";
+import { Badge, ProgressMeter } from "../ui";
+import { EffortMeter, TierGauge } from "./tierViz";
 
 export function RoutingConfigCard({ config }: { config: RoutingConfigSummary }) {
   const isDefault = config.slug === "default";
+  const archived = config.status === "archived";
   return (
     <Link
       to="/routing-configs/$configId"
       params={{ configId: config.id }}
-      className="glass card config-card"
+      className={`glass card config-card${archived ? " config-card-archived" : ""}`}
+      title={config.description ?? undefined}
     >
       <div className="config-card-head">
-        <div>
-          <div className="config-card-name">{config.name}</div>
-          <div className="config-card-meta">
-            <span
-              className={isDefault ? "tag tag-accent" : "tag"}
-              title={isDefault ? "Default config" : undefined}
-            >
-              {config.slug}
-            </span>
-            {config.activeVersion ? <span className="mono faint">v{config.activeVersion.version}</span> : null}
-          </div>
+        <div className="config-card-title">
+          <span className="config-card-name">{config.name}</span>
+          {archived
+            ? <span className="config-card-status"><span className="dot" />archived</span>
+            : <Badge variant="success" dot>active</Badge>}
         </div>
-        <ConfigStatus status={config.status} />
+        <ChevronRight className="config-card-chevron" />
       </div>
-      {config.description ? <p className="config-card-description">{config.description}</p> : null}
-      <RouteMatrixSection routes={config.routeMatrix} />
+      <div className="config-card-meta">
+        <span
+          className={isDefault ? "tag tag-accent" : "tag"}
+          title={isDefault ? "Default config" : undefined}
+        >
+          {config.slug}
+        </span>
+        {config.activeVersion ? <span className="mono faint">v{config.activeVersion.version}</span> : null}
+      </div>
+      <RouteMatrixSection routes={config.routeMatrix} dim={archived} />
       <div className="config-card-foot">
-        <KeyCount count={config.assignedApiKeyCount} />
-        <span className="faint">Updated {formatDateTime(config.updatedAt)}</span>
+        <span className="config-card-usage">
+          <KeyCount count={config.assignedApiKeyCount} />
+          <TrafficShare share={config.trafficShare} />
+        </span>
+        <span className="faint nowrap">updated {formatDateTime(config.updatedAt)}</span>
       </div>
     </Link>
   );
 }
 
-function RouteMatrixSection({ routes }: { routes: RouteMatrixRow[] }) {
+function RouteMatrixSection({ routes, dim }: { routes: RouteMatrixRow[]; dim: boolean }) {
   if (routes.length === 0) {
     return <span className="faint">No active version.</span>;
   }
@@ -46,46 +54,46 @@ function RouteMatrixSection({ routes }: { routes: RouteMatrixRow[] }) {
     <div className="config-card-matrix">
       <div className="config-card-matrix-row config-card-matrix-header">
         <span />
-        <span className="config-card-provider-header config-card-provider-openai">OpenAI</span>
-        <span className="config-card-provider-header config-card-provider-anthropic">Anthropic</span>
+        <span>OPENAI</span>
+        <span>ANTHROPIC</span>
       </div>
       {routes.map((route) => (
         <div key={route.route} className="config-card-matrix-row" title={route.description ?? undefined}>
-          <RouteBadge route={route.route} />
-          <ModelCell model={route.openaiModel} effort={route.openaiEffort} />
-          <ModelCell model={route.anthropicModel} effort={route.anthropicEffort} />
+          <TierGauge route={route.route} dim={dim} />
+          <ModelCell model={route.openaiModel} effort={route.openaiEffort} dim={dim} />
+          <ModelCell model={route.anthropicModel} effort={route.anthropicEffort} dim={dim} />
         </div>
       ))}
     </div>
   );
 }
 
-function ConfigStatus({ status }: { status: string }) {
-  if (status === "active") return null;
-  return (
-    <span className="config-card-status">
-      <span className="dot" />
-      {status}
-    </span>
-  );
-}
-
-function ModelCell({ model, effort }: { model: string | null; effort: string | null }) {
+function ModelCell({ model, effort, dim }: { model: string | null; effort: string | null; dim: boolean }) {
   if (!model) return <span className="mono faint">—</span>;
   return (
-    <span className="config-card-model mono">
-      <span>{model}</span>
-      {effort ? <span className={`effort-chip effort-${effort}`}>{effort}</span> : null}
+    <span className="config-card-model">
+      <span className="mono">{model}</span>
+      <EffortMeter effort={effort} dim={dim} />
     </span>
   );
 }
 
 function KeyCount({ count }: { count: number }) {
-  if (count === 0) return <Badge variant="warn" dot>No keys assigned</Badge>;
   return (
-    <span className="row gap-8 config-card-keys">
+    <span className={`config-card-keys${count === 0 ? " none" : ""}`}>
       <KeyRound />
-      {formatInteger(count)} {count === 1 ? "API key" : "API keys"}
+      {count === 0 ? "no keys assigned" : `${formatInteger(count)} ${count === 1 ? "key" : "keys"}`}
+    </span>
+  );
+}
+
+function TrafficShare({ share }: { share: number }) {
+  const percent = Math.round(share * 100);
+  if (percent <= 0) return null;
+  return (
+    <span className="config-card-traffic">
+      <ProgressMeter value={share} max={1} />
+      <span className="faint nowrap">{percent}% of traffic</span>
     </span>
   );
 }
