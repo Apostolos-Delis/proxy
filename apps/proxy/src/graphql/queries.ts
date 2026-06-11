@@ -302,7 +302,21 @@ builder.queryFields((t) => ({
     type: [RoutingConfigSummary],
     resolve: async (_root, _args, context) => {
       const queries = scopedQueries(context);
-      return queries ? (await queries.routingConfigs()).data : [];
+      if (!queries) return [];
+      // Backfill the default config for workspaces created before
+      // provisioning-on-creation. Best-effort: a provisioning failure must not
+      // break the Routing page, which would otherwise render as it does today.
+      const identity = context.identity();
+      try {
+        await context.persistence?.routingConfigAdmin.ensureWorkspaceDefaultConfig({
+          organizationId: identity.organizationId,
+          workspaceId: identity.workspaceId,
+          actorUserId: identity.userId
+        });
+      } catch {
+        // ignore — fall through to listing whatever configs exist
+      }
+      return (await queries.routingConfigs()).data;
     }
   }),
 

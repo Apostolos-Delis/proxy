@@ -16,6 +16,7 @@ import { routingConfigSchema, type RoutingConfig } from "@prompt-proxy/schema";
 import { createId } from "../util.js";
 import { AdminMutationError } from "./adminErrors.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
+import { ensureWorkspaceDefaultRoutingConfig } from "./routingConfigProvisioning.js";
 
 const createConfigBodySchema = z.object({
   name: z.string().trim().min(1),
@@ -127,6 +128,17 @@ export class RoutingConfigAdminService {
       });
       return { configId, versionId, version: 1, configHash: hash };
     });
+  }
+
+  // Backfills the seeded default config for workspaces that predate
+  // provisioning-on-creation. Called best-effort from the routing-config read
+  // path so a stuck workspace heals the first time its Routing page loads.
+  async ensureWorkspaceDefaultConfig(input: {
+    organizationId: string;
+    workspaceId: string;
+    actorUserId: string;
+  }) {
+    return this.db.transaction((tx) => ensureWorkspaceDefaultRoutingConfig(tx, input));
   }
 
   async createVersion(input: {
