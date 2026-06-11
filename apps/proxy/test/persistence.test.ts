@@ -385,7 +385,7 @@ describe("postgres persistence", () => {
     expect(identity).toEqual(expect.objectContaining({
       apiKeyId: "org_seed_identity:api-key:default",
       organizationId: "org_seed_identity",
-      userId: undefined,
+      userId: "seed_identity_user",
       scopes: ["proxy", "admin", "harness_identity"],
       routingConfigId: "org_seed_identity:routing-config:default"
     }));

@@ -63,7 +63,10 @@ export class ApiKeyAdminService {
         id: apiKeyId,
         organizationId: input.organizationId,
         workspaceId: input.workspaceId,
-        userId: null,
+        // Bind the key to the console user who created it so every request the
+        // key authenticates attributes to a real person. Shared harness keys
+        // can still attribute per-request via the user header (see auth.ts).
+        userId: input.actorUserId,
         keyHash: hashApiKey(secret),
         name: body.data.name,
         routingConfigId,
@@ -82,6 +85,7 @@ export class ApiKeyAdminService {
         payload: {
           apiKeyId,
           name: body.data.name,
+          userId: input.actorUserId,
           scopes,
           routingConfigId,
           routingConfigVersionId: targetConfig?.activeVersionId ?? null,

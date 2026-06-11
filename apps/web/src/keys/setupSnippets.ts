@@ -1,6 +1,9 @@
 export type SnippetLanguage = "shell" | "json" | "toml";
 
 export const keyPlaceholder = "<your-api-key>";
+// The hosted script auto-detects this from `git config user.email`; the manual
+// steps can't, so they show a placeholder for the operator to replace.
+export const userPlaceholder = "<your-email>";
 
 // Escapes a value for a single-quoted bash context ('...').
 function singleQuote(value: string) {
@@ -37,13 +40,14 @@ export function buildManualSteps({ apiBase, secret }: { apiBase: string; secret:
     },
     {
       title: "Point Claude Code at the proxy",
-      detail: "Merge these settings into ~/.claude/settings.json (create the file if it does not exist).",
+      detail: `Merge these settings into ~/.claude/settings.json (create the file if it does not exist). Replace ${userPlaceholder} so usage is attributed to you.`,
       snippet: JSON.stringify(
         {
           model: "claude-router-auto",
           env: {
             ANTHROPIC_BASE_URL: apiBase,
-            CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
+            CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
+            ANTHROPIC_CUSTOM_HEADERS: `x-prompt-proxy-user-id: ${userPlaceholder}`
           },
           apiKeyHelper: "cat ~/.prompt-proxy/token"
         },
@@ -60,7 +64,7 @@ export function buildManualSteps({ apiBase, secret }: { apiBase: string; secret:
     },
     {
       title: "Register the Codex provider",
-      detail: "Add this to ~/.codex/config.toml. If the file already has a model/model_provider, keep yours and add only the provider table.",
+      detail: `Add this to ~/.codex/config.toml. If the file already has a model/model_provider, keep yours and add only the provider table. Replace ${userPlaceholder} so usage is attributed to you.`,
       snippet: [
         `model = "router-auto"`,
         `model_provider = "prompt_proxy"`,
@@ -70,7 +74,8 @@ export function buildManualSteps({ apiBase, secret }: { apiBase: string; secret:
         `base_url = "${apiBase}/v1"`,
         `env_key = "PROMPT_PROXY_TOKEN"`,
         `wire_api = "responses"`,
-        "supports_websockets = true"
+        "supports_websockets = true",
+        `http_headers = { "x-prompt-proxy-user-id" = "${userPlaceholder}" }`
       ].join("\n"),
       language: "toml"
     }

@@ -38,6 +38,20 @@ if [ -z "$PP_TOKEN" ]; then
   exit 1
 fi
 
+# Identity stamped on every request so the proxy attributes usage to you. The
+# proxy reads x-prompt-proxy-user-id; we default to your git email, then $USER.
+# Override with PROMPT_PROXY_USER_ID. Empty is fine — the key's owner is used.
+PP_USER_ID="\${PROMPT_PROXY_USER_ID:-}"
+if [ -z "$PP_USER_ID" ]; then
+  PP_USER_ID="$(git config --get user.email 2>/dev/null || true)"
+fi
+if [ -z "$PP_USER_ID" ]; then
+  PP_USER_ID="\${USER:-}"
+fi
+if [ -n "$PP_USER_ID" ]; then
+  echo "identity: requests attribute to $PP_USER_ID (override with PROMPT_PROXY_USER_ID)"
+fi
+
 # Key file — read by Claude Code's apiKeyHelper and the shell export below.
 mkdir -p "$HOME/.prompt-proxy"
 printf '%s\\n' "$PP_TOKEN" > "$HOME/.prompt-proxy/token"
@@ -58,9 +72,12 @@ settings.env = Object.assign({}, settings.env, {
   ANTHROPIC_BASE_URL: process.argv[1],
   CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
 });
+if (process.argv[2]) {
+  settings.env.ANTHROPIC_CUSTOM_HEADERS = "x-prompt-proxy-user-id: " + process.argv[2];
+}
 settings.apiKeyHelper = "cat ~/.prompt-proxy/token";
 fs.writeFileSync(file, JSON.stringify(settings, null, 2) + "\\n");
-' "$PP_BASE_URL"
+' "$PP_BASE_URL" "$PP_USER_ID"
   echo "claude: configured ~/.claude/settings.json"
 else
   echo "claude: node not found — set model/env/apiKeyHelper in ~/.claude/settings.json by hand" >&2
@@ -78,6 +95,12 @@ done
 # Codex provider registration.
 mkdir -p "$HOME/.codex"
 codex_config="$HOME/.codex/config.toml"
+# Stamp the same identity header Claude Code sends, when we resolved one.
+if [ -n "$PP_USER_ID" ]; then
+  PP_CODEX_HEADERS="http_headers = { \\"x-prompt-proxy-user-id\\" = \\"$PP_USER_ID\\" }"
+else
+  PP_CODEX_HEADERS=""
+fi
 if [ -s "$codex_config" ] && grep -qF "[model_providers.prompt_proxy]" "$codex_config"; then
   echo "codex: provider already configured"
 elif [ ! -s "$codex_config" ]; then
@@ -91,6 +114,7 @@ base_url = "$PP_BASE_URL/v1"
 env_key = "PROMPT_PROXY_TOKEN"
 wire_api = "responses"
 supports_websockets = true
+$PP_CODEX_HEADERS
 PP_CODEX_EOF
   echo "codex: wrote ~/.codex/config.toml"
 else
@@ -102,6 +126,7 @@ base_url = "$PP_BASE_URL/v1"
 env_key = "PROMPT_PROXY_TOKEN"
 wire_api = "responses"
 supports_websockets = true
+$PP_CODEX_HEADERS
 PP_CODEX_EOF
   echo "codex: appended the prompt_proxy provider to ~/.codex/config.toml"
   echo "codex: to make it the default, add these two lines at the TOP of that file:" >&2
