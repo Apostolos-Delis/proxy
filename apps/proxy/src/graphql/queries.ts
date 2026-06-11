@@ -6,6 +6,7 @@ import { scopedQueries, viewerPayload } from "./context.js";
 import type { RequestSummaryShape, UsageReportModel, UsageTimeseriesModel } from "./models.js";
 import { settingsResponse } from "./settingsPayload.js";
 import {
+  CacheBustReport,
   Overview,
   TokenAttributionReport,
   UsageGroupBy,
@@ -168,6 +169,29 @@ builder.queryFields((t) => ({
         points: []
       };
       return empty;
+    }
+  }),
+
+  cacheBusts: t.field({
+    type: CacheBustReport,
+    args: {
+      start: t.arg.string(),
+      end: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) {
+        return queries.cacheBusts({
+          start: args.start ?? undefined,
+          end: args.end ?? undefined
+        });
+      }
+      return {
+        busts: [],
+        countsByCause: { ttl_expiry: 0, model_switch: 0, provider_switch: 0, unknown: 0 },
+        sessionsScanned: 0,
+        sampled: false
+      };
     }
   }),
 

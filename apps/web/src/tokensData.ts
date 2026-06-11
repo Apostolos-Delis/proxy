@@ -1,5 +1,5 @@
 import { graphql } from "./gql";
-import type { TokenAttributionViewQuery } from "./gql/graphql";
+import type { CacheBustsViewQuery, TokenAttributionViewQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
 import type { UsageGroup, UsageRangeFilters } from "./usageData";
 
@@ -29,12 +29,43 @@ const TokenAttributionViewDocument = graphql(`
   }
 `);
 
+const CacheBustsViewDocument = graphql(`
+  query CacheBustsView($start: String, $end: String) {
+    cacheBusts(start: $start, end: $end) {
+      busts {
+        sessionId
+        requestId
+        at
+        cause
+        droppedCacheReadTokens
+        rebuiltTokens
+        gapMs
+      }
+      countsByCause
+      sessionsScanned
+      sampled
+    }
+  }
+`);
+
 export type TokenAttributionReport = TokenAttributionViewQuery["tokenAttribution"];
 export type TokenAttributionOffender = TokenAttributionReport["toolSchemas"][number];
+export type CacheBustReport = CacheBustsViewQuery["cacheBusts"];
 
 export async function fetchTokenAttribution(filters: UsageRangeFilters = {}) {
   return (await gqlFetch(TokenAttributionViewDocument, { ...filters })).tokenAttribution;
 }
+
+export async function fetchCacheBusts(filters: UsageRangeFilters = {}) {
+  return (await gqlFetch(CacheBustsViewDocument, { ...filters })).cacheBusts;
+}
+
+export const bustCauseLabels: Record<string, string> = {
+  ttl_expiry: "TTL expiry",
+  model_switch: "Model switch",
+  provider_switch: "Provider switch",
+  unknown: "Unknown"
+};
 
 export const bucketLabels: Record<string, string> = {
   systemPrompt: "System prompt",

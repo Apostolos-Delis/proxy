@@ -1,5 +1,7 @@
 import { builder } from "../builder.js";
 import type {
+  CacheBustModel,
+  CacheBustReportModel,
   LatencySummaryModel,
   OverviewModel,
   RouteQualityModel,
@@ -124,3 +126,26 @@ export const TokenAttributionReport = builder
       toolResults: t.expose("toolResults", { type: [TokenAttributionOffender] })
     })
   });
+
+export const CacheBust = builder.objectRef<CacheBustModel>("CacheBust").implement({
+  fields: (t) => ({
+    sessionId: t.exposeString("sessionId"),
+    requestId: t.exposeString("requestId"),
+    at: t.exposeString("at"),
+    cause: t.exposeString("cause"),
+    droppedCacheReadTokens: t.exposeFloat("droppedCacheReadTokens"),
+    rebuiltTokens: t.exposeFloat("rebuiltTokens"),
+    model: t.exposeString("model"),
+    previousModel: t.exposeString("previousModel"),
+    gapMs: t.exposeFloat("gapMs")
+  })
+});
+
+export const CacheBustReport = builder.objectRef<CacheBustReportModel>("CacheBustReport").implement({
+  fields: (t) => ({
+    busts: t.expose("busts", { type: [CacheBust] }),
+    countsByCause: t.field({ type: "JSON", resolve: (report) => report.countsByCause }),
+    sessionsScanned: t.exposeFloat("sessionsScanned"),
+    sampled: t.exposeBoolean("sampled")
+  })
+});

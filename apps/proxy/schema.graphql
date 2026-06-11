@@ -56,6 +56,25 @@ input BudgetSettingsInput {
   warningEstimatedInputTokens: Float
 }
 
+type CacheBust {
+  at: String!
+  cause: String!
+  droppedCacheReadTokens: Float!
+  gapMs: Float!
+  model: String!
+  previousModel: String!
+  rebuiltTokens: Float!
+  requestId: String!
+  sessionId: String!
+}
+
+type CacheBustReport {
+  busts: [CacheBust!]!
+  countsByCause: JSON!
+  sampled: Boolean!
+  sessionsScanned: Float!
+}
+
 type ClassifierRuntime {
   contentMode: String!
   maxAttempts: Int!
@@ -435,6 +454,7 @@ type PublicInvitation {
 type Query {
   apiKey(apiKeyId: ID!): ApiKey
   apiKeys: [ApiKey!]!
+  cacheBusts(end: String, start: String): CacheBustReport!
   invitations: [Invitation!]!
   members: [OrgMember!]!
   modelPricing: [ModelPricingEntry!]!

@@ -47,6 +47,7 @@ import {
   routingConfigSummary,
   usageLedgerSummary
 } from "./adminSerializers.js";
+import { CACHE_BUST_SAMPLE_CAP, detectCacheBusts } from "./cacheBusts.js";
 import { orgPricingOverrides, type OrgPricingOverride } from "./modelPricing.js";
 import {
   aggregateTokenAttribution,
@@ -1018,6 +1019,40 @@ export class AdminQueryService {
       }
     }
     return summaries;
+  }
+
+  async cacheBusts(filters: TokenAttributionFilters = {}) {
+    const start = dateValue(filters.start);
+    const end = dateValue(filters.end);
+    const conditions = [this.scopedTo(usageLedger), isNotNull(usageLedger.sessionId)];
+    if (start) conditions.push(gte(usageLedger.createdAt, start));
+    if (end) conditions.push(lte(usageLedger.createdAt, end));
+    const rows = await this.db
+      .select({
+        sessionId: usageLedger.sessionId,
+        requestId: usageLedger.requestId,
+        provider: usageLedger.provider,
+        model: usageLedger.model,
+        inputTokens: usageLedger.inputTokens,
+        cachedInputTokens: usageLedger.cachedInputTokens,
+        usage: usageLedger.usage,
+        createdAt: usageLedger.createdAt
+      })
+      .from(usageLedger)
+      .where(and(...conditions))
+      .orderBy(desc(usageLedger.createdAt))
+      .limit(CACHE_BUST_SAMPLE_CAP);
+    const report = detectCacheBusts(rows.map((row) => ({
+      sessionId: row.sessionId ?? "",
+      requestId: row.requestId,
+      provider: row.provider,
+      model: row.model,
+      inputTokens: row.inputTokens,
+      cachedInputTokens: row.cachedInputTokens,
+      cacheCreationInputTokens: cacheCreationTokens(row.usage),
+      createdAt: row.createdAt
+    })));
+    return { ...report, sampled: rows.length === CACHE_BUST_SAMPLE_CAP };
   }
 
   async tokenAttribution(filters: TokenAttributionFilters = {}) {

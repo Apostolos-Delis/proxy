@@ -6,8 +6,11 @@ import { Sparkline } from "./charts";
 import { formatCompact, formatPercent } from "./format";
 import {
   bucketLabels,
+  bustCauseLabels,
   cacheHitRateOf,
+  fetchCacheBusts,
   fetchTokenAttribution,
+  type CacheBustReport,
   type TokenAttributionOffender,
   type TokenAttributionReport
 } from "./tokensData";
@@ -34,7 +37,12 @@ export function TokensPage() {
     queryFn: () => fetchUsageTimeseries("provider", { start, end, interval }),
     placeholderData: keepPreviousData
   });
-  const error = attributionQuery.error ?? providerUsageQuery.error;
+  const cacheBustsQuery = useQuery({
+    queryKey: ["cache-busts", start, end],
+    queryFn: () => fetchCacheBusts({ start, end }),
+    placeholderData: keepPreviousData
+  });
+  const error = attributionQuery.error ?? providerUsageQuery.error ?? cacheBustsQuery.error;
 
   if (error) return <PageState title="Tokens" label={error.message} />;
 
@@ -80,6 +88,10 @@ export function TokensPage() {
             <div className="stat-sub">
               reads ÷ total prompt input; misses re-bill the full context at write price
             </div>
+          </GlassCard>
+          <GlassCard>
+            <div className="card-title">Cache busts</div>
+            <CacheBusts report={cacheBustsQuery.data} />
           </GlassCard>
           <GlassCard>
             <div className="card-title">Top tool schemas</div>
@@ -143,6 +155,44 @@ function OffenderList({ rows, unit }: { rows: TokenAttributionOffender[]; unit: 
           mono
         />
       ))}
+    </div>
+  );
+}
+
+function CacheBusts({ report }: { report: CacheBustReport | undefined }) {
+  if (!report) return <div className="empty compact-empty">Loading…</div>;
+  if (report.busts.length === 0) {
+    return (
+      <div className="empty compact-empty">
+        No busts detected across {formatCompact(report.sessionsScanned)} sessions.
+      </div>
+    );
+  }
+  const counts = report.countsByCause as Record<string, number>;
+  const causes = Object.entries(counts).filter(([, count]) => count > 0);
+  const top = report.busts.slice(0, 5);
+  const maxDropped = Math.max(...top.map((bust) => bust.droppedCacheReadTokens), 1);
+  return (
+    <div>
+      <div className="row gap-8" style={{ flexWrap: "wrap" }}>
+        {causes.map(([cause, count]) => (
+          <span key={cause} className="badge">{bustCauseLabels[cause] ?? cause} × {count}</span>
+        ))}
+      </div>
+      <div className="barlist usage-top-list">
+        {top.map((bust) => (
+          <BarListRow
+            key={`${bust.sessionId}:${bust.requestId}`}
+            label={bust.sessionId}
+            value={`${formatCompact(bust.droppedCacheReadTokens)} tok dropped`}
+            width={(bust.droppedCacheReadTokens / maxDropped) * 100}
+            mono
+          />
+        ))}
+      </div>
+      {report.sampled ? (
+        <div className="stat-sub">newest sample — window truncated</div>
+      ) : null}
     </div>
   );
 }
