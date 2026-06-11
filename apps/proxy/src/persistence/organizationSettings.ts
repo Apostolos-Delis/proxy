@@ -53,6 +53,7 @@ export class OrganizationSettingsStore {
   async editable(organizationId: string): Promise<{
     systemPrompt: string | null;
     cacheTtlUpgrade: boolean;
+    automaticCaching: boolean;
     toolResultCompression: boolean;
     costBaseline: CostBaseline;
   }> {
@@ -67,6 +68,7 @@ export class OrganizationSettingsStore {
     return {
       systemPrompt: row?.systemPrompt ?? null,
       cacheTtlUpgrade: row?.settings?.cacheTtlUpgrade === true,
+      automaticCaching: row?.settings?.automaticCaching === true,
       toolResultCompression: row?.settings?.toolResultCompression === true,
       costBaseline: costBaselineFromSettings(row?.settings)
     };
@@ -104,36 +106,30 @@ export class OrganizationSettingsStore {
   }
 
   async setToolResultCompression(organizationId: string, enabled: boolean): Promise<boolean> {
-    await this.db
-      .insert(organizationSettings)
-      .values({
-        organizationId,
-        settings: { toolResultCompression: enabled },
-        updatedAt: new Date()
-      })
-      .onConflictDoUpdate({
-        target: organizationSettings.organizationId,
-        set: {
-          settings: sql`organization_settings.settings || jsonb_build_object('toolResultCompression', ${enabled}::boolean)`,
-          updatedAt: new Date()
-        }
-      });
-    return enabled;
+    return this.setBooleanSetting(organizationId, "toolResultCompression", enabled);
+  }
+
+  async setAutomaticCaching(organizationId: string, enabled: boolean): Promise<boolean> {
+    return this.setBooleanSetting(organizationId, "automaticCaching", enabled);
   }
 
   async setCacheTtlUpgrade(organizationId: string, enabled: boolean): Promise<boolean> {
-    // Merge the flag into the JSONB settings column without touching other keys.
+    return this.setBooleanSetting(organizationId, "cacheTtlUpgrade", enabled);
+  }
+
+  // Merge one flag into the JSONB settings column without touching other keys.
+  private async setBooleanSetting(organizationId: string, key: string, enabled: boolean): Promise<boolean> {
     await this.db
       .insert(organizationSettings)
       .values({
         organizationId,
-        settings: { cacheTtlUpgrade: enabled },
+        settings: { [key]: enabled },
         updatedAt: new Date()
       })
       .onConflictDoUpdate({
         target: organizationSettings.organizationId,
         set: {
-          settings: sql`organization_settings.settings || jsonb_build_object('cacheTtlUpgrade', ${enabled}::boolean)`,
+          settings: sql`organization_settings.settings || jsonb_build_object(${key}::text, ${enabled}::boolean)`,
           updatedAt: new Date()
         }
       });

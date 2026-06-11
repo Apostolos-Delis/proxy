@@ -217,7 +217,7 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: SettingsInput, required: true }) },
     resolve: async (_root, args, context) => {
       try {
-        const { systemPrompt, cacheTtlUpgrade, toolResultCompression, costBaseline, ...fileInput } = args.input;
+        const { systemPrompt, cacheTtlUpgrade, automaticCaching, toolResultCompression, costBaseline, ...fileInput } = args.input;
         if (context.persistence && costBaseline) {
           await assertBaselineModelsPriced(context, costBaseline);
         }
@@ -243,6 +243,12 @@ builder.mutationFields((t) => ({
           await context.persistence.organizationSettings.setCacheTtlUpgrade(
             context.identity().organizationId,
             cacheTtlUpgrade
+          );
+        }
+        if (context.persistence && automaticCaching !== undefined && automaticCaching !== null) {
+          await context.persistence.organizationSettings.setAutomaticCaching(
+            context.identity().organizationId,
+            automaticCaching
           );
         }
         if (context.persistence && toolResultCompression !== undefined && toolResultCompression !== null) {

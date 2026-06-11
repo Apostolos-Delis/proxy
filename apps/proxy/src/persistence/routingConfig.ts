@@ -21,6 +21,7 @@ export type ResolvedRoutingConfig = {
   config: RoutingConfig;
   organizationSystemPrompt?: string;
   cacheTtlUpgrade: boolean;
+  automaticCaching: boolean;
   toolResultCompression: boolean;
 };
 
@@ -87,6 +88,7 @@ export class RoutingConfigResolver {
       config: parsed.data,
       organizationSystemPrompt: orgSettings?.systemPrompt ?? undefined,
       cacheTtlUpgrade: orgSettings?.settings?.cacheTtlUpgrade === true,
+      automaticCaching: orgSettings?.settings?.automaticCaching === true,
       toolResultCompression: orgSettings?.settings?.toolResultCompression === true
     };
   }
@@ -130,10 +132,11 @@ export async function resolveRoutingSelection(
   routingConfig?: RoutingConfigSelection;
   systemPrompt?: string;
   cacheTtlUpgrade: boolean;
+  automaticCaching: boolean;
   toolResultCompression: boolean;
 }> {
   const resolved = await resolver?.resolve(input);
-  if (!resolved) return { cacheTtlUpgrade: false, toolResultCompression: false };
+  if (!resolved) return { cacheTtlUpgrade: false, automaticCaching: false, toolResultCompression: false };
   return {
     routingConfig: {
       snapshot: routingConfigSnapshot(resolved),
@@ -141,6 +144,7 @@ export async function resolveRoutingSelection(
     },
     systemPrompt: resolved.organizationSystemPrompt,
     cacheTtlUpgrade: resolved.cacheTtlUpgrade,
+    automaticCaching: resolved.automaticCaching,
     toolResultCompression: resolved.toolResultCompression
   };
 }

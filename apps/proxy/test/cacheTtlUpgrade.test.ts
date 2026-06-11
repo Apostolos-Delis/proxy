@@ -64,6 +64,27 @@ describe("upgradeCacheControlTtl transform", () => {
     expect(result.messages[1].content[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
+  it("upgrades breakpoints nested inside tool_result content", () => {
+    const body = {
+      model: "claude-router-hard",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "t1",
+              content: [{ type: "text", text: "output", cache_control: { type: "ephemeral" } }]
+            }
+          ]
+        }
+      ]
+    };
+
+    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    expect(result.messages[0].content[0].content[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+  });
+
   it("does not touch blocks that already have a TTL", () => {
     const body = {
       model: "claude-router-hard",
@@ -95,6 +116,58 @@ describe("upgradeCacheControlTtl transform", () => {
 
     const result = rewriteTokenCountRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
     expect(result.system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+  });
+
+  it("upgrades a client-sent top-level cache_control (automatic caching field)", () => {
+    const body = {
+      model: "claude-router-hard",
+      cache_control: { type: "ephemeral" },
+      messages: [{ role: "user", content: "hi" }]
+    };
+
+    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    expect(result.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+  });
+
+  it("leaves an explicit top-level TTL untouched", () => {
+    const body = {
+      model: "claude-router-hard",
+      cache_control: { type: "ephemeral", ttl: "5m" },
+      messages: [{ role: "user", content: "hi" }]
+    };
+
+    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    expect(result.cache_control).toEqual({ type: "ephemeral", ttl: "5m" });
+  });
+
+  it("upgrades breakpoints on tool definitions", () => {
+    // Tools sit first in the cached prefix, so leaving them at 5m while later
+    // breakpoints read 1h would violate the longer-TTL-first ordering rule.
+    const body = {
+      model: "claude-router-hard",
+      tools: [
+        { name: "get_weather", input_schema: { type: "object" } },
+        { name: "get_time", input_schema: { type: "object" }, cache_control: { type: "ephemeral" } }
+      ],
+      system: [{ type: "text", text: "stable", cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content: "hi" }]
+    };
+
+    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    expect(result.tools[0].cache_control).toBeUndefined();
+    expect(result.tools[1].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+    expect(result.system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+  });
+
+  it("upgrades a top-level cache_control in rewriteTokenCountRequest", () => {
+    const body = {
+      model: "claude-router-hard",
+      cache_control: { type: "ephemeral" },
+      messages: [{ role: "user", content: "hi" }]
+    };
+
+    const result = rewriteTokenCountRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    expect(result.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 });
 

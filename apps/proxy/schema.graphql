@@ -156,6 +156,7 @@ type EditableClassifier {
 }
 
 type EditableSettings {
+  automaticCaching: Boolean!
   budgets: BudgetSettings!
   cacheTtlUpgrade: Boolean!
   classifier: EditableClassifier!
@@ -757,6 +758,7 @@ type Settings {
 }
 
 input SettingsInput {
+  automaticCaching: Boolean
   budgets: BudgetSettingsInput
   cacheTtlUpgrade: Boolean
   classifier: ClassifierSettingsInput

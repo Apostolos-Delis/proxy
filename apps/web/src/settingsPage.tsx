@@ -21,6 +21,7 @@ graphql(`
       schemaVersion
       systemPrompt
       cacheTtlUpgrade
+      automaticCaching
       toolResultCompression
       costBaseline {
         anthropicModel

@@ -94,9 +94,17 @@ export const settingsSections: SettingsSectionDef[] = [
   {
     id: "optimization",
     title: "Token optimization",
-    description: "Request transforms that cut token spend on proxied traffic. Applied org-wide across all routing configs.",
+    description: "Request transforms that cut token spend on proxied traffic. Applied org-wide across all routing configs. OpenAI requests always get 24-hour prompt-cache retention — it is priced identically to the default, so there is nothing to configure.",
     requiresDatabase: true,
     rows: [
+      {
+        id: "automaticCaching",
+        type: "toggle",
+        label: "Auto-enable prompt caching",
+        desc: "Anthropic only. Adds the top-level automatic-caching field to requests that arrive without any cache breakpoints, so the API caches and reuses the growing conversation prefix. Applied only to multi-turn requests, so one-shot prompts never pay the cache-write surcharge. Requests that already set cache_control are left untouched.",
+        get: (settings) => settings.automaticCaching,
+        set: (settings, value) => ({ ...settings, automaticCaching: value })
+      },
       {
         id: "cacheTtlUpgrade",
         type: "toggle",
@@ -317,6 +325,7 @@ export function settingsInput(settings: EditableSettings) {
     schemaVersion: settings.schemaVersion,
     systemPrompt: settings.systemPrompt,
     cacheTtlUpgrade: settings.cacheTtlUpgrade,
+    automaticCaching: settings.automaticCaching,
     toolResultCompression: settings.toolResultCompression,
     costBaseline: {
       anthropicModel: settings.costBaseline.anthropicModel,
