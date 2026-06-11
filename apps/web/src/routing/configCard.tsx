@@ -3,7 +3,7 @@ import { ChevronRight, KeyRound } from "lucide-react";
 
 import type { RouteMatrixRow, RoutingConfigSummary } from "./data";
 import { formatDateTime, formatInteger } from "../format";
-import { Badge, ProgressMeter } from "../ui";
+import { ProgressMeter } from "../ui";
 import { EffortMeter, TierGauge } from "./tierViz";
 
 export function RoutingConfigCard({ config }: { config: RoutingConfigSummary }) {
@@ -21,7 +21,7 @@ export function RoutingConfigCard({ config }: { config: RoutingConfigSummary }) 
           <span className="config-card-name">{config.name}</span>
           {archived
             ? <span className="config-card-status"><span className="dot" />archived</span>
-            : <Badge variant="success" dot>active</Badge>}
+            : null}
         </div>
         <ChevronRight className="config-card-chevron" />
       </div>
