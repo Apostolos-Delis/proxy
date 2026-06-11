@@ -2552,8 +2552,10 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font-weight: 650;
 }
 
-.routing-create-field input,
-.routing-create-field textarea {
+/* Direct children only: a descendant selector would restyle inputs nested
+   in popovers (e.g. the SearchSelect filter). */
+.routing-create-field > input,
+.routing-create-field > textarea {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--border);
@@ -2563,18 +2565,18 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font: inherit;
 }
 
-.routing-create-field input {
+.routing-create-field > input {
   height: 40px;
   padding: 0 11px;
 }
 
-.routing-create-field textarea {
+.routing-create-field > textarea {
   resize: vertical;
   padding: 10px 11px;
 }
 
-.routing-create-field input:focus,
-.routing-create-field textarea:focus {
+.routing-create-field > input:focus,
+.routing-create-field > textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
   outline: none;
