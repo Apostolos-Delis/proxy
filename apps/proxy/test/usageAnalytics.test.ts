@@ -513,6 +513,51 @@ describe("usage analytics admin APIs", () => {
     ]);
   });
 
+  it("groups usage by model and effort so same-model effort tiers are distinguishable", async () => {
+    const fixture = await setup("org_usage_effort");
+    const createdAt = new Date("2026-06-08T12:00:00.000Z");
+
+    await fixture.db.insert(users).values([{ id: "user_effort" }]);
+    await fixture.db.insert(agentSessions).values({
+      id: "session_effort",
+      organizationId: "org_usage_effort",
+      workspaceId: defaultWorkspaceId("org_usage_effort"),
+      userId: "user_effort",
+      surface: "openai-responses"
+    });
+    await fixture.db.insert(requests).values([
+      usageRequest("eff_request_high", "org_usage_effort", "user_effort", "session_effort", "openai-responses", createdAt),
+      usageRequest("eff_request_xhigh", "org_usage_effort", "user_effort", "session_effort", "openai-responses", createdAt)
+    ]);
+    await fixture.db.insert(routeDecisions).values([
+      { ...usageDecision("eff_decision_high", "eff_request_high", "org_usage_effort", "hard", "anthropic", "claude-fable-5"), reasoningEffort: "high" },
+      { ...usageDecision("eff_decision_xhigh", "eff_request_xhigh", "org_usage_effort", "hard", "anthropic", "claude-fable-5"), reasoningEffort: "xhigh" }
+    ]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("eff_attempt_high", "eff_request_high", "org_usage_effort", "anthropic-messages", "anthropic", "claude-fable-5", "completed", createdAt),
+      usageAttempt("eff_attempt_xhigh", "eff_request_xhigh", "org_usage_effort", "anthropic-messages", "anthropic", "claude-fable-5", "completed", createdAt)
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      usageRow("eff_usage_high", "eff_request_high", "eff_attempt_high", "org_usage_effort", "anthropic", "claude-fable-5", "hard", 100, 25, 1000),
+      usageRow("eff_usage_xhigh", "eff_request_xhigh", "eff_attempt_xhigh", "org_usage_effort", "anthropic", "claude-fable-5", "hard", 400, 100, 4000)
+    ]);
+
+    const usage = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { usage(groupBy: model_effort) ${usageFields} }`
+    )).data?.usage;
+
+    expect(usage.groupBy).toBe("model_effort");
+    const keys = usage.data.map((item: any) => item.key);
+    expect(keys).toContain("claude-fable-5 · high");
+    expect(keys).toContain("claude-fable-5 · xhigh");
+    const xhigh = usage.data.find((item: any) => item.key === "claude-fable-5 · xhigh");
+    expect(xhigh.usage.totalTokens).toBe(500);
+    // Same model, different effort → distinct rows with distinct spend.
+    expect(xhigh.cost.selected).toBeGreaterThan(0);
+  });
+
   async function setup(organizationId: string) {
     activeFixture = await captureFixture(organizationId);
     return activeFixture;

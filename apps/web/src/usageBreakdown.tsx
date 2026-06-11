@@ -119,7 +119,7 @@ function UsageKeyCell({ dimension, group, lookups }: {
 }) {
   if (group.key === OTHER_GROUP_KEY) return <span className="faint">Other</span>;
   if (dimension === "route") return <RouteBadge route={group.key} />;
-  if (dimension === "model") return <span className="row gap-8"><span className="model-dot" /><span className="mono">{group.key}</span></span>;
+  if (dimension === "model" || dimension === "model_effort") return <span className="row gap-8"><span className="model-dot" /><span className="mono">{group.key}</span></span>;
   if (dimension === "user") return <UserKeyCell userId={group.key} usersById={lookups.usersById} />;
   if (dimension === "api_key") return <ApiKeyCell apiKeyId={group.key} apiKeysById={lookups.apiKeysById} />;
   if (dimension === "session") return <SessionKeyCell sessionId={group.key} />;
@@ -240,6 +240,7 @@ function splitSessionKey(key: string) {
 
 function keyColumnSize(dimension: UsageDimension) {
   if (dimension === "session") return 280;
+  if (dimension === "model_effort") return 260;
   if (dimension === "model" || dimension === "user" || dimension === "api_key") return 230;
   return 170;
 }

@@ -27,6 +27,20 @@ describe("model pricing table", () => {
     expect(table["claude-opus-4-5"].inputCostPerMtok).toBe(5);
     expect(table["gpt-5.4-mini"].cacheReadCostPerMtok).toBe(0.025);
     expect(table["gpt-5.5-pro"].outputCostPerMtok).toBe(120);
+    // Current production models must be priced or their spend silently books $0.
+    expect(table["claude-fable-5"]).toEqual({
+      inputCostPerMtok: 10,
+      outputCostPerMtok: 50,
+      cacheReadCostPerMtok: 1,
+      cacheWriteCostPerMtok: 12.5
+    });
+    expect(table["claude-opus-4-7"].inputCostPerMtok).toBe(5);
+    expect(table["claude-opus-4-8"]).toEqual({
+      inputCostPerMtok: 5,
+      outputCostPerMtok: 25,
+      cacheReadCostPerMtok: 0.5,
+      cacheWriteCostPerMtok: 6.25
+    });
   });
 
   it("lets MODEL_COSTS_JSON override defaults and price unknown models", () => {

@@ -717,6 +717,7 @@ type UsageGroup {
 enum UsageGroupBy {
   api_key
   model
+  model_effort
   provider
   route
   session

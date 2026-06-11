@@ -1420,6 +1420,7 @@ function requestSummary(row: {
     surface: row.request.surface,
     requestedModel: row.request.requestedModel,
     finalRoute: row.decision?.finalRoute ?? undefined,
+    reasoningEffort: row.decision?.reasoningEffort ?? undefined,
     provider: row.decision?.selectedProvider ?? row.attempt?.provider ?? undefined,
     selectedModel,
     routingConfig: routingConfigSummary(row.decision ?? row.request),
@@ -1447,7 +1448,7 @@ type SummaryInputs = {
   usageRows: (typeof usageLedger.$inferSelect)[];
   classifierUsageRows: (typeof usageLedger.$inferSelect)[];
 };
-type UsageGroupBy = "user" | "api_key" | "provider" | "model" | "route" | "surface" | "session";
+type UsageGroupBy = "user" | "api_key" | "provider" | "model" | "model_effort" | "route" | "surface" | "session";
 type UsageInterval = "hour" | "day";
 type UsageAggregate = ReturnType<typeof emptyUsageAggregate>;
 type UsageGroup = {
@@ -1605,6 +1606,7 @@ function usageGroupBy(value: string | undefined): UsageGroupBy {
     value === "api_key" ||
     value === "provider" ||
     value === "model" ||
+    value === "model_effort" ||
     value === "route" ||
     value === "surface" ||
     value === "session"
@@ -1619,6 +1621,10 @@ function usageGroupKey(request: RequestSummary, groupBy: UsageGroupBy) {
   if (groupBy === "api_key") return request.apiKeyId ?? "unknown";
   if (groupBy === "provider") return request.provider ?? "unknown";
   if (groupBy === "model") return request.selectedModel ?? "unknown";
+  if (groupBy === "model_effort") {
+    const model = request.selectedModel ?? "unknown";
+    return request.reasoningEffort ? `${model} · ${request.reasoningEffort}` : model;
+  }
   if (groupBy === "route") return request.finalRoute ?? "unknown";
   if (groupBy === "surface") return request.surface ?? "unknown";
   return request.sessionId ?? "unknown";

@@ -37,11 +37,14 @@ const CACHE_WRITE_INPUT_MULTIPLIER = 1.25;
 // identifiers (claude-sonnet-4-5-20250929) resolve through undatedModel(), and
 // the admin pricing listing relies on dated names never being table keys.
 export const defaultModelPricing: Readonly<Record<string, { provider: Provider } & ModelPricing>> = Object.freeze({
+  "claude-fable-5": pricedModel("anthropic", 10.0, 50.0),
   "claude-haiku-4-5": pricedModel("anthropic", 1.0, 5.0),
   "claude-sonnet-4-5": pricedModel("anthropic", 3.0, 15.0),
   "claude-sonnet-4-6": pricedModel("anthropic", 3.0, 15.0),
   "claude-opus-4-5": pricedModel("anthropic", 5.0, 25.0),
   "claude-opus-4-6": pricedModel("anthropic", 5.0, 25.0),
+  "claude-opus-4-7": pricedModel("anthropic", 5.0, 25.0),
+  "claude-opus-4-8": pricedModel("anthropic", 5.0, 25.0),
   "gpt-5.4-mini": pricedModel("openai", 0.25, 2.0),
   "gpt-5.4": pricedModel("openai", 1.25, 10.0),
   "gpt-5.5": pricedModel("openai", 1.25, 10.0),

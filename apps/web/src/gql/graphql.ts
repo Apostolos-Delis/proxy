@@ -96,6 +96,7 @@ export type SettingsInput = {
 export type UsageGroupBy =
   | 'api_key'
   | 'model'
+  | 'model_effort'
   | 'provider'
   | 'route'
   | 'session'
