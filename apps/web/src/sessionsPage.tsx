@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Boxes, Download, MessagesSquare, Shield, Users } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { ARTIFACT_KIND_ROLES, artifactPosition } from "./artifactKinds";
 import { displayUser } from "./consoleData";
 import { downloadJson } from "./dashboard";
 import { compactId, dominantKey, formatCompact, formatDateTime, formatDateTimeSeconds, formatDurationMs, formatMoney, formatTimeOfDay } from "./format";
@@ -80,6 +81,8 @@ const SessionDetailViewDocument = graphql(`
         artifactId
         requestId
         kind
+        sourceIndex
+        contentHash
         createdAt
         rawText
         redactedText
@@ -104,8 +107,7 @@ type ConversationTurn = {
   index: number;
   gapMs: number | null;
   request: SessionRequest;
-  userArtifact?: SessionArtifact;
-  assistantArtifact?: SessionArtifact;
+  artifacts: SessionArtifact[];
 };
 
 function countRecord(value: unknown): Record<string, number> {
@@ -290,7 +292,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }) {
   const session = detail.session;
   const turns = conversationTurns(detail);
   const spanMs = conversationSpan(turns);
-  const hasCapturedText = turns.some((turn) => artifactText(turn.userArtifact) ?? artifactText(turn.assistantArtifact));
+  const hasCapturedText = turns.some((turn) => turn.artifacts.some((artifact) => artifactText(artifact)));
   const transcript = hasCapturedText ? transcriptText(turns) : null;
   return (
     <div className="page page-enter">
@@ -325,8 +327,8 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }) {
 }
 
 function ConversationTurnView({ turn }: { turn: ConversationTurn }) {
-  const { request, index, gapMs, userArtifact, assistantArtifact } = turn;
-  const logArtifactId = userArtifact?.artifactId ?? assistantArtifact?.artifactId;
+  const { request, index, gapMs, artifacts } = turn;
+  const logArtifactId = artifacts[0]?.artifactId;
   return (
     <article className="convo-turn">
       <span className="turn-node" aria-hidden>{index + 1}</span>
@@ -347,28 +349,29 @@ function ConversationTurnView({ turn }: { turn: ConversationTurn }) {
           </Link>
         ) : null}
       </header>
-      <ConversationBubble role="user" artifact={userArtifact} missingLabel="Prompt not captured" />
-      <ConversationBubble role="assistant" artifact={assistantArtifact} missingLabel="Response not captured" />
+      {artifacts.map((artifact) => <ConversationBubble key={artifact.artifactId} artifact={artifact} />)}
+      {artifacts.length === 0 ? (
+        <div className="convo-bubble">
+          <p className="convo-missing">No new content captured for this request.</p>
+        </div>
+      ) : null}
     </article>
   );
 }
 
-function ConversationBubble({ role, artifact, missingLabel }: {
-  role: "user" | "assistant";
-  artifact?: SessionArtifact;
-  missingLabel: string;
-}) {
+function ConversationBubble({ artifact }: { artifact: SessionArtifact }) {
+  const { role, label } = artifactRole(artifact);
   const text = artifactText(artifact);
   return (
     <div className={`convo-bubble convo-${role}`}>
       <div className="convo-bubble-head">
-        <span className="convo-role">{role}</span>
+        <span className="convo-role">{label}</span>
         <span className="convo-bubble-actions">
-          {artifact?.createdAt ? <time dateTime={artifact.createdAt} className="convo-bubble-meta mono">{formatTimeOfDay(artifact.createdAt)}</time> : null}
+          {artifact.createdAt ? <time dateTime={artifact.createdAt} className="convo-bubble-meta mono">{formatTimeOfDay(artifact.createdAt)}</time> : null}
           {text ? <CopyButton text={text} /> : null}
         </span>
       </div>
-      {text ? <p>{text}</p> : <p className="convo-missing">{missingLabel}</p>}
+      {text ? <p>{text}</p> : <p className="convo-missing">Content not stored.</p>}
     </div>
   );
 }
@@ -424,27 +427,40 @@ function SessionFact({ label, children }: { label: string; children: ReactNode }
 
 function conversationTurns(detail: SessionDetail): ConversationTurn[] {
   const artifactsByRequest = new Map<string, SessionArtifact[]>();
-  for (const artifact of detail.promptArtifacts) {
+  // Capture dedupes per session, but concurrent requests can race it;
+  // drop any repeated (kind, content) pair so messages render once.
+  const seen = new Set<string>();
+  const chronological = [...detail.promptArtifacts]
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+  for (const artifact of chronological) {
+    if (!ARTIFACT_KIND_ROLES[artifact.kind]) continue;
+    const key = `${artifact.kind}:${artifact.contentHash}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     const list = artifactsByRequest.get(artifact.requestId) ?? [];
     list.push(artifact);
     artifactsByRequest.set(artifact.requestId, list);
   }
   const ordered = [...detail.requests].sort((left, right) => requestTime(left) - requestTime(right));
   return ordered.map((request, index) => {
-    const artifacts = artifactsByRequest.get(request.requestId) ?? [];
+    const artifacts = [...(artifactsByRequest.get(request.requestId) ?? [])].sort(compareArtifacts);
     const previous = index > 0 ? ordered[index - 1] : null;
     // Idle time before this turn: previous turn's latency is not "waiting".
     const gapMs = request.createdAt && previous?.createdAt
       ? Math.max(0, new Date(request.createdAt).getTime() - new Date(previous.createdAt).getTime() - (previous.latencyMs ?? 0))
       : null;
-    return {
-      index,
-      gapMs,
-      request,
-      userArtifact: artifacts.find((artifact) => artifact.kind === "latest_user_message"),
-      assistantArtifact: artifacts.find((artifact) => artifact.kind === "assistant_response")
-    };
+    return { index, gapMs, request, artifacts };
   });
+}
+
+function compareArtifacts(left: SessionArtifact, right: SessionArtifact) {
+  const byIndex = artifactPosition(left) - artifactPosition(right);
+  if (byIndex !== 0) return byIndex;
+  return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+}
+
+function artifactRole(artifact: SessionArtifact) {
+  return ARTIFACT_KIND_ROLES[artifact.kind] ?? { role: "user" as const, label: artifact.kind };
 }
 
 function conversationSpan(turns: ConversationTurn[]) {
@@ -461,13 +477,12 @@ function artifactText(artifact?: SessionArtifact) {
 function transcriptText(turns: ConversationTurn[]) {
   return turns
     .map((turn) => {
-      const lines = (["user", "assistant"] as const)
-        .map((role) => {
-          const artifact = role === "user" ? turn.userArtifact : turn.assistantArtifact;
+      const lines = turn.artifacts
+        .map((artifact) => {
           const text = artifactText(artifact);
           if (!text) return null;
-          const stamp = artifact?.createdAt ?? turn.request.createdAt;
-          return `${stamp ? `[${formatDateTimeSeconds(stamp)}] ` : ""}${role}: ${text}`;
+          const stamp = artifact.createdAt ?? turn.request.createdAt;
+          return `${stamp ? `[${formatDateTimeSeconds(stamp)}] ` : ""}${artifactRole(artifact).label}: ${text}`;
         })
         .filter(Boolean);
       if (lines.length > 0) return lines.join("\n");

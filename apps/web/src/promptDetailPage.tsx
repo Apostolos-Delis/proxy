@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Clock3, MessagesSquare } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { ARTIFACT_KIND_ROLES, artifactPosition } from "./artifactKinds";
 import { compactId, formatCompact, formatDateTime, formatDurationMs, formatMoney } from "./format";
 import { graphql } from "./gql";
 import type { PromptDetailViewQuery } from "./gql/graphql";
@@ -21,6 +22,7 @@ const PromptDetailViewDocument = graphql(`
         sessionId
         surface
         kind
+        sourceIndex
         storageMode
         contentHash
         chars
@@ -52,6 +54,7 @@ const PromptDetailViewDocument = graphql(`
         sessionId
         surface
         kind
+        sourceIndex
         storageMode
         contentHash
         chars
@@ -172,18 +175,13 @@ function IdChip({ label, value }: { label: string; value: string }) {
   );
 }
 
-const EXCHANGE_ROLES: Record<string, { role: string; label: string }> = {
-  instructions: { role: "system", label: "Instructions" },
-  system: { role: "system", label: "System prompt" },
-  latest_user_message: { role: "user", label: "User" },
-  assistant_response: { role: "assistant", label: "Assistant" }
-};
-
 function ExchangeCard({ artifacts, focusedArtifactId }: {
   artifacts: PromptArtifactDetail[];
   focusedArtifactId: string;
 }) {
-  const visible = artifacts.filter((artifact) => EXCHANGE_ROLES[artifact.kind]);
+  const visible = artifacts
+    .filter((artifact) => ARTIFACT_KIND_ROLES[artifact.kind])
+    .sort((left, right) => artifactPosition(left) - artifactPosition(right));
   const hasAssistant = visible.some((artifact) => artifact.kind === "assistant_response");
   return (
     <GlassCard className="exchange-card">
@@ -208,7 +206,7 @@ function ExchangeCard({ artifacts, focusedArtifactId }: {
 }
 
 function ExchangeBubble({ artifact, focused }: { artifact: PromptArtifactDetail; focused: boolean }) {
-  const { role } = EXCHANGE_ROLES[artifact.kind];
+  const { role, label } = ARTIFACT_KIND_ROLES[artifact.kind];
   const text = artifact.rawText ?? artifact.redactedText;
   const meta = [
     artifact.chars != null ? `${formatCompact(artifact.chars)} chars` : null,
@@ -217,7 +215,7 @@ function ExchangeBubble({ artifact, focused }: { artifact: PromptArtifactDetail;
   return (
     <div className={`convo-bubble convo-${role}${focused ? " convo-focused" : ""}`}>
       <div className="convo-bubble-head">
-        <span className="convo-role">{role}</span>
+        <span className="convo-role">{label}</span>
         <span className="convo-bubble-actions">
           {meta ? <span className="convo-bubble-meta mono">{meta}</span> : null}
           {text ? <CopyButton text={text} /> : null}

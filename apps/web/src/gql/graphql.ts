@@ -147,7 +147,7 @@ export type PromptDetailViewQueryVariables = Exact<{
 }>;
 
 
-export type PromptDetailViewQuery = { prompt: { artifact: { artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }, requestArtifacts: Array<{ artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }>, request: { requestId: string, terminalStatus: string, finalRoute: string | null, requestedModel: string | null, selectedModel: string | null, provider: string | null, latencyMs: number | null, timeToFirstByteMs: number | null, selectedCost: number, classifier: unknown, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null } | null, events: Array<{ eventId: string, eventType: string, producer: string, payload: unknown, createdAt: string }> } | null };
+export type PromptDetailViewQuery = { prompt: { artifact: { artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }, requestArtifacts: Array<{ artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }>, request: { requestId: string, terminalStatus: string, finalRoute: string | null, requestedModel: string | null, selectedModel: string | null, provider: string | null, latencyMs: number | null, timeToFirstByteMs: number | null, selectedCost: number, classifier: unknown, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null } | null, events: Array<{ eventId: string, eventType: string, producer: string, payload: unknown, createdAt: string }> } | null };
 
 export type PromptsListQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -325,7 +325,7 @@ export type SessionDetailViewQueryVariables = Exact<{
 }>;
 
 
-export type SessionDetailViewQuery = { session: { user: unknown, session: { sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, sessionIdentity: string | null, requestCount: number, startedAt: string, recentActivity: string | null, modelMix: unknown, routeMix: unknown, usage: { totalTokens: number }, cost: { selected: number } }, requests: Array<{ requestId: string, createdAt: string | null, selectedModel: string | null, finalRoute: string | null, terminalStatus: string, latencyMs: number | null, selectedCost: number, usage: { totalTokens: number } }>, promptArtifacts: Array<{ artifactId: string, requestId: string, kind: string, createdAt: string, rawText: string | null, redactedText: string | null, preview: string | null }> } | null };
+export type SessionDetailViewQuery = { session: { user: unknown, session: { sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, sessionIdentity: string | null, requestCount: number, startedAt: string, recentActivity: string | null, modelMix: unknown, routeMix: unknown, usage: { totalTokens: number }, cost: { selected: number } }, requests: Array<{ requestId: string, createdAt: string | null, selectedModel: string | null, finalRoute: string | null, terminalStatus: string, latencyMs: number | null, selectedCost: number, usage: { totalTokens: number } }>, promptArtifacts: Array<{ artifactId: string, requestId: string, kind: string, sourceIndex: number | null, contentHash: string, createdAt: string, rawText: string | null, redactedText: string | null, preview: string | null }> } | null };
 
 export type SettingsViewQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -669,6 +669,7 @@ export const PromptDetailViewDocument = new TypedDocumentString(`
       sessionId
       surface
       kind
+      sourceIndex
       storageMode
       contentHash
       chars
@@ -700,6 +701,7 @@ export const PromptDetailViewDocument = new TypedDocumentString(`
       sessionId
       surface
       kind
+      sourceIndex
       storageMode
       contentHash
       chars
@@ -1413,6 +1415,8 @@ export const SessionDetailViewDocument = new TypedDocumentString(`
       artifactId
       requestId
       kind
+      sourceIndex
+      contentHash
       createdAt
       rawText
       redactedText

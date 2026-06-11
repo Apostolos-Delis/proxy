@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Boxes, Download, Layers, Route } from "lucide-react";
 
+import { isListedPromptArtifact } from "./artifactKinds";
 import { downloadJson } from "./dashboard";
 import { compactId, formatDateTime, formatMoney } from "./format";
 import { graphql } from "./gql";
@@ -141,5 +142,5 @@ function promptModel(prompt: PromptSummary) {
 }
 
 function isVisiblePromptArtifact(prompt: PromptSummary) {
-  return prompt.kind !== "tool_schema_metadata" && prompt.kind !== "request_input" && prompt.kind !== "assistant_response";
+  return isListedPromptArtifact(prompt.kind);
 }
