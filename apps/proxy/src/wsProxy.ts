@@ -4,6 +4,7 @@ import type { Duplex } from "node:stream";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
 import { openAIResponsesSurface, rewriteSurfaceRequest } from "./adapters.js";
+import { compressForForward } from "./toolResultCompression.js";
 import {
   actorForIdentity,
   contextForIdentity,
@@ -258,8 +259,21 @@ export class WebSocketRoutingProxy {
       }
     });
 
+    const compressedBody = await compressForForward({
+      events: this.events,
+      tenantId: identity.organizationId,
+      workspaceId: identity.workspaceId,
+      requestId,
+      idempotencyKey,
+      sessionId: context.sessionId,
+      surface: openAIResponsesSurface.surface,
+      body: routeBody,
+      // No request logger on the WS surface; compressForForward already falls
+      // back to the original body on failure, so swallow here.
+      warn: () => {}
+    });
     return {
-      body: rewriteSurfaceRequest(routeBody, decision, resolved.systemPrompt),
+      body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt),
       decision,
       activeRequest: {
         requestId,
