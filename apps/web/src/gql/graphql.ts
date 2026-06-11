@@ -412,6 +412,14 @@ export type CacheBustsViewQueryVariables = Exact<{
 
 export type CacheBustsViewQuery = { cacheBusts: { countsByCause: unknown, sessionsScanned: number, sampled: boolean, busts: Array<{ sessionId: string, requestId: string, at: string, cause: string, droppedCacheReadTokens: number, rebuiltTokens: number, gapMs: number }> } };
 
+export type RouteOutputViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+}>;
+
+
+export type RouteOutputViewQuery = { routeOutputReport: { routes: Array<{ route: string, requests: number, outputTokens: number, avgOutputTokens: number, reasoningShare: number, outputCost: number }> } };
+
 export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } };
 
 export type UsageReportViewQueryVariables = Exact<{
@@ -1734,6 +1742,20 @@ export const CacheBustsViewDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CacheBustsViewQuery, CacheBustsViewQueryVariables>;
+export const RouteOutputViewDocument = new TypedDocumentString(`
+    query RouteOutputView($start: String, $end: String) {
+  routeOutputReport(start: $start, end: $end) {
+    routes {
+      route
+      requests
+      outputTokens
+      avgOutputTokens
+      reasoningShare
+      outputCost
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<RouteOutputViewQuery, RouteOutputViewQueryVariables>;
 export const UsageReportViewDocument = new TypedDocumentString(`
     query UsageReportView($groupBy: UsageGroupBy!, $start: String, $end: String) {
   usage(groupBy: $groupBy, start: $start, end: $end) {

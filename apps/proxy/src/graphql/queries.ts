@@ -11,6 +11,7 @@ import {
   CacheBustReport,
   IdleGapReport,
   Overview,
+  RouteOutputReport,
   TokenAttributionReport,
   UsageGroupBy,
   UsageInterval,
@@ -175,6 +176,24 @@ builder.queryFields((t) => ({
         points: []
       };
       return empty;
+    }
+  }),
+
+  routeOutputReport: t.field({
+    type: RouteOutputReport,
+    args: {
+      start: t.arg.string(),
+      end: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) {
+        return queries.routeOutputReport({
+          start: args.start ?? undefined,
+          end: args.end ?? undefined
+        });
+      }
+      return { routes: [] };
     }
   }),
 

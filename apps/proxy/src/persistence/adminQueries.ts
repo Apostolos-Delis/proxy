@@ -1022,6 +1022,45 @@ export class AdminQueryService {
     return summaries;
   }
 
+  // Output tokens per route — the lever for effort/verbosity tuning. Output is
+  // 5x input price, so a route with high average output is the first place to
+  // dial effort down. Reasoning share flags routes spending output on thinking.
+  async routeOutputReport(filters: TokenAttributionFilters = {}) {
+    const start = dateValue(filters.start);
+    const end = dateValue(filters.end);
+    const conditions = [this.scopedTo(usageLedger), isNotNull(usageLedger.route)];
+    if (start) conditions.push(gte(usageLedger.createdAt, start));
+    if (end) conditions.push(lte(usageLedger.createdAt, end));
+    const rows = await this.db
+      .select({
+        route: usageLedger.route,
+        requests: sql<number>`count(*)`,
+        outputTokens: sql<number>`coalesce(sum(${usageLedger.outputTokens}), 0)`,
+        reasoningTokens: sql<number>`coalesce(sum(${usageLedger.reasoningTokens}), 0)`,
+        outputCostMicros: sql<number>`coalesce(sum(${usageLedger.outputCostMicros}), 0)`
+      })
+      .from(usageLedger)
+      .where(and(...conditions))
+      .groupBy(usageLedger.route);
+
+    const routes = rows.map((row) => {
+      const requests = Number(row.requests);
+      const outputTokens = Number(row.outputTokens);
+      const reasoningTokens = Number(row.reasoningTokens);
+      return {
+        route: row.route ?? "unknown",
+        requests,
+        outputTokens,
+        reasoningTokens,
+        avgOutputTokens: requests > 0 ? outputTokens / requests : 0,
+        reasoningShare: outputTokens > 0 ? reasoningTokens / outputTokens : 0,
+        outputCost: Number(row.outputCostMicros) / 1_000_000
+      };
+    });
+    routes.sort((left, right) => routeIndex(routeValue(left.route)) - routeIndex(routeValue(right.route)));
+    return { routes };
+  }
+
   // Sessions with a request inside the cache-warm window. Editing the org
   // system prompt shifts the front of every prefix, so each of these sessions
   // pays a full cache rebuild on its next request — this is the blast radius.

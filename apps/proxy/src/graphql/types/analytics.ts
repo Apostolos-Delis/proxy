@@ -6,6 +6,8 @@ import type {
   IdleGapBucketModel,
   IdleGapReportModel,
   LatencySummaryModel,
+  RouteOutputReportModel,
+  RouteOutputRowModel,
   OverviewModel,
   RouteQualityModel,
   TokenAttributionBucketModel,
@@ -138,6 +140,24 @@ export const ActiveSessionCount = builder
       windowMs: t.exposeFloat("windowMs")
     })
   });
+
+export const RouteOutputRow = builder.objectRef<RouteOutputRowModel>("RouteOutputRow").implement({
+  fields: (t) => ({
+    route: t.exposeString("route"),
+    requests: t.exposeFloat("requests"),
+    outputTokens: t.exposeFloat("outputTokens"),
+    reasoningTokens: t.exposeFloat("reasoningTokens"),
+    avgOutputTokens: t.exposeFloat("avgOutputTokens"),
+    reasoningShare: t.exposeFloat("reasoningShare"),
+    outputCost: t.exposeFloat("outputCost")
+  })
+});
+
+export const RouteOutputReport = builder.objectRef<RouteOutputReportModel>("RouteOutputReport").implement({
+  fields: (t) => ({
+    routes: t.expose("routes", { type: [RouteOutputRow] })
+  })
+});
 
 export const IdleGapBucket = builder.objectRef<IdleGapBucketModel>("IdleGapBucket").implement({
   fields: (t) => ({

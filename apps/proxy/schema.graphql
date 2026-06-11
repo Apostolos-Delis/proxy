@@ -490,6 +490,7 @@ type Query {
   publicInvitation(token: String!): PublicInvitation
   request(requestId: ID!): RequestDetail!
   requests(end: String, limit: Int, start: String): [RequestSummary!]!
+  routeOutputReport(end: String, start: String): RouteOutputReport!
   routingConfig(configId: ID!): RoutingConfigDetail
   routingConfigs: [RoutingConfigSummary!]!
   search(query: String!): SearchResult!
@@ -560,6 +561,20 @@ type RouteMatrixRow {
   description: String
   openaiEffort: String
   openaiModel: String
+  route: String!
+}
+
+type RouteOutputReport {
+  routes: [RouteOutputRow!]!
+}
+
+type RouteOutputRow {
+  avgOutputTokens: Float!
+  outputCost: Float!
+  outputTokens: Float!
+  reasoningShare: Float!
+  reasoningTokens: Float!
+  requests: Float!
   route: String!
 }
 

@@ -1,5 +1,10 @@
 import { graphql } from "./gql";
-import type { CacheBustsViewQuery, IdleGapsViewQuery, TokenAttributionViewQuery } from "./gql/graphql";
+import type {
+  CacheBustsViewQuery,
+  IdleGapsViewQuery,
+  RouteOutputViewQuery,
+  TokenAttributionViewQuery
+} from "./gql/graphql";
 import { gqlFetch } from "./graphql";
 import type { UsageGroup, UsageRangeFilters } from "./usageData";
 
@@ -81,6 +86,27 @@ export type IdleGapReport = IdleGapsViewQuery["idleGaps"];
 
 export async function fetchIdleGaps(filters: UsageRangeFilters = {}) {
   return (await gqlFetch(IdleGapsViewDocument, { ...filters })).idleGaps;
+}
+
+const RouteOutputViewDocument = graphql(`
+  query RouteOutputView($start: String, $end: String) {
+    routeOutputReport(start: $start, end: $end) {
+      routes {
+        route
+        requests
+        outputTokens
+        avgOutputTokens
+        reasoningShare
+        outputCost
+      }
+    }
+  }
+`);
+
+export type RouteOutputReport = RouteOutputViewQuery["routeOutputReport"];
+
+export async function fetchRouteOutput(filters: UsageRangeFilters = {}) {
+  return (await gqlFetch(RouteOutputViewDocument, { ...filters })).routeOutputReport;
 }
 
 export const bustCauseLabels: Record<string, string> = {

@@ -72,6 +72,9 @@ export type IdleGapBucketModel = IdleGapReportModel["buckets"][number];
 
 export type ActiveSessionCountModel = Awaited<ReturnType<Q["activeSessionCount"]>>;
 
+export type RouteOutputReportModel = Awaited<ReturnType<Q["routeOutputReport"]>>;
+export type RouteOutputRowModel = RouteOutputReportModel["routes"][number];
+
 export type TokenAttributionReportModel = Awaited<ReturnType<Q["tokenAttribution"]>>;
 export type TokenAttributionBucketModel = TokenAttributionReportModel["buckets"][number];
 export type TokenAttributionOffenderModel = TokenAttributionReportModel["toolSchemas"][number];

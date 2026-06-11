@@ -278,4 +278,41 @@ describe("cacheBusts admin query", () => {
     expect(result.activeSessions).toBe(1);
     expect(result.windowMs).toBe(60 * 60 * 1000);
   });
+
+  it("reports output tokens and reasoning share per route", async () => {
+    activeFixture = await captureFixture("org_route_output");
+    const fixture = activeFixture;
+    const at = new Date("2026-06-08T12:00:00.000Z");
+
+    await fixture.db.insert(users).values([{ id: "user_ro", email: "ro@example.com", name: "RO" }]);
+    await fixture.db.insert(agentSessions).values([
+      { id: "ro_session", organizationId: "org_route_output", workspaceId: defaultWorkspaceId("org_route_output"), userId: "user_ro", surface: "anthropic-messages", externalSessionId: "ro", startedAt: at, updatedAt: at }
+    ]);
+    await fixture.db.insert(requests).values([
+      usageRequest("ro_req_fast", "org_route_output", "user_ro", "ro_session", "anthropic-messages", at),
+      usageRequest("ro_req_deep", "org_route_output", "user_ro", "ro_session", "anthropic-messages", at)
+    ]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("ro_att_fast", "ro_req_fast", "org_route_output", "anthropic-messages", "anthropic", "claude-fast", "completed", at),
+      usageAttempt("ro_att_deep", "ro_req_deep", "org_route_output", "anthropic-messages", "anthropic", "claude-deep", "completed", at)
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      { ...usageRow("ro_use_fast", "ro_req_fast", "ro_att_fast", "org_route_output", "anthropic", "claude-fast", "fast", 100, 200, 1000), reasoningTokens: 0 },
+      { ...usageRow("ro_use_deep", "ro_req_deep", "ro_att_deep", "org_route_output", "anthropic", "claude-deep", "hard", 100, 1000, 5000), route: "deep", reasoningTokens: 400 }
+    ]);
+
+    const report = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { routeOutputReport { routes { route requests outputTokens avgOutputTokens reasoningShare } } }`
+    )).data?.routeOutputReport;
+
+    const byRoute = Object.fromEntries(report.routes.map((row: any) => [row.route, row]));
+    expect(byRoute.fast.avgOutputTokens).toBe(200);
+    expect(byRoute.fast.reasoningShare).toBe(0);
+    expect(byRoute.deep.avgOutputTokens).toBe(1000);
+    expect(byRoute.deep.reasoningShare).toBeCloseTo(0.4, 5);
+    // Sorted fast < deep by route rank.
+    expect(report.routes[0].route).toBe("fast");
+  });
 });

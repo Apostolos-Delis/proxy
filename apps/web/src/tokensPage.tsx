@@ -10,9 +10,11 @@ import {
   cacheHitRateOf,
   fetchCacheBusts,
   fetchIdleGaps,
+  fetchRouteOutput,
   fetchTokenAttribution,
   type CacheBustReport,
   type IdleGapReport,
+  type RouteOutputReport,
   type TokenAttributionOffender,
   type TokenAttributionReport
 } from "./tokensData";
@@ -42,6 +44,11 @@ export function TokensPage() {
   const cacheBustsQuery = useQuery({
     queryKey: ["cache-busts", start, end],
     queryFn: () => fetchCacheBusts({ start, end }),
+    placeholderData: keepPreviousData
+  });
+  const routeOutputQuery = useQuery({
+    queryKey: ["route-output", start, end],
+    queryFn: () => fetchRouteOutput({ start, end }),
     placeholderData: keepPreviousData
   });
   const idleGapsQuery = useQuery({
@@ -115,6 +122,10 @@ export function TokensPage() {
         <GlassCard>
           <div className="card-title">Top tool results (frontier input)</div>
           <OffenderList rows={report.toolResults} unit="result" />
+        </GlassCard>
+        <GlassCard>
+          <div className="card-title">Output tokens by route<span className="usage-scope-note">tune effort where avg output is high</span></div>
+          <RouteOutput report={routeOutputQuery.data} />
         </GlassCard>
       </section>
     </div>
@@ -232,6 +243,27 @@ function IdleGaps({ report }: { report: IdleGapReport | undefined }) {
         {formatPercent(overTtlShare)} of gaps outlive the 5m cache TTL;{" "}
         {formatPercent(recoverableShare)} recoverable with a 1h TTL
       </div>
+    </div>
+  );
+}
+
+function RouteOutput({ report }: { report: RouteOutputReport | undefined }) {
+  if (!report) return <div className="empty compact-empty">Loading…</div>;
+  if (report.routes.length === 0) {
+    return <div className="empty compact-empty">No routed traffic in this window.</div>;
+  }
+  const maxAvg = Math.max(...report.routes.map((route) => route.avgOutputTokens), 1);
+  return (
+    <div className="barlist">
+      {report.routes.map((route) => (
+        <BarListRow
+          key={route.route}
+          label={route.route}
+          value={`${formatCompact(route.avgOutputTokens)} avg · ${formatPercent(route.reasoningShare)} reasoning`}
+          width={(route.avgOutputTokens / maxAvg) * 100}
+          mono
+        />
+      ))}
     </div>
   );
 }
