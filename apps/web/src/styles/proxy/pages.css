@@ -1468,14 +1468,14 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .config-card-matrix {
   display: grid;
-  gap: 7px;
+  gap: 6px;
 }
 
 .config-card-matrix-row {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 80px minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .config-card-matrix-row .route-chip {
@@ -1487,23 +1487,85 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .config-card-matrix-header span {
   color: var(--fg-faint);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 500;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.config-card-provider-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.config-card-provider-header::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.config-card-provider-openai::before {
+  background: #10a37f;
+}
+
+.config-card-provider-anthropic::before {
+  background: #d97706;
 }
 
 .config-card-model {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.config-card-model > span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
-.config-card-model em {
-  margin-left: 7px;
-  color: var(--fg-faint);
-  font-style: normal;
-  font-size: 11px;
+/* Effort chips in the matrix */
+.effort-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  line-height: 1.5;
+}
+
+.effort-low {
+  color: #6ee7b7;
+  background: rgba(110, 231, 183, 0.10);
+  border-color: rgba(110, 231, 183, 0.20);
+}
+
+.effort-medium {
+  color: #93c5fd;
+  background: rgba(147, 197, 253, 0.10);
+  border-color: rgba(147, 197, 253, 0.20);
+}
+
+.effort-high {
+  color: #fcd34d;
+  background: rgba(252, 211, 77, 0.10);
+  border-color: rgba(252, 211, 77, 0.20);
+}
+
+.effort-xhigh {
+  color: #f0abfc;
+  background: rgba(240, 171, 252, 0.10);
+  border-color: rgba(240, 171, 252, 0.20);
 }
 
 .config-card-prompt {
