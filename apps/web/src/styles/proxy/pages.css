@@ -564,6 +564,13 @@
   font-size: 11px;
 }
 
+.status-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
 .table-time {
   font-size: 12px;
 }

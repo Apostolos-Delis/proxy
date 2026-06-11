@@ -143,11 +143,12 @@ function ModelsCell({ session }: { session: SessionSummary }) {
 function SessionStatusCell({ session }: { session: SessionSummary }) {
   const statuses = sortedCounts(countRecord(session.terminalStatusSummary));
   const rest = statuses.slice(1);
+  const breakdown = statuses.map(([status, count]) => `${count} ${status}`).join(" · ");
   return (
-    <>
+    <div className="status-cell" title={rest.length > 0 ? breakdown : undefined}>
       <StatusBadge status={statuses[0]?.[0] ?? "unknown"} />
-      {rest.length > 0 ? <div className="mono faint">{rest.map(([status, count]) => `${count} ${status}`).join(" · ")}</div> : null}
-    </>
+      {rest.length > 0 ? <span className="mono faint">+{rest.length}</span> : null}
+    </div>
   );
 }
 
