@@ -42,13 +42,18 @@ describe("artifactToolNames", () => {
 
 describe("exchangeMeta", () => {
   it("formats chars and token estimate", () => {
-    expect(exchangeMeta(312, 223)).toBe("0.3K chars · ~223 tok");
+    expect(exchangeMeta(10_034, 2480)).toBe("10.0K chars · ~2.48K tok");
+  });
+
+  it("shows raw counts below one thousand chars", () => {
+    expect(exchangeMeta(312, 223)).toBe("312 chars · ~223 tok");
+    expect(exchangeMeta(0, 6)).toBe("0 chars · ~6 tok");
   });
 
   it("omits missing parts", () => {
     expect(exchangeMeta(null, 223)).toBe("~223 tok");
-    expect(exchangeMeta(312, null)).toBe("0.3K chars");
+    expect(exchangeMeta(312, null)).toBe("312 chars");
     expect(exchangeMeta(null, null)).toBe("");
-    expect(exchangeMeta(312, 0)).toBe("0.3K chars");
+    expect(exchangeMeta(312, 0)).toBe("312 chars");
   });
 });
