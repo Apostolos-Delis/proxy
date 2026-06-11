@@ -100,6 +100,12 @@ export function SettingsForm({
               checked={settings.cacheTtlUpgrade}
               onChange={(value) => setSettings({ ...settings, cacheTtlUpgrade: value })}
             />
+            <ToggleField
+              label="Compress MCP tool results"
+              info="Strips insignificant whitespace from pretty-printed JSON returned by MCP tools before forwarding. Lossless — numbers, nulls, keys, and ordering are preserved exactly; only formatting whitespace is removed. Reduces tokens on MCP-heavy sessions."
+              checked={settings.toolResultCompression}
+              onChange={(value) => setSettings({ ...settings, toolResultCompression: value })}
+            />
           </SettingsSection>
         ) : null}
 

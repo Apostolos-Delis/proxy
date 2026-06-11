@@ -18,6 +18,7 @@ graphql(`
       schemaVersion
       systemPrompt
       cacheTtlUpgrade
+      toolResultCompression
       classifier {
         model
         timeoutMs

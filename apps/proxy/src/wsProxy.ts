@@ -268,6 +268,7 @@ export class WebSocketRoutingProxy {
       sessionId: context.sessionId,
       surface: openAIResponsesSurface.surface,
       body: routeBody,
+      enabled: resolved.toolResultCompression,
       // No request logger on the WS surface; compressForForward already falls
       // back to the original body on failure, so swallow here.
       warn: () => {}

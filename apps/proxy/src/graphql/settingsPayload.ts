@@ -18,11 +18,12 @@ export async function settingsResponse(
       };
   const editable = persistence
     ? await persistence.organizationSettings.editable(organizationId)
-    : { systemPrompt: null, cacheTtlUpgrade: false };
+    : { systemPrompt: null, cacheTtlUpgrade: false, toolResultCompression: false };
   const settings = {
     schemaVersion: 1,
     systemPrompt: editable.systemPrompt,
     cacheTtlUpgrade: editable.cacheTtlUpgrade,
+    toolResultCompression: editable.toolResultCompression,
     classifier: {
       model: fileSettings.classifier.model ?? config.classifierModel,
       timeoutMs: fileSettings.classifier.timeoutMs ?? config.classifierTimeoutMs,

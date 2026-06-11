@@ -244,6 +244,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         sessionId: context.sessionId,
         surface: openAIResponsesSurface.surface,
         body: request.body,
+        enabled: resolved.toolResultCompression,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       await proxy.forward({
@@ -351,6 +352,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         sessionId: context.sessionId,
         surface: anthropicMessagesSurface.surface,
         body: request.body,
+        enabled: resolved.toolResultCompression,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       await proxy.forward({
@@ -422,6 +424,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       const { body: countBody } = compressOrFallback(
         anthropicMessagesSurface.surface,
         request.body,
+        resolved.toolResultCompression,
         (err, message) => app.log.warn({ err, requestId }, message)
       );
       await proxy.forward({

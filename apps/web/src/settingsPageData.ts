@@ -7,6 +7,7 @@ export function settingsInput(settings: EditableSettings) {
     schemaVersion: settings.schemaVersion,
     systemPrompt: settings.systemPrompt,
     cacheTtlUpgrade: settings.cacheTtlUpgrade,
+    toolResultCompression: settings.toolResultCompression,
     classifier: {
       model: settings.classifier.model,
       timeoutMs: settings.classifier.timeoutMs,

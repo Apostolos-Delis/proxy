@@ -1,3 +1,4 @@
+import { mcpJsonRule } from "./compressionRules/mcpJson.js";
 import type { EventService } from "./events.js";
 import type { JsonObject, Surface } from "./types.js";
 import { isRecord, stableJson } from "./util.js";
@@ -41,9 +42,9 @@ export type CompressionResult = { body: unknown; records: CompressionRecord[] };
 // cannot pay for itself.
 export const MIN_COMPRESSIBLE_CHARS = 2048;
 
-// Registered rules, evaluated in order; first match wins. Empty until T9/T10
-// register the MCP-JSON and Bash filters.
-export const compressionRules: CompressionRule[] = [];
+// Registered rules, evaluated in order; first match wins. Only applied for
+// orgs that have opted into tool-result compression.
+export const compressionRules: CompressionRule[] = [mcpJsonRule];
 
 export function compressToolResults(
   surface: Surface,
@@ -62,13 +63,16 @@ export function compressToolResults(
 }
 
 // Compress deterministically, falling back to the original body if the filter
-// throws. The forwarded bytes depend ONLY on block content — never on event
-// I/O or any per-request state — so the prompt-cache prefix stays stable.
+// throws or the org has not opted in. The forwarded bytes depend ONLY on block
+// content and the org's static opt-in — never on event I/O or any per-request
+// state — so the prompt-cache prefix stays stable.
 export function compressOrFallback(
   surface: Surface,
   body: unknown,
+  enabled: boolean,
   warn: (error: unknown, message: string) => void
 ): CompressionResult {
+  if (!enabled) return { body, records: [] };
   try {
     return compressToolResults(surface, body);
   } catch (error) {
@@ -90,9 +94,10 @@ export async function compressForForward(input: {
   sessionId?: string;
   surface: Surface;
   body: unknown;
+  enabled: boolean;
   warn: (error: unknown, message: string) => void;
 }): Promise<unknown> {
-  const { body, records } = compressOrFallback(input.surface, input.body, input.warn);
+  const { body, records } = compressOrFallback(input.surface, input.body, input.enabled, input.warn);
   if (records.length === 0) return body;
   const beforeChars = records.reduce((sum, record) => sum + record.beforeChars, 0);
   const afterChars = records.reduce((sum, record) => sum + record.afterChars, 0);

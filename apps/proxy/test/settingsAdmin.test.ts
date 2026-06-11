@@ -194,7 +194,8 @@ function fakePersistence(
       },
       cacheTtlUpgrade: async () => false,
       setCacheTtlUpgrade: async (_organizationId: string, enabled: boolean) => enabled,
-      editable: async () => ({ systemPrompt: orgSystemPrompt.value, cacheTtlUpgrade: false })
+      setToolResultCompression: async (_organizationId: string, enabled: boolean) => enabled,
+      editable: async () => ({ systemPrompt: orgSystemPrompt.value, cacheTtlUpgrade: false, toolResultCompression: false })
     },
     promptArtifacts: {
       settings: async () => promptCapture,

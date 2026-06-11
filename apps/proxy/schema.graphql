@@ -152,6 +152,7 @@ type EditableSettings {
   routeQuality: RouteQualitySettings!
   schemaVersion: Int!
   systemPrompt: String
+  toolResultCompression: Boolean!
 }
 
 type EmailDelivery {
@@ -725,6 +726,7 @@ input SettingsInput {
   routeQuality: RouteQualitySettingsInput
   schemaVersion: Int
   systemPrompt: String
+  toolResultCompression: Boolean
 }
 
 type StorageInfo {

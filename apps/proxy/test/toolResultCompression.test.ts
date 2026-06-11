@@ -19,16 +19,32 @@ const truncateRule: CompressionRule = {
 const big = "x".repeat(MIN_COMPRESSIBLE_CHARS + 100);
 
 describe("compressToolResults", () => {
-  it("is a no-op with the empty default registry", () => {
+  it("leaves non-matching tools untouched under the default registry", () => {
+    // The default registry only carries the mcp__* rule, so a Bash result is
+    // not compressed and its content is preserved verbatim.
     const body = {
       messages: [
         { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] },
         { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: big }] }
       ]
     };
-    const result = compressToolResults("anthropic-messages", body);
+    const result = compressToolResults("anthropic-messages", body) as any;
     expect(result.records).toEqual([]);
-    expect(result.body).toBe(body); // untouched reference when no rules
+    expect(result.body.messages[1].content[0].content).toBe(big);
+  });
+
+  it("compresses a verbose mcp__* result under the default registry", () => {
+    const verbose = JSON.stringify({ items: Array.from({ length: 80 }, (_, i) => ({ id: i, note: null })) }, null, 2);
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "mcp__linear__list", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: verbose }] }
+      ]
+    };
+    const result = compressToolResults("anthropic-messages", body) as any;
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0].tool).toBe("mcp__linear__list");
+    expect(result.body.messages[1].content[0].content.length).toBeLessThan(verbose.length);
   });
 
   it("maps tool_use_id to tool name and applies a matching rule (Anthropic)", () => {
@@ -190,15 +206,15 @@ describe("compressForForward", () => {
     sessionId: "session_1",
     surface: "anthropic-messages" as const,
     body: body(),
+    enabled: true,
     warn: () => {},
     ...overrides
   });
 
-  it("emits no event and returns the body unchanged with the empty default registry", async () => {
-    expect(compressionRules).toHaveLength(0); // guard: scaffold ships with no rules
+  it("emits no event and returns the body unchanged when the org has not opted in", async () => {
     const events = new EventService(undefined, undefined, undefined, "org_1");
     const original = body();
-    const result = await compressForForward(forwardInput(events, { body: original }));
+    const result = await compressForForward(forwardInput(events, { body: original, enabled: false }));
     expect(result).toBe(original);
     expect(events.listEvents()).toHaveLength(0);
   });
@@ -206,9 +222,6 @@ describe("compressForForward", () => {
   it("returns the compressed body even when the event append fails", async () => {
     const failingSink = { append: async () => { throw new Error("sink down"); } };
     const events = new EventService(undefined, undefined, failingSink, "org_1");
-    // Inject a rule for this test without touching the global registry by
-    // monkeypatching is avoided — instead drive compressToolResults directly
-    // via the wrapper using a one-off rule pushed and popped.
     compressionRules.push(truncateForward);
     try {
       const result = await compressForForward(forwardInput(events)) as any;
