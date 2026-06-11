@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import WebSocket from "ws";
 
 import { EventService } from "../src/events.js";
 import {
@@ -8,6 +9,7 @@ import {
   compressionRules,
   type CompressionRule
 } from "../src/toolResultCompression.js";
+import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
 // A trivial deterministic rule for scaffold testing: truncate to a marker.
 const truncateRule: CompressionRule = {
@@ -75,7 +77,7 @@ describe("compressToolResults", () => {
     ]);
     expect(result.body.messages[1].content[0].content).toBe("xxxxxxxxxx…[truncated]");
     expect(result.body.messages[1].content[1].content).toBe(big);
-    // Original body is not mutated (structuredClone).
+    // Original body is not mutated (rewritten spines are rebuilt, not aliased).
     expect((body.messages[1].content[0] as any).content).toBe(big);
   });
 
@@ -260,3 +262,110 @@ const truncateForward: CompressionRule = {
   matches: (name) => name === "StubTool",
   filter: ({ content }) => (typeof content === "string" ? `${content.slice(0, 10)}…[truncated]` : undefined)
 };
+
+describe("toolResultCompression end to end (DB-backed)", () => {
+  let fixture: PromptTestFixture | undefined;
+
+  afterEach(async () => {
+    await fixture?.close();
+    fixture = undefined;
+  });
+
+  // Pretty-printed MCP-style JSON well above MIN_COMPRESSIBLE_CHARS.
+  const verbose = JSON.stringify(
+    { items: Array.from({ length: 120 }, (_, i) => ({ id: i, note: null })) },
+    null,
+    2
+  );
+
+  it("rewrites oversized mcp__ tool results in the forwarded Anthropic body when the org flag is on", async () => {
+    fixture = await captureFixture("org_compress_http");
+    await fixture.persistence.organizationSettings.setToolResultCompression("org_compress_http", true);
+
+    await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-router-hard",
+        max_tokens: 256,
+        messages: [
+          { role: "user", content: "list the open issues" },
+          { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "mcp__linear__list_issues", input: {} }] },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: verbose }] }
+        ]
+      })
+    });
+
+    const providerCall = fixture.anthropic.records.find((rec) => rec.path === "/messages");
+    const forwarded = providerCall?.body.messages[2].content[0].content;
+    expect(typeof forwarded).toBe("string");
+    expect(forwarded.length).toBeLessThan(verbose.length);
+    // Lossless: only formatting whitespace is gone.
+    expect(JSON.parse(forwarded)).toEqual(JSON.parse(verbose));
+  });
+
+  it("leaves the forwarded body untouched when the org has not opted in", async () => {
+    fixture = await captureFixture("org_compress_off");
+
+    await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-router-hard",
+        max_tokens: 256,
+        messages: [
+          { role: "user", content: "list the open issues" },
+          { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "mcp__linear__list_issues", input: {} }] },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: verbose }] }
+        ]
+      })
+    });
+
+    const providerCall = fixture.anthropic.records.find((rec) => rec.path === "/messages");
+    expect(providerCall?.body.messages[2].content[0].content).toBe(verbose);
+  });
+
+  it("rewrites oversized function_call_output items on the WebSocket surface", async () => {
+    fixture = await captureFixture("org_compress_ws");
+    await fixture.persistence.organizationSettings.setToolResultCompression("org_compress_ws", true);
+
+    const ws = new WebSocket(fixture.proxyUrl.replace("http://", "ws://") + "/v1/responses", {
+      headers: {
+        authorization: "Bearer proxy-token",
+        "openai-beta": "responses_websockets=2026-02-06",
+        session_id: "compress-ws-session"
+      }
+    });
+    await new Promise<void>((resolve, reject) => {
+      ws.once("open", () => resolve());
+      ws.once("error", reject);
+    });
+
+    ws.send(JSON.stringify({
+      type: "response.create",
+      model: "router-hard",
+      input: [
+        { type: "function_call", call_id: "c1", name: "mcp__linear__list_issues", arguments: "{}" },
+        { type: "function_call_output", call_id: "c1", output: verbose }
+      ],
+      tools: [{ type: "function", name: "mcp__linear__list_issues" }],
+      stream: true
+    }));
+    await new Promise<void>((resolve, reject) => {
+      ws.on("message", (data) => {
+        const event = JSON.parse(String(data));
+        if (event.type === "response.completed" || event.type === "response.incomplete") resolve();
+      });
+      ws.once("error", reject);
+    });
+    ws.close();
+
+    const providerCall = fixture.openai.records.find(
+      (rec) => rec.body.type === "response.create" && Array.isArray(rec.body.input)
+    );
+    const forwarded = providerCall?.body.input[1].output;
+    expect(typeof forwarded).toBe("string");
+    expect(forwarded.length).toBeLessThan(verbose.length);
+    expect(JSON.parse(forwarded)).toEqual(JSON.parse(verbose));
+  });
+});
