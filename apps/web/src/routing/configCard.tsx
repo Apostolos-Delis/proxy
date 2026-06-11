@@ -3,9 +3,10 @@ import { KeyRound } from "lucide-react";
 
 import type { RouteMatrixRow, RoutingConfigSummary } from "./data";
 import { formatDateTime, formatInteger } from "../format";
-import { Badge, RouteBadge, StatusBadge } from "../ui";
+import { Badge, RouteBadge } from "../ui";
 
 export function RoutingConfigCard({ config }: { config: RoutingConfigSummary }) {
+  const isDefault = config.slug === "default";
   return (
     <Link
       to="/routing-configs/$configId"
@@ -16,12 +17,16 @@ export function RoutingConfigCard({ config }: { config: RoutingConfigSummary }) 
         <div>
           <div className="config-card-name">{config.name}</div>
           <div className="config-card-meta">
-            {config.slug === "default" ? <Badge variant="accent">Default</Badge> : null}
-            <span className="code-pill">{config.slug}</span>
-            <span className="mono faint">{activeVersionLabel(config)}</span>
+            <span
+              className={isDefault ? "tag tag-accent" : "tag"}
+              title={isDefault ? "Default config" : undefined}
+            >
+              {config.slug}
+            </span>
+            {config.activeVersion ? <span className="mono faint">v{config.activeVersion.version}</span> : null}
           </div>
         </div>
-        <StatusBadge status={config.status} />
+        <ConfigStatus status={config.status} />
       </div>
       {config.description ? <p className="config-card-description">{config.description}</p> : null}
       <RouteMatrixSection routes={config.routeMatrix} />
@@ -35,31 +40,33 @@ export function RoutingConfigCard({ config }: { config: RoutingConfigSummary }) 
 
 function RouteMatrixSection({ routes }: { routes: RouteMatrixRow[] }) {
   if (routes.length === 0) {
-    return (
-      <div className="config-card-section">
-        <span className="config-card-label">Route matrix</span>
-        <span className="faint">No active version.</span>
-      </div>
-    );
+    return <span className="faint">No active version.</span>;
   }
   return (
-    <div className="config-card-section">
-      <span className="config-card-label">Route matrix</span>
-      <div className="config-card-matrix">
-        <div className="config-card-matrix-row config-card-matrix-header">
-          <span />
-          <span className="config-card-provider-header config-card-provider-openai">OpenAI</span>
-          <span className="config-card-provider-header config-card-provider-anthropic">Anthropic</span>
-        </div>
-        {routes.map((route) => (
-          <div key={route.route} className="config-card-matrix-row" title={route.description ?? undefined}>
-            <RouteBadge route={route.route} />
-            <ModelCell model={route.openaiModel} effort={route.openaiEffort} />
-            <ModelCell model={route.anthropicModel} effort={route.anthropicEffort} />
-          </div>
-        ))}
+    <div className="config-card-matrix">
+      <div className="config-card-matrix-row config-card-matrix-header">
+        <span />
+        <span className="config-card-provider-header config-card-provider-openai">OpenAI</span>
+        <span className="config-card-provider-header config-card-provider-anthropic">Anthropic</span>
       </div>
+      {routes.map((route) => (
+        <div key={route.route} className="config-card-matrix-row" title={route.description ?? undefined}>
+          <RouteBadge route={route.route} />
+          <ModelCell model={route.openaiModel} effort={route.openaiEffort} />
+          <ModelCell model={route.anthropicModel} effort={route.anthropicEffort} />
+        </div>
+      ))}
     </div>
+  );
+}
+
+function ConfigStatus({ status }: { status: string }) {
+  if (status === "active") return null;
+  return (
+    <span className="config-card-status">
+      <span className="dot" />
+      {status}
+    </span>
   );
 }
 
@@ -81,8 +88,4 @@ function KeyCount({ count }: { count: number }) {
       {formatInteger(count)} {count === 1 ? "API key" : "API keys"}
     </span>
   );
-}
-
-function activeVersionLabel(config: RoutingConfigSummary) {
-  return config.activeVersion ? `v${config.activeVersion.version}` : "no active version";
 }
