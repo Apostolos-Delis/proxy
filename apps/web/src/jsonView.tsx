@@ -1,5 +1,7 @@
 import { Check, Copy } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
+
+import { useMountEffect } from "./table/useMountEffect";
 
 const JSON_TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false)\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
 
@@ -53,19 +55,28 @@ export function JsonEditor({ value, onChange }: { value: string; onChange: (next
   );
 }
 
-export function CopyButton({ text, label }: { text: string; label?: string }) {
+export function useCopyFeedback() {
   const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useMountEffect(() => () => clearTimeout(timer.current));
+  const copy = (text: string) => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(false), 1400);
+    });
+  };
+  return { copied, copy };
+}
+
+export function CopyButton({ text, label }: { text: string; label?: string }) {
+  const { copied, copy } = useCopyFeedback();
   return (
     <button
       type="button"
       className={`copy-button${copied ? " copied" : ""}`}
       aria-label={label ?? "Copy to clipboard"}
-      onClick={() => {
-        void navigator.clipboard.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1400);
-        });
-      }}
+      onClick={() => copy(text)}
     >
       {copied ? <Check /> : <Copy />}
       {label ? <span>{copied ? "Copied" : label}</span> : null}
