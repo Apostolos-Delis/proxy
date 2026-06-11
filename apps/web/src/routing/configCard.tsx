@@ -48,8 +48,8 @@ function RouteMatrixSection({ routes }: { routes: RouteMatrixRow[] }) {
       <div className="config-card-matrix">
         <div className="config-card-matrix-row config-card-matrix-header">
           <span />
-          <span>openai</span>
-          <span>anthropic</span>
+          <span className="config-card-provider-header config-card-provider-openai">OpenAI</span>
+          <span className="config-card-provider-header config-card-provider-anthropic">Anthropic</span>
         </div>
         {routes.map((route) => (
           <div key={route.route} className="config-card-matrix-row" title={route.description ?? undefined}>
@@ -64,11 +64,11 @@ function RouteMatrixSection({ routes }: { routes: RouteMatrixRow[] }) {
 }
 
 function ModelCell({ model, effort }: { model: string | null; effort: string | null }) {
-  if (!model) return <span className="mono faint">none</span>;
+  if (!model) return <span className="mono faint">—</span>;
   return (
     <span className="config-card-model mono">
-      {model}
-      {effort ? <em>{effort}</em> : null}
+      <span>{model}</span>
+      {effort ? <span className={`effort-chip effort-${effort}`}>{effort}</span> : null}
     </span>
   );
 }
