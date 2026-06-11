@@ -1,8 +1,9 @@
-import { and, eq, lte } from "drizzle-orm";
+import { and, eq, inArray, lte } from "drizzle-orm";
 
 import {
   organizationSettings,
   promptArtifacts,
+  requests,
   type PromptProxyDbSession,
   type PromptProxyTransactionalDatabase
 } from "@prompt-proxy/db";
@@ -48,11 +49,57 @@ export class PromptArtifactStore {
     if (artifacts.length === 0) return [];
 
     const now = new Date();
-    const rows = artifacts.map((artifact) => artifactRow(input, artifact, settings, now));
+    const candidates = artifacts.map((artifact) => artifactRow(input, artifact, settings, now));
+    const captured = new Set(await this.sessionArtifactKeys(input.organizationId, input.requestId));
+    const rows: CapturedPromptArtifact[] = [];
+    for (const row of candidates) {
+      const key = artifactKey(row);
+      if (captured.has(key)) continue;
+      captured.add(key);
+      rows.push(row);
+    }
+    if (rows.length === 0) return [];
+
     await this.db.transaction(async (tx) => {
       await tx.insert(promptArtifacts).values(rows);
     });
     return rows;
+  }
+
+  // Requests in an agentic session resend the whole conversation each turn.
+  // Skip messages already captured by an earlier request of the same session
+  // so every artifact marks where its content first appeared.
+  private async sessionArtifactKeys(organizationId: string, requestId: string) {
+    const [request] = await this.readDb
+      .select({ sessionId: requests.sessionId })
+      .from(requests)
+      .where(and(
+        eq(requests.organizationId, organizationId),
+        eq(requests.id, requestId)
+      ))
+      .limit(1);
+    if (!request?.sessionId) return [];
+
+    // Includes the current request on purpose: a replayed capture for the
+    // same request sees its own committed rows and stays idempotent.
+    const siblingRequests = this.readDb
+      .select({ id: requests.id })
+      .from(requests)
+      .where(and(
+        eq(requests.organizationId, organizationId),
+        eq(requests.sessionId, request.sessionId)
+      ));
+    const existing = await this.readDb
+      .select({
+        kind: promptArtifacts.kind,
+        contentHash: promptArtifacts.contentHash
+      })
+      .from(promptArtifacts)
+      .where(and(
+        eq(promptArtifacts.organizationId, organizationId),
+        inArray(promptArtifacts.requestId, siblingRequests)
+      ));
+    return existing.map((row) => `${row.kind}:${row.contentHash}`);
   }
 
   async captureResponse(input: {
@@ -78,6 +125,9 @@ export class PromptArtifactStore {
       settings,
       new Date()
     );
+    // A later request's history capture can land first; skip the duplicate.
+    const captured = new Set(await this.sessionArtifactKeys(input.organizationId, input.requestId));
+    if (captured.has(artifactKey(row))) return [];
     await this.db.transaction(async (tx) => {
       await tx.insert(promptArtifacts).values([row]);
     });
@@ -181,6 +231,10 @@ export function extractPromptArtifacts(surface: Surface, body: unknown): Extract
   return extractAnthropicArtifacts(body);
 }
 
+function artifactKey(row: CapturedPromptArtifact) {
+  return `${row.kind}:${row.contentHash}`;
+}
+
 export function extractResponseText(surface: Surface, body: unknown): string {
   if (!isRecord(body)) return "";
   if (surface === "openai-responses") return openAIOutputText(body.output);
@@ -265,17 +319,66 @@ function extractOpenAIArtifacts(body: unknown): ExtractedPromptArtifact[] {
     content: textContent(request.instructions),
     sourceRole: "system"
   });
-  const latestUser = latestOpenAIUserText(request.input);
-  if (latestUser) {
+  if (typeof request.input === "string") {
     pushTextArtifact(artifacts, {
-      kind: "latest_user_message",
-      content: latestUser.text,
+      kind: "user_message",
+      content: request.input,
       sourceRole: "user",
-      sourceIndex: latestUser.index
+      sourceIndex: 0
+    });
+  } else if (Array.isArray(request.input)) {
+    request.input.forEach((item, index) => {
+      pushOpenAIInputItem(artifacts, item, index);
     });
   }
   pushToolMetadata(artifacts, request.tools);
   return artifacts;
+}
+
+function pushOpenAIInputItem(artifacts: ExtractedPromptArtifact[], item: unknown, index: number) {
+  if (!isRecord(item)) return;
+  if (item.type === "function_call") {
+    pushTextArtifact(artifacts, {
+      kind: "tool_use",
+      content: toolUseText(item.name, item.arguments),
+      sourceRole: "assistant",
+      sourceIndex: index,
+      metadata: { toolName: stringValue(item.name) ?? null }
+    });
+    return;
+  }
+  if (item.type === "function_call_output") {
+    pushTextArtifact(artifacts, {
+      kind: "tool_result",
+      content: textContent(item.output),
+      sourceRole: "tool",
+      sourceIndex: index
+    });
+    return;
+  }
+  if (item.type !== undefined && item.type !== "message") return;
+  const content = textContent(item.content ?? item.text ?? item.input);
+  if (item.role === "user") {
+    pushUserBlocks(artifacts, splitInjectedContext(content), index);
+    return;
+  }
+  if (item.role === "assistant") {
+    pushTextArtifact(artifacts, {
+      kind: "assistant_response",
+      content,
+      sourceRole: "assistant",
+      sourceIndex: index
+    });
+    return;
+  }
+  if (item.role === "system" || item.role === "developer") {
+    pushTextArtifact(artifacts, {
+      kind: "instructions",
+      content,
+      sourceRole: "system",
+      sourceIndex: index
+    });
+  }
 }
 
 function extractAnthropicArtifacts(body: unknown): ExtractedPromptArtifact[] {
@@ -286,17 +389,111 @@ function extractAnthropicArtifacts(body: unknown): ExtractedPromptArtifact[] {
     content: textContent(request.system),
     sourceRole: "system"
   });
-  const latestUser = latestAnthropicUserText(request.messages);
-  if (latestUser) {
-    pushTextArtifact(artifacts, {
-      kind: "latest_user_message",
-      content: latestUser.text,
-      sourceRole: "user",
-      sourceIndex: latestUser.index
+  if (Array.isArray(request.messages)) {
+    request.messages.forEach((message, index) => {
+      pushAnthropicMessage(artifacts, message, index);
     });
   }
   pushToolMetadata(artifacts, request.tools);
   return artifacts;
+}
+
+function pushAnthropicMessage(artifacts: ExtractedPromptArtifact[], message: unknown, index: number) {
+  if (!isRecord(message)) return;
+  const blocks = Array.isArray(message.content)
+    ? message.content
+    : [{ type: "text", text: textContent(message.content) }];
+  if (message.role === "user") {
+    const texts: string[] = [];
+    const toolResults: string[] = [];
+    for (const block of blocks) {
+      if (!isRecord(block)) continue;
+      if (block.type === "tool_result") toolResults.push(textContent(block.content));
+      else if (block.type === "text" && typeof block.text === "string") texts.push(block.text);
+    }
+    pushUserBlocks(artifacts, splitInjectedContext(texts.join("\n")), index);
+    pushTextArtifact(artifacts, {
+      kind: "tool_result",
+      content: toolResults.join("\n"),
+      sourceRole: "tool",
+      sourceIndex: index
+    });
+    return;
+  }
+  if (message.role !== "assistant") return;
+  const texts: string[] = [];
+  const toolUses: string[] = [];
+  const toolNames: string[] = [];
+  for (const block of blocks) {
+    if (!isRecord(block)) continue;
+    if (block.type === "text" && typeof block.text === "string") texts.push(block.text);
+    if (block.type === "tool_use") {
+      toolUses.push(toolUseText(block.name, block.input));
+      const name = stringValue(block.name);
+      if (name) toolNames.push(name);
+    }
+  }
+  pushTextArtifact(artifacts, {
+    kind: "assistant_response",
+    content: texts.join("\n"),
+    sourceRole: "assistant",
+    sourceIndex: index
+  });
+  pushTextArtifact(artifacts, {
+    kind: "tool_use",
+    content: toolUses.join("\n\n"),
+    sourceRole: "assistant",
+    sourceIndex: index,
+    metadata: toolNames.length > 0 ? { toolNames } : undefined
+  });
+}
+
+// Agent harnesses prepend <system-reminder> blocks to the user's message;
+// keep them out of the prompt artifact so the typed text stays readable.
+function splitInjectedContext(text: string) {
+  const injected: string[] = [];
+  const typed: string[] = [];
+  for (const part of text.split(/(?=<system-reminder>)/)) {
+    if (part.trimStart().startsWith("<system-reminder>")) {
+      const end = part.indexOf("</system-reminder>");
+      if (end >= 0) {
+        injected.push(part.slice(0, end + "</system-reminder>".length));
+        const rest = part.slice(end + "</system-reminder>".length);
+        if (rest.trim()) typed.push(rest.trim());
+        continue;
+      }
+      injected.push(part);
+      continue;
+    }
+    if (part.trim()) typed.push(part.trim());
+  }
+  return { typed: typed.join("\n"), injected: injected.join("\n") };
+}
+
+function pushUserBlocks(
+  artifacts: ExtractedPromptArtifact[],
+  split: { typed: string; injected: string },
+  index: number
+) {
+  pushTextArtifact(artifacts, {
+    kind: "user_message",
+    content: split.typed,
+    sourceRole: "user",
+    sourceIndex: index
+  });
+  pushTextArtifact(artifacts, {
+    kind: "injected_context",
+    content: split.injected,
+    sourceRole: "user",
+    sourceIndex: index
+  });
+}
+
+function toolUseText(name: unknown, input: unknown) {
+  const label = stringValue(name) ?? "tool";
+  if (input === undefined || input === null) return label;
+  const args = typeof input === "string" ? input : stableJson(input);
+  return `${label} ${args}`;
 }
 
 function pushTextArtifact(artifacts: ExtractedPromptArtifact[], artifact: ExtractedPromptArtifact) {
@@ -320,31 +517,6 @@ function pushToolMetadata(artifacts: ExtractedPromptArtifact[], tools: unknown) 
       })
     }
   });
-}
-
-function latestOpenAIUserText(input: unknown) {
-  if (typeof input === "string") return { text: input, index: 0 };
-  if (!Array.isArray(input)) return undefined;
-
-  for (let index = input.length - 1; index >= 0; index -= 1) {
-    const item = input[index];
-    if (!isRecord(item) || item.role !== "user") continue;
-    const text = textContent(item.content ?? item.text ?? item.input);
-    if (text.trim()) return { text, index };
-  }
-  return undefined;
-}
-
-function latestAnthropicUserText(messages: unknown) {
-  if (!Array.isArray(messages)) return undefined;
-
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (!isRecord(message) || message.role !== "user") continue;
-    const text = textContent(message.content);
-    if (text.trim()) return { text, index };
-  }
-  return undefined;
 }
 
 function textContent(value: unknown): string {

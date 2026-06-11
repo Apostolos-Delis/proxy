@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  agentSessions,
   events,
   promptArtifacts
 } from "@prompt-proxy/db";
@@ -55,7 +56,7 @@ describe("prompt artifact capture", () => {
         sourceRole: "system"
       }),
       expect.objectContaining({
-        kind: "latest_user_message",
+        kind: "user_message",
         storageMode: "raw_text",
         rawText: "Write tests for @filename.",
         sourceRole: "user",
@@ -85,7 +86,7 @@ describe("prompt artifact capture", () => {
         }),
         expect.objectContaining({
           artifactId: expect.any(String),
-          kind: "latest_user_message",
+          kind: "user_message",
           storageMode: "raw_text",
           contentHash: expect.stringMatching(/^sha256:/)
         }),
@@ -103,7 +104,7 @@ describe("prompt artifact capture", () => {
     expect(eventPayloadText(eventRows)).not.toContain("parameters");
   });
 
-  it("captures only the latest OpenAI user message from array input", async () => {
+  it("captures every OpenAI input message with its conversation position", async () => {
     const fixture = await setup("org_openai_array");
 
     const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
@@ -117,6 +118,8 @@ describe("prompt artifact capture", () => {
         input: [
           { type: "message", role: "user", content: [{ type: "input_text", text: "old request" }] },
           { type: "message", role: "assistant", content: [{ type: "output_text", text: "ack" }] },
+          { type: "function_call", name: "shell", arguments: "{\"command\":\"ls\"}" },
+          { type: "function_call_output", output: "file.ts" },
           { type: "message", role: "user", content: [{ type: "input_text", text: "latest request" }] }
         ],
         stream: true
@@ -129,17 +132,39 @@ describe("prompt artifact capture", () => {
     expect(response.status).toBe(200);
     expect(rows).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        kind: "latest_user_message",
-        storageMode: "raw_text",
+        kind: "user_message",
+        rawText: "old request",
+        sourceRole: "user",
+        sourceIndex: 0
+      }),
+      expect.objectContaining({
+        kind: "assistant_response",
+        rawText: "ack",
+        sourceRole: "assistant",
+        sourceIndex: 1
+      }),
+      expect.objectContaining({
+        kind: "tool_use",
+        rawText: "shell {\"command\":\"ls\"}",
+        sourceRole: "assistant",
+        sourceIndex: 2
+      }),
+      expect.objectContaining({
+        kind: "tool_result",
+        rawText: "file.ts",
+        sourceRole: "tool",
+        sourceIndex: 3
+      }),
+      expect.objectContaining({
+        kind: "user_message",
         rawText: "latest request",
         sourceRole: "user",
-        sourceIndex: 2
+        sourceIndex: 4
       })
     ]));
-    expect(rows.some((row) => row.rawText === "old request")).toBe(false);
   });
 
-  it("captures Anthropic system, latest user message, and tool metadata", async () => {
+  it("captures Anthropic system, conversation messages, and tool metadata", async () => {
     const fixture = await setup("org_anthropic");
 
     const response = await fetch(`${fixture.proxyUrl}/v1/messages`, {
@@ -177,7 +202,21 @@ describe("prompt artifact capture", () => {
         sourceRole: "system"
       }),
       expect.objectContaining({
-        kind: "latest_user_message",
+        kind: "user_message",
+        storageMode: "raw_text",
+        rawText: "older question",
+        sourceRole: "user",
+        sourceIndex: 0
+      }),
+      expect.objectContaining({
+        kind: "assistant_response",
+        storageMode: "raw_text",
+        rawText: "ack",
+        sourceRole: "assistant",
+        sourceIndex: 1
+      }),
+      expect.objectContaining({
+        kind: "user_message",
         storageMode: "raw_text",
         rawText: "latest Claude question",
         sourceRole: "user",
@@ -195,16 +234,174 @@ describe("prompt artifact capture", () => {
     ]));
     expect(captureEvent?.payload).toEqual(expect.objectContaining({
       surface: "anthropic-messages",
-      artifactCount: 3,
+      artifactCount: 5,
       artifacts: expect.arrayContaining([
         expect.objectContaining({ kind: "system" }),
-        expect.objectContaining({ kind: "latest_user_message" }),
+        expect.objectContaining({ kind: "user_message" }),
+        expect.objectContaining({ kind: "assistant_response" }),
         expect.objectContaining({ kind: "tool_schema_metadata" })
       ])
     }));
     expect(eventPayloadText(eventRows)).not.toContain("Use the mortgage domain rules.");
     expect(eventPayloadText(eventRows)).not.toContain("latest Claude question");
     expect(eventPayloadText(eventRows)).not.toContain("input_schema");
+  });
+
+  it("separates typed prompts, injected context, and tool traffic in agentic turns", async () => {
+    const fixture = await setup("org_anthropic_agentic");
+
+    const response = await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-router-auto",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "<system-reminder>injected harness rules</system-reminder>" },
+              { type: "text", text: "fix the login bug" }
+            ]
+          },
+          {
+            role: "assistant",
+            content: [
+              { type: "text", text: "Looking at the auth flow." },
+              { type: "tool_use", id: "tool_1", name: "bash", input: { command: "ls" } }
+            ]
+          },
+          {
+            role: "user",
+            content: [
+              { type: "tool_result", tool_use_id: "tool_1", content: [{ type: "text", text: "auth.ts" }] }
+            ]
+          }
+        ],
+        max_tokens: 1024,
+        stream: true
+      })
+    });
+    await response.text();
+
+    const rows = await fixture.db.select().from(promptArtifacts);
+
+    expect(response.status).toBe(200);
+    expect(rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "user_message",
+        rawText: "fix the login bug",
+        sourceRole: "user",
+        sourceIndex: 0
+      }),
+      expect.objectContaining({
+        kind: "injected_context",
+        rawText: "<system-reminder>injected harness rules</system-reminder>",
+        sourceRole: "user",
+        sourceIndex: 0
+      }),
+      expect.objectContaining({
+        kind: "assistant_response",
+        rawText: "Looking at the auth flow.",
+        sourceRole: "assistant",
+        sourceIndex: 1
+      }),
+      expect.objectContaining({
+        kind: "tool_use",
+        rawText: "bash {\"command\":\"ls\"}",
+        sourceRole: "assistant",
+        sourceIndex: 1
+      }),
+      expect.objectContaining({
+        kind: "tool_result",
+        rawText: "auth.ts",
+        sourceRole: "tool",
+        sourceIndex: 2
+      })
+    ]));
+  });
+
+  it("captures each session message once across requests", async () => {
+    const fixture = await setup("org_anthropic_dedup");
+    const headers = {
+      authorization: "Bearer proxy-token",
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01",
+      "x-claude-code-session-id": "session-dedup"
+    };
+    const system = "Shared session rules.";
+    const firstTurn = [{ role: "user", content: "first question" }];
+
+    const first = await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ model: "claude-router-auto", system, messages: firstTurn, max_tokens: 256, stream: true })
+    });
+    await first.text();
+    const second = await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: "claude-router-auto",
+        system,
+        messages: [
+          ...firstTurn,
+          { role: "assistant", content: "first answer" },
+          { role: "user", content: "second question" }
+        ],
+        max_tokens: 256,
+        stream: true
+      })
+    });
+    await second.text();
+
+    const rows = await fixture.db.select().from(promptArtifacts);
+    const byKind = (kind: string) => rows.filter((row) => row.kind === kind);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(byKind("system")).toHaveLength(1);
+    expect(byKind("user_message").map((row) => row.rawText).sort()).toEqual([
+      "first question",
+      "second question"
+    ]);
+    const firstQuestion = byKind("user_message").find((row) => row.rawText === "first question");
+    const secondQuestion = byKind("user_message").find((row) => row.rawText === "second question");
+    expect(firstQuestion?.requestId).not.toBe(secondQuestion?.requestId);
+  });
+
+  it("links Anthropic sessions from metadata.user_id when no session header is set", async () => {
+    const fixture = await setup("org_anthropic_metadata_session");
+
+    const response = await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-router-auto",
+        metadata: { user_id: "user_abc123_account_def456_session_9f8e7d6c-1a2b-3c4d-5e6f-7a8b9c0d1e2f" },
+        messages: [{ role: "user", content: "metadata session linking" }],
+        max_tokens: 256,
+        stream: true
+      })
+    });
+    await response.text();
+
+    const sessions = await fixture.db.select().from(agentSessions);
+
+    expect(response.status).toBe(200);
+    expect(sessions).toEqual([
+      expect.objectContaining({
+        externalSessionId: "9f8e7d6c-1a2b-3c4d-5e6f-7a8b9c0d1e2f",
+        metadata: expect.objectContaining({ sessionIdentity: "harness" })
+      })
+    ]);
   });
 
   it("fails before classifier or provider spend when prompt capture fails", async () => {
@@ -250,7 +447,7 @@ describe("prompt artifact capture", () => {
     expect(response.status).toBe(200);
     expect(rows).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        kind: "latest_user_message",
+        kind: "user_message",
         storageMode: "hash_only",
         rawText: null,
         sourceRole: "user"

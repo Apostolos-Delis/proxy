@@ -43,7 +43,8 @@ export function buildOpenAIContext(body: unknown, headers: Record<string, string
     hasImages: hasImageInput(request.input),
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
-    sessionId: headers["x-codex-session-id"] ?? headers.session_id ?? headers["x-client-request-id"],
+    sessionId: headers["x-codex-session-id"] ?? headers.session_id ?? headers["x-client-request-id"]
+      ?? promptCacheKeySessionId(request.prompt_cache_key),
     userId: headers["x-prompt-proxy-user-id"] ?? headers["x-user-id"],
     teamId: headers["x-prompt-proxy-team-id"] ?? headers["x-team-id"],
     explicitAlias: explicitAlias("openai-responses", requestedModel)
@@ -79,7 +80,7 @@ export function buildAnthropicContext(body: unknown, headers: Record<string, str
     hasImages: hasImageInput(request.messages),
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
-    sessionId: headers["x-claude-code-session-id"],
+    sessionId: headers["x-claude-code-session-id"] ?? anthropicMetadataSessionId(request.metadata),
     userId: headers["x-prompt-proxy-user-id"] ?? headers["x-user-id"],
     teamId: headers["x-prompt-proxy-team-id"] ?? headers["x-team-id"],
     explicitAlias: explicitAlias("anthropic-messages", requestedModel)
@@ -108,6 +109,21 @@ export function classifierView(context: RouteContext, allowExcerpt: boolean, sou
     session_route: null,
     explicit_alias: context.explicitAlias ?? null
   };
+}
+
+// Claude Code stamps metadata.user_id as "user_<hash>_account_<uuid>_session_<uuid>";
+// the session suffix links requests when no session header is configured.
+function anthropicMetadataSessionId(metadata: unknown) {
+  if (!isRecord(metadata) || typeof metadata.user_id !== "string") return undefined;
+  const match = /_session_([0-9a-f][0-9a-f-]{7,})$/i.exec(metadata.user_id);
+  return match?.[1];
+}
+
+// Codex sets prompt_cache_key to its conversation id on every request.
+// Client-supplied, so only accept id-shaped values.
+function promptCacheKeySessionId(value: unknown) {
+  if (typeof value !== "string") return undefined;
+  return /^[A-Za-z0-9._:-]{8,128}$/.test(value) ? value : undefined;
 }
 
 function routingInputFrom(latestUserText: string | undefined, fullText: string) {

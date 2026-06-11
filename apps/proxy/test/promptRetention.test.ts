@@ -44,7 +44,7 @@ describe("prompt retention admin APIs", () => {
     const [artifact] = await fixture.db
       .select()
       .from(promptArtifacts)
-      .where(eq(promptArtifacts.kind, "latest_user_message"));
+      .where(eq(promptArtifacts.kind, "user_message"));
     const originalHash = artifact.contentHash;
     await fixture.db
       .update(promptArtifacts)

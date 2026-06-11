@@ -75,6 +75,10 @@ Organizations contain workspaces (modeled on the Anthropic Console / OpenAI Plat
 - Each workspace owns its default routing config (`workspaces.default_routing_config_id`, replaces the old `organization_settings.default_routing_config_id`). Composite FKs enforce that routing config versions, key→config assignments, and workspace defaults stay within one workspace.
 - Admin sessions track an active workspace (`user_sessions.workspace_id`, null = default). `switchWorkspace` repoints the session; `switchOrganization` still issues a fresh session. All workspace-scoped admin queries read the session's active workspace; members, invitations, settings, and provider credentials remain org-wide.
 
+### Prompt artifact capture
+
+Each request captures every conversation message it carries as a `prompt_artifacts` row with a `kind` describing the source: `system` / `instructions` (system prompts), `user_message` (typed user text), `injected_context` (harness-injected `<system-reminder>` blocks), `tool_use` (assistant tool calls), `tool_result` (tool output returned as user-role messages), `assistant_response` (assistant text, streamed or replayed in history), and `tool_schema_metadata` (hash-only tool schema summary). Because agent harnesses resend the full conversation on every request, capture dedupes by `(kind, content_hash)` across the request's session — each message is stored once, attributed to the request that first carried it, and the session view reconstructs the full conversation from those rows. Session identity comes from harness headers, falling back to the Claude Code `metadata.user_id` session suffix or the Codex `prompt_cache_key`, then to a per-request session.
+
 ## Admin Console
 
 The first web app is an operations console, not a customer-facing product surface.
