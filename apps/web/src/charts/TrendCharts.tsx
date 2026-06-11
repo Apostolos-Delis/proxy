@@ -1,3 +1,4 @@
+import { useId } from "react";
 import {
   Area,
   AreaChart as RechartsAreaChart,
@@ -18,10 +19,11 @@ type MiniChartProps = {
   data: Point[] | number[];
   width?: number;
   height?: number;
+  color?: string;
   valueFormatter?: (value: number) => string;
 };
 
-export function MiniBars({ data, height = 42, valueFormatter }: MiniChartProps) {
+export function MiniBars({ data, height = 42, color = "var(--accent)", valueFormatter }: MiniChartProps) {
   const rows = miniData(data);
   if (rows.length === 0) return <div className="chart-frame mini-bars-chart" style={{ height }} />;
 
@@ -36,13 +38,13 @@ export function MiniBars({ data, height = 42, valueFormatter }: MiniChartProps) 
           wrapperStyle={{ zIndex: 5 }}
           content={<MiniTooltip valueFormatter={valueFormatter} />}
         />
-        <Bar dataKey="value" radius={[2, 2, 1, 1]} fill="var(--accent)" isAnimationActive={false} />
+        <Bar dataKey="value" radius={[2, 2, 1, 1]} fill={color} isAnimationActive={false} />
       </RechartsBarChart>
     </ChartFrame>
   );
 }
 
-export function Sparkline({ data, height = 54, valueFormatter }: MiniChartProps) {
+export function Sparkline({ data, height = 54, color = "var(--accent)", valueFormatter }: MiniChartProps) {
   const rows = miniData(data);
   if (rows.length === 0) return <div className="chart-frame sparkline" style={{ height }} />;
 
@@ -61,9 +63,10 @@ export function Sparkline({ data, height = 54, valueFormatter }: MiniChartProps)
           dataKey="value"
           type="monotone"
           dot={false}
+          stroke={color}
           strokeWidth={2.4}
           isAnimationActive={false}
-          activeDot={{ r: 3.5, fill: "var(--accent)", stroke: "var(--bg-0)", strokeWidth: 2 }}
+          activeDot={{ r: 3.5, fill: color, stroke: "var(--bg-0)", strokeWidth: 2 }}
         />
       </LineChart>
     </ChartFrame>
@@ -90,14 +93,17 @@ function MiniTooltip({ active, payload, valueFormatter }: {
 export function AreaChart({
   data,
   height = 310,
+  color = "var(--accent)",
   valueFormatter,
   tickFormatter
 }: {
   data: Point[];
   height?: number;
+  color?: string;
   valueFormatter?: (value: number) => string;
   tickFormatter?: (value: number) => string;
 }) {
+  const fillId = `area-fill-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const rows = chartData(data);
   if (rows.length === 0) return <EmptyChart height={height} />;
 
@@ -105,13 +111,22 @@ export function AreaChart({
     <ChartFrame height={height} className="area-chart">
       <RechartsAreaChart data={rows} margin={{ top: 16, right: 10, bottom: 8, left: 4 }}>
         <defs>
-          <linearGradient id="proxy-area-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.24} />
-            <stop offset="95%" stopColor="var(--accent)" stopOpacity={0.03} />
+          <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor={color} stopOpacity={0.24} />
+            <stop offset="95%" stopColor={color} stopOpacity={0.03} />
           </linearGradient>
         </defs>
         <CartesianGrid vertical={false} />
-        <XAxis dataKey="label" tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={26} />
+        {/* Axis on the unique index: duplicate labels (24h spans 25 hour buckets) would
+            otherwise make the tooltip resolve the wrong bucket. */}
+        <XAxis
+          dataKey="index"
+          tickFormatter={(index: number) => rows[index]?.label ?? ""}
+          tickLine={false}
+          axisLine={false}
+          interval="preserveStartEnd"
+          minTickGap={26}
+        />
         <YAxis
           width={48}
           tickLine={false}
@@ -120,8 +135,8 @@ export function AreaChart({
           domain={[0, "auto"]}
           tickFormatter={tickFormatter ?? formatCompact}
         />
-        <Tooltip cursor={{ stroke: "var(--accent-2)", strokeWidth: 1 }} content={<ChartTooltip valueFormatter={valueFormatter} />} />
-        <Area dataKey="value" type="monotone" fill="url(#proxy-area-fill)" stroke="var(--accent)" strokeWidth={3} activeDot={{ r: 5 }} dot={false} />
+        <Tooltip cursor={{ stroke: color, strokeWidth: 1, strokeOpacity: 0.55 }} content={<ChartTooltip valueFormatter={valueFormatter} />} />
+        <Area dataKey="value" type="monotone" fill={`url(#${fillId})`} stroke={color} strokeWidth={3} activeDot={{ r: 5 }} dot={false} />
       </RechartsAreaChart>
     </ChartFrame>
   );

@@ -36,6 +36,8 @@
   }
 
   .usage-console-layout,
+  .usage-grid-split,
+  .usage-focus-split,
   .overview-main-grid,
   .billing-grid {
     grid-template-columns: 1fr;
@@ -56,6 +58,7 @@
   }
 
   .usage-side-rail,
+  .usage-kpi-grid,
   .billing-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -150,8 +153,13 @@
   .config-card-grid,
   .tier-editor-row,
   .billing-kpis,
+  .usage-kpi-grid,
   .usage-side-rail {
     grid-template-columns: 1fr;
+  }
+
+  .usage-toolbar {
+    flex-wrap: wrap;
   }
 
   .quality-grid {
