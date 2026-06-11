@@ -361,7 +361,10 @@ describe("session replay admin APIs", () => {
     ]);
     await fixture.db.insert(usageLedger).values([
       {
-        ...usageRow("cache_usage", "cache_request", "cache_attempt", "org_cache_sessions", "anthropic", "claude-hard", "hard", 100, 50, 2000),
+        // Normalized convention: the inputTokens column is the total prompt
+        // input with reads/writes as subsets; only the raw jsonb stays
+        // exclusive the way Anthropic reported it.
+        ...usageRow("cache_usage", "cache_request", "cache_attempt", "org_cache_sessions", "anthropic", "claude-hard", "hard", 1000, 50, 2000),
         cachedInputTokens: 800,
         cacheCreationInputTokens: 100,
         usage: {
@@ -398,10 +401,9 @@ describe("session replay admin APIs", () => {
     const bySession = Object.fromEntries(sessions.map((session: any) => [session.sessionId, session]));
     expect(bySession.session_cache.usage.cachedInputTokens).toBe(800);
     expect(bySession.session_cache.usage.cacheCreationInputTokens).toBe(100);
-    // anthropic denominator = input (100) + reads (800) + writes (100)
+    // reads (800) over total prompt input (1000); writes count as misses
     expect(bySession.session_cache.cacheHitRate).toBe(0.8);
     expect(bySession.session_cache.cost.selected).toBeCloseTo(0.002, 6);
-    // openai denominator = input_tokens (1000); cached (250) is a subset
     expect(bySession.session_cache_openai.cacheHitRate).toBe(0.25);
   });
 

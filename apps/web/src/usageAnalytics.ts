@@ -138,28 +138,32 @@ export function stackedUsageSeries(
 
 export type SeriesPoint = { label: string; value: number };
 
-/** Whole-window totals per bucket; the same regardless of the grouping dimension. */
-export function totalsPointSeries(timeseries: UsageTimeseries, metric: UsageMetric): SeriesPoint[] {
+/** Per-bucket series over whole-window totals; the same regardless of the grouping dimension. */
+export function usagePointSeries(timeseries: UsageTimeseries, value: (totals: UsageGroup) => number): SeriesPoint[] {
   return timeseries.points.map((point) => ({
     label: bucketLabel(point.ts, timeseries.interval),
-    value: metricValue(point.totals, metric)
+    value: value(point.totals)
   }));
 }
 
-/** Share of prompt tokens read from cache; null when the window carried no input tokens. */
+export function totalsPointSeries(timeseries: UsageTimeseries, metric: UsageMetric): SeriesPoint[] {
+  return usagePointSeries(timeseries, (totals) => metricValue(totals, metric));
+}
+
+/**
+ * Share of prompt tokens read from cache; null when the window carried no
+ * input tokens. Normalized convention: inputTokens is the TOTAL prompt input
+ * with cache reads/writes as subsets, so writes count as misses on their own.
+ */
 export function cacheHitRate(group: UsageGroup | null | undefined): number | null {
   if (!group) return null;
-  const promptTokens = group.usage.inputTokens + group.usage.cachedInputTokens + group.usage.cacheCreationInputTokens;
-  if (promptTokens <= 0) return null;
-  return group.usage.cachedInputTokens / promptTokens;
+  if (group.usage.inputTokens <= 0) return null;
+  return group.usage.cachedInputTokens / group.usage.inputTokens;
 }
 
 /** Per-bucket cache hit rate scaled to 0-100 so mini bar heights read as percentages. */
 export function cacheHitPointSeries(timeseries: UsageTimeseries): SeriesPoint[] {
-  return timeseries.points.map((point) => ({
-    label: bucketLabel(point.ts, timeseries.interval),
-    value: (cacheHitRate(point.totals) ?? 0) * 100
-  }));
+  return usagePointSeries(timeseries, (totals) => (cacheHitRate(totals) ?? 0) * 100);
 }
 
 /** Relative change in percent; undefined (delta hidden) when there is no prior signal. */

@@ -430,6 +430,81 @@
   background: var(--glass-2);
 }
 
+.caching-accent {
+  color: var(--accent);
+}
+
+.caching-kpi-foot {
+  margin-top: 12px;
+  font-size: 11.5px;
+  color: var(--fg-faint);
+}
+
+.caching-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+  margin-top: 22px;
+}
+
+.caching-anatomy {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+  align-items: start;
+  margin-top: 22px;
+}
+
+.caching-miss-total {
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.caching-reason-head {
+  width: 40%;
+}
+
+.caching-reason-bar {
+  display: flex;
+  height: 10px;
+  min-width: 24px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--track);
+}
+
+.caching-reason-bar i {
+  display: block;
+  height: 100%;
+  transition: opacity 0.14s ease;
+}
+
+.caching-reason-legend {
+  justify-content: flex-start;
+  margin-top: 14px;
+}
+
+.caching-reason-legend span {
+  transition: opacity 0.14s ease;
+}
+
+.caching-key-list {
+  gap: 14px;
+}
+
+.caching-key-hint {
+  color: var(--fg-faint);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.caching-advice {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--fg-faint);
+}
+
 .usage-breakdown {
   display: grid;
   gap: 16px;

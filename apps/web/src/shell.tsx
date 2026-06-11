@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { BarChart3, Boxes, CircleDollarSign, Coins, Command, CreditCard, Gauge, GitBranch, KeyRound, KeySquare, Logs, MessagesSquare, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
+import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, KeySquare, Layers, Logs, MessagesSquare, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -13,7 +13,7 @@ const workspaceNav = [
   { to: "/", label: "Overview", icon: Gauge },
   { to: "/usage", label: "Usage", icon: BarChart3 },
   { to: "/cost", label: "Cost", icon: CircleDollarSign },
-  { to: "/tokens", label: "Tokens", icon: Coins },
+  { to: "/caching", label: "Caching", icon: Layers },
   { to: "/logs", label: "Logs", icon: Logs },
   { to: "/sessions", label: "Sessions", icon: MessagesSquare }
 ] as const;
@@ -34,7 +34,7 @@ const titles: Record<string, [string, string | null]> = {
   "/": ["Overview", null],
   "/usage": ["Usage", "Token metering by dimension"],
   "/cost": ["Cost", "Spend, savings & attribution"],
-  "/tokens": ["Tokens", "Where tokens go & cache economics"],
+  "/caching": ["Caching", "Prompt-cache performance"],
   "/logs": ["Logs", "Request stream"],
   "/api-keys": ["API keys", "Manage secrets"],
   "/api-keys/new": ["API keys", "Create key"],

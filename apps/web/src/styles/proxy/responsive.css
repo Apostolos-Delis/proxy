@@ -48,9 +48,14 @@
   .usage-console-layout,
   .usage-grid-split,
   .usage-focus-split,
+  .caching-grid,
   .overview-main-grid,
   .billing-grid {
     grid-template-columns: 1fr;
+  }
+
+  .caching-anatomy {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .routing-create-grid {
@@ -162,7 +167,8 @@
   .tier-table-row,
   .billing-kpis,
   .usage-kpi-grid,
-  .usage-side-rail {
+  .usage-side-rail,
+  .caching-anatomy {
     grid-template-columns: 1fr;
   }
 

@@ -1764,20 +1764,15 @@ function addUsageTotals(target: ReturnType<typeof emptyUsage>, usage: ReturnType
   target.totalTokens += usage.totalTokens;
 }
 
-// Hit rate over total prompt input. Anthropic reports input_tokens exclusive
-// of cache reads/writes when caching applies; OpenAI reports cached_tokens as
-// a subset of input_tokens. Requests without a known provider are skipped —
-// their denominator semantics are ambiguous.
+// Hit rate over total prompt input. Usage is stored under the normalized
+// convention (see normalizeUsage): inputTokens is the TOTAL prompt input with
+// cache reads/writes as billed-differently subsets, for every provider.
 function cacheHitRate(requests: RequestSummary[]) {
   let hits = 0;
   let total = 0;
   for (const request of requests) {
-    if (request.provider !== "anthropic" && request.provider !== "openai") continue;
-    const usage = request.usage;
-    hits += usage.cachedInputTokens;
-    total += request.provider === "anthropic"
-      ? usage.inputTokens + usage.cachedInputTokens + usage.cacheCreationInputTokens
-      : usage.inputTokens;
+    hits += request.usage.cachedInputTokens;
+    total += request.usage.inputTokens;
   }
   return total > 0 ? hits / total : null;
 }

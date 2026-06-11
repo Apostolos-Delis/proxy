@@ -16,6 +16,10 @@ import * as types from './graphql';
  */
 type Documents = {
     "\n  query BillingPage {\n    overview {\n      requestCount\n      cost {\n        selected\n        baseline\n        savings\n      }\n    }\n    settings {\n      budgets {\n        warningEstimatedInputTokens\n        maxEstimatedInputTokens\n        maxRoute\n      }\n    }\n  }\n": typeof types.BillingPageDocument,
+    "\n  query TokenAttributionView($start: String, $end: String) {\n    tokenAttribution(start: $start, end: $end) {\n      requestCount\n      sampled\n      buckets {\n        key\n        chars\n        estimatedTokens\n      }\n      toolSchemas {\n        name\n        chars\n        estimatedTokens\n        blocks\n      }\n      toolResults {\n        name\n        chars\n        estimatedTokens\n        blocks\n      }\n    }\n  }\n": typeof types.TokenAttributionViewDocument,
+    "\n  query IdleGapsView($start: String, $end: String) {\n    idleGaps(start: $start, end: $end) {\n      buckets {\n        key\n        label\n        count\n      }\n      totalGaps\n      overTtl\n      recoverableByOneHourTtl\n      sessionsScanned\n      sampled\n    }\n  }\n": typeof types.IdleGapsViewDocument,
+    "\n  query CacheBustsView($start: String, $end: String) {\n    cacheBusts(start: $start, end: $end) {\n      busts {\n        sessionId\n        requestId\n        at\n        cause\n        droppedCacheReadTokens\n        rebuiltTokens\n        model\n        gapMs\n      }\n      countsByCause\n      sessionsScanned\n      sampled\n    }\n  }\n": typeof types.CacheBustsViewDocument,
+    "\n  query CachePricingRates {\n    modelPricing {\n      model\n      inputCostPerMtok\n      cacheReadCostPerMtok\n      cacheWriteCostPerMtok\n    }\n  }\n": typeof types.CachePricingRatesDocument,
     "\n  query InvitationsList {\n    invitations {\n      id\n      email\n      name\n      role\n      status\n      lastSentAt\n      expiresAt\n      invitedBy {\n        userId\n        name\n        email\n      }\n    }\n  }\n": typeof types.InvitationsListDocument,
     "\n  mutation ResendInvitation($invitationId: ID!) {\n    resendInvitation(invitationId: $invitationId) {\n      inviteUrl\n      emailDelivery {\n        transport\n        delivered\n        error\n      }\n    }\n  }\n": typeof types.ResendInvitationDocument,
     "\n  mutation RevokeInvitation($invitationId: ID!) {\n    revokeInvitation(invitationId: $invitationId) {\n      id\n      status\n    }\n  }\n": typeof types.RevokeInvitationDocument,
@@ -62,10 +66,6 @@ type Documents = {
     "\n  query SettingsView {\n    settings {\n      ...SettingsViewFields\n    }\n  }\n": typeof types.SettingsViewDocument,
     "\n  mutation UpdateSettings($input: SettingsInput!) {\n    updateSettings(input: $input) {\n      ...SettingsViewFields\n    }\n  }\n": typeof types.UpdateSettingsDocument,
     "\n  query ActiveSessions {\n    activeSessionCount {\n      activeSessions\n      windowMs\n    }\n  }\n": typeof types.ActiveSessionsDocument,
-    "\n  query TokenAttributionView($start: String, $end: String) {\n    tokenAttribution(start: $start, end: $end) {\n      requestCount\n      sampled\n      buckets {\n        key\n        chars\n        estimatedTokens\n      }\n      toolSchemas {\n        name\n        chars\n        estimatedTokens\n        blocks\n      }\n      toolResults {\n        name\n        chars\n        estimatedTokens\n        blocks\n      }\n    }\n  }\n": typeof types.TokenAttributionViewDocument,
-    "\n  query IdleGapsView($start: String, $end: String) {\n    idleGaps(start: $start, end: $end) {\n      buckets {\n        key\n        label\n        count\n      }\n      totalGaps\n      overTtl\n      recoverableByOneHourTtl\n      sessionsScanned\n      sampled\n    }\n  }\n": typeof types.IdleGapsViewDocument,
-    "\n  query CacheBustsView($start: String, $end: String) {\n    cacheBusts(start: $start, end: $end) {\n      busts {\n        sessionId\n        requestId\n        at\n        cause\n        droppedCacheReadTokens\n        rebuiltTokens\n        gapMs\n      }\n      countsByCause\n      sessionsScanned\n      sampled\n    }\n  }\n": typeof types.CacheBustsViewDocument,
-    "\n  query RouteOutputView($start: String, $end: String) {\n    routeOutputReport(start: $start, end: $end) {\n      routes {\n        route\n        requests\n        outputTokens\n        avgOutputTokens\n        reasoningShare\n        outputCost\n      }\n    }\n  }\n": typeof types.RouteOutputViewDocument,
     "\n  fragment UsageGroupFields on UsageGroup {\n    key\n    requestCount\n    failedRequests\n    retriedRequests\n    failureRate\n    retryRate\n    latency {\n      averageMs\n      p95Ms\n    }\n    usage {\n      inputTokens\n      cachedInputTokens\n      cacheCreationInputTokens\n      outputTokens\n      reasoningTokens\n      totalTokens\n    }\n    cost {\n      selected\n      baseline\n      savings\n      classifier\n    }\n  }\n": typeof types.UsageGroupFieldsFragmentDoc,
     "\n  query UsageReportView($groupBy: UsageGroupBy!, $start: String, $end: String) {\n    usage(groupBy: $groupBy, start: $start, end: $end) {\n      groupBy\n      data {\n        ...UsageGroupFields\n      }\n      totals {\n        ...UsageGroupFields\n      }\n    }\n  }\n": typeof types.UsageReportViewDocument,
     "\n  query UsageTimeseriesView($groupBy: UsageGroupBy!, $interval: UsageInterval, $start: String, $end: String, $limit: Int) {\n    usageTimeseries(groupBy: $groupBy, interval: $interval, start: $start, end: $end, limit: $limit) {\n      groupBy\n      interval\n      start\n      end\n      groups {\n        ...UsageGroupFields\n      }\n      points {\n        ts\n        totals {\n          ...UsageGroupFields\n        }\n        groups\n      }\n    }\n  }\n": typeof types.UsageTimeseriesViewDocument,
@@ -79,6 +79,10 @@ type Documents = {
 };
 const documents: Documents = {
     "\n  query BillingPage {\n    overview {\n      requestCount\n      cost {\n        selected\n        baseline\n        savings\n      }\n    }\n    settings {\n      budgets {\n        warningEstimatedInputTokens\n        maxEstimatedInputTokens\n        maxRoute\n      }\n    }\n  }\n": types.BillingPageDocument,
+    "\n  query TokenAttributionView($start: String, $end: String) {\n    tokenAttribution(start: $start, end: $end) {\n      requestCount\n      sampled\n      buckets {\n        key\n        chars\n        estimatedTokens\n      }\n      toolSchemas {\n        name\n        chars\n        estimatedTokens\n        blocks\n      }\n      toolResults {\n        name\n        chars\n        estimatedTokens\n        blocks\n      }\n    }\n  }\n": types.TokenAttributionViewDocument,
+    "\n  query IdleGapsView($start: String, $end: String) {\n    idleGaps(start: $start, end: $end) {\n      buckets {\n        key\n        label\n        count\n      }\n      totalGaps\n      overTtl\n      recoverableByOneHourTtl\n      sessionsScanned\n      sampled\n    }\n  }\n": types.IdleGapsViewDocument,
+    "\n  query CacheBustsView($start: String, $end: String) {\n    cacheBusts(start: $start, end: $end) {\n      busts {\n        sessionId\n        requestId\n        at\n        cause\n        droppedCacheReadTokens\n        rebuiltTokens\n        model\n        gapMs\n      }\n      countsByCause\n      sessionsScanned\n      sampled\n    }\n  }\n": types.CacheBustsViewDocument,
+    "\n  query CachePricingRates {\n    modelPricing {\n      model\n      inputCostPerMtok\n      cacheReadCostPerMtok\n      cacheWriteCostPerMtok\n    }\n  }\n": types.CachePricingRatesDocument,
     "\n  query InvitationsList {\n    invitations {\n      id\n      email\n      name\n      role\n      status\n      lastSentAt\n      expiresAt\n      invitedBy {\n        userId\n        name\n        email\n      }\n    }\n  }\n": types.InvitationsListDocument,
     "\n  mutation ResendInvitation($invitationId: ID!) {\n    resendInvitation(invitationId: $invitationId) {\n      inviteUrl\n      emailDelivery {\n        transport\n        delivered\n        error\n      }\n    }\n  }\n": types.ResendInvitationDocument,
     "\n  mutation RevokeInvitation($invitationId: ID!) {\n    revokeInvitation(invitationId: $invitationId) {\n      id\n      status\n    }\n  }\n": types.RevokeInvitationDocument,
@@ -125,10 +129,6 @@ const documents: Documents = {
     "\n  query SettingsView {\n    settings {\n      ...SettingsViewFields\n    }\n  }\n": types.SettingsViewDocument,
     "\n  mutation UpdateSettings($input: SettingsInput!) {\n    updateSettings(input: $input) {\n      ...SettingsViewFields\n    }\n  }\n": types.UpdateSettingsDocument,
     "\n  query ActiveSessions {\n    activeSessionCount {\n      activeSessions\n      windowMs\n    }\n  }\n": types.ActiveSessionsDocument,
-    "\n  query TokenAttributionView($start: String, $end: String) {\n    tokenAttribution(start: $start, end: $end) {\n      requestCount\n      sampled\n      buckets {\n        key\n        chars\n        estimatedTokens\n      }\n      toolSchemas {\n        name\n        chars\n        estimatedTokens\n        blocks\n      }\n      toolResults {\n        name\n        chars\n        estimatedTokens\n        blocks\n      }\n    }\n  }\n": types.TokenAttributionViewDocument,
-    "\n  query IdleGapsView($start: String, $end: String) {\n    idleGaps(start: $start, end: $end) {\n      buckets {\n        key\n        label\n        count\n      }\n      totalGaps\n      overTtl\n      recoverableByOneHourTtl\n      sessionsScanned\n      sampled\n    }\n  }\n": types.IdleGapsViewDocument,
-    "\n  query CacheBustsView($start: String, $end: String) {\n    cacheBusts(start: $start, end: $end) {\n      busts {\n        sessionId\n        requestId\n        at\n        cause\n        droppedCacheReadTokens\n        rebuiltTokens\n        gapMs\n      }\n      countsByCause\n      sessionsScanned\n      sampled\n    }\n  }\n": types.CacheBustsViewDocument,
-    "\n  query RouteOutputView($start: String, $end: String) {\n    routeOutputReport(start: $start, end: $end) {\n      routes {\n        route\n        requests\n        outputTokens\n        avgOutputTokens\n        reasoningShare\n        outputCost\n      }\n    }\n  }\n": types.RouteOutputViewDocument,
     "\n  fragment UsageGroupFields on UsageGroup {\n    key\n    requestCount\n    failedRequests\n    retriedRequests\n    failureRate\n    retryRate\n    latency {\n      averageMs\n      p95Ms\n    }\n    usage {\n      inputTokens\n      cachedInputTokens\n      cacheCreationInputTokens\n      outputTokens\n      reasoningTokens\n      totalTokens\n    }\n    cost {\n      selected\n      baseline\n      savings\n      classifier\n    }\n  }\n": types.UsageGroupFieldsFragmentDoc,
     "\n  query UsageReportView($groupBy: UsageGroupBy!, $start: String, $end: String) {\n    usage(groupBy: $groupBy, start: $start, end: $end) {\n      groupBy\n      data {\n        ...UsageGroupFields\n      }\n      totals {\n        ...UsageGroupFields\n      }\n    }\n  }\n": types.UsageReportViewDocument,
     "\n  query UsageTimeseriesView($groupBy: UsageGroupBy!, $interval: UsageInterval, $start: String, $end: String, $limit: Int) {\n    usageTimeseries(groupBy: $groupBy, interval: $interval, start: $start, end: $end, limit: $limit) {\n      groupBy\n      interval\n      start\n      end\n      groups {\n        ...UsageGroupFields\n      }\n      points {\n        ts\n        totals {\n          ...UsageGroupFields\n        }\n        groups\n      }\n    }\n  }\n": types.UsageTimeseriesViewDocument,
@@ -145,6 +145,22 @@ const documents: Documents = {
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  query BillingPage {\n    overview {\n      requestCount\n      cost {\n        selected\n        baseline\n        savings\n      }\n    }\n    settings {\n      budgets {\n        warningEstimatedInputTokens\n        maxEstimatedInputTokens\n        maxRoute\n      }\n    }\n  }\n"): typeof import('./graphql').BillingPageDocument;
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query TokenAttributionView($start: String, $end: String) {\n    tokenAttribution(start: $start, end: $end) {\n      requestCount\n      sampled\n      buckets {\n        key\n        chars\n        estimatedTokens\n      }\n      toolSchemas {\n        name\n        chars\n        estimatedTokens\n        blocks\n      }\n      toolResults {\n        name\n        chars\n        estimatedTokens\n        blocks\n      }\n    }\n  }\n"): typeof import('./graphql').TokenAttributionViewDocument;
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query IdleGapsView($start: String, $end: String) {\n    idleGaps(start: $start, end: $end) {\n      buckets {\n        key\n        label\n        count\n      }\n      totalGaps\n      overTtl\n      recoverableByOneHourTtl\n      sessionsScanned\n      sampled\n    }\n  }\n"): typeof import('./graphql').IdleGapsViewDocument;
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query CacheBustsView($start: String, $end: String) {\n    cacheBusts(start: $start, end: $end) {\n      busts {\n        sessionId\n        requestId\n        at\n        cause\n        droppedCacheReadTokens\n        rebuiltTokens\n        model\n        gapMs\n      }\n      countsByCause\n      sessionsScanned\n      sampled\n    }\n  }\n"): typeof import('./graphql').CacheBustsViewDocument;
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query CachePricingRates {\n    modelPricing {\n      model\n      inputCostPerMtok\n      cacheReadCostPerMtok\n      cacheWriteCostPerMtok\n    }\n  }\n"): typeof import('./graphql').CachePricingRatesDocument;
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
@@ -329,22 +345,6 @@ export function graphql(source: "\n  mutation UpdateSettings($input: SettingsInp
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  query ActiveSessions {\n    activeSessionCount {\n      activeSessions\n      windowMs\n    }\n  }\n"): typeof import('./graphql').ActiveSessionsDocument;
-/**
- * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
- */
-export function graphql(source: "\n  query TokenAttributionView($start: String, $end: String) {\n    tokenAttribution(start: $start, end: $end) {\n      requestCount\n      sampled\n      buckets {\n        key\n        chars\n        estimatedTokens\n      }\n      toolSchemas {\n        name\n        chars\n        estimatedTokens\n        blocks\n      }\n      toolResults {\n        name\n        chars\n        estimatedTokens\n        blocks\n      }\n    }\n  }\n"): typeof import('./graphql').TokenAttributionViewDocument;
-/**
- * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
- */
-export function graphql(source: "\n  query IdleGapsView($start: String, $end: String) {\n    idleGaps(start: $start, end: $end) {\n      buckets {\n        key\n        label\n        count\n      }\n      totalGaps\n      overTtl\n      recoverableByOneHourTtl\n      sessionsScanned\n      sampled\n    }\n  }\n"): typeof import('./graphql').IdleGapsViewDocument;
-/**
- * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
- */
-export function graphql(source: "\n  query CacheBustsView($start: String, $end: String) {\n    cacheBusts(start: $start, end: $end) {\n      busts {\n        sessionId\n        requestId\n        at\n        cause\n        droppedCacheReadTokens\n        rebuiltTokens\n        gapMs\n      }\n      countsByCause\n      sessionsScanned\n      sampled\n    }\n  }\n"): typeof import('./graphql').CacheBustsViewDocument;
-/**
- * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
- */
-export function graphql(source: "\n  query RouteOutputView($start: String, $end: String) {\n    routeOutputReport(start: $start, end: $end) {\n      routes {\n        route\n        requests\n        outputTokens\n        avgOutputTokens\n        reasoningShare\n        outputCost\n      }\n    }\n  }\n"): typeof import('./graphql').RouteOutputViewDocument;
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
