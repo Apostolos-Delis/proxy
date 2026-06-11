@@ -444,6 +444,80 @@ describe("usage analytics admin APIs", () => {
     expect(usage.totals.cost.savings).toBeCloseTo(usage.totals.cost.baseline - 0.0016);
   });
 
+  it("prices baseline against the organization's configured baseline models", async () => {
+    const fixture = await setup("org_usage_baseline");
+    const createdAt = new Date("2026-06-08T12:00:00.000Z");
+
+    await fixture.db.insert(users).values([{ id: "user_bl" }]);
+    await fixture.db.insert(agentSessions).values({
+      id: "session_bl",
+      organizationId: "org_usage_baseline",
+      workspaceId: defaultWorkspaceId("org_usage_baseline"),
+      userId: "user_bl",
+      surface: "anthropic-messages"
+    });
+    await fixture.db.insert(requests).values([
+      usageRequest("bl_request", "org_usage_baseline", "user_bl", "session_bl", "anthropic-messages", createdAt)
+    ]);
+    await fixture.db.insert(routeDecisions).values([
+      usageDecision("bl_decision", "bl_request", "org_usage_baseline", "hard", "anthropic", "claude-opus-4-8")
+    ]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("bl_attempt", "bl_request", "org_usage_baseline", "anthropic-messages", "anthropic", "claude-opus-4-8", "completed", createdAt)
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      usageRow("bl_usage", "bl_request", "bl_attempt", "org_usage_baseline", "anthropic", "claude-opus-4-8", "hard", 1000, 100, 7500)
+    ]);
+
+    const queryUsage = async () => (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { usage(groupBy: model) { totals { cost { selected baseline savings } } } }`
+    )).data?.usage;
+
+    // Default counterfactual is claude-fable-5 ($10/$50): 1000 in + 100 out = $0.015.
+    const before = await queryUsage();
+    expect(before.totals.cost.selected).toBeCloseTo(0.0075);
+    expect(before.totals.cost.baseline).toBeCloseTo(0.015);
+    expect(before.totals.cost.savings).toBeCloseTo(0.0075);
+
+    await fixture.persistence.organizationSettings.setCostBaseline("org_usage_baseline", {
+      anthropicModel: "claude-haiku-4-5",
+      openaiModel: null
+    });
+
+    // Configured counterfactual claude-haiku-4-5 ($1/$5): the same tokens
+    // baseline at $0.0015, flipping savings negative.
+    const after = await queryUsage();
+    expect(after.totals.cost.baseline).toBeCloseTo(0.0015);
+    expect(after.totals.cost.savings).toBeCloseTo(-0.006);
+
+    // A request that explicitly pinned a route tier stays its own
+    // counterfactual: the hard tier's model (claude-sonnet-4-5 in the test
+    // env, $3/$15), unaffected by the org baseline override.
+    await fixture.db.insert(requests).values([{
+      ...usageRequest("bl_alias_request", "org_usage_baseline", "user_bl", "session_bl", "anthropic-messages", createdAt),
+      requestedModel: "claude-router-hard"
+    }]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("bl_alias_attempt", "bl_alias_request", "org_usage_baseline", "anthropic-messages", "anthropic", "claude-opus-4-8", "completed", createdAt)
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      usageRow("bl_alias_usage", "bl_alias_request", "bl_alias_attempt", "org_usage_baseline", "anthropic", "claude-opus-4-8", "hard", 1000, 100, 7500)
+    ]);
+
+    const summaries = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { requests { requestId baselineCost } }`
+    )).data?.requests;
+    const byRequest = new Map(
+      summaries.map((row: { requestId: string; baselineCost: number }) => [row.requestId, row.baselineCost])
+    );
+    expect(byRequest.get("bl_alias_request")).toBeCloseTo(0.0045, 6);
+    expect(byRequest.get("bl_request")).toBeCloseTo(0.0015, 6);
+  });
+
   it("captures the classifier's own billed call as a priced classifier ledger row", async () => {
     activeFixture = await captureFixture("org_clf_capture", "raw_text", false, {
       envOverrides: { CLASSIFIER_MODEL: "gpt-5-nano" },

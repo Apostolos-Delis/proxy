@@ -12,6 +12,7 @@ type PromptCaptureStateModel = SettingsPayload["promptCapture"];
 type StorageInfoModel = SettingsPayload["storage"];
 type EditableSettingsModel = SettingsPayload["settings"];
 type EditableClassifierModel = EditableSettingsModel["classifier"];
+type CostBaselineSettingsModel = EditableSettingsModel["costBaseline"];
 type RouteQualitySettingsModel = EditableSettingsModel["routeQuality"];
 type RuntimeSettingsModel = SettingsPayload["runtime"];
 
@@ -81,6 +82,15 @@ export const RouteQualitySettings = builder
     })
   });
 
+export const CostBaselineSettings = builder
+  .objectRef<CostBaselineSettingsModel>("CostBaselineSettings")
+  .implement({
+    fields: (t) => ({
+      anthropicModel: t.exposeString("anthropicModel"),
+      openaiModel: t.exposeString("openaiModel")
+    })
+  });
+
 export const EditableSettings = builder
   .objectRef<EditableSettingsModel>("EditableSettings")
   .implement({
@@ -89,6 +99,7 @@ export const EditableSettings = builder
       systemPrompt: t.exposeString("systemPrompt", { nullable: true }),
       cacheTtlUpgrade: t.exposeBoolean("cacheTtlUpgrade"),
       toolResultCompression: t.exposeBoolean("toolResultCompression"),
+      costBaseline: t.expose("costBaseline", { type: CostBaselineSettings }),
       classifier: t.expose("classifier", { type: EditableClassifier }),
       budgets: t.expose("budgets", { type: BudgetSettings }),
       routeQuality: t.expose("routeQuality", { type: RouteQualitySettings }),
@@ -155,12 +166,23 @@ export const PromptCaptureSettingsInput = builder.inputType("PromptCaptureSettin
   })
 });
 
+// Both surfaces travel together — requiring them prevents a partial input
+// from silently resetting the omitted surface. Empty string clears that
+// surface back to its default baseline model.
+export const CostBaselineSettingsInput = builder.inputType("CostBaselineSettingsInput", {
+  fields: (t) => ({
+    anthropicModel: t.string({ required: true }),
+    openaiModel: t.string({ required: true })
+  })
+});
+
 export const SettingsInput = builder.inputType("SettingsInput", {
   fields: (t) => ({
     schemaVersion: t.int(),
     systemPrompt: t.string(),
     cacheTtlUpgrade: t.boolean(),
     toolResultCompression: t.boolean(),
+    costBaseline: t.field({ type: CostBaselineSettingsInput }),
     classifier: t.field({ type: ClassifierSettingsInput }),
     budgets: t.field({ type: BudgetSettingsInput }),
     routeQuality: t.field({ type: RouteQualitySettingsInput }),

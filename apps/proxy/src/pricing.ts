@@ -1,4 +1,4 @@
-import type { Provider } from "./types.js";
+import type { Provider, Surface } from "./types.js";
 
 export type ModelPricing = {
   readonly inputCostPerMtok: number;
@@ -51,6 +51,24 @@ export const defaultModelPricing: Readonly<Record<string, { provider: Provider }
   "gpt-5.5-pro": pricedModel("openai", 15.0, 120.0),
   "gpt-5-nano": pricedModel("openai", 0.05, 0.4)
 });
+
+// The no-routing counterfactual behind baseline cost and savings: what each
+// request would have cost on the model a harness runs by default when pointed
+// straight at its provider. Organizations override per surface via settings
+// (organization_settings.costBaseline*Model keys).
+export type CostBaseline = {
+  readonly anthropicModel: string;
+  readonly openaiModel: string;
+};
+
+export const defaultCostBaseline: CostBaseline = Object.freeze({
+  anthropicModel: "claude-fable-5",
+  openaiModel: "gpt-5.5"
+});
+
+export function baselineModelForSurface(baseline: CostBaseline, surface: Surface) {
+  return surface === "openai-responses" ? baseline.openaiModel : baseline.anthropicModel;
+}
 
 function pricedModel(provider: Provider, inputCostPerMtok: number, outputCostPerMtok: number) {
   return Object.freeze({

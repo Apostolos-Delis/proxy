@@ -20,7 +20,7 @@ import {
   type PromptProxyDbSession
 } from "@prompt-proxy/db";
 
-import { explicitAlias, modelForRoute } from "../catalog.js";
+import { baselineUpstreamModel } from "../catalog.js";
 import type { ModelCatalog } from "../catalog.js";
 import {
   applyPricingToEntry,
@@ -31,6 +31,7 @@ import {
   staticPricingEntries,
   undatedModel,
   usageCostMicros,
+  type CostBaseline,
   type ModelPricing,
   type ModelPricingEntry,
   type ModelPricingTable
@@ -51,6 +52,7 @@ import { CACHE_TTL_DEFAULT_MS } from "../cacheWindows.js";
 import { CACHE_BUST_SAMPLE_CAP, detectCacheBusts } from "./cacheBusts.js";
 import { aggregateIdleGaps, IDLE_GAP_SAMPLE_CAP } from "./idleGaps.js";
 import { orgPricingOverrides, type OrgPricingOverride } from "./modelPricing.js";
+import { orgCostBaseline } from "./organizationSettings.js";
 import { aggregateTokenAttribution, TOKEN_ATTRIBUTION_SAMPLE_CAP } from "./tokenAttributionReport.js";
 import { routeValue, surfaceValue } from "./values.js";
 
@@ -826,6 +828,12 @@ export class AdminQueryService {
       orgPricingOverrides(this.db, this.organizationId));
   }
 
+  // Savings counterfactual for this organization: the baseline models from
+  // organization settings, defaulting to the harness frontier defaults.
+  private effectiveCostBaseline(): Promise<CostBaseline> {
+    return this.cached("cost-baseline", () => orgCostBaseline(this.db, this.organizationId));
+  }
+
   // Pricing mutations re-read through the same request-scoped service; drop
   // the memoized override rows so the re-read reflects the write.
   invalidateModelPricing() {
@@ -919,7 +927,10 @@ export class AdminQueryService {
     options: { aggregateUsageByRequest?: boolean } = {}
   ) {
     if (requestRows.length === 0) return [];
-    const pricing = await this.effectivePricing();
+    const [pricing, costBaseline] = await Promise.all([
+      this.effectivePricing(),
+      this.effectiveCostBaseline()
+    ]);
     const { decisions, attempts, usageRows, classifierUsageRows } = await this.summaryInputsFor(requestRows);
 
     const decisionsByRequest = new Map(decisions.map((decision) => [decision.requestId, decision]));
@@ -946,7 +957,7 @@ export class AdminQueryService {
         usage,
         classifierCost: classifierCostByRequest.get(request.id) ?? 0,
         attemptCount: attemptCountsByRequest.get(request.id) ?? 0
-      }, this.catalog, pricing);
+      }, this.catalog, pricing, costBaseline);
     });
     return this.addRoutingConfigNames(summaries);
   }
@@ -1526,7 +1537,7 @@ function requestSummary(row: {
   usage: UsageAggregate | null;
   classifierCost: number;
   attemptCount: number;
-}, catalog: ModelCatalog, pricing: ModelPricingTable) {
+}, catalog: ModelCatalog, pricing: ModelPricingTable, costBaseline: CostBaseline) {
   const usage = row.usage
     ? {
         inputTokens: row.usage.inputTokens,
@@ -1545,7 +1556,7 @@ function requestSummary(row: {
   // — savings therefore absorb the routing overhead honestly.
   const classifierCost = row.classifierCost;
   const selectedCost = providerCost + classifierCost;
-  const baselineCost = baselineCostFor(catalog, pricing, row.request.surface, row.request.requestedModel, usage);
+  const baselineCost = baselineCostFor(catalog, pricing, costBaseline, row.request.surface, row.request.requestedModel, usage);
   return {
     requestId: row.request.id,
     userId: row.request.userId ?? undefined,
@@ -1952,14 +1963,14 @@ function timestamp(value: Date | null | undefined) {
 function baselineCostFor(
   catalog: ModelCatalog,
   pricing: ModelPricingTable,
+  costBaseline: CostBaseline,
   surface: string,
   requestedModel: string,
   usage: ReturnType<typeof emptyUsage>
 ) {
   const compatibleSurface = surfaceValue(surface);
   if (!compatibleSurface) return 0;
-  const route = explicitAlias(compatibleSurface, requestedModel) ?? "balanced";
-  const model = modelForRoute(catalog, route, compatibleSurface).upstreamModel;
+  const model = baselineUpstreamModel(catalog, costBaseline, compatibleSurface, requestedModel);
   return usageCostMicros(pricingForModel(pricing, model), usage).totalCostMicros / 1_000_000;
 }
 

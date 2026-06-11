@@ -114,6 +114,23 @@ export function SettingsForm({
           </SettingsSection>
         ) : null}
 
+        {databaseEnabled && groups.includes("baseline") ? (
+          <SettingsSection title="Cost Baseline" description="The no-routing counterfactual behind baseline cost and savings: what each request would have cost if it had gone straight to this model. Requests that pin an explicit route tier are baselined against that tier's model instead.">
+            <TextField
+              label="Anthropic baseline model"
+              info="Anthropic-surface traffic is re-priced against this model to compute baseline cost. Use the model your engineers would run without the proxy. The model must have pricing configured on the Models page."
+              value={settings.costBaseline.anthropicModel}
+              onChange={(value) => setSettings({ ...settings, costBaseline: { ...settings.costBaseline, anthropicModel: value } })}
+            />
+            <TextField
+              label="OpenAI baseline model"
+              info="OpenAI-surface traffic is re-priced against this model to compute baseline cost. Use the model your engineers would run without the proxy. The model must have pricing configured on the Models page."
+              value={settings.costBaseline.openaiModel}
+              onChange={(value) => setSettings({ ...settings, costBaseline: { ...settings.costBaseline, openaiModel: value } })}
+            />
+          </SettingsSection>
+        ) : null}
+
         {groups.includes("classifier") ? (
           <SettingsSection title="Classifier" description="The LLM call that picks a route for each request." restartRequired={restartRequiredFor.includes("classifier")}>
             <TextField

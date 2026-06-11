@@ -67,13 +67,17 @@ describe("persistent settings admin APIs", () => {
         query: `mutation UpdateSettings($input: SettingsInput!) {
           updateSettings(input: $input) {
             storage { format path }
-            settings { systemPrompt classifier { model } }
+            settings { systemPrompt classifier { model } costBaseline { anthropicModel openaiModel } }
           }
         }`,
         variables: {
           input: {
             schemaVersion: 1,
             systemPrompt: "  Follow organization proxy policy.  ",
+            costBaseline: {
+              anthropicModel: "claude-opus-4-8",
+              openaiModel: "gpt-5.5-pro"
+            },
             classifier: {
               model: "route-classifier-ui",
               timeoutMs: 1800,
@@ -105,14 +109,65 @@ describe("persistent settings admin APIs", () => {
     expect(body.storage).toEqual(expect.objectContaining({ format: "json", path: settingsPath }));
     expect(body.settings.classifier.model).toBe("route-classifier-ui");
     expect(body.settings.systemPrompt).toBe("Follow organization proxy policy.");
+    expect(body.settings.costBaseline).toEqual({
+      anthropicModel: "claude-opus-4-8",
+      openaiModel: "gpt-5.5-pro"
+    });
     expect(file.classifier.timeoutMs).toBe(1800);
     expect(file.promptCapture.promptCaptureMode).toBe("hash_only");
     expect(file.systemPrompt).toBeUndefined();
+    expect(file.costBaseline).toBeUndefined();
     expect(orgSystemPrompt.value).toBe("Follow organization proxy policy.");
     expect(promptCapture).toEqual({
       promptCaptureMode: "hash_only",
       retentionDays: 7
     });
+  });
+
+  it("rejects unpriced baseline models before writing settings", async () => {
+    const settingsPath = await tempSettingsPath();
+    const app = buildServer(loadConfig({
+      PROMPT_PROXY_SETTINGS_PATH: settingsPath,
+      LOG_LEVEL: "fatal"
+    }), { persistence: fakePersistence() });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/admin/graphql",
+      headers: adminHeaders(),
+      payload: {
+        query: `mutation UpdateSettings($input: SettingsInput!) {
+          updateSettings(input: $input) {
+            organizationId
+          }
+        }`,
+        variables: {
+          input: {
+            schemaVersion: 1,
+            costBaseline: {
+              anthropicModel: "claude-not-a-model",
+              openaiModel: "gpt-5.5"
+            },
+            classifier: {
+              model: "route-classifier-ui",
+              timeoutMs: 1800,
+              maxAttempts: 3,
+              allowRedactedExcerpt: false
+            },
+            budgets: {},
+            routeQuality: {},
+            promptCapture: {}
+          }
+        }
+      }
+    });
+    const body = response.json();
+
+    await app.close();
+
+    expect(body.errors?.[0]?.message).toBe("baseline_model_unpriced: claude-not-a-model");
+    expect(body.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
+    await expect(readFile(settingsPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("rejects invalid settings without writing them", async () => {
@@ -173,7 +228,14 @@ function fakePersistence(
   organizationId = "local",
   orgSystemPrompt = { value: null as string | null }
 ) {
+  const orgCostBaseline = { anthropicModel: "claude-fable-5", openaiModel: "gpt-5.5" };
+  const pricedModels = ["claude-fable-5", "claude-opus-4-8", "gpt-5.5", "gpt-5.5-pro"];
   return {
+    adminQueries: {
+      forScope: () => ({
+        modelPricing: async () => pricedModels.map((model) => ({ model, source: "default" }))
+      })
+    },
     adminSessions: {
       resolve: async (token: string) => token === "test-admin-session"
         ? {
@@ -195,7 +257,17 @@ function fakePersistence(
       cacheTtlUpgrade: async () => false,
       setCacheTtlUpgrade: async (_organizationId: string, enabled: boolean) => enabled,
       setToolResultCompression: async (_organizationId: string, enabled: boolean) => enabled,
-      editable: async () => ({ systemPrompt: orgSystemPrompt.value, cacheTtlUpgrade: false, toolResultCompression: false })
+      setCostBaseline: async (_organizationId: string, baseline: { anthropicModel: string | null; openaiModel: string | null }) => {
+        orgCostBaseline.anthropicModel = baseline.anthropicModel?.trim() || "claude-fable-5";
+        orgCostBaseline.openaiModel = baseline.openaiModel?.trim() || "gpt-5.5";
+        return { ...orgCostBaseline };
+      },
+      editable: async () => ({
+        systemPrompt: orgSystemPrompt.value,
+        cacheTtlUpgrade: false,
+        toolResultCompression: false,
+        costBaseline: { ...orgCostBaseline }
+      })
     },
     promptArtifacts: {
       settings: async () => promptCapture,

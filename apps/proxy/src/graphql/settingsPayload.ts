@@ -1,6 +1,7 @@
 import type { PromptCaptureMode } from "@prompt-proxy/schema";
 
 import type { AppConfig } from "../config.js";
+import { defaultCostBaseline } from "../pricing.js";
 import { emptyProxySettings, type ProxySettings } from "../settings.js";
 import type { AppPersistence } from "./context.js";
 
@@ -18,12 +19,18 @@ export async function settingsResponse(
       };
   const editable = persistence
     ? await persistence.organizationSettings.editable(organizationId)
-    : { systemPrompt: null, cacheTtlUpgrade: false, toolResultCompression: false };
+    : {
+        systemPrompt: null,
+        cacheTtlUpgrade: false,
+        toolResultCompression: false,
+        costBaseline: defaultCostBaseline
+      };
   const settings = {
     schemaVersion: 1,
     systemPrompt: editable.systemPrompt,
     cacheTtlUpgrade: editable.cacheTtlUpgrade,
     toolResultCompression: editable.toolResultCompression,
+    costBaseline: editable.costBaseline,
     classifier: {
       model: fileSettings.classifier.model ?? config.classifierModel,
       timeoutMs: fileSettings.classifier.timeoutMs ?? config.classifierTimeoutMs,

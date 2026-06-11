@@ -202,10 +202,10 @@ describe("model pricing admin", () => {
       `query { overview { cost { selected baseline savings } totals { inputTokens cacheCreationInputTokens } } }`
     )).data?.overview;
     expect(overview.cost.selected).toBeCloseTo(0.0006);
-    // Baseline replays the same tokens through the balanced route model
-    // (claude-sonnet-4-5), which is also what this request used.
-    expect(overview.cost.baseline).toBeCloseTo(0.0006);
-    expect(overview.cost.savings).toBeCloseTo(0);
+    // Baseline replays the same tokens through the default cost baseline
+    // model (claude-fable-5 at $10/$50): 100 in + 20 out = $0.002.
+    expect(overview.cost.baseline).toBeCloseTo(0.002);
+    expect(overview.cost.savings).toBeCloseTo(0.0014);
   });
 
   it("rejects clearing pricing that does not exist", async () => {

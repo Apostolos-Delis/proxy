@@ -95,6 +95,16 @@ input ClassifierSettingsInput {
   timeoutMs: Int
 }
 
+type CostBaselineSettings {
+  anthropicModel: String!
+  openaiModel: String!
+}
+
+input CostBaselineSettingsInput {
+  anthropicModel: String!
+  openaiModel: String!
+}
+
 type CostTotals {
   baseline: Float!
   classifier: Float!
@@ -148,6 +158,7 @@ type EditableSettings {
   budgets: BudgetSettings!
   cacheTtlUpgrade: Boolean!
   classifier: EditableClassifier!
+  costBaseline: CostBaselineSettings!
   promptCapture: PromptCaptureState!
   routeQuality: RouteQualitySettings!
   schemaVersion: Int!
@@ -737,6 +748,7 @@ input SettingsInput {
   budgets: BudgetSettingsInput
   cacheTtlUpgrade: Boolean
   classifier: ClassifierSettingsInput
+  costBaseline: CostBaselineSettingsInput
   promptCapture: PromptCaptureSettingsInput
   routeQuality: RouteQualitySettingsInput
   schemaVersion: Int

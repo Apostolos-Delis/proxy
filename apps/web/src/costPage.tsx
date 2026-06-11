@@ -171,7 +171,7 @@ function Summary({ label, value, detail, tone, hint }: { label: string; value: s
 }
 
 const baselineExplanation =
-  "Baseline is the counterfactual cost of serving every request on the default balanced-tier model with no routing — the same tokens priced at that model's published rate. Selected spend is what routing actually cost, including the classifier's own call, so savings reflect routing net of its overhead.";
+  "Baseline is the counterfactual cost of serving every request on the organization's baseline models (Settings -> Cost Baseline) with no routing — the same tokens priced at those models' rates. Requests that pinned an explicit route tier are baselined against that tier's model. Selected spend is what routing actually cost, including the classifier's own call, so savings reflect routing net of its overhead.";
 
 function savingsDetailLabel(classifierCost: number, baseline: number, savingsRate: number) {
   if (classifierCost > 0) return `after ${formatMoney(classifierCost)} routing overhead`;
