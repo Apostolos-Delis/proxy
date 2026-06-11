@@ -11,7 +11,7 @@ import type {
 import { CostTotals, TokenTotals } from "./core.js";
 
 export const UsageGroupBy = builder.enumType("UsageGroupBy", {
-  values: ["user", "api_key", "provider", "model", "route", "surface", "session"] as const
+  values: ["user", "api_key", "provider", "model", "model_effort", "route", "surface", "session"] as const
 });
 
 export const UsageInterval = builder.enumType("UsageInterval", {
