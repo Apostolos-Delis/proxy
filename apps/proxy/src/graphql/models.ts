@@ -62,6 +62,8 @@ export type PromptPaginationModel = PromptPageModel["pagination"];
 export type PromptDetailModel = NonNullable<Awaited<ReturnType<Q["promptDetail"]>>>;
 export type PromptArtifactDetailModel = PromptDetailModel["artifact"];
 
+export type ModelPricingEntryModel = Awaited<ReturnType<Q["modelPricing"]>>[number];
+
 export type UsageReportModel = Awaited<ReturnType<Q["usage"]>>;
 export type UsageGroupModel = UsageReportModel["totals"];
 export type LatencySummaryModel = UsageGroupModel["latency"];

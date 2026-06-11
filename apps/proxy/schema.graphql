@@ -178,12 +178,32 @@ enum MemberRole {
   viewer
 }
 
+type ModelPricingEntry {
+  cacheReadCostPerMtok: Float
+  cacheWriteCostPerMtok: Float
+  inputCostPerMtok: Float
+  model: String!
+  outputCostPerMtok: Float
+  provider: String
+  seenInTraffic: Boolean!
+  source: ModelPricingSource!
+  updatedAt: String
+}
+
+enum ModelPricingSource {
+  custom
+  default
+  env
+  unpriced
+}
+
 type Mutation {
   acceptInvitation(name: String, token: String!): AcceptedInvitation!
   activateRoutingConfigVersion(configId: ID!, versionId: ID!): RoutingConfigDetail!
   archiveRoutingConfig(configId: ID!): RoutingConfigDetail!
   assignApiKeyProviderAccount(apiKeyId: ID!, provider: String!, providerAccountId: ID): ApiKey!
   assignApiKeyRoutingConfig(apiKeyId: ID!, routingConfigId: ID): ApiKey!
+  clearModelPricing(model: String!, provider: String!): [ModelPricingEntry!]!
   configurePromptCapture(promptCaptureMode: String!, retentionDays: Int!): PromptCaptureConfig!
   createApiKey(input: CreateApiKeyInput!): CreateApiKeyResult!
   createInvitation(input: CreateInvitationInput!): InvitationActionResult!
@@ -199,6 +219,7 @@ type Mutation {
   revokeApiKey(apiKeyId: ID!): ApiKey!
   revokeInvitation(invitationId: ID!): Invitation
   revokeProviderCredential(providerAccountId: ID!): ProviderAccount
+  setModelPricing(input: SetModelPricingInput!): [ModelPricingEntry!]!
   switchOrganization(organizationId: ID!): Viewer!
   switchWorkspace(workspaceId: ID!): Viewer!
   updateSettings(input: SettingsInput!): Settings!
@@ -415,6 +436,7 @@ type Query {
   apiKeys: [ApiKey!]!
   invitations: [Invitation!]!
   members: [OrgMember!]!
+  modelPricing: [ModelPricingEntry!]!
   overview: Overview!
   prompt(artifactId: ID!): PromptDetail
   promptAccessAudit: [PromptAccessAuditEntry!]!
@@ -626,6 +648,15 @@ type SessionSummary {
   userId: String
 }
 
+input SetModelPricingInput {
+  cacheReadCostPerMtok: Float
+  cacheWriteCostPerMtok: Float
+  inputCostPerMtok: Float!
+  model: String!
+  outputCostPerMtok: Float!
+  provider: String!
+}
+
 type Settings {
   budgets: BudgetSettings!
   classifier: ClassifierRuntime!
@@ -656,6 +687,7 @@ type StorageInfo {
 }
 
 type TokenTotals {
+  cacheCreationInputTokens: Float!
   cachedInputTokens: Float!
   inputTokens: Float!
   outputTokens: Float!
@@ -697,6 +729,7 @@ enum UsageInterval {
 }
 
 type UsageLedgerRow {
+  cacheCreationInputTokens: Float!
   cachedInputTokens: Float!
   createdAt: String!
   id: String!

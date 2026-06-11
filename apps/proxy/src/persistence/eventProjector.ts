@@ -1,13 +1,13 @@
 import type { PromptProxyTransaction } from "@prompt-proxy/db";
 
-import type { ModelCatalog } from "../catalog.js";
 import type { ProxyEvent } from "../events.js";
+import type { ModelPricingTable } from "../pricing.js";
 import { persistProviderStarted, persistProviderTerminal, persistStreamStarted } from "./providerAttempt.js";
 import { persistRequestReceived, persistRoutingContext } from "./requestState.js";
 import { persistRouteDecision } from "./routeDecision.js";
 import { persistSessionRoute } from "./sessionRoute.js";
 
-export async function projectEvent(tx: PromptProxyTransaction, catalog: ModelCatalog, event: ProxyEvent) {
+export async function projectEvent(tx: PromptProxyTransaction, pricing: ModelPricingTable, event: ProxyEvent) {
   if (event.eventType === "proxy.request_received") {
     await persistRequestReceived(tx, event);
     return;
@@ -33,7 +33,7 @@ export async function projectEvent(tx: PromptProxyTransaction, catalog: ModelCat
     event.eventType === "provider.response_failed" ||
     event.eventType === "provider.response_cancelled"
   ) {
-    await persistProviderTerminal(tx, catalog, event);
+    await persistProviderTerminal(tx, pricing, event);
     return;
   }
   if (event.eventType === "session.route_memory_recorded") {

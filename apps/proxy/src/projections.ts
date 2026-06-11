@@ -2,16 +2,10 @@ import { explicitAlias, modelForRoute, routeOrder } from "./catalog.js";
 import type { ModelCatalog } from "./catalog.js";
 import type { AppConfig } from "./config.js";
 import type { ProxyEvent } from "./events.js";
+import { normalizeUsage, type NormalizedUsage } from "./persistence/values.js";
+import { pricingForModel, usageCostMicros, type ModelPricingTable } from "./pricing.js";
 import type { JsonObject, JsonValue, RouteName, Surface } from "./types.js";
 import { isRecord } from "./util.js";
-
-type UsageSummary = {
-  inputTokens: number;
-  cachedInputTokens: number;
-  outputTokens: number;
-  reasoningTokens: number;
-  totalTokens: number;
-};
 
 export class ProjectionService {
   constructor(
@@ -41,18 +35,18 @@ export class ProjectionService {
 
       const decision = decisions.get(event.scopeId);
       const context = contexts.get(event.scopeId);
-      const usage = normalizeUsage((event.payload as JsonObject).usage);
+      const usage = normalizeEventUsage((event.payload as JsonObject).usage);
       addUsage(totals, usage);
 
       const selectedModel = stringValue((event.payload as JsonObject).selectedModel);
       const surface = stringValue(decision?.surface) as Surface | undefined;
       const requestedModel = stringValue(decision?.requestedModel);
       const finalRoute = stringValue(decision?.finalRoute) as RouteName | undefined;
-      const selected = estimateCost(selectedModel, usage, this.catalog);
+      const selected = estimateCost(selectedModel, usage, this.config.modelCosts);
       const baseline = estimateCost(
         baselineModel(this.catalog, surface, requestedModel),
         usage,
-        this.catalog
+        this.config.modelCosts
       );
       selectedCost += selected;
       baselineCost += baseline;
@@ -193,53 +187,33 @@ function terminalStatus(event: ProxyEvent) {
   return "failed";
 }
 
-function normalizeUsage(value: JsonValue | undefined): UsageSummary {
-  const usage = isRecord(value) ? value : {};
-  const inputTokens = numberValue(usage.input_tokens) ?? 0;
-  const outputTokens = numberValue(usage.output_tokens) ?? 0;
-  const inputDetails = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : {};
-  const outputDetails = isRecord(usage.output_tokens_details) ? usage.output_tokens_details : {};
-  const cachedInputTokens =
-    numberValue(inputDetails.cached_tokens) ??
-    numberValue(usage.cache_read_input_tokens) ??
-    0;
-  const reasoningTokens = numberValue(outputDetails.reasoning_tokens) ?? 0;
-
-  return {
-    inputTokens,
-    cachedInputTokens,
-    outputTokens,
-    reasoningTokens,
-    totalTokens: numberValue(usage.total_tokens) ?? inputTokens + outputTokens
-  };
+function normalizeEventUsage(value: JsonValue | undefined): NormalizedUsage {
+  return normalizeUsage(isRecord(value) ? value : {});
 }
 
-function emptyUsage(): UsageSummary {
+function emptyUsage(): NormalizedUsage {
   return {
     inputTokens: 0,
     cachedInputTokens: 0,
+    cacheCreationInputTokens: 0,
     outputTokens: 0,
     reasoningTokens: 0,
     totalTokens: 0
   };
 }
 
-function addUsage(target: UsageSummary, source: UsageSummary) {
+function addUsage(target: NormalizedUsage, source: NormalizedUsage) {
   target.inputTokens += source.inputTokens;
   target.cachedInputTokens += source.cachedInputTokens;
+  target.cacheCreationInputTokens += source.cacheCreationInputTokens;
   target.outputTokens += source.outputTokens;
   target.reasoningTokens += source.reasoningTokens;
   target.totalTokens += source.totalTokens;
 }
 
-function estimateCost(model: string | undefined, usage: UsageSummary, catalog: ModelCatalog) {
+function estimateCost(model: string | undefined, usage: NormalizedUsage, pricing: ModelPricingTable) {
   if (!model) return 0;
-  const entry = Object.values(catalog).find((candidate) => candidate.upstreamModel === model);
-  if (!entry) return 0;
-  return (
-    usage.inputTokens / 1_000_000 * entry.inputCostPerMtok +
-    usage.outputTokens / 1_000_000 * entry.outputCostPerMtok
-  );
+  return usageCostMicros(pricingForModel(pricing, model), usage).totalCostMicros / 1_000_000;
 }
 
 function baselineModel(

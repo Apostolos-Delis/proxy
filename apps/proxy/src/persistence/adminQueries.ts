@@ -22,6 +22,18 @@ import {
 
 import { explicitAlias, modelForRoute } from "../catalog.js";
 import type { ModelCatalog } from "../catalog.js";
+import {
+  applyPricingToEntry,
+  compareModelPricingEntries,
+  emptyPricingEntry,
+  pricingForModel,
+  staticPricingEntries,
+  undatedModel,
+  usageCostMicros,
+  type ModelPricing,
+  type ModelPricingEntry,
+  type ModelPricingTable
+} from "../pricing.js";
 import type { JsonObject, RouteName } from "../types.js";
 import { searchAdminEntities } from "./adminSearch.js";
 import { workspaceScope } from "./scope.js";
@@ -34,10 +46,13 @@ import {
   routingConfigSummary,
   usageLedgerSummary
 } from "./adminSerializers.js";
-import { routeValue, surfaceValue, usageCostMicros } from "./values.js";
+import { orgPricingOverrides, type OrgPricingOverride } from "./modelPricing.js";
+import { routeValue, surfaceValue } from "./values.js";
 
 export type AdminQueryConfig = {
   routeQualityLowConfidenceThreshold: number;
+  modelCosts: ModelPricingTable;
+  modelCostsFromEnv: string[];
 };
 
 export type PromptListFilters = {
@@ -106,11 +121,7 @@ export class AdminQueryService {
       eventCount,
       requestCount: requestRows.length,
       totals: requestSummaries.reduce((acc, request) => {
-        acc.inputTokens += request.usage.inputTokens;
-        acc.cachedInputTokens += request.usage.cachedInputTokens;
-        acc.outputTokens += request.usage.outputTokens;
-        acc.reasoningTokens += request.usage.reasoningTokens;
-        acc.totalTokens += request.usage.totalTokens;
+        addUsageTotals(acc, request.usage);
         return acc;
       }, emptyUsage()),
       cost: requestSummaries.reduce((acc, request) => {
@@ -761,11 +772,94 @@ export class AdminQueryService {
     };
   }
 
+  // Effective pricing for this organization: boot defaults and env overrides,
+  // then per-org rows from model_catalog on top.
+  private effectivePricing(): Promise<ModelPricingTable> {
+    return this.cached("model-pricing", async () => {
+      const overrides = await this.pricingOverrideRows();
+      const table: Record<string, ModelPricing> = { ...this.config.modelCosts };
+      for (const override of overrides) table[override.model] = override.pricing;
+      return Object.freeze(table);
+    });
+  }
+
+  private pricingOverrideRows(): Promise<OrgPricingOverride[]> {
+    return this.cached("model-pricing-overrides", () =>
+      orgPricingOverrides(this.db, this.organizationId));
+  }
+
+  // Pricing mutations re-read through the same request-scoped service; drop
+  // the memoized override rows so the re-read reflects the write.
+  invalidateModelPricing() {
+    this.requestScopedCache.delete("model-pricing");
+    this.requestScopedCache.delete("model-pricing-overrides");
+  }
+
+  async modelPricing() {
+    const overrides = await this.pricingOverrideRows();
+    // Deliberately org-wide (no workspaceScope): pricing is an org-level
+    // resource, so unpriced traffic in any workspace is actionable here.
+    const ledgerModels = await this.db
+      .selectDistinct({
+        provider: usageLedger.provider,
+        model: usageLedger.model
+      })
+      .from(usageLedger)
+      .where(eq(usageLedger.organizationId, this.organizationId));
+
+    const entries = new Map<string, ModelPricingEntry>();
+    const upsert = (model: string, provider: string | null) => {
+      const existing = entries.get(model);
+      if (existing) {
+        existing.provider ??= provider;
+        return existing;
+      }
+      const entry = emptyPricingEntry(model, provider);
+      entries.set(model, entry);
+      return entry;
+    };
+
+    const overridesByModel = new Map(overrides.map((override) => [override.model, override]));
+    const envModels = new Set(this.config.modelCostsFromEnv);
+    for (const staticEntry of staticPricingEntries(this.config.modelCosts, this.config.modelCostsFromEnv)) {
+      entries.set(staticEntry.model, staticEntry);
+    }
+    for (const catalogEntry of Object.values(this.catalog)) {
+      upsert(catalogEntry.upstreamModel, catalogEntry.provider);
+    }
+    for (const ledgerModel of ledgerModels) {
+      const row = upsert(ledgerModel.model, ledgerModel.provider);
+      row.seenInTraffic = true;
+      if (row.source !== "unpriced") continue;
+      // Dated identifiers (claude-sonnet-4-5-20250929) price through their
+      // undated entry — including org overrides; reflect that in the listing.
+      const undated = undatedModel(ledgerModel.model);
+      const override = overridesByModel.get(ledgerModel.model) ?? overridesByModel.get(undated);
+      if (override) {
+        applyPricingToEntry(row, override.pricing, "custom");
+        row.updatedAt = override.updatedAt.toISOString();
+        continue;
+      }
+      const pricing = pricingForModel(this.config.modelCosts, ledgerModel.model);
+      if (pricing) {
+        applyPricingToEntry(row, pricing, envModels.has(ledgerModel.model) || envModels.has(undated) ? "env" : "default");
+      }
+    }
+    for (const override of overrides) {
+      const row = upsert(override.model, override.provider);
+      applyPricingToEntry(row, override.pricing, "custom");
+      row.updatedAt = override.updatedAt.toISOString();
+    }
+
+    return [...entries.values()].sort(compareModelPricingEntries);
+  }
+
   private async summarizeRequests(
     requestRows: RequestRow[],
     options: { aggregateUsageByRequest?: boolean } = {}
   ) {
     if (requestRows.length === 0) return [];
+    const pricing = await this.effectivePricing();
     const { decisions, attempts, usageRows } = await this.summaryInputsFor(requestRows);
 
     const decisionsByRequest = new Map(decisions.map((decision) => [decision.requestId, decision]));
@@ -790,7 +884,7 @@ export class AdminQueryService {
         attempt,
         usage,
         attemptCount: attemptCountsByRequest.get(request.id) ?? 0
-      }, this.catalog);
+      }, this.catalog, pricing);
     });
     return this.addRoutingConfigNames(summaries);
   }
@@ -1229,11 +1323,12 @@ function requestSummary(row: {
   attempt: ProviderAttemptRow | null;
   usage: UsageAggregate | null;
   attemptCount: number;
-}, catalog: ModelCatalog) {
+}, catalog: ModelCatalog, pricing: ModelPricingTable) {
   const usage = row.usage
     ? {
         inputTokens: row.usage.inputTokens,
         cachedInputTokens: row.usage.cachedInputTokens,
+        cacheCreationInputTokens: row.usage.cacheCreationInputTokens,
         outputTokens: row.usage.outputTokens,
         reasoningTokens: row.usage.reasoningTokens,
         totalTokens: row.usage.totalTokens
@@ -1241,7 +1336,7 @@ function requestSummary(row: {
     : emptyUsage();
   const selectedModel = row.decision?.selectedModel ?? row.attempt?.model ?? undefined;
   const selectedCost = (row.usage?.totalCostMicros ?? 0) / 1_000_000;
-  const baselineCost = baselineCostFor(catalog, row.request.surface, row.request.requestedModel, usage);
+  const baselineCost = baselineCostFor(catalog, pricing, row.request.surface, row.request.requestedModel, usage);
   return {
     requestId: row.request.id,
     userId: row.request.userId ?? undefined,
@@ -1357,13 +1452,18 @@ function sessionSummary(session: SessionRow, allRequests: RequestSummary[]) {
 
 function usageTotals(requests: RequestSummary[]) {
   return requests.reduce((acc, request) => {
-    acc.inputTokens += request.usage.inputTokens;
-    acc.cachedInputTokens += request.usage.cachedInputTokens;
-    acc.outputTokens += request.usage.outputTokens;
-    acc.reasoningTokens += request.usage.reasoningTokens;
-    acc.totalTokens += request.usage.totalTokens;
+    addUsageTotals(acc, request.usage);
     return acc;
   }, emptyUsage());
+}
+
+function addUsageTotals(target: ReturnType<typeof emptyUsage>, usage: ReturnType<typeof emptyUsage>) {
+  target.inputTokens += usage.inputTokens;
+  target.cachedInputTokens += usage.cachedInputTokens;
+  target.cacheCreationInputTokens += usage.cacheCreationInputTokens;
+  target.outputTokens += usage.outputTokens;
+  target.reasoningTokens += usage.reasoningTokens;
+  target.totalTokens += usage.totalTokens;
 }
 
 function costTotals(requests: RequestSummary[]) {
@@ -1465,11 +1565,7 @@ function addUsageRequest(group: UsageGroup, request: RequestSummary) {
   if (request.terminalStatus === "failed") group.failedRequests += 1;
   if (request.attemptCount > 1) group.retriedRequests += 1;
   if (request.latencyMs !== undefined && request.latencyMs >= 0) group.latenciesMs.push(request.latencyMs);
-  group.usage.inputTokens += request.usage.inputTokens;
-  group.usage.cachedInputTokens += request.usage.cachedInputTokens;
-  group.usage.outputTokens += request.usage.outputTokens;
-  group.usage.reasoningTokens += request.usage.reasoningTokens;
-  group.usage.totalTokens += request.usage.totalTokens;
+  addUsageTotals(group.usage, request.usage);
   group.cost.selected += request.selectedCost;
   group.cost.baseline += request.baselineCost;
   group.cost.savings += request.savings;
@@ -1480,11 +1576,7 @@ function mergeUsageGroup(target: UsageGroup, source: UsageGroup) {
   target.failedRequests += source.failedRequests;
   target.retriedRequests += source.retriedRequests;
   target.latenciesMs.push(...source.latenciesMs);
-  target.usage.inputTokens += source.usage.inputTokens;
-  target.usage.cachedInputTokens += source.usage.cachedInputTokens;
-  target.usage.outputTokens += source.usage.outputTokens;
-  target.usage.reasoningTokens += source.usage.reasoningTokens;
-  target.usage.totalTokens += source.usage.totalTokens;
+  addUsageTotals(target.usage, source.usage);
   target.cost.selected += source.cost.selected;
   target.cost.baseline += source.cost.baseline;
   target.cost.savings += source.cost.savings;
@@ -1596,6 +1688,7 @@ function usageAggregateForRow(row: UsageLedgerRow) {
 function addUsageRow(usage: UsageAggregate, row: UsageLedgerRow) {
   usage.inputTokens += row.inputTokens;
   usage.cachedInputTokens += row.cachedInputTokens;
+  usage.cacheCreationInputTokens += row.cacheCreationInputTokens;
   usage.outputTokens += row.outputTokens;
   usage.reasoningTokens += row.reasoningTokens;
   usage.totalTokens += row.totalTokens;
@@ -1608,6 +1701,7 @@ function timestamp(value: Date | null | undefined) {
 
 function baselineCostFor(
   catalog: ModelCatalog,
+  pricing: ModelPricingTable,
   surface: string,
   requestedModel: string,
   usage: ReturnType<typeof emptyUsage>
@@ -1616,7 +1710,7 @@ function baselineCostFor(
   if (!compatibleSurface) return 0;
   const route = explicitAlias(compatibleSurface, requestedModel) ?? "balanced";
   const model = modelForRoute(catalog, route, compatibleSurface).upstreamModel;
-  return usageCostMicros(catalog, model, usage).totalCostMicros / 1_000_000;
+  return usageCostMicros(pricingForModel(pricing, model), usage).totalCostMicros / 1_000_000;
 }
 
 function elapsedMs(start: Date | null | undefined, end: Date | null | undefined) {
@@ -1628,6 +1722,7 @@ function emptyUsage() {
   return {
     inputTokens: 0,
     cachedInputTokens: 0,
+    cacheCreationInputTokens: 0,
     outputTokens: 0,
     reasoningTokens: 0,
     totalTokens: 0

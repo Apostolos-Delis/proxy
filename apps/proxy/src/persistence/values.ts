@@ -1,25 +1,45 @@
-import type { ModelCatalog } from "../catalog.js";
 import type { JsonObject, RoutingConfigSnapshot } from "../types.js";
 import { isRecord } from "../util.js";
 
 export type NormalizedUsage = {
   inputTokens: number;
   cachedInputTokens: number;
+  cacheCreationInputTokens: number;
   outputTokens: number;
   reasoningTokens: number;
   totalTokens: number;
 };
 
+// Normalized convention: inputTokens is the TOTAL input presented to the
+// model, with cachedInputTokens (cache reads) and cacheCreationInputTokens
+// (cache writes) as billed-differently subsets. OpenAI already reports
+// input_tokens inclusive of input_tokens_details.cached_tokens, but Anthropic
+// reports input_tokens EXCLUSIVE of its top-level cache_read_input_tokens and
+// cache_creation_input_tokens — those are folded back in here. Anthropic's
+// shape is detected by its top-level cache keys, so re-normalizing an
+// already-normalized (camelCase) object stays a no-op.
 export function normalizeUsage(usage: Record<string, unknown>): NormalizedUsage {
   const inputDetails = recordValue(usage.input_tokens_details) ?? {};
   const outputDetails = recordValue(usage.output_tokens_details) ?? {};
-  const inputTokens = numberValue(usage.input_tokens) ?? numberValue(usage.inputTokens) ?? 0;
+  const anthropicCacheReadTokens = numberValue(usage.cache_read_input_tokens);
+  const anthropicCacheCreationTokens = numberValue(usage.cache_creation_input_tokens);
+  const exclusiveInputShape =
+    anthropicCacheReadTokens !== undefined || anthropicCacheCreationTokens !== undefined;
+
+  const reportedInputTokens = numberValue(usage.input_tokens) ?? numberValue(usage.inputTokens) ?? 0;
   const outputTokens = numberValue(usage.output_tokens) ?? numberValue(usage.outputTokens) ?? 0;
   const cachedInputTokens =
     numberValue(inputDetails.cached_tokens) ??
-    numberValue(usage.cache_read_input_tokens) ??
+    anthropicCacheReadTokens ??
     numberValue(usage.cachedInputTokens) ??
     0;
+  const cacheCreationInputTokens =
+    anthropicCacheCreationTokens ??
+    numberValue(usage.cacheCreationInputTokens) ??
+    0;
+  const inputTokens = exclusiveInputShape
+    ? reportedInputTokens + (anthropicCacheReadTokens ?? 0) + (anthropicCacheCreationTokens ?? 0)
+    : reportedInputTokens;
   const reasoningTokens =
     numberValue(outputDetails.reasoning_tokens) ??
     numberValue(usage.reasoningTokens) ??
@@ -27,27 +47,12 @@ export function normalizeUsage(usage: Record<string, unknown>): NormalizedUsage 
   return {
     inputTokens,
     cachedInputTokens,
+    cacheCreationInputTokens,
     outputTokens,
     reasoningTokens,
-    totalTokens: numberValue(usage.total_tokens) ?? numberValue(usage.totalTokens) ?? inputTokens + outputTokens
-  };
-}
-
-export function usageCostMicros(catalog: ModelCatalog, model: string, usage: NormalizedUsage) {
-  const entry = Object.values(catalog).find((candidate) => candidate.upstreamModel === model);
-  if (!entry) {
-    return {
-      inputCostMicros: 0,
-      outputCostMicros: 0,
-      totalCostMicros: 0
-    };
-  }
-  const inputCostMicros = Math.round(usage.inputTokens * entry.inputCostPerMtok);
-  const outputCostMicros = Math.round(usage.outputTokens * entry.outputCostPerMtok);
-  return {
-    inputCostMicros,
-    outputCostMicros,
-    totalCostMicros: inputCostMicros + outputCostMicros
+    totalTokens: exclusiveInputShape
+      ? inputTokens + outputTokens
+      : numberValue(usage.total_tokens) ?? numberValue(usage.totalTokens) ?? inputTokens + outputTokens
   };
 }
 

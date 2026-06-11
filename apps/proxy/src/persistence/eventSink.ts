@@ -10,24 +10,24 @@ import {
   type PromptProxyTransactionalDatabase
 } from "@prompt-proxy/db";
 
-import type { ModelCatalog } from "../catalog.js";
 import type { OutboxItem, PersistentEventSink, ProxyEvent } from "../events.js";
+import type { ModelPricingTable } from "../pricing.js";
 import { ensureOrganization } from "./identity.js";
 import { projectEvent } from "./eventProjector.js";
 
-export function createPostgresEventSink(databaseUrl: string, catalog: ModelCatalog) {
+export function createPostgresEventSink(databaseUrl: string, pricing: ModelPricingTable) {
   const db = createPostgresDatabase(databaseUrl);
-  return new DatabaseEventSink(createTransactionalDatabase(db), catalog, true);
+  return new DatabaseEventSink(createTransactionalDatabase(db), pricing, true);
 }
 
-export function createDatabaseEventSink(db: PromptProxyDatabase, catalog: ModelCatalog) {
-  return new DatabaseEventSink(createTransactionalDatabase(db), catalog, false);
+export function createDatabaseEventSink(db: PromptProxyDatabase, pricing: ModelPricingTable) {
+  return new DatabaseEventSink(createTransactionalDatabase(db), pricing, false);
 }
 
 export class DatabaseEventSink implements PersistentEventSink {
   constructor(
     private readonly db: PromptProxyTransactionalDatabase,
-    private readonly catalog: ModelCatalog,
+    private readonly pricing: ModelPricingTable,
     private readonly useAdvisoryLocks: boolean
   ) {}
 
@@ -35,7 +35,7 @@ export class DatabaseEventSink implements PersistentEventSink {
     await this.db.transaction(async (tx) => {
       await ensureOrganization(tx, event.tenantId);
       const sequence = await nextEventSequence(tx, event, this.useAdvisoryLocks);
-      await projectEvent(tx, this.catalog, event);
+      await projectEvent(tx, this.pricing, event);
       await tx.insert(events).values({
         id: event.eventId,
         sequence,

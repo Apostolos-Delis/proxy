@@ -125,6 +125,7 @@ export function usageLedgerSummary(row: UsageLedgerRow) {
     route: row.route ?? undefined,
     inputTokens: row.inputTokens,
     cachedInputTokens: row.cachedInputTokens,
+    cacheCreationInputTokens: row.cacheCreationInputTokens,
     outputTokens: row.outputTokens,
     reasoningTokens: row.reasoningTokens,
     totalTokens: row.totalTokens,

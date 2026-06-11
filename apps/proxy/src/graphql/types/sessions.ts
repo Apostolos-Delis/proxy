@@ -68,6 +68,7 @@ export const UsageLedgerRow = builder.objectRef<UsageLedgerRowModel>("UsageLedge
     route: t.exposeString("route", { nullable: true }),
     inputTokens: t.exposeFloat("inputTokens"),
     cachedInputTokens: t.exposeFloat("cachedInputTokens"),
+    cacheCreationInputTokens: t.exposeFloat("cacheCreationInputTokens"),
     outputTokens: t.exposeFloat("outputTokens"),
     reasoningTokens: t.exposeFloat("reasoningTokens"),
     totalTokens: t.exposeFloat("totalTokens"),

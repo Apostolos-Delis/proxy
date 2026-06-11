@@ -45,8 +45,6 @@ export type ModelCatalogEntry = {
   readonly supportedReasoningEfforts: readonly ReasoningEffort[];
   readonly supportsVerbosity: boolean;
   readonly contextWindow: number;
-  readonly inputCostPerMtok: number;
-  readonly outputCostPerMtok: number;
 };
 
 export type RouteConfig = {

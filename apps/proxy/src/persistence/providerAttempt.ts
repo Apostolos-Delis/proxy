@@ -8,8 +8,9 @@ import {
   type PromptProxyTransaction
 } from "@prompt-proxy/db";
 
-import type { ModelCatalog } from "../catalog.js";
+import { pricingForModel, usageCostMicros, type ModelPricingTable } from "../pricing.js";
 import { createId } from "../util.js";
+import { orgPricingOverrideForModel } from "./modelPricing.js";
 import { routeForRequest } from "./routeDecision.js";
 import {
   normalizeUsage,
@@ -17,8 +18,7 @@ import {
   providerValue,
   recordValue,
   stringValue,
-  surfaceValue,
-  usageCostMicros
+  surfaceValue
 } from "./values.js";
 
 export async function persistProviderStarted(tx: PromptProxyTransaction, event: {
@@ -62,7 +62,7 @@ export async function persistStreamStarted(tx: PromptProxyTransaction, event: {
     .where(eq(providerAttempts.id, providerAttemptId));
 }
 
-export async function persistProviderTerminal(tx: PromptProxyTransaction, catalog: ModelCatalog, event: {
+export async function persistProviderTerminal(tx: PromptProxyTransaction, pricing: ModelPricingTable, event: {
   tenantId: string;
   scopeId: string;
   createdAt: string;
@@ -112,7 +112,10 @@ export async function persistProviderTerminal(tx: PromptProxyTransaction, catalo
   if (!attempt || !request) return;
 
   const normalized = normalizeUsage(usage);
-  const costs = usageCostMicros(catalog, attempt.model, normalized);
+  const modelPricing =
+    await orgPricingOverrideForModel(tx, event.tenantId, attempt.provider, attempt.model) ??
+    pricingForModel(pricing, attempt.model);
+  const costs = usageCostMicros(modelPricing, normalized);
   const route = await routeForRequest(tx, event.scopeId);
 
   await tx
@@ -130,6 +133,7 @@ export async function persistProviderTerminal(tx: PromptProxyTransaction, catalo
       route,
       inputTokens: normalized.inputTokens,
       cachedInputTokens: normalized.cachedInputTokens,
+      cacheCreationInputTokens: normalized.cacheCreationInputTokens,
       outputTokens: normalized.outputTokens,
       reasoningTokens: normalized.reasoningTokens,
       totalTokens: normalized.totalTokens,
@@ -143,6 +147,7 @@ export async function persistProviderTerminal(tx: PromptProxyTransaction, catalo
       set: {
         inputTokens: normalized.inputTokens,
         cachedInputTokens: normalized.cachedInputTokens,
+        cacheCreationInputTokens: normalized.cacheCreationInputTokens,
         outputTokens: normalized.outputTokens,
         reasoningTokens: normalized.reasoningTokens,
         totalTokens: normalized.totalTokens,
