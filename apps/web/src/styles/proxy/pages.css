@@ -3333,20 +3333,20 @@ input[type="checkbox"][role="switch"]:focus-visible {
   justify-items: end;
 }
 
-.provider-key-panel {
+.key-panel {
   display: flex;
   flex-direction: column;
   gap: 26px;
 }
 
-.provider-key-panel .card-head {
+.key-panel .card-head {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.provider-key-facts {
+.key-panel-facts {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 14px 16px;
   border: 1px solid var(--border);
@@ -3354,24 +3354,24 @@ input[type="checkbox"][role="switch"]:focus-visible {
   background: var(--glass-2);
 }
 
-.provider-key-stats {
+.key-panel-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }
 
-.provider-key-caption {
+.key-panel-caption {
   margin-top: 10px;
   font-size: 12px;
 }
 
-.provider-key-bound-list {
+.key-bound-list {
   display: grid;
   gap: 4px;
 }
 
-.provider-key-bound-row {
+.key-bound-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -3379,9 +3379,17 @@ input[type="checkbox"][role="switch"]:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--glass-2);
+  color: inherit;
+  text-decoration: none;
   font-size: 13px;
+  transition: background .13s var(--ease), border-color .13s var(--ease);
 }
 
-.provider-key-bound-row .mono {
+a.key-bound-row:hover {
+  background: var(--glass-hover);
+  border-color: var(--border-strong);
+}
+
+.key-bound-row .mono {
   margin-left: auto;
 }

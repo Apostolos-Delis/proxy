@@ -19,6 +19,7 @@ export type ApiKeyColumnConfig = {
   errorMessage?: string;
   onOpenChange: (apiKeyId: string, open: boolean) => void;
   onAssign: (apiKeyId: string, routingConfigId: string | null) => void;
+  onInspect: (apiKeyId: string) => void;
   revokePendingKeyId?: string;
   revokeErrorKeyId?: string;
   revokeErrorMessage?: string;
@@ -34,13 +35,14 @@ export function apiKeyColumns({
   errorMessage,
   onOpenChange,
   onAssign,
+  onInspect,
   revokePendingKeyId,
   revokeErrorKeyId,
   revokeErrorMessage,
   onRevoke
 }: ApiKeyColumnConfig): ConsoleTableColumn<ApiKeySummary>[] {
   return [
-    { id: "name", header: "Name", size: 225, accessorFn: (apiKey) => apiKey.name, cell: ({ row }) => <ApiKeyNameCell apiKey={row.original} /> },
+    { id: "name", header: "Name", size: 225, accessorFn: (apiKey) => apiKey.name, cell: ({ row }) => <ApiKeyNameCell apiKey={row.original} onInspect={() => onInspect(row.original.id)} /> },
     { id: "status", header: "Status", size: 96, accessorFn: apiKeyStatus, cell: ({ row }) => <StatusBadge status={apiKeyStatus(row.original)} /> },
     { id: "routingConfig", header: "Routing config", size: 200, accessorFn: routingConfigLabel, cell: ({ row }) => (
       apiKeyStatus(row.original) === "active" ? (
@@ -134,10 +136,12 @@ function revokeContent(pending: boolean, confirming: boolean) {
   return <Ban />;
 }
 
-function ApiKeyNameCell({ apiKey }: { apiKey: ApiKeySummary }) {
+function ApiKeyNameCell({ apiKey, onInspect }: { apiKey: ApiKeySummary; onInspect: () => void }) {
   return (
     <>
-      <div className="key-name">{apiKey.name}</div>
+      <button type="button" className="table-link key-name" onClick={onInspect} aria-label={`Inspect ${apiKey.name}`}>
+        {apiKey.name}
+      </button>
       <div className="key-id faint" title={apiKey.id}>
         <span>Key ID</span>
         <span className="mono">{compactId(apiKey.id, 9)}</span>
