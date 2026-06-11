@@ -189,7 +189,14 @@ function StackedTooltip({ active, payload, valueFormatter }: {
   );
 }
 
-export function MiniBars({ data, height = 42 }: { data: Point[] | number[]; width?: number; height?: number }) {
+type MiniChartProps = {
+  data: Point[] | number[];
+  width?: number;
+  height?: number;
+  valueFormatter?: (value: number) => string;
+};
+
+export function MiniBars({ data, height = 42, valueFormatter }: MiniChartProps) {
   const rows = miniData(data);
   if (rows.length === 0) return <div className="chart-frame mini-bars-chart" style={{ height }} />;
 
@@ -197,23 +204,61 @@ export function MiniBars({ data, height = 42 }: { data: Point[] | number[]; widt
     <ChartFrame height={height} className="mini-bars-chart">
       <RechartsBarChart data={rows} margin={{ top: 2, right: 0, bottom: 0, left: 0 }} barCategoryGap="24%">
         <YAxis hide domain={[0, "dataMax"]} />
+        <Tooltip
+          cursor={{ fill: "var(--accent-soft)" }}
+          isAnimationActive={false}
+          allowEscapeViewBox={{ x: false, y: true }}
+          wrapperStyle={{ zIndex: 5 }}
+          content={<MiniTooltip valueFormatter={valueFormatter} />}
+        />
         <Bar dataKey="value" radius={[2, 2, 1, 1]} fill="var(--accent)" isAnimationActive={false} />
       </RechartsBarChart>
     </ChartFrame>
   );
 }
 
-export function Sparkline({ data, height = 54 }: { data: Point[] | number[]; width?: number; height?: number }) {
+export function Sparkline({ data, height = 54, valueFormatter }: MiniChartProps) {
   const rows = miniData(data);
   if (rows.length === 0) return <div className="chart-frame sparkline" style={{ height }} />;
 
   return (
     <ChartFrame height={height} className="sparkline">
-      <LineChart data={rows} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+      <LineChart data={rows} margin={{ top: 6, right: 6, bottom: 6, left: 6 }}>
         <YAxis hide domain={["dataMin", "dataMax"]} />
-        <Line dataKey="value" type="monotone" dot={false} strokeWidth={2.4} isAnimationActive={false} />
+        <Tooltip
+          cursor={{ stroke: "var(--border-strong)", strokeWidth: 1, strokeDasharray: "3 3" }}
+          isAnimationActive={false}
+          allowEscapeViewBox={{ x: false, y: true }}
+          wrapperStyle={{ zIndex: 5 }}
+          content={<MiniTooltip valueFormatter={valueFormatter} />}
+        />
+        <Line
+          dataKey="value"
+          type="monotone"
+          dot={false}
+          strokeWidth={2.4}
+          isAnimationActive={false}
+          activeDot={{ r: 3.5, fill: "var(--accent)", stroke: "var(--bg-0)", strokeWidth: 2 }}
+        />
       </LineChart>
     </ChartFrame>
+  );
+}
+
+function MiniTooltip({ active, payload, valueFormatter }: {
+  active?: boolean;
+  payload?: { value?: number; payload?: ChartDatum }[];
+  valueFormatter?: (value: number) => string;
+}) {
+  if (!active || !payload?.length) return null;
+  const entry = payload[0];
+  const value = Number(entry?.value ?? 0);
+  const label = entry?.payload?.label;
+  return (
+    <div className="mini-tooltip">
+      <strong>{formatChartValue(value, valueFormatter)}</strong>
+      {label ? <span>{label}</span> : null}
+    </div>
   );
 }
 
