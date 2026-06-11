@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Check, ChevronsUpDown, Layers, Plus } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { createWorkspace, fetchMe, switchWorkspace, type AuthMe } from "./session";
-import { PopoverShell } from "./table/PopoverShell";
+import { AnchoredPopover } from "./table/PopoverShell";
 
 export function WorkspaceSwitcher() {
   const [open, setOpen] = useState(false);
+  const cardRef = useRef<HTMLButtonElement | null>(null);
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: fetchMe });
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -41,6 +42,7 @@ export function WorkspaceSwitcher() {
       }}
     >
       <button
+        ref={cardRef}
         type="button"
         className="workspace-card"
         aria-haspopup="menu"
@@ -54,7 +56,7 @@ export function WorkspaceSwitcher() {
         <ChevronsUpDown className="org-switcher-chevron" />
       </button>
       {open ? (
-        <PopoverShell onDismiss={() => setOpen(false)}>
+        <AnchoredPopover anchorRef={cardRef} onDismiss={() => setOpen(false)}>
           <div className="workspace-switcher-popover" role="menu">
             <div className="org-switcher-label">Workspaces</div>
             {me.workspaces.map((workspace) => {
@@ -88,7 +90,7 @@ export function WorkspaceSwitcher() {
             />
             {error ? <p className="form-error">{error.message}</p> : null}
           </div>
-        </PopoverShell>
+        </AnchoredPopover>
       ) : null}
     </div>
   );
