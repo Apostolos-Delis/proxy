@@ -9,6 +9,7 @@ import {
 import { createId } from "../util.js";
 import { AdminMutationError } from "./adminErrors.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
+import { ensureWorkspaceDefaultRoutingConfig } from "./routingConfigProvisioning.js";
 
 const createWorkspaceBodySchema = z.object({
   name: z.string().trim().min(1),
@@ -67,6 +68,11 @@ export class WorkspaceAdminService {
           slug
         },
         createdAt: now
+      });
+      await ensureWorkspaceDefaultRoutingConfig(tx, {
+        organizationId: input.organizationId,
+        workspaceId,
+        actorUserId: input.actorUserId
       });
 
       return { workspaceId, slug, name: body.data.name };
