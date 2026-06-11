@@ -326,7 +326,8 @@ describe("postgres persistence", () => {
       workspaceId: defaultWorkspaceId("org_api_key"),
       userId: undefined,
       scopes: ["proxy"],
-      routingConfigId: null
+      routingConfigId: null,
+      internal: false
     });
     expect(rows[0]?.lastUsedAt?.toISOString()).toBe("2026-06-08T00:00:00.000Z");
     await expect(fixture.persistence.apiKeys.resolve("wrong-token")).resolves.toBeUndefined();

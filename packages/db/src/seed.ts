@@ -43,6 +43,7 @@ export type SeedOptions = {
   openaiBaseUrl: string;
   anthropicBaseUrl: string;
   proxyToken: string;
+  consoleAgentToken?: string;
   models: SeedModel[];
 };
 
@@ -60,6 +61,9 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
   const routingConfigId = `${options.organizationId}:routing-config:default`;
   const defaultApiKeyId = `${options.organizationId}:api-key:default`;
   const proxyTokenHash = hashApiKey(options.proxyToken);
+  if (options.consoleAgentToken && options.consoleAgentToken === options.proxyToken) {
+    throw new Error("CONSOLE_AGENT_API_KEY must differ from PROMPT_PROXY_TOKEN so internal traffic stays separable.");
+  }
   const [tokenOwner] = await db
     .select({
       id: apiKeys.id,
@@ -403,6 +407,8 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
     })
     .where(eq(workspaces.id, workspaceId));
 
+  await seedConsoleAgent(db, options, now);
+
   return {
     organizationId: options.organizationId,
     userId: options.userId,
@@ -447,6 +453,7 @@ export function seedOptionsFromEnv(env: NodeJS.ProcessEnv): SeedOptions {
     openaiBaseUrl: env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
     anthropicBaseUrl: env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1",
     proxyToken: env.PROMPT_PROXY_TOKEN ?? "dev-proxy-token",
+    consoleAgentToken: env.CONSOLE_AGENT_API_KEY,
     models: [
       model("openai", env.OPENAI_FAST_MODEL ?? "gpt-5.4-mini", "fast", "openai-responses"),
       model("openai", env.OPENAI_BALANCED_MODEL ?? "gpt-5.4", "balanced", "openai-responses"),
@@ -467,6 +474,112 @@ function model(provider: Provider, modelName: string, route: RouteName, surface:
     route,
     surface
   };
+}
+
+// The console agent always requests explicit route aliases (never router-auto),
+// so its calls skip the classifier; this config exists to attribute and pin
+// that traffic. The internal key's raw token arrives via CONSOLE_AGENT_API_KEY
+// at deploy time and only its hash is stored.
+async function seedConsoleAgent(db: PromptProxyDbSession, options: SeedOptions, now: Date) {
+  if (!options.consoleAgentToken) return;
+  const workspaceId = defaultWorkspaceId(options.organizationId);
+  const configId = `${options.organizationId}:routing-config:console-agent`;
+  const versionId = `${configId}:v1`;
+  const apiKeyId = `${options.organizationId}:api-key:console-agent`;
+  const tokenHash = hashApiKey(options.consoleAgentToken);
+
+  const [tokenOwner] = await db
+    .select({ id: apiKeys.id, organizationId: apiKeys.organizationId })
+    .from(apiKeys)
+    .where(eq(apiKeys.keyHash, tokenHash))
+    .limit(1);
+  if (tokenOwner && tokenOwner.id !== apiKeyId) {
+    throw new Error(
+      `CONSOLE_AGENT_API_KEY is already assigned to ${tokenOwner.id} in organization ${tokenOwner.organizationId}; choose a unique token.`
+    );
+  }
+
+  const config = consoleAgentRoutingConfig(options);
+  const configHash = sha256Hex(JSON.stringify(config));
+
+  await db
+    .insert(routingConfigs)
+    .values({
+      id: configId,
+      organizationId: options.organizationId,
+      workspaceId,
+      name: "Console agent",
+      slug: "console-agent",
+      description: "Seeded routing config for internal console-agent traffic (explicit aliases only).",
+      status: "active"
+    })
+    .onConflictDoUpdate({
+      target: routingConfigs.id,
+      set: {
+        name: "Console agent",
+        description: "Seeded routing config for internal console-agent traffic (explicit aliases only).",
+        status: "active",
+        updatedAt: now
+      }
+    });
+
+  await db
+    .insert(routingConfigVersions)
+    .values({
+      id: versionId,
+      organizationId: options.organizationId,
+      workspaceId,
+      routingConfigId: configId,
+      version: 1,
+      configHash,
+      config,
+      status: "active",
+      createdByUserId: options.userId,
+      activatedAt: now
+    })
+    .onConflictDoNothing({ target: routingConfigVersions.id });
+
+  await db
+    .update(routingConfigs)
+    .set({ activeVersionId: versionId, updatedAt: now })
+    .where(and(
+      eq(routingConfigs.id, configId),
+      isNull(routingConfigs.activeVersionId)
+    ));
+
+  await db
+    .insert(apiKeys)
+    .values({
+      id: apiKeyId,
+      organizationId: options.organizationId,
+      workspaceId,
+      userId: null,
+      keyHash: tokenHash,
+      name: "Console agent internal key",
+      routingConfigId: configId,
+      scopes: ["proxy"],
+      internal: true
+    })
+    .onConflictDoUpdate({
+      target: apiKeys.id,
+      set: {
+        userId: null,
+        keyHash: tokenHash,
+        name: "Console agent internal key",
+        routingConfigId: configId,
+        scopes: ["proxy"],
+        internal: true
+      }
+    });
+}
+
+function consoleAgentRoutingConfig(options: SeedOptions): RoutingConfig {
+  const base = defaultRoutingConfig(options);
+  return routingConfigSchema.parse({
+    ...base,
+    displayName: "Console agent router",
+    description: "Internal console-agent traffic pinned to explicit route aliases; the classifier is never consulted."
+  });
 }
 
 function defaultRoutingConfig(options: SeedOptions): RoutingConfig {

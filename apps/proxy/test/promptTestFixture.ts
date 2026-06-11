@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { eq } from "drizzle-orm";
 import { expect } from "vitest";
 
@@ -26,6 +27,7 @@ import { listen, startAnthropicMock, startOpenAIMock, type MockServer } from "./
 
 type PromptCaptureMode = "hash_only" | "raw_text";
 type OpenAIOptions = Parameters<typeof startOpenAIMock>[0];
+type AnthropicOptions = Parameters<typeof startAnthropicMock>[0];
 
 export type PromptTestFixture = Awaited<ReturnType<typeof captureFixture>>;
 
@@ -65,7 +67,9 @@ export async function captureFixture(
   options: {
     envOverrides?: NodeJS.ProcessEnv;
     openAIOptions?: OpenAIOptions;
-    anthropicOptions?: Parameters<typeof startAnthropicMock>[0];
+    anthropicOptions?: AnthropicOptions;
+    consoleAgentStreamFn?: StreamFn;
+    port?: number;
   } = {}
 ) {
   const client = new PGlite();
@@ -83,6 +87,9 @@ export async function captureFixture(
     DEFAULT_ORGANIZATION_ID: organizationId,
     OPENAI_BASE_URL: openai.url,
     ANTHROPIC_BASE_URL: anthropic.url,
+    ...(options.port && !options.envOverrides?.CONSOLE_AGENT_BASE_URL
+      ? { CONSOLE_AGENT_BASE_URL: `http://127.0.0.1:${options.port}` }
+      : {}),
     LOG_LEVEL: "fatal"
   });
   const catalog = buildModelCatalog(config);
@@ -131,12 +138,16 @@ export async function captureFixture(
     .set({ promptCaptureMode })
     .where(eq(organizationSettings.organizationId, organizationId));
 
-  const app = buildServer(config, { persistence });
-  const proxyUrl = await listen(app);
+  const app = buildServer(config, {
+    persistence,
+    consoleAgentStreamFn: options.consoleAgentStreamFn
+  });
+  const proxyUrl = await listen(app, options.port);
 
   return {
     db,
     persistence,
+    catalog,
     proxyUrl,
     app,
     openai,
@@ -351,8 +362,62 @@ async function closeFixture(input: {
   anthropic: MockServer;
   client: PGlite;
 }) {
+  // Aborted agent calls can leave never-used keep-alive sockets that
+  // app.close() would otherwise wait ~70s for.
+  input.app.server.closeAllConnections();
   await input.app.close();
   await input.openai.close();
   await input.anthropic.close();
   await input.client.close();
+}
+
+export async function adminPost(fixture: PromptTestFixture, path: string, body: Record<string, unknown>) {
+  return fetch(`${fixture.proxyUrl}${path}`, {
+    method: "POST",
+    headers: { ...fixture.adminHeaders, "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+}
+
+export async function adminGet(fixture: PromptTestFixture, path: string) {
+  const response = await fetch(`${fixture.proxyUrl}${path}`, { headers: fixture.adminHeaders });
+  expect(response.status).toBe(200);
+  return response.json();
+}
+
+export async function readSseUntil(
+  response: Response,
+  done: (text: string) => boolean,
+  timeoutMs = 15_000
+) {
+  expect(response.status).toBe(200);
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("no response body");
+  const decoder = new TextDecoder();
+  let text = "";
+  const deadline = Date.now() + timeoutMs;
+  while (!done(text)) {
+    if (Date.now() > deadline) {
+      await reader.cancel();
+      throw new Error(`SSE read timed out; received: ${text.slice(0, 500)}`);
+    }
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    text += decoder.decode(chunk.value, { stream: true });
+  }
+  await reader.cancel().catch(() => undefined);
+  return text;
+}
+
+export function sseTerminalSeen(text: string) {
+  return text.includes("event: run_finished") || text.includes("event: run_failed");
+}
+
+export async function waitFor(condition: () => Promise<boolean> | boolean, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (await condition()) return;
+    if (Date.now() > deadline) throw new Error("waitFor condition not met in time");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }

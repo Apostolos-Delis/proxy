@@ -43,6 +43,7 @@ const RequestsPageDocument = graphql(`
       requestId
       selectedModel
       terminalStatus
+      internal
       latencyMs
       finalRoute
       selectedCost
@@ -144,6 +145,7 @@ function PromptCell({ row }: { row: PromptLogRow }) {
       </Link>
       <div className="mono faint">
         {compactId(row.prompt.requestId)}
+        {row.request?.internal ? <span className="chip internal-chip">internal</span> : null}
         {row.prompt.sessionId ? (
           <>
             {" · "}

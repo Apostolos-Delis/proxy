@@ -6,6 +6,7 @@ import { z } from "zod";
 
 const routeNameSchema = z.enum(["fast", "balanced", "hard", "deep"]);
 const promptCaptureModeSchema = z.enum(["none", "hash_only", "raw_text", "redacted", "encrypted_raw"]);
+const thinkingLevelSchema = z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]);
 
 const nullablePositiveIntSchema = z.preprocess((value) => value === null ? undefined : value, z.number().int().positive().optional());
 const nullableNonnegativeIntSchema = z.preprocess((value) => value === null ? undefined : value, z.number().int().nonnegative().optional());
@@ -30,13 +31,21 @@ export const proxySettingsSchema = z.strictObject({
   promptCapture: z.strictObject({
     promptCaptureMode: promptCaptureModeSchema.optional(),
     retentionDays: nullableNonnegativeIntSchema
+  }).default({}),
+  consoleAgent: z.strictObject({
+    model: z.string().trim().min(1).optional(),
+    thinkingLevel: thinkingLevelSchema.optional(),
+    maxTurns: z.number().int().positive().max(100).optional(),
+    maxToolCallsPerTurn: z.number().int().positive().max(50).optional(),
+    timeoutSeconds: z.number().int().positive().max(3600).optional()
   }).default({})
 }).default({
   schemaVersion: 1,
   classifier: {},
   budgets: {},
   routeQuality: {},
-  promptCapture: {}
+  promptCapture: {},
+  consoleAgent: {}
 });
 
 export type ProxySettings = z.infer<typeof proxySettingsSchema>;
@@ -46,7 +55,8 @@ export const emptyProxySettings: ProxySettings = {
   classifier: {},
   budgets: {},
   routeQuality: {},
-  promptCapture: {}
+  promptCapture: {},
+  consoleAgent: {}
 };
 
 export function defaultSettingsPath(cwd = process.cwd()) {
@@ -97,6 +107,19 @@ export function settingsToEnv(settings: ProxySettings): NodeJS.ProcessEnv {
   if (settings.budgets.maxRoute !== undefined) env.BUDGET_MAX_ROUTE = settings.budgets.maxRoute;
   if (settings.routeQuality.lowConfidenceThreshold !== undefined) {
     env.ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD = String(settings.routeQuality.lowConfidenceThreshold);
+  }
+  if (settings.consoleAgent.model !== undefined) env.CONSOLE_AGENT_MODEL = settings.consoleAgent.model;
+  if (settings.consoleAgent.thinkingLevel !== undefined) {
+    env.CONSOLE_AGENT_THINKING_LEVEL = settings.consoleAgent.thinkingLevel;
+  }
+  if (settings.consoleAgent.maxTurns !== undefined) {
+    env.CONSOLE_AGENT_MAX_TURNS = String(settings.consoleAgent.maxTurns);
+  }
+  if (settings.consoleAgent.maxToolCallsPerTurn !== undefined) {
+    env.CONSOLE_AGENT_MAX_TOOL_CALLS_PER_TURN = String(settings.consoleAgent.maxToolCallsPerTurn);
+  }
+  if (settings.consoleAgent.timeoutSeconds !== undefined) {
+    env.CONSOLE_AGENT_TIMEOUT_SECONDS = String(settings.consoleAgent.timeoutSeconds);
   }
   return env;
 }

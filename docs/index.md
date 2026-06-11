@@ -8,14 +8,17 @@
 - [TanStack admin app scope](scopes/tanstack-admin-app-v1/PLAN.md)
 - [Routing configs scope](scopes/routing-configs-v1/PLAN.md)
 - [AWS prod-like deployment scope](scopes/aws-prod-like-deployment-v1/PLAN.md)
+- [Console agent scope](scopes/console-agent-v1/PLAN.md)
 
 ## Execution
 
 - [Implementation tickets](implementation-tickets.md)
 - [Routing configs V1 tickets](scopes/routing-configs-v1/TICKETS.md)
 - [AWS prod-like deployment tickets](scopes/aws-prod-like-deployment-v1/TICKETS.md)
+- [Console agent tickets](scopes/console-agent-v1/TICKETS.md)
 - [Routing configs runbook](runbooks/routing-configs.md)
 - [AWS deployment runbook](runbooks/aws-deployment.md)
+- [Console agent runbook](runbooks/console-agent.md)
 
 ## Future Work
 

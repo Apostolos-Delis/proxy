@@ -23,6 +23,7 @@ import { EmailService } from "./email.js";
 import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStateGate } from "./events.js";
 import { registerAdminGraphQL } from "./graphql/route.js";
 import { BudgetService, SessionRouteStore } from "./policy.js";
+import { defaultWorkspaceId } from "@prompt-proxy/db";
 import { createPostgresPersistence } from "./persistence/index.js";
 import { resolveRoutingSelection } from "./persistence/routingConfig.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
@@ -31,12 +32,19 @@ import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
 import { buildSetupScript } from "./setupScript.js";
 import type { Provider, Surface } from "./types.js";
+import { registerConsoleAgentRoutes } from "./consoleAgentRoutes.js";
+import { ConsoleAgentEventBus } from "./console-agent/eventBus.js";
+import { createConsoleAgentRuntime, type ConsoleAgentStreamFn } from "./console-agent/runtime.js";
+import { buildConsoleAgentRegistry, registerConsoleAgentExecutors } from "./console-agent/capabilities/index.js";
 import { createId, headerValue, idempotencyFrom, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
 
 type AppPersistence = ReturnType<typeof createPostgresPersistence>;
 
-export function buildServer(config: AppConfig = loadConfig(), options: { persistence?: AppPersistence } = {}) {
+export function buildServer(
+  config: AppConfig = loadConfig(),
+  options: { persistence?: AppPersistence; consoleAgentStreamFn?: ConsoleAgentStreamFn } = {}
+) {
   const modelCatalog = buildModelCatalog(config);
   const app = Fastify({
     logger: { level: config.logLevel },
@@ -110,6 +118,42 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   const projections = new ProjectionService(modelCatalog, config);
   const emailService = new EmailService(config, app.log);
   registerAdminGraphQL(app, { config, adminAuth, emailService, events, projections, persistence });
+  const consoleAgentBus = new ConsoleAgentEventBus();
+  // Optional chaining tolerates partial persistence stubs in tests; the
+  // hasExecutor guard keeps repeated buildServer calls over one persistence
+  // bundle idempotent.
+  if (
+    persistence?.consoleAgentProposals &&
+    persistence.routingConfigAdmin &&
+    !persistence.consoleAgentProposals.hasExecutor("routing_configs.create.v1")
+  ) {
+    registerConsoleAgentExecutors(persistence.consoleAgentProposals, {
+      routingConfigAdmin: persistence.routingConfigAdmin
+    });
+  }
+  const consoleAgentRuntime = persistence
+    ? createConsoleAgentRuntime({
+        config,
+        store: persistence.consoleAgent,
+        registry: buildConsoleAgentRegistry({
+          adminQueries: () =>
+            persistence.adminQueries.forScope(
+              config.defaultOrganizationId,
+              defaultWorkspaceId(config.defaultOrganizationId)
+            ),
+          promptAccessAudit: persistence.promptAccessAudit,
+          catalog: modelCatalog
+        }),
+        proposals: persistence.consoleAgentProposals,
+        streamFn: options.consoleAgentStreamFn
+      })
+    : undefined;
+  registerConsoleAgentRoutes(app, {
+    adminAuth,
+    persistence,
+    runtime: consoleAgentRuntime,
+    bus: consoleAgentBus
+  });
   wsProxy.register(app.server);
 
   app.get("/healthz", async () => ({ status: "ok" }));

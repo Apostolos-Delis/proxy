@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import { PROMPT_CAPTURE_MODES } from "@prompt-proxy/schema";
 
 import {
+  consoleAgentConversations,
+  consoleAgentMessages,
+  consoleAgentProposals,
+  consoleAgentRunEvents,
+  consoleAgentRuns,
   events,
   promptAccessAudit,
   promptArtifacts,
@@ -23,6 +28,14 @@ describe("prompt proxy database schema", () => {
     expect(routingConfigVersions).toBeTruthy();
     expect(usageLedger).toBeTruthy();
     expect(userSessions).toBeTruthy();
+  });
+
+  it("exposes the console agent tables", () => {
+    expect(consoleAgentConversations).toBeTruthy();
+    expect(consoleAgentRuns).toBeTruthy();
+    expect(consoleAgentMessages).toBeTruthy();
+    expect(consoleAgentRunEvents).toBeTruthy();
+    expect(consoleAgentProposals).toBeTruthy();
   });
 
   it("includes raw prompt artifact storage mode", () => {

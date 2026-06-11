@@ -1,9 +1,10 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, KeySquare, Logs, MessagesSquare, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
+import { BarChart3, Bot, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, KeySquare, Logs, MessagesSquare, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
 import { LogoutButton } from "./auth";
+import { AgentDock } from "./components/console-agent/agentDock";
 import { OrgSwitcher } from "./orgSwitcher";
 import { SearchPalette } from "./search/SearchPalette";
 import { useSearchShortcut } from "./search/useSearchShortcut";
@@ -51,6 +52,7 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
   useSearchShortcut(() => setSearchOpen((value) => !value));
   if (location.pathname === "/login" || location.pathname.startsWith("/invite/")) {
     return (
@@ -89,6 +91,14 @@ export function AppShell() {
           <button
             className="btn btn-ghost btn-icon"
             type="button"
+            aria-label="Open console agent"
+            onClick={() => setAgentOpen(true)}
+          >
+            <Bot />
+          </button>
+          <button
+            className="btn btn-ghost btn-icon"
+            type="button"
             aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
             onClick={() => setTheme((value) => value === "dark" ? "light" : "dark")}
           >
@@ -104,6 +114,7 @@ export function AppShell() {
         </div>
       </main>
       {searchOpen ? <SearchPalette onClose={() => setSearchOpen(false)} /> : null}
+      {agentOpen ? <AgentDock onClose={() => setAgentOpen(false)} /> : null}
     </div>
   );
 }

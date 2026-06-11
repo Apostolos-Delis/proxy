@@ -1,7 +1,10 @@
 import { sql } from "drizzle-orm";
-import { foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, type PgTableExtraConfigValue } from "drizzle-orm/pg-core";
+import { boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, type PgTableExtraConfigValue } from "drizzle-orm/pg-core";
 
 import type {
+  ConsoleAgentMessageRole,
+  ConsoleAgentProposalStatus,
+  ConsoleAgentRunStatus,
   EventOutboxStatus,
   InvitationStatus,
   OrganizationMemberRole,
@@ -237,6 +240,7 @@ export const apiKeys = pgTable(
     name: text("name").notNull(),
     routingConfigId: text("routing_config_id"),
     scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
+    internal: boolean("internal").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
@@ -472,6 +476,7 @@ export const requests = pgTable(
     routingConfigVersion: integer("routing_config_version"),
     routingConfigHash: text("routing_config_hash"),
     status: text("status").$type<RequestStatus>().notNull().default("received"),
+    internal: boolean("internal").notNull().default(false),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true })
@@ -737,5 +742,154 @@ export const projectionCursors = pgTable(
   },
   (table) => [
     primaryKey({ name: "projection_cursors_pk", columns: [table.projectionName, table.organizationId] })
+  ]
+);
+
+export const consoleAgentConversations = pgTable(
+  "console_agent_conversations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    title: text("title"),
+    sessionState: jsonb("session_state").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("console_agent_conversations_org_id_idx").on(table.organizationId, table.id),
+    index("console_agent_conversations_org_created_idx").on(table.organizationId, table.createdAt),
+    index("console_agent_conversations_org_creator_idx").on(table.organizationId, table.createdByUserId)
+  ]
+);
+
+export const consoleAgentRuns = pgTable(
+  "console_agent_runs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id").notNull(),
+    status: text("status").$type<ConsoleAgentRunStatus>().notNull().default("running"),
+    model: text("model"),
+    usage: jsonb("usage").$type<Record<string, unknown>>().notNull().default({}),
+    error: text("error"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true })
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("console_agent_runs_org_id_idx").on(table.organizationId, table.id),
+    uniqueIndex("console_agent_runs_active_idx")
+      .on(table.organizationId, table.conversationId)
+      .where(sql`status = 'running'`),
+    index("console_agent_runs_conversation_idx").on(table.organizationId, table.conversationId),
+    index("console_agent_runs_org_status_idx").on(table.organizationId, table.status),
+    foreignKey({
+      name: "console_agent_runs_conversation_fk",
+      columns: [table.organizationId, table.conversationId],
+      foreignColumns: [consoleAgentConversations.organizationId, consoleAgentConversations.id]
+    }).onDelete("cascade")
+  ]
+);
+
+export const consoleAgentMessages = pgTable(
+  "console_agent_messages",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id").notNull(),
+    role: text("role").$type<ConsoleAgentMessageRole>().notNull(),
+    content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+    pageScope: jsonb("page_scope").$type<Record<string, unknown>>(),
+    runId: text("run_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    index("console_agent_messages_conversation_created_idx").on(
+      table.organizationId,
+      table.conversationId,
+      table.createdAt
+    ),
+    index("console_agent_messages_org_run_idx").on(table.organizationId, table.runId),
+    foreignKey({
+      name: "console_agent_messages_conversation_fk",
+      columns: [table.organizationId, table.conversationId],
+      foreignColumns: [consoleAgentConversations.organizationId, consoleAgentConversations.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "console_agent_messages_run_fk",
+      columns: [table.organizationId, table.runId],
+      foreignColumns: [consoleAgentRuns.organizationId, consoleAgentRuns.id]
+    })
+  ]
+);
+
+export const consoleAgentRunEvents = pgTable(
+  "console_agent_run_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    runId: text("run_id").notNull(),
+    seq: integer("seq").notNull(),
+    type: text("type").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("console_agent_run_events_org_run_seq_idx").on(table.organizationId, table.runId, table.seq),
+    foreignKey({
+      name: "console_agent_run_events_run_fk",
+      columns: [table.organizationId, table.runId],
+      foreignColumns: [consoleAgentRuns.organizationId, consoleAgentRuns.id]
+    }).onDelete("cascade")
+  ]
+);
+
+export const consoleAgentProposals = pgTable(
+  "console_agent_proposals",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    conversationId: text("conversation_id").notNull(),
+    runId: text("run_id").notNull(),
+    capabilityKey: text("capability_key").notNull(),
+    input: jsonb("input").$type<Record<string, unknown>>().notNull(),
+    preview: jsonb("preview").$type<Record<string, unknown>>().notNull().default({}),
+    baseState: jsonb("base_state").$type<Record<string, unknown>>(),
+    dedupeKey: text("dedupe_key"),
+    status: text("status").$type<ConsoleAgentProposalStatus>().notNull().default("pending"),
+    proposedByUserId: text("proposed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    resolvedByUserId: text("resolved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("console_agent_proposals_dedupe_idx")
+      .on(table.organizationId, table.dedupeKey)
+      .where(sql`status = 'pending'`),
+    index("console_agent_proposals_org_status_idx").on(table.organizationId, table.status),
+    index("console_agent_proposals_conversation_idx").on(table.organizationId, table.conversationId),
+    index("console_agent_proposals_org_run_idx").on(table.organizationId, table.runId),
+    foreignKey({
+      name: "console_agent_proposals_conversation_fk",
+      columns: [table.organizationId, table.conversationId],
+      foreignColumns: [consoleAgentConversations.organizationId, consoleAgentConversations.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "console_agent_proposals_run_fk",
+      columns: [table.organizationId, table.runId],
+      foreignColumns: [consoleAgentRuns.organizationId, consoleAgentRuns.id]
+    }).onDelete("cascade")
   ]
 );

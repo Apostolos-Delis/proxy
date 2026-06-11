@@ -13,6 +13,68 @@ import { effectiveInvitationStatus } from "./userAdmin.js";
 type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
 type UsageLedgerRow = typeof usageLedger.$inferSelect;
 
+export function consoleAgentConversationSummary(conversation: {
+  id: string;
+  organizationId: string;
+  title: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: conversation.id,
+    organizationId: conversation.organizationId,
+    title: conversation.title,
+    createdAt: conversation.createdAt.toISOString(),
+    updatedAt: conversation.updatedAt.toISOString()
+  };
+}
+
+export function consoleAgentMessageSummary(message: {
+  id: string;
+  role: string;
+  content: Record<string, unknown>;
+  pageScope: Record<string, unknown> | null;
+  runId: string | null;
+  createdAt: Date;
+}) {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    pageScope: message.pageScope ?? null,
+    runId: message.runId ?? null,
+    createdAt: message.createdAt.toISOString()
+  };
+}
+
+export function consoleAgentProposalSummary(proposal: {
+  id: string;
+  conversationId: string;
+  runId: string;
+  capabilityKey: string;
+  preview: Record<string, unknown>;
+  status: string;
+  proposedByUserId: string | null;
+  resolvedByUserId: string | null;
+  resolvedAt: Date | null;
+  expiresAt: Date;
+  createdAt: Date;
+}) {
+  return {
+    id: proposal.id,
+    conversationId: proposal.conversationId,
+    runId: proposal.runId,
+    capabilityKey: proposal.capabilityKey,
+    preview: proposal.preview,
+    status: proposal.status,
+    proposedByUserId: proposal.proposedByUserId,
+    resolvedByUserId: proposal.resolvedByUserId,
+    resolvedAt: proposal.resolvedAt?.toISOString() ?? null,
+    expiresAt: proposal.expiresAt.toISOString(),
+    createdAt: proposal.createdAt.toISOString()
+  };
+}
+
 export function invitationSummary(
   row: typeof invitations.$inferSelect,
   inviter: { id: string; name: string | null; email: string | null } | null,

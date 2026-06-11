@@ -115,6 +115,66 @@ describe("persistent settings admin APIs", () => {
     });
   });
 
+  it("applies console agent settings with env precedence and surfaces them in responses", async () => {
+    const settingsPath = await tempSettingsPath();
+    await writeFile(settingsPath, JSON.stringify({
+      schemaVersion: 1,
+      classifier: {},
+      budgets: {},
+      routeQuality: {},
+      promptCapture: {},
+      consoleAgent: {
+        model: "claude-router-deep",
+        thinkingLevel: "high",
+        maxTurns: 5,
+        maxToolCallsPerTurn: 3,
+        timeoutSeconds: 45
+      }
+    }), "utf8");
+
+    const overridden = loadConfig({
+      PROMPT_PROXY_SETTINGS_PATH: settingsPath,
+      CONSOLE_AGENT_MAX_TURNS: "7"
+    });
+    expect(overridden.consoleAgentModel).toBe("claude-router-deep");
+    expect(overridden.consoleAgentThinkingLevel).toBe("high");
+    expect(overridden.consoleAgentMaxTurns).toBe(7);
+    expect(overridden.consoleAgentMaxToolCallsPerTurn).toBe(3);
+    expect(overridden.consoleAgentTimeoutSeconds).toBe(45);
+
+    const app = buildServer(loadConfig({
+      PROMPT_PROXY_SETTINGS_PATH: settingsPath,
+      LOG_LEVEL: "fatal"
+    }), { persistence: fakePersistence() });
+    const response = await app.inject({
+      method: "POST",
+      url: "/admin/graphql",
+      headers: adminHeaders(),
+      payload: {
+        query: `query ConsoleAgentSettings {
+          settings {
+            restartRequiredFor
+            settings {
+              consoleAgent { model thinkingLevel maxTurns maxToolCallsPerTurn timeoutSeconds }
+            }
+          }
+        }`
+      }
+    });
+    const body = response.json().data?.settings;
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(body.settings.consoleAgent).toEqual({
+      model: "claude-router-deep",
+      thinkingLevel: "high",
+      maxTurns: 5,
+      maxToolCallsPerTurn: 3,
+      timeoutSeconds: 45
+    });
+    expect(body.restartRequiredFor).toContain("consoleAgent");
+  });
+
   it("rejects invalid settings without writing them", async () => {
     const settingsPath = await tempSettingsPath();
     const app = buildServer(loadConfig({

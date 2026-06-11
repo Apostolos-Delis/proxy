@@ -71,6 +71,22 @@ input ClassifierSettingsInput {
   timeoutMs: Int
 }
 
+type ConsoleAgentSettings {
+  maxToolCallsPerTurn: Int!
+  maxTurns: Int!
+  model: String!
+  thinkingLevel: String!
+  timeoutSeconds: Int!
+}
+
+input ConsoleAgentSettingsInput {
+  maxToolCallsPerTurn: Int
+  maxTurns: Int
+  model: String
+  thinkingLevel: String
+  timeoutSeconds: Int
+}
+
 type CostTotals {
   baseline: Float!
   savings: Float!
@@ -122,6 +138,7 @@ type EditableClassifier {
 type EditableSettings {
   budgets: BudgetSettings!
   classifier: EditableClassifier!
+  consoleAgent: ConsoleAgentSettings!
   promptCapture: PromptCaptureState!
   routeQuality: RouteQualitySettings!
   schemaVersion: Int!
@@ -472,6 +489,7 @@ type RequestSummary {
   createdAt: String
   finalRoute: String
   inputChars: Float
+  internal: Boolean!
   latencyMs: Float
   provider: String
   requestId: String!
@@ -674,6 +692,7 @@ type Settings {
 input SettingsInput {
   budgets: BudgetSettingsInput
   classifier: ClassifierSettingsInput
+  consoleAgent: ConsoleAgentSettingsInput
   promptCapture: PromptCaptureSettingsInput
   routeQuality: RouteQualitySettingsInput
   schemaVersion: Int

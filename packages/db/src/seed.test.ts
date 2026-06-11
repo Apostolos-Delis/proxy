@@ -311,6 +311,57 @@ describe("database seed", () => {
     expect(version?.config.classifier.timeoutMs).toBe(30000);
   });
 
+  it("seeds the console agent config and internal key idempotently when a token is provided", async () => {
+    const client = await migratedClient();
+    const db = createPgliteDatabase(client);
+    const options = seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_agent_seed",
+      SEED_USER_ID: "user_agent_seed",
+      PROMPT_PROXY_TOKEN: "agent-seed-proxy-token",
+      CONSOLE_AGENT_API_KEY: "agent-seed-internal-token"
+    });
+
+    await seedDatabase(db, options);
+    await seedDatabase(db, options);
+
+    const configRows = await db
+      .select()
+      .from(routingConfigs)
+      .where(eq(routingConfigs.id, "org_agent_seed:routing-config:console-agent"));
+    const versionRows = await db
+      .select()
+      .from(routingConfigVersions)
+      .where(eq(routingConfigVersions.routingConfigId, "org_agent_seed:routing-config:console-agent"));
+    const keyRows = await db
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.id, "org_agent_seed:api-key:console-agent"));
+    await client.close();
+
+    expect(configRows).toHaveLength(1);
+    expect(configRows[0]?.slug).toBe("console-agent");
+    expect(configRows[0]?.activeVersionId).toBe("org_agent_seed:routing-config:console-agent:v1");
+    expect(versionRows).toHaveLength(1);
+    expect(keyRows).toHaveLength(1);
+    expect(keyRows[0]?.internal).toBe(true);
+    expect(keyRows[0]?.routingConfigId).toBe("org_agent_seed:routing-config:console-agent");
+    expect(keyRows[0]?.keyHash).toBe(hashApiKey("agent-seed-internal-token"));
+    expect(JSON.stringify(keyRows[0])).not.toContain("agent-seed-internal-token");
+  });
+
+  it("rejects a console agent token that matches the proxy token", async () => {
+    const client = await migratedClient();
+    const db = createPgliteDatabase(client);
+
+    await expect(seedDatabase(db, seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_agent_clash",
+      SEED_USER_ID: "user_agent_clash",
+      PROMPT_PROXY_TOKEN: "same-token",
+      CONSOLE_AGENT_API_KEY: "same-token"
+    }))).rejects.toThrow("must differ from PROMPT_PROXY_TOKEN");
+    await client.close();
+  });
+
   it("fails before partial writes when another organization already owns the proxy token", async () => {
     const client = await migratedClient();
     const db = createPgliteDatabase(client);

@@ -147,6 +147,7 @@ describe("database migrations", () => {
       "agent_sessions",
       "api_key_provider_accounts",
       "api_keys",
+      "console_agent_proposals",
       "events",
       "prompt_access_audit",
       "prompt_artifacts",
@@ -204,6 +205,149 @@ describe("database migrations", () => {
       "provider",
       "provider_account_id"
     ]);
+  });
+
+  it("applies the console agent migration", async () => {
+    const client = await migratedClient();
+
+    try {
+      const conversationColumns = await client.query<{ column_name: string }>(`
+        select column_name
+        from information_schema.columns
+        where table_name = 'console_agent_conversations'
+          and column_name in ('organization_id', 'created_by_user_id', 'session_state')
+        order by column_name
+      `);
+      const proposalColumns = await client.query<{ column_name: string }>(`
+        select column_name
+        from information_schema.columns
+        where table_name = 'console_agent_proposals'
+          and column_name in ('organization_id', 'capability_key', 'base_state', 'dedupe_key', 'proposed_by_user_id', 'resolved_by_user_id', 'expires_at')
+        order by column_name
+      `);
+      expect(conversationColumns.rows.map((row) => row.column_name)).toEqual([
+        "created_by_user_id",
+        "organization_id",
+        "session_state"
+      ]);
+      expect(proposalColumns.rows.map((row) => row.column_name)).toEqual([
+        "base_state",
+        "capability_key",
+        "dedupe_key",
+        "expires_at",
+        "organization_id",
+        "proposed_by_user_id",
+        "resolved_by_user_id"
+      ]);
+
+      await client.exec(`
+        insert into organizations (id, slug, name) values
+          ('ca_org_a', 'ca-org-a', 'CA Org A'),
+          ('ca_org_b', 'ca-org-b', 'CA Org B');
+
+        insert into users (id, email) values ('ca_user', 'ca@example.com');
+
+        insert into console_agent_conversations (id, organization_id, created_by_user_id)
+        values ('ca_conv', 'ca_org_a', 'ca_user');
+
+        insert into console_agent_runs (id, organization_id, conversation_id)
+        values ('ca_run', 'ca_org_a', 'ca_conv');
+      `);
+
+      await expect(client.exec(`
+        insert into console_agent_runs (id, organization_id, conversation_id)
+        values ('ca_run_cross', 'ca_org_b', 'ca_conv');
+      `)).rejects.toThrow();
+
+      await client.exec(`
+        insert into console_agent_messages (id, organization_id, conversation_id, role, content, run_id)
+        values ('ca_msg', 'ca_org_a', 'ca_conv', 'assistant', '{"text":"hi"}'::jsonb, 'ca_run');
+      `);
+
+      await expect(client.exec(`
+        insert into console_agent_messages (id, organization_id, conversation_id, role, content)
+        values ('ca_msg_cross', 'ca_org_b', 'ca_conv', 'user', '{}'::jsonb);
+      `)).rejects.toThrow();
+
+      await client.exec(`
+        insert into console_agent_run_events (id, organization_id, run_id, seq, type)
+        values ('ca_event_1', 'ca_org_a', 'ca_run', 1, 'run_started');
+      `);
+
+      await expect(client.exec(`
+        insert into console_agent_run_events (id, organization_id, run_id, seq, type)
+        values ('ca_event_dup', 'ca_org_a', 'ca_run', 1, 'tool_call_started');
+      `)).rejects.toThrow();
+
+      await client.exec(`
+        insert into console_agent_proposals (
+          id, organization_id, workspace_id, conversation_id, run_id, capability_key, input, expires_at, proposed_by_user_id
+        ) values (
+          'ca_proposal', 'ca_org_a', 'ca_org_a:workspace:default', 'ca_conv', 'ca_run', 'routing_configs.create.v1', '{}'::jsonb,
+          now() + interval '1 day', 'ca_user'
+        );
+      `);
+
+      const firstApprove = await client.query(`
+        update console_agent_proposals
+        set status = 'approved', resolved_by_user_id = 'ca_user', resolved_at = now()
+        where id = 'ca_proposal' and status = 'pending'
+        returning id
+      `);
+      const secondApprove = await client.query(`
+        update console_agent_proposals
+        set status = 'approved', resolved_by_user_id = 'ca_user', resolved_at = now()
+        where id = 'ca_proposal' and status = 'pending'
+        returning id
+      `);
+
+      expect(firstApprove.rows).toHaveLength(1);
+      expect(secondApprove.rows).toHaveLength(0);
+
+      await client.exec(`
+        insert into console_agent_proposals (
+          id, organization_id, workspace_id, conversation_id, run_id, capability_key, input, expires_at, proposed_by_user_id, dedupe_key
+        ) values (
+          'ca_p_dedupe', 'ca_org_a', 'ca_org_a:workspace:default', 'ca_conv', 'ca_run', 'routing_configs.create.v1', '{}'::jsonb,
+          now() + interval '1 day', 'ca_user', 'dk_1'
+        );
+      `);
+
+      await expect(client.exec(`
+        insert into console_agent_proposals (
+          id, organization_id, workspace_id, conversation_id, run_id, capability_key, input, expires_at, proposed_by_user_id, dedupe_key
+        ) values (
+          'ca_p_dedupe_dup', 'ca_org_a', 'ca_org_a:workspace:default', 'ca_conv', 'ca_run', 'routing_configs.create.v1', '{}'::jsonb,
+          now() + interval '1 day', 'ca_user', 'dk_1'
+        );
+      `)).rejects.toThrow();
+
+      await client.exec(`
+        update console_agent_proposals set status = 'rejected', resolved_at = now()
+        where id = 'ca_p_dedupe';
+
+        insert into console_agent_proposals (
+          id, organization_id, workspace_id, conversation_id, run_id, capability_key, input, expires_at, proposed_by_user_id, dedupe_key
+        ) values (
+          'ca_p_dedupe_retry', 'ca_org_a', 'ca_org_a:workspace:default', 'ca_conv', 'ca_run', 'routing_configs.create.v1', '{}'::jsonb,
+          now() + interval '1 day', 'ca_user', 'dk_1'
+        );
+
+        insert into console_agent_proposals (
+          id, organization_id, workspace_id, conversation_id, run_id, capability_key, input, expires_at, proposed_by_user_id
+        ) values (
+          'ca_p_null_key', 'ca_org_a', 'ca_org_a:workspace:default', 'ca_conv', 'ca_run', 'routing_configs.archive.v1', '{}'::jsonb,
+          now() + interval '1 day', 'ca_user'
+        );
+      `);
+
+      const pendingNullKeys = await client.query(`
+        select id from console_agent_proposals where dedupe_key is null
+      `);
+      expect(pendingNullKeys.rows).toHaveLength(2);
+    } finally {
+      await client.close();
+    }
   });
 
   it("enforces tenant- and workspace-scoped routing config references", async () => {

@@ -39,6 +39,13 @@ const SettingsViewDocument = graphql(`
           promptCaptureMode
           retentionDays
         }
+        consoleAgent {
+          model
+          thinkingLevel
+          maxTurns
+          maxToolCallsPerTurn
+          timeoutSeconds
+        }
       }
     }
   }
@@ -75,6 +82,13 @@ const UpdateSettingsDocument = graphql(`
           promptCaptureMode
           retentionDays
         }
+        consoleAgent {
+          model
+          thinkingLevel
+          maxTurns
+          maxToolCallsPerTurn
+          timeoutSeconds
+        }
       }
     }
   }
@@ -95,6 +109,11 @@ const promptCaptureOptions = [
   { value: "raw_text", label: "Raw text" },
   { value: "encrypted_raw", label: "Encrypted raw" }
 ];
+
+const thinkingLevelOptions = ["off", "minimal", "low", "medium", "high", "xhigh"].map((level) => ({
+  value: level,
+  label: level
+}));
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
@@ -288,6 +307,49 @@ function SettingsForm({
               max={1}
               step={0.01}
               onChange={(value) => setSettings({ ...settings, routeQuality: { lowConfidenceThreshold: value ?? 0 } })}
+            />
+          </SettingsSection>
+        ) : null}
+
+        {groups.includes("consoleAgent") ? (
+          <SettingsSection title="Console Agent" description="Model, reasoning effort, and run limits for the operations copilot." restartRequired={restartRequiredFor.includes("consoleAgent")}>
+            <TextField
+              label="Model"
+              info="Model alias the agent requests through the proxy. Explicit route aliases (for example claude-router-hard) skip the classifier."
+              value={settings.consoleAgent.model}
+              onChange={(value) => setSettings({ ...settings, consoleAgent: { ...settings.consoleAgent, model: value } })}
+            />
+            <SelectField
+              label="Thinking level"
+              info="pi reasoning effort for the agent's own model calls."
+              value={settings.consoleAgent.thinkingLevel}
+              options={thinkingLevelOptions}
+              onChange={(value) => setSettings({ ...settings, consoleAgent: { ...settings.consoleAgent, thinkingLevel: value } })}
+            />
+            <NumberField
+              label="Max turns per run"
+              info="Model turns allowed in one agent run before it is stopped as failed."
+              value={settings.consoleAgent.maxTurns}
+              min={1}
+              max={100}
+              onChange={(value) => setSettings({ ...settings, consoleAgent: { ...settings.consoleAgent, maxTurns: value ?? 1 } })}
+            />
+            <NumberField
+              label="Max tool calls per turn"
+              info="Capability calls allowed in a single turn before the run is stopped."
+              value={settings.consoleAgent.maxToolCallsPerTurn}
+              min={1}
+              max={50}
+              onChange={(value) => setSettings({ ...settings, consoleAgent: { ...settings.consoleAgent, maxToolCallsPerTurn: value ?? 1 } })}
+            />
+            <NumberField
+              label="Run timeout"
+              info="Wall-clock limit for one agent run."
+              suffix="s"
+              value={settings.consoleAgent.timeoutSeconds}
+              min={1}
+              max={3600}
+              onChange={(value) => setSettings({ ...settings, consoleAgent: { ...settings.consoleAgent, timeoutSeconds: value ?? 1 } })}
             />
           </SettingsSection>
         ) : null}

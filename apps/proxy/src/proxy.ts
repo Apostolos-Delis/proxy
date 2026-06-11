@@ -62,6 +62,10 @@ export class ProviderProxy implements ProviderAdapter {
       if (!streamCompleted) abortController.abort();
     };
     input.reply.raw.once("close", abortUpstream);
+    // The client can disconnect before this listener registers (e.g. a
+    // cancelled console-agent run aborting mid-routing); "close" has already
+    // fired then, so check the socket state directly.
+    if (input.reply.raw.destroyed) abortUpstream();
 
     let upstream: Response;
     try {
@@ -403,5 +407,17 @@ function withoutOutputText(observation: StreamObservation) {
 }
 
 function onceDrain(stream: NodeJS.WritableStream) {
-  return new Promise<void>((resolve) => stream.once("drain", resolve));
+  // A destroyed socket never emits "drain"; settle on close/error too so a
+  // disconnected client cannot park the forward loop forever.
+  return new Promise<void>((resolve) => {
+    const settle = () => {
+      stream.removeListener("drain", settle);
+      stream.removeListener("close", settle);
+      stream.removeListener("error", settle);
+      resolve();
+    };
+    stream.once("drain", settle);
+    stream.once("close", settle);
+    stream.once("error", settle);
+  });
 }

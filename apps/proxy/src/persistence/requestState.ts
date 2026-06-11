@@ -223,6 +223,7 @@ export async function persistRequestReceived(tx: PromptProxyTransaction, event: 
       inputHash: stringValue(payload.inputHash) ?? event.payloadHash,
       inputChars: numberValue(payload.inputChars) ?? 0,
       status: "received",
+      internal: payload.internal === true,
       metadata: payload
     })
     .onConflictDoUpdate({
@@ -234,6 +235,7 @@ export async function persistRequestReceived(tx: PromptProxyTransaction, event: 
         requestedModel: stringValue(payload.requestedModel) ?? "unknown",
         inputHash: stringValue(payload.inputHash) ?? event.payloadHash,
         inputChars: numberValue(payload.inputChars) ?? 0,
+        internal: payload.internal === true,
         metadata: payload
       }
     });

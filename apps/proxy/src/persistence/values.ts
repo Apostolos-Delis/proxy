@@ -96,6 +96,18 @@ export function providerValue(value: unknown) {
   return undefined;
 }
 
+export function requestStatusValue(value: unknown) {
+  if (
+    value === "received" ||
+    value === "classifying" ||
+    value === "provider_pending" ||
+    value === "completed" ||
+    value === "failed" ||
+    value === "cancelled"
+  ) return value;
+  return undefined;
+}
+
 export function routingConfigSnapshotValue(value: unknown): RoutingConfigSnapshot | undefined {
   const record = recordValue(value);
   const configId = stringValue(record?.configId);
