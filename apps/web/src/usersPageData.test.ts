@@ -9,10 +9,13 @@ function user(overrides: Partial<UserSummary> = {}): UserSummary {
     name: "Ada",
     externalId: null,
     membership: { role: "admin", status: "active" },
+    apiKeyCount: 0,
     requestCount: 0,
     sessionCount: 0,
     usage: { totalTokens: 0 },
     cost: { selected: 0 },
+    usage30d: { totalTokens: 0 },
+    cost30d: { selected: 0 },
     recentActivity: null,
     createdAt: "2026-06-01T00:00:00Z",
     ...overrides

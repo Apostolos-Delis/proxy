@@ -494,7 +494,7 @@ export type ReactivateUserMutation = { reactivateUser: { userId: string, status:
 export type UsersListQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type UsersListQuery = { users: Array<{ userId: string, email: string | null, name: string | null, externalId: string | null, requestCount: number, sessionCount: number, recentActivity: string | null, createdAt: string, membership: { role: string, status: string } | null, usage: { totalTokens: number }, cost: { selected: number } }> };
+export type UsersListQuery = { users: Array<{ userId: string, email: string | null, name: string | null, externalId: string | null, apiKeyCount: number, requestCount: number, sessionCount: number, recentActivity: string | null, createdAt: string, membership: { role: string, status: string } | null, usage: { totalTokens: number }, cost: { selected: number }, usage30d: { totalTokens: number }, cost30d: { selected: number } }> };
 
 export type UpdateUserRoleMutationVariables = Exact<{
   userId: string | number;
@@ -1967,12 +1967,19 @@ export const UsersListDocument = new TypedDocumentString(`
       role
       status
     }
+    apiKeyCount
     requestCount
     sessionCount
     usage {
       totalTokens
     }
     cost {
+      selected
+    }
+    usage30d {
+      totalTokens
+    }
+    cost30d {
       selected
     }
     recentActivity

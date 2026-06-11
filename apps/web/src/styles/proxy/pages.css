@@ -3504,6 +3504,10 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font-weight: 600;
 }
 
+.assignment-popover.role-popover {
+  width: 160px;
+}
+
 .assignment-popover span {
   margin-top: 3px;
   color: var(--fg-faint);

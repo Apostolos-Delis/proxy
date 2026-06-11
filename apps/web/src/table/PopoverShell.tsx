@@ -17,7 +17,8 @@ export function PopoverShell({ onDismiss, children }: PopoverShellProps) {
   );
 }
 
-// Keep in sync with .assignment-popover in pages.css.
+// Fallbacks for placement before the popover has rendered content;
+// place() prefers the measured size so narrow variants clamp correctly.
 const popoverWidth = 280;
 const popoverMaxHeight = 320;
 const popoverGap = 6;
@@ -48,11 +49,13 @@ export function AnchoredPopover({ anchorRef, onDismiss, children }: PopoverShell
     const anchor = anchorRef.current;
     if (!node || !anchor) return;
     const rect = anchor.getBoundingClientRect();
-    const left = Math.max(viewportPadding, Math.min(rect.left, window.innerWidth - popoverWidth - viewportPadding));
+    const width = node.offsetWidth || popoverWidth;
+    const height = node.offsetHeight || popoverMaxHeight;
+    const left = Math.max(viewportPadding, Math.min(rect.left, window.innerWidth - width - viewportPadding));
     node.style.left = `${left}px`;
     const spaceBelow = window.innerHeight - rect.bottom - popoverGap;
     const spaceAbove = rect.top - popoverGap;
-    if (spaceBelow < popoverMaxHeight && spaceAbove > spaceBelow) {
+    if (spaceBelow < height && spaceAbove > spaceBelow) {
       node.style.top = "auto";
       node.style.bottom = `${window.innerHeight - rect.top + popoverGap}px`;
     } else {

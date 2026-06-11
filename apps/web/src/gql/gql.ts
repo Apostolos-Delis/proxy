@@ -73,7 +73,7 @@ type Documents = {
     "\n  query UnpricedModels {\n    modelPricing {\n      model\n      provider\n      source\n      seenInTraffic\n    }\n  }\n": typeof types.UnpricedModelsDocument,
     "\n  mutation DeactivateUser($userId: ID!) {\n    deactivateUser(userId: $userId) {\n      userId\n      status\n    }\n  }\n": typeof types.DeactivateUserDocument,
     "\n  mutation ReactivateUser($userId: ID!) {\n    reactivateUser(userId: $userId) {\n      userId\n      status\n    }\n  }\n": typeof types.ReactivateUserDocument,
-    "\n  query UsersList {\n    users {\n      userId\n      email\n      name\n      externalId\n      membership {\n        role\n        status\n      }\n      requestCount\n      sessionCount\n      usage {\n        totalTokens\n      }\n      cost {\n        selected\n      }\n      recentActivity\n      createdAt\n    }\n  }\n": typeof types.UsersListDocument,
+    "\n  query UsersList {\n    users {\n      userId\n      email\n      name\n      externalId\n      membership {\n        role\n        status\n      }\n      apiKeyCount\n      requestCount\n      sessionCount\n      usage {\n        totalTokens\n      }\n      cost {\n        selected\n      }\n      usage30d {\n        totalTokens\n      }\n      cost30d {\n        selected\n      }\n      recentActivity\n      createdAt\n    }\n  }\n": typeof types.UsersListDocument,
     "\n  mutation UpdateUserRole($userId: ID!, $role: MemberRole!) {\n    updateUserRole(userId: $userId, role: $role) {\n      userId\n      role\n      previousRole\n    }\n  }\n": typeof types.UpdateUserRoleDocument,
 };
 const documents: Documents = {
@@ -135,7 +135,7 @@ const documents: Documents = {
     "\n  query UnpricedModels {\n    modelPricing {\n      model\n      provider\n      source\n      seenInTraffic\n    }\n  }\n": types.UnpricedModelsDocument,
     "\n  mutation DeactivateUser($userId: ID!) {\n    deactivateUser(userId: $userId) {\n      userId\n      status\n    }\n  }\n": types.DeactivateUserDocument,
     "\n  mutation ReactivateUser($userId: ID!) {\n    reactivateUser(userId: $userId) {\n      userId\n      status\n    }\n  }\n": types.ReactivateUserDocument,
-    "\n  query UsersList {\n    users {\n      userId\n      email\n      name\n      externalId\n      membership {\n        role\n        status\n      }\n      requestCount\n      sessionCount\n      usage {\n        totalTokens\n      }\n      cost {\n        selected\n      }\n      recentActivity\n      createdAt\n    }\n  }\n": types.UsersListDocument,
+    "\n  query UsersList {\n    users {\n      userId\n      email\n      name\n      externalId\n      membership {\n        role\n        status\n      }\n      apiKeyCount\n      requestCount\n      sessionCount\n      usage {\n        totalTokens\n      }\n      cost {\n        selected\n      }\n      usage30d {\n        totalTokens\n      }\n      cost30d {\n        selected\n      }\n      recentActivity\n      createdAt\n    }\n  }\n": types.UsersListDocument,
     "\n  mutation UpdateUserRole($userId: ID!, $role: MemberRole!) {\n    updateUserRole(userId: $userId, role: $role) {\n      userId\n      role\n      previousRole\n    }\n  }\n": types.UpdateUserRoleDocument,
 };
 
@@ -374,7 +374,7 @@ export function graphql(source: "\n  mutation ReactivateUser($userId: ID!) {\n  
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  query UsersList {\n    users {\n      userId\n      email\n      name\n      externalId\n      membership {\n        role\n        status\n      }\n      requestCount\n      sessionCount\n      usage {\n        totalTokens\n      }\n      cost {\n        selected\n      }\n      recentActivity\n      createdAt\n    }\n  }\n"): typeof import('./graphql').UsersListDocument;
+export function graphql(source: "\n  query UsersList {\n    users {\n      userId\n      email\n      name\n      externalId\n      membership {\n        role\n        status\n      }\n      apiKeyCount\n      requestCount\n      sessionCount\n      usage {\n        totalTokens\n      }\n      cost {\n        selected\n      }\n      usage30d {\n        totalTokens\n      }\n      cost30d {\n        selected\n      }\n      recentActivity\n      createdAt\n    }\n  }\n"): typeof import('./graphql').UsersListDocument;
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
