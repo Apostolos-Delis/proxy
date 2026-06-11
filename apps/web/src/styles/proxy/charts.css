@@ -153,6 +153,33 @@
   border-radius: 2px;
 }
 
+.mini-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--glass-strong);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.mini-tooltip strong {
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+.mini-tooltip span {
+  color: var(--fg-faint);
+  font-size: 10.5px;
+  line-height: 1.3;
+}
+
 .chart-series-legend {
   display: flex;
   flex-wrap: wrap;

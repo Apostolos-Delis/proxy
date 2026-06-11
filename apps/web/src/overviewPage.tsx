@@ -100,17 +100,17 @@ export function OverviewPage() {
       <div className="overview-kpis">
         <InteractiveStatCard
           metric={{ label: "Total tokens", value: formatCompact(overview.totals.totalTokens), icon: <Zap />, delta: tokenDelta }}
-          chart={<Sparkline data={tokenSeries.slice(-7)} />}
+          chart={<Sparkline data={tokenSeries.slice(-7)} valueFormatter={formatInteger} />}
           to="/usage"
         />
         <InteractiveStatCard
           metric={{ label: "Requests", value: formatInteger(overview.requestCount), icon: <Send />, delta: requestDelta }}
-          chart={<MiniBars data={requestSeries.slice(-7)} />}
+          chart={<MiniBars data={requestSeries.slice(-7)} valueFormatter={formatInteger} />}
           to="/logs"
         />
         <InteractiveStatCard
           metric={{ label: "Spend", value: formatMoney(overview.cost.selected, 0), icon: <Coins />, delta: spendDelta, deltaPositiveIsGood: false }}
-          chart={<Sparkline data={spendSeries.slice(-7)} />}
+          chart={<Sparkline data={spendSeries.slice(-7)} valueFormatter={formatMoney} />}
           to="/billing"
         />
       </div>
