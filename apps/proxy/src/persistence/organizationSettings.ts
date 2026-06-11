@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { organizationSettings, type PromptProxyDbSession } from "@prompt-proxy/db";
 
@@ -15,20 +15,56 @@ export class OrganizationSettingsStore {
   }
 
   async setSystemPrompt(organizationId: string, systemPrompt: string | null) {
-    const settings = {
-      systemPrompt,
-      updatedAt: new Date()
+    const patch = { systemPrompt, updatedAt: new Date() };
+    await this.db
+      .insert(organizationSettings)
+      .values({ organizationId, ...patch })
+      .onConflictDoUpdate({ target: organizationSettings.organizationId, set: patch });
+    return systemPrompt;
+  }
+
+  async cacheTtlUpgrade(organizationId: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ settings: organizationSettings.settings })
+      .from(organizationSettings)
+      .where(eq(organizationSettings.organizationId, organizationId))
+      .limit(1);
+    return row?.settings?.cacheTtlUpgrade === true;
+  }
+
+  // Single read for the admin settings payload, which needs both editable
+  // org-level fields at once.
+  async editable(organizationId: string): Promise<{ systemPrompt: string | null; cacheTtlUpgrade: boolean }> {
+    const [row] = await this.db
+      .select({
+        systemPrompt: organizationSettings.systemPrompt,
+        settings: organizationSettings.settings
+      })
+      .from(organizationSettings)
+      .where(eq(organizationSettings.organizationId, organizationId))
+      .limit(1);
+    return {
+      systemPrompt: row?.systemPrompt ?? null,
+      cacheTtlUpgrade: row?.settings?.cacheTtlUpgrade === true
     };
+  }
+
+  async setCacheTtlUpgrade(organizationId: string, enabled: boolean): Promise<boolean> {
+    // Merge the flag into the JSONB settings column without touching other keys.
     await this.db
       .insert(organizationSettings)
       .values({
         organizationId,
-        ...settings
+        settings: { cacheTtlUpgrade: enabled },
+        updatedAt: new Date()
       })
       .onConflictDoUpdate({
         target: organizationSettings.organizationId,
-        set: settings
+        set: {
+          settings: sql`organization_settings.settings || jsonb_build_object('cacheTtlUpgrade', ${enabled}::boolean)`,
+          updatedAt: new Date()
+        }
       });
-    return systemPrompt;
+    return enabled;
   }
 }

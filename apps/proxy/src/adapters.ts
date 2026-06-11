@@ -45,7 +45,16 @@ export const anthropicMessagesSurface: SurfaceAdapter = {
   buildContext: buildAnthropicContext
 };
 
-export function rewriteSurfaceRequest(body: unknown, decision: RouteDecision, systemPrompt?: string) {
+export type RewriteOptions = {
+  upgradeCacheTtl?: boolean;
+};
+
+export function rewriteSurfaceRequest(
+  body: unknown,
+  decision: RouteDecision,
+  systemPrompt?: string,
+  options: RewriteOptions = {}
+) {
   if (!decision.providerSettings) {
     throw new Error("Cannot rewrite request without selected provider settings.");
   }
@@ -53,12 +62,19 @@ export function rewriteSurfaceRequest(body: unknown, decision: RouteDecision, sy
     return rewriteOpenAIResponsesRequest(body, decision.providerSettings, systemPrompt);
   }
   if (decision.surface === "anthropic-messages" && decision.providerSettings.provider === "anthropic") {
-    return rewriteAnthropicMessagesRequest(body, decision.providerSettings, systemPrompt);
+    const rewritten = rewriteAnthropicMessagesRequest(body, decision.providerSettings, systemPrompt);
+    if (options.upgradeCacheTtl) upgradeCacheControlTtl(rewritten);
+    return rewritten;
   }
   throw new Error("Selected provider settings do not match the request surface.");
 }
 
-export function rewriteTokenCountRequest(body: unknown, decision: RouteDecision, systemPrompt?: string) {
+export function rewriteTokenCountRequest(
+  body: unknown,
+  decision: RouteDecision,
+  systemPrompt?: string,
+  options: RewriteOptions = {}
+) {
   if (!decision.selectedModel) {
     throw new Error("Cannot rewrite token-count request without a selected model.");
   }
@@ -68,7 +84,42 @@ export function rewriteTokenCountRequest(body: unknown, decision: RouteDecision,
   if (decision.providerSettings?.provider === "anthropic" && systemPrompt) {
     request.system = prependAnthropicSystemPrompt(request.system, systemPrompt);
   }
+  if (options.upgradeCacheTtl) upgradeCacheControlTtl(request);
   return request;
+}
+
+// Upgrade Anthropic ephemeral cache_control breakpoints from the default
+// 5-minute TTL to 1-hour, wherever the harness placed them (system blocks and
+// any message content block). The 1h TTL costs 2× to write (vs 1.25× for 5m)
+// but breaks even at 3 reads — easily cleared by agentic sessions with gaps
+// past the 5m default. Upgrading every breakpoint (not just the latest turn's)
+// is what keeps the transform byte-stable across turns: a block that carried
+// ttl:1h while it was the live turn still reads ttl:1h once it becomes history,
+// so the cached prefix never shifts. An explicitly-set ttl is left untouched —
+// the harness chose it deliberately.
+function upgradeCacheControlTtl(request: Record<string, unknown>) {
+  upgradeInValue(request.system);
+  if (Array.isArray(request.messages)) {
+    for (const message of request.messages) {
+      if (isRecord(message)) upgradeInValue(message.content);
+    }
+  }
+}
+
+function upgradeInValue(value: unknown) {
+  if (Array.isArray(value)) {
+    for (const item of value) upgradeBlock(item);
+    return;
+  }
+  upgradeBlock(value);
+}
+
+function upgradeBlock(block: unknown) {
+  if (!isRecord(block)) return;
+  const cc = block.cache_control;
+  if (isRecord(cc) && cc.type === "ephemeral" && !cc.ttl) {
+    block.cache_control = { type: "ephemeral", ttl: "1h" };
+  }
 }
 
 function rewriteOpenAIResponsesRequest(

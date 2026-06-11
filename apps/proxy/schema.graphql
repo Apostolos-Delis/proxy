@@ -141,6 +141,7 @@ type EditableClassifier {
 
 type EditableSettings {
   budgets: BudgetSettings!
+  cacheTtlUpgrade: Boolean!
   classifier: EditableClassifier!
   promptCapture: PromptCaptureState!
   routeQuality: RouteQualitySettings!
@@ -712,6 +713,7 @@ type Settings {
 
 input SettingsInput {
   budgets: BudgetSettingsInput
+  cacheTtlUpgrade: Boolean
   classifier: ClassifierSettingsInput
   promptCapture: PromptCaptureSettingsInput
   routeQuality: RouteQualitySettingsInput

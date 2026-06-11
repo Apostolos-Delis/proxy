@@ -191,7 +191,10 @@ function fakePersistence(
       setSystemPrompt: async (_organizationId: string, systemPrompt: string | null) => {
         orgSystemPrompt.value = systemPrompt;
         return systemPrompt;
-      }
+      },
+      cacheTtlUpgrade: async () => false,
+      setCacheTtlUpgrade: async (_organizationId: string, enabled: boolean) => enabled,
+      editable: async () => ({ systemPrompt: orgSystemPrompt.value, cacheTtlUpgrade: false })
     },
     promptArtifacts: {
       settings: async () => promptCapture,

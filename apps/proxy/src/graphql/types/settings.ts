@@ -87,6 +87,7 @@ export const EditableSettings = builder
     fields: (t) => ({
       schemaVersion: t.exposeInt("schemaVersion"),
       systemPrompt: t.exposeString("systemPrompt", { nullable: true }),
+      cacheTtlUpgrade: t.exposeBoolean("cacheTtlUpgrade"),
       classifier: t.expose("classifier", { type: EditableClassifier }),
       budgets: t.expose("budgets", { type: BudgetSettings }),
       routeQuality: t.expose("routeQuality", { type: RouteQualitySettings }),
@@ -157,6 +158,7 @@ export const SettingsInput = builder.inputType("SettingsInput", {
   fields: (t) => ({
     schemaVersion: t.int(),
     systemPrompt: t.string(),
+    cacheTtlUpgrade: t.boolean(),
     classifier: t.field({ type: ClassifierSettingsInput }),
     budgets: t.field({ type: BudgetSettingsInput }),
     routeQuality: t.field({ type: RouteQualitySettingsInput }),
