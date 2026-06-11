@@ -1,16 +1,30 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  conversationSpan,
+  artifactToolNames,
   conversationTurns,
+  dominantRequestStatus,
+  sessionDurationMs,
   sessionRoute,
   sessionUserName,
+  sessionWallMs,
+  systemSpans,
   transcriptText,
   type SessionArtifact,
   type SessionDetail,
   type SessionRequest,
   type SessionSummary
 } from "./sessionsPageData";
+
+function usage(overrides: Partial<SessionRequest["usage"]> = {}): SessionRequest["usage"] {
+  return {
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    ...overrides
+  };
+}
 
 function request(requestId: string, createdAt: string, latencyMs: number | null = 0): SessionRequest {
   return {
@@ -21,7 +35,7 @@ function request(requestId: string, createdAt: string, latencyMs: number | null 
     terminalStatus: "completed",
     latencyMs,
     selectedCost: 0,
-    usage: { totalTokens: 0 }
+    usage: usage()
   };
 }
 
@@ -31,6 +45,8 @@ function artifact(overrides: Partial<SessionArtifact> & Pick<SessionArtifact, "a
     rawText: null,
     redactedText: null,
     preview: null,
+    tokenEstimate: null,
+    metadata: null,
     ...overrides
   };
 }
@@ -45,10 +61,7 @@ function detail(requests: SessionRequest[], promptArtifacts: SessionArtifact[], 
       sessionIdentity: null,
       requestCount: requests.length,
       startedAt: "2026-06-10T10:00:00Z",
-      recentActivity: null,
-      modelMix: {},
-      routeMix: {},
-      usage: { totalTokens: 0 },
+      usage: { inputTokens: 0, outputTokens: 0 },
       cost: { selected: 0 }
     },
     user,
@@ -102,20 +115,128 @@ describe("conversationTurns", () => {
     // 10s wall gap minus 2s of r1 latency = 8s idle.
     expect(turns[1].gapMs).toBe(8000);
   });
+
+  it("accumulates replayed prior messages and tokens across turns", () => {
+    const turns = conversationTurns(detail(
+      [request("r1", "2026-06-10T10:00:00Z"), request("r2", "2026-06-10T10:05:00Z")],
+      [
+        artifact({ artifactId: "a1", requestId: "r1", kind: "system", contentHash: "h1", createdAt: "2026-06-10T10:00:00Z", tokenEstimate: 100 }),
+        artifact({ artifactId: "a2", requestId: "r1", kind: "user_message", contentHash: "h2", createdAt: "2026-06-10T10:00:00Z", tokenEstimate: 40 }),
+        artifact({ artifactId: "a3", requestId: "r2", kind: "user_message", contentHash: "h3", createdAt: "2026-06-10T10:05:00Z", tokenEstimate: 7 })
+      ]
+    ));
+    expect(turns[0].priorMessages).toBe(0);
+    expect(turns[0].priorTokens).toBe(0);
+    expect(turns[1].priorMessages).toBe(2);
+    expect(turns[1].priorTokens).toBe(140);
+  });
 });
 
-describe("conversationSpan", () => {
-  it("is null for a single turn", () => {
-    const turns = conversationTurns(detail([request("r1", "2026-06-10T10:00:00Z")], []));
-    expect(conversationSpan(turns)).toBeNull();
+describe("systemSpans", () => {
+  it("spans a system prompt from its first request to the end of the session", () => {
+    const turns = conversationTurns(detail(
+      [request("r1", "2026-06-10T10:00:00Z"), request("r2", "2026-06-10T10:01:00Z"), request("r3", "2026-06-10T10:02:00Z")],
+      [artifact({ artifactId: "sys", requestId: "r1", kind: "system", contentHash: "h1", createdAt: "2026-06-10T10:00:00Z" })]
+    ));
+    expect(systemSpans(turns).get("sys")).toBe(3);
   });
 
-  it("spans first to last request", () => {
+  it("closes a span when a different system prompt of the same kind appears", () => {
     const turns = conversationTurns(detail(
-      [request("r1", "2026-06-10T10:00:00Z"), request("r2", "2026-06-10T10:01:00Z")],
+      [request("r1", "2026-06-10T10:00:00Z"), request("r2", "2026-06-10T10:01:00Z"), request("r3", "2026-06-10T10:02:00Z")],
+      [
+        artifact({ artifactId: "sysA", requestId: "r1", kind: "system", contentHash: "h1", createdAt: "2026-06-10T10:00:00Z" }),
+        artifact({ artifactId: "sysB", requestId: "r3", kind: "system", contentHash: "h2", createdAt: "2026-06-10T10:02:00Z" })
+      ]
+    ));
+    const spans = systemSpans(turns);
+    expect(spans.get("sysA")).toBe(2);
+    expect(spans.get("sysB")).toBe(1);
+  });
+
+  it("ignores non-system artifacts", () => {
+    const turns = conversationTurns(detail(
+      [request("r1", "2026-06-10T10:00:00Z")],
+      [artifact({ artifactId: "a1", requestId: "r1", kind: "user_message", contentHash: "h1", createdAt: "2026-06-10T10:00:00Z" })]
+    ));
+    expect(systemSpans(turns).size).toBe(0);
+  });
+
+  it("spans all same-kind artifacts that arrive in the same request together", () => {
+    // OpenAI requests can carry an instructions field plus developer messages,
+    // all captured as kind "instructions" within one turn.
+    const turns = conversationTurns(detail(
+      [request("r1", "2026-06-10T10:00:00Z"), request("r2", "2026-06-10T10:01:00Z"), request("r3", "2026-06-10T10:02:00Z")],
+      [
+        artifact({ artifactId: "insA", requestId: "r1", kind: "instructions", contentHash: "h1", createdAt: "2026-06-10T10:00:00Z" }),
+        artifact({ artifactId: "insB", requestId: "r1", kind: "instructions", contentHash: "h2", createdAt: "2026-06-10T10:00:01Z", sourceIndex: 0 }),
+        artifact({ artifactId: "insC", requestId: "r3", kind: "instructions", contentHash: "h3", createdAt: "2026-06-10T10:02:00Z" })
+      ]
+    ));
+    const spans = systemSpans(turns);
+    expect(spans.get("insA")).toBe(2);
+    expect(spans.get("insB")).toBe(2);
+    expect(spans.get("insC")).toBe(1);
+  });
+});
+
+describe("artifactToolNames", () => {
+  const base = { artifactId: "a1", requestId: "r1", kind: "tool_use", contentHash: "h1", createdAt: "2026-06-10T10:00:00Z" };
+
+  it("reads a single toolName and deduped toolNames lists", () => {
+    expect(artifactToolNames(artifact({ ...base, metadata: { toolName: "read" } }))).toEqual(["read"]);
+    expect(artifactToolNames(artifact({ ...base, metadata: { toolNames: ["read", "edit", "read"] } }))).toEqual(["read", "edit"]);
+  });
+
+  it("returns nothing for missing or malformed metadata", () => {
+    expect(artifactToolNames(artifact(base))).toEqual([]);
+    expect(artifactToolNames(artifact({ ...base, metadata: "read" }))).toEqual([]);
+    expect(artifactToolNames(artifact({ ...base, metadata: { toolNames: [1, null] } }))).toEqual([]);
+  });
+});
+
+describe("sessionWallMs", () => {
+  it("is null without turns", () => {
+    expect(sessionWallMs(conversationTurns(detail([], [])))).toBeNull();
+  });
+
+  it("covers a single request via its latency", () => {
+    const turns = conversationTurns(detail([request("r1", "2026-06-10T10:00:00Z", 2500)], []));
+    expect(sessionWallMs(turns)).toBe(2500);
+  });
+
+  it("is null for a single still-running request without latency", () => {
+    const turns = conversationTurns(detail([request("r1", "2026-06-10T10:00:00Z", null)], []));
+    expect(sessionWallMs(turns)).toBeNull();
+  });
+
+  it("spans first request to the last response, including final latency", () => {
+    const turns = conversationTurns(detail(
+      [request("r1", "2026-06-10T10:00:00Z"), request("r2", "2026-06-10T10:01:00Z", 3000)],
       []
     ));
-    expect(conversationSpan(turns)).toBe(60000);
+    expect(sessionWallMs(turns)).toBe(63000);
+  });
+});
+
+describe("sessionDurationMs", () => {
+  it("prefers endedAt, falls back to recentActivity, hides empty spans", () => {
+    const base = { startedAt: "2026-06-10T10:00:00Z" } as SessionSummary;
+    expect(sessionDurationMs({ ...base, endedAt: "2026-06-10T10:01:00Z", recentActivity: null } as SessionSummary)).toBe(60000);
+    expect(sessionDurationMs({ ...base, endedAt: null, recentActivity: "2026-06-10T10:00:30Z" } as SessionSummary)).toBe(30000);
+    expect(sessionDurationMs({ ...base, endedAt: null, recentActivity: "2026-06-10T10:00:00Z" } as SessionSummary)).toBeNull();
+    expect(sessionDurationMs({ ...base, endedAt: null, recentActivity: null } as SessionSummary)).toBeNull();
+  });
+});
+
+describe("dominantRequestStatus", () => {
+  it("returns the most common terminal status", () => {
+    const requests = [
+      request("r1", "2026-06-10T10:00:00Z"),
+      { ...request("r2", "2026-06-10T10:01:00Z"), terminalStatus: "failed" },
+      request("r3", "2026-06-10T10:02:00Z")
+    ];
+    expect(dominantRequestStatus(requests)).toBe("completed");
   });
 });
 
