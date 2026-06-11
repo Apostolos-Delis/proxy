@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Ban, KeySquare, Plus, X } from "lucide-react";
 import { useState } from "react";
 
@@ -7,6 +8,7 @@ import {
   revokeProviderCredential,
   type ProviderAccountSummary
 } from "./providers/data";
+import { ProviderKeyDetailPanel } from "./providers/detailPanel";
 import { CreateProviderCredentialPanel } from "./createProviderCredentialPanel";
 import { compactId, formatDateTime } from "./format";
 import { ConsoleTable, optionItems, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
@@ -14,6 +16,12 @@ import { PageState, PageTitle, StatusBadge } from "./ui";
 
 export function ProvidersPage() {
   const [showCreate, setShowCreate] = useState(false);
+  // The open slideout lives in the URL (?key=<id>) so provider keys can be deep-linked.
+  const search = useSearch({ strict: false }) as { key?: unknown };
+  const openAccountId = typeof search.key === "string" ? search.key : null;
+  const navigate = useNavigate();
+  const setOpenAccountId = (accountId: string | null) =>
+    void navigate({ to: ".", search: (current) => ({ ...current, key: accountId ?? undefined }), replace: true });
   const queryClient = useQueryClient();
   const accountsQuery = useQuery({ queryKey: ["provider-accounts"], queryFn: fetchProviderAccounts });
   const revokeMutation = useMutation({
@@ -28,6 +36,7 @@ export function ProvidersPage() {
   if (accountsQuery.error) return <PageState title="Provider keys" label={accountsQuery.error.message} />;
 
   const accounts = accountsQuery.data ?? [];
+  const openAccount = accounts.find((account) => account.id === openAccountId);
   return (
     <div className="page page-enter">
       <PageTitle
@@ -41,6 +50,7 @@ export function ProvidersPage() {
         )}
       />
       {showCreate ? <CreateProviderCredentialPanel onClose={() => setShowCreate(false)} /> : null}
+      {openAccount ? <ProviderKeyDetailPanel account={openAccount} onClose={() => setOpenAccountId(null)} /> : null}
       <ConsoleTable
         className="routing-configs-card"
         urlState
@@ -49,7 +59,8 @@ export function ProvidersPage() {
           revokePendingId: revokeMutation.isPending ? revokeMutation.variables : undefined,
           revokeErrorId: revokeMutation.error ? revokeMutation.variables : undefined,
           revokeErrorMessage: revokeMutation.error?.message,
-          onRevoke: (providerAccountId) => revokeMutation.mutate(providerAccountId)
+          onRevoke: (providerAccountId) => revokeMutation.mutate(providerAccountId),
+          onOpen: (providerAccountId) => setOpenAccountId(providerAccountId)
         })}
         search={{ placeholder: "Search keys, providers, owners...", getValue: providerAccountSearchValue }}
         filters={providerAccountFilters(accounts)}
@@ -63,15 +74,17 @@ function providerAccountColumns({
   revokePendingId,
   revokeErrorId,
   revokeErrorMessage,
-  onRevoke
+  onRevoke,
+  onOpen
 }: {
   revokePendingId?: string;
   revokeErrorId?: string;
   revokeErrorMessage?: string;
   onRevoke: (providerAccountId: string) => void;
+  onOpen: (providerAccountId: string) => void;
 }): ConsoleTableColumn<ProviderAccountSummary>[] {
   return [
-    { id: "name", header: "Name", size: 240, accessorFn: (account) => account.name, cell: ({ row }) => <ProviderKeyNameCell account={row.original} /> },
+    { id: "name", header: "Name", size: 240, accessorFn: (account) => account.name, cell: ({ row }) => <ProviderKeyNameCell account={row.original} onOpen={() => onOpen(row.original.id)} /> },
     { id: "provider", header: "Provider", size: 130, accessorFn: (account) => account.provider, cell: ({ row }) => <span className="code-pill">{row.original.provider}</span> },
     { id: "owner", header: "Owner", size: 160, accessorFn: (account) => account.ownerUserId ?? "", cell: ({ row }) => ownerCell(row.original) },
     { id: "status", header: "Status", size: 120, accessorFn: (account) => account.status, cell: ({ row }) => <StatusBadge status={row.original.status} /> },
@@ -100,10 +113,12 @@ function lastUsedCell(account: ProviderAccountSummary) {
   return formatDateTime(account.lastUsedAt);
 }
 
-function ProviderKeyNameCell({ account }: { account: ProviderAccountSummary }) {
+function ProviderKeyNameCell({ account, onOpen }: { account: ProviderAccountSummary; onOpen: () => void }) {
   return (
     <>
-      <div className="row gap-8"><KeySquare /><strong>{account.name}</strong></div>
+      <button type="button" className="table-link row gap-8" onClick={onOpen} aria-label={`Inspect ${account.name}`}>
+        <KeySquare /><strong>{account.name}</strong>
+      </button>
       <div className="key-id faint" title={account.id}>
         <span>Key ID</span>
         <span className="mono">{compactId(account.id, 14)}</span>
