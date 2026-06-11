@@ -121,7 +121,7 @@ const apiKeyAdvancedFields: ConsoleTableAdvancedField<ApiKeySummary>[] = [
   { id: "name", label: "Name", getValue: (apiKey) => apiKey.name },
   { id: "keyId", label: "Key ID", getValue: (apiKey) => apiKey.id },
   { id: "status", label: "Status", getValue: apiKeyStatus },
-  { id: "routingConfig", label: "Routing config", getValue: routingConfigLabel },
+  { id: "routingConfig", label: "Routing", getValue: routingConfigLabel },
   { id: "owner", label: "Owner", getValue: (apiKey) => apiKey.userId ?? "organization" },
   { id: "scopes", label: "Scopes", getValue: (apiKey) => apiKey.scopes }
 ];
@@ -139,7 +139,7 @@ function apiKeyFilters(keys: ApiKeySummary[]): ConsoleTableFilter<ApiKeySummary>
     },
     {
       id: "routingConfig",
-      label: "Routing config",
+      label: "Routing",
       allLabel: "All configs",
       options: uniqueOptionItems(routingValues),
       getValue: routingConfigFilterValue

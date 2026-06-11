@@ -44,7 +44,7 @@ export function apiKeyColumns({
   return [
     { id: "name", header: "Name", size: 225, accessorFn: (apiKey) => apiKey.name, cell: ({ row }) => <ApiKeyNameCell apiKey={row.original} onInspect={() => onInspect(row.original.id)} /> },
     { id: "status", header: "Status", size: 96, accessorFn: apiKeyStatus, cell: ({ row }) => <StatusBadge status={apiKeyStatus(row.original)} /> },
-    { id: "routingConfig", header: "Routing config", size: 200, accessorFn: routingConfigLabel, cell: ({ row }) => (
+    { id: "routingConfig", header: "Routing", size: 200, accessorFn: routingConfigLabel, cell: ({ row }) => (
       apiKeyStatus(row.original) === "active" ? (
         <>
           <AssignmentMenu
