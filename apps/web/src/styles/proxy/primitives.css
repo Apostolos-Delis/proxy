@@ -75,6 +75,15 @@
 .badge-warn { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
 .badge-accent { color: var(--accent-2); background: var(--accent-soft); border-color: transparent; }
 
+.tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 5px;
+  font-family: var(--mono); font-size: 11px; font-weight: 500; line-height: 1.6;
+  border: 1px solid var(--border); background: var(--glass-2); color: var(--fg-muted);
+  white-space: nowrap;
+}
+.tag-accent { color: var(--accent-2); background: var(--accent-soft); border-color: rgba(45, 212, 191, 0.32); }
+
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 500;

@@ -1564,10 +1564,6 @@ input[type="checkbox"][role="switch"]:focus-visible {
   height: 13px;
 }
 
-.route-chip {
-  cursor: default;
-}
-
 .route-fast {
   color: #7dd3fc;
   border-color: rgba(125, 211, 252, 0.32);
@@ -1627,6 +1623,10 @@ input[type="checkbox"][role="switch"]:focus-visible {
   gap: 12px;
 }
 
+.config-card-head > div {
+  min-width: 0;
+}
+
 .config-card-name {
   font-size: 15.5px;
   font-weight: 600;
@@ -1640,6 +1640,14 @@ input[type="checkbox"][role="switch"]:focus-visible {
   margin-top: 8px;
 }
 
+/* Slugs are unbounded user input; inline-block so text-overflow can apply. */
+.config-card-meta .tag {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .config-card-description {
   margin: -4px 0 0;
   color: var(--fg-muted);
@@ -1651,30 +1659,27 @@ input[type="checkbox"][role="switch"]:focus-visible {
   overflow: hidden;
 }
 
-.config-card-section {
-  display: grid;
-  gap: 9px;
-}
-
-.config-card-label {
+.config-card-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--fg-faint);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.config-card-label svg {
-  width: 12px;
-  height: 12px;
+.config-card-status .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .config-card-matrix {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
 .config-card-matrix-row {
@@ -1684,19 +1689,19 @@ input[type="checkbox"][role="switch"]:focus-visible {
   gap: 8px;
 }
 
-.config-card-matrix-row .route-chip {
-  width: 100%;
-  justify-content: center;
-  padding-block: 4px;
-  font-size: 11.5px;
+.config-card-matrix-row > .tag {
+  justify-self: start;
+}
+
+.config-card-matrix-header {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
 }
 
 .config-card-matrix-header span {
   color: var(--fg-faint);
   font-size: 11px;
   font-weight: 500;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
 }
 
 .config-card-provider-header {

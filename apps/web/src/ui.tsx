@@ -116,7 +116,7 @@ export function StatusBadge({ status }: { status?: string | null }) {
 
 export function RouteBadge({ route }: { route?: string | null }) {
   const value = route ?? "unknown";
-  return <span className={`chip route-chip route-${routeTone(value)}`}>{value}</span>;
+  return <span className={`tag route-${routeTone(value)}`}>{value}</span>;
 }
 
 export function Avatar({ label, color = "var(--accent)", size = 30 }: { label: string; color?: string; size?: number }) {
