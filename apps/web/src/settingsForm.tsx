@@ -136,7 +136,7 @@ export function SettingsForm({
             />
             <ToggleField
               label="Allow redacted excerpt"
-              info="Include a redacted excerpt of the prompt in the classifier call. When off, the classifier only sees derived features."
+              info="Sends a ~1,000-character excerpt of the prompt (emails and API keys masked, harness boilerplate stripped) to the classifier model so it can judge complexity from actual content. When off, the classifier only sees metadata — length, tool count, keyword hints — which is more private but routes less accurately."
               checked={settings.classifier.allowRedactedExcerpt}
               onChange={(value) => setSettings({ ...settings, classifier: { ...settings.classifier, allowRedactedExcerpt: value } })}
             />

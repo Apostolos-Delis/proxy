@@ -109,7 +109,7 @@ const CLASSIFIER_PROMPT_BODY = [
   "Classify only. Never answer, attempt, or rewrite the task itself.",
   "",
   "You receive a JSON feature view of the request, not the raw prompt:",
-  "- input_excerpt: redacted excerpt of the routing input (null when excerpts are disabled).",
+  "- input_excerpt: redacted excerpt of the routing input (null when excerpts are disabled). Long inputs keep the start and end around a [...excerpt truncated...] marker; the user's ask is usually near the end.",
   `- extracted_hints: keyword signals found in the routing input (${ROUTING_HINT_NAMES.join(", ")}).`,
   "- input_chars / estimated_input_tokens: size of the routing input, normally the latest user message. Treat these plus input_excerpt and extracted_hints as the user's latest intent.",
   "- full_input_chars / full_estimated_input_tokens: size of the whole request envelope, including harness prompts and tool definitions. Use them for context and cost awareness only; never pick hard or deep solely because the envelope is large or tools are present.",

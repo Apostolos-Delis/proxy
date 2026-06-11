@@ -140,16 +140,28 @@ function routingInputFrom(latestUserText: string | undefined, fullText: string) 
   };
 }
 
+// Harnesses inject tag-delimited blocks inside the user turn (Conductor
+// <system_instruction>, Claude Code <system-reminder> and command wrappers,
+// Codex <environment_context>/<user_instructions>). They describe the harness,
+// not the user's ask, so routing ignores them. <command-args> is kept: it
+// carries the user's actual input.
+const harnessBlockPattern =
+  /<(system_instruction|system-reminder|command-name|command-message|local-command-stdout|environment_context|user_instructions)>[\s\S]*?<\/\1>/g;
+
+function stripHarnessBlocks(text: string): string {
+  return text.replace(harnessBlockPattern, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function latestOpenAIUserText(input: unknown): string | undefined {
-  if (typeof input === "string") return input;
+  if (typeof input === "string") return stripHarnessBlocks(input) || undefined;
   if (!Array.isArray(input)) return undefined;
 
   for (let index = input.length - 1; index >= 0; index -= 1) {
     const item = input[index];
     if (!isRecord(item)) continue;
     if (item.role !== "user") continue;
-    const text = textContent(item.content ?? item.text ?? item.input);
-    if (text.trim()) return text;
+    const text = stripHarnessBlocks(textContent(item.content ?? item.text ?? item.input));
+    if (text) return text;
   }
   return undefined;
 }
@@ -160,10 +172,18 @@ function latestAnthropicUserText(messages: unknown): string | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!isRecord(message) || message.role !== "user") continue;
-    const text = textContent(message.content);
-    if (text.trim()) return text;
+    const text = stripHarnessBlocks(textContent(nonToolResultContent(message.content)));
+    if (text) return text;
   }
   return undefined;
+}
+
+// Agent loops send tool results as user-role messages; their text is tool
+// output, not user intent, so a tool_result-only turn defers to the previous
+// human turn.
+function nonToolResultContent(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.filter((block) => !(isRecord(block) && block.type === "tool_result"));
 }
 
 function textContent(value: unknown): string {
@@ -208,9 +228,20 @@ function hasImageInput(value: unknown): boolean {
   return Object.values(value).some(hasImageInput);
 }
 
+const EXCERPT_HEAD_CHARS = 300;
+const EXCERPT_TAIL_CHARS = 700;
+const EXCERPT_TRUNCATION_MARKER = "\n[...excerpt truncated...]\n";
+
 function redactExcerpt(value: string) {
-  return value
+  const redacted = value
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted_email]")
-    .replace(/(sk|rk|pk|anthropic|claude|openai)[-_][A-Za-z0-9_-]{16,}/gi, "[redacted_token]")
-    .slice(0, 1000);
+    .replace(/(sk|rk|pk|anthropic|claude|openai)[-_][A-Za-z0-9_-]{16,}/gi, "[redacted_token]");
+  if (redacted.length <= EXCERPT_HEAD_CHARS + EXCERPT_TAIL_CHARS) return redacted;
+  // The ask usually sits at the end of the message, after any harness
+  // preamble routing didn't recognize, so the tail gets the larger share.
+  return (
+    redacted.slice(0, EXCERPT_HEAD_CHARS) +
+    EXCERPT_TRUNCATION_MARKER +
+    redacted.slice(-EXCERPT_TAIL_CHARS)
+  );
 }
