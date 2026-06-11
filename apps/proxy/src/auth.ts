@@ -34,6 +34,10 @@ export class ProxyAuthService {
       return {
         organizationId: this.config.defaultOrganizationId,
         workspaceId: defaultWorkspaceId(this.config.defaultOrganizationId),
+        // Attribute local dev-token traffic to the seeded user so it lands on a
+        // real person instead of "Unknown user"; an explicit user header still
+        // overrides this (dev_proxy_token trusts harness identity).
+        userId: this.config.seedUserId,
         scopes: ["proxy"],
         routingConfigId: null,
         source: "dev_proxy_token"
@@ -54,7 +58,12 @@ export function contextForIdentity(context: RouteContext, identity: RequestIdent
     ...context,
     organizationId: identity.organizationId,
     workspaceId: identity.workspaceId,
-    userId: identity.userId ?? (useHarnessIdentity ? context.userId : undefined),
+    // A harness_identity key (or the dev proxy token) is shared by many people,
+    // so the per-request user header is the real attribution and wins, with the
+    // key's bound owner as the fallback when no header is sent. Any other key is
+    // personal: it attributes to its bound owner and the header is ignored so a
+    // client cannot spoof someone else's identity.
+    userId: useHarnessIdentity ? (context.userId ?? identity.userId) : identity.userId,
     teamId: useHarnessIdentity ? context.teamId : undefined,
     apiKeyId: identity.apiKeyId
   };

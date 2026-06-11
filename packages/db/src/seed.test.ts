@@ -161,7 +161,7 @@ describe("database seed", () => {
     expect(keyRows).toHaveLength(1);
     expect(keyRows[0]?.workspaceId).toBe(defaultWorkspaceId("org_seed"));
     expect(keyRows[0]?.routingConfigId).toBe("org_seed:routing-config:default");
-    expect(keyRows[0]?.userId).toBeNull();
+    expect(keyRows[0]?.userId).toBe("user_seed");
     expect(keyRows[0]?.scopes).toEqual(["proxy", "admin", "harness_identity"]);
     expect(keyRows[0]?.keyHash).not.toBe("seed-proxy-token");
     expect(keyRows[0]?.keyHash).toBe(hashApiKey("seed-proxy-token"));

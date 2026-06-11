@@ -43,6 +43,23 @@ describe("buildSetupScript", () => {
     expect(script).toContain('PP_BASE_URL="http://proxy/\\$path"');
   });
 
+  it("derives the attribution identity from git email then $USER, overridable", () => {
+    const script = buildSetupScript("https://proxy.example.com");
+    expect(script).toContain('PP_USER_ID="${PROMPT_PROXY_USER_ID:-}"');
+    expect(script).toContain('PP_USER_ID="$(git config --get user.email 2>/dev/null || true)"');
+    expect(script).toContain('PP_USER_ID="${USER:-}"');
+  });
+
+  it("stamps x-prompt-proxy-user-id into both Claude Code and Codex config", () => {
+    const script = buildSetupScript("https://proxy.example.com");
+    // Claude Code via ANTHROPIC_CUSTOM_HEADERS, only when an id was resolved.
+    expect(script).toContain('settings.env.ANTHROPIC_CUSTOM_HEADERS = "x-prompt-proxy-user-id: " + process.argv[2]');
+    expect(script).toContain('" "$PP_USER_ID"');
+    // Codex via the provider http_headers map.
+    expect(script).toContain('PP_CODEX_HEADERS="http_headers = { \\"x-prompt-proxy-user-id\\" = \\"$PP_USER_ID\\" }"');
+    expect(script).toContain("$PP_CODEX_HEADERS");
+  });
+
   it("is valid bash", () => {
     const result = spawnSync("bash", ["-n"], { input: buildSetupScript("https://proxy.example.com") });
     expect(result.status).toBe(0);

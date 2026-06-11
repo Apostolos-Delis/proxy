@@ -378,7 +378,10 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
       id: defaultApiKeyId,
       organizationId: options.organizationId,
       workspaceId,
-      userId: null,
+      // Owned by the seed user so traffic on this key (used by the dev proxy
+      // token) attributes to a real person; the harness user header still wins
+      // when present because the key carries harness_identity.
+      userId: options.userId,
       keyHash: proxyTokenHash,
       name: "Default local API key",
       routingConfigId,
@@ -387,7 +390,7 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
     .onConflictDoUpdate({
       target: apiKeys.id,
       set: {
-        userId: null,
+        userId: options.userId,
         keyHash: proxyTokenHash,
         name: "Default local API key",
         routingConfigId,

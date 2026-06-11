@@ -184,7 +184,7 @@ describe("API key admin APIs", () => {
     expect(created.secret).toMatch(/^pp_[0-9a-f]{48}$/);
     expect(created.apiKey).toEqual(expect.objectContaining({
       name: "Harness key",
-      userId: null,
+      userId: "local-user",
       scopes: ["proxy", "harness_identity"],
       routingConfigId: targetConfig.id,
       revokedAt: null
@@ -206,6 +206,7 @@ describe("API key admin APIs", () => {
         payload: expect.objectContaining({
           apiKeyId: created.apiKey.id,
           name: "Harness key",
+          userId: "local-user",
           scopes: ["proxy", "harness_identity"],
           routingConfigId: targetConfig.id,
           routingConfigVersionId: expect.any(String),

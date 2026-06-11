@@ -455,7 +455,7 @@ describe("admin prompt APIs", () => {
       expect.objectContaining({
         id: "org_admin_api_keys:api-key:default",
         organizationId: "org_admin_api_keys",
-        userId: null,
+        userId: "local-user",
         name: "Default local API key",
         scopes: ["proxy", "admin", "harness_identity"],
         routingConfigId: "org_admin_api_keys:routing-config:default",

@@ -504,6 +504,89 @@ describe("database migrations", () => {
     }
   });
 
+  it("attributes unowned API keys and their traffic to the creator on backfill", async () => {
+    const client = new PGlite();
+    const migrationsDir = fileURLToPath(new URL("../migrations", import.meta.url));
+    const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
+    const beforeBackfill = files.filter((file) => file < "0007");
+
+    try {
+      for (const file of beforeBackfill) {
+        await client.exec(await readFile(join(migrationsDir, file), "utf8"));
+      }
+
+      const workspaceId = "org_attr:workspace:default";
+      await client.exec(`
+        insert into organizations (id, slug, name) values ('org_attr', 'org-attr', 'Org Attr');
+        insert into workspaces (id, organization_id, slug, name) values
+          ('${workspaceId}', 'org_attr', 'default', 'Default');
+        insert into users (id, external_id, name) values
+          ('creator_user', 'creator_user', 'Creator'),
+          ('ghost_user', 'ghost_user', 'Ghost');
+
+        -- Key whose creator still exists: adopts that creator.
+        insert into api_keys (id, organization_id, workspace_id, key_hash, name) values
+          ('owned_key', 'org_attr', '${workspaceId}', 'owned_hash', 'Owned Key');
+        -- Key whose creator was deleted: must stay null (FK safety).
+        insert into api_keys (id, organization_id, workspace_id, key_hash, name) values
+          ('orphan_key', 'org_attr', '${workspaceId}', 'orphan_hash', 'Orphan Key');
+
+        insert into events (
+          id, sequence, schema_version, organization_id, workspace_id, scope_type, scope_id,
+          actor_type, actor_id, producer, event_type, payload_hash, sensitivity, redaction_state,
+          payload, created_at
+        ) values
+          ('evt_owned', 1, 1, 'org_attr', '${workspaceId}', 'api_key', 'owned_key',
+           'user', 'creator_user', 'test', 'api_key.created', 'h', 'internal', 'redacted',
+           '{}'::jsonb, now()),
+          ('evt_orphan', 1, 1, 'org_attr', '${workspaceId}', 'api_key', 'orphan_key',
+           'user', 'deleted_user', 'test', 'api_key.created', 'h', 'internal', 'redacted',
+           '{}'::jsonb, now());
+
+        insert into agent_sessions (id, organization_id, workspace_id, surface, external_session_id) values
+          ('sess_owned', 'org_attr', '${workspaceId}', 'openai-responses', 'ext-owned');
+
+        insert into requests (id, organization_id, workspace_id, api_key_id, session_id, surface, idempotency_key, requested_model, input_hash) values
+          ('req_owned', 'org_attr', '${workspaceId}', 'owned_key', 'sess_owned', 'openai-responses', 'idem-owned', 'router-auto', 'hash'),
+          ('req_orphan', 'org_attr', '${workspaceId}', 'orphan_key', null, 'openai-responses', 'idem-orphan', 'router-auto', 'hash');
+
+        insert into provider_attempts (id, organization_id, workspace_id, request_id, surface, provider, model) values
+          ('att_owned', 'org_attr', '${workspaceId}', 'req_owned', 'openai-responses', 'openai', 'gpt');
+
+        insert into usage_ledger (id, organization_id, workspace_id, request_id, provider_attempt_id, provider, model) values
+          ('led_owned', 'org_attr', '${workspaceId}', 'req_owned', 'att_owned', 'openai', 'gpt');
+      `);
+
+      await client.exec(await readFile(join(migrationsDir, "0007_api_key_owner_backfill.sql"), "utf8"));
+
+      const keyRows = await client.query<{ id: string; user_id: string | null }>(
+        "select id, user_id from api_keys order by id"
+      );
+      const requestRows = await client.query<{ id: string; user_id: string | null }>(
+        "select id, user_id from requests order by id"
+      );
+      const ledgerRows = await client.query<{ user_id: string | null }>(
+        "select user_id from usage_ledger where id = 'led_owned'"
+      );
+      const sessionRows = await client.query<{ user_id: string | null }>(
+        "select user_id from agent_sessions where id = 'sess_owned'"
+      );
+
+      expect(keyRows.rows).toEqual([
+        { id: "orphan_key", user_id: null },
+        { id: "owned_key", user_id: "creator_user" }
+      ]);
+      expect(requestRows.rows).toEqual([
+        { id: "req_orphan", user_id: null },
+        { id: "req_owned", user_id: "creator_user" }
+      ]);
+      expect(ledgerRows.rows).toEqual([{ user_id: "creator_user" }]);
+      expect(sessionRows.rows).toEqual([{ user_id: "creator_user" }]);
+    } finally {
+      await client.close();
+    }
+  });
+
   it("strips pre-cutover prompt fields from stored routing config versions", async () => {
     const client = new PGlite();
     const foundation = await readFile(
