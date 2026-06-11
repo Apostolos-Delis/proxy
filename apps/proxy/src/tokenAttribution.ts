@@ -1,0 +1,304 @@
+import { actorForIdentity, type RequestIdentity } from "./auth.js";
+import { jsonPayload, type EventService } from "./events.js";
+import type { JsonObject, Surface } from "./types.js";
+import { isRecord, roughTokenEstimate, stableJson } from "./util.js";
+
+// Bounds the per-name lists so a tool-heavy request cannot bloat the event
+// payload; overflow rolls up into a synthetic __other entry.
+const MAX_NAMED_ENTRIES = 40;
+
+type Bucket = { chars: number; estimatedTokens: number };
+
+export type TokenAttribution = {
+  surface: Surface;
+  requestedModel: string;
+  systemPrompt: Bucket;
+  orgSystemPrompt: Bucket;
+  toolSchemas: Bucket & { count: number };
+  history: Bucket & { messages: number };
+  newToolResults: Bucket & { blocks: number };
+  latestUser: Bucket;
+  total: Bucket;
+  toolSchemasByName: Array<{ name: string; chars: number; estimatedTokens: number }>;
+  newToolResultsByTool: Array<{ tool: string; chars: number; estimatedTokens: number; blocks: number }>;
+};
+
+export function attributeTokens(surface: Surface, body: unknown, orgSystemPrompt?: string): TokenAttribution {
+  const request = isRecord(body) ? body : {};
+  const parts = surface === "openai-responses" ? attributeOpenAI(request) : attributeAnthropic(request);
+  const orgChars = orgSystemPrompt?.length ?? 0;
+  const totalChars =
+    parts.systemChars +
+    orgChars +
+    parts.toolSchemas.total +
+    parts.historyChars +
+    parts.newToolResults.total +
+    parts.latestUserChars;
+
+  const fallbackModel = surface === "openai-responses" ? "router-auto" : "claude-router-auto";
+  return {
+    surface,
+    requestedModel: typeof request.model === "string" ? request.model : fallbackModel,
+    systemPrompt: bucket(parts.systemChars),
+    orgSystemPrompt: bucket(orgChars),
+    toolSchemas: { ...bucket(parts.toolSchemas.total), count: parts.toolSchemas.count },
+    history: { ...bucket(parts.historyChars), messages: parts.historyMessages },
+    newToolResults: { ...bucket(parts.newToolResults.total), blocks: parts.newToolResults.blocks },
+    latestUser: bucket(parts.latestUserChars),
+    total: bucket(totalChars),
+    toolSchemasByName: capEntries(parts.toolSchemas.byName).map(([name, chars]) => ({
+      name,
+      chars,
+      estimatedTokens: roughTokenEstimate(chars)
+    })),
+    newToolResultsByTool: cappedResults(parts.newToolResults).map((entry) => ({
+      ...entry,
+      estimatedTokens: roughTokenEstimate(entry.chars)
+    }))
+  };
+}
+
+export async function appendTokensAttributed(input: {
+  events: EventService;
+  identity: RequestIdentity;
+  requestId: string;
+  idempotencyKey: string;
+  sessionId?: string;
+  surface: Surface;
+  body: unknown;
+  orgSystemPrompt?: string;
+  warn: (error: unknown, message: string) => void;
+}) {
+  try {
+    const attribution = attributeTokens(input.surface, input.body, input.orgSystemPrompt);
+    await input.events.append({
+      tenantId: input.identity.organizationId,
+      workspaceId: input.identity.workspaceId,
+      scopeType: "request",
+      scopeId: input.requestId,
+      sessionId: input.sessionId,
+      correlationId: input.requestId,
+      idempotencyKey: input.idempotencyKey,
+      actor: actorForIdentity(input.identity),
+      producer: "prompt-proxy.attribution",
+      eventType: "tokens.attributed",
+      redactionState: "not_applicable",
+      payload: jsonPayload(attribution) as JsonObject
+    });
+  } catch (error) {
+    input.warn(error, "token attribution failed");
+  }
+}
+
+type ToolGroup = { total: number; count: number; byName: Map<string, number> };
+type ResultGroup = { total: number; blocks: number; byTool: Map<string, number>; blocksByTool: Map<string, number> };
+
+type AttributionParts = {
+  systemChars: number;
+  toolSchemas: ToolGroup;
+  historyChars: number;
+  historyMessages: number;
+  newToolResults: ResultGroup;
+  latestUserChars: number;
+};
+
+function attributeAnthropic(request: Record<string, unknown>): AttributionParts {
+  const toolSchemas = groupToolSchemas(request.tools, (tool) => stringField(tool, "name"));
+  const messages = Array.isArray(request.messages) ? request.messages : [];
+  const toolNames = new Map<string, string>();
+  for (const message of messages) {
+    if (!isRecord(message) || message.role !== "assistant" || !Array.isArray(message.content)) continue;
+    for (const block of message.content) {
+      if (isRecord(block) && block.type === "tool_use" && typeof block.id === "string" && typeof block.name === "string") {
+        toolNames.set(block.id, block.name);
+      }
+    }
+  }
+
+  const newToolResults = emptyResultGroup();
+  let latestUserChars = 0;
+  let historyEnd = messages.length;
+
+  const last = messages.at(-1);
+  if (isRecord(last) && last.role === "user") {
+    historyEnd = messages.length - 1;
+    if (Array.isArray(last.content)) {
+      for (const block of last.content) {
+        if (isRecord(block) && block.type === "tool_result") {
+          const toolUseId = stringField(block, "tool_use_id");
+          addResult(newToolResults, toolGroupKey(toolNames.get(toolUseId ?? "") ?? "unknown"), contentChars(block.content));
+        } else {
+          latestUserChars += contentChars(block);
+        }
+      }
+    } else {
+      latestUserChars = contentChars(last.content);
+    }
+  }
+
+  // History deliberately includes prior assistant tool_use inputs: they are
+  // part of the replayed-context cost, the same as prior text turns.
+  let historyChars = 0;
+  for (const message of messages.slice(0, historyEnd)) {
+    historyChars += isRecord(message) ? contentChars(message.content) : contentChars(message);
+  }
+
+  return {
+    systemChars: contentChars(request.system),
+    toolSchemas,
+    historyChars,
+    historyMessages: historyEnd,
+    newToolResults,
+    latestUserChars
+  };
+}
+
+function attributeOpenAI(request: Record<string, unknown>): AttributionParts {
+  const toolSchemas = groupToolSchemas(
+    request.tools,
+    (tool) => stringField(tool, "name") ?? stringField(tool, "type")
+  );
+  const newToolResults = emptyResultGroup();
+  let latestUserChars = 0;
+  let historyChars = 0;
+  let historyMessages = 0;
+
+  const input = request.input;
+  if (typeof input === "string") {
+    latestUserChars = input.length;
+  } else if (Array.isArray(input)) {
+    const callNames = new Map<string, string>();
+    for (const item of input) {
+      if (isRecord(item) && item.type === "function_call" && typeof item.call_id === "string" && typeof item.name === "string") {
+        callNames.set(item.call_id, item.name);
+      }
+    }
+
+    // The trailing run of tool outputs / user items is the new turn being
+    // submitted in this request; everything before it is replayed history.
+    let tailStart = input.length;
+    while (tailStart > 0 && isNewTurnItem(input[tailStart - 1])) {
+      tailStart -= 1;
+    }
+
+    for (const item of input.slice(0, tailStart)) {
+      historyChars += contentChars(item);
+      historyMessages += 1;
+    }
+    for (const item of input.slice(tailStart)) {
+      if (isRecord(item) && item.type === "function_call_output") {
+        const callId = stringField(item, "call_id");
+        addResult(newToolResults, toolGroupKey(callNames.get(callId ?? "") ?? "unknown"), contentChars(item.output));
+      } else if (isRecord(item) && item.type === "function_call") {
+        // Echoed model tool invocations in the new turn are replay cost, not
+        // user input and not a tool result.
+        historyChars += contentChars(item);
+        historyMessages += 1;
+      } else {
+        latestUserChars += contentChars(item);
+      }
+    }
+  }
+
+  return {
+    systemChars: contentChars(request.instructions),
+    toolSchemas,
+    historyChars,
+    historyMessages,
+    newToolResults,
+    latestUserChars
+  };
+}
+
+function isNewTurnItem(item: unknown) {
+  if (!isRecord(item)) return false;
+  if (item.type === "function_call_output" || item.type === "function_call") return true;
+  return item.role === "user";
+}
+
+function groupToolSchemas(tools: unknown, nameOf: (tool: Record<string, unknown>) => string | undefined): ToolGroup {
+  const group: ToolGroup = { total: 0, count: 0, byName: new Map() };
+  if (!Array.isArray(tools)) return group;
+  for (const tool of tools) {
+    if (!isRecord(tool)) continue;
+    const chars = stableJson(tool).length;
+    const key = toolGroupKey(nameOf(tool) ?? "unknown");
+    group.total += chars;
+    group.count += 1;
+    group.byName.set(key, (group.byName.get(key) ?? 0) + chars);
+  }
+  return group;
+}
+
+// MCP tool names look like mcp__<server>__<tool>; attribute them per server so
+// one chatty server reads as one offender instead of thirty.
+function toolGroupKey(name: string) {
+  if (!name.startsWith("mcp__")) return name;
+  const parts = name.split("__");
+  return parts.length >= 3 ? `mcp__${parts[1]}` : name;
+}
+
+function emptyResultGroup(): ResultGroup {
+  return { total: 0, blocks: 0, byTool: new Map(), blocksByTool: new Map() };
+}
+
+function addResult(group: ResultGroup, tool: string, chars: number) {
+  group.total += chars;
+  group.blocks += 1;
+  group.byTool.set(tool, (group.byTool.get(tool) ?? 0) + chars);
+  group.blocksByTool.set(tool, (group.blocksByTool.get(tool) ?? 0) + 1);
+}
+
+// Size walk without serialization: bodies can be tens of MB, and building a
+// throwaway JSON string for them on the hot path is an avoidable allocation.
+// Blocks with a string `text` field count exactly their text.
+function contentChars(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "string") return value.length;
+  if (typeof value === "number" || typeof value === "boolean") return String(value).length;
+  if (Array.isArray(value)) {
+    let sum = 0;
+    for (const item of value) sum += contentChars(item);
+    return sum;
+  }
+  if (isRecord(value)) {
+    if (typeof value.text === "string") return value.text.length;
+    let sum = 0;
+    for (const [key, item] of Object.entries(value)) sum += key.length + contentChars(item);
+    return sum;
+  }
+  return 0;
+}
+
+function bucket(chars: number): Bucket {
+  return { chars, estimatedTokens: roughTokenEstimate(chars) };
+}
+
+function cappedResults(group: ResultGroup) {
+  const entries = [...group.byTool.entries()]
+    .map(([tool, chars]) => ({ tool, chars, blocks: group.blocksByTool.get(tool) ?? 0 }))
+    .sort((a, b) => b.chars - a.chars);
+  if (entries.length <= MAX_NAMED_ENTRIES) return entries;
+  const kept = entries.slice(0, MAX_NAMED_ENTRIES);
+  const rest = entries.slice(MAX_NAMED_ENTRIES);
+  kept.push({
+    tool: "__other",
+    chars: rest.reduce((sum, entry) => sum + entry.chars, 0),
+    blocks: rest.reduce((sum, entry) => sum + entry.blocks, 0)
+  });
+  return kept;
+}
+
+function capEntries(byName: Map<string, number>) {
+  const sorted = [...byName.entries()].sort((a, b) => b[1] - a[1]);
+  if (sorted.length <= MAX_NAMED_ENTRIES) return sorted;
+  const kept = sorted.slice(0, MAX_NAMED_ENTRIES);
+  const otherChars = sorted.slice(MAX_NAMED_ENTRIES).reduce((sum, [, chars]) => sum + chars, 0);
+  kept.push(["__other", otherChars]);
+  return kept;
+}
+
+function stringField(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}

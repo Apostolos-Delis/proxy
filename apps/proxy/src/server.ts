@@ -27,6 +27,7 @@ import { createPostgresPersistence } from "./persistence/index.js";
 import { resolveRoutingSelection } from "./persistence/routingConfig.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
+import { appendTokensAttributed } from "./tokenAttribution.js";
 import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
 import { buildSetupScript } from "./setupScript.js";
@@ -209,6 +210,17 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
 
       const resolved = await resolveRoutingConfig(persistence, identity, identity.routingConfigId);
+      await appendTokensAttributed({
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: openAIResponsesSurface.surface,
+        body: request.body,
+        orgSystemPrompt: resolved.systemPrompt,
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
       const decision = await routing.decide({
         requestId,
         context,
@@ -294,6 +306,17 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
 
       const resolved = await resolveRoutingConfig(persistence, identity, identity.routingConfigId);
+      await appendTokensAttributed({
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: anthropicMessagesSurface.surface,
+        body: request.body,
+        orgSystemPrompt: resolved.systemPrompt,
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
       const decision = await routing.decide({
         requestId,
         context,
