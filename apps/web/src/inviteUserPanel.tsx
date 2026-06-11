@@ -1,12 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, MailPlus } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 
 import { graphql } from "./gql";
 import type { MemberRole } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
 import { MenuSelect } from "./table/MenuSelect";
-import { Badge, GlassCard } from "./ui";
+import { Badge, FormField as Field, GlassCard } from "./ui";
 
 const CreateInvitationDocument = graphql(`
   mutation CreateInvitation($input: CreateInvitationInput!) {
@@ -153,16 +153,6 @@ function CopyLink({ url }: { url: string }) {
         {copied ? "Copied" : "Copy link"}
       </button>
     </div>
-  );
-}
-
-function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
-  return (
-    <label className="routing-create-field">
-      <span>{label}</span>
-      {children}
-      {error ? <small>{error}</small> : null}
-    </label>
   );
 }
 

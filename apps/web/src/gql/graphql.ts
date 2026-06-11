@@ -354,17 +354,19 @@ export type CreateWorkspaceMutationVariables = Exact<{
 
 export type CreateWorkspaceMutation = { createWorkspace: { id: string, slug: string, name: string } };
 
-export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, requestCount: number, startedAt: string, recentActivity: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
-
 export type SessionDetailViewQueryVariables = Exact<{
   sessionId: string | number;
 }>;
 
 
 export type SessionDetailViewQuery = { session: { user: unknown, session: { sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, sessionIdentity: string | null, requestCount: number, startedAt: string, recentActivity: string | null, modelMix: unknown, routeMix: unknown, usage: { totalTokens: number }, cost: { selected: number } }, requests: Array<{ requestId: string, createdAt: string | null, selectedModel: string | null, finalRoute: string | null, terminalStatus: string, latencyMs: number | null, selectedCost: number, usage: { totalTokens: number } }>, promptArtifacts: Array<{ artifactId: string, requestId: string, kind: string, sourceIndex: number | null, contentHash: string, createdAt: string, rawText: string | null, redactedText: string | null, preview: string | null }> } | null };
+
+export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, requestCount: number, startedAt: string, recentActivity: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
+
+export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
 
 export type SettingsViewQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -410,19 +412,6 @@ export type UnpricedModelsQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type UnpricedModelsQuery = { modelPricing: Array<{ model: string, provider: string | null, source: ModelPricingSource, seenInTraffic: boolean }> };
 
-export type UsersListQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type UsersListQuery = { users: Array<{ userId: string, email: string | null, name: string | null, externalId: string | null, requestCount: number, sessionCount: number, recentActivity: string | null, createdAt: string, membership: { role: string, status: string } | null, usage: { totalTokens: number }, cost: { selected: number } }> };
-
-export type UpdateUserRoleMutationVariables = Exact<{
-  userId: string | number;
-  role: MemberRole;
-}>;
-
-
-export type UpdateUserRoleMutation = { updateUserRole: { userId: string, role: string, previousRole: string } };
-
 export type DeactivateUserMutationVariables = Exact<{
   userId: string | number;
 }>;
@@ -436,6 +425,19 @@ export type ReactivateUserMutationVariables = Exact<{
 
 
 export type ReactivateUserMutation = { reactivateUser: { userId: string, status: string } };
+
+export type UsersListQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type UsersListQuery = { users: Array<{ userId: string, email: string | null, name: string | null, externalId: string | null, requestCount: number, sessionCount: number, recentActivity: string | null, createdAt: string, membership: { role: string, status: string } | null, usage: { totalTokens: number }, cost: { selected: number } }> };
+
+export type UpdateUserRoleMutationVariables = Exact<{
+  userId: string | number;
+  role: MemberRole;
+}>;
+
+
+export type UpdateUserRoleMutation = { updateUserRole: { userId: string, role: string, previousRole: string } };
 
 export class TypedDocumentString<TResult, TVariables>
   extends String
@@ -545,6 +547,39 @@ export const ViewerFieldsFragmentDoc = new TypedDocumentString(`
   }
 }
     `, {"fragmentName":"ViewerFields"}) as unknown as TypedDocumentString<ViewerFieldsFragment, unknown>;
+export const SettingsViewFieldsFragmentDoc = new TypedDocumentString(`
+    fragment SettingsViewFields on Settings {
+  organizationId
+  databaseEnabled
+  restartRequiredFor
+  storage {
+    path
+    reason
+  }
+  settings {
+    schemaVersion
+    systemPrompt
+    classifier {
+      model
+      timeoutMs
+      maxAttempts
+      allowRedactedExcerpt
+    }
+    budgets {
+      warningEstimatedInputTokens
+      maxEstimatedInputTokens
+      maxRoute
+    }
+    routeQuality {
+      lowConfidenceThreshold
+    }
+    promptCapture {
+      promptCaptureMode
+      retentionDays
+    }
+  }
+}
+    `, {"fragmentName":"SettingsViewFields"}) as unknown as TypedDocumentString<SettingsViewFieldsFragment, unknown>;
 export const UsageGroupFieldsFragmentDoc = new TypedDocumentString(`
     fragment UsageGroupFields on UsageGroup {
   key
@@ -1443,34 +1478,6 @@ export const CreateWorkspaceDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CreateWorkspaceMutation, CreateWorkspaceMutationVariables>;
-export const SessionsPageDocument = new TypedDocumentString(`
-    query SessionsPage {
-  sessions {
-    sessionId
-    externalSessionId
-    userId
-    surface
-    currentRoute
-    requestCount
-    startedAt
-    recentActivity
-    modelMix
-    routeMix
-    terminalStatusSummary
-    usage {
-      totalTokens
-    }
-    cost {
-      selected
-    }
-  }
-  users {
-    userId
-    name
-    email
-  }
-}
-    `) as unknown as TypedDocumentString<SessionsPageQuery, SessionsPageQueryVariables>;
 export const SessionDetailViewDocument = new TypedDocumentString(`
     query SessionDetailView($sessionId: ID!) {
   session(sessionId: $sessionId) {
@@ -1519,76 +1526,108 @@ export const SessionDetailViewDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<SessionDetailViewQuery, SessionDetailViewQueryVariables>;
+export const SessionsPageDocument = new TypedDocumentString(`
+    query SessionsPage {
+  sessions {
+    sessionId
+    externalSessionId
+    userId
+    surface
+    currentRoute
+    requestCount
+    startedAt
+    recentActivity
+    modelMix
+    routeMix
+    terminalStatusSummary
+    usage {
+      totalTokens
+    }
+    cost {
+      selected
+    }
+  }
+  users {
+    userId
+    name
+    email
+  }
+}
+    `) as unknown as TypedDocumentString<SessionsPageQuery, SessionsPageQueryVariables>;
 export const SettingsViewDocument = new TypedDocumentString(`
     query SettingsView {
   settings {
-    organizationId
-    databaseEnabled
-    restartRequiredFor
-    storage {
-      path
-      reason
-    }
-    settings {
-      schemaVersion
-      systemPrompt
-      classifier {
-        model
-        timeoutMs
-        maxAttempts
-        allowRedactedExcerpt
-      }
-      budgets {
-        warningEstimatedInputTokens
-        maxEstimatedInputTokens
-        maxRoute
-      }
-      routeQuality {
-        lowConfidenceThreshold
-      }
-      promptCapture {
-        promptCaptureMode
-        retentionDays
-      }
-    }
+    ...SettingsViewFields
   }
 }
-    `) as unknown as TypedDocumentString<SettingsViewQuery, SettingsViewQueryVariables>;
+    fragment SettingsViewFields on Settings {
+  organizationId
+  databaseEnabled
+  restartRequiredFor
+  storage {
+    path
+    reason
+  }
+  settings {
+    schemaVersion
+    systemPrompt
+    classifier {
+      model
+      timeoutMs
+      maxAttempts
+      allowRedactedExcerpt
+    }
+    budgets {
+      warningEstimatedInputTokens
+      maxEstimatedInputTokens
+      maxRoute
+    }
+    routeQuality {
+      lowConfidenceThreshold
+    }
+    promptCapture {
+      promptCaptureMode
+      retentionDays
+    }
+  }
+}`) as unknown as TypedDocumentString<SettingsViewQuery, SettingsViewQueryVariables>;
 export const UpdateSettingsDocument = new TypedDocumentString(`
     mutation UpdateSettings($input: SettingsInput!) {
   updateSettings(input: $input) {
-    organizationId
-    databaseEnabled
-    restartRequiredFor
-    storage {
-      path
-      reason
-    }
-    settings {
-      schemaVersion
-      systemPrompt
-      classifier {
-        model
-        timeoutMs
-        maxAttempts
-        allowRedactedExcerpt
-      }
-      budgets {
-        warningEstimatedInputTokens
-        maxEstimatedInputTokens
-        maxRoute
-      }
-      routeQuality {
-        lowConfidenceThreshold
-      }
-      promptCapture {
-        promptCaptureMode
-        retentionDays
-      }
-    }
+    ...SettingsViewFields
   }
 }
-    `) as unknown as TypedDocumentString<UpdateSettingsMutation, UpdateSettingsMutationVariables>;
+    fragment SettingsViewFields on Settings {
+  organizationId
+  databaseEnabled
+  restartRequiredFor
+  storage {
+    path
+    reason
+  }
+  settings {
+    schemaVersion
+    systemPrompt
+    classifier {
+      model
+      timeoutMs
+      maxAttempts
+      allowRedactedExcerpt
+    }
+    budgets {
+      warningEstimatedInputTokens
+      maxEstimatedInputTokens
+      maxRoute
+    }
+    routeQuality {
+      lowConfidenceThreshold
+    }
+    promptCapture {
+      promptCaptureMode
+      retentionDays
+    }
+  }
+}`) as unknown as TypedDocumentString<UpdateSettingsMutation, UpdateSettingsMutationVariables>;
 export const UsageReportViewDocument = new TypedDocumentString(`
     query UsageReportView($groupBy: UsageGroupBy!, $start: String, $end: String) {
   usage(groupBy: $groupBy, start: $start, end: $end) {
@@ -1700,6 +1739,22 @@ export const UnpricedModelsDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<UnpricedModelsQuery, UnpricedModelsQueryVariables>;
+export const DeactivateUserDocument = new TypedDocumentString(`
+    mutation DeactivateUser($userId: ID!) {
+  deactivateUser(userId: $userId) {
+    userId
+    status
+  }
+}
+    `) as unknown as TypedDocumentString<DeactivateUserMutation, DeactivateUserMutationVariables>;
+export const ReactivateUserDocument = new TypedDocumentString(`
+    mutation ReactivateUser($userId: ID!) {
+  reactivateUser(userId: $userId) {
+    userId
+    status
+  }
+}
+    `) as unknown as TypedDocumentString<ReactivateUserMutation, ReactivateUserMutationVariables>;
 export const UsersListDocument = new TypedDocumentString(`
     query UsersList {
   users {
@@ -1733,19 +1788,3 @@ export const UpdateUserRoleDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<UpdateUserRoleMutation, UpdateUserRoleMutationVariables>;
-export const DeactivateUserDocument = new TypedDocumentString(`
-    mutation DeactivateUser($userId: ID!) {
-  deactivateUser(userId: $userId) {
-    userId
-    status
-  }
-}
-    `) as unknown as TypedDocumentString<DeactivateUserMutation, DeactivateUserMutationVariables>;
-export const ReactivateUserDocument = new TypedDocumentString(`
-    mutation ReactivateUser($userId: ID!) {
-  reactivateUser(userId: $userId) {
-    userId
-    status
-  }
-}
-    `) as unknown as TypedDocumentString<ReactivateUserMutation, ReactivateUserMutationVariables>;

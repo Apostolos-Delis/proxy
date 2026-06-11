@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { KeySquare } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 
 import { createProviderCredential, type ProviderName } from "./providers/data";
 import { PROVIDER_OPTIONS } from "./providers";
 import { MenuSelect } from "./table/MenuSelect";
-import { GlassCard } from "./ui";
+import { FormField as Field, GlassCard } from "./ui";
 
 type CreateForm = {
   provider: ProviderName;
@@ -92,13 +92,4 @@ function validate(form: CreateForm) {
   if (!form.name.trim()) return "Label is required.";
   if (!form.apiKey.trim()) return "API key is required.";
   return null;
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="routing-create-field">
-      <span>{label}</span>
-      {children}
-    </label>
-  );
 }

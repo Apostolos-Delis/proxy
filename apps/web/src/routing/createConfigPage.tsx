@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, FilePlus2, KeyRound, Layers } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 
 import {
   assignApiKeyRoutingConfig,
@@ -16,7 +16,7 @@ import {
 } from "./data";
 import { applyDraft, draftError, draftFromConfig, type ConfigEditorDraft } from "../routingConfigEditor";
 import { SearchSelect } from "../table/SearchSelect";
-import { GlassCard, PageState, PageTitle } from "../ui";
+import { FormField as Field, GlassCard, PageState, PageTitle } from "../ui";
 import { RoutingRulesEditor, RouteMatrixEditor } from "./configEditorFields";
 import { isUsableKey, KeyPickList } from "./keyAssignment";
 
@@ -236,16 +236,6 @@ function deriveDraft(
   if (draftState && draftState.versionId === sourceVersion?.id) return draftState.draft;
   if (sourceVersion) return draftFromConfig(sourceVersion.config);
   return null;
-}
-
-function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
-  return (
-    <label className="routing-create-field">
-      <span>{label}</span>
-      {children}
-      {error ? <small>{error}</small> : null}
-    </label>
-  );
 }
 
 function validateCreateForm(form: CreateForm) {
