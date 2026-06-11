@@ -71,6 +71,7 @@ type Documents = {
     "\n  query UsageTimeseriesView($groupBy: UsageGroupBy!, $interval: UsageInterval, $start: String, $end: String, $limit: Int) {\n    usageTimeseries(groupBy: $groupBy, interval: $interval, start: $start, end: $end, limit: $limit) {\n      groupBy\n      interval\n      start\n      end\n      groups {\n        ...UsageGroupFields\n      }\n      points {\n        ts\n        totals {\n          ...UsageGroupFields\n        }\n        groups\n      }\n    }\n  }\n": typeof types.UsageTimeseriesViewDocument,
     "\n  query UsageLookups {\n    members {\n      userId\n      name\n      email\n    }\n    apiKeys {\n      id\n      name\n      revokedAt\n    }\n  }\n": typeof types.UsageLookupsDocument,
     "\n  query UnpricedModels {\n    modelPricing {\n      model\n      provider\n      source\n      seenInTraffic\n    }\n  }\n": typeof types.UnpricedModelsDocument,
+    "\n  query UserDirectory {\n    users {\n      userId\n      name\n      email\n    }\n  }\n": typeof types.UserDirectoryDocument,
     "\n  mutation DeactivateUser($userId: ID!) {\n    deactivateUser(userId: $userId) {\n      userId\n      status\n    }\n  }\n": typeof types.DeactivateUserDocument,
     "\n  mutation ReactivateUser($userId: ID!) {\n    reactivateUser(userId: $userId) {\n      userId\n      status\n    }\n  }\n": typeof types.ReactivateUserDocument,
     "\n  query UsersList {\n    users {\n      userId\n      email\n      name\n      externalId\n      membership {\n        role\n        status\n      }\n      apiKeyCount\n      requestCount\n      sessionCount\n      usage {\n        totalTokens\n      }\n      cost {\n        selected\n      }\n      usage30d {\n        totalTokens\n      }\n      cost30d {\n        selected\n      }\n      recentActivity\n      createdAt\n    }\n  }\n": typeof types.UsersListDocument,
@@ -133,6 +134,7 @@ const documents: Documents = {
     "\n  query UsageTimeseriesView($groupBy: UsageGroupBy!, $interval: UsageInterval, $start: String, $end: String, $limit: Int) {\n    usageTimeseries(groupBy: $groupBy, interval: $interval, start: $start, end: $end, limit: $limit) {\n      groupBy\n      interval\n      start\n      end\n      groups {\n        ...UsageGroupFields\n      }\n      points {\n        ts\n        totals {\n          ...UsageGroupFields\n        }\n        groups\n      }\n    }\n  }\n": types.UsageTimeseriesViewDocument,
     "\n  query UsageLookups {\n    members {\n      userId\n      name\n      email\n    }\n    apiKeys {\n      id\n      name\n      revokedAt\n    }\n  }\n": types.UsageLookupsDocument,
     "\n  query UnpricedModels {\n    modelPricing {\n      model\n      provider\n      source\n      seenInTraffic\n    }\n  }\n": types.UnpricedModelsDocument,
+    "\n  query UserDirectory {\n    users {\n      userId\n      name\n      email\n    }\n  }\n": types.UserDirectoryDocument,
     "\n  mutation DeactivateUser($userId: ID!) {\n    deactivateUser(userId: $userId) {\n      userId\n      status\n    }\n  }\n": types.DeactivateUserDocument,
     "\n  mutation ReactivateUser($userId: ID!) {\n    reactivateUser(userId: $userId) {\n      userId\n      status\n    }\n  }\n": types.ReactivateUserDocument,
     "\n  query UsersList {\n    users {\n      userId\n      email\n      name\n      externalId\n      membership {\n        role\n        status\n      }\n      apiKeyCount\n      requestCount\n      sessionCount\n      usage {\n        totalTokens\n      }\n      cost {\n        selected\n      }\n      usage30d {\n        totalTokens\n      }\n      cost30d {\n        selected\n      }\n      recentActivity\n      createdAt\n    }\n  }\n": types.UsersListDocument,
@@ -363,6 +365,10 @@ export function graphql(source: "\n  query UsageLookups {\n    members {\n      
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  query UnpricedModels {\n    modelPricing {\n      model\n      provider\n      source\n      seenInTraffic\n    }\n  }\n"): typeof import('./graphql').UnpricedModelsDocument;
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query UserDirectory {\n    users {\n      userId\n      name\n      email\n    }\n  }\n"): typeof import('./graphql').UserDirectoryDocument;
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

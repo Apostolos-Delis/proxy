@@ -8,11 +8,13 @@ import { isDefaultConfig, type ApiKeySummary, type RoutingConfigSummary } from "
 import type { ConsoleTableColumn } from "../table";
 import { AnchoredPopover } from "../table/PopoverShell";
 import { StatusBadge } from "../ui";
+import { OwnerCell, ownerLabel, type UserDirectory } from "../userDirectory";
 import { apiKeyStatus, providerBindingValue, routingConfigLabel, scopeTitle } from "./apiKeyTableData";
 
 export type ApiKeyColumnConfig = {
   configs: RoutingConfigSummary[];
   providerAccounts: ProviderAccountSummary[];
+  users: UserDirectory;
   openKeyId: string | null;
   pendingKeyId?: string;
   errorKeyId?: string;
@@ -29,6 +31,7 @@ export type ApiKeyColumnConfig = {
 export function apiKeyColumns({
   configs,
   providerAccounts,
+  users,
   openKeyId,
   pendingKeyId,
   errorKeyId,
@@ -44,6 +47,9 @@ export function apiKeyColumns({
   return [
     { id: "name", header: "Name", size: 225, accessorFn: (apiKey) => apiKey.name, cell: ({ row }) => <ApiKeyNameCell apiKey={row.original} onInspect={() => onInspect(row.original.id)} /> },
     { id: "status", header: "Status", size: 96, accessorFn: apiKeyStatus, cell: ({ row }) => <StatusBadge status={apiKeyStatus(row.original)} /> },
+    { id: "owner", header: "Owner", size: 170, accessorFn: (apiKey) => ownerLabel(users, apiKey.userId), cell: ({ row }) => (
+      <OwnerCell users={users} userId={row.original.userId} />
+    ) },
     { id: "routingConfig", header: "Routing", size: 200, accessorFn: routingConfigLabel, cell: ({ row }) => (
       apiKeyStatus(row.original) === "active" ? (
         <>
@@ -63,9 +69,6 @@ export function apiKeyColumns({
     ) },
     { id: "providerKey", header: "Provider key", size: 220, enableSorting: false, accessorFn: providerBindingValue, cell: ({ row }) => <ApiKeyProviderBinding apiKey={row.original} providerAccounts={providerAccounts} /> },
     { id: "scopes", header: "Scopes", size: 215, accessorFn: (apiKey) => apiKey.scopes.join(" "), cell: ({ row }) => <ScopesCell scopes={row.original.scopes} /> },
-    { id: "owner", header: "Owner", size: 115, accessorFn: (apiKey) => apiKey.userId ?? "organization", cell: ({ row }) => (
-      row.original.userId ? <span className="mono">{row.original.userId}</span> : <span className="faint">Organization</span>
-    ) },
     { id: "created", header: "Created", size: 105, accessorFn: (apiKey) => apiKey.createdAt, cell: ({ row }) => (
       <span className="nowrap" title={formatDateTime(row.original.createdAt)}>{formatDate(row.original.createdAt)}</span>
     ) },

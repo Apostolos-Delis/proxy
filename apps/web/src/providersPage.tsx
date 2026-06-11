@@ -13,6 +13,7 @@ import { CreateProviderCredentialPanel } from "./createProviderCredentialPanel";
 import { compactId, formatDateTime } from "./format";
 import { ConsoleTable, optionItems, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { PageState, PageTitle, StatusBadge } from "./ui";
+import { fetchUserDirectory, OwnerCell, ownerLabel, type UserDirectory } from "./userDirectory";
 
 export function ProvidersPage() {
   const [showCreate, setShowCreate] = useState(false);
@@ -24,6 +25,7 @@ export function ProvidersPage() {
     void navigate({ to: ".", search: (current) => ({ ...current, key: accountId ?? undefined }), replace: true });
   const queryClient = useQueryClient();
   const accountsQuery = useQuery({ queryKey: ["provider-accounts"], queryFn: fetchProviderAccounts });
+  const usersQuery = useQuery({ queryKey: ["user-directory"], queryFn: fetchUserDirectory });
   const revokeMutation = useMutation({
     mutationFn: (providerAccountId: string) => revokeProviderCredential(providerAccountId),
     onSuccess: () => {
@@ -32,10 +34,12 @@ export function ProvidersPage() {
     }
   });
 
-  if (accountsQuery.isLoading) return <PageState title="Provider keys" label="Loading provider keys" />;
-  if (accountsQuery.error) return <PageState title="Provider keys" label={accountsQuery.error.message} />;
+  if (accountsQuery.isLoading || usersQuery.isLoading) return <PageState title="Provider keys" label="Loading provider keys" />;
+  const error = accountsQuery.error ?? usersQuery.error;
+  if (error) return <PageState title="Provider keys" label={error.message} />;
 
   const accounts = accountsQuery.data ?? [];
+  const users: UserDirectory = usersQuery.data ?? new Map();
   const openAccount = accounts.find((account) => account.id === openAccountId);
   return (
     <div className="page page-enter">
@@ -56,13 +60,14 @@ export function ProvidersPage() {
         urlState
         data={accounts}
         columns={providerAccountColumns({
+          users,
           revokePendingId: revokeMutation.isPending ? revokeMutation.variables : undefined,
           revokeErrorId: revokeMutation.error ? revokeMutation.variables : undefined,
           revokeErrorMessage: revokeMutation.error?.message,
           onRevoke: (providerAccountId) => revokeMutation.mutate(providerAccountId),
           onOpen: (providerAccountId) => setOpenAccountId(providerAccountId)
         })}
-        search={{ placeholder: "Search keys, providers, owners...", getValue: providerAccountSearchValue }}
+        search={{ placeholder: "Search keys, providers, owners...", getValue: (account) => [...providerAccountSearchValue(account), ownerLabel(users, account.ownerUserId)] }}
         filters={providerAccountFilters(accounts)}
         emptyLabel="No third-party provider keys yet."
       />
@@ -71,12 +76,14 @@ export function ProvidersPage() {
 }
 
 function providerAccountColumns({
+  users,
   revokePendingId,
   revokeErrorId,
   revokeErrorMessage,
   onRevoke,
   onOpen
 }: {
+  users: UserDirectory;
   revokePendingId?: string;
   revokeErrorId?: string;
   revokeErrorMessage?: string;
@@ -86,8 +93,8 @@ function providerAccountColumns({
   return [
     { id: "name", header: "Name", size: 240, accessorFn: (account) => account.name, cell: ({ row }) => <ProviderKeyNameCell account={row.original} onOpen={() => onOpen(row.original.id)} /> },
     { id: "provider", header: "Provider", size: 130, accessorFn: (account) => account.provider, cell: ({ row }) => <span className="code-pill">{row.original.provider}</span> },
+    { id: "owner", header: "Owner", size: 170, accessorFn: (account) => ownerLabel(users, account.ownerUserId), cell: ({ row }) => <OwnerCell users={users} userId={row.original.ownerUserId} /> },
     { id: "auth", header: "Auth", size: 130, accessorFn: (account) => authTypeLabel(account), cell: ({ row }) => <span className="code-pill">{authTypeLabel(row.original)}</span> },
-    { id: "owner", header: "Owner", size: 160, accessorFn: (account) => account.ownerUserId ?? "", cell: ({ row }) => ownerCell(row.original) },
     { id: "status", header: "Status", size: 120, accessorFn: (account) => account.status, cell: ({ row }) => <StatusBadge status={row.original.status} /> },
     { id: "secret", header: "Secret", size: 130, enableSorting: false, accessorFn: (account) => account.secretHint ?? "", cell: ({ row }) => <span className="mono faint">{row.original.secretHint ?? "—"}</span> },
     { id: "boundKeys", header: "Bound keys", size: 110, accessorFn: (account) => account.boundKeyCount, cell: ({ row }) => <span className="mono">{row.original.boundKeyCount}</span> },
@@ -106,11 +113,6 @@ function providerAccountColumns({
 
 function authTypeLabel(account: ProviderAccountSummary) {
   return account.authType === "oauth" ? "subscription" : "api key";
-}
-
-function ownerCell(account: ProviderAccountSummary) {
-  if (!account.ownerUserId) return <span className="faint">organization</span>;
-  return <span className="mono">{compactId(account.ownerUserId, 12)}</span>;
 }
 
 function lastUsedCell(account: ProviderAccountSummary) {
