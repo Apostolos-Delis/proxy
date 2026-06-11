@@ -323,8 +323,12 @@ export class RoutingService {
       eventType: "routing.classification_recorded",
       payload: {
         model: classifierSettings.model,
+        provider: classifierSettings.provider,
         attempts: options.cached ? 0 : result.attempts,
         cached: options.cached,
+        // Only a fresh classifier call costs tokens; cache hits reuse a prior
+        // decision and must not be billed a second time.
+        usage: options.cached || !result.usage ? null : jsonPayload(result.usage),
         confidence: result.output.confidence,
         recommendedRoute: result.output.recommended_route,
         reasonCodes: result.output.reason_codes,

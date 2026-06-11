@@ -22,6 +22,7 @@ const classifierOutputSchema = z.object({
 export type ClassificationResult = {
   output: ClassifierOutput;
   attempts: number;
+  usage?: Record<string, unknown>;
 };
 
 export type ClassifierSettings = RoutingConfigClassifier;
@@ -44,8 +45,8 @@ export class LlmClassifier {
 
     for (let attempt = 1; attempt <= settings.maxAttempts; attempt += 1) {
       try {
-        const output = await this.callClassifier(context, settings);
-        return { output, attempts: attempt };
+        const { output, usage } = await this.callClassifier(context, settings);
+        return { output, attempts: attempt, usage };
       } catch (error) {
         lastError = error;
       }
@@ -59,7 +60,7 @@ export class LlmClassifier {
   private async callClassifier(
     context: RouteContext,
     settings: ClassifierSettings
-  ): Promise<ClassifierOutput> {
+  ): Promise<{ output: ClassifierOutput; usage?: Record<string, unknown> }> {
     if (settings.provider !== "openai") {
       throw new ClassifierError(`Classifier provider ${settings.provider} is not supported.`);
     }
@@ -93,7 +94,7 @@ export class LlmClassifier {
         throw new ClassifierError("Classifier returned invalid structured output.");
       }
 
-      return result.data;
+      return { output: result.data, usage: extractUsage(json) };
     } finally {
       clearTimeout(timeout);
     }
@@ -157,6 +158,11 @@ function classifierRequest(settings: ClassifierSettings, view: unknown) {
 // default to minimal effort for model families known to accept it.
 function defaultReasoningEffort(model: string) {
   return /^(gpt-5|o\d)/.test(model) ? ("minimal" as const) : undefined;
+}
+
+function extractUsage(json: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(json) || !isRecord(json.usage)) return undefined;
+  return json.usage;
 }
 
 function extractStructuredOutput(json: unknown): unknown {

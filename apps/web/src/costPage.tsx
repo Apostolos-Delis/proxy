@@ -1,12 +1,12 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Download, RefreshCw } from "lucide-react";
+import { AlertTriangle, Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
-import { fetchUsageLookups, fetchUsageReport, fetchUsageTimeseries, type UsageGroup } from "./usageData";
+import { fetchUnpricedModels, fetchUsageLookups, fetchUsageReport, fetchUsageTimeseries, type UnpricedModel, type UsageGroup } from "./usageData";
 import { ChartLegend, StackedBarsChart } from "./charts";
 import { downloadJson } from "./dashboard";
 import { formatCompact, formatCompactMoney, formatMoney, formatPercent } from "./format";
-import { Avatar, BarListRow, GlassCard, PageSkeleton, PageState, ProgressMeter, Segmented } from "./ui";
+import { Avatar, BarListRow, GlassCard, InfoHint, PageSkeleton, PageState, ProgressMeter, Segmented } from "./ui";
 import {
   groupKeyLabel,
   seriesColor,
@@ -47,6 +47,7 @@ export function CostPage() {
     placeholderData: keepPreviousData
   });
   const lookupsQuery = useQuery({ queryKey: ["usage-lookups"], queryFn: fetchUsageLookups });
+  const unpricedQuery = useQuery({ queryKey: ["unpriced-models"], queryFn: fetchUnpricedModels });
   const spendTabQuery = useQuery({
     queryKey: ["usage", spendTab, start, end],
     queryFn: () => fetchUsageReport(spendTab, { start, end }),
@@ -69,6 +70,8 @@ export function CostPage() {
   const days = Number(range);
   const runRate = totals.cost.selected / days * 30;
   const savingsRate = totals.cost.baseline > 0 ? totals.cost.savings / totals.cost.baseline : 0;
+  const classifierCost = totals.cost.classifier;
+  const savingsDetail = savingsDetailLabel(classifierCost, totals.cost.baseline, savingsRate);
   const refresh = () => setAnchor(new Date());
   const exportCost = () => {
     downloadJson("proxy-cost.json", { range: { start, end }, usage, timeseries });
@@ -76,6 +79,7 @@ export function CostPage() {
 
   return (
     <div className="page page-enter">
+      <UnpricedTrafficWarning models={unpricedQuery.data ?? []} />
       <div className="usage-console-layout">
         <GlassCard className="usage-primary">
           <div className="card-head">
@@ -85,6 +89,7 @@ export function CostPage() {
               <div className="row gap-8 usage-spend-sub">
                 <span className="badge badge-accent">{formatMoney(totals.cost.savings)} saved</span>
                 <span className="faint">vs {formatMoney(totals.cost.baseline)} baseline</span>
+                <InfoHint label="How baseline is computed">{baselineExplanation}</InfoHint>
               </div>
             </div>
             <div className="row gap-8">
@@ -106,11 +111,11 @@ export function CostPage() {
           />
           <div className="sep" />
           <div className="usage-summary-strip">
-            <Summary label="Baseline" value={formatMoney(totals.cost.baseline)} />
+            <Summary label="Baseline" value={formatMoney(totals.cost.baseline)} hint={baselineExplanation} />
             <Summary
               label="Savings"
               value={formatMoney(totals.cost.savings)}
-              detail={totals.cost.baseline > 0 ? `${formatPercent(savingsRate)} of baseline` : undefined}
+              detail={savingsDetail}
               tone="accent-text"
             />
             <Summary
@@ -189,12 +194,42 @@ function TopSpendList({ dimension, rows, lookups }: {
   );
 }
 
-function Summary({ label, value, detail, tone }: { label: string; value: string; detail?: string; tone?: string }) {
+function Summary({ label, value, detail, tone, hint }: { label: string; value: string; detail?: string; tone?: string; hint?: string }) {
   return (
     <div>
-      <div className="card-title">{label}</div>
+      <div className="card-title">{label}{hint ? <InfoHint label={`How ${label.toLowerCase()} is computed`}>{hint}</InfoHint> : null}</div>
       <strong className={tone}>{value}</strong>
       {detail ? <div className="stat-sub">{detail}</div> : null}
+    </div>
+  );
+}
+
+const baselineExplanation =
+  "Baseline is the counterfactual cost of serving every request on the default balanced-tier model with no routing — the same tokens priced at that model's published rate. Selected spend is what routing actually cost, including the classifier's own call, so savings reflect routing net of its overhead.";
+
+function savingsDetailLabel(classifierCost: number, baseline: number, savingsRate: number) {
+  if (classifierCost > 0) return `after ${formatMoney(classifierCost)} routing overhead`;
+  if (baseline > 0) return `${formatPercent(savingsRate)} of baseline`;
+  return undefined;
+}
+
+function UnpricedTrafficWarning({ models }: { models: UnpricedModel[] }) {
+  if (models.length === 0) return null;
+  return (
+    <div className="usage-pricing-warning" role="alert">
+      <AlertTriangle />
+      <div>
+        <strong>Spend is understated.</strong>{" "}
+        {models.length === 1 ? "A model with" : `${models.length} models with`} live traffic{" "}
+        {models.length === 1 ? "has" : "have"} no price, so {models.length === 1 ? "its" : "their"} cost books as $0:{" "}
+        {models.map((model, index) => (
+          <span key={`${model.provider ?? "?"}:${model.model}`}>
+            {index > 0 ? ", " : ""}
+            <span className="mono">{model.model === "unknown" ? "unknown (model not recorded)" : model.model}</span>
+          </span>
+        ))}
+        . Set rates on the Billing page so total spend and savings are accurate.
+      </div>
     </div>
   );
 }

@@ -63,7 +63,9 @@ export function createDatabasePersistence(
         new AdminQueryService(db, catalog, organizationId, workspaceId, {
           routeQualityLowConfidenceThreshold: config.routeQualityLowConfidenceThreshold,
           modelCosts: config.modelCosts,
-          modelCostsFromEnv: config.modelCostsFromEnv
+          modelCostsFromEnv: config.modelCostsFromEnv,
+          classifierModel: config.classifierModel,
+          classifierProvider: config.classifierProvider
         })
     }
   };

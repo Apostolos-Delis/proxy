@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { ArrowDownRight, ArrowUpRight, Box, Copy } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Box, Copy, Info } from "lucide-react";
 
 import { compactId } from "./format";
 import { JsonView } from "./jsonView";
@@ -95,6 +95,15 @@ export function Segmented<T extends string>({ options, value, onChange, accent =
 
 export function Badge({ children, variant, dot = false }: { children: ReactNode; variant?: "accent" | "success" | "danger" | "warn"; dot?: boolean }) {
   return <span className={`badge${variant ? ` badge-${variant}` : ""}`}>{dot ? <span className="dot" /> : null}{children}</span>;
+}
+
+export function InfoHint({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <span className="info-hint" tabIndex={0} role="note" aria-label={label}>
+      <Info />
+      <span className="info-hint-bubble" role="tooltip">{children}</span>
+    </span>
+  );
 }
 
 export function StatusBadge({ status }: { status?: string | null }) {

@@ -25,6 +25,7 @@ graphql(`
       selected
       baseline
       savings
+      classifier
     }
   }
 `);
@@ -79,6 +80,17 @@ const UsageLookupsDocument = graphql(`
   }
 `);
 
+const UnpricedModelsDocument = graphql(`
+  query UnpricedModels {
+    modelPricing {
+      model
+      provider
+      source
+      seenInTraffic
+    }
+  }
+`);
+
 export type UsageResponse = UsageReportViewQuery["usage"];
 export type UsageGroup = UsageResponse["totals"];
 export type UsageLookupUser = UsageLookupsQuery["members"][number];
@@ -120,4 +132,16 @@ export async function fetchUsageTimeseries(
 
 export async function fetchUsageLookups() {
   return gqlFetch(UsageLookupsDocument);
+}
+
+export type UnpricedModel = { model: string; provider: string | null };
+
+// Models that carried traffic but have no rate, so their spend books as $0 and
+// silently understates total cost. The "unknown" attempt model can never be
+// priced, so it always belongs here when present.
+export async function fetchUnpricedModels(): Promise<UnpricedModel[]> {
+  const rows = (await gqlFetch(UnpricedModelsDocument)).modelPricing;
+  return rows
+    .filter((row) => row.seenInTraffic && (row.source === "unpriced" || row.model === "unknown"))
+    .map((row) => ({ model: row.model, provider: row.provider ?? null }));
 }

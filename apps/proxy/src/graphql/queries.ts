@@ -38,7 +38,7 @@ function emptyUsageReport(): UsageReportModel {
         reasoningTokens: 0,
         totalTokens: 0
       },
-      cost: { selected: 0, baseline: 0, savings: 0 }
+      cost: { selected: 0, baseline: 0, savings: 0, classifier: 0 }
     }
   };
 }

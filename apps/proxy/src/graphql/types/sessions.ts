@@ -60,7 +60,8 @@ export const UsageLedgerRow = builder.objectRef<UsageLedgerRowModel>("UsageLedge
   fields: (t) => ({
     id: t.exposeString("id"),
     requestId: t.exposeString("requestId"),
-    providerAttemptId: t.exposeString("providerAttemptId"),
+    providerAttemptId: t.exposeString("providerAttemptId", { nullable: true }),
+    kind: t.exposeString("kind"),
     userId: t.exposeString("userId", { nullable: true }),
     sessionId: t.exposeString("sessionId", { nullable: true }),
     provider: t.exposeString("provider"),

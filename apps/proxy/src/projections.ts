@@ -74,7 +74,8 @@ export class ProjectionService {
       cost: {
         selected: selectedCost,
         baseline: baselineCost,
-        savings: baselineCost - selectedCost
+        savings: baselineCost - selectedCost,
+        classifier: 0
       },
       missingUsageRequestIds: missingUsage(events),
       requests

@@ -117,7 +117,8 @@ export function usageLedgerSummary(row: UsageLedgerRow) {
   return {
     id: row.id,
     requestId: row.requestId,
-    providerAttemptId: row.providerAttemptId,
+    providerAttemptId: row.providerAttemptId ?? undefined,
+    kind: row.kind,
     userId: row.userId ?? undefined,
     sessionId: row.sessionId ?? undefined,
     provider: row.provider,

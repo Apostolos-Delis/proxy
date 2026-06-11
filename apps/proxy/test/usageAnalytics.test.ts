@@ -396,6 +396,86 @@ describe("usage analytics admin APIs", () => {
     expect(pointTotal).toBe(4);
   });
 
+  it("folds classifier spend into selected cost and savings without inflating tokens or counts", async () => {
+    const fixture = await setup("org_usage_classifier");
+    const createdAt = new Date("2026-06-08T12:00:00.000Z");
+
+    await fixture.db.insert(users).values([{ id: "user_clf" }]);
+    await fixture.db.insert(agentSessions).values({
+      id: "session_clf",
+      organizationId: "org_usage_classifier",
+      workspaceId: defaultWorkspaceId("org_usage_classifier"),
+      userId: "user_clf",
+      surface: "openai-responses"
+    });
+    await fixture.db.insert(requests).values([
+      usageRequest("clf_request", "org_usage_classifier", "user_clf", "session_clf", "openai-responses", createdAt)
+    ]);
+    await fixture.db.insert(routeDecisions).values([
+      usageDecision("clf_decision", "clf_request", "org_usage_classifier", "fast", "openai", "gpt-fast")
+    ]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("clf_attempt", "clf_request", "org_usage_classifier", "openai-responses", "openai", "gpt-fast", "completed", createdAt)
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      usageRow("clf_provider_usage", "clf_request", "clf_attempt", "org_usage_classifier", "openai", "gpt-fast", "fast", 100, 25, 1000),
+      // The classifier's own billed call: no provider attempt, kind = classifier.
+      {
+        ...usageRow("clf_classifier_usage", "clf_request", "clf_attempt", "org_usage_classifier", "openai", "gpt-5-nano", "fast", 80, 4, 600),
+        providerAttemptId: null,
+        kind: "classifier"
+      }
+    ]);
+
+    const usage = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { usage(groupBy: model) { totals { requestCount usage { totalTokens } cost { selected baseline savings classifier } } } }`
+    )).data?.usage;
+
+    // One request, provider tokens only (classifier tokens excluded).
+    expect(usage.totals.requestCount).toBe(1);
+    expect(usage.totals.usage.totalTokens).toBe(125);
+    // Selected = provider 0.001 + classifier 0.0006.
+    expect(usage.totals.cost.classifier).toBeCloseTo(0.0006);
+    expect(usage.totals.cost.selected).toBeCloseTo(0.0016);
+    // Savings = baseline (priced from provider tokens only) minus selected,
+    // so the classifier overhead reduces savings dollar for dollar.
+    expect(usage.totals.cost.savings).toBeCloseTo(usage.totals.cost.baseline - 0.0016);
+  });
+
+  it("captures the classifier's own billed call as a priced classifier ledger row", async () => {
+    activeFixture = await captureFixture("org_clf_capture", "raw_text", false, {
+      envOverrides: { CLASSIFIER_MODEL: "gpt-5-nano" },
+      openAIOptions: {
+        classifierUsage: { input_tokens: 800, output_tokens: 40 }
+      }
+    });
+    const fixture = activeFixture;
+
+    const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ model: "router-auto", input: "classify and route me", stream: true })
+    });
+    await response.text();
+    expect(response.status).toBe(200);
+
+    const classifierRows = (await fixture.db.select().from(usageLedger))
+      .filter((row) => row.kind === "classifier");
+    expect(classifierRows).toHaveLength(1);
+    const [row] = classifierRows;
+    expect(row.providerAttemptId).toBeNull();
+    expect(row.model).toBe("gpt-5-nano");
+    expect(row.inputTokens).toBe(800);
+    expect(row.outputTokens).toBe(40);
+    // gpt-5-nano: input 0.05/MTok, output 0.4/MTok → 800*0.05 + 40*0.4 = 56 micros.
+    expect(row.totalCostMicros).toBe(56);
+  });
+
   async function setup(organizationId: string) {
     activeFixture = await captureFixture(organizationId);
     return activeFixture;
