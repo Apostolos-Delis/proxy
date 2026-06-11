@@ -114,12 +114,22 @@ export function StackedBarsChart({ data, series, height = 280, valueFormatter, t
   const allZero = data.every((row) => row.total === 0);
   // Sparse windows (7d) leave each bucket very wide; full-width bars there read as blocks.
   const maxBarSize = data.length <= 10 ? 22 : 36;
+  // Axis on the unique index, not the label: recharts resolves the hovered tooltip row by
+  // axis value, so duplicate labels (24h spans 25 hour buckets) would show the wrong bucket.
+  const rows = data.map((row, index) => ({ ...row, index }));
 
   return (
     <ChartFrame height={height} className="stacked-chart" note={allZero ? zeroNote ?? "Nothing recorded in this window" : undefined}>
-      <RechartsBarChart data={data} margin={{ top: 16, right: 10, bottom: 8, left: 4 }} barCategoryGap="28%">
+      <RechartsBarChart data={rows} margin={{ top: 16, right: 10, bottom: 8, left: 4 }} barCategoryGap="28%">
         <CartesianGrid vertical={false} />
-        <XAxis dataKey="label" tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={26} />
+        <XAxis
+          dataKey="index"
+          tickFormatter={(index: number) => data[index]?.label ?? ""}
+          tickLine={false}
+          axisLine={false}
+          interval="preserveStartEnd"
+          minTickGap={26}
+        />
         <YAxis
           width={48}
           tickLine={false}
@@ -156,18 +166,18 @@ export function ChartLegend({ series }: { series: StackedChartSeries[] }) {
   );
 }
 
-function StackedTooltip({ active, payload, label, valueFormatter }: {
+function StackedTooltip({ active, payload, valueFormatter }: {
   active?: boolean;
   payload?: { name?: string; value?: number; fill?: string; payload?: StackedChartRow }[];
-  label?: string;
   valueFormatter?: (value: number) => string;
 }) {
   if (!active || !payload?.length) return null;
-  const total = payload[0]?.payload?.total ?? 0;
+  const row = payload[0]?.payload;
+  const total = row?.total ?? 0;
   const entries = [...payload].reverse().filter((entry) => Number(entry.value ?? 0) > 0);
   return (
     <div className="chart-tooltip">
-      <span>{label}</span>
+      <span>{row?.label}</span>
       <strong>{formatChartValue(total, valueFormatter)}</strong>
       {entries.map((entry, index) => (
         <em key={index} className="chart-tooltip-series">
