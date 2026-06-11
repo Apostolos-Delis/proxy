@@ -13,6 +13,7 @@ export class PromptAccessAuditStore {
 
   async append(input: {
     organizationId: string;
+    workspaceId: string;
     artifactId: string;
     requestId: string;
     userId?: string;
@@ -25,6 +26,7 @@ export class PromptAccessAuditStore {
       .values({
         id: createId("prompt_access"),
         organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
         artifactId: input.artifactId,
         requestId: input.requestId,
         userId: input.userId,

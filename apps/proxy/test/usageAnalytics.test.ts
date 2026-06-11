@@ -4,13 +4,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   agentSessions,
   apiKeys,
+  defaultWorkspaceId,
   hashApiKey,
   organizations,
   providerAttempts,
   requests,
   routeDecisions,
   usageLedger,
-  users
+  users,
+  workspaces
 } from "@prompt-proxy/db";
 
 import {
@@ -74,6 +76,12 @@ describe("usage analytics admin APIs", () => {
       slug: "org-usage-other",
       name: "Other Usage Org"
     });
+    await fixture.db.insert(workspaces).values({
+      id: defaultWorkspaceId("org_usage_other"),
+      organizationId: "org_usage_other",
+      slug: "default",
+      name: "Default"
+    });
     await fixture.db.insert(users).values([
       { id: "user_a" },
       { id: "user_b" },
@@ -84,24 +92,28 @@ describe("usage analytics admin APIs", () => {
       {
         id: "session_a",
         organizationId: "org_usage_admin",
+        workspaceId: defaultWorkspaceId("org_usage_admin"),
         userId: "user_a",
         surface: "openai-responses"
       },
       {
         id: "session_b",
         organizationId: "org_usage_admin",
+        workspaceId: defaultWorkspaceId("org_usage_admin"),
         userId: "user_b",
         surface: "anthropic-messages"
       },
       {
         id: "session_old",
         organizationId: "org_usage_admin",
+        workspaceId: defaultWorkspaceId("org_usage_admin"),
         userId: "user_old",
         surface: "openai-responses"
       },
       {
         id: "session_other_usage",
         organizationId: "org_usage_other",
+        workspaceId: defaultWorkspaceId("org_usage_other"),
         userId: "user_other_usage",
         surface: "openai-responses"
       }
@@ -185,6 +197,7 @@ describe("usage analytics admin APIs", () => {
       {
         id: "key_alpha",
         organizationId: "org_usage_keys",
+        workspaceId: defaultWorkspaceId("org_usage_keys"),
         keyHash: hashApiKey("alpha-secret"),
         name: "Alpha key",
         scopes: ["proxy"]
@@ -192,6 +205,7 @@ describe("usage analytics admin APIs", () => {
       {
         id: "key_beta",
         organizationId: "org_usage_keys",
+        workspaceId: defaultWorkspaceId("org_usage_keys"),
         keyHash: hashApiKey("beta-secret"),
         name: "Beta key",
         scopes: ["proxy"]
@@ -201,6 +215,7 @@ describe("usage analytics admin APIs", () => {
       {
         id: "session_keys",
         organizationId: "org_usage_keys",
+        workspaceId: defaultWorkspaceId("org_usage_keys"),
         userId: "user_keys",
         surface: "openai-responses"
       }
@@ -283,6 +298,7 @@ describe("usage analytics admin APIs", () => {
     await fixture.db.insert(apiKeys).values({
       id: "key_capture",
       organizationId: "org_usage_key_capture",
+      workspaceId: defaultWorkspaceId("org_usage_key_capture"),
       keyHash: hashApiKey("capture-secret"),
       name: "Capture key",
       scopes: ["proxy"]
@@ -327,6 +343,7 @@ describe("usage analytics admin APIs", () => {
     await fixture.db.insert(agentSessions).values({
       id: "session_shared",
       organizationId: "org_usage_shared_scan",
+      workspaceId: defaultWorkspaceId("org_usage_shared_scan"),
       userId: "user_shared",
       surface: "openai-responses"
     });

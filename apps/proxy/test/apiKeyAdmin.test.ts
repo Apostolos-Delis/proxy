@@ -3,10 +3,12 @@ import { eq } from "drizzle-orm";
 
 import {
   apiKeys,
+  defaultWorkspaceId,
   events,
   hashApiKey,
   organizations,
-  routingConfigs
+  routingConfigs,
+  workspaces
 } from "@prompt-proxy/db";
 import type { RoutingConfig } from "@prompt-proxy/schema";
 
@@ -27,6 +29,7 @@ describe("API key admin APIs", () => {
     await fixture.db.insert(apiKeys).values({
       id: "api_key_unassigned",
       organizationId: "org_api_key_admin_list",
+      workspaceId: defaultWorkspaceId("org_api_key_admin_list"),
       keyHash: hashApiKey("unassigned-token"),
       name: "Unassigned key",
       scopes: ["proxy"]
@@ -81,6 +84,7 @@ describe("API key admin APIs", () => {
     await fixture.db.insert(apiKeys).values({
       id: "api_key_assignable",
       organizationId: "org_api_key_admin_assign",
+      workspaceId: defaultWorkspaceId("org_api_key_admin_assign"),
       keyHash: hashApiKey("assignment-token"),
       name: "Assignable key",
       scopes: ["proxy"]
@@ -96,6 +100,7 @@ describe("API key admin APIs", () => {
     const clearedIdentity = await fixture.persistence.apiKeys.resolve("assignment-token");
     const resolvedAfterClear = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_api_key_admin_assign",
+      workspaceId: defaultWorkspaceId("org_api_key_admin_assign"),
       routingConfigId: clearedIdentity?.routingConfigId
     });
     const eventRows = await fixture.db
@@ -215,6 +220,7 @@ describe("API key admin APIs", () => {
     await fixture.db.insert(routingConfigs).values({
       id: "org_api_key_admin_create_invalid:routing-config:archived",
       organizationId: "org_api_key_admin_create_invalid",
+      workspaceId: defaultWorkspaceId("org_api_key_admin_create_invalid"),
       name: "Archived config",
       slug: "archived",
       status: "archived"
@@ -291,6 +297,7 @@ describe("API key admin APIs", () => {
     await fixture.db.insert(routingConfigs).values({
       id: "org_api_key_admin_rejects:routing-config:archived",
       organizationId: "org_api_key_admin_rejects",
+      workspaceId: defaultWorkspaceId("org_api_key_admin_rejects"),
       name: "Archived config",
       slug: "archived",
       status: "archived"
@@ -298,6 +305,7 @@ describe("API key admin APIs", () => {
     await fixture.db.insert(routingConfigs).values({
       id: "org_api_key_admin_rejects:routing-config:empty",
       organizationId: "org_api_key_admin_rejects",
+      workspaceId: defaultWorkspaceId("org_api_key_admin_rejects"),
       name: "Empty config",
       slug: "empty",
       status: "active"
@@ -307,15 +315,23 @@ describe("API key admin APIs", () => {
       slug: "org-api-key-admin-other",
       name: "Other Org"
     });
+    await fixture.db.insert(workspaces).values({
+      id: defaultWorkspaceId("org_api_key_admin_other"),
+      organizationId: "org_api_key_admin_other",
+      slug: "default",
+      name: "Default"
+    });
     await fixture.db.insert(routingConfigs).values({
       id: "org_api_key_admin_other:routing-config:default",
       organizationId: "org_api_key_admin_other",
+      workspaceId: defaultWorkspaceId("org_api_key_admin_other"),
       name: "Other config",
       slug: "other"
     });
     await fixture.db.insert(apiKeys).values({
       id: "other_org_api_key",
       organizationId: "org_api_key_admin_other",
+      workspaceId: defaultWorkspaceId("org_api_key_admin_other"),
       keyHash: hashApiKey("other-org-token"),
       name: "Other org key",
       scopes: ["proxy"]

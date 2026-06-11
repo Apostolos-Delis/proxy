@@ -10,6 +10,9 @@ import { createId, sha256, stableJson } from "../util.js";
 
 export type AdminAuditEventInput = {
   organizationId: string;
+  // Set for workspace-scoped entities (api keys, routing configs); org-level
+  // entities (users, invitations, provider accounts) leave it null.
+  workspaceId?: string | null;
   scopeType: string;
   scopeId: string;
   correlationId?: string;
@@ -29,6 +32,7 @@ export async function appendAdminAuditEvent(tx: PromptProxyTransaction, input: A
     sequence: await nextEventSequence(tx, input.organizationId, input.scopeType, input.scopeId),
     schemaVersion: 1,
     organizationId: input.organizationId,
+    workspaceId: input.workspaceId ?? null,
     scopeType: input.scopeType,
     scopeId: input.scopeId,
     correlationId: input.correlationId,

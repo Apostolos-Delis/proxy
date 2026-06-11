@@ -21,6 +21,7 @@ import { RoutingConfigAdminService } from "./routingConfigAdmin.js";
 import { RoutingConfigResolver } from "./routingConfig.js";
 import { createSessionPinLoader } from "./sessionRoute.js";
 import { UserAdminService } from "./userAdmin.js";
+import { WorkspaceAdminService } from "./workspaceAdmin.js";
 
 export type DatabasePersistenceConfig = AdminQueryConfig & {
   defaultOrganizationId: string;
@@ -54,9 +55,10 @@ export function createDatabasePersistence(
     routingConfigs: new RoutingConfigResolver(db),
     sessionPins: createSessionPinLoader(db),
     userAdmin: new UserAdminService(transactional, { invitationTtlSeconds: config.invitationTtlSeconds }),
+    workspaceAdmin: new WorkspaceAdminService(transactional),
     adminQueries: {
-      forOrg: (organizationId: string) =>
-        new AdminQueryService(db, catalog, organizationId, {
+      forScope: (organizationId: string, workspaceId: string) =>
+        new AdminQueryService(db, catalog, organizationId, workspaceId, {
           routeQualityLowConfidenceThreshold: config.routeQualityLowConfidenceThreshold
         })
     }

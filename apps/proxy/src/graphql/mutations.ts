@@ -1,6 +1,6 @@
 import { writeSettingsFile } from "../settings.js";
 import { builder } from "./builder.js";
-import { orgQueries, viewerPayload } from "./context.js";
+import { scopedQueries, viewerPayload } from "./context.js";
 import { adminGraphQLError, mapAdminError, notFoundError } from "./errors.js";
 import { inviteUrl, sendInvitationEmail } from "./invitationDelivery.js";
 import { promptCaptureSettings, settingsResponse } from "./settingsPayload.js";
@@ -14,7 +14,7 @@ import {
 } from "./types/invitations.js";
 import { ApiKey, CreateApiKeyResult, ProviderAccount, RoutingConfigDetail } from "./types/routing.js";
 import { PromptCaptureConfig, Settings, SettingsInput } from "./types/settings.js";
-import { Viewer } from "./types/viewer.js";
+import { Viewer, WorkspaceSummary } from "./types/viewer.js";
 
 const CreateRoutingConfigInput = builder.inputType("CreateRoutingConfigInput", {
   fields: (t) => ({
@@ -37,6 +37,14 @@ const CreateProviderCredentialInput = builder.inputType("CreateProviderCredentia
     provider: t.string({ required: true }),
     name: t.string({ required: true }),
     apiKey: t.string({ required: true })
+  })
+});
+
+const CreateWorkspaceInput = builder.inputType("CreateWorkspaceInput", {
+  fields: (t) => ({
+    name: t.string({ required: true }),
+    slug: t.string(),
+    description: t.string()
   })
 });
 
@@ -101,6 +109,47 @@ builder.mutationFields((t) => ({
           context.adminAuth.sessionCookie(session.token, session.expiresAt)
         );
         return await viewerPayload(session.identity, context.persistence);
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  switchWorkspace: t.field({
+    type: Viewer,
+    args: { workspaceId: t.arg.id({ required: true }) },
+    resolve: async (_root, args, context) => {
+      try {
+        const identity = await context.adminAuth.switchWorkspace(context.requestHeaders, {
+          workspaceId: String(args.workspaceId)
+        });
+        return await viewerPayload(identity, context.persistence);
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  createWorkspace: t.field({
+    type: WorkspaceSummary,
+    args: { input: t.arg({ type: CreateWorkspaceInput, required: true }) },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("workspaces_not_found");
+      try {
+        const created = await context.persistence.workspaceAdmin.createWorkspace({
+          organizationId: context.identity().organizationId,
+          actorUserId: context.identity().userId,
+          body: {
+            name: args.input.name,
+            slug: args.input.slug ?? undefined,
+            description: args.input.description ?? undefined
+          }
+        });
+        return {
+          id: created.workspaceId,
+          slug: created.slug,
+          name: created.name
+        };
       } catch (error) {
         mapAdminError(error);
       }
@@ -192,6 +241,7 @@ builder.mutationFields((t) => ({
       try {
         const created = await context.persistence.routingConfigAdmin.createConfig({
           organizationId: context.identity().organizationId,
+          workspaceId: context.identity().workspaceId,
           actorUserId: context.identity().userId,
           body: {
             name: args.input.name,
@@ -199,7 +249,7 @@ builder.mutationFields((t) => ({
             config: args.input.config
           }
         });
-        const detail = await orgQueries(context)?.routingConfigDetail(created.configId);
+        const detail = await scopedQueries(context)?.routingConfigDetail(created.configId);
         if (!detail) throw notFoundError("routing_config_not_found");
         return detail;
       } catch (error) {
@@ -220,11 +270,12 @@ builder.mutationFields((t) => ({
       try {
         await context.persistence.routingConfigAdmin.createVersion({
           organizationId: context.identity().organizationId,
+          workspaceId: context.identity().workspaceId,
           actorUserId: context.identity().userId,
           configId,
           body: { config: args.config }
         });
-        const detail = await orgQueries(context)?.routingConfigDetail(configId);
+        const detail = await scopedQueries(context)?.routingConfigDetail(configId);
         if (!detail) throw notFoundError("routing_config_not_found");
         return detail;
       } catch (error) {
@@ -245,11 +296,12 @@ builder.mutationFields((t) => ({
       try {
         await context.persistence.routingConfigAdmin.activateVersion({
           organizationId: context.identity().organizationId,
+          workspaceId: context.identity().workspaceId,
           actorUserId: context.identity().userId,
           configId,
           versionId: String(args.versionId)
         });
-        const detail = await orgQueries(context)?.routingConfigDetail(configId);
+        const detail = await scopedQueries(context)?.routingConfigDetail(configId);
         if (!detail) throw notFoundError("routing_config_not_found");
         return detail;
       } catch (error) {
@@ -267,10 +319,11 @@ builder.mutationFields((t) => ({
       try {
         await context.persistence.routingConfigAdmin.archiveConfig({
           organizationId: context.identity().organizationId,
+          workspaceId: context.identity().workspaceId,
           actorUserId: context.identity().userId,
           configId
         });
-        const detail = await orgQueries(context)?.routingConfigDetail(configId);
+        const detail = await scopedQueries(context)?.routingConfigDetail(configId);
         if (!detail) throw notFoundError("routing_config_not_found");
         return detail;
       } catch (error) {
@@ -287,6 +340,7 @@ builder.mutationFields((t) => ({
       try {
         const created = await context.persistence.apiKeyAdmin.createApiKey({
           organizationId: context.identity().organizationId,
+          workspaceId: context.identity().workspaceId,
           actorUserId: context.identity().userId,
           body: {
             name: args.input.name,
@@ -294,7 +348,7 @@ builder.mutationFields((t) => ({
             routingConfigId: args.input.routingConfigId ? String(args.input.routingConfigId) : null
           }
         });
-        const detail = await orgQueries(context)?.apiKeyDetail(created.apiKeyId);
+        const detail = await scopedQueries(context)?.apiKeyDetail(created.apiKeyId);
         return {
           apiKey: detail?.apiKey ?? null,
           secret: created.secret
@@ -314,10 +368,11 @@ builder.mutationFields((t) => ({
       try {
         await context.persistence.apiKeyAdmin.revokeApiKey({
           organizationId: context.identity().organizationId,
+          workspaceId: context.identity().workspaceId,
           actorUserId: context.identity().userId,
           apiKeyId
         });
-        const detail = await orgQueries(context)?.apiKeyDetail(apiKeyId);
+        const detail = await scopedQueries(context)?.apiKeyDetail(apiKeyId);
         if (!detail) throw notFoundError("api_key_not_found");
         return detail.apiKey;
       } catch (error) {
@@ -338,11 +393,12 @@ builder.mutationFields((t) => ({
       try {
         await context.persistence.routingConfigAdmin.assignApiKeyRoutingConfig({
           organizationId: context.identity().organizationId,
+          workspaceId: context.identity().workspaceId,
           actorUserId: context.identity().userId,
           apiKeyId,
           body: { routingConfigId: args.routingConfigId ? String(args.routingConfigId) : null }
         });
-        const detail = await orgQueries(context)?.apiKeyDetail(apiKeyId);
+        const detail = await scopedQueries(context)?.apiKeyDetail(apiKeyId);
         if (!detail) throw notFoundError("api_key_not_found");
         return detail.apiKey;
       } catch (error) {
@@ -363,7 +419,7 @@ builder.mutationFields((t) => ({
           actorUserId: context.identity().userId,
           body: { provider: args.input.provider, name: args.input.name, apiKey: args.input.apiKey }
         });
-        const accounts = (await orgQueries(context)?.providerAccounts())?.data ?? [];
+        const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
         return accounts.find((account) => account.id === created.providerAccountId) ?? null;
       } catch (error) {
         mapAdminError(error);
@@ -384,7 +440,7 @@ builder.mutationFields((t) => ({
           actorUserId: context.identity().userId,
           providerAccountId
         });
-        const accounts = (await orgQueries(context)?.providerAccounts())?.data ?? [];
+        const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
         return accounts.find((account) => account.id === providerAccountId) ?? null;
       } catch (error) {
         mapAdminError(error);
@@ -405,6 +461,7 @@ builder.mutationFields((t) => ({
       try {
         await context.persistence.providerCredentialAdmin.bindApiKeyCredential({
           organizationId: context.identity().organizationId,
+          workspaceId: context.identity().workspaceId,
           actorUserId: context.identity().userId,
           apiKeyId,
           body: {
@@ -412,7 +469,7 @@ builder.mutationFields((t) => ({
             providerAccountId: args.providerAccountId ? String(args.providerAccountId) : null
           }
         });
-        const detail = await orgQueries(context)?.apiKeyDetail(apiKeyId);
+        const detail = await scopedQueries(context)?.apiKeyDetail(apiKeyId);
         if (!detail) throw notFoundError("api_key_not_found");
         return detail.apiKey;
       } catch (error) {
@@ -425,7 +482,7 @@ builder.mutationFields((t) => ({
     type: InvitationActionResult,
     args: { input: t.arg({ type: CreateInvitationInput, required: true }) },
     resolve: async (_root, args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       if (!context.persistence || !queries) throw notFoundError("invitations_not_found");
       try {
         const created = await context.persistence.userAdmin.createInvitation({
@@ -458,7 +515,7 @@ builder.mutationFields((t) => ({
     type: InvitationActionResult,
     args: { invitationId: t.arg.id({ required: true }) },
     resolve: async (_root, args, context) => {
-      const queries = orgQueries(context);
+      const queries = scopedQueries(context);
       if (!context.persistence || !queries) throw notFoundError("invitation_not_found");
       const invitationId = String(args.invitationId);
       try {
@@ -497,7 +554,7 @@ builder.mutationFields((t) => ({
           actorUserId: context.identity().userId,
           invitationId
         });
-        const detail = await orgQueries(context)?.invitationDetail(invitationId);
+        const detail = await scopedQueries(context)?.invitationDetail(invitationId);
         return detail?.invitation ?? null;
       } catch (error) {
         mapAdminError(error);

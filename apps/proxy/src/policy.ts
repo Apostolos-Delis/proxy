@@ -66,6 +66,7 @@ export type SessionPin = {
 
 export type SessionPinLoader = (input: {
   organizationId: string;
+  workspaceId: string;
   surface: Surface;
   sessionId: string;
 }) => Promise<{ currentRoute: RouteName; pin?: SessionPin; requestCount: number } | undefined>;
@@ -165,10 +166,11 @@ export class SessionRouteStore {
   private async hydrate(sessionKey: string, context: RouteContext): Promise<SessionRouteState | undefined> {
     const cached = this.sessions.get(sessionKey);
     if (cached) return cached;
-    if (!this.loadPin || !context.organizationId || !context.sessionId) return undefined;
+    if (!this.loadPin || !context.organizationId || !context.workspaceId || !context.sessionId) return undefined;
 
     const persisted = await this.loadPin({
       organizationId: context.organizationId,
+      workspaceId: context.workspaceId,
       surface: context.surface,
       sessionId: context.sessionId
     });
@@ -256,6 +258,7 @@ function routeIndex(route: RouteName) {
 
 function sessionScope(context: RouteContext) {
   return stableJson([
+    context.workspaceId ?? null,
     context.surface,
     context.teamId ?? null,
     context.userId ?? null,

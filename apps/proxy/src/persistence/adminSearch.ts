@@ -13,6 +13,8 @@ import {
   type PromptProxyDbSession
 } from "@prompt-proxy/db";
 
+import { workspaceScope } from "./scope.js";
+
 export type AdminSearchHit = {
   kind: "session" | "log" | "user" | "routing_config" | "api_key";
   id: string;
@@ -44,6 +46,7 @@ type SearchPatterns = {
 export async function searchAdminEntities(
   db: PromptProxyDbSession,
   organizationId: string,
+  workspaceId: string,
   rawQuery: string
 ): Promise<AdminSearchResult> {
   const query = rawQuery.trim();
@@ -55,11 +58,11 @@ export async function searchAdminEntities(
     id: /[0-9_:-]/.test(query) ? text : null
   };
   const [sessions, logs, users, configs, keys] = await Promise.all([
-    searchSessions(db, organizationId, patterns),
-    searchLogs(db, organizationId, patterns, query),
-    searchUsers(db, organizationId, patterns),
-    searchRoutingConfigs(db, organizationId, patterns),
-    searchApiKeys(db, organizationId, patterns)
+    searchSessions(db, organizationId, workspaceId, patterns),
+    searchLogs(db, organizationId, workspaceId, patterns, query),
+    searchUsers(db, organizationId, workspaceId, patterns),
+    searchRoutingConfigs(db, organizationId, workspaceId, patterns),
+    searchApiKeys(db, organizationId, workspaceId, patterns)
   ]);
   return { query, results: [...sessions, ...logs, ...users, ...configs, ...keys] };
 }
@@ -68,12 +71,12 @@ function anyOf(conditions: (SQL | null)[]) {
   return or(...conditions.flatMap((condition) => condition ? [condition] : []));
 }
 
-async function searchSessions(db: PromptProxyDbSession, organizationId: string, patterns: SearchPatterns) {
+async function searchSessions(db: PromptProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns) {
   const rows = await db
     .select()
     .from(agentSessions)
     .where(and(
-      eq(agentSessions.organizationId, organizationId),
+      workspaceScope(agentSessions, organizationId, workspaceId),
       anyOf([
         patterns.id ? ilike(agentSessions.id, patterns.id) : null,
         ilike(agentSessions.externalSessionId, patterns.text),
@@ -94,7 +97,7 @@ async function searchSessions(db: PromptProxyDbSession, organizationId: string, 
   }));
 }
 
-async function searchLogs(db: PromptProxyDbSession, organizationId: string, patterns: SearchPatterns, query: string) {
+async function searchLogs(db: PromptProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns, query: string) {
   const rows = await db
     .select({
       artifact: promptArtifacts,
@@ -111,7 +114,7 @@ async function searchLogs(db: PromptProxyDbSession, organizationId: string, patt
       eq(routeDecisions.organizationId, requests.organizationId)
     ))
     .where(and(
-      eq(promptArtifacts.organizationId, organizationId),
+      workspaceScope(promptArtifacts, organizationId, workspaceId),
       notInArray(promptArtifacts.kind, HIDDEN_ARTIFACT_KINDS),
       anyOf([
         patterns.id ? ilike(promptArtifacts.id, patterns.id) : null,
@@ -140,12 +143,12 @@ async function searchLogs(db: PromptProxyDbSession, organizationId: string, patt
   });
 }
 
-async function searchUsers(db: PromptProxyDbSession, organizationId: string, patterns: SearchPatterns) {
+async function searchUsers(db: PromptProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns) {
   const requestRows = db
     .select({ one: sql`1` })
     .from(requests)
     .where(and(
-      eq(requests.organizationId, organizationId),
+      workspaceScope(requests, organizationId, workspaceId),
       eq(requests.userId, usersTable.id)
     ));
   const rows = await db
@@ -188,12 +191,12 @@ async function searchUsers(db: PromptProxyDbSession, organizationId: string, pat
   });
 }
 
-async function searchRoutingConfigs(db: PromptProxyDbSession, organizationId: string, patterns: SearchPatterns) {
+async function searchRoutingConfigs(db: PromptProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns) {
   const rows = await db
     .select()
     .from(routingConfigs)
     .where(and(
-      eq(routingConfigs.organizationId, organizationId),
+      workspaceScope(routingConfigs, organizationId, workspaceId),
       anyOf([
         patterns.id ? ilike(routingConfigs.id, patterns.id) : null,
         ilike(routingConfigs.name, patterns.text),
@@ -215,7 +218,7 @@ async function searchRoutingConfigs(db: PromptProxyDbSession, organizationId: st
   }));
 }
 
-async function searchApiKeys(db: PromptProxyDbSession, organizationId: string, patterns: SearchPatterns) {
+async function searchApiKeys(db: PromptProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns) {
   const rows = await db
     .select({
       apiKey: apiKeys,
@@ -227,7 +230,7 @@ async function searchApiKeys(db: PromptProxyDbSession, organizationId: string, p
       eq(routingConfigs.id, apiKeys.routingConfigId)
     ))
     .where(and(
-      eq(apiKeys.organizationId, organizationId),
+      workspaceScope(apiKeys, organizationId, workspaceId),
       anyOf([
         patterns.id ? ilike(apiKeys.id, patterns.id) : null,
         ilike(apiKeys.name, patterns.text)

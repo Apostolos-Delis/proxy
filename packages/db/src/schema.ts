@@ -30,6 +30,36 @@ export const organizations = pgTable(
   (table) => [uniqueIndex("organizations_slug_idx").on(table.slug)]
 );
 
+export const workspaces = pgTable(
+  "workspaces",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    defaultRoutingConfigId: text("default_routing_config_id"),
+    settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("workspaces_org_slug_idx").on(table.organizationId, table.slug),
+    uniqueIndex("workspaces_org_id_idx").on(table.organizationId, table.id),
+    foreignKey({
+      name: "workspaces_default_routing_config_fk",
+      columns: [table.organizationId, table.id, table.defaultRoutingConfigId],
+      foreignColumns: [
+        routingConfigs.organizationId,
+        routingConfigs.workspaceId,
+        routingConfigs.id
+      ]
+    })
+  ]
+);
+
 export const users = pgTable(
   "users",
   {
@@ -105,6 +135,7 @@ export const userSessions = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").references(() => workspaces.id, { onDelete: "set null" }),
     sessionTokenHash: text("session_token_hash").notNull(),
     sessionTokenPrefix: text("session_token_prefix").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -126,6 +157,9 @@ export const routingConfigs = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     description: text("description"),
@@ -135,8 +169,8 @@ export const routingConfigs = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
   (table): PgTableExtraConfigValue[] => [
-    uniqueIndex("routing_configs_org_id_idx").on(table.organizationId, table.id),
-    uniqueIndex("routing_configs_org_slug_idx").on(table.organizationId, table.slug),
+    uniqueIndex("routing_configs_org_workspace_id_idx").on(table.organizationId, table.workspaceId, table.id),
+    uniqueIndex("routing_configs_org_workspace_slug_idx").on(table.organizationId, table.workspaceId, table.slug),
     index("routing_configs_organization_id_idx").on(table.organizationId),
     index("routing_configs_active_version_idx").on(table.organizationId, table.activeVersionId),
     foreignKey({
@@ -158,6 +192,9 @@ export const routingConfigVersions = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     routingConfigId: text("routing_config_id").notNull(),
     version: integer("version").notNull(),
     configHash: text("config_hash").notNull(),
@@ -175,12 +212,12 @@ export const routingConfigVersions = pgTable(
       table.version
     ),
     uniqueIndex("routing_config_versions_config_id_idx").on(table.organizationId, table.routingConfigId, table.id),
-    uniqueIndex("routing_config_versions_org_hash_idx").on(table.organizationId, table.configHash),
+    uniqueIndex("routing_config_versions_org_workspace_hash_idx").on(table.organizationId, table.workspaceId, table.configHash),
     index("routing_config_versions_config_idx").on(table.organizationId, table.routingConfigId),
     foreignKey({
       name: "routing_config_versions_config_fk",
-      columns: [table.organizationId, table.routingConfigId],
-      foreignColumns: [routingConfigs.organizationId, routingConfigs.id]
+      columns: [table.organizationId, table.workspaceId, table.routingConfigId],
+      foreignColumns: [routingConfigs.organizationId, routingConfigs.workspaceId, routingConfigs.id]
     }).onDelete("cascade")
   ]
 );
@@ -192,6 +229,9 @@ export const apiKeys = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     keyHash: text("key_hash").notNull(),
     name: text("name").notNull(),
@@ -204,12 +244,13 @@ export const apiKeys = pgTable(
   },
   (table) => [
     uniqueIndex("api_keys_hash_idx").on(table.keyHash),
+    uniqueIndex("api_keys_org_workspace_id_idx").on(table.organizationId, table.workspaceId, table.id),
     index("api_keys_organization_id_idx").on(table.organizationId),
     index("api_keys_routing_config_idx").on(table.organizationId, table.routingConfigId),
     foreignKey({
       name: "api_keys_routing_config_fk",
-      columns: [table.organizationId, table.routingConfigId],
-      foreignColumns: [routingConfigs.organizationId, routingConfigs.id]
+      columns: [table.organizationId, table.workspaceId, table.routingConfigId],
+      foreignColumns: [routingConfigs.organizationId, routingConfigs.workspaceId, routingConfigs.id]
     })
   ]
 );
@@ -222,17 +263,10 @@ export const organizationSettings = pgTable("organization_settings", {
   retentionDays: integer("retention_days").notNull().default(30),
   maxRoute: text("max_route").$type<RouteName>(),
   systemPrompt: text("system_prompt"),
-  defaultRoutingConfigId: text("default_routing_config_id"),
   settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
-}, (table) => [
-  foreignKey({
-    name: "organization_settings_default_routing_config_fk",
-    columns: [table.organizationId, table.defaultRoutingConfigId],
-    foreignColumns: [routingConfigs.organizationId, routingConfigs.id]
-  })
-]);
+});
 
 export const userSettings = pgTable(
   "user_settings",
@@ -289,9 +323,8 @@ export const apiKeyProviderAccounts = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    apiKeyId: text("api_key_id")
-      .notNull()
-      .references(() => apiKeys.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    apiKeyId: text("api_key_id").notNull(),
     provider: text("provider").$type<Provider>().notNull(),
     providerAccountId: text("provider_account_id").notNull(),
     createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
@@ -302,6 +335,11 @@ export const apiKeyProviderAccounts = pgTable(
     primaryKey({ name: "api_key_provider_accounts_pk", columns: [table.organizationId, table.apiKeyId, table.provider] }),
     index("api_key_provider_accounts_account_idx").on(table.organizationId, table.providerAccountId),
     index("api_key_provider_accounts_api_key_idx").on(table.organizationId, table.apiKeyId),
+    foreignKey({
+      name: "api_key_provider_accounts_api_key_fk",
+      columns: [table.organizationId, table.workspaceId, table.apiKeyId],
+      foreignColumns: [apiKeys.organizationId, apiKeys.workspaceId, apiKeys.id]
+    }).onDelete("cascade"),
     foreignKey({
       name: "api_key_provider_accounts_account_fk",
       columns: [table.organizationId, table.providerAccountId],
@@ -356,6 +394,9 @@ export const agentSessions = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     surface: text("surface").$type<Surface>().notNull(),
     externalSessionId: text("external_session_id"),
@@ -369,7 +410,12 @@ export const agentSessions = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
   (table) => [
-    uniqueIndex("agent_sessions_org_surface_external_idx").on(table.organizationId, table.surface, table.externalSessionId),
+    uniqueIndex("agent_sessions_org_workspace_surface_external_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.surface,
+      table.externalSessionId
+    ),
     index("agent_sessions_organization_id_idx").on(table.organizationId),
     index("agent_sessions_user_id_idx").on(table.organizationId, table.userId)
   ]
@@ -382,6 +428,9 @@ export const turns = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     sessionId: text("session_id").references(() => agentSessions.id, { onDelete: "set null" }),
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     externalTurnId: text("external_turn_id"),
@@ -402,6 +451,9 @@ export const requests = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     sessionId: text("session_id").references(() => agentSessions.id, { onDelete: "set null" }),
     turnId: text("turn_id").references(() => turns.id, { onDelete: "set null" }),
@@ -426,7 +478,7 @@ export const requests = pgTable(
   },
   (table) => [
     uniqueIndex("requests_org_idempotency_idx").on(table.organizationId, table.idempotencyKey),
-    index("requests_organization_created_idx").on(table.organizationId, table.createdAt),
+    index("requests_org_workspace_created_idx").on(table.organizationId, table.workspaceId, table.createdAt),
     index("requests_session_id_idx").on(table.sessionId),
     index("requests_user_id_idx").on(table.organizationId, table.userId),
     index("requests_routing_config_idx").on(table.organizationId, table.routingConfigId),
@@ -444,6 +496,9 @@ export const routeDecisions = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     requestedModel: text("requested_model").notNull(),
     classifierRoute: text("classifier_route").$type<RouteName>(),
     finalRoute: text("final_route").$type<RouteName>(),
@@ -466,7 +521,7 @@ export const routeDecisions = pgTable(
   (table) => [
     uniqueIndex("route_decisions_request_id_idx").on(table.requestId),
     index("route_decisions_organization_id_idx").on(table.organizationId),
-    index("route_decisions_final_route_idx").on(table.organizationId, table.finalRoute),
+    index("route_decisions_final_route_idx").on(table.organizationId, table.workspaceId, table.finalRoute),
     index("route_decisions_routing_config_idx").on(table.organizationId, table.routingConfigId)
   ]
 );
@@ -481,6 +536,9 @@ export const providerAttempts = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     surface: text("surface").$type<Surface>().notNull(),
     provider: text("provider").$type<Provider>().notNull(),
     model: text("model").notNull(),
@@ -496,7 +554,7 @@ export const providerAttempts = pgTable(
   (table) => [
     index("provider_attempts_request_id_idx").on(table.requestId),
     index("provider_attempts_organization_id_idx").on(table.organizationId),
-    index("provider_attempts_model_idx").on(table.organizationId, table.provider, table.model)
+    index("provider_attempts_model_idx").on(table.organizationId, table.workspaceId, table.provider, table.model)
   ]
 );
 
@@ -507,6 +565,9 @@ export const usageLedger = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     sessionId: text("session_id").references(() => agentSessions.id, { onDelete: "set null" }),
     requestId: text("request_id")
@@ -531,9 +592,9 @@ export const usageLedger = pgTable(
   },
   (table) => [
     uniqueIndex("usage_ledger_provider_attempt_idx").on(table.providerAttemptId),
-    index("usage_ledger_org_created_idx").on(table.organizationId, table.createdAt),
-    index("usage_ledger_user_created_idx").on(table.organizationId, table.userId, table.createdAt),
-    index("usage_ledger_model_idx").on(table.organizationId, table.provider, table.model)
+    index("usage_ledger_org_workspace_created_idx").on(table.organizationId, table.workspaceId, table.createdAt),
+    index("usage_ledger_user_created_idx").on(table.organizationId, table.workspaceId, table.userId, table.createdAt),
+    index("usage_ledger_model_idx").on(table.organizationId, table.workspaceId, table.provider, table.model)
   ]
 );
 
@@ -544,6 +605,9 @@ export const promptArtifacts = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     requestId: text("request_id")
       .notNull()
       .references(() => requests.id, { onDelete: "cascade" }),
@@ -562,7 +626,7 @@ export const promptArtifacts = pgTable(
   },
   (table) => [
     index("prompt_artifacts_request_id_idx").on(table.requestId),
-    index("prompt_artifacts_org_created_idx").on(table.organizationId, table.createdAt),
+    index("prompt_artifacts_org_workspace_created_idx").on(table.organizationId, table.workspaceId, table.createdAt),
     index("prompt_artifacts_content_hash_idx").on(table.organizationId, table.contentHash)
   ]
 );
@@ -574,6 +638,9 @@ export const promptAccessAudit = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     artifactId: text("artifact_id")
       .notNull()
       .references(() => promptArtifacts.id, { onDelete: "cascade" }),
@@ -602,6 +669,9 @@ export const events = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    // Nullable: traffic and workspace-entity events carry the workspace;
+    // org-level events (members, invitations, provider accounts) do not.
+    workspaceId: text("workspace_id").references(() => workspaces.id, { onDelete: "set null" }),
     scopeType: text("scope_type").notNull(),
     scopeId: text("scope_id").notNull(),
     sessionId: text("session_id"),
@@ -624,6 +694,7 @@ export const events = pgTable(
   (table) => [
     uniqueIndex("events_scope_sequence_idx").on(table.organizationId, table.scopeType, table.scopeId, table.sequence),
     index("events_organization_created_idx").on(table.organizationId, table.createdAt),
+    index("events_org_workspace_created_idx").on(table.organizationId, table.workspaceId, table.createdAt),
     index("events_scope_created_idx").on(table.organizationId, table.scopeType, table.scopeId, table.createdAt),
     index("events_event_type_idx").on(table.organizationId, table.eventType),
     index("events_correlation_id_idx").on(table.organizationId, table.correlationId),

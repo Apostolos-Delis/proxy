@@ -13,6 +13,7 @@ import { createId, isRecord, roughTokenEstimate, sha256, stableJson } from "../u
 
 export type PromptArtifactCaptureInput = {
   organizationId: string;
+  workspaceId: string;
   requestId: string;
   surface: Surface;
   body: unknown;
@@ -56,6 +57,7 @@ export class PromptArtifactStore {
 
   async captureResponse(input: {
     organizationId: string;
+    workspaceId: string;
     requestId: string;
     surface: Surface;
     text: string;
@@ -229,6 +231,7 @@ function artifactRow(
   return {
     id: createId("prompt_artifact"),
     organizationId: input.organizationId,
+    workspaceId: input.workspaceId,
     requestId: input.requestId,
     kind: artifact.kind,
     storageMode,

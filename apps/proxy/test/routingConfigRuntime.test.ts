@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   apiKeys,
+  defaultWorkspaceId,
   events,
   hashApiKey,
   organizationSettings,
@@ -490,6 +491,7 @@ async function assignClassifierConfig(
   await fixture.db.insert(routingConfigs).values({
     id: configId,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     name: "Assigned classifier config",
     slug: "classifier",
     status: "active"
@@ -497,6 +499,7 @@ async function assignClassifierConfig(
   await fixture.db.insert(routingConfigVersions).values({
     id: versionId,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     routingConfigId: configId,
     version: 1,
     configHash,
@@ -512,6 +515,7 @@ async function assignClassifierConfig(
   await fixture.db.insert(apiKeys).values({
     id: "api_key_classifier",
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     keyHash: hashApiKey(input.secret),
     name: "Assigned classifier key",
     routingConfigId: configId,
@@ -544,6 +548,7 @@ async function assignRouteConfig(
   await fixture.db.insert(routingConfigs).values({
     id: configId,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     name: "Assigned route config",
     slug: input.slug,
     status: "active"
@@ -551,6 +556,7 @@ async function assignRouteConfig(
   await fixture.db.insert(routingConfigVersions).values({
     id: versionId,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     routingConfigId: configId,
     version: 1,
     configHash: input.configHash,
@@ -566,6 +572,7 @@ async function assignRouteConfig(
   await fixture.db.insert(apiKeys).values({
     id: `api_key_${input.slug}`,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     keyHash: hashApiKey(input.secret),
     name: "Assigned route key",
     routingConfigId: configId,

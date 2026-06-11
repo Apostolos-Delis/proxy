@@ -77,6 +77,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       try {
         const artifacts = await persistence.promptArtifacts.captureResponse({
           organizationId: input.identity.organizationId,
+          workspaceId: input.identity.workspaceId,
           requestId: input.requestId,
           surface: input.surface,
           text,
@@ -165,7 +166,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   });
   app.post("/v1/responses", async (request, reply) => {
     const identity = await auth.resolve(request.headers);
-    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, idempotencyFrom(
+    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
       openAIResponsesSurface.createOperation,
       request.body,
       request.headers
@@ -180,6 +181,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     try {
       await events.append({
         tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
         scopeType: "request",
         scopeId: requestId,
         correlationId: requestId,
@@ -191,6 +193,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
       const capturedArtifacts = await persistence?.promptArtifacts.capture({
         organizationId: identity.organizationId,
+        workspaceId: identity.workspaceId,
         requestId,
         surface: openAIResponsesSurface.surface,
         body: request.body
@@ -205,7 +208,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         artifacts: capturedArtifacts
       });
 
-      const resolved = await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId);
+      const resolved = await resolveRoutingConfig(persistence, identity, identity.routingConfigId);
       const decision = await routing.decide({
         requestId,
         context,
@@ -247,7 +250,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
 
   app.post("/v1/messages", async (request, reply) => {
     const identity = await auth.resolve(request.headers);
-    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, idempotencyFrom(
+    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
       anthropicMessagesSurface.createOperation,
       request.body,
       request.headers
@@ -262,6 +265,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     try {
       await events.append({
         tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
         scopeType: "request",
         scopeId: requestId,
         sessionId: context.sessionId,
@@ -274,6 +278,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
       const capturedArtifacts = await persistence?.promptArtifacts.capture({
         organizationId: identity.organizationId,
+        workspaceId: identity.workspaceId,
         requestId,
         surface: anthropicMessagesSurface.surface,
         body: request.body
@@ -288,7 +293,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         artifacts: capturedArtifacts
       });
 
-      const resolved = await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId);
+      const resolved = await resolveRoutingConfig(persistence, identity, identity.routingConfigId);
       const decision = await routing.decide({
         requestId,
         context,
@@ -330,7 +335,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
 
   app.post("/v1/messages/count_tokens", async (request, reply) => {
     const identity = await auth.resolve(request.headers);
-    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, idempotencyFrom(
+    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
       anthropicMessagesSurface.countTokensOperation ?? anthropicMessagesSurface.createOperation,
       request.body,
       request.headers
@@ -344,6 +349,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     try {
       await events.append({
         tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
         scopeType: "request",
         scopeId: requestId,
         sessionId: context.sessionId,
@@ -354,7 +360,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         eventType: "proxy.request_received",
         payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
       });
-      const resolved = await resolveRoutingConfig(persistence, identity.organizationId, identity.routingConfigId);
+      const resolved = await resolveRoutingConfig(persistence, identity, identity.routingConfigId);
       const decision = routing.tokenCountDecision(context, resolved.routingConfig);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
@@ -400,10 +406,14 @@ function resolveUpstreamCredential(
 
 async function resolveRoutingConfig(
   persistence: AppPersistence | undefined,
-  organizationId: string,
+  identity: RequestIdentity,
   routingConfigId: string | null
 ) {
-  return resolveRoutingSelection(persistence?.routingConfigs, { organizationId, routingConfigId });
+  return resolveRoutingSelection(persistence?.routingConfigs, {
+    organizationId: identity.organizationId,
+    workspaceId: identity.workspaceId,
+    routingConfigId
+  });
 }
 
 function requireAuth(headers: Record<string, unknown>, token: string) {

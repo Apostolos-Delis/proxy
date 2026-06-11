@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
+import { defaultWorkspaceId } from "@prompt-proxy/db";
 import { z } from "zod";
 
 import type { JsonObject, JsonValue, ProviderAttempt, Surface } from "./types.js";
@@ -11,6 +12,7 @@ const eventSchema = z.object({
   sequence: z.number().int().positive(),
   schemaVersion: z.literal(1),
   tenantId: z.string().min(1),
+  workspaceId: z.string().min(1),
   scopeType: z.string().min(1),
   scopeId: z.string().min(1),
   sessionId: z.string().optional(),
@@ -48,6 +50,7 @@ export type PersistentEventSink = {
 
 export type AppendEventInput = {
   tenantId?: string;
+  workspaceId?: string;
   scopeType: string;
   scopeId: string;
   sessionId?: string;
@@ -65,11 +68,18 @@ export type AppendEventInput = {
   metadata?: JsonObject;
 };
 
+type ScopeState = {
+  sequence: number;
+  tenantId: string;
+  workspaceId: string;
+};
+
 export class EventService {
   private readonly events: ProxyEvent[] = [];
   private readonly outbox: OutboxItem[] = [];
-  private readonly sequences = new Map<string, number>();
-  private readonly scopeTenants = new Map<string, string>();
+  // One entry per scope so sequence, tenant, and workspace can never diverge
+  // (they are committed and rolled back together).
+  private readonly scopes = new Map<string, ScopeState>();
 
   constructor(
     private readonly filePath?: string,
@@ -80,12 +90,11 @@ export class EventService {
 
   async append(input: AppendEventInput) {
     const scopeKey = `${input.scopeType}:${input.scopeId}`;
-    const previousSequence = this.sequences.get(scopeKey) ?? 0;
-    const sequence = previousSequence + 1;
-    this.sequences.set(scopeKey, sequence);
-    const previousTenant = this.scopeTenants.get(scopeKey);
-    const tenantId = input.tenantId ?? previousTenant ?? this.defaultTenantId;
-    this.scopeTenants.set(scopeKey, tenantId);
+    const previousScope = this.scopes.get(scopeKey);
+    const sequence = (previousScope?.sequence ?? 0) + 1;
+    const tenantId = input.tenantId ?? previousScope?.tenantId ?? this.defaultTenantId;
+    const workspaceId = input.workspaceId ?? previousScope?.workspaceId ?? defaultWorkspaceId(tenantId);
+    this.scopes.set(scopeKey, { sequence, tenantId, workspaceId });
 
     const payload = input.payload ?? {};
     const event = eventSchema.parse({
@@ -93,6 +102,7 @@ export class EventService {
       sequence,
       schemaVersion: 1,
       tenantId,
+      workspaceId,
       scopeType: input.scopeType,
       scopeId: input.scopeId,
       sessionId: input.sessionId,
@@ -119,16 +129,11 @@ export class EventService {
         await this.persistentSink.append(event, outboxItem);
       }
     } catch (error) {
-      if (this.sequences.get(scopeKey) === sequence) {
-        if (previousSequence === 0) {
-          this.sequences.delete(scopeKey);
+      if (this.scopes.get(scopeKey)?.sequence === sequence) {
+        if (previousScope === undefined) {
+          this.scopes.delete(scopeKey);
         } else {
-          this.sequences.set(scopeKey, previousSequence);
-        }
-        if (previousTenant === undefined) {
-          this.scopeTenants.delete(scopeKey);
-        } else {
-          this.scopeTenants.set(scopeKey, previousTenant);
+          this.scopes.set(scopeKey, previousScope);
         }
       }
       throw error;

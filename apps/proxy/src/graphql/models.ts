@@ -92,3 +92,7 @@ export type SearchHitModel = SearchResultModel["results"][number];
 export type OrganizationSummaryModel = Awaited<
   ReturnType<AdminSessionStore["organizationsForUser"]>
 >[number];
+
+export type WorkspaceSummaryModel = Awaited<
+  ReturnType<AdminSessionStore["workspacesForOrganization"]>
+>[number];

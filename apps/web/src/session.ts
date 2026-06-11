@@ -7,17 +7,24 @@ graphql(`
     user {
       sessionId
       organizationId
+      workspaceId
       userId
       email
       name
       role
     }
     organizationId
+    workspaceId
     organizations {
       id
       slug
       name
       role
+    }
+    workspaces {
+      id
+      slug
+      name
     }
   }
 `);
@@ -52,6 +59,24 @@ const SwitchOrganizationDocument = graphql(`
   }
 `);
 
+const SwitchWorkspaceDocument = graphql(`
+  mutation SwitchWorkspace($workspaceId: ID!) {
+    switchWorkspace(workspaceId: $workspaceId) {
+      ...ViewerFields
+    }
+  }
+`);
+
+const CreateWorkspaceDocument = graphql(`
+  mutation CreateWorkspace($input: CreateWorkspaceInput!) {
+    createWorkspace(input: $input) {
+      id
+      slug
+      name
+    }
+  }
+`);
+
 export type AuthMe = ViewerQuery["viewer"];
 
 export async function fetchMe(): Promise<AuthMe> {
@@ -68,4 +93,12 @@ export async function logout() {
 
 export async function switchOrganization(organizationId: string): Promise<AuthMe> {
   return (await gqlFetch(SwitchOrganizationDocument, { organizationId })).switchOrganization;
+}
+
+export async function switchWorkspace(workspaceId: string): Promise<AuthMe> {
+  return (await gqlFetch(SwitchWorkspaceDocument, { workspaceId })).switchWorkspace;
+}
+
+export async function createWorkspace(input: { name: string }) {
+  return (await gqlFetch(CreateWorkspaceDocument, { input })).createWorkspace;
 }

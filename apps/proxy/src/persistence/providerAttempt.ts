@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import {
+  defaultWorkspaceId,
   providerAttempts,
   requests,
   usageLedger,
@@ -22,6 +23,7 @@ import {
 
 export async function persistProviderStarted(tx: PromptProxyTransaction, event: {
   tenantId: string;
+  workspaceId?: string;
   scopeId: string;
   createdAt: string;
   payload: Record<string, unknown>;
@@ -38,6 +40,7 @@ export async function persistProviderStarted(tx: PromptProxyTransaction, event: 
       id: stringValue(payload.providerAttemptId) ?? createId("provider_attempt"),
       requestId: event.scopeId,
       organizationId: event.tenantId,
+      workspaceId: event.workspaceId ?? defaultWorkspaceId(event.tenantId),
       surface: surfaceValue(payload.surface) ?? "openai-responses",
       provider: providerValue(payload.provider) ?? "openai",
       model: stringValue(payload.model) ?? "unknown",
@@ -117,6 +120,7 @@ export async function persistProviderTerminal(tx: PromptProxyTransaction, catalo
     .values({
       id: createId("usage"),
       organizationId: event.tenantId,
+      workspaceId: request.workspaceId,
       userId: request.userId,
       sessionId: request.sessionId,
       requestId: event.scopeId,

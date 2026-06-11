@@ -34,6 +34,7 @@ Initial Drizzle schema includes:
 
 ```text
 organizations
+workspaces                  one organization -> many workspaces; traffic-scoped resources hang off a workspace
 users
 organization_members
 invitations
@@ -61,6 +62,18 @@ projection_cursors
 ```
 
 Every durable operational row is scoped by `organization_id`. Event rows use the existing proxy `tenantId` field as the organization identifier.
+
+### Workspaces
+
+Organizations contain workspaces (modeled on the Anthropic Console / OpenAI Platform hierarchy): identity and membership stay at the organization, traffic and traffic configuration live in a workspace.
+
+- Workspace-scoped (`workspace_id NOT NULL`): `api_keys`, `routing_configs`, `routing_config_versions`, `api_key_provider_accounts`, `agent_sessions`, `turns`, `requests`, `route_decisions`, `provider_attempts`, `usage_ledger`, `prompt_artifacts`, `prompt_access_audit`.
+- Org-scoped (unchanged): `users`, `organization_members`, `invitations`, `organization_settings` (prompt capture + retention), `user_settings`, `provider_accounts` (BYOK credentials are shared infrastructure; only the key→credential bindings are workspace rows), `model_catalog`, `route_policies`, `projection_cursors`.
+- `events.workspace_id` is nullable: traffic and workspace-entity events carry it; org-level events (members, invitations, provider accounts) leave it null.
+- Every organization has a default workspace with the deterministic id `${organizationId}:workspace:default` (`defaultWorkspaceId()` in `@prompt-proxy/db`); migration `0006_workspaces.sql` backfills all pre-workspace rows into it.
+- The proxy resolves the request workspace from the API key (`api_keys.workspace_id`); the dev proxy token maps to the default workspace. Request idempotency keys are hashed per workspace.
+- Each workspace owns its default routing config (`workspaces.default_routing_config_id`, replaces the old `organization_settings.default_routing_config_id`). Composite FKs enforce that routing config versions, key→config assignments, and workspace defaults stay within one workspace.
+- Admin sessions track an active workspace (`user_sessions.workspace_id`, null = default). `switchWorkspace` repoints the session; `switchOrganization` still issues a fresh session. All workspace-scoped admin queries read the session's active workspace; members, invitations, settings, and provider credentials remain org-wide.
 
 ## Admin Console
 

@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { AddressInfo } from "node:net";
 
+import { defaultWorkspaceId } from "@prompt-proxy/db";
+
 import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
 import { createSmokePersistence } from "./smoke-persistence.js";
@@ -37,7 +39,10 @@ const smokeEnv = {
 const config = loadConfig(smokeEnv);
 const smokePersistence = await createSmokePersistence(config, smokeEnv);
 const app = buildServer(config, { persistence: smokePersistence.persistence });
-const smokeAdminQueries = smokePersistence.persistence.adminQueries.forOrg(config.defaultOrganizationId);
+const smokeAdminQueries = smokePersistence.persistence.adminQueries.forScope(
+  config.defaultOrganizationId,
+  defaultWorkspaceId(config.defaultOrganizationId)
+);
 const defaultRoutingConfigId = `${config.defaultOrganizationId}:routing-config:default`;
 
 try {
@@ -167,6 +172,7 @@ function failurePhase(status: number, body: string) {
 async function assignSmokeRoutingConfig() {
   const resolved = await smokePersistence.persistence.routingConfigs.resolve({
     organizationId: config.defaultOrganizationId,
+    workspaceId: defaultWorkspaceId(config.defaultOrganizationId),
     routingConfigId: defaultRoutingConfigId
   });
   const assignedConfig = structuredClone(resolved.config) as RoutingConfig;
@@ -192,6 +198,7 @@ async function assignSmokeRoutingConfig() {
 
   const created = await smokePersistence.persistence.routingConfigAdmin.createConfig({
     organizationId: config.defaultOrganizationId,
+    workspaceId: defaultWorkspaceId(config.defaultOrganizationId),
     actorUserId: config.seedUserId,
     body: {
       name: "Smoke reassigned routing config",
@@ -202,6 +209,7 @@ async function assignSmokeRoutingConfig() {
   });
   await smokePersistence.persistence.routingConfigAdmin.assignApiKeyRoutingConfig({
     organizationId: config.defaultOrganizationId,
+    workspaceId: defaultWorkspaceId(config.defaultOrganizationId),
     actorUserId: config.seedUserId,
     apiKeyId: `${config.defaultOrganizationId}:api-key:default`,
     body: {

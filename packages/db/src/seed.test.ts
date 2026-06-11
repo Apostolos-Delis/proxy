@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
@@ -18,18 +19,25 @@ import {
   routePolicies,
   routingConfigs,
   routingConfigVersions,
-  users
+  users,
+  workspaces
 } from "./schema.js";
 import { seedDatabase, seedOptionsFromEnv } from "./seed.js";
+import { defaultWorkspaceId } from "./workspace.js";
+
+async function migratedClient() {
+  const client = new PGlite();
+  const migrationsDir = fileURLToPath(new URL("../migrations", import.meta.url));
+  const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
+  for (const file of files) {
+    await client.exec(await readFile(join(migrationsDir, file), "utf8"));
+  }
+  return client;
+}
 
 describe("database seed", () => {
   it("creates local organization, user, providers, models, routing config, API key, and policy idempotently", async () => {
-    const client = new PGlite();
-    const migration = await readFile(
-      fileURLToPath(new URL("../migrations/0000_foundation.sql", import.meta.url)),
-      "utf8"
-    );
-    await client.exec(migration);
+    const client = await migratedClient();
     const db = createPgliteDatabase(client);
     const options = seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_seed",
@@ -78,6 +86,10 @@ describe("database seed", () => {
       .select()
       .from(apiKeys)
       .where(eq(apiKeys.organizationId, "org_seed"));
+    const workspaceRows = await db
+      .select()
+      .from(workspaces)
+      .where(eq(workspaces.organizationId, "org_seed"));
     const sandboxOrgRows = await db
       .select()
       .from(organizations)
@@ -86,6 +98,10 @@ describe("database seed", () => {
       .select()
       .from(organizationMembers)
       .where(eq(organizationMembers.organizationId, "org_seed-sandbox"));
+    const sandboxWorkspaceRows = await db
+      .select()
+      .from(workspaces)
+      .where(eq(workspaces.organizationId, "org_seed-sandbox"));
     await client.close();
 
     expect(orgRows).toHaveLength(1);
@@ -99,8 +115,20 @@ describe("database seed", () => {
     expect(providerRows).toHaveLength(2);
     expect(modelRows).toHaveLength(7);
     expect(policyRows[0]?.name).toBe("default");
-    expect(settingsRows[0]?.defaultRoutingConfigId).toBe("org_seed:routing-config:default");
+    expect(settingsRows[0]?.promptCaptureMode).toBe("raw_text");
+    expect(workspaceRows).toEqual([
+      expect.objectContaining({
+        id: defaultWorkspaceId("org_seed"),
+        slug: "default",
+        name: "Default",
+        defaultRoutingConfigId: "org_seed:routing-config:default"
+      })
+    ]);
+    expect(sandboxWorkspaceRows).toEqual([
+      expect.objectContaining({ id: defaultWorkspaceId("org_seed-sandbox"), slug: "default" })
+    ]);
     expect(routingConfigRows).toHaveLength(1);
+    expect(routingConfigRows[0]?.workspaceId).toBe(defaultWorkspaceId("org_seed"));
     expect(routingConfigRows[0]?.activeVersionId).toBe("org_seed:routing-config:default:v1");
     expect(routingConfigVersionRows).toHaveLength(1);
     expect(routingConfigVersionRows[0]?.version).toBe(1);
@@ -131,6 +159,7 @@ describe("database seed", () => {
     expect(seededConfig.classifier.rules).toBeUndefined();
     expect(seededConfig.routes.hard.anthropic?.output_config).toBeUndefined();
     expect(keyRows).toHaveLength(1);
+    expect(keyRows[0]?.workspaceId).toBe(defaultWorkspaceId("org_seed"));
     expect(keyRows[0]?.routingConfigId).toBe("org_seed:routing-config:default");
     expect(keyRows[0]?.userId).toBeNull();
     expect(keyRows[0]?.scopes).toEqual(["proxy", "admin", "harness_identity"]);
@@ -140,12 +169,7 @@ describe("database seed", () => {
   });
 
   it("does not mutate seeded active version one on rerun", async () => {
-    const client = new PGlite();
-    const migration = await readFile(
-      fileURLToPath(new URL("../migrations/0000_foundation.sql", import.meta.url)),
-      "utf8"
-    );
-    await client.exec(migration);
+    const client = await migratedClient();
     const db = createPgliteDatabase(client);
     const initialOptions = seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_immutable_seed",
@@ -179,12 +203,7 @@ describe("database seed", () => {
   });
 
   it("does not reactivate v1 when a later version is active", async () => {
-    const client = new PGlite();
-    const migration = await readFile(
-      fileURLToPath(new URL("../migrations/0000_foundation.sql", import.meta.url)),
-      "utf8"
-    );
-    await client.exec(migration);
+    const client = await migratedClient();
     const db = createPgliteDatabase(client);
     const options = seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_active_seed",
@@ -203,6 +222,7 @@ describe("database seed", () => {
     await db.insert(routingConfigVersions).values({
       id: "org_active_seed:routing-config:default:v2",
       organizationId: "org_active_seed",
+      workspaceId: defaultWorkspaceId("org_active_seed"),
       routingConfigId: "org_active_seed:routing-config:default",
       version: 2,
       configHash: "sha256:manual-v2",
@@ -228,12 +248,7 @@ describe("database seed", () => {
   });
 
   it("can explicitly replace and reactivate the seeded routing config version", async () => {
-    const client = new PGlite();
-    const migration = await readFile(
-      fileURLToPath(new URL("../migrations/0000_foundation.sql", import.meta.url)),
-      "utf8"
-    );
-    await client.exec(migration);
+    const client = await migratedClient();
     const db = createPgliteDatabase(client);
     const initialOptions = seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_replace_seed",
@@ -256,6 +271,7 @@ describe("database seed", () => {
     await db.insert(routingConfigVersions).values({
       id: "org_replace_seed:routing-config:default:v2",
       organizationId: "org_replace_seed",
+      workspaceId: defaultWorkspaceId("org_replace_seed"),
       routingConfigId: "org_replace_seed:routing-config:default",
       version: 2,
       configHash: "sha256:manual-v2",
@@ -296,12 +312,7 @@ describe("database seed", () => {
   });
 
   it("fails before partial writes when another organization already owns the proxy token", async () => {
-    const client = new PGlite();
-    const migration = await readFile(
-      fileURLToPath(new URL("../migrations/0000_foundation.sql", import.meta.url)),
-      "utf8"
-    );
-    await client.exec(migration);
+    const client = await migratedClient();
     const db = createPgliteDatabase(client);
 
     await seedDatabase(db, seedOptionsFromEnv({

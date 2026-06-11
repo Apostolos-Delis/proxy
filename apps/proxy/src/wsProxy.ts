@@ -159,7 +159,7 @@ export class WebSocketRoutingProxy {
     const body = JSON.parse(String(data));
     const routeBody = pinnedRouteBody(body, connectionRoute);
     const requestId = createId("request");
-    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, idempotencyFrom(
+    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
       `${openAIResponsesSurface.createOperation}:websocket:${requestId}:${messageIndex}`,
       routeBody,
       headers
@@ -173,6 +173,7 @@ export class WebSocketRoutingProxy {
 
     await this.events.append({
       tenantId: identity.organizationId,
+      workspaceId: identity.workspaceId,
       scopeType: "request",
       scopeId: requestId,
       sessionId: context.sessionId,
@@ -187,6 +188,7 @@ export class WebSocketRoutingProxy {
     });
     const capturedArtifacts = await this.promptArtifacts?.capture({
       organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId,
       requestId,
       surface: openAIResponsesSurface.surface,
       body: routeBody
@@ -304,6 +306,7 @@ export class WebSocketRoutingProxy {
       if (!text) return;
       const artifacts = await this.promptArtifacts.captureResponse({
         organizationId: activeRequest.identity.organizationId,
+        workspaceId: activeRequest.identity.workspaceId,
         requestId: activeRequest.requestId,
         surface: openAIResponsesSurface.surface,
         text
@@ -405,6 +408,7 @@ export class WebSocketRoutingProxy {
   private async resolveRoutingConfig(identity: RequestIdentity) {
     return resolveRoutingSelection(this.routingConfigs, {
       organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId,
       routingConfigId: identity.routingConfigId
     });
   }

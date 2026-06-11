@@ -4,6 +4,7 @@ import {
   organizationSettings,
   routingConfigs,
   routingConfigVersions,
+  workspaces,
   type PromptProxyDbSession
 } from "@prompt-proxy/db";
 import { routingConfigSchema, type RoutingConfig } from "@prompt-proxy/schema";
@@ -11,6 +12,7 @@ import type { RoutingConfigSelection, RoutingConfigSnapshot } from "../types.js"
 
 export type ResolvedRoutingConfig = {
   organizationId: string;
+  workspaceId: string;
   configId: string;
   configName: string;
   versionId: string;
@@ -29,17 +31,19 @@ export class RoutingConfigResolver {
 
   async resolve(input: {
     organizationId: string;
+    workspaceId: string;
     routingConfigId?: string | null;
   }): Promise<ResolvedRoutingConfig> {
     const orgSettings = await this.organizationSettings(input.organizationId);
     const configId = input.routingConfigId
-      ?? orgSettings?.defaultRoutingConfigId
+      ?? await this.defaultRoutingConfigId(input.workspaceId)
       ?? seededDefaultRoutingConfigId(input.organizationId);
     const [config] = await this.db
       .select()
       .from(routingConfigs)
       .where(and(
         eq(routingConfigs.organizationId, input.organizationId),
+        eq(routingConfigs.workspaceId, input.workspaceId),
         eq(routingConfigs.id, configId)
       ))
       .limit(1);
@@ -53,6 +57,7 @@ export class RoutingConfigResolver {
       .from(routingConfigVersions)
       .where(and(
         eq(routingConfigVersions.organizationId, input.organizationId),
+        eq(routingConfigVersions.workspaceId, input.workspaceId),
         eq(routingConfigVersions.routingConfigId, config.id),
         eq(routingConfigVersions.id, config.activeVersionId)
       ))
@@ -71,6 +76,7 @@ export class RoutingConfigResolver {
 
     return {
       organizationId: input.organizationId,
+      workspaceId: input.workspaceId,
       configId: config.id,
       configName: config.name,
       versionId: version.id,
@@ -84,13 +90,21 @@ export class RoutingConfigResolver {
   private async organizationSettings(organizationId: string) {
     const [settings] = await this.db
       .select({
-        defaultRoutingConfigId: organizationSettings.defaultRoutingConfigId,
         systemPrompt: organizationSettings.systemPrompt
       })
       .from(organizationSettings)
       .where(eq(organizationSettings.organizationId, organizationId))
       .limit(1);
     return settings;
+  }
+
+  private async defaultRoutingConfigId(workspaceId: string) {
+    const [workspace] = await this.db
+      .select({ defaultRoutingConfigId: workspaces.defaultRoutingConfigId })
+      .from(workspaces)
+      .where(eq(workspaces.id, workspaceId))
+      .limit(1);
+    return workspace?.defaultRoutingConfigId ?? undefined;
   }
 }
 
@@ -106,7 +120,7 @@ export function routingConfigSnapshot(resolved: ResolvedRoutingConfig): RoutingC
 
 export async function resolveRoutingSelection(
   resolver: RoutingConfigResolver | undefined,
-  input: { organizationId: string; routingConfigId?: string | null }
+  input: { organizationId: string; workspaceId: string; routingConfigId?: string | null }
 ): Promise<{ routingConfig?: RoutingConfigSelection; systemPrompt?: string }> {
   const resolved = await resolver?.resolve(input);
   if (!resolved) return {};

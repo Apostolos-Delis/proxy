@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   agentSessions,
+  defaultWorkspaceId,
   events,
   organizationMembers,
   organizations,
@@ -10,7 +11,8 @@ import {
   requests,
   routeDecisions,
   usageLedger,
-  users
+  users,
+  workspaces
 } from "@prompt-proxy/db";
 
 import {
@@ -65,10 +67,17 @@ describe("session replay admin APIs", () => {
       slug: "org-session-other",
       name: "Other Session Org"
     });
+    await fixture.db.insert(workspaces).values({
+      id: defaultWorkspaceId("org_session_other"),
+      organizationId: "org_session_other",
+      slug: "default",
+      name: "Default"
+    });
     await fixture.db.insert(agentSessions).values([
       {
         id: "session_admin",
         organizationId: "org_users_sessions",
+        workspaceId: defaultWorkspaceId("org_users_sessions"),
         userId: "user_session_admin",
         surface: "openai-responses",
         externalSessionId: "codex-session",
@@ -80,6 +89,7 @@ describe("session replay admin APIs", () => {
       {
         id: "session_other",
         organizationId: "org_session_other",
+        workspaceId: defaultWorkspaceId("org_session_other"),
         userId: "user_other_org",
         surface: "openai-responses",
         externalSessionId: "other-session"

@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 
 import {
+  defaultWorkspaceId,
   providerAttempts,
   requests,
   usageLedger,
@@ -29,6 +30,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
   ): Promise<RequestStateGate> {
     const routeContext = isRouteContext(context) ? context : undefined;
     const organizationId = routeContext?.organizationId ?? this.organizationId;
+    const workspaceId = routeContext?.workspaceId ?? defaultWorkspaceId(organizationId);
     const existing = await this.findRequest(idempotencyKey, organizationId);
     if (existing) {
       const status = requestStateStatus(existing.status);
@@ -64,6 +66,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
       await ensureOrganization(tx, organizationId);
       const sessionId = await ensureSession(tx, {
         organizationId,
+        workspaceId,
         surface: routeContext?.surface,
         sessionId: routeContext?.sessionId,
         requestId,
@@ -75,6 +78,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
         .values({
           id: requestId,
           organizationId,
+          workspaceId,
           userId: routeContext?.userId,
           sessionId,
           apiKeyId: routeContext?.apiKeyId,
@@ -182,12 +186,14 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
 
 export async function persistRequestReceived(tx: PromptProxyTransaction, event: {
   tenantId: string;
+  workspaceId?: string;
   scopeId: string;
   idempotencyKey?: string;
   payload: Record<string, unknown>;
   payloadHash: string;
 }) {
   const payload = event.payload;
+  const workspaceId = event.workspaceId ?? defaultWorkspaceId(event.tenantId);
   const userId = stringValue(payload.userId);
   const surface = surfaceValue(payload.surface);
   const sessionId = stringValue(payload.sessionId);
@@ -195,6 +201,7 @@ export async function persistRequestReceived(tx: PromptProxyTransaction, event: 
   await ensureUser(tx, userId);
   const dbSessionId = await ensureSession(tx, {
     organizationId: event.tenantId,
+    workspaceId,
     surface,
     sessionId,
     requestId: event.scopeId,
@@ -206,6 +213,7 @@ export async function persistRequestReceived(tx: PromptProxyTransaction, event: 
     .values({
       id: event.scopeId,
       organizationId: event.tenantId,
+      workspaceId,
       userId,
       sessionId: dbSessionId,
       apiKeyId,

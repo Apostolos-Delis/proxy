@@ -14,7 +14,7 @@ Prompt Proxy is an OpenAI/Anthropic-compatible model routing gateway with durabl
 
 - The proxy route handlers are transport boundaries. They may authenticate, parse request envelopes, and call services/helpers, but should not accumulate business logic.
 - Provider-specific code belongs in provider adapters or proxy forwarding code. Do not leak provider-specific request fields into shared policy/data-model code unless the field is stored as provider metadata.
-- Every durable table and event must be scoped by `organization_id` or the in-memory equivalent `tenantId`.
+- Every durable table and event must be scoped by `organization_id` or the in-memory equivalent `tenantId`. Traffic-scoped tables (API keys, routing configs, sessions, requests, usage, prompts) are additionally scoped by `workspace_id`; organizations own many workspaces and every organization has a default workspace (`defaultWorkspaceId()` in `@prompt-proxy/db`).
 - Events are the audit and projection backbone. Current-state tables exist for efficient queries and constraints.
 - When persistence is enabled, write the event row, outbox row, and matching current-state mutation in the same database transaction.
 - Event creation flows through `EventService`. Do not append directly to `packages/db` tables from transport handlers.

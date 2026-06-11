@@ -3,12 +3,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   agentSessions,
   apiKeys,
+  defaultWorkspaceId,
   organizations,
   promptArtifacts,
   requests,
   routeDecisions,
   routingConfigs,
-  users
+  users,
+  workspaces
 } from "@prompt-proxy/db";
 
 import {
@@ -37,6 +39,12 @@ describe("admin global search", () => {
       slug: "org-search-other",
       name: "Other Search Org"
     });
+    await fixture.db.insert(workspaces).values({
+      id: defaultWorkspaceId("org_search_other"),
+      organizationId: "org_search_other",
+      slug: "default",
+      name: "Default"
+    });
     await fixture.db.insert(users).values([
       { id: "user_zebra", name: "Marisol Zebra", email: "marisol@example.com" },
       { id: "user_other", name: "Other Zebra", email: "other-zebra@example.com" }
@@ -45,6 +53,7 @@ describe("admin global search", () => {
       {
         id: "session_zebra",
         organizationId: "org_search_admin",
+        workspaceId: defaultWorkspaceId("org_search_admin"),
         userId: "user_zebra",
         surface: "openai-responses",
         externalSessionId: "codex-zebra-001",
@@ -53,6 +62,7 @@ describe("admin global search", () => {
       {
         id: "session_other_zebra",
         organizationId: "org_search_other",
+        workspaceId: defaultWorkspaceId("org_search_other"),
         userId: "user_other",
         surface: "openai-responses",
         externalSessionId: "codex-zebra-other"
@@ -77,6 +87,7 @@ describe("admin global search", () => {
       {
         id: "config_zebra",
         organizationId: "org_search_admin",
+        workspaceId: defaultWorkspaceId("org_search_admin"),
         name: "Zebra Routing",
         slug: "zebra-routing",
         description: "Routes zebra traffic"
@@ -84,6 +95,7 @@ describe("admin global search", () => {
       {
         id: "config_other",
         organizationId: "org_search_other",
+        workspaceId: defaultWorkspaceId("org_search_other"),
         name: "Zebra Routing Other",
         slug: "zebra-routing-other"
       }
@@ -92,6 +104,7 @@ describe("admin global search", () => {
       {
         id: "key_zebra",
         organizationId: "org_search_admin",
+        workspaceId: defaultWorkspaceId("org_search_admin"),
         keyHash: "hash_key_zebra",
         name: "zebra-ci-key",
         routingConfigId: "config_zebra"
@@ -99,6 +112,7 @@ describe("admin global search", () => {
       {
         id: "key_other",
         organizationId: "org_search_other",
+        workspaceId: defaultWorkspaceId("org_search_other"),
         keyHash: "hash_key_other",
         name: "zebra-other-key"
       }
@@ -144,6 +158,7 @@ describe("admin global search", () => {
     await fixture.db.insert(agentSessions).values({
       id: "session_ids",
       organizationId: "org_search_ids",
+      workspaceId: defaultWorkspaceId("org_search_ids"),
       userId: "user_ids",
       surface: "openai-responses"
     });

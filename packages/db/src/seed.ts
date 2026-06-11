@@ -25,8 +25,10 @@ import {
   routingConfigs,
   routingConfigVersions,
   users,
-  userSettings
+  userSettings,
+  workspaces
 } from "./schema.js";
+import { DEFAULT_WORKSPACE_NAME, DEFAULT_WORKSPACE_SLUG, defaultWorkspaceId } from "./workspace.js";
 
 export type SeedOptions = {
   organizationId: string;
@@ -54,6 +56,7 @@ export type SeedModel = {
 export async function seedDatabase(db: PromptProxyDbSession, options: SeedOptions) {
   const now = new Date();
   const organizationSlug = slug(options.organizationId);
+  const workspaceId = defaultWorkspaceId(options.organizationId);
   const routingConfigId = `${options.organizationId}:routing-config:default`;
   const defaultApiKeyId = `${options.organizationId}:api-key:default`;
   const proxyTokenHash = hashApiKey(options.proxyToken);
@@ -106,6 +109,8 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
         updatedAt: now
       }
     });
+
+  await upsertDefaultWorkspace(db, options.organizationId, now);
 
   await db
     .insert(users)
@@ -211,6 +216,8 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
       }
     });
 
+  await upsertDefaultWorkspace(db, sandboxOrganizationId, now);
+
   const providerRows = [
     {
       id: `${options.organizationId}:provider:openai`,
@@ -296,6 +303,7 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
     .values({
       id: routingConfigId,
       organizationId: options.organizationId,
+      workspaceId,
       name: "Default routing config",
       slug: "default",
       description: "Seeded default routing config for coding-agent traffic.",
@@ -314,6 +322,7 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
   const versionValues = {
     id: routingConfigVersionId,
     organizationId: options.organizationId,
+    workspaceId,
     routingConfigId,
     version: 1,
     configHash: routingConfigHash,
@@ -365,6 +374,7 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
     .values({
       id: defaultApiKeyId,
       organizationId: options.organizationId,
+      workspaceId,
       userId: null,
       keyHash: proxyTokenHash,
       name: "Default local API key",
@@ -383,12 +393,12 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
     });
 
   await db
-    .update(organizationSettings)
+    .update(workspaces)
     .set({
       defaultRoutingConfigId: routingConfigId,
       updatedAt: now
     })
-    .where(eq(organizationSettings.organizationId, options.organizationId));
+    .where(eq(workspaces.id, workspaceId));
 
   return {
     organizationId: options.organizationId,
@@ -396,6 +406,28 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
     providerAccounts: providerRows.length,
     models: modelRows.length
   };
+}
+
+async function upsertDefaultWorkspace(db: PromptProxyDbSession, organizationId: string, now: Date) {
+  await db
+    .insert(workspaces)
+    .values({
+      id: defaultWorkspaceId(organizationId),
+      organizationId,
+      slug: DEFAULT_WORKSPACE_SLUG,
+      name: DEFAULT_WORKSPACE_NAME,
+      settings: {
+        seeded: true
+      }
+    })
+    .onConflictDoUpdate({
+      target: workspaces.id,
+      set: {
+        slug: DEFAULT_WORKSPACE_SLUG,
+        name: DEFAULT_WORKSPACE_NAME,
+        updatedAt: now
+      }
+    });
 }
 
 export function seedOptionsFromEnv(env: NodeJS.ProcessEnv): SeedOptions {

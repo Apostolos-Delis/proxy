@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
@@ -7,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   createPgliteDatabase,
+  defaultWorkspaceId,
   organizationSettings,
   routingConfigs,
   routingConfigVersions
@@ -31,6 +33,7 @@ describe("routing config resolver guardrails", () => {
     const configId = "org_activation_guardrail:routing-config:default";
     const first = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_activation_guardrail",
+      workspaceId: defaultWorkspaceId("org_activation_guardrail"),
       routingConfigId: null
     });
     const firstVersion = await activeVersion(fixture, first.versionId);
@@ -38,6 +41,7 @@ describe("routing config resolver guardrails", () => {
     await fixture.db.insert(routingConfigVersions).values({
       id: secondVersionId,
       organizationId: "org_activation_guardrail",
+      workspaceId: defaultWorkspaceId("org_activation_guardrail"),
       routingConfigId: configId,
       version: 2,
       configHash: "sha256:activated-routing-config",
@@ -55,12 +59,14 @@ describe("routing config resolver guardrails", () => {
 
     await fixture.persistence.routingConfigAdmin.activateVersion({
       organizationId: "org_activation_guardrail",
+      workspaceId: defaultWorkspaceId("org_activation_guardrail"),
       actorUserId: "seed_activation_guardrail_user",
       configId,
       versionId: secondVersionId
     });
     const second = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_activation_guardrail",
+      workspaceId: defaultWorkspaceId("org_activation_guardrail"),
       routingConfigId: null
     });
 
@@ -84,6 +90,7 @@ describe("routing config resolver guardrails", () => {
     await fixture.db.insert(routingConfigs).values({
       id: assignedConfigId,
       organizationId: "org_assignment_guardrail",
+      workspaceId: defaultWorkspaceId("org_assignment_guardrail"),
       name: "Assigned guardrail config",
       slug: "assigned-guardrail",
       status: "active"
@@ -91,6 +98,7 @@ describe("routing config resolver guardrails", () => {
     await fixture.db.insert(routingConfigVersions).values({
       id: assignedVersionId,
       organizationId: "org_assignment_guardrail",
+      workspaceId: defaultWorkspaceId("org_assignment_guardrail"),
       routingConfigId: assignedConfigId,
       version: 1,
       configHash: "sha256:assigned-guardrail-config",
@@ -109,6 +117,7 @@ describe("routing config resolver guardrails", () => {
 
     await fixture.persistence.routingConfigAdmin.assignApiKeyRoutingConfig({
       organizationId: "org_assignment_guardrail",
+      workspaceId: defaultWorkspaceId("org_assignment_guardrail"),
       actorUserId: "seed_assignment_guardrail_user",
       apiKeyId: "org_assignment_guardrail:api-key:default",
       body: { routingConfigId: assignedConfigId }
@@ -116,11 +125,13 @@ describe("routing config resolver guardrails", () => {
     const assignedIdentity = await fixture.persistence.apiKeys.resolve("seeded-assignment-guardrail-token");
     const assigned = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_assignment_guardrail",
+      workspaceId: defaultWorkspaceId("org_assignment_guardrail"),
       routingConfigId: assignedIdentity?.routingConfigId
     });
 
     await fixture.persistence.routingConfigAdmin.assignApiKeyRoutingConfig({
       organizationId: "org_assignment_guardrail",
+      workspaceId: defaultWorkspaceId("org_assignment_guardrail"),
       actorUserId: "seed_assignment_guardrail_user",
       apiKeyId: "org_assignment_guardrail:api-key:default",
       body: { routingConfigId: null }
@@ -128,6 +139,7 @@ describe("routing config resolver guardrails", () => {
     const clearedIdentity = await fixture.persistence.apiKeys.resolve("seeded-assignment-guardrail-token");
     const cleared = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_assignment_guardrail",
+      workspaceId: defaultWorkspaceId("org_assignment_guardrail"),
       routingConfigId: clearedIdentity?.routingConfigId
     });
 
@@ -145,6 +157,7 @@ describe("routing config resolver guardrails", () => {
 
     const before = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_resolver_system_prompt",
+      workspaceId: defaultWorkspaceId("org_resolver_system_prompt"),
       routingConfigId: null
     });
 
@@ -154,6 +167,7 @@ describe("routing config resolver guardrails", () => {
       .where(eq(organizationSettings.organizationId, "org_resolver_system_prompt"));
     const pinnedWithPrompt = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_resolver_system_prompt",
+      workspaceId: defaultWorkspaceId("org_resolver_system_prompt"),
       routingConfigId: configId
     });
 
@@ -162,6 +176,7 @@ describe("routing config resolver guardrails", () => {
       .where(eq(organizationSettings.organizationId, "org_resolver_system_prompt"));
     const pinnedWithoutRow = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_resolver_system_prompt",
+      workspaceId: defaultWorkspaceId("org_resolver_system_prompt"),
       routingConfigId: configId
     });
 
@@ -174,11 +189,11 @@ describe("routing config resolver guardrails", () => {
 
   async function setup(organizationId: string) {
     client = new PGlite();
-    const migration = await readFile(
-      fileURLToPath(new URL("../../../packages/db/migrations/0000_foundation.sql", import.meta.url)),
-      "utf8"
-    );
-    await client.exec(migration);
+    const migrationsDir = fileURLToPath(new URL("../../../packages/db/migrations", import.meta.url));
+    const migrationFiles = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
+    for (const file of migrationFiles) {
+      await client.exec(await readFile(join(migrationsDir, file), "utf8"));
+    }
     const db = createPgliteDatabase(client);
     const config = loadConfig({
       ...process.env,

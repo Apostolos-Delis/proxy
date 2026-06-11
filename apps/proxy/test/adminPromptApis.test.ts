@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   apiKeys,
+  defaultWorkspaceId,
   events,
   hashApiKey,
   organizationMembers,
@@ -9,7 +10,8 @@ import {
   promptAccessAudit,
   promptArtifacts,
   requests,
-  users
+  users,
+  workspaces
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
@@ -162,9 +164,16 @@ describe("admin prompt APIs", () => {
       slug: "org-other",
       name: "Other Org"
     });
+    await fixture.db.insert(workspaces).values({
+      id: defaultWorkspaceId("org_other"),
+      organizationId: "org_other",
+      slug: "default",
+      name: "Default"
+    });
     await fixture.db.insert(requests).values({
       id: "request_other",
       organizationId: "org_other",
+      workspaceId: defaultWorkspaceId("org_other"),
       surface: "openai-responses",
       idempotencyKey: "idem_other",
       requestedModel: "router-auto",
@@ -174,6 +183,7 @@ describe("admin prompt APIs", () => {
     await fixture.db.insert(promptArtifacts).values({
       id: "artifact_other",
       organizationId: "org_other",
+      workspaceId: defaultWorkspaceId("org_other"),
       requestId: "request_other",
       kind: "latest_user_message",
       storageMode: "raw_text",
@@ -324,6 +334,7 @@ describe("admin prompt APIs", () => {
     await fixture.db.insert(apiKeys).values({
       id: "api_key_owned",
       organizationId: "org_api_key_identity",
+      workspaceId: defaultWorkspaceId("org_api_key_identity"),
       userId: "api_owner",
       keyHash: hashApiKey("owned-proxy-token"),
       name: "Owned Proxy Token",
@@ -464,6 +475,7 @@ describe("admin prompt APIs", () => {
     await fixture.db.insert(apiKeys).values({
       id: "api_key_unassigned",
       organizationId: "org_unassigned_admin_api_keys",
+      workspaceId: defaultWorkspaceId("org_unassigned_admin_api_keys"),
       keyHash: hashApiKey("unassigned-token"),
       name: "Unassigned key",
       scopes: ["proxy"]

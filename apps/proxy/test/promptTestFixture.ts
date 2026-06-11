@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
@@ -7,11 +8,13 @@ import { expect } from "vitest";
 
 import {
   createPgliteDatabase,
+  defaultWorkspaceId,
   events,
   organizationMembers,
   organizationSettings,
   organizations,
-  users
+  users,
+  workspaces
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
@@ -66,11 +69,11 @@ export async function captureFixture(
   } = {}
 ) {
   const client = new PGlite();
-  const migration = await readFile(
-    fileURLToPath(new URL("../../../packages/db/migrations/0000_foundation.sql", import.meta.url)),
-    "utf8"
-  );
-  await client.exec(migration);
+  const migrationsDir = fileURLToPath(new URL("../../../packages/db/migrations", import.meta.url));
+  const migrationFiles = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
+  for (const file of migrationFiles) {
+    await client.exec(await readFile(join(migrationsDir, file), "utf8"));
+  }
   const db = createPgliteDatabase(client);
   const openai = await startOpenAIMock(options.openAIOptions);
   const anthropic = await startAnthropicMock(options.anthropicOptions);
@@ -94,6 +97,12 @@ export async function captureFixture(
     id: organizationId,
     slug: organizationId,
     name: organizationId
+  });
+  await db.insert(workspaces).values({
+    id: defaultWorkspaceId(organizationId),
+    organizationId,
+    slug: "default",
+    name: "Default"
   });
   await db.insert(users).values({
     id: "local-user",
@@ -190,6 +199,7 @@ export function usageRequest(
   return {
     id,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     userId,
     sessionId,
     apiKeyId,
@@ -215,6 +225,7 @@ export function usageDecision(
     id,
     requestId,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     requestedModel: "router-auto",
     finalRoute,
     selectedProvider,
@@ -237,6 +248,7 @@ export function usageAttempt(
     id,
     requestId,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     surface,
     provider,
     model,
@@ -261,6 +273,7 @@ export function usageRow(
   return {
     id,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     requestId,
     providerAttemptId,
     provider,
@@ -283,6 +296,7 @@ export function sessionPrompt(
   return {
     id,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     requestId,
     kind: "latest_user_message",
     storageMode: "raw_text" as const,
@@ -306,6 +320,7 @@ export function sessionEvent(
     sequence: 1,
     schemaVersion: 1,
     organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
     scopeType: "request",
     scopeId: requestId,
     sessionId,

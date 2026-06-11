@@ -41,6 +41,12 @@ export type CreateRoutingConfigInput = {
   name: string;
 };
 
+export type CreateWorkspaceInput = {
+  description?: string | null | undefined;
+  name: string;
+  slug?: string | null | undefined;
+};
+
 export type MemberRole =
   | 'admin'
   | 'member'
@@ -268,12 +274,12 @@ export type GlobalSearchQueryVariables = Exact<{
 
 export type GlobalSearchQuery = { search: { results: Array<{ kind: SearchHitKind, id: string, title: string, subtitle: string | null, status: string | null, snippet: string | null, occurredAt: string | null }> } };
 
-export type ViewerFieldsFragment = { organizationId: string, user: { sessionId: string, organizationId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }> };
+export type ViewerFieldsFragment = { organizationId: string, workspaceId: string, user: { sessionId: string, organizationId: string, workspaceId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }>, workspaces: Array<{ id: string, slug: string, name: string }> };
 
 export type ViewerQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type ViewerQuery = { viewer: { organizationId: string, user: { sessionId: string, organizationId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }> } };
+export type ViewerQuery = { viewer: { organizationId: string, workspaceId: string, user: { sessionId: string, organizationId: string, workspaceId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }>, workspaces: Array<{ id: string, slug: string, name: string }> } };
 
 export type LoginMutationVariables = Exact<{
   email: string;
@@ -281,7 +287,7 @@ export type LoginMutationVariables = Exact<{
 }>;
 
 
-export type LoginMutation = { login: { organizationId: string, user: { sessionId: string, organizationId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }> } };
+export type LoginMutation = { login: { organizationId: string, workspaceId: string, user: { sessionId: string, organizationId: string, workspaceId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }>, workspaces: Array<{ id: string, slug: string, name: string }> } };
 
 export type LogoutMutationVariables = Exact<{ [key: string]: never; }>;
 
@@ -293,7 +299,21 @@ export type SwitchOrganizationMutationVariables = Exact<{
 }>;
 
 
-export type SwitchOrganizationMutation = { switchOrganization: { organizationId: string, user: { sessionId: string, organizationId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }> } };
+export type SwitchOrganizationMutation = { switchOrganization: { organizationId: string, workspaceId: string, user: { sessionId: string, organizationId: string, workspaceId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }>, workspaces: Array<{ id: string, slug: string, name: string }> } };
+
+export type SwitchWorkspaceMutationVariables = Exact<{
+  workspaceId: string | number;
+}>;
+
+
+export type SwitchWorkspaceMutation = { switchWorkspace: { organizationId: string, workspaceId: string, user: { sessionId: string, organizationId: string, workspaceId: string, userId: string, email: string | null, name: string | null, role: string }, organizations: Array<{ id: string, slug: string, name: string, role: string }>, workspaces: Array<{ id: string, slug: string, name: string }> } };
+
+export type CreateWorkspaceMutationVariables = Exact<{
+  input: CreateWorkspaceInput;
+}>;
+
+
+export type CreateWorkspaceMutation = { createWorkspace: { id: string, slug: string, name: string } };
 
 export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -460,17 +480,24 @@ export const ViewerFieldsFragmentDoc = new TypedDocumentString(`
   user {
     sessionId
     organizationId
+    workspaceId
     userId
     email
     name
     role
   }
   organizationId
+  workspaceId
   organizations {
     id
     slug
     name
     role
+  }
+  workspaces {
+    id
+    slug
+    name
   }
 }
     `, {"fragmentName":"ViewerFields"}) as unknown as TypedDocumentString<ViewerFieldsFragment, unknown>;
@@ -1196,17 +1223,24 @@ export const ViewerDocument = new TypedDocumentString(`
   user {
     sessionId
     organizationId
+    workspaceId
     userId
     email
     name
     role
   }
   organizationId
+  workspaceId
   organizations {
     id
     slug
     name
     role
+  }
+  workspaces {
+    id
+    slug
+    name
   }
 }`) as unknown as TypedDocumentString<ViewerQuery, ViewerQueryVariables>;
 export const LoginDocument = new TypedDocumentString(`
@@ -1219,17 +1253,24 @@ export const LoginDocument = new TypedDocumentString(`
   user {
     sessionId
     organizationId
+    workspaceId
     userId
     email
     name
     role
   }
   organizationId
+  workspaceId
   organizations {
     id
     slug
     name
     role
+  }
+  workspaces {
+    id
+    slug
+    name
   }
 }`) as unknown as TypedDocumentString<LoginMutation, LoginMutationVariables>;
 export const LogoutDocument = new TypedDocumentString(`
@@ -1247,19 +1288,65 @@ export const SwitchOrganizationDocument = new TypedDocumentString(`
   user {
     sessionId
     organizationId
+    workspaceId
     userId
     email
     name
     role
   }
   organizationId
+  workspaceId
   organizations {
     id
     slug
     name
     role
   }
+  workspaces {
+    id
+    slug
+    name
+  }
 }`) as unknown as TypedDocumentString<SwitchOrganizationMutation, SwitchOrganizationMutationVariables>;
+export const SwitchWorkspaceDocument = new TypedDocumentString(`
+    mutation SwitchWorkspace($workspaceId: ID!) {
+  switchWorkspace(workspaceId: $workspaceId) {
+    ...ViewerFields
+  }
+}
+    fragment ViewerFields on Viewer {
+  user {
+    sessionId
+    organizationId
+    workspaceId
+    userId
+    email
+    name
+    role
+  }
+  organizationId
+  workspaceId
+  organizations {
+    id
+    slug
+    name
+    role
+  }
+  workspaces {
+    id
+    slug
+    name
+  }
+}`) as unknown as TypedDocumentString<SwitchWorkspaceMutation, SwitchWorkspaceMutationVariables>;
+export const CreateWorkspaceDocument = new TypedDocumentString(`
+    mutation CreateWorkspace($input: CreateWorkspaceInput!) {
+  createWorkspace(input: $input) {
+    id
+    slug
+    name
+  }
+}
+    `) as unknown as TypedDocumentString<CreateWorkspaceMutation, CreateWorkspaceMutationVariables>;
 export const SessionsPageDocument = new TypedDocumentString(`
     query SessionsPage {
   sessions {

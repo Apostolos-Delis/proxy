@@ -49,6 +49,21 @@ export class AdminAuthService {
     return session;
   }
 
+  // Workspace switching keeps the session (same org, same auth boundary) and
+  // just repoints its active workspace.
+  async switchWorkspace(headers: Record<string, unknown>, body: unknown) {
+    const identity = await this.resolve(headers);
+    if (!this.sessions) throw forbidden();
+    const workspaceId = switchWorkspaceTarget(body);
+    const switched = await this.sessions.setActiveWorkspace(
+      identity.sessionId,
+      identity.organizationId,
+      workspaceId
+    );
+    if (!switched) throw forbidden();
+    return { ...identity, workspaceId };
+  }
+
   async logout(headers: Record<string, unknown>) {
     const token = this.token(headers);
     if (token && this.sessions) await this.sessions.revoke(token);
@@ -89,10 +104,17 @@ function loginCredentials(body: unknown) {
 }
 
 function switchOrganizationTarget(body: unknown) {
-  if (!body || typeof body !== "object" || Array.isArray(body)) throw badRequest();
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw badRequest("organization_id_required");
   const organizationId = (body as Record<string, unknown>).organizationId;
-  if (typeof organizationId !== "string" || !organizationId.trim()) throw badRequest();
+  if (typeof organizationId !== "string" || !organizationId.trim()) throw badRequest("organization_id_required");
   return organizationId.trim();
+}
+
+function switchWorkspaceTarget(body: unknown) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw badRequest("workspace_id_required");
+  const workspaceId = (body as Record<string, unknown>).workspaceId;
+  if (typeof workspaceId !== "string" || !workspaceId.trim()) throw badRequest("workspace_id_required");
+  return workspaceId.trim();
 }
 
 function cookieValue(headers: Record<string, unknown>, name: string) {
@@ -117,8 +139,8 @@ function forbidden() {
   return error;
 }
 
-function badRequest() {
-  const error = new Error("organization_id_required");
+function badRequest(message: string) {
+  const error = new Error(message);
   (error as Error & { statusCode: number }).statusCode = 400;
   return error;
 }

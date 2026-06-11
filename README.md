@@ -90,8 +90,8 @@ supports_websockets = true
 
 ## How routing works
 
-1. A request arrives at `/v1/responses` or `/v1/messages` and is authenticated by API key.
-2. The proxy resolves a **routing config** for that key. Precedence: API-key assignment → organization default → seeded default; the config's active immutable version supplies the rules.
+1. A request arrives at `/v1/responses` or `/v1/messages` and is authenticated by API key, which also determines its workspace.
+2. The proxy resolves a **routing config** for that key. Precedence: API-key assignment → workspace default → seeded default; the config's active immutable version supplies the rules.
 3. An LLM classifier (structured output with retry, `CLASSIFIER_*` env vars) assigns a tier, unless the caller pinned one via the model alias.
 4. The tier maps to a concrete model for the request's provider, and the call is forwarded — with the org-level system prompt (Settings → System Prompt) prepended ahead of harness prompts, when set.
 5. The route decision, provider attempts, usage, and config identity (config id, version, hash) are persisted on the request for auditing.
@@ -100,9 +100,13 @@ Routing configs are edited in the console: saving creates a new immutable versio
 
 Optional budget controls: `BUDGET_MAX_ROUTE`, `BUDGET_MAX_ESTIMATED_INPUT_TOKENS`, `BUDGET_USER_ESTIMATED_INPUT_LIMITS`, `BUDGET_TEAM_ESTIMATED_INPUT_LIMITS`, and `MODEL_COSTS_JSON`.
 
+## Workspaces
+
+Each organization contains one or more workspaces (the Anthropic Console / OpenAI Platform model): membership, invitations, provider keys, and prompt-capture settings stay organization-wide, while API keys, routing configs, sessions, requests, usage, and prompt artifacts belong to a workspace. Every organization gets a seeded `Default` workspace and migrations move pre-workspace rows into it; the proxy derives each request's workspace from its API key, so traffic is attributed without any client changes. In the console, the switcher at the top of the sidebar changes the session's active workspace (`switchWorkspace`) and can create new workspaces inline (`createWorkspace`); every traffic screen shows only the active workspace.
+
 ## The console
 
-The web app at `:5173` is an org-scoped operations console (with a ⌘K global search palette and an organization switcher):
+The web app at `:5173` is an org-scoped operations console (with a ⌘K global search palette, a workspace switcher, and an organization switcher):
 
 | Page | What it's for |
 | --- | --- |
