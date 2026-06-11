@@ -217,10 +217,14 @@ export type AssignApiKeyProviderAccountMutationVariables = Exact<{
 
 export type AssignApiKeyProviderAccountMutation = { assignApiKeyProviderAccount: { id: string, providerCredentials: Array<{ provider: string, providerAccountId: string, name: string | null, status: string | null }> } };
 
-export type RequestsPageQueryVariables = Exact<{ [key: string]: never; }>;
+export type RequestsPageQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+  limit?: number | null | undefined;
+}>;
 
 
-export type RequestsPageQuery = { prompts: { data: Array<{ artifactId: string, requestId: string, sessionId: string | null, userId: string | null, surface: string, kind: string, preview: string | null, tokenEstimate: number | null, selectedModel: string | null, finalRoute: string | null, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }> }, requests: Array<{ requestId: string, selectedModel: string | null, terminalStatus: string, latencyMs: number | null, finalRoute: string | null, selectedCost: number, usage: { totalTokens: number }, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
+export type RequestsPageQuery = { prompts: { data: Array<{ artifactId: string, requestId: string, sessionId: string | null, userId: string | null, surface: string, kind: string, preview: string | null, tokenEstimate: number | null, selectedModel: string | null, finalRoute: string | null, provider: string | null, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }> }, requests: Array<{ requestId: string, selectedModel: string | null, terminalStatus: string, latencyMs: number | null, finalRoute: string | null, provider: string | null, apiKeyId: string | null, sessionId: string | null, selectedCost: number, usage: { totalTokens: number }, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
 export type RoutingConfigSummaryFieldsFragment = { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routeMatrix: Array<{ route: string, description: string | null, openaiModel: string | null, openaiEffort: string | null, anthropicModel: string | null, anthropicEffort: string | null }> };
 
@@ -925,8 +929,8 @@ export const AssignApiKeyProviderAccountDocument = new TypedDocumentString(`
 }
     `) as unknown as TypedDocumentString<AssignApiKeyProviderAccountMutation, AssignApiKeyProviderAccountMutationVariables>;
 export const RequestsPageDocument = new TypedDocumentString(`
-    query RequestsPage {
-  prompts {
+    query RequestsPage($start: String, $end: String, $limit: Int) {
+  prompts(start: $start, end: $end, limit: $limit) {
     data {
       artifactId
       requestId
@@ -938,6 +942,7 @@ export const RequestsPageDocument = new TypedDocumentString(`
       tokenEstimate
       selectedModel
       finalRoute
+      provider
       routingConfig {
         configId
         configName
@@ -949,12 +954,15 @@ export const RequestsPageDocument = new TypedDocumentString(`
       }
     }
   }
-  requests {
+  requests(start: $start, end: $end, limit: $limit) {
     requestId
     selectedModel
     terminalStatus
     latencyMs
     finalRoute
+    provider
+    apiKeyId
+    sessionId
     selectedCost
     usage {
       totalTokens

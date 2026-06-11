@@ -112,7 +112,7 @@ export function UsagePage() {
 
       <section className="usage-breakdown">
         <UsageDimensionTabs dimension={dimension} onDimension={setDimension} />
-        <UsageBreakdownTable mode="tokens" dimension={dimension} rows={breakdownRows} totals={totals} lookups={lookups} />
+        <UsageBreakdownTable mode="tokens" dimension={dimension} range={range} rows={breakdownRows} totals={totals} lookups={lookups} />
       </section>
     </div>
   );

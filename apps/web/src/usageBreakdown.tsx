@@ -13,7 +13,8 @@ import {
   tokenShareOf,
   usageDimensions,
   type GroupLabelLookups,
-  type UsageDimension
+  type UsageDimension,
+  type UsageRangeKey
 } from "./usageAnalytics";
 
 export function UsageDimensionTabs({ dimension, onDimension }: {
@@ -38,9 +39,10 @@ export function UsageDimensionTabs({ dimension, onDimension }: {
   );
 }
 
-export function UsageBreakdownTable({ mode, dimension, rows, totals, lookups }: {
+export function UsageBreakdownTable({ mode, dimension, range, rows, totals, lookups }: {
   mode: "tokens" | "cost";
   dimension: UsageDimension;
+  range: UsageRangeKey;
   rows: UsageGroup[];
   totals: UsageGroup | undefined;
   lookups: GroupLabelLookups;
@@ -50,7 +52,7 @@ export function UsageBreakdownTable({ mode, dimension, rows, totals, lookups }: 
   const columns = [
     keyColumn(dimension, lookups),
     shareColumn(share),
-    ...(mode === "tokens" ? tokenColumns() : costColumns())
+    ...(mode === "tokens" ? tokenColumns(dimension, range) : costColumns())
   ];
   return (
     <ConsoleTable
@@ -83,7 +85,7 @@ function shareColumn(share: (row: UsageGroup) => number): ConsoleTableColumn<Usa
   };
 }
 
-function tokenColumns(): ConsoleTableColumn<UsageGroup>[] {
+function tokenColumns(dimension: UsageDimension, range: UsageRangeKey): ConsoleTableColumn<UsageGroup>[] {
   return [
     { id: "requests", header: "Requests", size: 96, accessorFn: (row) => row.requestCount, cell: ({ row }) => <span className="mono">{formatInteger(row.original.requestCount)}</span> },
     { id: "input", header: "Input", size: 92, accessorFn: (row) => row.usage.inputTokens, cell: ({ row }) => <TokenCell value={row.original.usage.inputTokens} /> },
@@ -91,7 +93,7 @@ function tokenColumns(): ConsoleTableColumn<UsageGroup>[] {
     { id: "output", header: "Output", size: 92, accessorFn: (row) => row.usage.outputTokens, cell: ({ row }) => <TokenCell value={row.original.usage.outputTokens} /> },
     { id: "tokens", header: "Total", size: 96, accessorFn: (row) => row.usage.totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(row.original.usage.totalTokens)}</span> },
     { id: "p95", header: "p95", size: 84, accessorFn: (row) => row.latency.p95Ms ?? -1, cell: ({ row }) => <LatencyCell group={row.original} /> },
-    { id: "failures", header: "Failures", size: 88, accessorFn: (row) => row.failureRate, cell: ({ row }) => <RateCell rate={row.original.failureRate} tone="danger-text" /> }
+    { id: "failures", header: "Failures", size: 88, accessorFn: (row) => row.failureRate, cell: ({ row }) => <FailureCell group={row.original} dimension={dimension} range={range} /> }
   ];
 }
 
@@ -186,9 +188,30 @@ function SavingsCell({ value }: { value: number }) {
   return <span className="mono accent-text">{formatMoney(value)}</span>;
 }
 
-function RateCell({ rate, tone }: { rate: number; tone: "warn-text" | "danger-text" }) {
-  if (rate <= 0) return <span className="mono faint">—</span>;
-  return <span className={`mono ${tone}`}>{formatPercent(rate)}</span>;
+function FailureCell({ group, dimension, range }: { group: UsageGroup; dimension: UsageDimension; range: UsageRangeKey }) {
+  if (group.failureRate <= 0) return <span className="mono faint">—</span>;
+  const search = failuresLogsSearch(dimension, group.key, range);
+  const rate = <span className="mono danger-text">{formatPercent(group.failureRate)}</span>;
+  if (!search) return rate;
+  return (
+    <Link to="/logs" search={search} className="failure-link" title="View these failed requests in logs">
+      {rate}
+    </Link>
+  );
+}
+
+// Maps a breakdown row to logs URL params that isolate its failed requests over the same window.
+// Model/User reuse the logs filter params; the other dimensions ride the advanced-rule (`adv`) param.
+// Returns null when the key can't be expressed as a logs filter (the "Other" aggregate or an
+// "unknown" group, which is an absent field rather than a filterable value).
+function failuresLogsSearch(dimension: UsageDimension, key: string, range: UsageRangeKey) {
+  if (key === OTHER_GROUP_KEY || key === "unknown") return null;
+  const rangeParam = { range };
+  if (dimension === "model") return { ...rangeParam, status: "failed", model: key };
+  if (dimension === "user") return { ...rangeParam, status: "failed", user: key };
+  const advField = { route: "route", provider: "provider", surface: "surface", session: "session", api_key: "apiKey" }[dimension];
+  if (!advField) return null;
+  return { ...rangeParam, status: "failed", adv: [[advField, "equals", key, "and"]] };
 }
 
 export function formatDurationMs(value: number) {

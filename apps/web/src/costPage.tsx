@@ -156,7 +156,7 @@ export function CostPage() {
 
       <section className="usage-breakdown">
         <UsageDimensionTabs dimension={dimension} onDimension={setDimension} />
-        <UsageBreakdownTable mode="cost" dimension={dimension} rows={usage.data} totals={totals} lookups={lookups} />
+        <UsageBreakdownTable mode="cost" dimension={dimension} range={range} rows={usage.data} totals={totals} lookups={lookups} />
       </section>
     </div>
   );

@@ -74,9 +74,20 @@ builder.queryFields((t) => ({
 
   requests: t.field({
     type: [RequestSummary],
-    resolve: async (_root, _args, context) => {
+    args: {
+      limit: t.arg.int(),
+      start: t.arg.string(),
+      end: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
       const queries = scopedQueries(context);
-      if (queries) return (await queries.requests()).data;
+      if (queries) {
+        return (await queries.requests({
+          limit: args.limit ?? undefined,
+          start: args.start ?? undefined,
+          end: args.end ?? undefined
+        })).data;
+      }
       return [...context.projections.usage(context.events.listEvents()).requests].reverse();
     }
   }),

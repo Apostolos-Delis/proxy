@@ -69,6 +69,12 @@ export type PromptListFilters = {
   end?: string;
 };
 
+export type RequestListFilters = {
+  limit?: number;
+  start?: string;
+  end?: string;
+};
+
 export type UsageAnalyticsFilters = {
   groupBy?: string;
   start?: string;
@@ -148,9 +154,9 @@ export class AdminQueryService {
     };
   }
 
-  async requests() {
+  async requests(filters: RequestListFilters = {}) {
     return {
-      data: await this.summarizeRequests(await this.requestRows(200))
+      data: await this.summarizeRequests(await this.requestRowsForList(filters))
     };
   }
 
@@ -616,6 +622,25 @@ export class AdminQueryService {
         .where(this.scopedTo(requests))
         .orderBy(desc(requests.createdAt));
       return limit === undefined ? query : query.limit(limit);
+    });
+  }
+
+  private requestRowsForList(filters: RequestListFilters) {
+    const start = dateValue(filters.start);
+    const end = dateValue(filters.end);
+    const limit = requestListLimit(filters.limit);
+    // An unfiltered read is the same limited scan the bare list always performed.
+    if (!start && !end) return this.requestRows(limit);
+    return this.cached(`requests:list:${limit}:${start?.toISOString() ?? ""}:${end?.toISOString() ?? ""}`, () => {
+      const conditions = [this.scopedTo(requests)];
+      if (start) conditions.push(gte(requests.createdAt, start));
+      if (end) conditions.push(lte(requests.createdAt, end));
+      return this.db
+        .select()
+        .from(requests)
+        .where(and(...conditions))
+        .orderBy(desc(requests.createdAt))
+        .limit(limit);
     });
   }
 
@@ -1331,6 +1356,11 @@ function promptDetail(row: Pick<PromptRow, "artifact" | "request"> & Partial<Pic
 function promptLimit(value: number | undefined) {
   if (!value || !Number.isFinite(value)) return 50;
   return Math.max(1, Math.min(200, Math.floor(value)));
+}
+
+function requestListLimit(value: number | undefined) {
+  if (!value || !Number.isFinite(value)) return 200;
+  return Math.max(1, Math.min(1000, Math.floor(value)));
 }
 
 function promptOffset(value: number | undefined) {
