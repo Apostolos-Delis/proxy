@@ -1106,6 +1106,97 @@ input[type="checkbox"][role="switch"]:focus-visible {
   gap: 4px;
 }
 
+.fact-wide {
+  grid-column: 1 / -1;
+}
+
+.rail-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.route-flow {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.route-flow-rerouted::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 5px;
+  width: 1px;
+  background: var(--border-strong);
+}
+
+.route-flow-step {
+  position: relative;
+  padding-left: 18px;
+}
+
+.route-flow-step::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--fg-faint);
+  border-radius: 50%;
+  background: var(--glass);
+}
+
+.route-flow-served::before {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.route-flow-label {
+  display: block;
+  color: var(--fg-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.route-flow-model {
+  display: block;
+  margin-top: 3px;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.route-flow-provider {
+  display: block;
+  margin-top: 2px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.route-flow-decision {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-left: 18px;
+}
+
+.route-flow-note {
+  color: var(--fg-faint);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
 /* exchange bubbles */
 .convo-bubble.convo-system {
   border-style: dashed;
