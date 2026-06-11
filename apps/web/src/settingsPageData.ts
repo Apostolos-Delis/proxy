@@ -32,6 +32,7 @@ export function settingsInput(settings: EditableSettings) {
 export function visibleGroups(search: string) {
   const groups = [
     { key: "system", terms: "system prompt organization injected harness model requests" },
+    { key: "optimization", terms: "token optimization caching cache ttl anthropic ephemeral compress mcp tool results whitespace cost" },
     { key: "classifier", terms: "classifier model timeout attempts redacted excerpt structured routing" },
     { key: "budgets", terms: "budgets warning max input tokens route guardrails policy limit" },
     { key: "prompt", terms: "prompt capture retention raw text hash redacted encrypted artifacts" },
