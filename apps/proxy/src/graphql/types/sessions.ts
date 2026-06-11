@@ -28,6 +28,7 @@ export const SessionSummary = builder.objectRef<SessionSummaryModel>("SessionSum
       resolve: (session) => session.terminalStatusSummary
     }),
     usage: t.expose("usage", { type: TokenTotals }),
+    cacheHitRate: t.exposeFloat("cacheHitRate", { nullable: true }),
     cost: t.expose("cost", { type: CostTotals }),
     recentActivity: t.exposeString("recentActivity", { nullable: true }),
     startedAt: t.exposeString("startedAt"),

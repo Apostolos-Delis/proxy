@@ -1522,6 +1522,7 @@ function sessionSummary(session: SessionRow, allRequests: RequestSummary[]) {
     routeMix: countBy(requests, (request) => request.finalRoute ?? "unknown"),
     terminalStatusSummary: countBy(requests, (request) => request.terminalStatus),
     usage: usageTotals(requests),
+    cacheHitRate: cacheHitRate(requests),
     cost: costTotals(requests),
     recentActivity: recentActivity(requests, [session]),
     startedAt: session.startedAt.toISOString(),
@@ -1544,6 +1545,24 @@ function addUsageTotals(target: ReturnType<typeof emptyUsage>, usage: ReturnType
   target.outputTokens += usage.outputTokens;
   target.reasoningTokens += usage.reasoningTokens;
   target.totalTokens += usage.totalTokens;
+}
+
+// Hit rate over total prompt input. Anthropic reports input_tokens exclusive
+// of cache reads/writes when caching applies; OpenAI reports cached_tokens as
+// a subset of input_tokens. Requests without a known provider are skipped —
+// their denominator semantics are ambiguous.
+function cacheHitRate(requests: RequestSummary[]) {
+  let hits = 0;
+  let total = 0;
+  for (const request of requests) {
+    if (request.provider !== "anthropic" && request.provider !== "openai") continue;
+    const usage = request.usage;
+    hits += usage.cachedInputTokens;
+    total += request.provider === "anthropic"
+      ? usage.inputTokens + usage.cachedInputTokens + usage.cacheCreationInputTokens
+      : usage.inputTokens;
+  }
+  return total > 0 ? hits / total : null;
 }
 
 function costTotals(requests: RequestSummary[]) {
