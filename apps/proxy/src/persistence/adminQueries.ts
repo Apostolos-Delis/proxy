@@ -434,9 +434,10 @@ export class AdminQueryService {
     const sessionRows = await this.sessionRows();
     const userRows = await this.userRowsForOrg(userIdsForRequestsAndSessions(requestSummaries, sessionRows));
     const memberRows = await this.memberRowsByUserId();
+    const apiKeyCounts = await this.activeApiKeyCountsByUser();
     return {
       data: [...userRows.values()]
-        .map((user) => userSummary(user, requestSummaries, sessionRows, memberRows.get(user.id)))
+        .map((user) => userSummary(user, requestSummaries, sessionRows, memberRows.get(user.id), apiKeyCounts.get(user.id) ?? 0))
         .sort((left, right) => compareRecentActivity(left.recentActivity, right.recentActivity))
     };
   }
@@ -450,7 +451,8 @@ export class AdminQueryService {
     if (!user) return null;
 
     const memberRows = await this.memberRowsByUserId();
-    const summary = userSummary(user, requestSummaries, sessionRows, memberRows.get(userId));
+    const apiKeyCounts = await this.activeApiKeyCountsByUser();
+    const summary = userSummary(user, requestSummaries, sessionRows, memberRows.get(userId), apiKeyCounts.get(userId) ?? 0);
     return {
       user: summary,
       usage: summary.usage,
@@ -612,6 +614,25 @@ export class AdminQueryService {
       ))
       .where(and(...conditions))
       .orderBy(desc(apiKeys.createdAt));
+  }
+
+  private activeApiKeyCountsByUser() {
+    return this.cached("active-api-key-counts", async () => {
+      const rows = await this.db
+        .select({ userId: apiKeys.userId })
+        .from(apiKeys)
+        .where(and(
+          this.scopedTo(apiKeys),
+          isNull(apiKeys.revokedAt),
+          or(isNull(apiKeys.expiresAt), gte(apiKeys.expiresAt, new Date()))
+        ));
+      const counts = new Map<string, number>();
+      for (const row of rows) {
+        if (!row.userId) continue;
+        counts.set(row.userId, (counts.get(row.userId) ?? 0) + 1);
+      }
+      return counts;
+    });
   }
 
   private requestRows(limit?: number) {
@@ -1625,27 +1646,35 @@ function sessionIdsForRequests(requests: RequestSummary[]) {
   return requests.flatMap((request) => request.sessionId ? [request.sessionId] : []);
 }
 
+const USER_USAGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
 function userSummary(
   user: UserRow,
   allRequests: RequestSummary[],
   allSessions: SessionRow[],
-  member?: MemberRow
+  member?: MemberRow,
+  apiKeyCount = 0
 ) {
   const requests = allRequests.filter((request) => request.userId === user.id);
   const requestSessionIds = new Set(sessionIdsForRequests(requests));
   const sessions = allSessions.filter((session) =>
     session.userId === user.id || requestSessionIds.has(session.id)
   );
+  const windowStart = Date.now() - USER_USAGE_WINDOW_MS;
+  const recentRequests = requests.filter((request) => timestampFromIso(request.createdAt) >= windowStart);
   return {
     userId: user.id,
     email: user.email ?? undefined,
     name: user.name ?? undefined,
     externalId: user.externalId ?? undefined,
     membership: member ? { role: member.role, status: member.status } : null,
+    apiKeyCount,
     requestCount: requests.length,
     sessionCount: sessions.length,
     usage: usageTotals(requests),
     cost: costTotals(requests),
+    usage30d: usageTotals(recentRequests),
+    cost30d: costTotals(recentRequests),
     recentActivity: recentActivity(requests, sessions),
     createdAt: user.createdAt.toISOString()
   };

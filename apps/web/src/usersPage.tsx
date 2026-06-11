@@ -26,12 +26,19 @@ const UsersListDocument = graphql(`
         role
         status
       }
+      apiKeyCount
       requestCount
       sessionCount
       usage {
         totalTokens
       }
       cost {
+        selected
+      }
+      usage30d {
+        totalTokens
+      }
+      cost30d {
         selected
       }
       recentActivity
@@ -52,6 +59,7 @@ const UpdateUserRoleDocument = graphql(`
 
 export function UsersPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [openRoleUserId, setOpenRoleUserId] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["users"], queryFn: () => gqlFetch(UsersListDocument) });
@@ -59,7 +67,10 @@ export function UsersPage() {
   const roleMutation = useMutation({
     mutationFn: (input: { userId: string; role: MemberRole }) =>
       gqlFetch(UpdateUserRoleDocument, { userId: input.userId, role: input.role }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users"] })
+    onSuccess: () => {
+      setOpenRoleUserId(null);
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+    }
   });
 
   if (query.isLoading) return <PageState title="Users" label="Loading users" />;
@@ -87,9 +98,11 @@ export function UsersPage() {
         urlState
         data={users}
         columns={userColumns({
+          openRoleUserId,
           pendingUserId: roleMutation.isPending ? roleMutation.variables?.userId : undefined,
           errorUserId: roleMutation.error ? roleMutation.variables?.userId : undefined,
           errorMessage: roleMutation.error?.message,
+          onRoleMenuOpenChange: (userId, open) => setOpenRoleUserId(open ? userId : null),
           onRoleChange: (userId, role) => roleMutation.mutate({ userId, role })
         })}
         search={{ placeholder: "Search members...", getValue: userSearchValue }}

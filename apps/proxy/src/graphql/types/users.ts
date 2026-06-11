@@ -24,10 +24,13 @@ export const UserSummary = builder.objectRef<UserSummaryModel>("UserSummary").im
       nullable: true,
       resolve: (user) => user.membership
     }),
+    apiKeyCount: t.exposeInt("apiKeyCount"),
     requestCount: t.exposeFloat("requestCount"),
     sessionCount: t.exposeFloat("sessionCount"),
     usage: t.expose("usage", { type: TokenTotals }),
     cost: t.expose("cost", { type: CostTotals }),
+    usage30d: t.expose("usage30d", { type: TokenTotals }),
+    cost30d: t.expose("cost30d", { type: CostTotals }),
     recentActivity: t.exposeString("recentActivity", { nullable: true }),
     createdAt: t.exposeString("createdAt")
   })

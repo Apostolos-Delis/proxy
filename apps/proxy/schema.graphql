@@ -889,7 +889,9 @@ type UserStatusResult {
 }
 
 type UserSummary {
+  apiKeyCount: Int!
   cost: CostTotals!
+  cost30d: CostTotals!
   createdAt: String!
   email: String
   externalId: String
@@ -899,6 +901,7 @@ type UserSummary {
   requestCount: Float!
   sessionCount: Float!
   usage: TokenTotals!
+  usage30d: TokenTotals!
   userId: String!
 }
 
