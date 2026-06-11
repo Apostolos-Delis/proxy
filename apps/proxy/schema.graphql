@@ -154,6 +154,21 @@ type EmailDelivery {
   transport: String!
 }
 
+type IdleGapBucket {
+  count: Float!
+  key: String!
+  label: String!
+}
+
+type IdleGapReport {
+  buckets: [IdleGapBucket!]!
+  overTtl: Float!
+  recoverableByOneHourTtl: Float!
+  sampled: Boolean!
+  sessionsScanned: Float!
+  totalGaps: Float!
+}
+
 type Invitation {
   acceptedAt: String
   acceptedUserId: String
@@ -455,6 +470,7 @@ type Query {
   apiKey(apiKeyId: ID!): ApiKey
   apiKeys: [ApiKey!]!
   cacheBusts(end: String, start: String): CacheBustReport!
+  idleGaps(end: String, start: String): IdleGapReport!
   invitations: [Invitation!]!
   members: [OrgMember!]!
   modelPricing: [ModelPricingEntry!]!

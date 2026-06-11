@@ -9,8 +9,10 @@ import {
   bustCauseLabels,
   cacheHitRateOf,
   fetchCacheBusts,
+  fetchIdleGaps,
   fetchTokenAttribution,
   type CacheBustReport,
+  type IdleGapReport,
   type TokenAttributionOffender,
   type TokenAttributionReport
 } from "./tokensData";
@@ -40,6 +42,11 @@ export function TokensPage() {
   const cacheBustsQuery = useQuery({
     queryKey: ["cache-busts", start, end],
     queryFn: () => fetchCacheBusts({ start, end }),
+    placeholderData: keepPreviousData
+  });
+  const idleGapsQuery = useQuery({
+    queryKey: ["idle-gaps", start, end],
+    queryFn: () => fetchIdleGaps({ start, end }),
     placeholderData: keepPreviousData
   });
   const error = attributionQuery.error ?? providerUsageQuery.error ?? cacheBustsQuery.error;
@@ -92,6 +99,10 @@ export function TokensPage() {
           <GlassCard>
             <div className="card-title">Cache busts</div>
             <CacheBusts report={cacheBustsQuery.data} />
+          </GlassCard>
+          <GlassCard>
+            <div className="card-title">Session idle gaps</div>
+            <IdleGaps report={idleGapsQuery.data} />
           </GlassCard>
           <GlassCard>
             <div className="card-title">Top tool schemas</div>
@@ -193,6 +204,34 @@ function CacheBusts({ report }: { report: CacheBustReport | undefined }) {
       {report.sampled ? (
         <div className="stat-sub">newest sample — window truncated</div>
       ) : null}
+    </div>
+  );
+}
+
+function IdleGaps({ report }: { report: IdleGapReport | undefined }) {
+  if (!report) return <div className="empty compact-empty">Loading…</div>;
+  if (report.totalGaps === 0) {
+    return <div className="empty compact-empty">No multi-request sessions in this window.</div>;
+  }
+  const max = Math.max(...report.buckets.map((bucket) => bucket.count), 1);
+  const overTtlShare = report.overTtl / report.totalGaps;
+  const recoverableShare = report.recoverableByOneHourTtl / report.totalGaps;
+  return (
+    <div>
+      <div className="barlist usage-top-list">
+        {report.buckets.map((bucket) => (
+          <BarListRow
+            key={bucket.key}
+            label={bucket.label}
+            value={formatCompact(bucket.count)}
+            width={(bucket.count / max) * 100}
+          />
+        ))}
+      </div>
+      <div className="stat-sub">
+        {formatPercent(overTtlShare)} of gaps outlive the 5m cache TTL;{" "}
+        {formatPercent(recoverableShare)} recoverable with a 1h TTL
+      </div>
     </div>
   );
 }

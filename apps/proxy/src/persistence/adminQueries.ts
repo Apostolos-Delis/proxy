@@ -48,6 +48,7 @@ import {
   usageLedgerSummary
 } from "./adminSerializers.js";
 import { CACHE_BUST_SAMPLE_CAP, detectCacheBusts } from "./cacheBusts.js";
+import { aggregateIdleGaps, IDLE_GAP_SAMPLE_CAP } from "./idleGaps.js";
 import { orgPricingOverrides, type OrgPricingOverride } from "./modelPricing.js";
 import {
   aggregateTokenAttribution,
@@ -1019,6 +1020,24 @@ export class AdminQueryService {
       }
     }
     return summaries;
+  }
+
+  async idleGaps(filters: TokenAttributionFilters = {}) {
+    const start = dateValue(filters.start);
+    const end = dateValue(filters.end);
+    const conditions = [this.scopedTo(requests), isNotNull(requests.sessionId)];
+    if (start) conditions.push(gte(requests.createdAt, start));
+    if (end) conditions.push(lte(requests.createdAt, end));
+    const rows = await this.db
+      .select({ sessionId: requests.sessionId, createdAt: requests.createdAt })
+      .from(requests)
+      .where(and(...conditions))
+      .orderBy(desc(requests.createdAt))
+      .limit(IDLE_GAP_SAMPLE_CAP);
+    return aggregateIdleGaps(
+      rows.map((row) => ({ sessionId: row.sessionId ?? "", createdAt: row.createdAt })),
+      rows.length === IDLE_GAP_SAMPLE_CAP
+    );
   }
 
   async cacheBusts(filters: TokenAttributionFilters = {}) {

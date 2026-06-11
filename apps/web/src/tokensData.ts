@@ -1,5 +1,5 @@
 import { graphql } from "./gql";
-import type { CacheBustsViewQuery, TokenAttributionViewQuery } from "./gql/graphql";
+import type { CacheBustsViewQuery, IdleGapsViewQuery, TokenAttributionViewQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
 import type { UsageGroup, UsageRangeFilters } from "./usageData";
 
@@ -25,6 +25,23 @@ const TokenAttributionViewDocument = graphql(`
         estimatedTokens
         blocks
       }
+    }
+  }
+`);
+
+const IdleGapsViewDocument = graphql(`
+  query IdleGapsView($start: String, $end: String) {
+    idleGaps(start: $start, end: $end) {
+      buckets {
+        key
+        label
+        count
+      }
+      totalGaps
+      overTtl
+      recoverableByOneHourTtl
+      sessionsScanned
+      sampled
     }
   }
 `);
@@ -58,6 +75,12 @@ export async function fetchTokenAttribution(filters: UsageRangeFilters = {}) {
 
 export async function fetchCacheBusts(filters: UsageRangeFilters = {}) {
   return (await gqlFetch(CacheBustsViewDocument, { ...filters })).cacheBusts;
+}
+
+export type IdleGapReport = IdleGapsViewQuery["idleGaps"];
+
+export async function fetchIdleGaps(filters: UsageRangeFilters = {}) {
+  return (await gqlFetch(IdleGapsViewDocument, { ...filters })).idleGaps;
 }
 
 export const bustCauseLabels: Record<string, string> = {

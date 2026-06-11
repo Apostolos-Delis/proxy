@@ -389,6 +389,14 @@ export type TokenAttributionViewQueryVariables = Exact<{
 
 export type TokenAttributionViewQuery = { tokenAttribution: { requestCount: number, sampled: boolean, buckets: Array<{ key: string, chars: number, estimatedTokens: number }>, toolSchemas: Array<{ name: string, chars: number, estimatedTokens: number, blocks: number | null }>, toolResults: Array<{ name: string, chars: number, estimatedTokens: number, blocks: number | null }> } };
 
+export type IdleGapsViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+}>;
+
+
+export type IdleGapsViewQuery = { idleGaps: { totalGaps: number, overTtl: number, recoverableByOneHourTtl: number, sessionsScanned: number, sampled: boolean, buckets: Array<{ key: string, label: string, count: number }> } };
+
 export type CacheBustsViewQueryVariables = Exact<{
   start?: string | null | undefined;
   end?: string | null | undefined;
@@ -1671,6 +1679,22 @@ export const TokenAttributionViewDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<TokenAttributionViewQuery, TokenAttributionViewQueryVariables>;
+export const IdleGapsViewDocument = new TypedDocumentString(`
+    query IdleGapsView($start: String, $end: String) {
+  idleGaps(start: $start, end: $end) {
+    buckets {
+      key
+      label
+      count
+    }
+    totalGaps
+    overTtl
+    recoverableByOneHourTtl
+    sessionsScanned
+    sampled
+  }
+}
+    `) as unknown as TypedDocumentString<IdleGapsViewQuery, IdleGapsViewQueryVariables>;
 export const CacheBustsViewDocument = new TypedDocumentString(`
     query CacheBustsView($start: String, $end: String) {
   cacheBusts(start: $start, end: $end) {

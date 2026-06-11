@@ -208,5 +208,22 @@ describe("cacheBusts admin query", () => {
     });
     expect(report.countsByCause.ttl_expiry).toBe(1);
     expect(report.sampled).toBe(false);
+
+    const idleGaps = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { idleGaps {
+        buckets { key count }
+        totalGaps
+        overTtl
+        recoverableByOneHourTtl
+      } }`
+    )).data?.idleGaps;
+
+    expect(idleGaps.totalGaps).toBe(1);
+    expect(idleGaps.overTtl).toBe(1);
+    expect(idleGaps.recoverableByOneHourTtl).toBe(1);
+    const gapCounts = Object.fromEntries(idleGaps.buckets.map((bucket: any) => [bucket.key, bucket.count]));
+    expect(gapCounts["5m_15m"]).toBe(1);
   });
 });

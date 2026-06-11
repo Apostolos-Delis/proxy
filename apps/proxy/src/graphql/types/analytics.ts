@@ -2,6 +2,8 @@ import { builder } from "../builder.js";
 import type {
   CacheBustModel,
   CacheBustReportModel,
+  IdleGapBucketModel,
+  IdleGapReportModel,
   LatencySummaryModel,
   OverviewModel,
   RouteQualityModel,
@@ -126,6 +128,25 @@ export const TokenAttributionReport = builder
       toolResults: t.expose("toolResults", { type: [TokenAttributionOffender] })
     })
   });
+
+export const IdleGapBucket = builder.objectRef<IdleGapBucketModel>("IdleGapBucket").implement({
+  fields: (t) => ({
+    key: t.exposeString("key"),
+    label: t.exposeString("label"),
+    count: t.exposeFloat("count")
+  })
+});
+
+export const IdleGapReport = builder.objectRef<IdleGapReportModel>("IdleGapReport").implement({
+  fields: (t) => ({
+    buckets: t.expose("buckets", { type: [IdleGapBucket] }),
+    totalGaps: t.exposeFloat("totalGaps"),
+    overTtl: t.exposeFloat("overTtl"),
+    recoverableByOneHourTtl: t.exposeFloat("recoverableByOneHourTtl"),
+    sessionsScanned: t.exposeFloat("sessionsScanned"),
+    sampled: t.exposeBoolean("sampled")
+  })
+});
 
 export const CacheBust = builder.objectRef<CacheBustModel>("CacheBust").implement({
   fields: (t) => ({

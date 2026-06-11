@@ -67,6 +67,9 @@ export type ModelPricingEntryModel = Awaited<ReturnType<Q["modelPricing"]>>[numb
 export type CacheBustReportModel = Awaited<ReturnType<Q["cacheBusts"]>>;
 export type CacheBustModel = CacheBustReportModel["busts"][number];
 
+export type IdleGapReportModel = Awaited<ReturnType<Q["idleGaps"]>>;
+export type IdleGapBucketModel = IdleGapReportModel["buckets"][number];
+
 export type TokenAttributionReportModel = Awaited<ReturnType<Q["tokenAttribution"]>>;
 export type TokenAttributionBucketModel = TokenAttributionReportModel["buckets"][number];
 export type TokenAttributionOffenderModel = TokenAttributionReportModel["toolSchemas"][number];

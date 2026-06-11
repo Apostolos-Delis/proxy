@@ -1,3 +1,4 @@
+import { aggregateIdleGaps } from "../persistence/idleGaps.js";
 import { aggregateTokenAttribution } from "../persistence/tokenAttributionReport.js";
 import { compareModelPricingEntries, staticPricingEntries } from "../pricing.js";
 import { readSettingsFile } from "../settings.js";
@@ -7,6 +8,7 @@ import type { RequestSummaryShape, UsageReportModel, UsageTimeseriesModel } from
 import { settingsResponse } from "./settingsPayload.js";
 import {
   CacheBustReport,
+  IdleGapReport,
   Overview,
   TokenAttributionReport,
   UsageGroupBy,
@@ -169,6 +171,24 @@ builder.queryFields((t) => ({
         points: []
       };
       return empty;
+    }
+  }),
+
+  idleGaps: t.field({
+    type: IdleGapReport,
+    args: {
+      start: t.arg.string(),
+      end: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) {
+        return queries.idleGaps({
+          start: args.start ?? undefined,
+          end: args.end ?? undefined
+        });
+      }
+      return aggregateIdleGaps([], false);
     }
   }),
 
