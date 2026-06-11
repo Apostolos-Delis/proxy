@@ -377,12 +377,12 @@ export type SessionDetailViewQueryVariables = Exact<{
 }>;
 
 
-export type SessionDetailViewQuery = { session: { user: unknown, session: { sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, sessionIdentity: string | null, requestCount: number, startedAt: string, recentActivity: string | null, modelMix: unknown, routeMix: unknown, usage: { totalTokens: number }, cost: { selected: number } }, requests: Array<{ requestId: string, createdAt: string | null, selectedModel: string | null, finalRoute: string | null, terminalStatus: string, latencyMs: number | null, selectedCost: number, usage: { totalTokens: number } }>, promptArtifacts: Array<{ artifactId: string, requestId: string, kind: string, sourceIndex: number | null, contentHash: string, createdAt: string, rawText: string | null, redactedText: string | null, preview: string | null }> } | null };
+export type SessionDetailViewQuery = { session: { user: unknown, session: { sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, sessionIdentity: string | null, requestCount: number, startedAt: string, usage: { inputTokens: number, outputTokens: number }, cost: { selected: number } }, requests: Array<{ requestId: string, createdAt: string | null, selectedModel: string | null, finalRoute: string | null, terminalStatus: string, latencyMs: number | null, selectedCost: number, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, totalTokens: number } }>, promptArtifacts: Array<{ artifactId: string, requestId: string, kind: string, sourceIndex: number | null, contentHash: string, createdAt: string, rawText: string | null, redactedText: string | null, preview: string | null, tokenEstimate: number | null, metadata: unknown }> } | null };
 
 export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, requestCount: number, startedAt: string, recentActivity: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
+export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, requestCount: number, startedAt: string, endedAt: string | null, recentActivity: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
 export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
 
@@ -1571,11 +1571,9 @@ export const SessionDetailViewDocument = new TypedDocumentString(`
       sessionIdentity
       requestCount
       startedAt
-      recentActivity
-      modelMix
-      routeMix
       usage {
-        totalTokens
+        inputTokens
+        outputTokens
       }
       cost {
         selected
@@ -1591,6 +1589,9 @@ export const SessionDetailViewDocument = new TypedDocumentString(`
       latencyMs
       selectedCost
       usage {
+        inputTokens
+        cachedInputTokens
+        outputTokens
         totalTokens
       }
     }
@@ -1604,6 +1605,8 @@ export const SessionDetailViewDocument = new TypedDocumentString(`
       rawText
       redactedText
       preview
+      tokenEstimate
+      metadata
     }
   }
 }
@@ -1618,6 +1621,7 @@ export const SessionsPageDocument = new TypedDocumentString(`
     currentRoute
     requestCount
     startedAt
+    endedAt
     recentActivity
     modelMix
     routeMix

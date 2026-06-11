@@ -1,6 +1,6 @@
 import { ARTIFACT_KIND_ROLES, artifactPosition } from "./artifactKinds";
 import { displayUser } from "./consoleData";
-import { dominantKey, formatCompact, formatDateTimeSeconds } from "./format";
+import { dominantKey, formatDateTimeSeconds } from "./format";
 import type { SessionDetailViewQuery, SessionsPageQuery } from "./gql/graphql";
 
 export type SessionSummary = SessionsPageQuery["sessions"][number];
@@ -19,6 +19,8 @@ export type ConversationTurn = {
   gapMs: number | null;
   request: SessionRequest;
   artifacts: SessionArtifact[];
+  priorMessages: number;
+  priorTokens: number;
 };
 
 export function countRecord(value: unknown): Record<string, number> {
@@ -47,16 +49,11 @@ export function sessionStatus(session: SessionSummary) {
   return dominantKey(countRecord(session.terminalStatusSummary));
 }
 
-export function lastActivity(session: SessionSummary) {
-  return session.recentActivity ?? session.startedAt;
-}
-
-export function activityTime(session: SessionSummary) {
-  return new Date(lastActivity(session)).getTime();
-}
-
-export function requestCountLabel(count: number) {
-  return `${formatCompact(count)} ${count === 1 ? "request" : "requests"}`;
+export function sessionDurationMs(session: SessionSummary) {
+  const end = session.endedAt ?? session.recentActivity;
+  if (!end) return null;
+  const span = new Date(end).getTime() - new Date(session.startedAt).getTime();
+  return span > 0 ? span : null;
 }
 
 export function sessionRows(sessions: SessionSummary[], users: SessionsPageQuery["users"]): SessionLogRow[] {
@@ -100,6 +97,8 @@ export function conversationTurns(detail: SessionDetail): ConversationTurn[] {
     artifactsByRequest.set(artifact.requestId, list);
   }
   const ordered = [...detail.requests].sort((left, right) => requestTime(left) - requestTime(right));
+  let priorMessages = 0;
+  let priorTokens = 0;
   return ordered.map((request, index) => {
     const artifacts = [...(artifactsByRequest.get(request.requestId) ?? [])].sort(compareArtifacts);
     const previous = index > 0 ? ordered[index - 1] : null;
@@ -107,8 +106,65 @@ export function conversationTurns(detail: SessionDetail): ConversationTurn[] {
     const gapMs = request.createdAt && previous?.createdAt
       ? Math.max(0, new Date(request.createdAt).getTime() - new Date(previous.createdAt).getTime() - (previous.latencyMs ?? 0))
       : null;
-    return { index, gapMs, request, artifacts };
+    const turn = { index, gapMs, request, artifacts, priorMessages, priorTokens };
+    // Capture stores each message once per session; later requests replay the
+    // earlier ones verbatim, so accumulate what came before each turn.
+    priorMessages += artifacts.length;
+    priorTokens += artifacts.reduce((total, artifact) => total + (artifact.tokenEstimate ?? 0), 0);
+    return turn;
   });
+}
+
+// "Identical across N requests": a system/instructions artifact is captured on
+// the first request that sent it and stays in effect until a later request
+// carries a different one of the same kind (or the session ends). One request
+// can hold several same-kind artifacts (OpenAI instructions + developer
+// messages), so spans open and close per turn, not per artifact.
+export function systemSpans(turns: ConversationTurn[]): Map<string, number> {
+  const spans = new Map<string, number>();
+  const open = new Map<string, { artifactIds: string[]; since: number }>();
+  for (const turn of turns) {
+    const byKind = new Map<string, string[]>();
+    for (const artifact of turn.artifacts) {
+      if (artifactRole(artifact).role !== "system") continue;
+      byKind.set(artifact.kind, [...(byKind.get(artifact.kind) ?? []), artifact.artifactId]);
+    }
+    for (const [kind, artifactIds] of byKind) {
+      const previous = open.get(kind);
+      if (previous) for (const id of previous.artifactIds) spans.set(id, turn.index - previous.since);
+      open.set(kind, { artifactIds, since: turn.index });
+    }
+  }
+  for (const previous of open.values()) {
+    for (const id of previous.artifactIds) spans.set(id, turns.length - previous.since);
+  }
+  return spans;
+}
+
+export function artifactToolNames(artifact: SessionArtifact): string[] {
+  const metadata = artifact.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return [];
+  const { toolName, toolNames } = metadata as { toolName?: unknown; toolNames?: unknown };
+  if (typeof toolName === "string") return [toolName];
+  if (Array.isArray(toolNames)) return [...new Set(toolNames.filter((name): name is string => typeof name === "string"))];
+  return [];
+}
+
+export function dominantRequestStatus(requests: SessionRequest[]) {
+  return dominantKey(countBy(requests, (request) => request.terminalStatus));
+}
+
+export function dominantRequestRoute(requests: SessionRequest[]) {
+  return dominantKey(countBy(requests, (request) => request.finalRoute ?? "unknown"));
+}
+
+function countBy(requests: SessionRequest[], pick: (request: SessionRequest) => string) {
+  const counts: Record<string, number> = {};
+  for (const request of requests) {
+    const key = pick(request);
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
 }
 
 function compareArtifacts(left: SessionArtifact, right: SessionArtifact) {
@@ -121,11 +177,16 @@ export function artifactRole(artifact: SessionArtifact) {
   return ARTIFACT_KIND_ROLES[artifact.kind] ?? { role: "user" as const, label: artifact.kind };
 }
 
-export function conversationSpan(turns: ConversationTurn[]) {
-  if (turns.length < 2) return null;
+// Wall time from the first request landing to the last response finishing.
+// Unlike sessionDurationMs (summary rows, endedAt-based), this follows the
+// requests actually shown on the trace, so the two can differ slightly.
+export function sessionWallMs(turns: ConversationTurn[]) {
+  if (turns.length === 0) return null;
   const first = turns[0].request.createdAt;
-  const last = turns[turns.length - 1].request.createdAt;
-  return first && last ? new Date(last).getTime() - new Date(first).getTime() : null;
+  const last = turns[turns.length - 1].request;
+  if (!first || !last.createdAt) return null;
+  const span = new Date(last.createdAt).getTime() + (last.latencyMs ?? 0) - new Date(first).getTime();
+  return span > 0 ? span : null;
 }
 
 export function artifactText(artifact?: SessionArtifact) {

@@ -3,14 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Boxes, Download, Shield, Users } from "lucide-react";
 
 import { downloadJson } from "./dashboard";
-import { compactId, formatCompact, formatDateTime, formatMoney } from "./format";
+import { compactId, formatCompact, formatDateTime, formatDurationMs, formatMoney } from "./format";
 import { graphql } from "./gql";
 import { gqlFetch } from "./graphql";
 import {
-  activityTime,
   countRecord,
-  lastActivity,
-  requestCountLabel,
+  sessionDurationMs,
   sessionModels,
   sessionRoute,
   sessionRows,
@@ -34,6 +32,7 @@ const SessionsPageDocument = graphql(`
       currentRoute
       requestCount
       startedAt
+      endedAt
       recentActivity
       modelMix
       routeMix
@@ -96,14 +95,16 @@ export function SessionsPage() {
 }
 
 const sessionColumns: ConsoleTableColumn<SessionLogRow>[] = [
-  { id: "session", header: "Session", size: 280, accessorFn: (row) => row.session.externalSessionId ?? row.session.sessionId, cell: ({ row }) => <SessionCell row={row.original} /> },
-  { id: "user", header: "User", size: 200, accessorFn: (row) => row.userName, cell: ({ row }) => <UserCell name={row.original.userName} detail={row.original.userDetail} size={24} /> },
-  { id: "models", header: "Models", size: 220, accessorFn: (row) => sessionModels(row.session).join(" "), cell: ({ row }) => <ModelsCell session={row.original.session} /> },
-  { id: "route", header: "Route", size: 110, accessorFn: (row) => sessionRoute(row.session), cell: ({ row }) => <RouteBadge route={sessionRoute(row.original.session)} /> },
-  { id: "status", header: "Status", size: 140, accessorFn: (row) => sessionStatus(row.session), cell: ({ row }) => <SessionStatusCell session={row.original.session} /> },
-  { id: "tokens", header: "Tokens", size: 96, accessorFn: (row) => row.session.usage.totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(row.original.session.usage.totalTokens)}</span> },
-  { id: "cost", header: "Cost", size: 96, accessorFn: (row) => row.session.cost.selected, cell: ({ row }) => <span className="mono">{formatMoney(row.original.session.cost.selected)}</span> },
-  { id: "activity", header: "Last activity", size: 150, accessorFn: (row) => activityTime(row.session), cell: ({ row }) => <span className="mono faint">{formatDateTime(lastActivity(row.original.session))}</span> }
+  { id: "session", header: "Session", size: 240, accessorFn: (row) => row.session.externalSessionId ?? row.session.sessionId, cell: ({ row }) => <SessionCell row={row.original} /> },
+  { id: "user", header: "User", size: 170, accessorFn: (row) => row.userName, cell: ({ row }) => <UserCell name={row.original.userName} detail={row.original.userDetail} size={24} /> },
+  { id: "models", header: "Models", size: 190, accessorFn: (row) => sessionModels(row.session).join(" "), cell: ({ row }) => <ModelsCell session={row.original.session} /> },
+  { id: "route", header: "Route", size: 96, accessorFn: (row) => sessionRoute(row.session), cell: ({ row }) => <RouteBadge route={sessionRoute(row.original.session)} /> },
+  { id: "status", header: "Status", size: 120, accessorFn: (row) => sessionStatus(row.session), cell: ({ row }) => <SessionStatusCell session={row.original.session} /> },
+  { id: "requests", header: "Reqs", size: 60, minSize: 60, accessorFn: (row) => row.session.requestCount, cell: ({ row }) => <span className="mono muted">{formatCompact(row.original.session.requestCount)}</span> },
+  { id: "tokens", header: "Tokens", size: 84, minSize: 84, accessorFn: (row) => row.session.usage.totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(row.original.session.usage.totalTokens)}</span> },
+  { id: "cost", header: "Cost", size: 84, minSize: 84, accessorFn: (row) => row.session.cost.selected, cell: ({ row }) => <span className="mono">{formatMoney(row.original.session.cost.selected)}</span> },
+  { id: "started", header: "Started", size: 122, accessorFn: (row) => new Date(row.session.startedAt).getTime(), cell: ({ row }) => <span className="mono faint nowrap">{formatDateTime(row.original.session.startedAt)}</span> },
+  { id: "duration", header: "Duration", size: 92, minSize: 92, accessorFn: (row) => sessionDurationMs(row.session) ?? 0, cell: ({ row }) => <DurationCell session={row.original.session} /> }
 ];
 
 const sessionAdvancedFields: ConsoleTableAdvancedField<SessionLogRow>[] = [
@@ -123,7 +124,7 @@ function SessionCell({ row }: { row: SessionLogRow }) {
       <Link to="/sessions/$sessionId" params={{ sessionId: session.sessionId }} className="table-link mono">
         {compactId(session.externalSessionId ?? session.sessionId)}
       </Link>
-      <div className="mono faint">{requestCountLabel(session.requestCount)} · {session.surface}</div>
+      <div className="mono faint">{session.surface}</div>
     </div>
   );
 }
@@ -131,13 +132,21 @@ function SessionCell({ row }: { row: SessionLogRow }) {
 function ModelsCell({ session }: { session: SessionSummary }) {
   const models = sortedCounts(countRecord(session.modelMix));
   if (models.length === 0) return <span className="faint">—</span>;
-  const [primary, ...rest] = models;
+  const shown = models.slice(0, 2);
+  const rest = models.length - shown.length;
   return (
-    <>
-      <span className="row gap-8"><span className="model-dot" /><span className="mono">{primary[0]}</span></span>
-      {rest.length > 0 ? <div className="mono faint">+{rest.length} more</div> : null}
-    </>
+    <div className="models-cell">
+      {shown.map(([model]) => (
+        <span key={model} className="row gap-8"><span className="model-dot" /><span className="mono">{model}</span></span>
+      ))}
+      {rest > 0 ? <div className="mono faint">+{rest} more</div> : null}
+    </div>
   );
+}
+
+function DurationCell({ session }: { session: SessionSummary }) {
+  const durationMs = sessionDurationMs(session);
+  return <span className="mono faint">{durationMs != null ? formatDurationMs(durationMs) : "—"}</span>;
 }
 
 function SessionStatusCell({ session }: { session: SessionSummary }) {
