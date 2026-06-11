@@ -1,11 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { MessagesSquare } from "lucide-react";
+import { Check, ChevronLeft, Copy, MessagesSquare } from "lucide-react";
 
 import { compactId, formatDateTime } from "./format";
 import { graphql } from "./gql";
 import { gqlFetch } from "./graphql";
-import { CopyButton } from "./jsonView";
+import { useCopyFeedback } from "./jsonView";
 import { ExchangeCard } from "./promptExchangeCard";
 import { EventTimeline, RawJsonCard } from "./promptEventTimeline";
 import { FactsRail } from "./promptFactsRail";
@@ -34,6 +34,7 @@ const PromptDetailViewDocument = graphql(`
         provider
         selectedModel
         classifier
+        metadata
         createdAt
         routingConfig {
           configId
@@ -66,6 +67,7 @@ const PromptDetailViewDocument = graphql(`
         provider
         selectedModel
         classifier
+        metadata
         createdAt
         routingConfig {
           configId
@@ -133,6 +135,9 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
   const artifacts = query.data.requestArtifacts ?? [artifact];
   return (
     <div className="page page-enter">
+      <div className="detail-back-row">
+        <Link to="/logs" className="btn btn-sm"><ChevronLeft />Logs</Link>
+      </div>
       <PageTitle
         title="Prompt detail"
         subtitle={`${artifact.surface} · ${formatDateTime(artifact.createdAt)}`}
@@ -146,10 +151,11 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
         <IdChip label="artifact" value={artifact.artifactId} />
         <IdChip label="request" value={artifact.requestId} />
         {artifact.userId ? <IdChip label="user" value={artifact.userId} /> : null}
+        {artifact.sessionId ? <IdChip label="session" value={artifact.sessionId} accent /> : null}
       </div>
       <div className="detail-layout">
         <div className="detail-main">
-          <ExchangeCard artifacts={artifacts} focusedArtifactId={artifact.artifactId} />
+          <ExchangeCard artifacts={artifacts} request={request} focusedArtifactId={artifact.artifactId} />
           <EventTimeline events={events} />
           <RawJsonCard artifact={artifact} request={request} />
         </div>
@@ -159,12 +165,18 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
   );
 }
 
-function IdChip({ label, value }: { label: string; value: string }) {
+function IdChip({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+  const { copied, copy } = useCopyFeedback();
   return (
-    <span className="id-chip">
+    <button
+      type="button"
+      className={`id-chip${accent ? " id-chip-accent" : ""}`}
+      title={value}
+      onClick={() => copy(value)}
+    >
       <span className="id-chip-label">{label}</span>
-      <span className="mono">{compactId(value, 26)}</span>
-      <CopyButton text={value} />
-    </span>
+      <span className="mono">{compactId(value, 13)}</span>
+      {copied ? <Check className="id-chip-check" /> : <Copy />}
+    </button>
   );
 }

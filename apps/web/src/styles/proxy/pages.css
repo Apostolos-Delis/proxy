@@ -485,6 +485,10 @@
   font-size: 11px;
 }
 
+.table-time {
+  font-size: 12px;
+}
+
 .table-link {
   display: inline-block;
   max-width: 100%;
@@ -1117,6 +1121,10 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 /* ---------- Prompt detail ---------- */
+.detail-back-row {
+  margin-bottom: 16px;
+}
+
 .detail-id-row {
   display: flex;
   flex-wrap: wrap;
@@ -1124,16 +1132,37 @@ input[type="checkbox"][role="switch"]:focus-visible {
   margin: -12px 0 22px;
 }
 
+/* whole pill copies its value */
 .id-chip {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   height: 28px;
-  padding: 0 4px 0 10px;
+  padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--glass-2);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
   font-size: 12px;
+  transition: background .13s var(--ease), border-color .13s var(--ease);
+}
+
+.id-chip:hover {
+  background: var(--glass-hover);
+  border-color: var(--border-strong);
+}
+
+.id-chip svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--fg-faint);
+}
+
+.id-chip .id-chip-check {
+  color: var(--success);
 }
 
 .id-chip-label {
@@ -1147,6 +1176,10 @@ input[type="checkbox"][role="switch"]:focus-visible {
 .id-chip .mono {
   color: var(--fg-muted);
   font-size: 11.5px;
+}
+
+.id-chip-accent .mono {
+  color: var(--accent-text);
 }
 
 .detail-layout {
@@ -1193,6 +1226,10 @@ input[type="checkbox"][role="switch"]:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.fact-accent {
+  color: var(--accent-text);
+}
+
 .fact-link {
   color: var(--accent-2);
   font-size: 13px;
@@ -1229,7 +1266,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
   margin-bottom: 16px;
 }
 
-.route-flow-rerouted::before {
+.route-flow-pipeline::before {
   content: "";
   position: absolute;
   top: 8px;
@@ -1299,7 +1336,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
   overflow-wrap: anywhere;
 }
 
-/* exchange bubbles */
+/* exchange bubbles (session replay) */
 .convo-bubble.convo-system {
   border-style: dashed;
   background: transparent;
@@ -1318,9 +1355,175 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font-size: 12px;
 }
 
-.convo-bubble.convo-focused {
+/* exchange message blocks (prompt detail) */
+.exchange-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.xmsg {
+  --xmsg-role-color: var(--fg-muted);
+  overflow: hidden;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--glass);
+}
+
+.xmsg-system,
+.xmsg-context {
+  border-style: dashed;
+  border-color: var(--border-strong);
+}
+
+.xmsg-assistant {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.xmsg-error {
+  border-color: var(--danger);
+}
+
+.xmsg-focused {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
   box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+.xmsg-system { --xmsg-role-color: #38bdf8; }
+.xmsg-context { --xmsg-role-color: #c4b5fd; }
+.xmsg-assistant { --xmsg-role-color: var(--accent-2); }
+.xmsg-tool { --xmsg-role-color: #34d399; }
+.xmsg-error { --xmsg-role-color: var(--danger); }
+
+[data-theme="light"] .xmsg-system { --xmsg-role-color: #0284c7; }
+[data-theme="light"] .xmsg-context { --xmsg-role-color: #7c3aed; }
+[data-theme="light"] .xmsg-assistant { --xmsg-role-color: var(--accent-text); }
+[data-theme="light"] .xmsg-tool { --xmsg-role-color: #059669; }
+
+.xmsg-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 13px;
+  border-bottom: 1px solid var(--border);
+  background: var(--glass-2);
+  color: var(--fg-faint);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
+.xmsg-role {
+  color: var(--xmsg-role-color);
+  font-weight: 600;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.xmsg-head .code-pill {
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 10.5px;
+}
+
+.xmsg-head .badge {
+  padding: 2px 8px;
+  font-size: 10.5px;
+}
+
+.xmsg-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.xmsg-meta {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.xmsg-head .copy-button {
+  padding: 2px 3px;
+  opacity: 0;
+}
+
+.xmsg:hover .xmsg-head .copy-button,
+.xmsg-head .copy-button:focus-visible {
+  opacity: 1;
+}
+
+.xmsg-body {
+  margin: 0;
+  padding: 12px 14px;
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.xmsg-body.code {
+  color: var(--fg-muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.xmsg-body.clamp {
+  position: relative;
+  max-height: 132px;
+  overflow: hidden;
+}
+
+.xmsg-body.clamp::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 56px;
+  background: linear-gradient(transparent, var(--glass));
+  pointer-events: none;
+}
+
+.xmsg-missing {
+  color: var(--fg-faint);
+  font-style: italic;
+}
+
+.xmsg-expander {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 13px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: var(--glass-2);
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  transition: background .13s var(--ease), color .13s var(--ease);
+}
+
+.xmsg-expander:hover {
+  background: var(--glass-hover);
+  color: var(--fg);
+}
+
+.xmsg-expander svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  transition: transform .15s var(--ease);
+}
+
+.xmsg-expander svg.open {
+  transform: rotate(180deg);
 }
 
 /* event timeline */
@@ -1355,6 +1558,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
   border-radius: 50%;
   border: 2px solid var(--bg-0);
   background: var(--event-color, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--event-color, var(--accent)) 16%, transparent);
 }
 
 .event-proxy { --event-color: #9aa3a3; }
@@ -1362,6 +1566,11 @@ input[type="checkbox"][role="switch"]:focus-visible {
 .event-routing { --event-color: #7dd3fc; }
 .event-provider { --event-color: var(--accent-2); }
 .event-usage { --event-color: #fcd34d; }
+.event-danger { --event-color: var(--danger); }
+
+.event-row + .event-row {
+  border-top: 1px solid var(--border);
+}
 
 .event-summary {
   display: flex;

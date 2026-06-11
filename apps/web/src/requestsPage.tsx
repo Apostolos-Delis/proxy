@@ -6,7 +6,7 @@ import { useState } from "react";
 import { isListedPromptArtifact, promptArtifactRank } from "./artifactKinds";
 import { displayUser } from "./consoleData";
 import { downloadJson } from "./dashboard";
-import { compactId, formatCompact, formatMoney } from "./format";
+import { compactId, formatCompact, formatDateTime, formatMoney } from "./format";
 import { graphql } from "./gql";
 import type { RequestsPageQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
@@ -31,6 +31,7 @@ const RequestsPageDocument = graphql(`
         selectedModel
         finalRoute
         provider
+        createdAt
         routingConfig {
           configId
           configName
@@ -159,7 +160,8 @@ const requestColumns: ConsoleTableColumn<PromptLogRow>[] = [
   { id: "tokens", header: "Tokens", size: 96, accessorFn: totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(totalTokens(row.original))}</span> },
   { id: "cost", header: "Cost", size: 96, accessorFn: selectedCost, cell: ({ row }) => <span className="mono">{formatMoney(selectedCost(row.original))}</span> },
   { id: "latency", header: "Latency", size: 104, accessorFn: (row) => row.request?.latencyMs ?? 0, cell: ({ row }) => <span className="mono faint">{formatLatency(row.original.request?.latencyMs)}</span> },
-  { id: "status", header: "Status", size: 126, accessorFn: terminalStatus, cell: ({ row }) => <StatusBadge status={terminalStatus(row.original)} /> }
+  { id: "status", header: "Status", size: 126, accessorFn: terminalStatus, cell: ({ row }) => <StatusBadge status={terminalStatus(row.original)} /> },
+  { id: "time", header: "Time", size: 130, accessorFn: (row) => row.prompt.createdAt, cell: ({ row }) => <span className="faint nowrap table-time">{formatDateTime(row.original.prompt.createdAt)}</span> }
 ];
 
 const requestAdvancedFields: ConsoleTableAdvancedField<PromptLogRow>[] = [
