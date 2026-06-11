@@ -1424,6 +1424,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
 .xmsg-head .code-pill {
   padding: 1px 7px;
   border-radius: 6px;
+  color: var(--fg);
   font-size: 10.5px;
 }
 
@@ -1440,6 +1441,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 .xmsg-meta {
+  color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -1455,8 +1457,10 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 .xmsg-body {
+  --xmsg-body-bg: var(--glass);
   margin: 0;
   padding: 12px 14px;
+  background: var(--xmsg-body-bg);
   color: var(--fg);
   font-size: 13px;
   line-height: 1.6;
@@ -1464,11 +1468,12 @@ input[type="checkbox"][role="switch"]:focus-visible {
   word-break: break-word;
 }
 
+/* machine voice: mono on an inset terminal surface, full-contrast text */
 .xmsg-body.code {
-  color: var(--fg-muted);
+  --xmsg-body-bg: var(--bg-0);
   font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.65;
+  font-size: 12.5px;
+  line-height: 1.7;
 }
 
 .xmsg-body.clamp {
@@ -1483,8 +1488,8 @@ input[type="checkbox"][role="switch"]:focus-visible {
   right: 0;
   bottom: 0;
   left: 0;
-  height: 56px;
-  background: linear-gradient(transparent, var(--glass));
+  height: 40px;
+  background: linear-gradient(transparent, var(--xmsg-body-bg));
   pointer-events: none;
 }
 

@@ -34,7 +34,7 @@ export function artifactToolNames(metadata: unknown): string[] {
 
 export function exchangeMeta(chars: number | null | undefined, tokenEstimate: number | null | undefined) {
   return [
-    chars != null ? `${(chars / 1000).toFixed(1)}K chars` : null,
+    chars != null ? `${chars < 1000 ? chars : `${(chars / 1000).toFixed(1)}K`} chars` : null,
     tokenEstimate ? `~${formatCompact(tokenEstimate)} tok` : null
   ].filter(Boolean).join(" · ");
 }
