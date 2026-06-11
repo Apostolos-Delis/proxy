@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, Plus, TerminalSquare } from "lucide-react";
 import { useState } from "react";
@@ -15,6 +15,7 @@ import { fetchProviderAccounts } from "./providers/data";
 import { Drawer } from "./drawer";
 import { HarnessSetupGuide } from "./harnessSetupCard";
 import { apiKeyColumns } from "./keys/apiKeyColumns";
+import { ApiKeyDetailPanel } from "./keys/detailPanel";
 import { apiKeySearchValue, apiKeyStatus, routingConfigFilterValue, routingConfigLabel } from "./keys/apiKeyTableData";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableFilter } from "./table";
 import { PageState, PageTitle } from "./ui";
@@ -27,6 +28,12 @@ type AssignmentVariables = {
 export function KeysPage() {
   const [openKeyId, setOpenKeyId] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
+  // The open slideout lives in the URL (?key=<id>) so API keys can be deep-linked.
+  const search = useSearch({ strict: false }) as { key?: unknown };
+  const inspectKeyId = typeof search.key === "string" ? search.key : null;
+  const navigate = useNavigate();
+  const setInspectKeyId = (apiKeyId: string | null) =>
+    void navigate({ to: ".", search: (current) => ({ ...current, key: apiKeyId ?? undefined }), replace: true });
   const queryClient = useQueryClient();
   const [keysQuery, configsQuery, providerAccountsQuery] = useQueries({
     queries: [
@@ -59,6 +66,7 @@ export function KeysPage() {
   const keys = keysQuery.data ?? [];
   const configs = (configsQuery.data ?? []).filter(isAssignableConfig);
   const providerAccounts = providerAccountsQuery.data ?? [];
+  const inspectKey = keys.find((apiKey) => apiKey.id === inspectKeyId);
   return (
     <div className="page page-enter">
       <PageTitle
@@ -80,6 +88,7 @@ export function KeysPage() {
           <HarnessSetupGuide secret={null} />
         </Drawer>
       ) : null}
+      {inspectKey ? <ApiKeyDetailPanel apiKey={inspectKey} onClose={() => setInspectKeyId(null)} /> : null}
       <ConsoleTable
         className="routing-configs-card"
         urlState
@@ -93,6 +102,7 @@ export function KeysPage() {
           errorMessage: assignmentMutation.error?.message,
           onOpenChange: (apiKeyId, open) => setOpenKeyId(open ? apiKeyId : null),
           onAssign: (apiKeyId, routingConfigId) => assignmentMutation.mutate({ apiKeyId, routingConfigId }),
+          onInspect: (apiKeyId) => setInspectKeyId(apiKeyId),
           revokePendingKeyId: revokeMutation.isPending ? revokeMutation.variables : undefined,
           revokeErrorKeyId: revokeMutation.error ? revokeMutation.variables : undefined,
           revokeErrorMessage: revokeMutation.error?.message,

@@ -155,6 +155,15 @@ export type CreateInvitationMutationVariables = Exact<{
 
 export type CreateInvitationMutation = { createInvitation: { inviteUrl: string, emailDelivery: { transport: string, delivered: boolean, error: string | null } } };
 
+export type KeyTrafficRequestsQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+  limit?: number | null | undefined;
+}>;
+
+
+export type KeyTrafficRequestsQuery = { requests: Array<{ requestId: string, createdAt: string | null, provider: string | null, apiKeyId: string | null, selectedModel: string | null, terminalStatus: string, selectedCost: number, baselineCost: number, usage: { totalTokens: number } }> };
+
 export type ModelPricingCardQueryVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -219,15 +228,6 @@ export type AssignApiKeyProviderAccountMutationVariables = Exact<{
 
 
 export type AssignApiKeyProviderAccountMutation = { assignApiKeyProviderAccount: { id: string, providerCredentials: Array<{ provider: string, providerAccountId: string, name: string | null, status: string | null }> } };
-
-export type ProviderKeyRequestsQueryVariables = Exact<{
-  start?: string | null | undefined;
-  end?: string | null | undefined;
-  limit?: number | null | undefined;
-}>;
-
-
-export type ProviderKeyRequestsQuery = { requests: Array<{ requestId: string, createdAt: string | null, provider: string | null, apiKeyId: string | null, selectedModel: string | null, terminalStatus: string, selectedCost: number, baselineCost: number, usage: { totalTokens: number } }> };
 
 export type RequestsPageQueryVariables = Exact<{
   start?: string | null | undefined;
@@ -752,6 +752,23 @@ export const CreateInvitationDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CreateInvitationMutation, CreateInvitationMutationVariables>;
+export const KeyTrafficRequestsDocument = new TypedDocumentString(`
+    query KeyTrafficRequests($start: String, $end: String, $limit: Int) {
+  requests(start: $start, end: $end, limit: $limit) {
+    requestId
+    createdAt
+    provider
+    apiKeyId
+    selectedModel
+    terminalStatus
+    selectedCost
+    baselineCost
+    usage {
+      totalTokens
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<KeyTrafficRequestsQuery, KeyTrafficRequestsQueryVariables>;
 export const ModelPricingCardDocument = new TypedDocumentString(`
     query ModelPricingCard {
   modelPricing {
@@ -1017,23 +1034,6 @@ export const AssignApiKeyProviderAccountDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<AssignApiKeyProviderAccountMutation, AssignApiKeyProviderAccountMutationVariables>;
-export const ProviderKeyRequestsDocument = new TypedDocumentString(`
-    query ProviderKeyRequests($start: String, $end: String, $limit: Int) {
-  requests(start: $start, end: $end, limit: $limit) {
-    requestId
-    createdAt
-    provider
-    apiKeyId
-    selectedModel
-    terminalStatus
-    selectedCost
-    baselineCost
-    usage {
-      totalTokens
-    }
-  }
-}
-    `) as unknown as TypedDocumentString<ProviderKeyRequestsQuery, ProviderKeyRequestsQueryVariables>;
 export const RequestsPageDocument = new TypedDocumentString(`
     query RequestsPage($start: String, $end: String, $limit: Int) {
   prompts(start: $start, end: $end, limit: $limit) {
