@@ -35,27 +35,8 @@ export class ProviderProxy implements ProviderAdapter {
       model: selectedModel
     });
 
-    if (!attempt) {
+    if (!attempt || duplicate) {
       input.reply.code(409).send({ error: "Duplicate request is still active." });
-      return;
-    }
-
-    if (duplicate && attempt.terminalStatus === "pending") {
-      input.reply.code(409).send({ error: "Duplicate request is still active." });
-      return;
-    }
-
-    if (duplicate) {
-      input.reply.send({
-        duplicate: true,
-        provider_attempt: {
-          id: attempt.id,
-          terminal_status: attempt.terminalStatus,
-          usage: attempt.usage ?? null,
-          upstream_request_id: attempt.upstreamRequestId ?? null,
-          error: attempt.error ?? null
-        }
-      });
       return;
     }
 

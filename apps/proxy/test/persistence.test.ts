@@ -36,19 +36,19 @@ describe("postgres persistence", () => {
     client = undefined;
   });
 
-  it("keeps the canonical request id for duplicate idempotency after restart", async () => {
+  it("reprocesses completed idempotency keys under the canonical request id after restart", async () => {
     const fixture = await persistenceFixture("org_a");
     const context = routeContext();
     const first = await fixture.persistence.requestStates.begin("idem_1", "request_first", context);
     await fixture.persistence.requestStates.finish("idem_1", "completed");
 
     const restarted = createDatabasePersistence(fixture.db, fixture.catalog, fixture.config, false);
-    const duplicate = await restarted.requestStates.begin("idem_1", "request_second", context);
+    const retry = await restarted.requestStates.begin("idem_1", "request_second", context);
 
     expect(first.duplicate).toBe(false);
-    expect(duplicate.duplicate).toBe(true);
-    expect(duplicate.state.requestId).toBe("request_first");
-    expect(duplicate.state.status).toBe("completed");
+    expect(retry.duplicate).toBe(false);
+    expect(retry.state.requestId).toBe("request_first");
+    expect(retry.state.status).toBe("classifying");
   });
 
   it("reprocesses failed idempotency keys instead of replaying the failure", async () => {

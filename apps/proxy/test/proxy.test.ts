@@ -803,7 +803,7 @@ describe("prompt proxy", () => {
     expect(attempts[0].terminalStatus).toBe("cancelled");
   });
 
-  it("returns completed duplicate requests before classifier spend", async () => {
+  it("re-forwards completed duplicate requests upstream", async () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
@@ -844,12 +844,12 @@ describe("prompt proxy", () => {
       },
       body: JSON.stringify(requestBody)
     });
-    const duplicate = await second.json();
+    const body = await second.text();
     await app.close();
 
-    expect(duplicate.duplicate).toBe(true);
-    expect(openai.records).toHaveLength(2);
-    expect(openai.records.filter((record) => record.body.model === "route-classifier-cheap")).toHaveLength(1);
+    expect(second.status).toBe(200);
+    expect(body).toContain("response.completed");
+    expect(openai.records.filter((record) => record.body.model !== "route-classifier-cheap")).toHaveLength(2);
   });
 
   it("does not collide idempotency between Anthropic messages and token counting", async () => {
