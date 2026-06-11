@@ -94,9 +94,14 @@ export function SettingsForm({
                 {" "}{windowLabel(activeWindowMs)} as of page load will pay a full cache rebuild on the next request.
               </div>
             ) : null}
+          </SettingsSection>
+        ) : null}
+
+        {databaseEnabled && groups.includes("optimization") ? (
+          <SettingsSection title="Token Optimization" description="Request transforms that cut token spend on proxied traffic. Applied org-wide across all routing configs.">
             <ToggleField
               label="Upgrade cache TTL to 1 hour"
-              info="Rewrites Anthropic ephemeral cache breakpoints to a 1-hour TTL. Costs 2x to write vs 1.25x for the 5-minute default, but breaks even at 3 reads — worth it when sessions have idle gaps past 5 minutes."
+              info="Anthropic only. Rewrites ephemeral cache breakpoints to a 1-hour TTL. Costs 2x to write vs 1.25x for the 5-minute default, but breaks even at 3 reads — worth it when sessions have idle gaps past 5 minutes."
               checked={settings.cacheTtlUpgrade}
               onChange={(value) => setSettings({ ...settings, cacheTtlUpgrade: value })}
             />
