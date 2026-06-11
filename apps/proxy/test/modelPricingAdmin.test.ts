@@ -49,6 +49,22 @@ describe("model pricing admin", () => {
     }));
   });
 
+  it("lists the configured classifier model as priced before any traffic", async () => {
+    activeFixture = await captureFixture("org_pricing_classifier", "raw_text", false, {
+      envOverrides: { CLASSIFIER_MODEL: "gpt-5-nano-2025-08-07" }
+    });
+    const pricing = await modelPricing(activeFixture);
+    // Dated classifier identifier resolves to the priced undated gpt-5-nano.
+    const classifier = pricing.find((entry: any) => entry.model === "gpt-5-nano-2025-08-07");
+
+    expect(classifier).toEqual(expect.objectContaining({
+      provider: "openai",
+      source: "default",
+      inputCostPerMtok: 0.05,
+      outputCostPerMtok: 0.4
+    }));
+  });
+
   it("applies custom pricing to subsequent usage ledger writes and supports revert", async () => {
     const fixture = await setup("org_pricing_override");
     const events = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_pricing_override");

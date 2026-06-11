@@ -79,7 +79,10 @@ const configSchema = z.object({
   ANTHROPIC_HARD_MODEL: z.string().min(1).default("claude-sonnet-4-5"),
   ANTHROPIC_DEEP_MODEL: z.string().min(1).default("claude-opus-4-5"),
   CLASSIFIER_PROVIDER: z.literal("openai").default("openai"),
-  CLASSIFIER_MODEL: z.string().min(1).default("route-classifier-cheap"),
+  // A real, priced model: the classifier makes a billed call per request, so an
+  // unconfigured default must resolve to a known price (gpt-5-nano via undated
+  // lookup) rather than an unpriced placeholder that books its spend as $0.
+  CLASSIFIER_MODEL: z.string().min(1).default("gpt-5-nano-2025-08-07"),
   CLASSIFIER_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   CLASSIFIER_MAX_ATTEMPTS: z.coerce.number().int().positive().default(2),
   CLASSIFIER_ALLOW_REDACTED_EXCERPT: booleanEnvSchema,

@@ -27,6 +27,7 @@ import {
   compareModelPricingEntries,
   emptyPricingEntry,
   pricingForModel,
+  providerFromModelName,
   staticPricingEntries,
   undatedModel,
   usageCostMicros,
@@ -53,6 +54,8 @@ export type AdminQueryConfig = {
   routeQualityLowConfidenceThreshold: number;
   modelCosts: ModelPricingTable;
   modelCostsFromEnv: string[];
+  classifierModel: string;
+  classifierProvider: string;
 };
 
 export type PromptListFilters = {
@@ -128,8 +131,9 @@ export class AdminQueryService {
         acc.selected += request.selectedCost;
         acc.baseline += request.baselineCost;
         acc.savings += request.savings;
+        acc.classifier += request.classifierCost;
         return acc;
-      }, { selected: 0, baseline: 0, savings: 0 }),
+      }, { selected: 0, baseline: 0, savings: 0, classifier: 0 }),
       routeQuality: {
         lowConfidenceCount,
         cheaperLikelyWouldWorkCount: requestSummaries.filter((request) =>
@@ -827,6 +831,9 @@ export class AdminQueryService {
     for (const catalogEntry of Object.values(this.catalog)) {
       upsert(catalogEntry.upstreamModel, catalogEntry.provider);
     }
+    // The routing classifier bills its own model on every request, so list it
+    // even before traffic — operators must be able to confirm it is priced.
+    this.seedClassifierPricingRow(upsert);
     for (const ledgerModel of ledgerModels) {
       const row = upsert(ledgerModel.model, ledgerModel.provider);
       row.seenInTraffic = true;
@@ -854,17 +861,37 @@ export class AdminQueryService {
     return [...entries.values()].sort(compareModelPricingEntries);
   }
 
+  // Adds the configured classifier model to the pricing listing if traffic has
+  // not surfaced it yet, resolving its rate through the static table (including
+  // the undated fallback) so it shows as priced rather than missing.
+  private seedClassifierPricingRow(upsert: (model: string, provider: string | null) => ModelPricingEntry) {
+    const model = this.config.classifierModel;
+    if (!model) return;
+    const provider = providerFromModelName(model) ?? this.config.classifierProvider ?? null;
+    const row = upsert(model, provider);
+    if (row.source !== "unpriced") return;
+    const pricing = pricingForModel(this.config.modelCosts, model);
+    if (pricing) {
+      const undated = undatedModel(model);
+      const source = this.config.modelCostsFromEnv.includes(model) || this.config.modelCostsFromEnv.includes(undated)
+        ? "env"
+        : "default";
+      applyPricingToEntry(row, pricing, source);
+    }
+  }
+
   private async summarizeRequests(
     requestRows: RequestRow[],
     options: { aggregateUsageByRequest?: boolean } = {}
   ) {
     if (requestRows.length === 0) return [];
     const pricing = await this.effectivePricing();
-    const { decisions, attempts, usageRows } = await this.summaryInputsFor(requestRows);
+    const { decisions, attempts, usageRows, classifierUsageRows } = await this.summaryInputsFor(requestRows);
 
     const decisionsByRequest = new Map(decisions.map((decision) => [decision.requestId, decision]));
     const attemptsByRequest = latestAttemptsByRequest(attempts);
     const attemptCountsByRequest = attemptCounts(attempts);
+    const classifierCostByRequest = classifierCostByRequestId(classifierUsageRows);
     const usageByRequest = options.aggregateUsageByRequest
       ? aggregateUsageByRequest(usageRows)
       : new Map<string, UsageAggregate>();
@@ -883,6 +910,7 @@ export class AdminQueryService {
         decision: decisionsByRequest.get(request.id) ?? null,
         attempt,
         usage,
+        classifierCost: classifierCostByRequest.get(request.id) ?? 0,
         attemptCount: attemptCountsByRequest.get(request.id) ?? 0
       }, this.catalog, pricing);
     });
@@ -919,7 +947,17 @@ export class AdminQueryService {
             .from(usageLedger)
             .where(inArray(usageLedger.providerAttemptId, attemptIds))
         : [];
-      return { decisions, attempts, usageRows };
+      // Classifier rows have no provider attempt, so they are keyed by request.
+      const classifierUsageRows = requestIds.length > 0
+        ? await this.db
+            .select()
+            .from(usageLedger)
+            .where(and(
+              inArray(usageLedger.requestId, requestIds),
+              eq(usageLedger.kind, "classifier")
+            ))
+        : [];
+      return { decisions, attempts, usageRows, classifierUsageRows };
     })().catch((error: unknown) => {
       this.summaryInputsCache.delete(requestRows);
       throw error;
@@ -1322,6 +1360,7 @@ function requestSummary(row: {
   decision: typeof routeDecisions.$inferSelect | null;
   attempt: ProviderAttemptRow | null;
   usage: UsageAggregate | null;
+  classifierCost: number;
   attemptCount: number;
 }, catalog: ModelCatalog, pricing: ModelPricingTable) {
   const usage = row.usage
@@ -1335,7 +1374,13 @@ function requestSummary(row: {
       }
     : emptyUsage();
   const selectedModel = row.decision?.selectedModel ?? row.attempt?.model ?? undefined;
-  const selectedCost = (row.usage?.totalCostMicros ?? 0) / 1_000_000;
+  const providerCost = (row.usage?.totalCostMicros ?? 0) / 1_000_000;
+  // Selected spend is what we actually pay: the provider response plus the
+  // routing classifier's own call. Baseline is the no-routing counterfactual,
+  // so the classifier (which only exists because we route) is excluded from it
+  // — savings therefore absorb the routing overhead honestly.
+  const classifierCost = row.classifierCost;
+  const selectedCost = providerCost + classifierCost;
   const baselineCost = baselineCostFor(catalog, pricing, row.request.surface, row.request.requestedModel, usage);
   return {
     requestId: row.request.id,
@@ -1356,6 +1401,8 @@ function requestSummary(row: {
     timeToFirstByteMs: elapsedMs(row.attempt?.startedAt, row.attempt?.firstByteAt),
     attemptCount: row.attemptCount,
     selectedCost,
+    providerCost,
+    classifierCost,
     baselineCost,
     savings: baselineCost - selectedCost,
     createdAt: row.request.createdAt.toISOString(),
@@ -1368,6 +1415,7 @@ type SummaryInputs = {
   decisions: (typeof routeDecisions.$inferSelect)[];
   attempts: ProviderAttemptRow[];
   usageRows: (typeof usageLedger.$inferSelect)[];
+  classifierUsageRows: (typeof usageLedger.$inferSelect)[];
 };
 type UsageGroupBy = "user" | "api_key" | "provider" | "model" | "route" | "surface" | "session";
 type UsageInterval = "hour" | "day";
@@ -1383,6 +1431,7 @@ type UsageGroup = {
     selected: number;
     baseline: number;
     savings: number;
+    classifier: number;
   };
 };
 
@@ -1471,8 +1520,9 @@ function costTotals(requests: RequestSummary[]) {
     acc.selected += request.selectedCost;
     acc.baseline += request.baselineCost;
     acc.savings += request.savings;
+    acc.classifier += request.classifierCost;
     return acc;
-  }, { selected: 0, baseline: 0, savings: 0 });
+  }, { selected: 0, baseline: 0, savings: 0, classifier: 0 });
 }
 
 function recentActivity(requests: RequestSummary[], sessions: SessionRow[]) {
@@ -1555,7 +1605,8 @@ function emptyUsageGroup(key: string): UsageGroup {
     cost: {
       selected: 0,
       baseline: 0,
-      savings: 0
+      savings: 0,
+      classifier: 0
     }
   };
 }
@@ -1569,6 +1620,7 @@ function addUsageRequest(group: UsageGroup, request: RequestSummary) {
   group.cost.selected += request.selectedCost;
   group.cost.baseline += request.baselineCost;
   group.cost.savings += request.savings;
+  group.cost.classifier += request.classifierCost;
 }
 
 function mergeUsageGroup(target: UsageGroup, source: UsageGroup) {
@@ -1580,6 +1632,7 @@ function mergeUsageGroup(target: UsageGroup, source: UsageGroup) {
   target.cost.selected += source.cost.selected;
   target.cost.baseline += source.cost.baseline;
   target.cost.savings += source.cost.savings;
+  target.cost.classifier += source.cost.classifier;
 }
 
 function finalizeUsageGroup(group: UsageGroup) {
@@ -1675,6 +1728,14 @@ function aggregateUsageByRequest(usageRows: UsageLedgerRow[]) {
     const usage = byRequest.get(row.requestId) ?? emptyUsageAggregate();
     addUsageRow(usage, row);
     byRequest.set(row.requestId, usage);
+  }
+  return byRequest;
+}
+
+function classifierCostByRequestId(classifierUsageRows: UsageLedgerRow[]) {
+  const byRequest = new Map<string, number>();
+  for (const row of classifierUsageRows) {
+    byRequest.set(row.requestId, (byRequest.get(row.requestId) ?? 0) + row.totalCostMicros / 1_000_000);
   }
   return byRequest;
 }

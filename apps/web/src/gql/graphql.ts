@@ -374,7 +374,7 @@ export type UpdateSettingsMutationVariables = Exact<{
 
 export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
-export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number } };
+export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } };
 
 export type UsageReportViewQueryVariables = Exact<{
   groupBy: UsageGroupBy;
@@ -383,7 +383,7 @@ export type UsageReportViewQueryVariables = Exact<{
 }>;
 
 
-export type UsageReportViewQuery = { usage: { groupBy: UsageGroupBy, data: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number } }>, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number } } } };
+export type UsageReportViewQuery = { usage: { groupBy: UsageGroupBy, data: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } } };
 
 export type UsageTimeseriesViewQueryVariables = Exact<{
   groupBy: UsageGroupBy;
@@ -394,12 +394,17 @@ export type UsageTimeseriesViewQueryVariables = Exact<{
 }>;
 
 
-export type UsageTimeseriesViewQuery = { usageTimeseries: { groupBy: UsageGroupBy, interval: UsageInterval, start: string, end: string, groups: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number } }>, points: Array<{ ts: string, groups: unknown, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number } } }> } };
+export type UsageTimeseriesViewQuery = { usageTimeseries: { groupBy: UsageGroupBy, interval: UsageInterval, start: string, end: string, groups: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, points: Array<{ ts: string, groups: unknown, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } }> } };
 
 export type UsageLookupsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
 export type UsageLookupsQuery = { members: Array<{ userId: string, name: string | null, email: string | null }>, apiKeys: Array<{ id: string, name: string, revokedAt: string | null }> };
+
+export type UnpricedModelsQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type UnpricedModelsQuery = { modelPricing: Array<{ model: string, provider: string | null, source: ModelPricingSource, seenInTraffic: boolean }> };
 
 export type UsersListQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -559,6 +564,7 @@ export const UsageGroupFieldsFragmentDoc = new TypedDocumentString(`
     selected
     baseline
     savings
+    classifier
   }
 }
     `, {"fragmentName":"UsageGroupFields"}) as unknown as TypedDocumentString<UsageGroupFieldsFragment, unknown>;
@@ -1609,6 +1615,7 @@ export const UsageReportViewDocument = new TypedDocumentString(`
     selected
     baseline
     savings
+    classifier
   }
 }`) as unknown as TypedDocumentString<UsageReportViewQuery, UsageReportViewQueryVariables>;
 export const UsageTimeseriesViewDocument = new TypedDocumentString(`
@@ -1658,6 +1665,7 @@ export const UsageTimeseriesViewDocument = new TypedDocumentString(`
     selected
     baseline
     savings
+    classifier
   }
 }`) as unknown as TypedDocumentString<UsageTimeseriesViewQuery, UsageTimeseriesViewQueryVariables>;
 export const UsageLookupsDocument = new TypedDocumentString(`
@@ -1674,6 +1682,16 @@ export const UsageLookupsDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<UsageLookupsQuery, UsageLookupsQueryVariables>;
+export const UnpricedModelsDocument = new TypedDocumentString(`
+    query UnpricedModels {
+  modelPricing {
+    model
+    provider
+    source
+    seenInTraffic
+  }
+}
+    `) as unknown as TypedDocumentString<UnpricedModelsQuery, UnpricedModelsQueryVariables>;
 export const UsersListDocument = new TypedDocumentString(`
     query UsersList {
   users {

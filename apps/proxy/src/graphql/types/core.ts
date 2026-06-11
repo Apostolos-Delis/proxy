@@ -25,7 +25,8 @@ export const CostTotals = builder.objectRef<CostTotalsModel>("CostTotals").imple
   fields: (t) => ({
     selected: t.exposeFloat("selected"),
     baseline: t.exposeFloat("baseline"),
-    savings: t.exposeFloat("savings")
+    savings: t.exposeFloat("savings"),
+    classifier: t.exposeFloat("classifier")
   })
 });
 

@@ -61,6 +61,11 @@ export const PROVIDER_ATTEMPT_STATUSES = {
   CANCELLED: "cancelled"
 } as const;
 
+// A usage ledger row is either the billed provider response for a request
+// ("provider") or the routing classifier's own LLM call that decided where to
+// send it ("classifier"). Classifier rows carry cost but no provider attempt.
+export const USAGE_LEDGER_KINDS = ["provider", "classifier"] as const;
+
 export const PROMPT_CAPTURE_MODES = {
   NONE: "none",
   HASH_ONLY: "hash_only",
@@ -156,6 +161,7 @@ export type Verbosity = typeof VERBOSITIES[number];
 export type EventOutboxStatus = typeof EVENT_OUTBOX_STATUSES[keyof typeof EVENT_OUTBOX_STATUSES];
 export type RequestStatus = typeof REQUEST_STATUSES[keyof typeof REQUEST_STATUSES];
 export type ProviderAttemptStatus = typeof PROVIDER_ATTEMPT_STATUSES[keyof typeof PROVIDER_ATTEMPT_STATUSES];
+export type UsageLedgerKind = typeof USAGE_LEDGER_KINDS[number];
 export type PromptCaptureMode = typeof PROMPT_CAPTURE_MODES[keyof typeof PROMPT_CAPTURE_MODES];
 export type OrganizationMemberRole = typeof ORGANIZATION_MEMBER_ROLES[keyof typeof ORGANIZATION_MEMBER_ROLES];
 export type OrganizationMemberStatus = typeof ORGANIZATION_MEMBER_STATUSES[keyof typeof ORGANIZATION_MEMBER_STATUSES];

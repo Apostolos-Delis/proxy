@@ -24,6 +24,7 @@ export async function startOpenAIMock(
     invalidClassifier?: boolean;
     classifierOutput?: Record<string, unknown>;
     classifierOutputs?: Record<string, unknown>[];
+    classifierUsage?: Record<string, unknown>;
     classifierResponsesShape?: boolean;
     compressedJsonProvider?: boolean;
     failProviderOnce?: boolean;
@@ -71,11 +72,15 @@ export async function startOpenAIMock(
               role: "assistant",
               content: [{ type: "output_text", annotations: [], logprobs: [], text: outputText }]
             }
-          ]
+          ],
+          ...(options.classifierUsage ? { usage: options.classifierUsage } : {})
         });
         return;
       }
-      sendJson(response, { output_text: outputText });
+      sendJson(response, {
+        output_text: outputText,
+        ...(options.classifierUsage ? { usage: options.classifierUsage } : {})
+      });
       return;
     }
 

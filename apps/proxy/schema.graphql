@@ -73,6 +73,7 @@ input ClassifierSettingsInput {
 
 type CostTotals {
   baseline: Float!
+  classifier: Float!
   savings: Float!
   selected: Float!
 }
@@ -735,11 +736,12 @@ type UsageLedgerRow {
   id: String!
   inputCostMicros: Float!
   inputTokens: Float!
+  kind: String!
   model: String!
   outputCostMicros: Float!
   outputTokens: Float!
   provider: String!
-  providerAttemptId: String!
+  providerAttemptId: String
   reasoningTokens: Float!
   requestId: String!
   route: String

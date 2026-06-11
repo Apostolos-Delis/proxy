@@ -14,7 +14,8 @@ import type {
   RoutingConfig,
   RouteName,
   SessionPinnedSettings,
-  Surface
+  Surface,
+  UsageLedgerKind
 } from "@prompt-proxy/schema";
 
 export const organizations = pgTable(
@@ -574,8 +575,8 @@ export const usageLedger = pgTable(
       .notNull()
       .references(() => requests.id, { onDelete: "cascade" }),
     providerAttemptId: text("provider_attempt_id")
-      .notNull()
       .references(() => providerAttempts.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<UsageLedgerKind>().notNull().default("provider"),
     provider: text("provider").$type<Provider>().notNull(),
     model: text("model").notNull(),
     route: text("route").$type<RouteName>(),
@@ -593,6 +594,9 @@ export const usageLedger = pgTable(
   },
   (table) => [
     uniqueIndex("usage_ledger_provider_attempt_idx").on(table.providerAttemptId),
+    uniqueIndex("usage_ledger_classifier_request_idx")
+      .on(table.requestId)
+      .where(sql`${table.kind} = 'classifier'`),
     index("usage_ledger_org_workspace_created_idx").on(table.organizationId, table.workspaceId, table.createdAt),
     index("usage_ledger_user_created_idx").on(table.organizationId, table.workspaceId, table.userId, table.createdAt),
     index("usage_ledger_model_idx").on(table.organizationId, table.workspaceId, table.provider, table.model)

@@ -2,6 +2,7 @@ import type { PromptProxyTransaction } from "@prompt-proxy/db";
 
 import type { ProxyEvent } from "../events.js";
 import type { ModelPricingTable } from "../pricing.js";
+import { persistClassifierUsage } from "./classifierUsage.js";
 import { persistProviderStarted, persistProviderTerminal, persistStreamStarted } from "./providerAttempt.js";
 import { persistRequestReceived, persistRoutingContext } from "./requestState.js";
 import { persistRouteDecision } from "./routeDecision.js";
@@ -18,6 +19,10 @@ export async function projectEvent(tx: PromptProxyTransaction, pricing: ModelPri
   }
   if (event.eventType === "routing.decision_recorded") {
     await persistRouteDecision(tx, event);
+    return;
+  }
+  if (event.eventType === "routing.classification_recorded") {
+    await persistClassifierUsage(tx, pricing, event);
     return;
   }
   if (event.eventType === "provider.request_started") {
