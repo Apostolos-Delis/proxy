@@ -209,7 +209,8 @@ function failuresLogsSearch(dimension: UsageDimension, key: string, range: Usage
   const rangeParam = { range };
   if (dimension === "model") return { ...rangeParam, status: "failed", model: key };
   if (dimension === "user") return { ...rangeParam, status: "failed", user: key };
-  const advField = { route: "route", provider: "provider", surface: "surface", session: "session", api_key: "apiKey" }[dimension];
+  const advFields: Partial<Record<UsageDimension, string>> = { route: "route", provider: "provider", surface: "surface", session: "session", api_key: "apiKey" };
+  const advField = advFields[dimension];
   if (!advField) return null;
   return { ...rangeParam, status: "failed", adv: [[advField, "equals", key, "and"]] };
 }

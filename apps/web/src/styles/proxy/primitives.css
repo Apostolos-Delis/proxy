@@ -221,8 +221,11 @@
 }
 @keyframes slideIn { from { transform: translateX(28px); } to { transform: none; } }
 .drawer-head {
-  display: flex; justify-content: flex-end; margin-bottom: 8px;
+  display: flex; align-items: flex-start; gap: 16px; margin-bottom: 8px;
 }
+.drawer-head .btn-icon { margin-left: auto; }
+.drawer-title h3 { margin: 0; }
+.drawer-title .muted { margin-top: 4px; font-size: 13px; }
 .drawer .card-head {
   flex-direction: column; align-items: flex-start; gap: 14px;
 }
