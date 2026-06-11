@@ -1322,7 +1322,7 @@ describe("prompt proxy", () => {
       classifierOutput: {
         complexity: "hard",
         risk: [],
-        recommended_route: "hard",
+        recommended_route: "deep",
         can_use_fast_model: true,
         needs_deep_reasoning: false,
         reason_codes: ["low_confidence"],
@@ -1375,6 +1375,8 @@ describe("prompt proxy", () => {
     expect(projections.totals.inputTokens).toBe(100);
     expect(projections.totals.outputTokens).toBe(20);
     expect(projections.cost.selected).toBeGreaterThan(0);
+    // Routed to the deep model (gpt-5.5-pro), priced above the gpt-5.5
+    // default baseline, so this request books negative savings.
     expect(projections.requests[0].savings).toBeLessThan(0);
     expect(routeQuality.lowConfidence).toHaveLength(1);
   });

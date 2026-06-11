@@ -1,9 +1,14 @@
-import { explicitAlias, modelForRoute, routeOrder } from "./catalog.js";
+import { baselineUpstreamModel, routeOrder } from "./catalog.js";
 import type { ModelCatalog } from "./catalog.js";
 import type { AppConfig } from "./config.js";
 import type { ProxyEvent } from "./events.js";
 import { normalizeUsage, type NormalizedUsage } from "./persistence/values.js";
-import { pricingForModel, usageCostMicros, type ModelPricingTable } from "./pricing.js";
+import {
+  defaultCostBaseline,
+  pricingForModel,
+  usageCostMicros,
+  type ModelPricingTable
+} from "./pricing.js";
 import type { JsonObject, JsonValue, RouteName, Surface } from "./types.js";
 import { isRecord } from "./util.js";
 
@@ -217,15 +222,15 @@ function estimateCost(model: string | undefined, usage: NormalizedUsage, pricing
   return usageCostMicros(pricingForModel(pricing, model), usage).totalCostMicros / 1_000_000;
 }
 
+// No-database mode has no organization settings, so the baseline is always
+// the default counterfactual.
 function baselineModel(
   catalog: ModelCatalog,
   surface: Surface | undefined,
   requestedModel: string | undefined
 ) {
   if (!surface) return undefined;
-  const explicit = requestedModel ? explicitAlias(surface, requestedModel) : undefined;
-  const baselineRoute = explicit ?? "balanced";
-  return modelForRoute(catalog, baselineRoute, surface).upstreamModel;
+  return baselineUpstreamModel(catalog, defaultCostBaseline, surface, requestedModel);
 }
 
 function missingUsage(events: ProxyEvent[]) {

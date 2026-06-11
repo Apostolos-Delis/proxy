@@ -1,4 +1,5 @@
 import type { AppConfig } from "./config.js";
+import { baselineModelForSurface, type CostBaseline } from "./pricing.js";
 import type {
   ModelCatalogEntry,
   Provider,
@@ -110,6 +111,20 @@ export function routeModel(route: RouteName, surface: Surface) {
 
 export function modelForRoute(catalog: ModelCatalog, route: RouteName, surface: Surface) {
   return catalog[routeModel(route, surface)];
+}
+
+// The savings counterfactual: a request that explicitly pinned a route tier
+// is its own baseline, everything else baselines against the configured
+// per-surface model.
+export function baselineUpstreamModel(
+  catalog: ModelCatalog,
+  baseline: CostBaseline,
+  surface: Surface,
+  requestedModel: string | undefined
+) {
+  const route = requestedModel ? explicitAlias(surface, requestedModel) : undefined;
+  if (route) return modelForRoute(catalog, route, surface).upstreamModel;
+  return baselineModelForSurface(baseline, surface);
 }
 
 export function supportsSurface(model: ModelCatalogEntry, surface: Surface) {

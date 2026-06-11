@@ -1,3 +1,4 @@
+import { undatedModel } from "../pricing.js";
 import { writeSettingsFile } from "../settings.js";
 import { builder } from "./builder.js";
 import { scopedQueries, viewerPayload } from "./context.js";
@@ -67,6 +68,28 @@ const SetModelPricingInput = builder.inputType("SetModelPricingInput", {
     cacheWriteCostPerMtok: t.float()
   })
 });
+
+// An unpriced baseline model would book baseline $0 and silently flip
+// savings to -spent, and the ledger-driven unpriced-traffic warning never
+// covers it (baseline models do not appear in the ledger). Reject it here,
+// against effective pricing (defaults, env, and org overrides; dated names
+// resolve through their undated entry). Empty values clear to the
+// always-priced defaults.
+async function assertBaselineModelsPriced(
+  context: Parameters<typeof scopedQueries>[0],
+  costBaseline: { anthropicModel: string; openaiModel: string }
+) {
+  const queries = scopedQueries(context);
+  if (!queries) return;
+  const entries = await queries.modelPricing();
+  const priced = new Set(
+    entries.filter((entry) => entry.source !== "unpriced").map((entry) => entry.model)
+  );
+  for (const model of [costBaseline.anthropicModel.trim(), costBaseline.openaiModel.trim()]) {
+    if (!model || priced.has(model) || priced.has(undatedModel(model))) continue;
+    throw adminGraphQLError(`baseline_model_unpriced: ${model}`, 400);
+  }
+}
 
 function mapSettingsError(error: unknown): never {
   if (error instanceof Error && error.message === "settings_file_invalid_json") {
@@ -192,7 +215,10 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: SettingsInput, required: true }) },
     resolve: async (_root, args, context) => {
       try {
-        const { systemPrompt, cacheTtlUpgrade, toolResultCompression, ...fileInput } = args.input;
+        const { systemPrompt, cacheTtlUpgrade, toolResultCompression, costBaseline, ...fileInput } = args.input;
+        if (context.persistence && costBaseline) {
+          await assertBaselineModelsPriced(context, costBaseline);
+        }
         const settings = await writeSettingsFile(context.config.settingsPath, fileInput);
         if (
           context.persistence &&
@@ -221,6 +247,12 @@ builder.mutationFields((t) => ({
           await context.persistence.organizationSettings.setToolResultCompression(
             context.identity().organizationId,
             toolResultCompression
+          );
+        }
+        if (context.persistence && costBaseline) {
+          await context.persistence.organizationSettings.setCostBaseline(
+            context.identity().organizationId,
+            costBaseline
           );
         }
         return await settingsResponse(

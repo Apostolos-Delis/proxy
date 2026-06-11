@@ -8,6 +8,10 @@ export function settingsInput(settings: EditableSettings) {
     systemPrompt: settings.systemPrompt,
     cacheTtlUpgrade: settings.cacheTtlUpgrade,
     toolResultCompression: settings.toolResultCompression,
+    costBaseline: {
+      anthropicModel: settings.costBaseline.anthropicModel,
+      openaiModel: settings.costBaseline.openaiModel
+    },
     classifier: {
       model: settings.classifier.model,
       timeoutMs: settings.classifier.timeoutMs,
@@ -33,6 +37,7 @@ export function visibleGroups(search: string) {
   const groups = [
     { key: "system", terms: "system prompt organization injected harness model requests" },
     { key: "optimization", terms: "token optimization caching cache ttl anthropic ephemeral compress mcp tool results whitespace cost" },
+    { key: "baseline", terms: "cost baseline savings counterfactual spend anthropic openai models routing" },
     { key: "classifier", terms: "classifier model timeout attempts redacted excerpt structured routing" },
     { key: "budgets", terms: "budgets warning max input tokens route guardrails policy limit" },
     { key: "prompt", terms: "prompt capture retention raw text hash redacted encrypted artifacts" },
@@ -47,6 +52,8 @@ export function visibleGroups(search: string) {
 
 export function validate(settings: EditableSettings) {
   const errors: string[] = [];
+  if (!settings.costBaseline.anthropicModel.trim()) errors.push("Anthropic baseline model is required.");
+  if (!settings.costBaseline.openaiModel.trim()) errors.push("OpenAI baseline model is required.");
   if (!settings.classifier.model.trim()) errors.push("Classifier model is required.");
   if (settings.classifier.timeoutMs < 1 || settings.classifier.timeoutMs > 30000) errors.push("Classifier timeout must be between 1 and 30000 ms.");
   if (settings.classifier.maxAttempts < 1 || settings.classifier.maxAttempts > 5) errors.push("Classifier attempts must be between 1 and 5.");

@@ -19,6 +19,10 @@ graphql(`
       systemPrompt
       cacheTtlUpgrade
       toolResultCompression
+      costBaseline {
+        anthropicModel
+        openaiModel
+      }
       classifier {
         model
         timeoutMs

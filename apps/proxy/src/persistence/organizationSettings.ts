@@ -2,6 +2,31 @@ import { eq, sql } from "drizzle-orm";
 
 import { organizationSettings, type PromptProxyDbSession } from "@prompt-proxy/db";
 
+import { defaultCostBaseline, type CostBaseline } from "../pricing.js";
+
+export async function orgCostBaseline(
+  db: PromptProxyDbSession,
+  organizationId: string
+): Promise<CostBaseline> {
+  const [row] = await db
+    .select({ settings: organizationSettings.settings })
+    .from(organizationSettings)
+    .where(eq(organizationSettings.organizationId, organizationId))
+    .limit(1);
+  return costBaselineFromSettings(row?.settings);
+}
+
+function costBaselineFromSettings(settings: Record<string, unknown> | undefined): CostBaseline {
+  return {
+    anthropicModel: modelSetting(settings?.costBaselineAnthropicModel) ?? defaultCostBaseline.anthropicModel,
+    openaiModel: modelSetting(settings?.costBaselineOpenaiModel) ?? defaultCostBaseline.openaiModel
+  };
+}
+
+function modelSetting(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 export class OrganizationSettingsStore {
   constructor(private readonly db: PromptProxyDbSession) {}
 
@@ -29,6 +54,7 @@ export class OrganizationSettingsStore {
     systemPrompt: string | null;
     cacheTtlUpgrade: boolean;
     toolResultCompression: boolean;
+    costBaseline: CostBaseline;
   }> {
     const [row] = await this.db
       .select({
@@ -41,7 +67,39 @@ export class OrganizationSettingsStore {
     return {
       systemPrompt: row?.systemPrompt ?? null,
       cacheTtlUpgrade: row?.settings?.cacheTtlUpgrade === true,
-      toolResultCompression: row?.settings?.toolResultCompression === true
+      toolResultCompression: row?.settings?.toolResultCompression === true,
+      costBaseline: costBaselineFromSettings(row?.settings)
+    };
+  }
+
+  // Empty or whitespace-only values clear the override so reads fall back to
+  // the default baseline models.
+  async setCostBaseline(
+    organizationId: string,
+    baseline: { anthropicModel: string | null; openaiModel: string | null }
+  ): Promise<CostBaseline> {
+    const anthropicModel = baseline.anthropicModel?.trim() || null;
+    const openaiModel = baseline.openaiModel?.trim() || null;
+    await this.db
+      .insert(organizationSettings)
+      .values({
+        organizationId,
+        settings: {
+          costBaselineAnthropicModel: anthropicModel,
+          costBaselineOpenaiModel: openaiModel
+        },
+        updatedAt: new Date()
+      })
+      .onConflictDoUpdate({
+        target: organizationSettings.organizationId,
+        set: {
+          settings: sql`organization_settings.settings || jsonb_build_object('costBaselineAnthropicModel', ${anthropicModel}::text, 'costBaselineOpenaiModel', ${openaiModel}::text)`,
+          updatedAt: new Date()
+        }
+      });
+    return {
+      anthropicModel: anthropicModel ?? defaultCostBaseline.anthropicModel,
+      openaiModel: openaiModel ?? defaultCostBaseline.openaiModel
     };
   }
 
