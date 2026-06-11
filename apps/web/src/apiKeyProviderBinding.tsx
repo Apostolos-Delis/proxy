@@ -35,8 +35,15 @@ export function ApiKeyProviderBinding({ apiKey, providerAccounts }: {
 
   return (
     <div className="assignment-menu">
-      <button ref={triggerRef} className="btn btn-sm" type="button" disabled={assignMutation.isPending} onClick={() => setOpen(!open)}>
-        {assignMutation.isPending ? "Updating" : bindingLabel(apiKey)}
+      <button
+        ref={triggerRef}
+        className={`cell-select${apiKey.providerCredentials.length > 0 ? "" : " unset"}`}
+        type="button"
+        disabled={assignMutation.isPending}
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <span>{assignMutation.isPending ? "Updating…" : bindingLabel(apiKey)}</span>
         <ChevronDown />
       </button>
       {open ? (
@@ -85,6 +92,6 @@ function ProviderSection({ provider, accounts, boundId, onAssign }: {
 
 function bindingLabel(apiKey: ApiKeySummary) {
   const names = apiKey.providerCredentials.map((binding) => binding.name ?? binding.provider);
-  if (names.length === 0) return "Company default";
+  if (names.length === 0) return "None";
   return names.join(", ");
 }

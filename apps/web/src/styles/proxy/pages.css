@@ -2354,6 +2354,17 @@ input[type="checkbox"][role="switch"]:focus-visible {
   color: var(--fg-faint);
 }
 
+.console-table tbody .cell-select svg {
+  opacity: 0;
+  transition: opacity .13s var(--ease);
+}
+
+.console-table tbody tr:hover .cell-select svg,
+.console-table tbody .cell-select:focus-visible svg,
+.console-table tbody .cell-select[aria-expanded="true"] svg {
+  opacity: 1;
+}
+
 .cell-select:hover:not(:disabled),
 .cell-select[aria-expanded="true"] {
   background: var(--glass-hover);
