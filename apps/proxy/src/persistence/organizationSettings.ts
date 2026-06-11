@@ -5,15 +5,6 @@ import { organizationSettings, type PromptProxyDbSession } from "@prompt-proxy/d
 export class OrganizationSettingsStore {
   constructor(private readonly db: PromptProxyDbSession) {}
 
-  async systemPrompt(organizationId: string): Promise<string | null> {
-    const [row] = await this.db
-      .select({ systemPrompt: organizationSettings.systemPrompt })
-      .from(organizationSettings)
-      .where(eq(organizationSettings.organizationId, organizationId))
-      .limit(1);
-    return row?.systemPrompt ?? null;
-  }
-
   async setSystemPrompt(organizationId: string, systemPrompt: string | null) {
     const patch = { systemPrompt, updatedAt: new Date() };
     await this.db

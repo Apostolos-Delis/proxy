@@ -203,6 +203,34 @@ function openAICallNames(input: unknown[]): Map<string, ToolRef> {
   return map;
 }
 
+// Shared shape handler for content filters: tool-result content is either a
+// bare string or Claude Code's [{type:"text", text}] block array. Applies a
+// per-string transform (which returns a replacement or undefined for "leave
+// as-is") and returns the rewritten content, or undefined if nothing changed.
+export function mapTextContent(
+  content: unknown,
+  transform: (text: string) => string | undefined
+): unknown {
+  if (typeof content === "string") {
+    return transform(content);
+  }
+  if (Array.isArray(content)) {
+    let changed = false;
+    const next = content.map((block) => {
+      if (isRecord(block) && block.type === "text" && typeof block.text === "string") {
+        const replaced = transform(block.text);
+        if (replaced !== undefined && replaced !== block.text) {
+          changed = true;
+          return { ...block, text: replaced };
+        }
+      }
+      return block;
+    });
+    return changed ? next : undefined;
+  }
+  return undefined;
+}
+
 function contentChars(value: unknown): number {
   if (value === null || value === undefined) return 0;
   if (typeof value === "string") return value.length;

@@ -1,5 +1,4 @@
-import type { CompressionRule } from "../toolResultCompression.js";
-import { isRecord } from "../util.js";
+import { mapTextContent, type CompressionRule } from "../toolResultCompression.js";
 
 // Deterministic, lossless whitespace compaction for MCP tool results. MCP
 // servers commonly return pretty-printed JSON; removing the insignificant
@@ -20,29 +19,8 @@ import { isRecord } from "../util.js";
 export const mcpJsonRule: CompressionRule = {
   label: "mcp-json-whitespace",
   matches: (toolName) => toolName.startsWith("mcp__"),
-  filter: ({ content }) => compactContent(content)
+  filter: ({ content }) => mapTextContent(content, compactJsonString)
 };
-
-function compactContent(content: unknown): unknown {
-  if (typeof content === "string") {
-    return compactJsonString(content);
-  }
-  if (Array.isArray(content)) {
-    let changed = false;
-    const next = content.map((block) => {
-      if (isRecord(block) && block.type === "text" && typeof block.text === "string") {
-        const compacted = compactJsonString(block.text);
-        if (compacted !== undefined && compacted !== block.text) {
-          changed = true;
-          return { ...block, text: compacted };
-        }
-      }
-      return block;
-    });
-    return changed ? next : undefined;
-  }
-  return undefined;
-}
 
 // Returns the whitespace-stripped JSON string, or undefined if the input is not
 // well-formed JSON or stripping did not shrink it.

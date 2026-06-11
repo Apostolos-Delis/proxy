@@ -1,3 +1,5 @@
+import { CACHE_TTL_DEFAULT_MS } from "../cacheWindows.js";
+
 export type CacheBustCause = "ttl_expiry" | "model_switch" | "provider_switch" | "unknown";
 
 // Newest-first ledger sample cap; busts older than the cap fall out of view.
@@ -37,7 +39,7 @@ const COLLAPSE_FRACTION = 0.1;
 const REBUILD_FRACTION = 0.5;
 // Both Anthropic and OpenAI prompt caches expire after roughly five minutes
 // of inactivity; gaps beyond this expire the prefix.
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = CACHE_TTL_DEFAULT_MS;
 
 // Heuristic detector over ledger rows. Known limits: a brand-new conversation
 // reusing an existing session id reads as an unknown-cause bust (the ledger

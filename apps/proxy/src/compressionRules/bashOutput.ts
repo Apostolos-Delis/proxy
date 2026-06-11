@@ -1,5 +1,4 @@
-import type { CompressionRule } from "../toolResultCompression.js";
-import { isRecord } from "../util.js";
+import { mapTextContent, type CompressionRule } from "../toolResultCompression.js";
 
 // Deterministic noise-stripping for shell tool output. Terminal output carries
 // formatting the model does not need: ANSI color/cursor escape sequences, and
@@ -29,29 +28,8 @@ const ANSI_PATTERN = new RegExp(
 export const bashOutputRule: CompressionRule = {
   label: "bash-output-noise",
   matches: (toolName) => SHELL_TOOL_NAMES.has(toolName),
-  filter: ({ content }) => compactContent(content)
+  filter: ({ content }) => mapTextContent(content, stripNoise)
 };
-
-function compactContent(content: unknown): unknown {
-  if (typeof content === "string") {
-    return stripNoise(content);
-  }
-  if (Array.isArray(content)) {
-    let changed = false;
-    const next = content.map((block) => {
-      if (isRecord(block) && block.type === "text" && typeof block.text === "string") {
-        const stripped = stripNoise(block.text);
-        if (stripped !== undefined && stripped !== block.text) {
-          changed = true;
-          return { ...block, text: stripped };
-        }
-      }
-      return block;
-    });
-    return changed ? next : undefined;
-  }
-  return undefined;
-}
 
 function stripNoise(text: string): string | undefined {
   const result = collapseCarriageReturns(text.replace(ANSI_PATTERN, ""));

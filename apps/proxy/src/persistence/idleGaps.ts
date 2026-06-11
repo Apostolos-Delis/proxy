@@ -3,6 +3,8 @@
 // full prefix rewrite on the next request; gaps under an hour are recoverable
 // by upgrading breakpoints to the 1-hour TTL.
 
+import { CACHE_TTL_DEFAULT_MS, CACHE_TTL_UPGRADED_MS } from "../cacheWindows.js";
+
 export type IdleGapRequestRow = {
   sessionId: string;
   createdAt: Date;
@@ -11,8 +13,8 @@ export type IdleGapRequestRow = {
 // Newest-first sample cap applied by the caller's query.
 export const IDLE_GAP_SAMPLE_CAP = 20_000;
 
-const TTL_MS = 5 * 60 * 1000;
-const HOUR_MS = 60 * 60 * 1000;
+const TTL_MS = CACHE_TTL_DEFAULT_MS;
+const HOUR_MS = CACHE_TTL_UPGRADED_MS;
 
 const GAP_BUCKETS = [
   { key: "lt_1m", label: "< 1m", maxMs: 60 * 1000 },

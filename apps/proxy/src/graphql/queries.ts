@@ -1,3 +1,4 @@
+import { CACHE_TTL_DEFAULT_MS, CACHE_TTL_UPGRADED_MS } from "../cacheWindows.js";
 import { aggregateIdleGaps } from "../persistence/idleGaps.js";
 import { aggregateTokenAttribution } from "../persistence/tokenAttributionReport.js";
 import { compareModelPricingEntries, staticPricingEntries } from "../pricing.js";
@@ -31,8 +32,8 @@ import { Viewer } from "./types/viewer.js";
 
 const PROMPT_GRAPHQL_ACCESS_PATH = "/admin/graphql#prompt";
 
-const FIVE_MINUTES_MS = 5 * 60 * 1000;
-const ONE_HOUR_MS = 60 * 60 * 1000;
+const FIVE_MINUTES_MS = CACHE_TTL_DEFAULT_MS;
+const ONE_HOUR_MS = CACHE_TTL_UPGRADED_MS;
 
 function emptyUsageReport(): UsageReportModel {
   return {

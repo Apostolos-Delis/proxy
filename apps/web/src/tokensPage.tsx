@@ -56,7 +56,8 @@ export function TokensPage() {
     queryFn: () => fetchIdleGaps({ start, end }),
     placeholderData: keepPreviousData
   });
-  const error = attributionQuery.error ?? providerUsageQuery.error ?? cacheBustsQuery.error;
+  const error = attributionQuery.error ?? providerUsageQuery.error ?? cacheBustsQuery.error
+    ?? idleGapsQuery.error ?? routeOutputQuery.error ?? providerTimeseriesQuery.error;
 
   if (error) return <PageState title="Tokens" label={error.message} />;
 

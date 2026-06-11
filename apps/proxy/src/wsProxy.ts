@@ -4,6 +4,7 @@ import type { Duplex } from "node:stream";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
 import { openAIResponsesSurface, rewriteSurfaceRequest } from "./adapters.js";
+import { appendTokensAttributed } from "./tokenAttribution.js";
 import { compressForForward } from "./toolResultCompression.js";
 import {
   actorForIdentity,
@@ -205,6 +206,17 @@ export class WebSocketRoutingProxy {
     });
 
     const resolved = await this.resolveRoutingConfig(identity);
+    await appendTokensAttributed({
+      events: this.events,
+      identity,
+      requestId,
+      idempotencyKey,
+      sessionId: context.sessionId,
+      surface: openAIResponsesSurface.surface,
+      body: routeBody,
+      orgSystemPrompt: resolved.systemPrompt,
+      warn: () => {}
+    });
     const decision = await this.routing.decide({
       requestId,
       context,
