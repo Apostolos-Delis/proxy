@@ -75,9 +75,9 @@ export function LogoutButton({ icon }: { icon?: ReactNode }) {
   });
 
   return (
-    <button className="logout-button" type="button" onClick={() => mutation.mutate()}>
+    <button className="logout-button" type="button" aria-label="Sign out" title="Sign out" onClick={() => mutation.mutate()}>
       {icon ?? <LogOut />}
-      Sign out
+      <span className="sidebar-foot-text">Sign out</span>
     </button>
   );
 }
