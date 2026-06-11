@@ -29,8 +29,8 @@ export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
           <Snippet text={buildSetupCommand({ apiBase, secret })} />
           <div className="faint setup-explainer">
             It fetches the <a href={`${apiBase}/setup.sh`} target="_blank" rel="noreferrer">setup script</a> from
-            the proxy, stores the key at <span className="code-pill">~/.prompt-proxy/token</span>, points Claude
-            Code at the proxy, and registers the proxy provider for Codex. Safe to re-run.
+            the proxy, stores the key at <span className="code-pill">~/.prompt-proxy/token</span>, and points both
+            Claude Code and Codex at the proxy. Safe to re-run.
           </div>
         </li>
         <li>
@@ -45,7 +45,7 @@ export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
         ) : null}
       </ol>
       <details className="setup-manual">
-        <summary>Prefer to set it up by hand? Here is what the script does, step by step.</summary>
+        <summary>Prefer to set it up by hand? Follow these steps — they do exactly what the script does.</summary>
         <ol className="setup-steps">
           {buildManualSteps({ apiBase, secret }).map((step) => (
             <li key={step.title}>

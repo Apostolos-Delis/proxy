@@ -33,7 +33,7 @@ export function buildManualSteps({ apiBase, secret }: { apiBase: string; secret:
     },
     {
       title: "Point Claude Code at the proxy",
-      detail: "Merge these keys into ~/.claude/settings.json (create the file if it does not exist).",
+      detail: "Merge these settings into ~/.claude/settings.json (create the file if it does not exist).",
       snippet: JSON.stringify(
         {
           model: "claude-router-auto",
