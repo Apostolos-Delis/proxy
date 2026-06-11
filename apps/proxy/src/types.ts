@@ -2,8 +2,7 @@ import type {
   AnthropicEffort,
   OpenAIReasoningEffort,
   RoutingConfig,
-  RoutingConfigAnthropicRoute,
-  RoutingConfigOpenAIRoute,
+  SessionPinnedSettings,
   Verbosity as RoutingVerbosity
 } from "@prompt-proxy/schema";
 
@@ -122,6 +121,14 @@ export type RouteDecision = {
     teamId?: string;
     previousRoute?: RouteName;
     currentRoute: RouteName;
+    pin?: {
+      settings: SelectedRouteSettings;
+      routingConfigVersionId?: string;
+    };
+    invalidatedPin?: {
+      provider: Provider;
+      routingConfigVersionId?: string;
+    };
     action: "stored" | "upgraded" | "kept" | "explicit_override";
   };
   classifier?: {
@@ -140,17 +147,7 @@ export type RouteDecision = {
   errorStatus?: number;
 };
 
-export type SelectedRouteSettings =
-  | {
-      provider: "openai";
-      model: string;
-      openai: RoutingConfigOpenAIRoute;
-    }
-  | {
-      provider: "anthropic";
-      model: string;
-      anthropic: RoutingConfigAnthropicRoute;
-    };
+export type SelectedRouteSettings = SessionPinnedSettings;
 
 export type RoutingConfigSnapshot = {
   configId: string;

@@ -302,5 +302,20 @@ export const routingConfigSchema = z.strictObject({
 export type RoutingConfigClassifier = z.infer<typeof routingConfigClassifierSchema>;
 export type RoutingConfigOpenAIRoute = z.infer<typeof routingConfigOpenAIRouteSchema>;
 export type RoutingConfigAnthropicRoute = z.infer<typeof routingConfigAnthropicRouteSchema>;
+
+export const sessionPinnedSettingsSchema = z.discriminatedUnion("provider", [
+  z.strictObject({
+    provider: z.literal("openai"),
+    model: routingConfigIdentifierSchema,
+    openai: routingConfigOpenAIRouteSchema
+  }),
+  z.strictObject({
+    provider: z.literal("anthropic"),
+    model: routingConfigIdentifierSchema,
+    anthropic: routingConfigAnthropicRouteSchema
+  })
+]);
+
+export type SessionPinnedSettings = z.infer<typeof sessionPinnedSettingsSchema>;
 export type RoutingConfigRoute = z.infer<typeof routingConfigRouteSchema>;
 export type RoutingConfig = z.infer<typeof routingConfigSchema>;
