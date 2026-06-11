@@ -17,6 +17,7 @@ graphql(`
     settings {
       schemaVersion
       systemPrompt
+      cacheTtlUpgrade
       classifier {
         model
         timeoutMs
@@ -55,11 +56,24 @@ const UpdateSettingsDocument = graphql(`
   }
 `);
 
+const ActiveSessionsDocument = graphql(`
+  query ActiveSessions {
+    activeSessionCount {
+      activeSessions
+      windowMs
+    }
+  }
+`);
+
 export function SettingsPage() {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["settings"],
     queryFn: async () => (await gqlFetch(SettingsViewDocument)).settings
+  });
+  const activeSessionsQuery = useQuery({
+    queryKey: ["active-sessions"],
+    queryFn: async () => (await gqlFetch(ActiveSessionsDocument)).activeSessionCount
   });
   const mutation = useMutation({
     mutationFn: async (settings: EditableSettings) =>
@@ -85,6 +99,8 @@ export function SettingsPage() {
         storagePath={query.data.storage.path}
         storageReason={query.data.storage.reason}
         restartRequiredFor={query.data.restartRequiredFor}
+        activeSessions={activeSessionsQuery.data?.activeSessions ?? null}
+        activeWindowMs={activeSessionsQuery.data?.windowMs ?? null}
         saving={mutation.isPending}
         justSaved={mutation.isSuccess}
         saveError={mutation.error?.message}

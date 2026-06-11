@@ -1,5 +1,6 @@
 import { builder } from "../builder.js";
 import type {
+  ActiveSessionCountModel,
   CacheBustModel,
   CacheBustReportModel,
   IdleGapBucketModel,
@@ -126,6 +127,15 @@ export const TokenAttributionReport = builder
       buckets: t.expose("buckets", { type: [TokenAttributionBucket] }),
       toolSchemas: t.expose("toolSchemas", { type: [TokenAttributionOffender] }),
       toolResults: t.expose("toolResults", { type: [TokenAttributionOffender] })
+    })
+  });
+
+export const ActiveSessionCount = builder
+  .objectRef<ActiveSessionCountModel>("ActiveSessionCount")
+  .implement({
+    fields: (t) => ({
+      activeSessions: t.exposeFloat("activeSessions"),
+      windowMs: t.exposeFloat("windowMs")
     })
   });
 

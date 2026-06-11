@@ -1022,6 +1022,22 @@ export class AdminQueryService {
     return summaries;
   }
 
+  // Sessions with a request inside the cache-warm window. Editing the org
+  // system prompt shifts the front of every prefix, so each of these sessions
+  // pays a full cache rebuild on its next request — this is the blast radius.
+  async activeSessionCount(withinMs = 5 * 60 * 1000) {
+    const since = new Date(Date.now() - withinMs);
+    const [row] = await this.db
+      .select({ count: sql<number>`count(distinct ${requests.sessionId})` })
+      .from(requests)
+      .where(and(
+        this.scopedTo(requests),
+        isNotNull(requests.sessionId),
+        gte(requests.createdAt, since)
+      ));
+    return { activeSessions: Number(row?.count ?? 0), windowMs: withinMs };
+  }
+
   async idleGaps(filters: TokenAttributionFilters = {}) {
     const start = dateValue(filters.start);
     const end = dateValue(filters.end);

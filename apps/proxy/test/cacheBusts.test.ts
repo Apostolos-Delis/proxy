@@ -226,4 +226,56 @@ describe("cacheBusts admin query", () => {
     const gapCounts = Object.fromEntries(idleGaps.buckets.map((bucket: any) => [bucket.key, bucket.count]));
     expect(gapCounts["5m_15m"]).toBe(1);
   });
+
+  it("counts sessions active within the cache-warm window for the blast-radius warning", async () => {
+    activeFixture = await captureFixture("org_active_sessions");
+    const fixture = activeFixture;
+    const now = new Date();
+    const recent = new Date(now.getTime() - 60 * 1000); // 1m ago — warm
+    const stale = new Date(now.getTime() - 30 * 60 * 1000); // 30m ago — cold
+
+    await fixture.db.insert(users).values([{ id: "user_active", email: "active@example.com", name: "Active" }]);
+    await fixture.db.insert(agentSessions).values([
+      { id: "session_warm", organizationId: "org_active_sessions", workspaceId: defaultWorkspaceId("org_active_sessions"), userId: "user_active", surface: "anthropic-messages", externalSessionId: "warm", startedAt: recent, updatedAt: recent },
+      { id: "session_cold", organizationId: "org_active_sessions", workspaceId: defaultWorkspaceId("org_active_sessions"), userId: "user_active", surface: "anthropic-messages", externalSessionId: "cold", startedAt: stale, updatedAt: stale }
+    ]);
+    await fixture.db.insert(requests).values([
+      usageRequest("active_req_warm", "org_active_sessions", "user_active", "session_warm", "anthropic-messages", recent),
+      usageRequest("active_req_cold", "org_active_sessions", "user_active", "session_cold", "anthropic-messages", stale)
+    ]);
+
+    const result = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { activeSessionCount { activeSessions windowMs } }`
+    )).data?.activeSessionCount;
+
+    expect(result.activeSessions).toBe(1);
+    expect(result.windowMs).toBe(5 * 60 * 1000);
+  });
+
+  it("widens the warm window to 1h when cacheTtlUpgrade is enabled", async () => {
+    activeFixture = await captureFixture("org_active_1h");
+    const fixture = activeFixture;
+    await fixture.persistence.organizationSettings.setCacheTtlUpgrade("org_active_1h", true);
+    const now = new Date();
+    const within1h = new Date(now.getTime() - 30 * 60 * 1000); // 30m ago — cold at 5m, warm at 1h
+
+    await fixture.db.insert(users).values([{ id: "user_1h", email: "h@example.com", name: "H" }]);
+    await fixture.db.insert(agentSessions).values([
+      { id: "session_30m", organizationId: "org_active_1h", workspaceId: defaultWorkspaceId("org_active_1h"), userId: "user_1h", surface: "anthropic-messages", externalSessionId: "s30", startedAt: within1h, updatedAt: within1h }
+    ]);
+    await fixture.db.insert(requests).values([
+      usageRequest("req_30m", "org_active_1h", "user_1h", "session_30m", "anthropic-messages", within1h)
+    ]);
+
+    const result = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { activeSessionCount { activeSessions windowMs } }`
+    )).data?.activeSessionCount;
+
+    expect(result.activeSessions).toBe(1);
+    expect(result.windowMs).toBe(60 * 60 * 1000);
+  });
 });

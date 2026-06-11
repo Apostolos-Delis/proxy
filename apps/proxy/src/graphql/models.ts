@@ -70,6 +70,8 @@ export type CacheBustModel = CacheBustReportModel["busts"][number];
 export type IdleGapReportModel = Awaited<ReturnType<Q["idleGaps"]>>;
 export type IdleGapBucketModel = IdleGapReportModel["buckets"][number];
 
+export type ActiveSessionCountModel = Awaited<ReturnType<Q["activeSessionCount"]>>;
+
 export type TokenAttributionReportModel = Awaited<ReturnType<Q["tokenAttribution"]>>;
 export type TokenAttributionBucketModel = TokenAttributionReportModel["buckets"][number];
 export type TokenAttributionOffenderModel = TokenAttributionReportModel["toolSchemas"][number];

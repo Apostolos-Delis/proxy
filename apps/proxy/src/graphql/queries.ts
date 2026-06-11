@@ -7,6 +7,7 @@ import { scopedQueries, viewerPayload } from "./context.js";
 import type { RequestSummaryShape, UsageReportModel, UsageTimeseriesModel } from "./models.js";
 import { settingsResponse } from "./settingsPayload.js";
 import {
+  ActiveSessionCount,
   CacheBustReport,
   IdleGapReport,
   Overview,
@@ -28,6 +29,9 @@ import { OrgMember, UserDetail, UserSummary } from "./types/users.js";
 import { Viewer } from "./types/viewer.js";
 
 const PROMPT_GRAPHQL_ACCESS_PATH = "/admin/graphql#prompt";
+
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
+const ONE_HOUR_MS = 60 * 60 * 1000;
 
 function emptyUsageReport(): UsageReportModel {
   return {
@@ -171,6 +175,20 @@ builder.queryFields((t) => ({
         points: []
       };
       return empty;
+    }
+  }),
+
+  activeSessionCount: t.field({
+    type: ActiveSessionCount,
+    resolve: async (_root, _args, context) => {
+      const queries = scopedQueries(context);
+      if (!queries) return { activeSessions: 0, windowMs: FIVE_MINUTES_MS };
+      // The warm window is the org's effective cache TTL: with the 1h upgrade
+      // on, a prompt edit busts every session active within the last hour, not
+      // just five minutes.
+      const upgraded = await context.persistence?.organizationSettings
+        .cacheTtlUpgrade(context.identity().organizationId);
+      return queries.activeSessionCount(upgraded ? ONE_HOUR_MS : FIVE_MINUTES_MS);
     }
   }),
 

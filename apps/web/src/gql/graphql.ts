@@ -86,6 +86,7 @@ export type SetModelPricingInput = {
 
 export type SettingsInput = {
   budgets?: BudgetSettingsInput | null | undefined;
+  cacheTtlUpgrade?: boolean | null | undefined;
   classifier?: ClassifierSettingsInput | null | undefined;
   promptCapture?: PromptCaptureSettingsInput | null | undefined;
   routeQuality?: RouteQualitySettingsInput | null | undefined;
@@ -367,19 +368,24 @@ export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, requestCount: number, startedAt: string, recentActivity: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
-export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
+export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
 
 export type SettingsViewQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type UpdateSettingsMutationVariables = Exact<{
   input: SettingsInput;
 }>;
 
 
-export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+
+export type ActiveSessionsQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type ActiveSessionsQuery = { activeSessionCount: { activeSessions: number, windowMs: number } };
 
 export type TokenAttributionViewQueryVariables = Exact<{
   start?: string | null | undefined;
@@ -584,6 +590,7 @@ export const SettingsViewFieldsFragmentDoc = new TypedDocumentString(`
   settings {
     schemaVersion
     systemPrompt
+    cacheTtlUpgrade
     classifier {
       model
       timeoutMs
@@ -1597,6 +1604,7 @@ export const SettingsViewDocument = new TypedDocumentString(`
   settings {
     schemaVersion
     systemPrompt
+    cacheTtlUpgrade
     classifier {
       model
       timeoutMs
@@ -1634,6 +1642,7 @@ export const UpdateSettingsDocument = new TypedDocumentString(`
   settings {
     schemaVersion
     systemPrompt
+    cacheTtlUpgrade
     classifier {
       model
       timeoutMs
@@ -1654,6 +1663,14 @@ export const UpdateSettingsDocument = new TypedDocumentString(`
     }
   }
 }`) as unknown as TypedDocumentString<UpdateSettingsMutation, UpdateSettingsMutationVariables>;
+export const ActiveSessionsDocument = new TypedDocumentString(`
+    query ActiveSessions {
+  activeSessionCount {
+    activeSessions
+    windowMs
+  }
+}
+    `) as unknown as TypedDocumentString<ActiveSessionsQuery, ActiveSessionsQueryVariables>;
 export const TokenAttributionViewDocument = new TypedDocumentString(`
     query TokenAttributionView($start: String, $end: String) {
   tokenAttribution(start: $start, end: $end) {

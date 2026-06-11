@@ -6,6 +6,11 @@ type AcceptedInvitation {
   userId: String!
 }
 
+type ActiveSessionCount {
+  activeSessions: Float!
+  windowMs: Float!
+}
+
 type ApiKey {
   createdAt: String!
   expiresAt: String
@@ -468,6 +473,7 @@ type PublicInvitation {
 }
 
 type Query {
+  activeSessionCount: ActiveSessionCount!
   apiKey(apiKeyId: ID!): ApiKey
   apiKeys: [ApiKey!]!
   cacheBusts(end: String, start: String): CacheBustReport!
