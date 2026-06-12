@@ -1,12 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, CreditCard } from "lucide-react";
 
 import { formatInteger, formatMoney } from "./format";
 import { graphql } from "./gql";
 import { gqlFetch } from "./graphql";
 import { ModelPricingCard } from "./modelPricingCard";
-import { Badge, GlassCard, PageSkeleton, PageState, PageTitle, ProgressMeter } from "./ui";
+import { GlassCard, PageSkeleton, PageState, PageTitle, ProgressMeter } from "./ui";
 
 const BillingPageDocument = graphql(`
   query BillingPage {
@@ -24,7 +22,7 @@ const BillingPageDocument = graphql(`
 export function BillingPage() {
   const query = useQuery({ queryKey: ["billing-page"], queryFn: () => gqlFetch(BillingPageDocument) });
 
-  if (query.isLoading) return <PageSkeleton blocks={[150, 280, 160]} />;
+  if (query.isLoading) return <PageSkeleton blocks={[150, 280]} />;
   if (query.error) return <PageState title="Billing" label={query.error.message} />;
 
   const overview = query.data?.overview;
@@ -34,7 +32,7 @@ export function BillingPage() {
   const projected = overview.requestCount === 0 ? 0 : overview.cost.selected;
   return (
     <div className="page page-enter">
-      <PageTitle title="Billing" subtitle="Spend and invoices for Proxy Labs." />
+      <PageTitle title="Billing" subtitle="Spend and model pricing for Proxy Labs." />
       <div className="billing-kpis">
         <GlassCard>
           <div className="card-title">Current selected spend</div>
@@ -57,32 +55,6 @@ export function BillingPage() {
         </GlassCard>
       </div>
       <ModelPricingCard />
-      <div className="billing-grid">
-        <GlassCard>
-          <div className="card-title"><CreditCard />Spend controls</div>
-          <div className="billing-control-row">
-            <div>
-              <strong>Budget limits</strong>
-              <span>Per-request token caps and route ceilings live on each routing config and are enforced on every request.</span>
-            </div>
-            <Link to="/routing" className="card-link">Configure<ArrowUpRight /></Link>
-          </div>
-          <div className="billing-control-row">
-            <div>
-              <strong>Invoices</strong>
-              <span>Invoice ingestion is not wired to a billing provider yet.</span>
-            </div>
-            <Badge>Planned</Badge>
-          </div>
-          <div className="billing-control-row">
-            <div>
-              <strong>Per-key limits</strong>
-              <span>Requires an API key inventory endpoint before limits can be attributed safely.</span>
-            </div>
-            <Badge>Planned</Badge>
-          </div>
-        </GlassCard>
-      </div>
     </div>
   );
 }

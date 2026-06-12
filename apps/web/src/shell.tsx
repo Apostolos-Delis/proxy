@@ -40,7 +40,7 @@ const titles: Record<string, [string, string | null]> = {
   "/api-keys/new": ["API keys", "Create key"],
   "/provider-keys": ["Provider keys", "Bring-your-own provider credentials"],
   "/users": ["Users", "Team & access"],
-  "/billing": ["Billing", "Spend & invoices"],
+  "/billing": ["Billing", "Spend & pricing"],
   "/settings": ["Settings", "Runtime configuration"],
   "/routing": ["Routing", "Config versions"],
   "/routing/new": ["Routing", "New config"],

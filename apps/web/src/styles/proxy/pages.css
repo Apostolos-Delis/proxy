@@ -3812,52 +3812,6 @@ input[type="checkbox"][role="switch"]:focus-visible {
   margin-bottom: 22px;
 }
 
-.billing-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
-  gap: 22px;
-  align-items: start;
-}
-
-.billing-control-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 28px;
-  padding: 18px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.billing-control-row:first-of-type {
-  margin-top: 6px;
-}
-
-.billing-control-row:last-child {
-  padding-bottom: 4px;
-  border-bottom: 0;
-}
-
-.billing-control-row > div {
-  display: grid;
-  gap: 5px;
-}
-
-.billing-control-row strong {
-  font-size: 13.5px;
-  font-weight: 600;
-}
-
-.billing-control-row > div > span {
-  color: var(--fg-faint);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.billing-control-row .badge,
-.billing-control-row .card-link {
-  flex-shrink: 0;
-}
-
 .pricing-tbl td {
   white-space: nowrap;
 }
