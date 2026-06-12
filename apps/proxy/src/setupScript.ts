@@ -24,7 +24,7 @@ export function buildSetupScript(baseUrl: string) {
 #   1. Stores the key at ~/.prompt-proxy/token (chmod 600).
 #   2. Points Claude Code at the proxy via ~/.claude/settings.json.
 #   3. Exports PROMPT_PROXY_TOKEN from your shell rc for Codex.
-#   4. Registers the prompt_proxy provider in ~/.codex/config.toml.
+#   4. Registers and selects the prompt_proxy provider in ~/.codex/config.toml.
 set -euo pipefail
 
 PP_BASE_URL="${base}"
@@ -85,10 +85,22 @@ fi
 
 # Codex reads the key from the shell environment (env_key).
 [ -f "$HOME/.zshrc" ] || [ -f "$HOME/.bashrc" ] || touch "$HOME/.zshrc"
+PP_TOKEN_EXPORT='export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"'
 for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
   [ -f "$rc" ] || continue
-  if ! grep -q "PROMPT_PROXY_TOKEN" "$rc"; then
-    printf '\\nexport PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"\\n' >> "$rc"
+  if grep -Eq '^[[:space:]]*(export[[:space:]]+)?PROMPT_PROXY_TOKEN=' "$rc"; then
+    tmp_rc="$(mktemp)"
+    awk -v desired="$PP_TOKEN_EXPORT" '
+      /^[[:space:]]*(export[[:space:]]+)?PROMPT_PROXY_TOKEN=/ {
+        if (!replaced) print desired
+        replaced = 1
+        next
+      }
+      { print }
+    ' "$rc" > "$tmp_rc"
+    mv "$tmp_rc" "$rc"
+  else
+    printf '\\n%s\\n' "$PP_TOKEN_EXPORT" >> "$rc"
   fi
 done
 
@@ -101,9 +113,7 @@ if [ -n "$PP_USER_ID" ]; then
 else
   PP_CODEX_HEADERS=""
 fi
-if [ -s "$codex_config" ] && grep -qF "[model_providers.prompt_proxy]" "$codex_config"; then
-  echo "codex: provider already configured"
-elif [ ! -s "$codex_config" ]; then
+if [ ! -s "$codex_config" ]; then
   cat > "$codex_config" <<PP_CODEX_EOF
 model = "router-auto"
 model_provider = "prompt_proxy"
@@ -118,7 +128,22 @@ $PP_CODEX_HEADERS
 PP_CODEX_EOF
   echo "codex: wrote ~/.codex/config.toml"
 else
-  cat >> "$codex_config" <<PP_CODEX_EOF
+  tmp_config="$(mktemp)"
+  {
+    printf '%s\\n' 'model = "router-auto"'
+    printf '%s\\n\\n' 'model_provider = "prompt_proxy"'
+    awk '
+      /^\\[model_providers\\.prompt_proxy\\]$/ { skipping = 1; seen_table = 1; next }
+      /^\\[/ {
+        skipping = 0
+        seen_table = 1
+      }
+      skipping { next }
+      !seen_table && /^[[:space:]]*model[[:space:]]*=/ { next }
+      !seen_table && /^[[:space:]]*model_provider[[:space:]]*=/ { next }
+      { print }
+    ' "$codex_config"
+    cat <<PP_CODEX_EOF
 
 [model_providers.prompt_proxy]
 name = "Prompt Proxy"
@@ -128,10 +153,9 @@ wire_api = "responses"
 supports_websockets = true
 $PP_CODEX_HEADERS
 PP_CODEX_EOF
-  echo "codex: appended the prompt_proxy provider to ~/.codex/config.toml"
-  echo "codex: to make it the default, add these two lines at the TOP of that file:" >&2
-  echo '  model = "router-auto"' >&2
-  echo '  model_provider = "prompt_proxy"' >&2
+  } > "$tmp_config"
+  mv "$tmp_config" "$codex_config"
+  echo "codex: configured prompt_proxy as the default provider"
 fi
 
 echo "Done. Open a new terminal and run: claude  (or codex)"
