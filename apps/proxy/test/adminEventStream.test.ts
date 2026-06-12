@@ -1,3 +1,5 @@
+import { request as httpRequest, type IncomingMessage } from "node:http";
+
 import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -30,6 +32,24 @@ function liveEvent(overrides: Partial<ProxyEvent> = {}): ProxyEvent {
 
 function dataFrames(writes: string[]) {
   return writes.filter((chunk) => chunk.startsWith("data:")).length;
+}
+
+function openAdminEvents(url: string) {
+  return new Promise<{ response: IncomingMessage; close: () => void }>((resolve, reject) => {
+    const request = httpRequest(`${url}/admin/events`, { method: "GET" }, (response) => {
+      response.resume();
+      response.on("error", () => {});
+      resolve({
+        response,
+        close: () => {
+          response.destroy();
+          request.destroy();
+        }
+      });
+    });
+    request.once("error", reject);
+    request.end();
+  });
 }
 
 describe("AdminEventStream", () => {
@@ -143,16 +163,16 @@ describe("registerAdminEventStream connection lifecycle", () => {
   it("removes the subscriber when an established client disconnects", async () => {
     const { app, stream } = streamApp(() => identity());
     const url = await app.listen({ port: 0, host: "127.0.0.1" });
-    let response: Response | undefined;
+    let client: Awaited<ReturnType<typeof openAdminEvents>> | undefined;
     try {
-      response = await fetch(`${url}/admin/events`);
-      expect(response.status).toBe(200);
+      client = await openAdminEvents(url);
+      expect(client.response.statusCode).toBe(200);
       await vi.waitFor(() => expect(stream.size()).toBe(1));
 
-      await response.body?.cancel();
+      client.close();
       await vi.waitFor(() => expect(stream.size()).toBe(0));
     } finally {
-      await response?.body?.cancel().catch(() => {});
+      client?.close();
       await app.close();
     }
   });
