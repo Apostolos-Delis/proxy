@@ -216,3 +216,7 @@ scripts/         dev-local bootstrap, AWS operations helpers
 ```
 
 Architecture rules and conventions live in [AGENTS.md](AGENTS.md); the full docs index is at [docs/index.md](docs/index.md), starting with the [model routing proxy design](docs/model-routing-proxy.md).
+
+## License
+
+Licensed under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (FSL-1.1-ALv2). You may use, copy, modify, and redistribute the software for any purpose other than offering it (or a substantially similar product or service) commercially. Each release converts to the Apache License 2.0 two years after it is made available. See [fsl.software](https://fsl.software) for details.
