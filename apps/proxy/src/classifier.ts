@@ -116,7 +116,10 @@ export function defaultClassifierSettings(config: AppConfig): ClassifierSettings
 }
 
 function classifierRequest(settings: ClassifierSettings, view: unknown) {
-  const reasoningEffort = settings.reasoningEffort ?? defaultReasoningEffort(settings.model);
+  const reasoningEffort = normalizeReasoningEffort(
+    settings.model,
+    settings.reasoningEffort ?? defaultReasoningEffort(settings.model)
+  );
   return {
     model: settings.model,
     stream: false,
@@ -158,6 +161,13 @@ function classifierRequest(settings: ClassifierSettings, view: unknown) {
 // default to minimal effort for model families known to accept it.
 function defaultReasoningEffort(model: string) {
   return /^(gpt-5|o\d)/.test(model) ? ("minimal" as const) : undefined;
+}
+
+// Dotted gpt-5.x releases dropped the "minimal" tier in favor of "none";
+// sending minimal to them is a hard 400 and the classifier never succeeds.
+function normalizeReasoningEffort(model: string, effort?: string) {
+  if (effort === "minimal" && model.startsWith("gpt-5.")) return "none";
+  return effort;
 }
 
 function extractUsage(json: unknown): Record<string, unknown> | undefined {
