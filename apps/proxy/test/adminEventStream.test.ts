@@ -143,15 +143,16 @@ describe("registerAdminEventStream connection lifecycle", () => {
   it("removes the subscriber when an established client disconnects", async () => {
     const { app, stream } = streamApp(() => identity());
     const url = await app.listen({ port: 0, host: "127.0.0.1" });
+    let response: Response | undefined;
     try {
-      const controller = new AbortController();
-      const response = await fetch(`${url}/admin/events`, { signal: controller.signal });
+      response = await fetch(`${url}/admin/events`);
       expect(response.status).toBe(200);
       await vi.waitFor(() => expect(stream.size()).toBe(1));
 
-      controller.abort();
+      await response.body?.cancel();
       await vi.waitFor(() => expect(stream.size()).toBe(0));
     } finally {
+      await response?.body?.cancel().catch(() => {});
       await app.close();
     }
   });
