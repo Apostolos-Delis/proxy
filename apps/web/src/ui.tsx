@@ -132,8 +132,8 @@ export function UserCell({ name, detail, color, size }: { name: string; detail?:
     <div className="user-cell">
       <Avatar label={name} color={color} size={size} />
       <div>
-        <div className="user-name">{name}</div>
-        {detail ? <div className="user-email">{detail}</div> : null}
+        <div className="user-name" title={name}>{name}</div>
+        {detail ? <div className="user-email" title={detail}>{detail}</div> : null}
       </div>
     </div>
   );

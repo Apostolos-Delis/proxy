@@ -20,7 +20,8 @@ import {
   type SessionSummary
 } from "./sessionsPageData";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
-import { PageState, RouteBadge, StatusBadge, UserCell } from "./ui";
+import { TierGauge } from "./routing/tierViz";
+import { PageState, StatusBadge, UserCell } from "./ui";
 
 const SessionsPageDocument = graphql(`
   query SessionsPage {
@@ -98,7 +99,7 @@ const sessionColumns: ConsoleTableColumn<SessionLogRow>[] = [
   { id: "session", header: "Session", size: 240, accessorFn: (row) => row.session.externalSessionId ?? row.session.sessionId, cell: ({ row }) => <SessionCell row={row.original} /> },
   { id: "user", header: "User", size: 170, accessorFn: (row) => row.userName, cell: ({ row }) => <UserCell name={row.original.userName} detail={row.original.userDetail} size={24} /> },
   { id: "models", header: "Models", size: 190, accessorFn: (row) => sessionModels(row.session).join(" "), cell: ({ row }) => <ModelsCell session={row.original.session} /> },
-  { id: "route", header: "Route", size: 96, accessorFn: (row) => sessionRoute(row.session), cell: ({ row }) => <RouteBadge route={sessionRoute(row.original.session)} /> },
+  { id: "route", header: "Route", size: 116, accessorFn: (row) => sessionRoute(row.session), cell: ({ row }) => <TierGauge route={sessionRoute(row.original.session)} /> },
   { id: "status", header: "Status", size: 120, accessorFn: (row) => sessionStatus(row.session), cell: ({ row }) => <SessionStatusCell session={row.original.session} /> },
   { id: "requests", header: "Reqs", size: 60, minSize: 60, accessorFn: (row) => row.session.requestCount, cell: ({ row }) => <span className="mono muted">{formatCompact(row.original.session.requestCount)}</span> },
   { id: "tokens", header: "Tokens", size: 84, minSize: 84, accessorFn: (row) => row.session.usage.totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(row.original.session.usage.totalTokens)}</span> },
@@ -137,7 +138,7 @@ function ModelsCell({ session }: { session: SessionSummary }) {
   return (
     <div className="models-cell">
       {shown.map(([model]) => (
-        <span key={model} className="row gap-8"><span className="model-dot" /><span className="mono">{model}</span></span>
+        <span key={model} className="row gap-8"><span className="mono">{model}</span></span>
       ))}
       {rest > 0 ? <div className="mono faint">+{rest} more</div> : null}
     </div>

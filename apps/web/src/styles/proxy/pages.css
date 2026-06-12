@@ -654,6 +654,17 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
+  min-width: 0;
+}
+
+.models-cell .row {
+  min-width: 0;
+}
+
+.models-cell .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .table-link {
