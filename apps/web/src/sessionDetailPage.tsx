@@ -23,7 +23,8 @@ import {
   type ConversationTurn,
   type SessionArtifact
 } from "./sessionsPageData";
-import { Avatar, GlassCard, PageState, RouteBadge, StatusBadge } from "./ui";
+import { TierGauge } from "./routing/tierViz";
+import { Avatar, GlassCard, PageState, StatusBadge } from "./ui";
 
 const SessionDetailViewDocument = graphql(`
   query SessionDetailView($sessionId: ID!) {
@@ -109,7 +110,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }) {
         <div className="row gap-12">
           <h2 className="session-title">{session.surface}</h2>
           <StatusBadge status={dominantRequestStatus(detail.requests)} />
-          <RouteBadge route={dominantRequestRoute(detail.requests)} />
+          <TierGauge route={dominantRequestRoute(detail.requests)} />
         </div>
         <div className="session-byline">
           <Avatar label={sessionUserName(detail)} size={20} />
@@ -155,7 +156,7 @@ function RequestBlock({ turn, spans }: { turn: ConversationTurn; spans: Map<stri
           {logArtifactId ? (
             <Link to="/logs/$artifactId" params={{ artifactId: logArtifactId }} className="req-log-link">Open log</Link>
           ) : null}
-          <RouteBadge route={request.finalRoute} />
+          <TierGauge route={request.finalRoute ?? "unknown"} />
           <StatusBadge status={request.terminalStatus} />
         </span>
       </div>
