@@ -642,8 +642,31 @@
 .status-cell {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px;
+}
+
+.status-extra {
+  position: relative;
+  cursor: help;
+}
+
+.status-extra:hover,
+.status-extra:focus-visible {
+  color: var(--fg);
+  outline: none;
+}
+
+.status-extra .info-hint-bubble {
+  bottom: auto;
+  top: 50%;
+  left: calc(100% + 8px);
+  transform: translateY(-50%);
+}
+
+.status-extra:hover .info-hint-bubble,
+.status-extra:focus-visible .info-hint-bubble {
+  opacity: 1;
 }
 
 .table-time {
