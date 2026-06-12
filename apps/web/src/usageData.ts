@@ -1,5 +1,10 @@
 import { graphql } from "./gql";
-import type { UsageLookupsQuery, UsageReportViewQuery, UsageTimeseriesViewQuery } from "./gql/graphql";
+import type {
+  UsageDashboardViewQuery,
+  UsageLookupsQuery,
+  UsageReportViewQuery,
+  UsageTimeseriesViewQuery
+} from "./gql/graphql";
 import { gqlFetch } from "./graphql";
 
 graphql(`
@@ -66,6 +71,36 @@ const UsageTimeseriesViewDocument = graphql(`
   }
 `);
 
+const UsageDashboardViewDocument = graphql(`
+  query UsageDashboardView($groupBy: UsageGroupBy!, $interval: UsageInterval, $start: String, $end: String, $limit: Int) {
+    usage(groupBy: $groupBy, start: $start, end: $end) {
+      groupBy
+      data {
+        ...UsageGroupFields
+      }
+      totals {
+        ...UsageGroupFields
+      }
+    }
+    usageTimeseries(groupBy: $groupBy, interval: $interval, start: $start, end: $end, limit: $limit) {
+      groupBy
+      interval
+      start
+      end
+      groups {
+        ...UsageGroupFields
+      }
+      points {
+        ts
+        totals {
+          ...UsageGroupFields
+        }
+        groups
+      }
+    }
+  }
+`);
+
 const UsageLookupsDocument = graphql(`
   query UsageLookups {
     members {
@@ -109,6 +144,10 @@ export type UsageTimeseriesPoint = Omit<RawTimeseries["points"][number], "groups
 export type UsageTimeseries = Omit<RawTimeseries, "points"> & {
   points: UsageTimeseriesPoint[];
 };
+export type UsageDashboard = {
+  usage: UsageDashboardViewQuery["usage"];
+  timeseries: UsageTimeseries;
+};
 
 export type UsageDimensionKey = UsageResponse["groupBy"];
 
@@ -121,7 +160,21 @@ export async function fetchUsageTimeseries(
   filters: UsageRangeFilters & { interval?: "hour" | "day"; limit?: number } = {}
 ): Promise<UsageTimeseries> {
   const raw = (await gqlFetch(UsageTimeseriesViewDocument, { groupBy, ...filters })).usageTimeseries;
-  // Per-point group maps travel as a JSON scalar; narrow them once here.
+  return normalizeTimeseries(raw);
+}
+
+export async function fetchUsageDashboard(
+  groupBy: UsageDimensionKey,
+  filters: UsageRangeFilters & { interval?: "hour" | "day"; limit?: number } = {}
+): Promise<UsageDashboard> {
+  const raw = await gqlFetch(UsageDashboardViewDocument, { groupBy, ...filters });
+  return {
+    usage: raw.usage,
+    timeseries: normalizeTimeseries(raw.usageTimeseries)
+  };
+}
+
+function normalizeTimeseries(raw: RawTimeseries): UsageTimeseries {
   return {
     ...raw,
     points: raw.points.map((point) => ({
