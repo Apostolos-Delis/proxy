@@ -96,11 +96,11 @@ export function Badge({ children, variant, dot = false }: { children: ReactNode;
   return <span className={`badge${variant ? ` badge-${variant}` : ""}`}>{dot ? <span className="dot" /> : null}{children}</span>;
 }
 
-export function InfoHint({ label, children }: { label: string; children: ReactNode }) {
+export function InfoHint({ label, children, placement = "top" }: { label: string; children: ReactNode; placement?: "top" | "bottom" }) {
   return (
     <span className="info-hint" tabIndex={0} role="note" aria-label={label}>
       <Info />
-      <span className="info-hint-bubble" role="tooltip">{children}</span>
+      <span className={`info-hint-bubble${placement === "bottom" ? " info-hint-bubble-below" : ""}`} role="tooltip">{children}</span>
     </span>
   );
 }

@@ -242,6 +242,11 @@
   transition: opacity 0.12s ease;
 }
 
+.info-hint-bubble-below {
+  bottom: auto;
+  top: calc(100% + 8px);
+}
+
 .info-hint:hover .info-hint-bubble,
 .info-hint:focus-visible .info-hint-bubble {
   opacity: 1;
