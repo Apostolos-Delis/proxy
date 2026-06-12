@@ -96,6 +96,8 @@ supports_websockets = true
 4. The tier maps to a concrete model for the request's provider, and the call is forwarded — with the org-level system prompt (Settings → System Prompt) prepended ahead of harness prompts, when set.
 5. The route decision, provider attempts, usage, and config identity (config id, version, hash) are persisted on the request for auditing.
 
+Provider HTTP forwarding retries upstream `429` rate limits before sending response headers to the client. It honors `Retry-After`, then provider reset headers (`x-ratelimit-*` for OpenAI, `anthropic-ratelimit-*` for Anthropic), then falls back to jittered exponential backoff. Tune with `PROVIDER_RATE_LIMIT_MAX_ATTEMPTS`, `PROVIDER_RATE_LIMIT_BASE_DELAY_MS`, and `PROVIDER_RATE_LIMIT_MAX_DELAY_MS`; waits above the max delay cap are returned to the client with the provider's original 429 and headers.
+
 Routing configs are edited in the console: saving creates a new immutable version, which can be activated in the same step. Environment variables like `OPENAI_FAST_MODEL` and `ANTHROPIC_HARD_MODEL` only seed local defaults — persisted runtime requests resolve from the database. See the [routing configs runbook](docs/runbooks/routing-configs.md) for assignment commands and troubleshooting.
 
 Budget limits live in each routing config's `limits` block (`maxRoute`, `fallbackRoute`, `maxEstimatedInputTokens`, `routeEstimatedInputLimits`), edited on the Routing page; requests over a limit are rejected before provider spend. `MODEL_COSTS_JSON` remains an env-level pricing override.

@@ -19,6 +19,11 @@ export type MockServer = {
   close: () => Promise<void>;
 };
 
+type RateLimitMock = {
+  headers?: Record<string, string>;
+  body?: unknown;
+};
+
 export async function startOpenAIMock(
   options: {
     invalidClassifier?: boolean;
@@ -28,6 +33,7 @@ export async function startOpenAIMock(
     classifierResponsesShape?: boolean;
     compressedJsonProvider?: boolean;
     failProviderOnce?: boolean;
+    rateLimitProviderOnce?: RateLimitMock;
     slowProvider?: boolean;
     wsTerminalEvent?: "response.completed" | "response.incomplete";
     outputText?: string;
@@ -38,6 +44,7 @@ export async function startOpenAIMock(
   const wss = new WebSocketServer({ noServer: true });
   let wsResponseCount = 0;
   let providerFailed = false;
+  let providerRateLimited = false;
   let resolveProviderClosed: (() => void) | undefined;
   const providerClosed = new Promise<void>((resolve) => {
     resolveProviderClosed = resolve;
@@ -81,6 +88,18 @@ export async function startOpenAIMock(
         output_text: outputText,
         ...(options.classifierUsage ? { usage: options.classifierUsage } : {})
       });
+      return;
+    }
+
+    if (options.rateLimitProviderOnce && !providerRateLimited) {
+      providerRateLimited = true;
+      response.writeHead(429, {
+        "content-type": "application/json",
+        ...options.rateLimitProviderOnce.headers
+      });
+      response.end(JSON.stringify(
+        options.rateLimitProviderOnce.body ?? { error: { message: "mock rate limit", code: "rate_limit" } }
+      ));
       return;
     }
 
@@ -188,14 +207,32 @@ function isClassifierRequest(body: Record<string, unknown>) {
     );
 }
 
-export async function startAnthropicMock(options: { outputText?: string } = {}): Promise<MockServer> {
+export async function startAnthropicMock(
+  options: {
+    outputText?: string;
+    rateLimitProviderOnce?: RateLimitMock;
+  } = {}
+): Promise<MockServer> {
   const records: RecordedRequest[] = [];
+  let providerRateLimited = false;
   const server = createServer(async (request, response) => {
     const body = await readJson(request);
     records.push({ path: request.url ?? "", headers: request.headers, body });
 
     if (request.url === "/messages/count_tokens") {
       sendJson(response, { input_tokens: 42 });
+      return;
+    }
+
+    if (options.rateLimitProviderOnce && !providerRateLimited) {
+      providerRateLimited = true;
+      response.writeHead(429, {
+        "content-type": "application/json",
+        ...options.rateLimitProviderOnce.headers
+      });
+      response.end(JSON.stringify(
+        options.rateLimitProviderOnce.body ?? { error: { message: "mock rate limit", type: "rate_limit_error" } }
+      ));
       return;
     }
 

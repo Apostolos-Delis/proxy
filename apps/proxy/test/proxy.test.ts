@@ -748,6 +748,175 @@ describe("prompt proxy", () => {
     expect(providerCalls).toHaveLength(2);
   });
 
+  it("retries OpenAI provider rate limits before streaming the final response", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({
+      rateLimitProviderOnce: {
+        headers: {
+          "x-ratelimit-remaining-requests": "0",
+          "x-ratelimit-reset-requests": "1ms"
+        }
+      }
+    });
+    const app = buildServer(
+      loadConfig({
+        ...testEnv(),
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        PROVIDER_RATE_LIMIT_MAX_ATTEMPTS: "2",
+        PROVIDER_RATE_LIMIT_BASE_DELAY_MS: "1",
+        PROVIDER_RATE_LIMIT_MAX_DELAY_MS: "10",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "idempotency-key": "idem-openai-rate-limit"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "retry after rate limit",
+        stream: true
+      })
+    });
+    const body = await response.text();
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+
+    await app.close();
+
+    expect(response.status).toBe(200);
+    expect(body).toContain("response.completed");
+    const providerCalls = openai.records.filter(
+      (record) => record.body.model !== "route-classifier-cheap"
+    );
+    expect(providerCalls).toHaveLength(2);
+    const retryEvent = events.find((event: any) => event.eventType === "provider.rate_limit_retry_scheduled");
+    expect(retryEvent?.payload.provider).toBe("openai");
+    expect(retryEvent?.payload.retryDelayMs).toBe(1);
+    expect(retryEvent?.payload.rateLimit["x-ratelimit-reset-requests"]).toBe("1ms");
+  });
+
+  it("retries Anthropic provider rate limits using retry-after", async () => {
+    await anthropic.close();
+    anthropic = await startAnthropicMock({
+      rateLimitProviderOnce: {
+        headers: { "retry-after": "0" }
+      }
+    });
+    const app = buildServer(
+      loadConfig({
+        ...testEnv(),
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        PROVIDER_RATE_LIMIT_MAX_ATTEMPTS: "2",
+        PROVIDER_RATE_LIMIT_BASE_DELAY_MS: "1",
+        PROVIDER_RATE_LIMIT_MAX_DELAY_MS: "10",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "idempotency-key": "idem-anthropic-rate-limit"
+      },
+      body: JSON.stringify({
+        model: "claude-router-hard",
+        max_tokens: 64,
+        stream: true,
+        messages: [{ role: "user", content: "retry after rate limit" }]
+      })
+    });
+    const body = await response.text();
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+
+    await app.close();
+
+    expect(response.status).toBe(200);
+    expect(body).toContain("message_stop");
+    expect(anthropic.records.filter((record) => record.path === "/messages")).toHaveLength(2);
+    const retryEvent = events.find((event: any) => event.eventType === "provider.rate_limit_retry_scheduled");
+    expect(retryEvent?.payload.provider).toBe("anthropic");
+    expect(retryEvent?.payload.retryDelayMs).toBe(0);
+    expect(retryEvent?.payload.rateLimit["retry-after"]).toBe("0");
+  });
+
+  it("returns provider rate limits when retry-after exceeds the local wait cap", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({
+      rateLimitProviderOnce: {
+        headers: { "retry-after": "2" }
+      }
+    });
+    const app = buildServer(
+      loadConfig({
+        ...testEnv(),
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        PROVIDER_RATE_LIMIT_MAX_ATTEMPTS: "3",
+        PROVIDER_RATE_LIMIT_BASE_DELAY_MS: "1",
+        PROVIDER_RATE_LIMIT_MAX_DELAY_MS: "1",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "idempotency-key": "idem-openai-rate-limit-cap"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "do not wait too long",
+        stream: true
+      })
+    });
+    const body = await response.text();
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+
+    await app.close();
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("2");
+    expect(body).toContain("mock rate limit");
+    const providerCalls = openai.records.filter(
+      (record) => record.body.model !== "route-classifier-cheap"
+    );
+    expect(providerCalls).toHaveLength(1);
+    expect(events.some((event: any) => event.eventType === "provider.rate_limit_retry_scheduled")).toBe(false);
+  });
+
   it("aborts upstream streaming when the client cancels", async () => {
     const slowOpenAI = await startOpenAIMock({ slowProvider: true });
     const app = buildServer(

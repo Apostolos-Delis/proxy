@@ -65,10 +65,9 @@ export class ProviderProxy implements ProviderAdapter {
 
     let upstream: Response;
     try {
-      upstream = await fetch(this.urlFor(input.provider, input.path, input.credential), {
-        method: "POST",
-        headers: this.headersFor(input.provider, input.headers, input.credential),
-        body: JSON.stringify(input.body),
+      upstream = await this.fetchWithRateLimitRetries({
+        input,
+        providerAttemptId: attempt.id,
         signal: abortController.signal
       });
     } catch (error) {
@@ -282,6 +281,64 @@ export class ProviderProxy implements ProviderAdapter {
     }
   }
 
+  private async fetchWithRateLimitRetries({
+    input,
+    providerAttemptId,
+    signal
+  }: {
+    input: ProviderForwardInput;
+    providerAttemptId: string;
+    signal: AbortSignal;
+  }) {
+    const maxAttempts = this.config.providerRateLimitMaxAttempts;
+
+    for (let upstreamAttempt = 1; upstreamAttempt <= maxAttempts; upstreamAttempt += 1) {
+      const upstream = await fetch(this.urlFor(input.provider, input.path, input.credential), {
+        method: "POST",
+        headers: this.headersFor(input.provider, input.headers, input.credential),
+        body: JSON.stringify(input.body),
+        signal
+      });
+
+      if (upstream.status !== 429 || upstreamAttempt === maxAttempts) {
+        return upstream;
+      }
+
+      const delayMs = rateLimitRetryDelayMs({
+        headers: upstream.headers,
+        provider: input.provider,
+        attempt: upstreamAttempt,
+        baseDelayMs: this.config.providerRateLimitBaseDelayMs,
+        maxDelayMs: this.config.providerRateLimitMaxDelayMs
+      });
+      if (delayMs === undefined) return upstream;
+
+      await discardBody(upstream);
+      await this.events.append({
+        scopeType: "request",
+        scopeId: input.requestId,
+        correlationId: input.requestId,
+        idempotencyKey: input.idempotencyKey,
+        producer: "prompt-proxy.provider",
+        eventType: "provider.rate_limit_retry_scheduled",
+        payload: {
+          surface: input.surface,
+          provider: input.provider,
+          model: input.decision.selectedModel ?? "unknown",
+          providerAttemptId,
+          upstreamAttempt,
+          maxAttempts,
+          upstreamStatus: upstream.status,
+          retryDelayMs: delayMs,
+          rateLimit: jsonPayload(rateLimitHeaders(upstream.headers))
+        }
+      });
+      await sleep(delayMs, signal);
+    }
+
+    throw new Error("Provider rate-limit retry loop exhausted.");
+  }
+
   private urlFor(provider: Provider, path?: string, credential?: UpstreamCredential) {
     const openAIChatGPT = provider === "openai" && credential?.provider === provider &&
       credential.authType === "oauth" && this.config.subscriptionOAuthEnabled;
@@ -427,4 +484,133 @@ function withoutOutputText(observation: StreamObservation) {
 
 function onceDrain(stream: NodeJS.WritableStream) {
   return new Promise<void>((resolve) => stream.once("drain", resolve));
+}
+
+function rateLimitRetryDelayMs(input: {
+  headers: Headers;
+  provider: Provider;
+  attempt: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+}) {
+  const headerDelay = retryAfterDelayMs(input.headers) ?? providerResetDelayMs(input.headers, input.provider);
+  const delayMs = headerDelay ?? fallbackBackoffMs(input.attempt, input.baseDelayMs, input.maxDelayMs);
+  if (delayMs > input.maxDelayMs) return undefined;
+  return delayMs;
+}
+
+function retryAfterDelayMs(headers: Headers) {
+  const value = headers.get("retry-after");
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1000);
+  const dateMs = Date.parse(value);
+  if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now());
+  return undefined;
+}
+
+function providerResetDelayMs(headers: Headers, provider: Provider) {
+  const values = provider === "openai"
+    ? [
+        delayWithRemaining(headers, "x-ratelimit-reset-requests", "x-ratelimit-remaining-requests"),
+        delayWithRemaining(headers, "x-ratelimit-reset-tokens", "x-ratelimit-remaining-tokens")
+      ]
+    : [
+        delayWithRemaining(headers, "anthropic-ratelimit-requests-reset", "anthropic-ratelimit-requests-remaining"),
+        delayWithRemaining(headers, "anthropic-ratelimit-tokens-reset", "anthropic-ratelimit-tokens-remaining"),
+        delayWithRemaining(headers, "anthropic-ratelimit-input-tokens-reset", "anthropic-ratelimit-input-tokens-remaining"),
+        delayWithRemaining(headers, "anthropic-ratelimit-output-tokens-reset", "anthropic-ratelimit-output-tokens-remaining"),
+        delayWithRemaining(headers, "anthropic-priority-input-tokens-reset", "anthropic-priority-input-tokens-remaining"),
+        delayWithRemaining(headers, "anthropic-priority-output-tokens-reset", "anthropic-priority-output-tokens-remaining")
+      ];
+  const exhausted = values.filter((value) => value.delayMs !== undefined && value.exhausted);
+  if (exhausted.length > 0) return Math.max(...exhausted.map((value) => value.delayMs ?? 0));
+  const candidates = values.map((value) => value.delayMs).filter((value) => value !== undefined);
+  if (candidates.length === 0) return undefined;
+  return Math.min(...candidates);
+}
+
+function delayWithRemaining(headers: Headers, resetHeader: string, remainingHeader: string) {
+  const reset = headers.get(resetHeader);
+  const remaining = headers.get(remainingHeader);
+  return {
+    delayMs: reset ? parseResetDelayMs(reset) : undefined,
+    exhausted: remaining !== null && Number(remaining) <= 0
+  };
+}
+
+function parseResetDelayMs(value: string) {
+  const duration = parseDurationMs(value);
+  if (duration !== undefined) return duration;
+  const dateMs = Date.parse(value);
+  if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now());
+  return undefined;
+}
+
+function parseDurationMs(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const matches = [...trimmed.matchAll(/(\d+(?:\.\d+)?)(ms|s|m|h)/g)];
+  if (matches.length === 0) return undefined;
+  const consumed = matches.map((match) => match[0]).join("");
+  if (consumed !== trimmed) return undefined;
+  return Math.ceil(matches.reduce((total, match) => {
+    const amount = Number(match[1]);
+    if (!Number.isFinite(amount)) return total;
+    if (match[2] === "ms") return total + amount;
+    if (match[2] === "s") return total + amount * 1000;
+    if (match[2] === "m") return total + amount * 60_000;
+    return total + amount * 3_600_000;
+  }, 0));
+}
+
+function fallbackBackoffMs(attempt: number, baseDelayMs: number, maxDelayMs: number) {
+  const ceiling = Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1));
+  if (ceiling <= 0) return 0;
+  return Math.ceil(ceiling / 2 + Math.random() * (ceiling / 2));
+}
+
+function rateLimitHeaders(headers: Headers) {
+  const result: Record<string, string> = {};
+  for (const [key, value] of headers.entries()) {
+    if (
+      key === "retry-after" ||
+      key.startsWith("x-ratelimit-") ||
+      key.startsWith("anthropic-ratelimit-") ||
+      key.startsWith("anthropic-priority-") ||
+      key.startsWith("anthropic-fast-")
+    ) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+async function discardBody(response: Response) {
+  try {
+    await response.body?.cancel();
+  } catch {
+    await response.text().catch(() => undefined);
+  }
+}
+
+function sleep(delayMs: number, signal: AbortSignal) {
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(abortError());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function abortError() {
+  const error = new Error("Provider request cancelled.");
+  error.name = "AbortError";
+  return error;
 }
