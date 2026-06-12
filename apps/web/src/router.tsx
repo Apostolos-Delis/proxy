@@ -131,21 +131,21 @@ const providerKeysRoute = createRoute({
 
 const routingConfigsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/routing-configs",
+  path: "/routing",
   beforeLoad: requireAuth,
   component: RoutingConfigsPage
 });
 
 const routingConfigCreateRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/routing-configs/new",
+  path: "/routing/new",
   beforeLoad: requireAuth,
   component: CreateRoutingConfigPage
 });
 
 const routingConfigDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/routing-configs/$configId",
+  path: "/routing/$configId",
   beforeLoad: requireAuth,
   component: RoutingConfigDetailRoutePage
 });

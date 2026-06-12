@@ -49,7 +49,7 @@ export function RoutingConfigDetailPage({ configId }: { configId: string }) {
   return (
     <div className="page page-enter routing-detail-stack">
       <div className="routing-back-row">
-        <Link to="/routing-configs" className="btn btn-sm"><ArrowLeft />All configs</Link>
+        <Link to="/routing" className="btn btn-sm"><ArrowLeft />All configs</Link>
       </div>
       <div className="page-title-row routing-detail-title">
         <div>

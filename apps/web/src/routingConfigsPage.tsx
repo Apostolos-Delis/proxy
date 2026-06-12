@@ -37,7 +37,7 @@ export function RoutingConfigsPage() {
               </button>
             ) : null}
             <Link to="/settings" className="btn"><Settings2 />Runtime settings</Link>
-            <Link to="/routing-configs/new" className="btn btn-primary"><Plus />New config</Link>
+            <Link to="/routing/new" className="btn btn-primary"><Plus />New config</Link>
           </>
         }
       />

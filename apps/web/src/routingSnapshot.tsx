@@ -32,7 +32,7 @@ export function RoutingConfigMicro({ snapshot }: { snapshot?: RoutingConfigSnaps
   if (!snapshot) return null;
   return (
     <span className="routing-config-micro" title={snapshot.configHash ? `config hash ${snapshot.configHash}` : undefined}>
-      <Link to="/routing-configs/$configId" params={{ configId: snapshot.configId }}>
+      <Link to="/routing/$configId" params={{ configId: snapshot.configId }}>
         {snapshot.configName ?? compactId(snapshot.configId)}
       </Link>
       <span>· {versionLabel(snapshot)}</span>

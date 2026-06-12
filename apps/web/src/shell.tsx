@@ -19,7 +19,7 @@ const workspaceNav = [
 ] as const;
 
 const operationsNav = [
-  { to: "/routing-configs", label: "Routing", icon: GitBranch },
+  { to: "/routing", label: "Routing", icon: GitBranch },
   { to: "/settings", label: "Settings", icon: Settings }
 ] as const;
 
@@ -42,8 +42,8 @@ const titles: Record<string, [string, string | null]> = {
   "/users": ["Users", "Team & access"],
   "/billing": ["Billing", "Spend & invoices"],
   "/settings": ["Settings", "Runtime configuration"],
-  "/routing-configs": ["Routing", "Config versions"],
-  "/routing-configs/new": ["Routing", "New config"],
+  "/routing": ["Routing", "Config versions"],
+  "/routing/new": ["Routing", "New config"],
   "/prompts": ["Prompts", "Captured prompt artifacts"],
   "/sessions": ["Sessions", "Agent session replay"]
 };
@@ -154,6 +154,6 @@ function titleForPath(pathname: string) {
   if (pathname.startsWith("/logs/")) return ["Logs", "Prompt detail"] as const;
   if (pathname.startsWith("/prompts/")) return ["Prompts", "Prompt detail"] as const;
   if (pathname.startsWith("/sessions/")) return ["Sessions", "Session replay"] as const;
-  if (pathname.startsWith("/routing-configs/")) return ["Routing", "Config detail"] as const;
+  if (pathname.startsWith("/routing/")) return ["Routing", "Config detail"] as const;
   return ["Proxy", "LLM cost console"] as const;
 }

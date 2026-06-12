@@ -70,7 +70,7 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
       return;
     }
     if (action.kind === "routing_config") {
-      void navigate({ to: "/routing-configs/$configId", params: { configId: action.id } });
+      void navigate({ to: "/routing/$configId", params: { configId: action.id } });
       return;
     }
     if (action.kind === "user") {
