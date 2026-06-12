@@ -125,9 +125,17 @@ export class RoutingService {
     let classification: ClassificationResult | undefined;
     let requestedRoute: RouteName;
     let classifierFailed = false;
+    let classificationSkipped = false;
     const classifierSettings = routingConfig?.config.classifier ?? defaultClassifierSettings(this.config);
+    const ceilingRoute = routeOrder[routeOrder.length - 1];
     if (explicit) {
       requestedRoute = explicit;
+    } else if ((await this.sessions.peek(context)) === ceilingRoute) {
+      // Session memory never downgrades, so once a session sits at the top
+      // route the classifier's output cannot change the decision — skip the
+      // call instead of spending its latency and tokens.
+      classificationSkipped = true;
+      requestedRoute = ceilingRoute;
     } else {
       const cacheKey = context.organizationId
         ? classificationCacheKey(context.organizationId, context, routingConfigSnapshot)
@@ -184,6 +192,9 @@ export class RoutingService {
         decision.guardrailActions.push("classifier_failure_fallback");
         decision.reasonCodes = ["classifier_failure_fallback"];
       }
+    }
+    if (classificationSkipped && decision.outcome === "route") {
+      decision.reasonCodes = ["session_route_ceiling"];
     }
     if (decision.outcome === "route" && decision.finalRoute) {
       const postBudget = this.budget.checkDecision(context, decision.finalRoute);

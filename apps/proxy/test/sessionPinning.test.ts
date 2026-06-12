@@ -26,6 +26,16 @@ const hardClassifierOutput = {
   confidence: 0.92
 };
 
+const deepClassifierOutput = {
+  complexity: "deep",
+  risk: ["architecture"],
+  recommended_route: "deep",
+  can_use_fast_model: false,
+  needs_deep_reasoning: true,
+  reason_codes: ["session_ceiling_test"],
+  confidence: 0.95
+};
+
 describe("session pinning", () => {
   let activeFixture: PromptTestFixture | undefined;
 
@@ -157,6 +167,40 @@ describe("session pinning", () => {
     expect(payload?.pin?.settings?.model).toBe("claude-upgrade-hard");
   });
 
+  it("skips classification once a session reaches the deep route", async () => {
+    const organizationId = "org_session_deep_skip";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: { classifierOutput: deepClassifierOutput }
+    });
+
+    const first = await sendMessages(activeFixture, "proxy-token", "ceiling-session");
+    expect(first.status).toBe(200);
+    expect(classifierCalls(activeFixture)).toBe(1);
+
+    const second = await sendMessages(activeFixture, "proxy-token", "ceiling-session");
+    expect(second.status).toBe(200);
+    expect(classifierCalls(activeFixture)).toBe(1);
+
+    const decision = await lastDecisionPayload(activeFixture);
+    expect(decision?.finalRoute).toBe("deep");
+    expect(decision?.reasonCodes).toContain("session_route_ceiling");
+    expect(decision?.guardrailActions).toContain("session_route_kept");
+  });
+
+  it("keeps classifying while a session sits below the deep route", async () => {
+    const organizationId = "org_session_below_ceiling";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: { classifierOutput: hardClassifierOutput }
+    });
+
+    const first = await sendMessages(activeFixture, "proxy-token", "hard-session");
+    expect(first.status).toBe(200);
+    const second = await sendMessages(activeFixture, "proxy-token", "hard-session");
+    expect(second.status).toBe(200);
+
+    expect(classifierCalls(activeFixture)).toBe(2);
+  });
+
   it("falls back to fresh resolution when the stored pin does not match the surface", async () => {
     const organizationId = "org_session_pin_stale";
     activeFixture = await captureFixture(organizationId, "raw_text", false, {
@@ -256,12 +300,20 @@ function lastAnthropicModel(fixture: PromptTestFixture) {
   return fixture.anthropic.records.at(-1)?.body.model;
 }
 
+function classifierCalls(fixture: PromptTestFixture) {
+  return fixture.openai.records.filter(
+    (record) => record.body.model === "route-classifier-cheap"
+  ).length;
+}
+
 async function lastDecisionPayload(fixture: PromptTestFixture) {
   const eventRows = await fixture.db.select().from(events);
   const decision = eventRows
     .filter((event) => event.eventType === "routing.decision_recorded")
     .at(-1);
-  return decision?.payload as { guardrailActions?: string[] } | undefined;
+  return decision?.payload as
+    | { guardrailActions?: string[]; reasonCodes?: string[]; finalRoute?: string }
+    | undefined;
 }
 
 function withHardAnthropic(

@@ -98,6 +98,12 @@ export class SessionRouteStore {
 
   constructor(private readonly loadPin?: SessionPinLoader) {}
 
+  async peek(context: RouteContext): Promise<RouteName | undefined> {
+    if (!context.sessionId) return undefined;
+    const existing = await this.hydrate(sessionScope(context), context);
+    return existing?.currentRoute;
+  }
+
   async plan(context: RouteContext, route: RouteName): Promise<SessionRouteUpdate | undefined> {
     if (!context.sessionId) return undefined;
 
