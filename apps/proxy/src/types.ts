@@ -21,6 +21,7 @@ export type UpstreamCredential = {
   readonly token: string;
   readonly providerAccountId: string;
   readonly authType: ProviderAccountAuthType;
+  readonly chatgptAccountId?: string;
 };
 
 export type Verbosity = RoutingVerbosity;

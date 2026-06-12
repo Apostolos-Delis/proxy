@@ -6,6 +6,7 @@ import {
   apiKeyProviderAccounts,
   apiKeys,
   defaultWorkspaceId,
+  decryptSecret,
   encryptSecret,
   providerAccounts,
   users
@@ -31,6 +32,12 @@ const messageBody = JSON.stringify({
   model: "claude-router-auto",
   messages: [{ role: "user", content: "debug this flaky auth regression and find root cause" }],
   max_tokens: 1024,
+  stream: true
+});
+
+const openAIResponseBody = JSON.stringify({
+  model: "gpt-router-auto",
+  input: [{ role: "user", content: "debug this flaky auth regression and find root cause" }],
   stream: true
 });
 
@@ -126,6 +133,8 @@ describe("BYOK provider credentials", () => {
 
 describe("subscription oauth credentials", () => {
   const OAUTH_TOKEN = "sk-ant-oat01-fake-subscription-token";
+  const OPENAI_OAUTH_TOKEN = "openai-chatgpt-access-token";
+  const CHATGPT_ACCOUNT_ID = "chatgpt-account-test";
 
   let activeFixture: PromptTestFixture | undefined;
 
@@ -171,13 +180,62 @@ describe("subscription oauth credentials", () => {
     expect(created.errors?.[0]?.message).toBe("invalid_subscription_token");
   });
 
-  it("rejects oauth credentials for non-anthropic providers", async () => {
-    const fixture = await setup("org_oauth_provider", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
+  it("stores an OpenAI oauth credential with a ChatGPT account ID", async () => {
+    const fixture = await setup("org_oauth_openai_create", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
 
     const created = await gql(fixture, CREATE, {
-      input: { provider: "openai", name: "My Max sub", authType: "oauth", apiKey: OAUTH_TOKEN }
+      input: {
+        provider: "openai",
+        name: "My ChatGPT sub",
+        authType: "oauth",
+        apiKey: OPENAI_OAUTH_TOKEN,
+        chatgptAccountId: CHATGPT_ACCOUNT_ID
+      }
     });
-    expect(created.errors?.[0]?.message).toBe("subscription_oauth_unsupported_provider");
+    expect(created.errors).toBeUndefined();
+    expect(created.data?.createProviderCredential.authType).toBe("oauth");
+    expect(JSON.stringify(created)).not.toContain(OPENAI_OAUTH_TOKEN);
+  });
+
+  it("extracts OpenAI access tokens from auth JSON without storing refresh tokens", async () => {
+    const fixture = await setup("org_oauth_openai_auth_json", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
+
+    const created = await gql(fixture, CREATE, {
+      input: {
+        provider: "openai",
+        name: "My ChatGPT sub",
+        authType: "oauth",
+        apiKey: JSON.stringify({
+          auth_mode: "chatgpt",
+          tokens: {
+            access_token: OPENAI_OAUTH_TOKEN,
+            refresh_token: "openai-refresh-token"
+          },
+          chatgpt_account_id: CHATGPT_ACCOUNT_ID
+        })
+      }
+    });
+    expect(created.errors).toBeUndefined();
+
+    const [row] = await fixture.db
+      .select({
+        secretCiphertext: providerAccounts.secretCiphertext,
+        settings: providerAccounts.settings
+      })
+      .from(providerAccounts)
+      .where(eq(providerAccounts.id, created.data?.createProviderCredential.id));
+    expect(row).toBeTruthy();
+    expect(decryptSecret(row!.secretCiphertext ?? "", ENCRYPTION_KEY)).toBe(OPENAI_OAUTH_TOKEN);
+    expect(JSON.stringify(row!.settings)).not.toContain("refresh");
+  });
+
+  it("rejects OpenAI oauth credentials without a ChatGPT account ID", async () => {
+    const fixture = await setup("org_oauth_openai_account", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
+
+    const created = await gql(fixture, CREATE, {
+      input: { provider: "openai", name: "My ChatGPT sub", authType: "oauth", apiKey: OPENAI_OAUTH_TOKEN }
+    });
+    expect(created.errors?.[0]?.message).toBe("invalid_subscription_account_id");
   });
 
   it("binds an oauth credential to a key owned by the credential creator", async () => {
@@ -303,6 +361,24 @@ describe("subscription oauth credentials", () => {
     });
   });
 
+  it("resolves an OpenAI oauth credential with the ChatGPT account ID", async () => {
+    const fixture = await setup("org_oauth_openai_resolve", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
+    const accountId = await createBoundOpenAIOauthCredential(fixture, "org_oauth_openai_resolve");
+
+    const credential = await fixture.persistence.providerCredentials.resolveForRequest({
+      organizationId: "org_oauth_openai_resolve",
+      apiKeyId: "org_oauth_openai_resolve:api-key:default",
+      provider: "openai"
+    });
+    expect(credential).toMatchObject({
+      provider: "openai",
+      authType: "oauth",
+      token: OPENAI_OAUTH_TOKEN,
+      providerAccountId: accountId,
+      chatgptAccountId: CHATGPT_ACCOUNT_ID
+    });
+  });
+
   it("resolves oauth accounts to undefined when the flag is off", async () => {
     const fixture = await setup("org_oauth_resolve_off");
     await insertBoundOauthAccount(fixture, "org_oauth_resolve_off", encryptSecret(OAUTH_TOKEN, ENCRYPTION_KEY));
@@ -411,6 +487,48 @@ describe("subscription oauth credentials", () => {
     expect(providerCall?.headers["x-api-key"]).toBeUndefined();
   });
 
+  it("forwards OpenAI oauth credentials to the Codex backend with a ChatGPT account header", async () => {
+    const fixture = await setup("org_oauth_openai_forward", { SUBSCRIPTION_OAUTH_ENABLED: "true" }, {
+      openAIChatGPTOptions: {}
+    });
+    await createBoundOpenAIOauthCredential(fixture, "org_oauth_openai_forward");
+
+    const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "x-api-key": "proxy-token",
+        "content-type": "application/json",
+        "x-codex-turn-state": "turn-state"
+      },
+      body: openAIResponseBody
+    });
+    expect(response.status).toBe(200);
+    await response.text();
+
+    const defaultProviderCall = fixture.openai.records.find((record) => record.body.model === "gpt-5.5");
+    const providerCall = fixture.openaiChatgpt.records.find((record) => record.body.model === "gpt-5.5");
+    expect(defaultProviderCall).toBeUndefined();
+    expect(providerCall?.headers.authorization).toBe(`Bearer ${OPENAI_OAUTH_TOKEN}`);
+    expect(providerCall?.headers["chatgpt-account-id"]).toBe(CHATGPT_ACCOUNT_ID);
+    expect(providerCall?.headers["x-codex-turn-state"]).toBe("turn-state");
+  });
+
+  it("stops forwarding a cached OpenAI oauth credential the moment the flag is off", async () => {
+    const fixture = await setup("org_oauth_openai_killswitch", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
+    await createBoundOpenAIOauthCredential(fixture, "org_oauth_openai_killswitch");
+
+    await sendOpenAIResponse(fixture);
+    expect(fixture.openai.records.find((record) => record.body.model === "gpt-5.5")?.headers.authorization).toBe(`Bearer ${OPENAI_OAUTH_TOKEN}`);
+
+    fixture.config.subscriptionOAuthEnabled = false;
+    await sendOpenAIResponse(fixture);
+
+    const providerCalls = fixture.openai.records.filter((record) => record.body.model === "gpt-5.5");
+    const providerCall = providerCalls.at(-1);
+    expect(providerCall?.headers.authorization).toBe("Bearer openai-upstream-key");
+    expect(providerCall?.headers["chatgpt-account-id"]).toBeUndefined();
+  });
+
   it("serves cached oauth credentials within the TTL without re-reading the row", async () => {
     const fixture = await setup("org_oauth_cache", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
     const accountId = await createBoundOauthCredential(fixture, "org_oauth_cache");
@@ -454,8 +572,13 @@ describe("subscription oauth credentials", () => {
     expect(afterExpiry).toBeUndefined();
   });
 
-  async function setup(organizationId: string, envOverrides: Record<string, string> = {}) {
+  async function setup(
+    organizationId: string,
+    envOverrides: Record<string, string> = {},
+    options: Pick<NonNullable<Parameters<typeof captureFixture>[3]>, "openAIChatGPTOptions"> = {}
+  ) {
     activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      ...options,
       envOverrides: { PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY, ...envOverrides }
     });
     return activeFixture;
@@ -474,6 +597,27 @@ describe("subscription oauth credentials", () => {
     const bound = await gql(fixture, BIND, {
       apiKeyId: `${organizationId}:api-key:default`,
       provider: "anthropic",
+      providerAccountId: accountId
+    });
+    expect(bound.errors).toBeUndefined();
+    return accountId;
+  }
+
+  async function createBoundOpenAIOauthCredential(fixture: PromptTestFixture, organizationId: string) {
+    const created = await gql(fixture, CREATE, {
+      input: {
+        provider: "openai",
+        name: "My ChatGPT sub",
+        authType: "oauth",
+        apiKey: OPENAI_OAUTH_TOKEN,
+        chatgptAccountId: CHATGPT_ACCOUNT_ID
+      }
+    });
+    expect(created.errors).toBeUndefined();
+    const accountId = created.data?.createProviderCredential.id as string;
+    const bound = await gql(fixture, BIND, {
+      apiKeyId: `${organizationId}:api-key:default`,
+      provider: "openai",
       providerAccountId: accountId
     });
     expect(bound.errors).toBeUndefined();
@@ -550,6 +694,19 @@ async function sendMessage(fixture: PromptTestFixture) {
       "anthropic-version": "2023-06-01"
     },
     body: messageBody
+  });
+  expect(response.status).toBe(200);
+  await response.text();
+}
+
+async function sendOpenAIResponse(fixture: PromptTestFixture) {
+  const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+    method: "POST",
+    headers: {
+      "x-api-key": "proxy-token",
+      "content-type": "application/json"
+    },
+    body: openAIResponseBody
   });
   expect(response.status).toBe(200);
   await response.text();

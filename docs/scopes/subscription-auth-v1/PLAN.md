@@ -1,5 +1,12 @@
 # Subscription Auth V1
 
+> Current implementation note (2026-06-12): this original scope shipped the Anthropic-only V1. A later
+> follow-up now also supports OpenAI HTTP Responses subscription credentials by storing a Codex access
+> token encrypted at rest, storing `chatgptAccountId` as provider metadata, forwarding to
+> `OPENAI_CHATGPT_BASE_URL`, and sending `ChatGPT-Account-Id`. The proxy does not store or refresh
+> OpenAI refresh tokens; use official Codex access tokens where available or rotate short-lived ChatGPT
+> login tokens manually.
+
 ## Goal
 
 Let a user authenticate upstream Anthropic traffic with a **Claude Pro/Max/Team/Enterprise
@@ -374,8 +381,8 @@ A real `sk-ant-oat01-` token is required; none of the below can be proven from c
 
 ## Out Of Scope
 
-- OpenAI "Sign in with ChatGPT" subscription auth (separate follow-up; OpenAI is more permissive, but
-  uses a different backend base URL + account-id header and needs its own scope).
+- Full in-console OpenAI "Sign in with ChatGPT" OAuth (the current follow-up supports pasted Codex
+  access tokens plus ChatGPT account IDs, not a browser login flow).
 - Full in-console "Sign in with Claude" OAuth flow (authorize redirect, PKCE, callback routes).
 - Token refresh / rotation subsystem (unnecessary for the 1-year setup-token).
 - Pooled / shared subscription tokens (reselling — prohibited).

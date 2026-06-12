@@ -18,18 +18,20 @@ type CreateForm = {
   name: string;
   authType: ProviderAccountAuthType;
   apiKey: string;
+  chatgptAccountId: string;
 };
 
 const emptyForm: CreateForm = {
   provider: "anthropic",
   name: "",
   authType: "api_key",
-  apiKey: ""
+  apiKey: "",
+  chatgptAccountId: ""
 };
 
 const AUTH_TYPE_OPTIONS: { value: ProviderAccountAuthType; label: string }[] = [
   { value: "api_key", label: "API key" },
-  { value: "oauth", label: "Claude subscription (Pro/Max)" }
+  { value: "oauth", label: "Subscription" }
 ];
 
 // Must stay in sync with CLAUDE_SUBSCRIPTION_TOKEN_PREFIX in
@@ -49,6 +51,8 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
   });
   const subscriptionAuthEnabled = subscriptionAuthQuery.data === true;
   const isSubscription = form.authType === "oauth";
+  const isAnthropicSubscription = isSubscription && form.provider === "anthropic";
+  const isOpenAISubscription = isSubscription && form.provider === "openai";
   const createMutation = useMutation({
     mutationFn: async (input: CreateProviderCredentialInput) => {
       const account = await createProviderCredential(input);
@@ -86,7 +90,8 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
             provider: form.provider,
             name: form.name.trim(),
             authType: form.authType,
-            apiKey: form.apiKey.trim()
+            apiKey: form.apiKey.trim(),
+            chatgptAccountId: form.chatgptAccountId.trim() || undefined
           });
         }
       }}>
@@ -101,12 +106,7 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
                 ariaLabel="Auth type"
                 value={form.authType}
                 options={AUTH_TYPE_OPTIONS}
-                onChange={(value) => setForm((current) => ({
-                  ...current,
-                  authType: value as ProviderAccountAuthType,
-                  // Subscription tokens are Anthropic-only in V1.
-                  provider: value === "oauth" ? "anthropic" : current.provider
-                }))}
+                onChange={(value) => setForm((current) => ({ ...current, authType: value as ProviderAccountAuthType }))}
               />
             </div>
           ) : null}
@@ -115,7 +115,7 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
             <MenuSelect
               ariaLabel="Provider"
               value={form.provider}
-              options={isSubscription ? PROVIDER_OPTIONS.filter((option) => option.value === "anthropic") : PROVIDER_OPTIONS}
+              options={PROVIDER_OPTIONS}
               onChange={(value) => setForm((current) => ({ ...current, provider: value as ProviderName }))}
             />
           </div>
@@ -123,27 +123,48 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
             <input
               value={form.name}
               onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              placeholder={isSubscription ? "My Claude Max subscription" : "Acme Corp Anthropic key"}
+              placeholder={credentialNamePlaceholder(form)}
               autoComplete="off"
             />
           </Field>
+          {isOpenAISubscription ? (
+            <Field label="ChatGPT account ID">
+              <input
+                value={form.chatgptAccountId}
+                onChange={(event) => setForm((current) => ({ ...current, chatgptAccountId: event.target.value }))}
+                placeholder="account ID from Codex auth"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </Field>
+          ) : null}
         </div>
-        <Field label={isSubscription ? "Subscription token" : "API key"}>
+        <Field label={credentialSecretLabel(form)}>
           <input
             value={form.apiKey}
             onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))}
-            placeholder={isSubscription ? `${SUBSCRIPTION_TOKEN_PREFIX}...` : "sk-ant-..."}
+            placeholder={credentialSecretPlaceholder(form)}
             autoComplete="off"
             spellCheck={false}
           />
         </Field>
-        {isSubscription ? (
+        {isAnthropicSubscription ? (
           <div className="subscription-token-note">
             <div className="faint">
               Run <span className="mono">claude setup-token</span> on a Pro/Max account and paste the token it prints.
             </div>
             <Badge variant="warn" dot>
               Uses your personal Claude subscription against Anthropic&apos;s terms — enforcement lands on your own account. Internal use only.
+            </Badge>
+          </div>
+        ) : null}
+        {isOpenAISubscription ? (
+          <div className="subscription-token-note">
+            <div className="faint">
+              Use a Codex access token for ChatGPT-backed Codex traffic. The proxy forwards it to the Codex backend with the ChatGPT account ID.
+            </div>
+            <Badge variant="warn" dot>
+              Treat this like a password. Bind it only to API keys you own.
             </Badge>
           </div>
         ) : null}
@@ -165,8 +186,26 @@ function validate(form: CreateForm, subscriptionAuthEnabled: boolean) {
   if (form.authType === "oauth" && !subscriptionAuthEnabled) {
     return "Subscription auth has been disabled for this proxy.";
   }
-  if (form.authType === "oauth" && !form.apiKey.trim().startsWith(SUBSCRIPTION_TOKEN_PREFIX)) {
+  if (form.authType === "oauth" && form.provider === "anthropic" && !form.apiKey.trim().startsWith(SUBSCRIPTION_TOKEN_PREFIX)) {
     return `Subscription tokens from \`claude setup-token\` start with ${SUBSCRIPTION_TOKEN_PREFIX}`;
   }
+  if (form.authType === "oauth" && form.provider === "openai" && !form.chatgptAccountId.trim()) {
+    return "ChatGPT account ID is required for OpenAI subscription auth.";
+  }
   return null;
+}
+
+function credentialNamePlaceholder(form: CreateForm) {
+  if (form.authType !== "oauth") return "Acme Corp Anthropic key";
+  return form.provider === "openai" ? "My ChatGPT Codex access" : "My Claude Max subscription";
+}
+
+function credentialSecretLabel(form: CreateForm) {
+  if (form.authType !== "oauth") return "API key";
+  return form.provider === "openai" ? "Codex access token" : "Subscription token";
+}
+
+function credentialSecretPlaceholder(form: CreateForm) {
+  if (form.authType !== "oauth") return form.provider === "openai" ? "sk-proj-..." : "sk-ant-...";
+  return form.provider === "openai" ? "Codex access token" : `${SUBSCRIPTION_TOKEN_PREFIX}...`;
 }

@@ -65,7 +65,7 @@ export class ProviderProxy implements ProviderAdapter {
 
     let upstream: Response;
     try {
-      upstream = await fetch(this.urlFor(input.provider, input.path), {
+      upstream = await fetch(this.urlFor(input.provider, input.path, input.credential), {
         method: "POST",
         headers: this.headersFor(input.provider, input.headers, input.credential),
         body: JSON.stringify(input.body),
@@ -282,8 +282,13 @@ export class ProviderProxy implements ProviderAdapter {
     }
   }
 
-  private urlFor(provider: Provider, path?: string) {
-    const base = provider === "openai" ? this.config.openaiBaseUrl : this.config.anthropicBaseUrl;
+  private urlFor(provider: Provider, path?: string, credential?: UpstreamCredential) {
+    const openAIChatGPT = provider === "openai" && credential?.provider === provider &&
+      credential.authType === "oauth" && this.config.subscriptionOAuthEnabled;
+    let base = this.config.anthropicBaseUrl;
+    if (provider === "openai") {
+      base = openAIChatGPT ? this.config.openaiChatgptBaseUrl : this.config.openaiBaseUrl;
+    }
     return `${base}${path ?? (provider === "openai" ? "/responses" : "/messages")}`;
   }
 
@@ -298,7 +303,14 @@ export class ProviderProxy implements ProviderAdapter {
     const byok = credential && credential.provider === provider ? credential : undefined;
 
     if (provider === "openai") {
-      headers.authorization = `Bearer ${byok?.token ?? this.config.openaiApiKey}`;
+      const chatgptCredential = byok?.authType === "oauth" && this.config.subscriptionOAuthEnabled &&
+        byok.chatgptAccountId
+        ? byok
+        : undefined;
+      headers.authorization = `Bearer ${chatgptCredential?.token ?? (byok?.authType === "api_key" ? byok.token : this.config.openaiApiKey)}`;
+      if (chatgptCredential?.chatgptAccountId) {
+        headers["ChatGPT-Account-Id"] = chatgptCredential.chatgptAccountId;
+      }
       copyIfPresent(incoming, headers, "x-codex-turn-state");
       copyIfPresent(incoming, headers, "x-codex-turn-metadata");
       copyIfPresent(incoming, headers, "x-openai-subagent");

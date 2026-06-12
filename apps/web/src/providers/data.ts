@@ -69,6 +69,7 @@ export type CreateProviderCredentialInput = {
   name: string;
   authType: ProviderAccountAuthType;
   apiKey: string;
+  chatgptAccountId?: string;
 };
 
 export async function fetchProviderAccounts() {
