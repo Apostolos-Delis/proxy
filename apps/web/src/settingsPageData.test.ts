@@ -19,7 +19,6 @@ function makeSettings(overrides: Partial<EditableSettings> = {}): EditableSettin
     toolResultCompression: false,
     costBaseline: { anthropicModel: "claude-fable-5", openaiModel: "gpt-5.5" },
     classifier: { model: "gpt-5-nano", timeoutMs: 4000, maxAttempts: 2, allowRedactedExcerpt: true },
-    budgets: { warningEstimatedInputTokens: null, maxEstimatedInputTokens: null, maxRoute: null },
     routeQuality: { lowConfidenceThreshold: 0.55 },
     promptCapture: { promptCaptureMode: "raw_text", retentionDays: 30 },
     ...overrides
@@ -33,14 +32,13 @@ describe("sectionsFor", () => {
       "optimization",
       "baseline",
       "classifier",
-      "budgets",
       "capture",
       "quality"
     ]);
   });
 
   it("drops database-backed sections in file-only mode", () => {
-    expect(sectionsFor(false).map((section) => section.id)).toEqual(["classifier", "budgets", "capture", "quality"]);
+    expect(sectionsFor(false).map((section) => section.id)).toEqual(["classifier", "capture", "quality"]);
   });
 });
 
@@ -56,9 +54,9 @@ describe("filterSections", () => {
   });
 
   it("matches the section title so a section query keeps all its rows", () => {
-    const result = filterSections(settingsSections, "budgets");
-    expect(result.map((section) => section.id)).toEqual(["budgets"]);
-    expect(result[0]?.rows).toHaveLength(3);
+    const result = filterSections(settingsSections, "prompt capture");
+    expect(result.map((section) => section.id)).toEqual(["capture"]);
+    expect(result[0]?.rows).toHaveLength(2);
   });
 
   it("returns no sections when nothing matches", () => {
@@ -107,7 +105,7 @@ describe("changedRowIds", () => {
 });
 
 describe("restartPending", () => {
-  const restartRequiredFor = ["classifier", "budgets", "routeQuality"];
+  const restartRequiredFor = ["classifier", "routeQuality"];
 
   it("flags edits inside restart-gated sections", () => {
     const initial = makeSettings();

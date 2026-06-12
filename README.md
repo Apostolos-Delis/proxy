@@ -98,7 +98,7 @@ supports_websockets = true
 
 Routing configs are edited in the console: saving creates a new immutable version, which can be activated in the same step. Environment variables like `OPENAI_FAST_MODEL` and `ANTHROPIC_HARD_MODEL` only seed local defaults — persisted runtime requests resolve from the database. See the [routing configs runbook](docs/runbooks/routing-configs.md) for assignment commands and troubleshooting.
 
-Optional budget controls: `BUDGET_MAX_ROUTE`, `BUDGET_MAX_ESTIMATED_INPUT_TOKENS`, `BUDGET_USER_ESTIMATED_INPUT_LIMITS`, `BUDGET_TEAM_ESTIMATED_INPUT_LIMITS`, and `MODEL_COSTS_JSON`.
+Budget limits live in each routing config's `limits` block (`maxRoute`, `fallbackRoute`, `maxEstimatedInputTokens`, `routeEstimatedInputLimits`), edited on the Routing page; requests over a limit are rejected before provider spend. `MODEL_COSTS_JSON` remains an env-level pricing override.
 
 ## Workspaces
 

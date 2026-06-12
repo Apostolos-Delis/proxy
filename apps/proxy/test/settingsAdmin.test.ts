@@ -26,9 +26,6 @@ describe("persistent settings admin APIs", () => {
         maxAttempts: 4,
         allowRedactedExcerpt: true
       },
-      budgets: {
-        maxRoute: "hard"
-      },
       routeQuality: {
         lowConfidenceThreshold: 0.42
       },
@@ -45,8 +42,22 @@ describe("persistent settings admin APIs", () => {
     expect(config.classifierTimeoutMs).toBe(2400);
     expect(config.classifierMaxAttempts).toBe(4);
     expect(config.classifierAllowRedactedExcerpt).toBe(true);
-    expect(config.budgetMaxRoute).toBe("hard");
     expect(config.routeQualityLowConfidenceThreshold).toBe(0.42);
+  });
+
+  it("ignores the budgets block in settings files saved before limits moved to routing configs", async () => {
+    const settingsPath = await tempSettingsPath();
+    await writeFile(settingsPath, JSON.stringify({
+      schemaVersion: 1,
+      classifier: { model: "legacy-classifier" },
+      budgets: { warningEstimatedInputTokens: 1000, maxEstimatedInputTokens: 2000, maxRoute: "hard" },
+      routeQuality: {},
+      promptCapture: {}
+    }), "utf8");
+
+    const config = loadConfig({ PROMPT_PROXY_SETTINGS_PATH: settingsPath });
+
+    expect(config.classifierModel).toBe("legacy-classifier");
   });
 
   it("writes validated JSON settings and applies prompt capture persistence", async () => {
@@ -83,11 +94,6 @@ describe("persistent settings admin APIs", () => {
               timeoutMs: 1800,
               maxAttempts: 3,
               allowRedactedExcerpt: false
-            },
-            budgets: {
-              warningEstimatedInputTokens: 1000,
-              maxEstimatedInputTokens: 2000,
-              maxRoute: "balanced"
             },
             routeQuality: {
               lowConfidenceThreshold: 0.6
@@ -154,7 +160,6 @@ describe("persistent settings admin APIs", () => {
               maxAttempts: 3,
               allowRedactedExcerpt: false
             },
-            budgets: {},
             routeQuality: {},
             promptCapture: {}
           }
@@ -196,7 +201,6 @@ describe("persistent settings admin APIs", () => {
               maxAttempts: 3,
               allowRedactedExcerpt: false
             },
-            budgets: {},
             routeQuality: {},
             promptCapture: {}
           }

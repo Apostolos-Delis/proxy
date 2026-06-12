@@ -1,5 +1,6 @@
+import type { RoutingConfigLimits } from "@prompt-proxy/schema";
+
 import { routeOrder } from "./catalog.js";
-import type { AppConfig } from "./config.js";
 import type { BudgetCheck, RouteContext, RouteName, SelectedRouteSettings, Surface } from "./types.js";
 import { stableJson } from "./util.js";
 
@@ -8,55 +9,34 @@ export type BudgetResult = {
   rejected?: BudgetCheck;
 };
 
-export class BudgetService {
-  constructor(private readonly config: AppConfig) {}
-
-  checkBeforeClassification(context: RouteContext): BudgetResult {
-    const checks: BudgetCheck[] = [];
-    pushTokenLimit(
-      checks,
-      "request",
-      context.estimatedInputTokens,
-      this.config.budgetMaxEstimatedInputTokens,
-      "request_estimated_input_limit"
-    );
-    pushTokenLimit(
-      checks,
-      "user",
-      context.estimatedInputTokens,
-      context.userId ? this.config.budgetUserEstimatedInputLimits[context.userId] : undefined,
-      "user_estimated_input_limit"
-    );
-    pushTokenLimit(
-      checks,
-      "team",
-      context.estimatedInputTokens,
-      context.teamId ? this.config.budgetTeamEstimatedInputLimits[context.teamId] : undefined,
-      "team_estimated_input_limit"
-    );
-    pushWarning(
-      checks,
-      context.estimatedInputTokens,
-      this.config.budgetWarningEstimatedInputTokens
-    );
-    if (context.explicitAlias) {
-      pushRouteLimit(checks, context.explicitAlias, this.config.budgetMaxRoute);
-    }
-    return result(checks);
+export function checkBeforeClassification(context: RouteContext, limits?: RoutingConfigLimits): BudgetResult {
+  const checks: BudgetCheck[] = [];
+  pushTokenLimit(
+    checks,
+    "request",
+    context.estimatedInputTokens,
+    limits?.maxEstimatedInputTokens,
+    "request_estimated_input_limit"
+  );
+  if (context.explicitAlias) {
+    pushRouteLimit(checks, context.explicitAlias, limits?.maxRoute);
   }
+  return result(checks);
+}
 
-  checkDecision(context: RouteContext, route: RouteName): BudgetResult {
-    const checks: BudgetCheck[] = [];
-    pushRouteLimit(checks, route, this.config.budgetMaxRoute);
-    pushTokenLimit(
-      checks,
-      "route",
-      context.estimatedInputTokens,
-      this.config.budgetRouteEstimatedInputLimits[route],
-      "route_estimated_input_limit"
-    );
-    return result(checks);
-  }
+export function checkDecision(context: RouteContext, route: RouteName, limits?: RoutingConfigLimits): BudgetResult {
+  const checks: BudgetCheck[] = [];
+  // Routing clamps auto routes to maxRoute before this runs, so the route
+  // check is an audit row, not an enforcement point.
+  pushRouteLimit(checks, route, limits?.maxRoute);
+  pushTokenLimit(
+    checks,
+    "route",
+    context.estimatedInputTokens,
+    limits?.routeEstimatedInputLimits?.[route],
+    "route_estimated_input_limit"
+  );
+  return result(checks);
 }
 
 export type SessionPin = {
@@ -90,7 +70,7 @@ export type SessionRouteUpdate = {
   currentRoute: RouteName;
   selectedRoute: RouteName;
   pin?: SessionPin;
-  action: "stored" | "upgraded" | "kept" | "explicit_override";
+  action: "stored" | "upgraded" | "kept" | "capped" | "explicit_override";
 };
 
 export class SessionRouteStore {
@@ -104,7 +84,11 @@ export class SessionRouteStore {
     return existing?.currentRoute;
   }
 
-  async plan(context: RouteContext, route: RouteName): Promise<SessionRouteUpdate | undefined> {
+  async plan(
+    context: RouteContext,
+    route: RouteName,
+    maxRoute?: RouteName
+  ): Promise<SessionRouteUpdate | undefined> {
     if (!context.sessionId) return undefined;
 
     const sessionKey = sessionScope(context);
@@ -134,8 +118,15 @@ export class SessionRouteStore {
       };
     }
 
-    const selectedRoute = higherRoute(existing.currentRoute, route);
-    const action = selectedRoute === existing.currentRoute ? "kept" : "upgraded";
+    // Memory above a lowered maxRoute settles at the cap instead of holding
+    // the session at a route every future request would be denied.
+    const selectedRoute = higherRoute(capRoute(existing.currentRoute, maxRoute), route);
+    let action: SessionRouteUpdate["action"] = "capped";
+    if (selectedRoute === existing.currentRoute) {
+      action = "kept";
+    } else if (routeIndex(selectedRoute) > routeIndex(existing.currentRoute)) {
+      action = "upgraded";
+    }
 
     return {
       sessionKey,
@@ -217,21 +208,6 @@ function pushTokenLimit(
   });
 }
 
-function pushWarning(
-  checks: BudgetCheck[],
-  current: number,
-  limit: number | undefined
-) {
-  if (limit === undefined || current <= limit) return;
-  checks.push({
-    scope: "request",
-    status: "warning",
-    reason: "request_estimated_input_warning",
-    current,
-    limit
-  });
-}
-
 function pushRouteLimit(
   checks: BudgetCheck[],
   route: RouteName,
@@ -245,6 +221,11 @@ function pushRouteLimit(
     current: route,
     limit: maxRoute
   });
+}
+
+export function capRoute(route: RouteName, maxRoute: RouteName | undefined): RouteName {
+  if (!maxRoute) return route;
+  return routeIndex(route) > routeIndex(maxRoute) ? maxRoute : route;
 }
 
 function result(checks: BudgetCheck[]): BudgetResult {

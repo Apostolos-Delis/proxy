@@ -407,6 +407,59 @@ describe("session replay admin APIs", () => {
     expect(bySession.session_cache_openai.cacheHitRate).toBe(0.25);
   });
 
+  it("labels rejected and unrouted requests in the session model mix", async () => {
+    const fixture = await setup("org_rejected_sessions");
+    const at = new Date("2026-06-08T12:00:00.000Z");
+
+    await fixture.db.insert(users).values([
+      { id: "user_rejected", email: "rejected@example.com", name: "Rejected User" }
+    ]);
+    await fixture.db.insert(agentSessions).values({
+      id: "session_rejected",
+      organizationId: "org_rejected_sessions",
+      workspaceId: defaultWorkspaceId("org_rejected_sessions"),
+      userId: "user_rejected",
+      surface: "openai-responses",
+      externalSessionId: "codex-rejected",
+      startedAt: at,
+      updatedAt: at
+    });
+    await fixture.db.insert(requests).values([
+      usageRequest("served_request", "org_rejected_sessions", "user_rejected", "session_rejected", "openai-responses", at),
+      { ...usageRequest("rejected_request", "org_rejected_sessions", "user_rejected", "session_rejected", "openai-responses", at), status: "failed" as const },
+      { ...usageRequest("unrouted_request", "org_rejected_sessions", "user_rejected", "session_rejected", "openai-responses", at), status: "failed" as const }
+    ]);
+    await fixture.db.insert(routeDecisions).values([
+      usageDecision("served_decision", "served_request", "org_rejected_sessions", "hard", "openai", "gpt-hard"),
+      {
+        // Router rejection: decision recorded, but no model was ever selected.
+        id: "rejected_decision",
+        requestId: "rejected_request",
+        organizationId: "org_rejected_sessions",
+        workspaceId: defaultWorkspaceId("org_rejected_sessions"),
+        requestedModel: "router-auto",
+        reasonCodes: ["request_estimated_input_limit"],
+        policyVersion: "test"
+      }
+    ]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("served_attempt", "served_request", "org_rejected_sessions", "openai-responses", "openai", "gpt-hard", "completed", at)
+    ]);
+
+    const sessions = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query { sessions { sessionId modelMix } }"
+    )).data?.sessions;
+
+    expect(sessions).toEqual([
+      expect.objectContaining({
+        sessionId: "session_rejected",
+        modelMix: { "gpt-hard": 1, rejected: 1, unknown: 1 }
+      })
+    ]);
+  });
+
   async function setup(organizationId: string) {
     activeFixture = await captureFixture(organizationId);
     return activeFixture;

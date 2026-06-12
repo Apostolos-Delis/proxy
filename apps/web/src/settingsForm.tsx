@@ -1,4 +1,4 @@
-import { BarChart3, Check, CircleDollarSign, CreditCard, FileJson, GitBranch, Logs, RotateCw, Save, Search, Shield, Zap } from "lucide-react";
+import { BarChart3, Check, CircleDollarSign, FileJson, GitBranch, Logs, RotateCw, Save, Search, Shield, Zap } from "lucide-react";
 import type { ComponentType } from "react";
 import { useMemo, useState } from "react";
 
@@ -11,7 +11,6 @@ const sectionIcons: Record<string, ComponentType> = {
   optimization: Zap,
   baseline: CircleDollarSign,
   classifier: GitBranch,
-  budgets: CreditCard,
   capture: Logs,
   quality: BarChart3
 };

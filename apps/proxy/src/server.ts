@@ -23,7 +23,7 @@ import { LlmClassifier } from "./classifier.js";
 import { EmailService } from "./email.js";
 import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStateGate } from "./events.js";
 import { registerAdminGraphQL } from "./graphql/route.js";
-import { BudgetService, SessionRouteStore } from "./policy.js";
+import { SessionRouteStore } from "./policy.js";
 import { createPostgresPersistence } from "./persistence/index.js";
 import { resolveRoutingSelection } from "./persistence/routingConfig.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
@@ -63,10 +63,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   const adminAuth = new AdminAuthService(config, persistence?.adminSessions);
   const attempts = new ProviderAttemptStore();
   const requestStates = persistence?.requestStates ?? new RequestStateStore();
-  const budget = new BudgetService(config);
   const sessions = new SessionRouteStore(persistence?.sessionPins);
   const classifier = new LlmClassifier(config);
-  const routing = new RoutingService(config, classifier, events, modelCatalog, budget, sessions);
+  const routing = new RoutingService(config, classifier, events, modelCatalog, sessions);
   const proxy = new ProviderProxy(config, events, attempts, requestStates);
   const assistantResponseCapture = (input: {
     identity: RequestIdentity;

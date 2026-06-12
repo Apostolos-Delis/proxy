@@ -313,6 +313,7 @@ export const routingConfigSchema = z.strictObject({
 export type RoutingConfigClassifier = z.infer<typeof routingConfigClassifierSchema>;
 export type RoutingConfigOpenAIRoute = z.infer<typeof routingConfigOpenAIRouteSchema>;
 export type RoutingConfigAnthropicRoute = z.infer<typeof routingConfigAnthropicRouteSchema>;
+export type RoutingConfigLimits = z.infer<typeof routingConfigLimitsSchema>;
 
 export const sessionPinnedSettingsSchema = z.discriminatedUnion("provider", [
   z.strictObject({

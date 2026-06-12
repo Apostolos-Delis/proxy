@@ -1700,6 +1700,10 @@ function requestSummary(row: {
       }
     : emptyUsage();
   const selectedModel = row.decision?.selectedModel ?? row.attempt?.model ?? undefined;
+  // A decision row without a model means the router rejected the request
+  // before selecting one (budget/compatibility); no decision at all means the
+  // request died before routing finished.
+  const rejected = !selectedModel && row.decision !== null;
   const providerCost = (row.usage?.totalCostMicros ?? 0) / 1_000_000;
   // Selected spend is what we actually pay: the provider response plus the
   // routing classifier's own call. Baseline is the no-routing counterfactual,
@@ -1719,6 +1723,7 @@ function requestSummary(row: {
     reasoningEffort: row.decision?.reasoningEffort ?? undefined,
     provider: row.decision?.selectedProvider ?? row.attempt?.provider ?? undefined,
     selectedModel,
+    rejected,
     routingConfig: routingConfigSummary(row.decision ?? row.request),
     classifier: row.decision?.classifier ?? undefined,
     terminalStatus: row.attempt?.terminalStatus ?? row.request.status,
@@ -1820,7 +1825,7 @@ function sessionSummary(session: SessionRow, allRequests: RequestSummary[]) {
     sessionIdentity: stringFromMetadata(session.metadata, "sessionIdentity"),
     requestCount: requests.length,
     routeChanges: routeChangeCount(requests),
-    modelMix: countBy(requests, (request) => request.selectedModel ?? "unknown"),
+    modelMix: countBy(requests, (request) => request.selectedModel ?? (request.rejected ? "rejected" : "unknown")),
     routeMix: countBy(requests, (request) => request.finalRoute ?? "unknown"),
     terminalStatusSummary: countBy(requests, (request) => request.terminalStatus),
     usage: usageTotals(requests),

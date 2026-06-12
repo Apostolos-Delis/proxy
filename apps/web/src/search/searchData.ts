@@ -91,7 +91,7 @@ export const palettePages: PalettePage[] = [
   { path: "/api-keys", title: "API keys", subtitle: "Manage secrets", keywords: ["secrets", "tokens", "credentials", "keys"], icon: KeyRound },
   { path: "/users", title: "Users", subtitle: "Team & access", keywords: ["team", "members", "access", "roles"], icon: Users },
   { path: "/billing", title: "Billing", subtitle: "Spend & invoices", keywords: ["invoices", "payment", "plan"], icon: CreditCard },
-  { path: "/settings", title: "Settings", subtitle: "Runtime configuration", keywords: ["configuration", "budgets", "capture", "retention"], icon: Settings }
+  { path: "/settings", title: "Settings", subtitle: "Runtime configuration", keywords: ["configuration", "capture", "retention"], icon: Settings }
 ];
 
 const kindIcons: Record<PaletteActionKind, LucideIcon> = {

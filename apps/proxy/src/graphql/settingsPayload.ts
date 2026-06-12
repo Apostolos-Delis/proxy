@@ -39,11 +39,6 @@ export async function settingsResponse(
       maxAttempts: fileSettings.classifier.maxAttempts ?? config.classifierMaxAttempts,
       allowRedactedExcerpt: fileSettings.classifier.allowRedactedExcerpt ?? config.classifierAllowRedactedExcerpt
     },
-    budgets: {
-      warningEstimatedInputTokens: fileSettings.budgets.warningEstimatedInputTokens ?? config.budgetWarningEstimatedInputTokens ?? null,
-      maxEstimatedInputTokens: fileSettings.budgets.maxEstimatedInputTokens ?? config.budgetMaxEstimatedInputTokens ?? null,
-      maxRoute: fileSettings.budgets.maxRoute ?? config.budgetMaxRoute ?? null
-    },
     routeQuality: {
       lowConfidenceThreshold: fileSettings.routeQuality.lowConfidenceThreshold ?? config.routeQualityLowConfidenceThreshold
     },
@@ -60,14 +55,13 @@ export async function settingsResponse(
       maxAttempts: config.classifierMaxAttempts,
       contentMode: config.classifierAllowRedactedExcerpt ? "redacted_excerpt" : "features_only"
     },
-    budgets: settings.budgets,
     promptCapture,
     storage: {
       format: "json",
       path: config.settingsPath,
       reason: "The repo already uses JSON package/config conventions and has no YAML parser dependency."
     },
-    restartRequiredFor: ["classifier", "budgets", "routeQuality"],
+    restartRequiredFor: ["classifier", "routeQuality"],
     settings,
     runtime: {
       classifier: {
@@ -76,11 +70,6 @@ export async function settingsResponse(
         timeoutMs: config.classifierTimeoutMs,
         maxAttempts: config.classifierMaxAttempts,
         contentMode: config.classifierAllowRedactedExcerpt ? "redacted_excerpt" : "features_only"
-      },
-      budgets: {
-        maxEstimatedInputTokens: config.budgetMaxEstimatedInputTokens ?? null,
-        warningEstimatedInputTokens: config.budgetWarningEstimatedInputTokens ?? null,
-        maxRoute: config.budgetMaxRoute ?? null
       }
     },
     file: fileSettings,
