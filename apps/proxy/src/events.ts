@@ -77,6 +77,7 @@ type ScopeState = {
 export class EventService {
   private readonly events: ProxyEvent[] = [];
   private readonly outbox: OutboxItem[] = [];
+  private readonly listeners = new Set<(event: ProxyEvent) => void>();
   // One entry per scope so sequence, tenant, and workspace can never diverge
   // (they are committed and rolled back together).
   private readonly scopes = new Map<string, ScopeState>();
@@ -142,6 +143,16 @@ export class EventService {
     this.events.push(event);
     this.outbox.push(outboxItem);
 
+    // Listeners observe committed events only; a throwing listener must not
+    // fail the append.
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch {
+        // ignore
+      }
+    }
+
     if (this.filePath) {
       await mkdir(dirname(this.filePath), { recursive: true });
       await appendFile(this.filePath, `${JSON.stringify(event)}\n`);
@@ -152,6 +163,13 @@ export class EventService {
     }
 
     return event;
+  }
+
+  subscribe(listener: (event: ProxyEvent) => void) {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
   listEvents() {
