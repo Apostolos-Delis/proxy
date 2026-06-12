@@ -20,7 +20,7 @@ import { extractResponseText, type PromptArtifactStore } from "./persistence/pro
 import { resolveRoutingSelection, type RoutingConfigResolver } from "./persistence/routingConfig.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import type { RoutingService } from "./router.js";
-import type { JsonObject, RouteDecision, RouteName } from "./types.js";
+import type { JsonObject, RouteDecision } from "./types.js";
 import { createId, headerValue, idempotencyFrom, isRecord, lowerHeaders } from "./util.js";
 
 type ActiveRequest = {
@@ -108,7 +108,7 @@ export class WebSocketRoutingProxy {
     identity: RequestIdentity
   ) {
     let messageIndex = 0;
-    let connectionRoute: RouteName | undefined;
+    const fallbackSessionId = createId("ws-session");
     let activeRequest: ActiveRequest | undefined;
     let sendQueue = Promise.resolve();
 
@@ -120,8 +120,7 @@ export class WebSocketRoutingProxy {
       messageIndex += 1;
       sendQueue = sendQueue
         .then(async () => {
-          const route = await this.routeWebSocketMessage(data, headers, identity, connectionRoute, messageIndex);
-          if (route.decision.finalRoute) connectionRoute = route.decision.finalRoute;
+          const route = await this.routeWebSocketMessage(data, headers, identity, messageIndex, fallbackSessionId);
           activeRequest = route.activeRequest;
           upstream.send(JSON.stringify(route.body));
         })
@@ -160,11 +159,10 @@ export class WebSocketRoutingProxy {
     data: RawData,
     headers: Record<string, string | undefined>,
     identity: RequestIdentity,
-    connectionRoute: RouteName | undefined,
-    messageIndex: number
+    messageIndex: number,
+    fallbackSessionId: string
   ) {
-    const body = JSON.parse(String(data));
-    const routeBody = pinnedRouteBody(body, connectionRoute);
+    const routeBody = JSON.parse(String(data));
     const requestId = createId("request");
     const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
       `${openAIResponsesSurface.createOperation}:websocket:${requestId}:${messageIndex}`,
@@ -173,6 +171,7 @@ export class WebSocketRoutingProxy {
     ));
     const rawContext = openAIResponsesSurface.buildContext(routeBody, headers);
     const context = contextForIdentity(rawContext, identity);
+    if (!context.sessionId) context.sessionId = fallbackSessionId;
     const gate = await this.requestStates.begin(idempotencyKey, requestId, context);
     if (gate.duplicate && (gate.state.status === "classifying" || gate.state.status === "provider_pending")) {
       throw new Error("duplicate_websocket_request_active");
@@ -455,16 +454,6 @@ function terminalError(metadata: JsonObject) {
   if (typeof error === "string") return error;
   if (error === undefined || error === null) return undefined;
   return JSON.stringify(error);
-}
-
-function pinnedRouteBody(body: unknown, connectionRoute: RouteName | undefined) {
-  if (!connectionRoute || !isRecord(body) || typeof body.previous_response_id !== "string") {
-    return body;
-  }
-  return {
-    ...body,
-    model: `router-${connectionRoute}`
-  };
 }
 
 function rejectUpgrade(socket: Duplex, status: number, message: string) {

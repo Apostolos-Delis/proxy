@@ -126,7 +126,7 @@ describe("prompt proxy", () => {
     expect(sessions).toHaveLength(0);
   });
 
-  it("routes Codex WebSocket requests and pins previous response continuations", async () => {
+  it("routes Codex WebSocket requests and pins continuations via session memory", async () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
@@ -168,6 +168,16 @@ describe("prompt proxy", () => {
       tools: [{ type: "function", name: "shell" }],
       stream: true
     }));
+    const secondResponseId = await nextCompletedResponseId(ws);
+
+    ws.send(JSON.stringify({
+      type: "response.create",
+      model: "gpt-5.5",
+      previous_response_id: secondResponseId,
+      input: [{ type: "function_call_output", call_id: "call_1", output: "ok" }],
+      tools: [{ type: "function", name: "shell" }],
+      stream: true
+    }));
     await nextCompletedResponseId(ws);
     ws.close();
 
@@ -179,14 +189,115 @@ describe("prompt proxy", () => {
     const classifierCalls = openai.records.filter((record) => record.body.model === "route-classifier-cheap");
     const providerCalls = openai.records.filter((record) => record.body.model === "gpt-ws-hard-test");
 
-    expect(classifierCalls).toHaveLength(1);
-    expect(providerCalls).toHaveLength(2);
+    expect(classifierCalls).toHaveLength(2);
+    expect(providerCalls).toHaveLength(3);
     expect(providerCalls[0].headers.authorization).toBe("Bearer openai-upstream-key");
     expect(providerCalls[0].headers["openai-beta"]).toBe("responses_websockets=2026-02-06");
     expect(providerCalls[0].body.type).toBe("response.create");
     expect(providerCalls[1].body.previous_response_id).toBe(firstResponseId);
     expect(providerCalls[1].body.reasoning.effort).toBe("high");
-    expect(events.filter((event: any) => event.eventType === "provider.response_completed")).toHaveLength(2);
+    expect(providerCalls[2].body.previous_response_id).toBe(secondResponseId);
+    expect(providerCalls[2].body.reasoning.effort).toBe("high");
+
+    const decisions = events.filter((event: any) => event.eventType === "routing.decision_recorded");
+    expect(decisions.map((event: any) => event.payload.requestedModel)).toEqual([
+      "gpt-5.5",
+      "gpt-5.5",
+      "gpt-5.5"
+    ]);
+    expect(decisions[2].payload.reasonCodes).toContain("session_route_no_user_signal");
+    expect(decisions[2].payload.guardrailActions).toContain("session_route_kept");
+    expect(decisions[2].payload.guardrailActions).toContain("session_settings_pinned");
+    expect(events.filter((event: any) => event.eventType === "provider.response_completed")).toHaveLength(3);
+  });
+
+  it("pins sessionless WebSocket connections through a connection-scoped session id", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({
+      classifierOutputs: [
+        {
+          complexity: "hard",
+          risk: ["failing_test"],
+          recommended_route: "hard",
+          can_use_fast_model: false,
+          needs_deep_reasoning: false,
+          reason_codes: ["failing_test"],
+          confidence: 0.85
+        },
+        {
+          complexity: "simple",
+          risk: [],
+          recommended_route: "fast",
+          can_use_fast_model: true,
+          needs_deep_reasoning: false,
+          reason_codes: ["simple_request"],
+          confidence: 0.9
+        }
+      ]
+    });
+    const app = buildServer(
+      loadConfig({
+        ...testEnv(),
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        OPENAI_HARD_MODEL: "gpt-ws-hard-test",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+    const ws = new WebSocket(proxyUrl.replace("http://", "ws://") + "/v1/responses", {
+      headers: {
+        authorization: "Bearer proxy-token",
+        "openai-beta": "responses_websockets=2026-02-06"
+      }
+    });
+    await websocketOpen(ws);
+
+    ws.send(JSON.stringify({
+      type: "response.create",
+      model: "router-auto",
+      input: "fix the failing auth test and find root cause",
+      stream: true
+    }));
+    const firstResponseId = await nextCompletedResponseId(ws);
+
+    ws.send(JSON.stringify({
+      type: "response.create",
+      model: "router-auto",
+      previous_response_id: firstResponseId,
+      input: "thanks",
+      stream: true
+    }));
+    await nextCompletedResponseId(ws);
+    ws.close();
+
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    const sessions = await fetch(`${proxyUrl}/_debug/sessions`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    await app.close();
+
+    const classifierCalls = openai.records.filter((record) => record.body.model === "route-classifier-cheap");
+    const providerCalls = openai.records.filter((record) => record.body.model === "gpt-ws-hard-test");
+    const decisions = events.filter((event: any) => event.eventType === "routing.decision_recorded");
+
+    expect(classifierCalls).toHaveLength(2);
+    expect(providerCalls).toHaveLength(2);
+    expect(providerCalls[1].body.previous_response_id).toBe(firstResponseId);
+    expect(providerCalls[1].body.reasoning.effort).toBe("high");
+    expect(decisions.map((event: any) => event.payload.requestedModel)).toEqual([
+      "router-auto",
+      "router-auto"
+    ]);
+    expect(sessions).toEqual([
+      expect.objectContaining({
+        currentRoute: "hard",
+        requestCount: 2,
+        softFloor: false
+      })
+    ]);
   });
 
   it("treats OpenAI WebSocket response.incomplete as terminal usage", async () => {

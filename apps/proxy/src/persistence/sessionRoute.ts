@@ -64,7 +64,8 @@ export function createSessionPinLoader(db: PromptProxyDbSession): SessionPinLoad
         currentRoute: agentSessions.currentRoute,
         pinnedSettings: agentSessions.pinnedSettings,
         routingConfigVersionId: agentSessions.routingConfigVersionId,
-        requestCount: agentSessions.requestCount
+        requestCount: agentSessions.requestCount,
+        metadata: agentSessions.metadata
       })
       .from(agentSessions)
       .where(eq(agentSessions.id, sessionRowId(workspaceId, surface, sessionId)))
@@ -78,6 +79,7 @@ export function createSessionPinLoader(db: PromptProxyDbSession): SessionPinLoad
     return {
       currentRoute,
       requestCount: row.requestCount,
+      softFloor: recordValue(row.metadata)?.softFloor === true,
       pin: parsed?.success
         ? {
             settings: parsed.data,
