@@ -89,7 +89,7 @@ export type BudgetCheck = {
   readonly status: "ok" | "reject";
   readonly reason: string;
   readonly current: number | string;
-  readonly limit?: number | string;
+  readonly limit: number | string;
 };
 
 export type ClassifierOutput = {
@@ -131,7 +131,7 @@ export type RouteDecision = {
       provider: Provider;
       routingConfigVersionId?: string;
     };
-    action: "stored" | "upgraded" | "kept" | "explicit_override";
+    action: "stored" | "upgraded" | "kept" | "capped" | "explicit_override";
   };
   classifier?: {
     provider: Provider;

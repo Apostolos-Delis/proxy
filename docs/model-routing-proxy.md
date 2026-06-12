@@ -126,7 +126,7 @@ Fia findings:
 Trace findings:
 
 - Trace treats HTTP/GraphQL as transport and lets services produce events. Prompt-proxy should keep `/v1/responses` thin and put shared behavior in routing/proxy services.
-- Trace uses scoped events instead of one global stream. Prompt-proxy should scope events by request, turn, session, provider request, policy, and budget.
+- Trace uses scoped events instead of one global stream. Prompt-proxy should scope events by request, turn, session, provider request, and policy.
 - Trace separates realtime PubSub from durable worker streams, and trims high-volume session output for broad streams. Prompt-proxy should publish small lifecycle events broadly and keep full request/response material out of the default stream.
 - Trace clients and workers recover from missed live events by querying/backfilling the event store. Prompt-proxy dashboards and reports should consume projections built from durable events rather than relying on logs.
 
@@ -198,7 +198,6 @@ turn             one Codex turn when a turn identifier is available
 session          longer proxy-side grouping for route memory and cost accounting
 provider_request one upstream provider attempt
 routing_config   routing config version and trust changes
-budget           budget limit checks
 eval             later route-quality labels and replay results
 ```
 
@@ -669,7 +668,7 @@ The final route resolver applies non-classification guardrails after classifier 
 - If the classifier times out, retry the classifier within the configured attempt budget.
 - If the classifier still fails, return a router error before provider spend. Do not fall back to rule-based route scoring.
 - If the classifier selects an incompatible route, escalate to the smallest compatible route.
-- If the classifier selects a route over budget, apply budget policy.
+- If the classifier or session memory lands above the configured max route, clamp to the max route; only explicit aliases above the cap are rejected.
 - If the user selected `router-fast`, `router-balanced`, `router-hard`, or `router-deep`, treat that alias as an explicit override unless incompatible.
 - If the client selected an ordinary upstream model, treat it as auto-routed input. Record the requested model, but do not honor it as the selected upstream model.
 - If classifier confidence is low, preserve the classifier recommendation but record the low confidence in the route decision event.

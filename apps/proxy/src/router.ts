@@ -10,7 +10,7 @@ import { defaultClassifierSettings } from "./classifier.js";
 import type { ClassificationResult, ClassifierSettings, LlmClassifier } from "./classifier.js";
 import { jsonPayload, type EventService } from "./events.js";
 import type { AppConfig } from "./config.js";
-import { checkBeforeClassification, checkDecision, type BudgetResult, type SessionRouteStore } from "./policy.js";
+import { capRoute, checkBeforeClassification, checkDecision, type SessionRouteStore } from "./policy.js";
 import type {
   JsonObject,
   Provider,
@@ -113,7 +113,6 @@ export class RoutingService {
     });
 
     const preBudget = checkBeforeClassification(context, routingConfig?.config.limits);
-    await this.appendBudgetEvents(requestId, idempotencyKey, preBudget);
     if (preBudget.rejected) {
       const rejected = this.reject(context, preBudget.rejected.reason, preBudget.checks, 429);
       await this.recordDecision(requestId, idempotencyKey, rejected);
@@ -126,13 +125,16 @@ export class RoutingService {
     let classifierFailed = false;
     let classificationSkipped = false;
     const classifierSettings = routingConfig?.config.classifier ?? defaultClassifierSettings(this.config);
-    const ceilingRoute = routeOrder[routeOrder.length - 1];
+    const ceilingRoute = capRoute(
+      routeOrder[routeOrder.length - 1],
+      routingConfig?.config.limits.maxRoute
+    );
     if (explicit) {
       requestedRoute = explicit;
-    } else if ((await this.sessions.peek(context)) === ceilingRoute) {
-      // Session memory never downgrades, so once a session sits at the top
-      // route the classifier's output cannot change the decision — skip the
-      // call instead of spending its latency and tokens.
+    } else if (atOrAbove(await this.sessions.peek(context), ceilingRoute)) {
+      // Session memory never downgrades and auto routes are capped at the
+      // config ceiling, so memory at or above it already fixes the decision —
+      // skip the classifier call instead of spending its latency and tokens.
       classificationSkipped = true;
       requestedRoute = ceilingRoute;
     } else {
@@ -179,7 +181,9 @@ export class RoutingService {
     if (classifierFailed) {
       if (decision.outcome === "reject" && decision.error === "route_not_available_for_surface") {
         for (const route of routeOrder) {
-          if (route === requestedRoute) continue;
+          // Candidates above the ceiling clamp back to it, and the ceiling is
+          // itself a candidate.
+          if (route === requestedRoute || !atOrAbove(ceilingRoute, route)) continue;
           const candidate = await this.resolveRoute(context, route, classification, routingConfig, classifierSettings);
           if (candidate.outcome === "route") {
             decision = candidate;
@@ -198,12 +202,13 @@ export class RoutingService {
     if (decision.outcome === "route" && decision.finalRoute) {
       const postBudget = checkDecision(context, decision.finalRoute, routingConfig?.config.limits);
       decision.budgetChecks = [...preBudget.checks, ...postBudget.checks];
-      await this.appendBudgetEvents(requestId, idempotencyKey, postBudget);
       if (postBudget.rejected) {
         const rejected = this.reject(context, postBudget.rejected.reason, decision.budgetChecks, 429);
         await this.recordDecision(requestId, idempotencyKey, rejected);
         return rejected;
       }
+    } else {
+      decision.budgetChecks = preBudget.checks;
     }
 
     if (decision.session) {
@@ -241,7 +246,9 @@ export class RoutingService {
   }
 
   tokenCountDecision(context: RouteContext, routingConfig?: RoutingConfigSelection): RouteDecision {
-    let finalRoute = context.explicitAlias ?? "hard";
+    // Clamp so token counts are computed against a model the real request can
+    // actually reach.
+    let finalRoute = capRoute(context.explicitAlias ?? "hard", routingConfig?.config.limits.maxRoute);
     const guardrailActions: string[] = [];
     const routingConfigSnapshot = routingConfig?.snapshot;
 
@@ -398,6 +405,14 @@ export class RoutingService {
       guardrailActions.push("classifier_fast_route_disallowed");
     }
 
+    // maxRoute is a spend ceiling for auto-routed requests: clamp instead of
+    // failing them. Explicit aliases above the cap are rejected up front.
+    const maxRoute = routingConfig?.config.limits.maxRoute;
+    if (maxRoute && capRoute(finalRoute, maxRoute) !== finalRoute) {
+      finalRoute = maxRoute;
+      guardrailActions.push("route_limit_clamped");
+    }
+
     if (!routingConfig) {
       let model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
 
@@ -421,11 +436,12 @@ export class RoutingService {
       }
     }
 
-    const session = await this.sessions.plan(context, finalRoute);
+    const session = await this.sessions.plan(context, finalRoute, maxRoute);
     if (session) {
       finalRoute = session.selectedRoute;
       if (session.action === "kept") guardrailActions.push("session_route_kept");
       if (session.action === "upgraded") guardrailActions.push("session_route_upgraded");
+      if (session.action === "capped") guardrailActions.push("session_route_capped");
       if (session.action === "explicit_override") guardrailActions.push("session_explicit_route_override");
     }
 
@@ -561,27 +577,6 @@ export class RoutingService {
     };
   }
 
-  private async appendBudgetEvents(
-    requestId: string,
-    idempotencyKey: string,
-    result: BudgetResult
-  ) {
-    // Seeded configs always carry limits, so all-ok checks would add two event
-    // rows per request; the full check list is already on the decision row.
-    if (!result.rejected) return;
-    await this.events.append({
-      scopeType: "request",
-      scopeId: requestId,
-      correlationId: requestId,
-      idempotencyKey,
-      producer: "prompt-proxy.budget",
-      eventType: "budget.checked",
-      payload: {
-        checks: jsonPayload(result.checks)
-      }
-    });
-  }
-
   private async recordDecision(
     requestId: string,
     idempotencyKey: string,
@@ -618,6 +613,10 @@ export class RoutingService {
       errorStatus
     };
   }
+}
+
+function atOrAbove(route: RouteName | undefined, ceiling: RouteName) {
+  return route !== undefined && routeOrder.indexOf(route) >= routeOrder.indexOf(ceiling);
 }
 
 // Must cover every context field that feeds classifierView, or distinct

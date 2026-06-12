@@ -26,6 +26,8 @@ export function checkBeforeClassification(context: RouteContext, limits?: Routin
 
 export function checkDecision(context: RouteContext, route: RouteName, limits?: RoutingConfigLimits): BudgetResult {
   const checks: BudgetCheck[] = [];
+  // Routing clamps auto routes to maxRoute before this runs, so the route
+  // check is an audit row, not an enforcement point.
   pushRouteLimit(checks, route, limits?.maxRoute);
   pushTokenLimit(
     checks,
@@ -68,7 +70,7 @@ export type SessionRouteUpdate = {
   currentRoute: RouteName;
   selectedRoute: RouteName;
   pin?: SessionPin;
-  action: "stored" | "upgraded" | "kept" | "explicit_override";
+  action: "stored" | "upgraded" | "kept" | "capped" | "explicit_override";
 };
 
 export class SessionRouteStore {
@@ -82,7 +84,11 @@ export class SessionRouteStore {
     return existing?.currentRoute;
   }
 
-  async plan(context: RouteContext, route: RouteName): Promise<SessionRouteUpdate | undefined> {
+  async plan(
+    context: RouteContext,
+    route: RouteName,
+    maxRoute?: RouteName
+  ): Promise<SessionRouteUpdate | undefined> {
     if (!context.sessionId) return undefined;
 
     const sessionKey = sessionScope(context);
@@ -112,8 +118,15 @@ export class SessionRouteStore {
       };
     }
 
-    const selectedRoute = higherRoute(existing.currentRoute, route);
-    const action = selectedRoute === existing.currentRoute ? "kept" : "upgraded";
+    // Memory above a lowered maxRoute settles at the cap instead of holding
+    // the session at a route every future request would be denied.
+    const selectedRoute = higherRoute(capRoute(existing.currentRoute, maxRoute), route);
+    let action: SessionRouteUpdate["action"] = "capped";
+    if (selectedRoute === existing.currentRoute) {
+      action = "kept";
+    } else if (routeIndex(selectedRoute) > routeIndex(existing.currentRoute)) {
+      action = "upgraded";
+    }
 
     return {
       sessionKey,
@@ -208,6 +221,11 @@ function pushRouteLimit(
     current: route,
     limit: maxRoute
   });
+}
+
+export function capRoute(route: RouteName, maxRoute: RouteName | undefined): RouteName {
+  if (!maxRoute) return route;
+  return routeIndex(route) > routeIndex(maxRoute) ? maxRoute : route;
 }
 
 function result(checks: BudgetCheck[]): BudgetResult {
