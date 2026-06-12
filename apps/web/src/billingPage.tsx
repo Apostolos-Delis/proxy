@@ -1,13 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CreditCard, Settings } from "lucide-react";
-import { useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { ArrowUpRight, CreditCard } from "lucide-react";
 
-import { InspectorPanel, type InspectorRow } from "./dashboard";
-import { formatMoney } from "./format";
+import { formatInteger, formatMoney } from "./format";
 import { graphql } from "./gql";
 import { gqlFetch } from "./graphql";
 import { ModelPricingCard } from "./modelPricingCard";
-import { GlassCard, JsonPanel, PageSkeleton, PageState, PageTitle, ProgressMeter } from "./ui";
+import { Badge, GlassCard, PageSkeleton, PageState, PageTitle, ProgressMeter, RouteBadge } from "./ui";
 
 const BillingPageDocument = graphql(`
   query BillingPage {
@@ -29,14 +28,7 @@ const BillingPageDocument = graphql(`
   }
 `);
 
-type BillingSelection = {
-  title: string;
-  subtitle: string;
-  rows: InspectorRow[];
-};
-
 export function BillingPage() {
-  const [selection, setSelection] = useState<BillingSelection | null>(null);
   const query = useQuery({ queryKey: ["billing-page"], queryFn: () => gqlFetch(BillingPageDocument) });
 
   if (query.isLoading) return <PageSkeleton blocks={[150, 280, 160]} />;
@@ -48,22 +40,13 @@ export function BillingPage() {
 
   const comparison = Math.max(overview.cost.baseline, overview.cost.selected);
   const projected = overview.requestCount === 0 ? 0 : overview.cost.selected;
-  const activeSelection = selection ?? {
-    title: "Spend controls",
-    subtitle: "Select a billing control to inspect its current source of truth.",
-    rows: [
-      { label: "Selected spend", value: formatMoney(overview.cost.selected) },
-      { label: "Baseline", value: formatMoney(overview.cost.baseline) },
-      { label: "Savings", value: formatMoney(overview.cost.savings) }
-    ]
-  };
+  const budgets = settings.budgets;
+  const hasGuardrails = budgets.warningEstimatedInputTokens != null
+    || budgets.maxEstimatedInputTokens != null
+    || budgets.maxRoute != null;
   return (
     <div className="page page-enter">
-      <PageTitle
-        title="Billing"
-        subtitle="Spend, budgets, and invoices for Proxy Labs."
-        actions={<button className="btn" type="button" onClick={() => setSelection(paymentSelection())}><CreditCard />Payment method</button>}
-      />
+      <PageTitle title="Billing" subtitle="Spend, budgets, and invoices for Proxy Labs." />
       <div className="billing-kpis">
         <GlassCard>
           <div className="card-title">Current selected spend</div>
@@ -81,52 +64,68 @@ export function BillingPage() {
         </GlassCard>
         <GlassCard>
           <div className="card-title">Requests billed</div>
-          <div className="stat-value spend-value">{overview.requestCount}</div>
+          <div className="stat-value spend-value">{formatInteger(overview.requestCount)}</div>
           <div className="stat-sub">from the usage ledger</div>
         </GlassCard>
       </div>
       <ModelPricingCard />
       <div className="billing-grid">
         <GlassCard>
-          <div className="card-title"><AlertTriangle />Spend controls</div>
-          <button className="billing-alert-row billing-alert-button" type="button" onClick={() => setSelection(policySelection("Budget policy", settings.budgets))}>
-            <div><strong>Budget policy</strong><span>Configured in organization settings and enforced by the proxy.</span></div>
-            <Settings />
-          </button>
-          <button className="billing-alert-row billing-alert-button" type="button" onClick={() => setSelection(policySelection("Invoices", { implemented: false }))}>
-            <div><strong>Invoices</strong><span>Invoice ingestion is not implemented yet, so no invoice rows are rendered.</span></div>
-            <Settings />
-          </button>
-          <button className="billing-alert-row billing-alert-button" type="button" onClick={() => setSelection(policySelection("Per-key limits", { implemented: false }))}>
-            <div><strong>Per-key limits</strong><span>Requires an API key inventory endpoint before limits can be attributed safely.</span></div>
-            <Settings />
-          </button>
+          <div className="card-title"><CreditCard />Spend controls</div>
+          <div className="billing-control-row">
+            <div>
+              <strong>Budget policy</strong>
+              <span>Warning and hard limits on estimated input tokens, enforced by the proxy on every request.</span>
+            </div>
+            <Link to="/settings" className="card-link">Configure<ArrowUpRight /></Link>
+          </div>
+          <div className="billing-control-row">
+            <div>
+              <strong>Invoices</strong>
+              <span>Invoice ingestion is not wired to a billing provider yet.</span>
+            </div>
+            <Badge>Planned</Badge>
+          </div>
+          <div className="billing-control-row">
+            <div>
+              <strong>Per-key limits</strong>
+              <span>Requires an API key inventory endpoint before limits can be attributed safely.</span>
+            </div>
+            <Badge>Planned</Badge>
+          </div>
         </GlassCard>
-        <JsonPanel title="Budget settings" value={settings.budgets} />
+        <GlassCard>
+          <div className="card-head">
+            <div className="card-title">Budget guardrails</div>
+            <Link to="/settings" className="card-link">Settings<ArrowUpRight /></Link>
+          </div>
+          {hasGuardrails ? (
+            <div>
+              <div className="billing-budget-line">
+                <span>Warning input tokens</span>
+                {budgets.warningEstimatedInputTokens != null
+                  ? <strong className="mono">{formatInteger(budgets.warningEstimatedInputTokens)} tok</strong>
+                  : <span className="faint">No limit</span>}
+              </div>
+              <div className="billing-budget-line">
+                <span>Max input tokens</span>
+                {budgets.maxEstimatedInputTokens != null
+                  ? <strong className="mono">{formatInteger(budgets.maxEstimatedInputTokens)} tok</strong>
+                  : <span className="faint">No limit</span>}
+              </div>
+              <div className="billing-budget-line">
+                <span>Max route</span>
+                {budgets.maxRoute ? <RouteBadge route={budgets.maxRoute} /> : <span className="faint">Uncapped</span>}
+              </div>
+            </div>
+          ) : (
+            <div className="savings-empty">
+              <strong>No guardrails set</strong>
+              <span>Requests route without budget warnings or hard limits. Set thresholds in Settings.</span>
+            </div>
+          )}
+        </GlassCard>
       </div>
-      <InspectorPanel title={activeSelection.title} subtitle={activeSelection.subtitle} rows={activeSelection.rows} />
     </div>
   );
-}
-
-function paymentSelection(): BillingSelection {
-  return {
-    title: "Payment method",
-    subtitle: "Payment method management is not wired to a billing provider yet.",
-    rows: [
-      { label: "Status", value: "Not implemented" },
-      { label: "Next backend", value: "Billing provider adapter" }
-    ]
-  };
-}
-
-function policySelection(title: string, value: unknown): BillingSelection {
-  return {
-    title,
-    subtitle: "Current configuration source",
-    rows: [
-      { label: "Source", value: "organization settings" },
-      { label: "Value", value: <span className="mono">{JSON.stringify(value)}</span> }
-    ]
-  };
 }

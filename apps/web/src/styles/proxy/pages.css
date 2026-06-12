@@ -1641,10 +1641,6 @@ input[type="checkbox"][role="switch"]:focus-visible {
   flex: none;
 }
 
-.code-panel .json-view {
-  margin-top: 14px;
-}
-
 /* ---------- Prompt detail ---------- */
 .detail-back-row {
   margin-bottom: 16px;
@@ -3800,52 +3796,77 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .billing-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.9fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
   gap: 22px;
+  align-items: start;
 }
 
-.billing-alert-row {
+.billing-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.billing-control-row:first-of-type {
+  margin-top: 6px;
+}
+
+.billing-control-row:last-child {
+  padding-bottom: 4px;
+  border-bottom: 0;
+}
+
+.billing-control-row > div {
+  display: grid;
+  gap: 5px;
+}
+
+.billing-control-row strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.billing-control-row > div > span {
+  color: var(--fg-faint);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.billing-control-row .badge,
+.billing-control-row .card-link {
+  flex-shrink: 0;
+}
+
+.billing-budget-line {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 22px 0;
+  padding: 15px 0;
   border-bottom: 1px solid var(--border);
 }
 
-.billing-alert-button {
-  width: 100%;
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  color: var(--fg);
-  font: inherit;
-  text-align: left;
-  background: transparent;
-  cursor: pointer;
-  transition: background .13s var(--ease), padding-inline .13s var(--ease);
+.billing-budget-line:first-child {
+  margin-top: 6px;
 }
 
-.billing-alert-button:hover,
-.billing-alert-button:focus-visible {
-  padding-inline: 10px;
-  background: var(--glass-hover);
-  outline: none;
+.billing-budget-line:last-child {
+  padding-bottom: 4px;
+  border-bottom: 0;
 }
 
-.billing-alert-button svg {
-  width: 16px;
-  height: 16px;
-  color: var(--fg-faint);
+.billing-budget-line > span:first-child {
+  color: var(--fg-muted);
+  font-size: 12.5px;
 }
 
-.billing-alert-row strong,
-.billing-alert-row span {
-  display: block;
-}
-
-.billing-alert-row span {
-  color: var(--fg-faint);
-  margin-top: 4px;
+.billing-budget-line strong {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .pricing-tbl td {
