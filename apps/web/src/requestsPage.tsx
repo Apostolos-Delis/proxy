@@ -88,6 +88,7 @@ type PromptLogRow = {
   prompt: PromptSummary;
   request?: RequestSummary;
   userName: string;
+  userEmail?: string | null;
 };
 
 export function RequestsPage() {
@@ -156,7 +157,7 @@ function rangeLabel(range: UsageRangeKey) {
 const requestColumns: ConsoleTableColumn<PromptLogRow>[] = [
   { id: "prompt", header: "Prompt", size: 420, accessorFn: (row) => row.prompt.preview ?? "", cell: ({ row }) => <PromptCell row={row.original} /> },
   { id: "status", header: "Status", size: 126, accessorFn: terminalStatus, cell: ({ row }) => <StatusBadge status={terminalStatus(row.original)} /> },
-  { id: "user", header: "User", size: 200, accessorFn: (row) => row.userName, cell: ({ row }) => <UserCell name={row.original.userName} detail={row.original.prompt.surface} size={24} /> },
+  { id: "user", header: "User", size: 200, accessorFn: (row) => row.userName, cell: ({ row }) => <UserCell name={row.original.userName} detail={row.original.prompt.surface} email={row.original.userEmail} size={24} /> },
   { id: "model", header: "Model", size: 230, accessorFn: selectedModel, cell: ({ row }) => <ModelCell row={row.original} /> },
   { id: "tokens", header: "Tokens", size: 96, accessorFn: totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(totalTokens(row.original))}</span> },
   { id: "cost", header: "Cost", size: 96, accessorFn: selectedCost, cell: ({ row }) => <span className="mono">{formatMoney(selectedCost(row.original))}</span> },
@@ -278,7 +279,8 @@ function promptRows(prompts: PromptSummary[], requests: RequestSummary[], users:
     return {
       prompt,
       request: requestsById.get(prompt.requestId),
-      userName: user ? displayUser(user) : prompt.userId ?? "unknown"
+      userName: user ? displayUser(user) : prompt.userId ?? "unknown",
+      userEmail: user?.email
     };
   });
 }
