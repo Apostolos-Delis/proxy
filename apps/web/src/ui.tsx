@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, Box, Copy, Info } from "lucide-react";
 
 import { compactId } from "./format";
+import { TierGauge } from "./routing/tierViz";
 
 export type ConsoleMetric = {
   label: string;
@@ -114,8 +115,7 @@ export function StatusBadge({ status }: { status?: string | null }) {
 }
 
 export function RouteBadge({ route }: { route?: string | null }) {
-  const value = route ?? "unknown";
-  return <span className={`tag route-${routeTone(value)}`}>{value}</span>;
+  return <TierGauge route={route ?? "unknown"} />;
 }
 
 export function Avatar({ label, color = "var(--accent)", size = 30 }: { label: string; color?: string; size?: number }) {
@@ -222,15 +222,6 @@ export function FormField({ label, error, children }: { label: string; error?: s
 
 function initials(value: string) {
   return value.split(/[\s._-]+/).map((word) => word[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
-}
-
-function routeTone(route: string) {
-  const value = route.toLowerCase();
-  if (value === "fast" || value === "low" || value === "minimal") return "fast";
-  if (value === "balanced" || value === "medium" || value === "auto") return "balanced";
-  if (value === "hard" || value === "high") return "hard";
-  if (value === "deep" || value === "xhigh" || value === "max") return "deep";
-  return "unknown";
 }
 
 function statusTone(status: string) {

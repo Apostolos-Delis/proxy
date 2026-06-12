@@ -2341,30 +2341,6 @@ input[type="checkbox"][role="switch"]:focus-visible {
   height: 13px;
 }
 
-.route-fast {
-  color: #7dd3fc;
-  border-color: rgba(125, 211, 252, 0.32);
-  background: rgba(125, 211, 252, 0.08);
-}
-
-.route-balanced {
-  color: var(--accent-2);
-  border-color: rgba(45, 212, 191, 0.32);
-  background: var(--accent-soft);
-}
-
-.route-hard {
-  color: #facc15;
-  border-color: rgba(250, 204, 21, 0.32);
-  background: rgba(250, 204, 21, 0.10);
-}
-
-.route-deep {
-  color: #f0abfc;
-  border-color: rgba(240, 171, 252, 0.30);
-  background: rgba(240, 171, 252, 0.09);
-}
-
 .routing-configs-card {
   overflow-x: auto;
 }
