@@ -104,13 +104,13 @@ export function CachingPage() {
   const rate = cacheHitRate(totals);
   const previousRate = cacheHitRate(previousTotals);
   const readTokens = totals.usage.cachedInputTokens;
-  const uncachedTokens = totals.usage.inputTokens - totals.usage.cachedInputTokens;
+  const uncachedTokens = Math.max(0, totals.usage.inputTokens - totals.usage.cachedInputTokens);
   const previousRead = previousTotals?.usage.cachedInputTokens;
   const previousUncached = previousTotals === undefined
     ? undefined
-    : previousTotals.usage.inputTokens - previousTotals.usage.cachedInputTokens;
+    : Math.max(0, previousTotals.usage.inputTokens - previousTotals.usage.cachedInputTokens);
   const readPoints = usagePointSeries(timeseries, (point) => point.usage.cachedInputTokens);
-  const uncachedPoints = usagePointSeries(timeseries, (point) => point.usage.inputTokens - point.usage.cachedInputTokens);
+  const uncachedPoints = usagePointSeries(timeseries, (point) => Math.max(0, point.usage.inputTokens - point.usage.cachedInputTokens));
   const flowRows = readPoints.map((point, index) => ({
     label: point.label,
     values: { reads: point.value, uncached: uncachedPoints[index]?.value ?? 0 }
@@ -270,7 +270,7 @@ function MissTable({ report }: { report: CacheBustReport | undefined }) {
                   <td>
                     <span className="row gap-8">
                       <span className="model-dot" style={{ background: seriesColor(index, row.model) }} />
-                      <span className="mono">{row.model}</span>
+                      <span className="mono caching-model-name" title={row.model}>{row.model}</span>
                     </span>
                   </td>
                   <td><span className="mono muted">{formatInteger(row.busts)}</span></td>

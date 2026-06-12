@@ -82,6 +82,11 @@ describe("cacheHitRate", () => {
     expect(rate).toBeCloseTo(0.6);
   });
 
+  it("clamps to 0-100% when corrupt rows report cached above input or negative", () => {
+    expect(cacheHitRate(group({ usage: { inputTokens: 44, cachedInputTokens: 321060 } }))).toBe(1);
+    expect(cacheHitRate(group({ usage: { inputTokens: 44, cachedInputTokens: -5 } }))).toBe(0);
+  });
+
   it("is null without a group or without prompt tokens", () => {
     expect(cacheHitRate(undefined)).toBeNull();
     expect(cacheHitRate(group({ usage: { outputTokens: 500 } }))).toBeNull();
