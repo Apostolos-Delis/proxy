@@ -9,6 +9,7 @@
 - [Routing configs scope](scopes/routing-configs-v1/PLAN.md)
 - [AWS prod-like deployment scope](scopes/aws-prod-like-deployment-v1/PLAN.md)
 - [Subscription auth scope](scopes/subscription-auth-v1/PLAN.md)
+- [Provider architecture scope](scopes/provider-architecture-v1/PLAN.md)
 
 ## Execution
 
