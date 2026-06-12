@@ -66,6 +66,7 @@ export async function captureFixture(
   options: {
     envOverrides?: NodeJS.ProcessEnv;
     openAIOptions?: OpenAIOptions;
+    openAIChatGPTOptions?: OpenAIOptions;
     anthropicOptions?: Parameters<typeof startAnthropicMock>[0];
   } = {}
 ) {
@@ -77,13 +78,16 @@ export async function captureFixture(
   }
   const db = createPgliteDatabase(client);
   const openai = await startOpenAIMock(options.openAIOptions);
+  const openaiChatgpt = options.openAIChatGPTOptions
+    ? await startOpenAIMock(options.openAIChatGPTOptions)
+    : openai;
   const anthropic = await startAnthropicMock(options.anthropicOptions);
   const env = testEnv(options.envOverrides);
   const config = loadConfig({
     ...env,
     DEFAULT_ORGANIZATION_ID: organizationId,
     OPENAI_BASE_URL: openai.url,
-    OPENAI_CHATGPT_BASE_URL: openai.url,
+    OPENAI_CHATGPT_BASE_URL: openaiChatgpt.url,
     ANTHROPIC_BASE_URL: anthropic.url,
     LOG_LEVEL: "fatal"
   });
@@ -124,7 +128,7 @@ export async function captureFixture(
     ...env,
     DEFAULT_ORGANIZATION_ID: organizationId,
     OPENAI_BASE_URL: openai.url,
-    OPENAI_CHATGPT_BASE_URL: openai.url,
+    OPENAI_CHATGPT_BASE_URL: openaiChatgpt.url,
     ANTHROPIC_BASE_URL: anthropic.url,
     PROMPT_PROXY_TOKEN: env.PROMPT_PROXY_TOKEN,
     SEED_USER_ID: "local-user"
@@ -146,10 +150,11 @@ export async function captureFixture(
     proxyUrl,
     app,
     openai,
+    openaiChatgpt,
     anthropic,
     client,
     adminHeaders: await loginAdmin(proxyUrl),
-    close: () => closeFixture({ app, openai, anthropic, client })
+    close: () => closeFixture({ app, openai, openaiChatgpt, anthropic, client })
   };
 }
 
@@ -354,11 +359,15 @@ export function eventPayloadText(rows: Array<typeof events.$inferSelect>) {
 async function closeFixture(input: {
   app: ReturnType<typeof buildServer>;
   openai: MockServer;
+  openaiChatgpt: MockServer;
   anthropic: MockServer;
   client: PGlite;
 }) {
   await input.app.close();
   await input.openai.close();
+  if (input.openaiChatgpt !== input.openai) {
+    await input.openaiChatgpt.close();
+  }
   await input.anthropic.close();
   await input.client.close();
 }

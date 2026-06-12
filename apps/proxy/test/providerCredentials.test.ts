@@ -488,7 +488,9 @@ describe("subscription oauth credentials", () => {
   });
 
   it("forwards OpenAI oauth credentials to the Codex backend with a ChatGPT account header", async () => {
-    const fixture = await setup("org_oauth_openai_forward", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
+    const fixture = await setup("org_oauth_openai_forward", { SUBSCRIPTION_OAUTH_ENABLED: "true" }, {
+      openAIChatGPTOptions: {}
+    });
     await createBoundOpenAIOauthCredential(fixture, "org_oauth_openai_forward");
 
     const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
@@ -503,7 +505,9 @@ describe("subscription oauth credentials", () => {
     expect(response.status).toBe(200);
     await response.text();
 
-    const providerCall = fixture.openai.records.find((record) => record.body.model === "gpt-5.5");
+    const defaultProviderCall = fixture.openai.records.find((record) => record.body.model === "gpt-5.5");
+    const providerCall = fixture.openaiChatgpt.records.find((record) => record.body.model === "gpt-5.5");
+    expect(defaultProviderCall).toBeUndefined();
     expect(providerCall?.headers.authorization).toBe(`Bearer ${OPENAI_OAUTH_TOKEN}`);
     expect(providerCall?.headers["chatgpt-account-id"]).toBe(CHATGPT_ACCOUNT_ID);
     expect(providerCall?.headers["x-codex-turn-state"]).toBe("turn-state");
@@ -568,8 +572,13 @@ describe("subscription oauth credentials", () => {
     expect(afterExpiry).toBeUndefined();
   });
 
-  async function setup(organizationId: string, envOverrides: Record<string, string> = {}) {
+  async function setup(
+    organizationId: string,
+    envOverrides: Record<string, string> = {},
+    options: Pick<NonNullable<Parameters<typeof captureFixture>[3]>, "openAIChatGPTOptions"> = {}
+  ) {
     activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      ...options,
       envOverrides: { PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY, ...envOverrides }
     });
     return activeFixture;
