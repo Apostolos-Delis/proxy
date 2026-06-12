@@ -1,6 +1,7 @@
 import type { RoutingConfigLimits } from "@prompt-proxy/schema";
 
 import { routeOrder } from "./catalog.js";
+import { hasUserSignal } from "./features.js";
 import type { BudgetCheck, RouteContext, RouteName, SelectedRouteSettings, Surface } from "./types.js";
 import { stableJson } from "./util.js";
 
@@ -49,7 +50,12 @@ export type SessionPinLoader = (input: {
   workspaceId: string;
   surface: Surface;
   sessionId: string;
-}) => Promise<{ currentRoute: RouteName; pin?: SessionPin; requestCount: number } | undefined>;
+}) => Promise<{
+  currentRoute: RouteName;
+  pin?: SessionPin;
+  requestCount: number;
+  softFloor?: boolean;
+} | undefined>;
 
 export type SessionRouteState = {
   sessionKey: string;
@@ -59,6 +65,7 @@ export type SessionRouteState = {
   currentRoute: RouteName;
   pin?: SessionPin;
   requestCount: number;
+  softFloor: boolean;
 };
 
 export type SessionRouteUpdate = {
@@ -70,6 +77,7 @@ export type SessionRouteUpdate = {
   currentRoute: RouteName;
   selectedRoute: RouteName;
   pin?: SessionPin;
+  softFloor: boolean;
   action: "stored" | "upgraded" | "kept" | "capped" | "explicit_override";
 };
 
@@ -78,16 +86,18 @@ export class SessionRouteStore {
 
   constructor(private readonly loadPin?: SessionPinLoader) {}
 
-  async peek(context: RouteContext): Promise<RouteName | undefined> {
+  async peek(context: RouteContext): Promise<{ route: RouteName; soft: boolean } | undefined> {
     if (!context.sessionId) return undefined;
     const existing = await this.hydrate(sessionScope(context), context);
-    return existing?.currentRoute;
+    if (!existing) return undefined;
+    return { route: existing.currentRoute, soft: existing.softFloor };
   }
 
   async plan(
     context: RouteContext,
     route: RouteName,
-    maxRoute?: RouteName
+    maxRoute?: RouteName,
+    userSignal = hasUserSignal(context)
   ): Promise<SessionRouteUpdate | undefined> {
     if (!context.sessionId) return undefined;
 
@@ -102,6 +112,7 @@ export class SessionRouteStore {
         previousRoute: existing?.currentRoute,
         currentRoute: route,
         selectedRoute: route,
+        softFloor: false,
         action: "explicit_override"
       };
     }
@@ -114,13 +125,29 @@ export class SessionRouteStore {
         teamId: context.teamId,
         currentRoute: route,
         selectedRoute: route,
+        softFloor: !userSignal,
+        action: "stored"
+      };
+    }
+
+    if (existing.softFloor && userSignal) {
+      return {
+        sessionKey,
+        sessionId: context.sessionId,
+        userId: context.userId,
+        teamId: context.teamId,
+        previousRoute: existing.currentRoute,
+        currentRoute: route,
+        selectedRoute: route,
+        softFloor: false,
         action: "stored"
       };
     }
 
     // Memory above a lowered maxRoute settles at the cap instead of holding
     // the session at a route every future request would be denied.
-    const selectedRoute = higherRoute(capRoute(existing.currentRoute, maxRoute), route);
+    const cappedCurrentRoute = capRoute(existing.currentRoute, maxRoute);
+    const selectedRoute = userSignal ? higherRoute(cappedCurrentRoute, route) : cappedCurrentRoute;
     let action: SessionRouteUpdate["action"] = "capped";
     if (selectedRoute === existing.currentRoute) {
       action = "kept";
@@ -137,6 +164,7 @@ export class SessionRouteStore {
       currentRoute: selectedRoute,
       selectedRoute,
       pin: action === "kept" ? existing.pin : undefined,
+      softFloor: existing.softFloor,
       action
     };
   }
@@ -152,7 +180,8 @@ export class SessionRouteStore {
       teamId: update.teamId,
       currentRoute: update.selectedRoute,
       pin: update.pin,
-      requestCount: (existing?.requestCount ?? 0) + 1
+      requestCount: (existing?.requestCount ?? 0) + 1,
+      softFloor: update.softFloor
     });
   }
 
@@ -184,7 +213,8 @@ export class SessionRouteStore {
       teamId: context.teamId,
       currentRoute: persisted.currentRoute,
       pin: persisted.pin,
-      requestCount: persisted.requestCount
+      requestCount: persisted.requestCount,
+      softFloor: persisted.softFloor ?? false
     };
     this.sessions.set(sessionKey, state);
     return state;

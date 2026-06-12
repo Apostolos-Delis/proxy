@@ -187,6 +187,52 @@ describe("session pinning", () => {
     expect(decision?.guardrailActions).toContain("session_route_kept");
   });
 
+  it("skips classification for tool-result-only continuations and rides the session floor", async () => {
+    const organizationId = "org_session_tool_turns";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: { classifierOutput: hardClassifierOutput }
+    });
+
+    const first = await sendMessages(activeFixture, "proxy-token", "tool-turn-session");
+    expect(first.status).toBe(200);
+    expect(classifierCalls(activeFixture)).toBe(1);
+
+    const second = await sendToolResultMessages(activeFixture, "proxy-token", "tool-turn-session");
+    expect(second.status).toBe(200);
+    expect(classifierCalls(activeFixture)).toBe(1);
+
+    const decision = await lastDecisionPayload(activeFixture);
+    expect(decision?.finalRoute).toBe("hard");
+    expect(decision?.reasonCodes).toContain("session_route_no_user_signal");
+    expect(decision?.guardrailActions).toContain("session_route_kept");
+    expect(decision?.guardrailActions).toContain("session_settings_pinned");
+  });
+
+  it("lets only user-signal turns move the session floor", async () => {
+    const store = new SessionRouteStore();
+    const userContext = routeContext("org_floor_rules", "floor-session");
+    const toolContext: RouteContext = { ...userContext, routingInputSource: "full_request" };
+
+    const warmup = await store.plan(toolContext, "deep");
+    expect(warmup?.action).toBe("stored");
+    expect(warmup?.softFloor).toBe(true);
+    store.commit(warmup!);
+
+    const firstUserTurn = await store.plan(userContext, "fast");
+    expect(firstUserTurn?.selectedRoute).toBe("fast");
+    expect(firstUserTurn?.softFloor).toBe(false);
+    store.commit(firstUserTurn!);
+
+    const toolTurn = await store.plan(toolContext, "deep");
+    expect(toolTurn?.selectedRoute).toBe("fast");
+    expect(toolTurn?.action).toBe("kept");
+    store.commit(toolTurn!);
+
+    const upgrade = await store.plan(userContext, "hard");
+    expect(upgrade?.selectedRoute).toBe("hard");
+    expect(upgrade?.action).toBe("upgraded");
+  });
+
   it("keeps classifying while a session sits below the deep route", async () => {
     const organizationId = "org_session_below_ceiling";
     activeFixture = await captureFixture(organizationId, "raw_text", false, {
@@ -288,6 +334,41 @@ async function sendMessages(
       model,
       messages: [
         { role: "user", content: `debug this failing integration test (${requestNonce})` }
+      ],
+      stream: true
+    })
+  });
+  await response.text();
+  return response;
+}
+
+async function sendToolResultMessages(
+  fixture: PromptTestFixture,
+  secret: string,
+  sessionId: string
+) {
+  requestNonce += 1;
+  const response = await fetch(`${fixture.proxyUrl}/v1/messages`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${secret}`,
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01",
+      "x-claude-code-session-id": sessionId
+    },
+    body: JSON.stringify({
+      model: "claude-router-auto",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "toolu_1",
+              content: [{ type: "text", text: `command output (${requestNonce})` }]
+            }
+          ]
+        }
       ],
       stream: true
     })

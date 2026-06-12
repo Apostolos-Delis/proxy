@@ -464,7 +464,7 @@ For Codex efficiency, the custom provider should opt into Responses WebSockets. 
 Codex-specific compatibility requirements:
 
 - The client base URL already includes `/v1`; the surface adapter should handle `POST /v1/responses` and forward to the upstream `/v1/responses`.
-- Support `WS /v1/responses`, preserve `previous_response_id`, and pin continuations to the same proxy route for the connection.
+- Support `WS /v1/responses`, preserve `previous_response_id` and the requested model verbatim; continuations stay pinned through session route memory, with a connection-scoped session id when the client sends none.
 - Preserve `x-codex-turn-state` exactly. It is a sticky per-turn routing token and must not leak across unrelated turns.
 - Preserve `x-codex-turn-metadata` as observability metadata, not as prompt-visible input.
 - Do not remove `include: ["reasoning.encrypted_content"]` when reasoning is active.
@@ -939,7 +939,7 @@ Integration tests with mocked upstream:
 
 - Non-streaming `/v1/responses` passthrough.
 - WebSocket `/v1/responses` passthrough.
-- WebSocket continuations preserve `previous_response_id` and stay pinned to the established route.
+- WebSocket continuations preserve `previous_response_id` and stay pinned to the established route via session memory.
 - Streaming SSE passthrough.
 - Client cancellation aborts upstream.
 - Upstream errors return correctly.

@@ -131,6 +131,7 @@ export type RouteDecision = {
       provider: Provider;
       routingConfigVersionId?: string;
     };
+    softFloor: boolean;
     action: "stored" | "upgraded" | "kept" | "capped" | "explicit_override";
   };
   classifier?: {

@@ -8,6 +8,7 @@ import {
 import type { ModelCatalog } from "./catalog.js";
 import { defaultClassifierSettings } from "./classifier.js";
 import type { ClassificationResult, ClassifierSettings, LlmClassifier } from "./classifier.js";
+import { hasUserSignal } from "./features.js";
 import { jsonPayload, type EventService } from "./events.js";
 import type { AppConfig } from "./config.js";
 import { capRoute, checkBeforeClassification, checkDecision, type SessionRouteStore } from "./policy.js";
@@ -123,20 +124,24 @@ export class RoutingService {
     let classification: ClassificationResult | undefined;
     let requestedRoute: RouteName;
     let classifierFailed = false;
-    let classificationSkipped = false;
+    let skipReason: "session_route_ceiling" | "session_route_no_user_signal" | undefined;
     const classifierSettings = routingConfig?.config.classifier ?? defaultClassifierSettings(this.config);
     const ceilingRoute = capRoute(
       routeOrder[routeOrder.length - 1],
       routingConfig?.config.limits.maxRoute
     );
+    const sessionRoute = explicit ? undefined : await this.sessions.peek(context);
     if (explicit) {
       requestedRoute = explicit;
-    } else if (atOrAbove(await this.sessions.peek(context), ceilingRoute)) {
+    } else if (atOrAbove(sessionRoute?.route, ceilingRoute) && !sessionRoute?.soft) {
       // Session memory never downgrades and auto routes are capped at the
       // config ceiling, so memory at or above it already fixes the decision —
       // skip the classifier call instead of spending its latency and tokens.
-      classificationSkipped = true;
+      skipReason = "session_route_ceiling";
       requestedRoute = ceilingRoute;
+    } else if (sessionRoute && !hasUserSignal(context)) {
+      skipReason = "session_route_no_user_signal";
+      requestedRoute = sessionRoute.route;
     } else {
       const cacheKey = context.organizationId
         ? classificationCacheKey(context.organizationId, context, routingConfigSnapshot)
@@ -166,17 +171,21 @@ export class RoutingService {
           if (cacheKey) this.storeClassification(cacheKey, classification);
         } catch {
           classifierFailed = true;
-          requestedRoute = routingConfig?.config.limits.fallbackRoute ?? classifierFailureFallbackRoute;
+          requestedRoute = sessionRoute?.route
+            ?? routingConfig?.config.limits.fallbackRoute
+            ?? classifierFailureFallbackRoute;
         }
       }
     }
 
+    const floorSignal = hasUserSignal(context) && !classifierFailed && !skipReason;
     let decision = await this.resolveRoute(
       context,
       requestedRoute,
       classification,
       routingConfig,
-      classifierSettings
+      classifierSettings,
+      floorSignal
     );
     if (classifierFailed) {
       if (decision.outcome === "reject" && decision.error === "route_not_available_for_surface") {
@@ -184,7 +193,7 @@ export class RoutingService {
           // Candidates above the ceiling clamp back to it, and the ceiling is
           // itself a candidate.
           if (route === requestedRoute || !atOrAbove(ceilingRoute, route)) continue;
-          const candidate = await this.resolveRoute(context, route, classification, routingConfig, classifierSettings);
+          const candidate = await this.resolveRoute(context, route, classification, routingConfig, classifierSettings, floorSignal);
           if (candidate.outcome === "route") {
             decision = candidate;
             break;
@@ -196,8 +205,8 @@ export class RoutingService {
         decision.reasonCodes = ["classifier_failure_fallback"];
       }
     }
-    if (classificationSkipped && decision.outcome === "route") {
-      decision.reasonCodes = ["session_route_ceiling"];
+    if (skipReason && decision.outcome === "route") {
+      decision.reasonCodes = [skipReason];
     }
     if (decision.outcome === "route" && decision.finalRoute) {
       const postBudget = checkDecision(context, decision.finalRoute, routingConfig?.config.limits);
@@ -221,6 +230,7 @@ export class RoutingService {
         currentRoute: decision.session.currentRoute,
         selectedRoute: decision.session.currentRoute,
         pin: decision.session.pin,
+        softFloor: decision.session.softFloor,
         action: decision.session.action
       });
       await this.events.append({
@@ -391,7 +401,8 @@ export class RoutingService {
     classifierRoute: RouteName,
     classification?: ClassificationResult,
     routingConfig?: RoutingConfigSelection,
-    classifierSettings: ClassifierSettings = defaultClassifierSettings(this.config)
+    classifierSettings: ClassifierSettings = defaultClassifierSettings(this.config),
+    floorSignal: boolean = hasUserSignal(context)
   ): Promise<RouteDecision> {
     let finalRoute = classifierRoute;
     const guardrailActions: string[] = [];
@@ -436,7 +447,7 @@ export class RoutingService {
       }
     }
 
-    const session = await this.sessions.plan(context, finalRoute, maxRoute);
+    const session = await this.sessions.plan(context, finalRoute, maxRoute, floorSignal);
     if (session) {
       finalRoute = session.selectedRoute;
       if (session.action === "kept") guardrailActions.push("session_route_kept");
@@ -501,6 +512,7 @@ export class RoutingService {
             currentRoute: session.currentRoute,
             pin: sessionPin,
             invalidatedPin,
+            softFloor: session.softFloor,
             action: session.action
           }
         : undefined,

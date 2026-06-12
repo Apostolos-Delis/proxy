@@ -126,6 +126,10 @@ function promptCacheKeySessionId(value: unknown) {
   return /^[A-Za-z0-9._:-]{8,128}$/.test(value) ? value : undefined;
 }
 
+export function hasUserSignal(context: RouteContext) {
+  return context.routingInputSource === "latest_user_message";
+}
+
 function routingInputFrom(latestUserText: string | undefined, fullText: string) {
   const text = latestUserText?.trim();
   if (text) {
