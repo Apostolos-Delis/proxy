@@ -27,6 +27,9 @@ export type CompressionRule = {
   label: string;
   matches: (toolName: string) => boolean;
   filter: CompressionFilter;
+  // Per-rule eligibility floor; defaults to MIN_COMPRESSIBLE_CHARS. Cheap O(n)
+  // transforms can opt into a lower floor to catch mid-size results.
+  minChars?: number;
 };
 
 export type CompressionRecord = {
@@ -182,10 +185,10 @@ function applyRules(
   content: unknown,
   records: CompressionRecord[]
 ): unknown {
-  const beforeChars = contentChars(content);
-  if (beforeChars < MIN_COMPRESSIBLE_CHARS) return undefined;
   const rule = rules.find((candidate) => candidate.matches(toolName));
   if (!rule) return undefined;
+  const beforeChars = contentChars(content);
+  if (beforeChars < (rule.minChars ?? MIN_COMPRESSIBLE_CHARS)) return undefined;
   const replaced = rule.filter({ toolName, toolInput, content });
   if (replaced === undefined) return undefined;
   const afterChars = contentChars(replaced);

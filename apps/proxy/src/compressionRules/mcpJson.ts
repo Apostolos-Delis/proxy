@@ -19,7 +19,9 @@ import { mapTextContent, type CompressionRule } from "../toolResultCompression.j
 export const mcpJsonRule: CompressionRule = {
   label: "mcp-json-whitespace",
   matches: (toolName) => toolName.startsWith("mcp__"),
-  filter: ({ content }) => mapTextContent(content, compactJsonString)
+  filter: ({ content }) => mapTextContent(content, compactJsonString),
+  // Cheap O(n) scan — worth running on mid-size results too.
+  minChars: 512
 };
 
 // Returns the whitespace-stripped JSON string, or undefined if the input is not

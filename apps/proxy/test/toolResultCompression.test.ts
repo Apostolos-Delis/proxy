@@ -131,9 +131,9 @@ describe("compressToolResults", () => {
       filter: () => undefined
     };
     compressToolResults("anthropic-messages", body, [recordingRule]);
-    // Only the second result clears the size threshold; the id maps to the
-    // latest tool_use registration (Read).
-    expect(seen).toEqual(["Read"]);
+    // The id→name map is built upfront with last-write-wins, so both results
+    // resolve to the latest tool_use registration (Read).
+    expect(seen).toEqual(["Read", "Read"]);
   });
 
   it("skips results below the size threshold", () => {
