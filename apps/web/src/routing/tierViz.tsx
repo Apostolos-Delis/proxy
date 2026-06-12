@@ -4,10 +4,22 @@ const TIER_ORDER: readonly string[] = editorRouteOrder;
 
 const EFFORT_ORDER: readonly string[] = EFFORT_SCALE;
 
+// Effort-style synonyms seen in request data map onto the tier scale.
+const TIER_ALIASES: Record<string, string> = {
+  low: "fast",
+  minimal: "fast",
+  medium: "balanced",
+  auto: "balanced",
+  high: "hard",
+  xhigh: "deep",
+  max: "deep"
+};
+
 // Unknown values rank 0: every segment stays unlit while the label still
 // shows the raw string.
 function tierOrdinal(route: string) {
-  return TIER_ORDER.indexOf(route.toLowerCase()) + 1;
+  const value = route.toLowerCase();
+  return TIER_ORDER.indexOf(TIER_ALIASES[value] ?? value) + 1;
 }
 
 function effortOrdinal(effort: string) {

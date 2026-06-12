@@ -30,7 +30,7 @@ export function FactsRail({ artifact, request }: { artifact: PromptArtifactDetai
             <Fact label="Config" wide>
               {config ? (
                 <>
-                  <Link to="/routing-configs/$configId" params={{ configId: config.configId }} className="fact-link">
+                  <Link to="/routing/$configId" params={{ configId: config.configId }} className="fact-link">
                     {config.configName ?? compactId(config.configId)}
                   </Link>
                   {config.version != null ? <span className="mono faint"> · v{config.version}</span> : null}

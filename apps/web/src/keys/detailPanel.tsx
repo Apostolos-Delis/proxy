@@ -42,7 +42,7 @@ export function ApiKeyDetailPanel({ apiKey, onClose }: {
           <Fact label="Owner">{apiKey.userId ? <span className="mono">{apiKey.userId}</span> : "organization"}</Fact>
           <Fact label="Routing config">
             {apiKey.routingConfig ? (
-              <Link to="/routing-configs/$configId" params={{ configId: apiKey.routingConfig.id }} className="session-link">
+              <Link to="/routing/$configId" params={{ configId: apiKey.routingConfig.id }} className="session-link">
                 {apiKey.routingConfig.name}
               </Link>
             ) : "Organization default"}

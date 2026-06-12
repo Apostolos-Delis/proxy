@@ -11,7 +11,7 @@ export function RoutingConfigCard({ config }: { config: RoutingConfigSummary }) 
   const archived = config.status === "archived";
   return (
     <Link
-      to="/routing-configs/$configId"
+      to="/routing/$configId"
       params={{ configId: config.id }}
       className={`glass card config-card${archived ? " config-card-archived" : ""}`}
       title={config.description ?? undefined}

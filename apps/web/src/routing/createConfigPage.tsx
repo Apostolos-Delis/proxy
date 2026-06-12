@@ -91,7 +91,7 @@ function CreateConfigForm({ sourceConfigs, apiKeys }: {
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
     },
     onSuccess: (detail) => {
-      navigate({ to: "/routing-configs/$configId", params: { configId: detail.config.id } });
+      navigate({ to: "/routing/$configId", params: { configId: detail.config.id } });
     }
   });
 
@@ -123,7 +123,7 @@ function CreateConfigForm({ sourceConfigs, apiKeys }: {
       <PageTitle
         title="New routing config"
         subtitle="Clone an active config, set its prompts and tier models, then point API keys at it."
-        actions={<Link to="/routing-configs" className="btn"><ArrowLeft />All configs</Link>}
+        actions={<Link to="/routing" className="btn"><ArrowLeft />All configs</Link>}
       />
       <form className="routing-create-form" onSubmit={(event) => { event.preventDefault(); submit(); }}>
         <GlassCard>
@@ -219,7 +219,7 @@ function CreateConfigForm({ sourceConfigs, apiKeys }: {
             {editorError ? <div className="action-error">{editorError}</div> : null}
             {createMutation.error ? <div className="action-error">{createMutation.error.message}</div> : null}
           </div>
-          <Link to="/routing-configs" className="btn">Cancel</Link>
+          <Link to="/routing" className="btn">Cancel</Link>
           <button className="btn btn-primary" type="submit" disabled={createMutation.isPending}>
             {createMutation.isPending ? "Creating…" : "Create config"}
           </button>

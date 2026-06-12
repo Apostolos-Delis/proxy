@@ -34,7 +34,7 @@ export type PalettePagePath =
   | "/logs"
   | "/sessions"
   | "/prompts"
-  | "/routing-configs"
+  | "/routing"
   | "/api-keys"
   | "/users"
   | "/billing"
@@ -87,7 +87,7 @@ export const palettePages: PalettePage[] = [
   { path: "/logs", title: "Logs", subtitle: "Request stream", keywords: ["requests", "traffic", "prompts", "stream"], icon: Logs },
   { path: "/sessions", title: "Sessions", subtitle: "Agent session replay", keywords: ["replay", "conversations", "agents", "turns"], icon: MessagesSquare },
   { path: "/prompts", title: "Prompts", subtitle: "Captured prompt artifacts", keywords: ["artifacts", "raw text", "capture"], icon: ScrollText },
-  { path: "/routing-configs", title: "Routing", subtitle: "Config versions", keywords: ["routes", "configs", "classifier", "models", "versions"], icon: GitBranch },
+  { path: "/routing", title: "Routing", subtitle: "Config versions", keywords: ["routes", "configs", "classifier", "models", "versions"], icon: GitBranch },
   { path: "/api-keys", title: "API keys", subtitle: "Manage secrets", keywords: ["secrets", "tokens", "credentials", "keys"], icon: KeyRound },
   { path: "/users", title: "Users", subtitle: "Team & access", keywords: ["team", "members", "access", "roles"], icon: Users },
   { path: "/billing", title: "Billing", subtitle: "Spend & invoices", keywords: ["invoices", "payment", "plan"], icon: CreditCard },
