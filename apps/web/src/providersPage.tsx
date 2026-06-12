@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { Ban, KeySquare, Plus, X } from "lucide-react";
+import { Ban, KeySquare, Plus } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -9,7 +9,7 @@ import {
   type ProviderAccountSummary
 } from "./providers/data";
 import { ProviderKeyDetailPanel } from "./providers/detailPanel";
-import { CreateProviderCredentialPanel } from "./createProviderCredentialPanel";
+import { CreateProviderKeyModal } from "./createProviderKeyModal";
 import { compactId, formatDateTime } from "./format";
 import { ConsoleTable, optionItems, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { PageState, PageTitle, StatusBadge } from "./ui";
@@ -47,13 +47,13 @@ export function ProvidersPage() {
         title="Provider keys"
         subtitle="Customer-supplied provider keys (BYOK). Unbound traffic keeps using the company key."
         actions={(
-          <button className="btn btn-primary" type="button" onClick={() => setShowCreate((open) => !open)}>
-            {showCreate ? <X /> : <Plus />}
-            {showCreate ? "Close" : "Add provider key"}
+          <button className="btn btn-primary" type="button" onClick={() => setShowCreate(true)}>
+            <Plus />
+            Add provider key
           </button>
         )}
       />
-      {showCreate ? <CreateProviderCredentialPanel onClose={() => setShowCreate(false)} /> : null}
+      {showCreate ? <CreateProviderKeyModal onClose={() => setShowCreate(false)} /> : null}
       {openAccount ? <ProviderKeyDetailPanel account={openAccount} onClose={() => setOpenAccountId(null)} /> : null}
       <ConsoleTable
         className="routing-configs-card"

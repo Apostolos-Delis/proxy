@@ -1,16 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeySquare } from "lucide-react";
 import { useState } from "react";
 
 import {
   createProviderCredential,
   fetchSubscriptionOAuthEnabled,
+  type CreateProviderCredentialInput,
   type ProviderName
 } from "./providers/data";
 import type { ProviderAccountAuthType } from "./gql/graphql";
+import { Modal } from "./modal";
 import { PROVIDER_OPTIONS } from "./providers";
 import { MenuSelect } from "./table/MenuSelect";
-import { Badge, FormField as Field, GlassCard } from "./ui";
+import { Badge, FormField as Field } from "./ui";
 
 type CreateForm = {
   provider: ProviderName;
@@ -35,7 +36,10 @@ const AUTH_TYPE_OPTIONS: { value: ProviderAccountAuthType; label: string }[] = [
 // packages/schema/src/index.ts — the server enforces the same prefix.
 const SUBSCRIPTION_TOKEN_PREFIX = "sk-ant-oat01-";
 
-export function CreateProviderCredentialPanel({ onClose }: { onClose: () => void }) {
+export function CreateProviderKeyModal({ onClose, onCreated }: {
+  onClose: () => void;
+  onCreated?: (account: { id: string; provider: ProviderName }) => void;
+}) {
   const [form, setForm] = useState<CreateForm>(emptyForm);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -46,40 +50,53 @@ export function CreateProviderCredentialPanel({ onClose }: { onClose: () => void
   const subscriptionAuthEnabled = subscriptionAuthQuery.data === true;
   const isSubscription = form.authType === "oauth";
   const createMutation = useMutation({
-    mutationFn: () => createProviderCredential({
-      provider: form.provider,
-      name: form.name.trim(),
-      authType: form.authType,
-      apiKey: form.apiKey.trim()
-    }),
-    onSuccess: () => {
+    mutationFn: async (input: CreateProviderCredentialInput) => {
+      const account = await createProviderCredential(input);
+      // Nullable per codegen; closing as if it succeeded would silently skip
+      // the wizard's auto-bind.
+      if (!account) throw new Error("The server did not confirm the new key — check the provider keys list before retrying.");
+      return account;
+    },
+    onSuccess: (account, variables) => {
       queryClient.invalidateQueries({ queryKey: ["provider-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
-      setForm(emptyForm);
+      onCreated?.({ id: account.id, provider: variables.provider });
       onClose();
     }
   });
+  // Closing mid-flight would unmount the mutation and drop the cache
+  // invalidation and onCreated callback.
+  const requestClose = () => {
+    if (!createMutation.isPending) onClose();
+  };
 
   return (
-    <GlassCard className="routing-config-create">
-      <form onSubmit={(event) => {
+    <Modal
+      label="Add provider key"
+      title="Add provider key"
+      subtitle="Stored encrypted at rest and only used to forward traffic from keys you bind it to."
+      onClose={requestClose}
+    >
+      <form className="modal-form" onSubmit={(event) => {
         event.preventDefault();
         const nextError = validate(form, subscriptionAuthEnabled);
         setFieldError(nextError);
-        if (!nextError) createMutation.mutate();
+        if (!nextError) {
+          createMutation.mutate({
+            provider: form.provider,
+            name: form.name.trim(),
+            authType: form.authType,
+            apiKey: form.apiKey.trim()
+          });
+        }
       }}>
-        <div className="card-head routing-create-head">
-          <div>
-            <div className="card-title"><KeySquare />Add provider key</div>
-            <div className="faint">Stored encrypted at rest and only used to forward traffic from keys you bind it to.</div>
-          </div>
-          <button className="btn btn-primary" type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? "Saving" : "Save key"}
-          </button>
-        </div>
         <div className="routing-create-grid key-create-grid">
+          {/* The select fields use a <div>, not FormField's <label>: clicking
+              the popover backdrop (a label descendant) would re-trigger the
+              select button and reopen the menu. */}
           {subscriptionAuthEnabled ? (
-            <Field label="Auth type">
+            <div className="routing-create-field">
+              <span>Auth type</span>
               <MenuSelect
                 ariaLabel="Auth type"
                 value={form.authType}
@@ -91,16 +108,17 @@ export function CreateProviderCredentialPanel({ onClose }: { onClose: () => void
                   provider: value === "oauth" ? "anthropic" : current.provider
                 }))}
               />
-            </Field>
+            </div>
           ) : null}
-          <Field label="Provider">
+          <div className="routing-create-field">
+            <span>Provider</span>
             <MenuSelect
               ariaLabel="Provider"
               value={form.provider}
               options={isSubscription ? PROVIDER_OPTIONS.filter((option) => option.value === "anthropic") : PROVIDER_OPTIONS}
               onChange={(value) => setForm((current) => ({ ...current, provider: value as ProviderName }))}
             />
-          </Field>
+          </div>
           <Field label="Label">
             <input
               value={form.name}
@@ -131,8 +149,13 @@ export function CreateProviderCredentialPanel({ onClose }: { onClose: () => void
         ) : null}
         {fieldError ? <div className="action-error">{fieldError}</div> : null}
         {createMutation.error ? <div className="action-error">{createMutation.error.message}</div> : null}
+        <div className="modal-footer">
+          <button className="btn btn-primary" type="submit" disabled={createMutation.isPending}>
+            {createMutation.isPending ? "Saving" : "Save key"}
+          </button>
+        </div>
       </form>
-    </GlassCard>
+    </Modal>
   );
 }
 

@@ -50,6 +50,17 @@ export function withProviderKeyMode(draft: CreateKeyDraft, linkProviderKeys: boo
   return { ...draft, linkProviderKeys, providerBindings: emptyProviderBindings() };
 }
 
+// A key created mid-wizard flips the draft to own-keys mode and binds itself,
+// leaving the other providers' picks untouched.
+export function withCreatedProviderKey(
+  draft: CreateKeyDraft,
+  provider: ProviderName,
+  providerAccountId: string
+): CreateKeyDraft {
+  const next = withProviderKeyMode(draft, true);
+  return { ...next, providerBindings: { ...next.providerBindings, [provider]: providerAccountId } };
+}
+
 // A null routingConfigId resolves server-side to the seeded default config,
 // so surface its real name instead of an opaque "Organization default".
 export function orgDefaultConfigLabel(defaultConfig: { name: string } | null): string {

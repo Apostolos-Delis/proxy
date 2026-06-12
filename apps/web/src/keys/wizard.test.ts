@@ -8,6 +8,7 @@ import {
   prevStepId,
   stepBlockerMessage,
   stepRailState,
+  withCreatedProviderKey,
   withProviderKeyMode,
   type CreateKeyDraft
 } from "./wizard";
@@ -42,6 +43,22 @@ describe("withProviderKeyMode", () => {
     const next = withProviderKeyMode(draft, true);
     expect(next.linkProviderKeys).toBe(true);
     expect(next.providerBindings.anthropic).toBe("acct_1");
+  });
+});
+
+describe("withCreatedProviderKey", () => {
+  it("flips to own keys and binds the new account", () => {
+    const next = withCreatedProviderKey(initialDraft(), "anthropic", "acct_new");
+    expect(next.linkProviderKeys).toBe(true);
+    expect(next.providerBindings.anthropic).toBe("acct_new");
+  });
+
+  it("preserves the other provider's existing binding", () => {
+    const draft = { ...initialDraft(), linkProviderKeys: true };
+    draft.providerBindings.openai = "acct_openai";
+    const next = withCreatedProviderKey(draft, "anthropic", "acct_new");
+    expect(next.providerBindings.anthropic).toBe("acct_new");
+    expect(next.providerBindings.openai).toBe("acct_openai");
   });
 });
 
