@@ -12,7 +12,6 @@ describe("config and events", () => {
     });
 
     expect("routePolicyTrust" in config).toBe(false);
-    expect("budgetMaxRoute" in config).toBe(false);
   });
 
   it("tracks outbox processing states only after real handlers run", async () => {

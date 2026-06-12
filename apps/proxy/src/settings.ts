@@ -89,7 +89,13 @@ function parseSettings(raw: string) {
     const value: unknown = JSON.parse(raw);
     // Files saved before budget limits moved to routing configs carry a
     // "budgets" key; the strict schema would reject it and fail boot.
-    if (value && typeof value === "object") delete (value as Record<string, unknown>).budgets;
+    if (value && typeof value === "object" && "budgets" in value) {
+      delete (value as Record<string, unknown>).budgets;
+      if (!warnedLegacyBudgets) {
+        warnedLegacyBudgets = true;
+        console.warn("Ignoring legacy \"budgets\" block in settings file; budget limits now live in routing configs.");
+      }
+    }
     return proxySettingsSchema.parse(value);
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -98,6 +104,8 @@ function parseSettings(raw: string) {
     throw error;
   }
 }
+
+let warnedLegacyBudgets = false;
 
 function isNotFound(error: unknown) {
   return typeof error === "object" &&
