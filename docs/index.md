@@ -25,4 +25,5 @@
 
 - [GEPA-inspired prompt optimization](future/gepa-prompt-optimization.md)
 - [Token cost reduction](future/token-cost-reduction.md)
+- [Tool result compression walkthrough](future/tool-result-compression-walkthrough.md)
 - [Spike: tool search + defer_loading injection](future/tool-search-defer-loading-spike.md)

@@ -59,6 +59,12 @@ describe("bashOutputRule", () => {
     expect(result).toBe("ERROR: file not found at /path/to/x.ts:42");
   });
 
+  it("preserves trailing spaces and tabs while stripping color", () => {
+    const log = `${ESC}[32mvalue   \nindented\t\t\nok  ${ESC}[0m`;
+    const result = run("Bash", log) as string;
+    expect(result).toBe("value   \nindented\t\t\nok  ");
+  });
+
   it("handles Claude Code text-block array content", () => {
     const result = run("Bash", [{ type: "text", text: `${ESC}[1mbuild ok${ESC}[0m` }]) as Array<{ text: string }>;
     expect(result[0].text).toBe("build ok");

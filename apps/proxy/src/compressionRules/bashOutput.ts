@@ -29,7 +29,9 @@ const ANSI_PATTERN = new RegExp(
 export const bashOutputRule: CompressionRule = {
   label: "bash-output-noise",
   matches: (toolName) => SHELL_TOOL_NAMES.has(toolName),
-  filter: ({ content }) => mapTextContent(content, stripNoise)
+  filter: ({ content }) => mapTextContent(content, stripNoise),
+  // Cheap O(n) scan — worth running on mid-size outputs too.
+  minChars: 512
 };
 
 function stripNoise(text: string): string | undefined {
