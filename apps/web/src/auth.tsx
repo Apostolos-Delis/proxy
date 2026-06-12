@@ -4,6 +4,7 @@ import { ArrowRight, LogOut } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 
+import { startLiveUpdates, stopLiveUpdates } from "./liveUpdates";
 import { fetchMe, login, logout } from "./session";
 import { ConsoleButton } from "./ui";
 
@@ -21,6 +22,7 @@ export async function requireAuth({ context }: { context: RouterContext }) {
   } catch {
     throw redirect({ to: "/login" });
   }
+  startLiveUpdates(context.queryClient);
 }
 
 export function LoginPage() {
@@ -69,6 +71,7 @@ export function LogoutButton({ icon }: { icon?: ReactNode }) {
   const mutation = useMutation({
     mutationFn: logout,
     onSuccess: async () => {
+      stopLiveUpdates();
       queryClient.removeQueries({ queryKey: ["me"] });
       await navigate({ to: "/login" });
     }

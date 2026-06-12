@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ChevronsUpDown } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { restartLiveUpdates } from "./liveUpdates";
 import { fetchMe, switchOrganization, type AuthMe } from "./session";
 import { AnchoredPopover } from "./table/PopoverShell";
 
@@ -18,6 +19,7 @@ export function OrgSwitcher() {
       setOpen(false);
       queryClient.setQueryData(["me"], data);
       void queryClient.invalidateQueries();
+      restartLiveUpdates(queryClient);
       await navigate({ to: "/" });
     }
   });

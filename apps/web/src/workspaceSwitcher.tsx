@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Check, ChevronsUpDown, Layers, Plus } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { restartLiveUpdates } from "./liveUpdates";
 import { createWorkspace, fetchMe, switchWorkspace, type AuthMe } from "./session";
 import { AnchoredPopover } from "./table/PopoverShell";
 
@@ -18,6 +19,7 @@ export function WorkspaceSwitcher() {
       setOpen(false);
       queryClient.setQueryData(["me"], data);
       void queryClient.invalidateQueries();
+      restartLiveUpdates(queryClient);
       await navigate({ to: "/" });
     }
   });

@@ -2,6 +2,7 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyReply } from "fastify";
 
 import { AdminAuthService } from "./adminAuth.js";
+import { registerAdminEventStream } from "./adminEvents.js";
 import {
   anthropicMessagesSurface,
   openAIResponsesSurface,
@@ -113,6 +114,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   const projections = new ProjectionService(modelCatalog, config);
   const emailService = new EmailService(config, app.log);
   registerAdminGraphQL(app, { config, adminAuth, emailService, events, projections, persistence });
+  registerAdminEventStream(app, events, adminAuth);
   wsProxy.register(app.server);
 
   app.get("/healthz", async () => ({ status: "ok" }));
