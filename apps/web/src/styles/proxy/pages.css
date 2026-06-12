@@ -157,6 +157,15 @@
   color: var(--fg-faint);
   font-size: 11px;
   font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Titles carrying a scope note may shrink: the note absorbs the squeeze
+   (ellipsized above) so the title text itself never clips. */
+.card-title:has(.usage-scope-note) {
+  min-width: 0;
 }
 
 .usage-spend-sub {
@@ -444,7 +453,6 @@
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
   gap: 22px;
-  align-items: start;
   margin-top: 22px;
 }
 
@@ -452,13 +460,45 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 22px;
-  align-items: start;
   margin-top: 22px;
+}
+
+/* Cards in a caching row stretch to equal height; footnotes pin to the bottom edge. */
+.caching-grid > .card,
+.caching-anatomy > .card {
+  display: flex;
+  flex-direction: column;
+}
+
+.caching-grid > .card > .caching-key-list {
+  flex: 1;
+}
+
+.caching-grid > .card > .compact-empty,
+.caching-anatomy > .card > .compact-empty {
+  flex: 1;
+  display: grid;
+  place-content: center;
+}
+
+.caching-anatomy > .card > .stat-sub:last-child {
+  margin-top: auto;
+  padding-top: 12px;
 }
 
 .caching-miss-total {
   font-size: 11.5px;
   white-space: nowrap;
+}
+
+/* Capped so a Bedrock-length model id widens the column no further than ~30ch
+   and ellipsizes instead of bleeding past the card edge (the miss table has no
+   overflow clipping of its own). */
+.caching-model-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 30ch;
 }
 
 .caching-reason-head {
@@ -482,7 +522,8 @@
 
 .caching-reason-legend {
   justify-content: flex-start;
-  margin-top: 14px;
+  margin-top: auto;
+  padding-top: 14px;
 }
 
 .caching-reason-legend span {

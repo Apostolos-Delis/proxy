@@ -158,7 +158,9 @@ export function totalsPointSeries(timeseries: UsageTimeseries, metric: UsageMetr
 export function cacheHitRate(group: UsageGroup | null | undefined): number | null {
   if (!group) return null;
   if (group.usage.inputTokens <= 0) return null;
-  return group.usage.cachedInputTokens / group.usage.inputTokens;
+  // The server heals ledger rows that violate the convention (cached ≤ input),
+  // but clamp anyway so corrupt data renders as a pinned gauge, not 729684%.
+  return Math.min(1, Math.max(0, group.usage.cachedInputTokens / group.usage.inputTokens));
 }
 
 /** Per-bucket cache hit rate scaled to 0-100 so mini bar heights read as percentages. */
