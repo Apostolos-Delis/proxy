@@ -21,6 +21,7 @@ import { PersistentRequestStateStore } from "./requestState.js";
 import { RoutingConfigAdminService } from "./routingConfigAdmin.js";
 import { RoutingConfigResolver } from "./routingConfig.js";
 import { createSessionPinLoader } from "./sessionRoute.js";
+import { normalizeLegacyCachedUsage } from "./usageNormalization.js";
 import { repriceZeroCostUsage } from "./usageRepricing.js";
 import { UserAdminService } from "./userAdmin.js";
 import { WorkspaceAdminService } from "./workspaceAdmin.js";
@@ -68,6 +69,7 @@ export function createDatabasePersistence(
     sessionPins: createSessionPinLoader(db),
     userAdmin: new UserAdminService(transactional, { invitationTtlSeconds: config.invitationTtlSeconds }),
     workspaceAdmin: new WorkspaceAdminService(transactional),
+    normalizeLegacyCachedUsage: () => normalizeLegacyCachedUsage(db),
     repriceZeroCostUsage: () => repriceZeroCostUsage(db, config.modelCosts),
     adminQueries: {
       forScope: (organizationId: string, workspaceId: string) =>
