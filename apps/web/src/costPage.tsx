@@ -83,7 +83,7 @@ export function CostPage() {
               <div className="row gap-8 usage-spend-sub">
                 <span className="badge badge-accent">{formatMoney(totals.cost.savings)} saved</span>
                 <span className="faint">vs {formatMoney(totals.cost.baseline)} baseline</span>
-                <InfoHint label="How baseline is computed">{baselineExplanation}</InfoHint>
+                <InfoHint label="How baseline is computed" placement="bottom">{baselineExplanation}</InfoHint>
               </div>
             </div>
             <div className="row gap-8">
