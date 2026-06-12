@@ -254,16 +254,38 @@
 }
 
 /* confirm dialog */
+.confirm-dialog, .modal {
+  background: var(--glass); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
 .confirm-dialog {
   position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 41;
   width: 400px; max-width: 92vw;
-  background: var(--glass); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
-  box-shadow: var(--shadow); padding: 22px 24px;
+  padding: 22px 24px;
   animation: dialogIn .2s var(--ease);
 }
 @keyframes dialogIn { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); } to { opacity: 1; } }
 .confirm-dialog p { margin: 0 0 18px; font-size: 14px; }
 .confirm-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* centered form modal. Centered with inset/auto margins, not a translate:
+   a persistent transform would become the containing block for the
+   position:fixed popover backdrops of embedded MenuSelects, shrinking them
+   to the modal box — an outside click would then land on the scrim and
+   discard the form. */
+.modal {
+  position: fixed; inset: 0; margin: auto; z-index: 41;
+  width: 600px; max-width: 92vw; height: fit-content; max-height: 86vh; overflow-y: auto;
+  padding: 24px 26px;
+  animation: modalIn .2s var(--ease);
+}
+@keyframes modalIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
+.modal-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+.modal-head .btn-icon { margin-left: auto; }
+.modal-title h3 { margin: 0; }
+.modal-title .muted { margin-top: 4px; font-size: 13px; }
+.modal-form { display: grid; gap: 16px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* misc utility */
 .row { display: flex; align-items: center; }
