@@ -49,8 +49,7 @@
   .usage-grid-split,
   .usage-focus-split,
   .caching-grid,
-  .overview-main-grid,
-  .billing-grid {
+  .overview-main-grid {
     grid-template-columns: 1fr;
   }
 
