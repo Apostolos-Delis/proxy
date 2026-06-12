@@ -155,9 +155,14 @@ function SessionStatusCell({ session }: { session: SessionSummary }) {
   const rest = statuses.slice(1);
   const breakdown = statuses.map(([status, count]) => `${count} ${status}`).join(" · ");
   return (
-    <div className="status-cell" title={rest.length > 0 ? breakdown : undefined}>
+    <div className="status-cell">
       <StatusBadge status={statuses[0]?.[0] ?? "unknown"} />
-      {rest.length > 0 ? <span className="mono faint">+{rest.length}</span> : null}
+      {rest.length > 0 ? (
+        <span className="status-extra mono faint" tabIndex={0}>
+          +{rest.length}
+          <span className="info-hint-bubble" role="tooltip">{breakdown}</span>
+        </span>
+      ) : null}
     </div>
   );
 }
