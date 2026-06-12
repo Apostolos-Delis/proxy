@@ -29,5 +29,5 @@ export function ownerLabel(users: UserDirectory, userId: string | null | undefin
 
 export function OwnerCell({ users, userId }: { users: UserDirectory; userId: string | null | undefined }) {
   if (!userId) return <span className="faint">Organization</span>;
-  return <UserCell name={ownerLabel(users, userId)} size={24} />;
+  return <UserCell name={ownerLabel(users, userId)} email={users.get(userId)?.email} size={24} />;
 }
