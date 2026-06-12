@@ -194,6 +194,9 @@ Runtime service:
 - `CLASSIFIER_MODEL`
 - `CLASSIFIER_TIMEOUT_MS`
 - `CLASSIFIER_MAX_ATTEMPTS`
+- `PROVIDER_RATE_LIMIT_MAX_ATTEMPTS`
+- `PROVIDER_RATE_LIMIT_BASE_DELAY_MS`
+- `PROVIDER_RATE_LIMIT_MAX_DELAY_MS`
 - `MODEL_COSTS_JSON`
 - `ADMIN_CORS_ORIGIN` only if the console and API are not same-origin
 - `ADMIN_DEV_LOGIN_ENABLED=false` for true production; for first internal staging, use a strong temporary password and restrict access
