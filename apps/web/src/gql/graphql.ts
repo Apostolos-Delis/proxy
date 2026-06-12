@@ -37,6 +37,7 @@ export type CreateInvitationInput = {
 export type CreateProviderCredentialInput = {
   apiKey: string;
   authType?: ProviderAccountAuthType | null | undefined;
+  chatgptAccountId?: string | null | undefined;
   name: string;
   provider: string;
 };

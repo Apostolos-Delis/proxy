@@ -70,6 +70,10 @@ export class ProviderCredentialStore {
     // Cache-miss layer of the kill switch: disabled oauth accounts fall back
     // to the company key. headersFor re-checks the flag for cached credentials.
     if (account.authType === "oauth" && !this.options.subscriptionOAuthEnabled) return undefined;
+    const chatgptAccountId = account.authType === "oauth" && account.provider === "openai"
+      ? settingsString(account.settings, "chatgptAccountId")
+      : undefined;
+    if (account.authType === "oauth" && account.provider === "openai" && !chatgptAccountId) return undefined;
     if (!this.options.encryptionKey) {
       throw new Error("provider_secret_encryption_key_missing");
     }
@@ -79,7 +83,8 @@ export class ProviderCredentialStore {
       provider: account.provider,
       token,
       providerAccountId: account.id,
-      authType: account.authType
+      authType: account.authType,
+      chatgptAccountId
     };
     this.cache.set(account.id, { credential, expiresAt: now + CACHE_TTL_MS });
 
@@ -90,4 +95,10 @@ export class ProviderCredentialStore {
 
     return credential;
   }
+}
+
+function settingsString(settings: unknown, key: string) {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return undefined;
+  const value = (settings as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }

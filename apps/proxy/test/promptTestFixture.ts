@@ -37,6 +37,7 @@ export function testEnv(overrides: NodeJS.ProcessEnv = {}) {
     PROMPT_PROXY_TOKEN: "proxy-token",
     OPENAI_API_KEY: "openai-upstream-key",
     OPENAI_BASE_URL: "http://127.0.0.1",
+    OPENAI_CHATGPT_BASE_URL: "http://127.0.0.1",
     OPENAI_FAST_MODEL: "gpt-5.4-mini",
     OPENAI_BALANCED_MODEL: "gpt-5.4",
     OPENAI_HARD_MODEL: "gpt-5.5",
@@ -82,6 +83,7 @@ export async function captureFixture(
     ...env,
     DEFAULT_ORGANIZATION_ID: organizationId,
     OPENAI_BASE_URL: openai.url,
+    OPENAI_CHATGPT_BASE_URL: openai.url,
     ANTHROPIC_BASE_URL: anthropic.url,
     LOG_LEVEL: "fatal"
   });
@@ -122,6 +124,7 @@ export async function captureFixture(
     ...env,
     DEFAULT_ORGANIZATION_ID: organizationId,
     OPENAI_BASE_URL: openai.url,
+    OPENAI_CHATGPT_BASE_URL: openai.url,
     ANTHROPIC_BASE_URL: anthropic.url,
     PROMPT_PROXY_TOKEN: env.PROMPT_PROXY_TOKEN,
     SEED_USER_ID: "local-user"

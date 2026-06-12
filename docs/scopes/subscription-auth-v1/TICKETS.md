@@ -1,5 +1,9 @@
 # Subscription Auth V1 Tickets
 
+> Historical note (2026-06-12): these tickets describe the original Anthropic-only V1. A follow-up now
+> adds OpenAI HTTP Responses subscription credentials with a Codex access token and ChatGPT account ID;
+> see the runbook for current operator behavior.
+
 These tickets break the subscription-auth scope ([PLAN.md](PLAN.md)) into PR-sized units.
 
 The intended delivery shape: let an engineer paste a Claude `setup-token` (`sk-ant-oat01-…`) into the

@@ -68,6 +68,7 @@ const configSchema = z.object({
   PROMPT_PROXY_SETTINGS_PATH: z.string().optional(),
   OPENAI_API_KEY: z.string().min(1).default("test-openai-key"),
   OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
+  OPENAI_CHATGPT_BASE_URL: z.string().url().default("https://chatgpt.com/backend-api/codex"),
   OPENAI_FAST_MODEL: z.string().min(1).default("gpt-5.4-mini"),
   OPENAI_BALANCED_MODEL: z.string().min(1).default("gpt-5.4"),
   OPENAI_HARD_MODEL: z.string().min(1).default("gpt-5.5"),
@@ -107,7 +108,7 @@ const configSchema = z.object({
       )
   ),
   DEFAULT_ORGANIZATION_ID: z.string().min(1).default("local"),
-  // Operator-level kill switch for Claude subscription-token auth. Env-only by
+  // Operator-level kill switch for subscription-token auth. Env-only by
   // design (never settings-file editable) and internal-only — must not be
   // surfaced to external customers. See docs/scopes/subscription-auth-v1/PLAN.md.
   SUBSCRIPTION_OAUTH_ENABLED: booleanEnvSchema,
@@ -145,6 +146,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     settingsPath,
     openaiApiKey: parsed.OPENAI_API_KEY,
     openaiBaseUrl: trimTrailingSlash(parsed.OPENAI_BASE_URL),
+    openaiChatgptBaseUrl: trimTrailingSlash(parsed.OPENAI_CHATGPT_BASE_URL),
     openaiFastModel: parsed.OPENAI_FAST_MODEL,
     openaiBalancedModel: parsed.OPENAI_BALANCED_MODEL,
     openaiHardModel: parsed.OPENAI_HARD_MODEL,

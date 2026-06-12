@@ -27,7 +27,8 @@ const createCredentialBodySchema = z.object({
   provider: z.enum(PROVIDER_NAMES),
   name: z.string().trim().min(1),
   authType: z.enum(PROVIDER_ACCOUNT_AUTH_TYPES).default("api_key"),
-  apiKey: z.string().trim().min(1)
+  apiKey: z.string().trim().min(1),
+  chatgptAccountId: z.string().trim().min(1).optional()
 }).strict();
 
 const bindApiKeyCredentialBodySchema = z.object({
@@ -58,27 +59,16 @@ export class ProviderCredentialAdminService {
       if (!this.options.subscriptionOAuthEnabled) {
         throw new ProviderCredentialAdminError("subscription_oauth_disabled", 400);
       }
-      if (body.data.provider !== PROVIDERS.ANTHROPIC) {
-        throw new ProviderCredentialAdminError("subscription_oauth_unsupported_provider", 400, [
-          { path: "provider", message: "Subscription tokens are supported for Anthropic only." }
-        ]);
-      }
-      if (!body.data.apiKey.startsWith(CLAUDE_SUBSCRIPTION_TOKEN_PREFIX)) {
-        throw new ProviderCredentialAdminError("invalid_subscription_token", 400, [
-          {
-            path: "apiKey",
-            message: `Expected a \`claude setup-token\` value starting with ${CLAUDE_SUBSCRIPTION_TOKEN_PREFIX}.`
-          }
-        ]);
-      }
     }
+    const oauthCredential = body.data.authType === "oauth"
+      ? parseOAuthCredential(body.data)
+      : undefined;
 
     const providerAccountId = createId("provider_account");
-    const ciphertext = encryptSecret(body.data.apiKey, encryptionKey);
-    const hint = secretHint(body.data.apiKey);
-    const settings = body.data.authType === "oauth"
-      ? { tokenKind: "claude_oauth", source: "setup-token" }
-      : undefined;
+    const secret = oauthCredential?.secret ?? body.data.apiKey;
+    const ciphertext = encryptSecret(secret, encryptionKey);
+    const hint = secretHint(secret);
+    const settings = oauthCredential?.settings;
     const now = new Date();
 
     return this.db.transaction(async (tx) => {
@@ -280,6 +270,86 @@ async function byokAccount(tx: PromptProxyTransaction, organizationId: string, p
     .limit(1);
   if (!account || !account.secretCiphertext) return null;
   return account;
+}
+
+type CreateCredentialBody = z.infer<typeof createCredentialBodySchema>;
+
+function parseOAuthCredential(data: CreateCredentialBody) {
+  if (data.provider === PROVIDERS.ANTHROPIC) {
+    if (!data.apiKey.startsWith(CLAUDE_SUBSCRIPTION_TOKEN_PREFIX)) {
+      throw new ProviderCredentialAdminError("invalid_subscription_token", 400, [
+        {
+          path: "apiKey",
+          message: `Expected a \`claude setup-token\` value starting with ${CLAUDE_SUBSCRIPTION_TOKEN_PREFIX}.`
+        }
+      ]);
+    }
+    return {
+      secret: data.apiKey,
+      settings: { tokenKind: "claude_oauth", source: "setup-token" }
+    };
+  }
+
+  const parsed = parseOpenAISecretInput(data.apiKey);
+  const accessToken = parsed.accessToken;
+  const chatgptAccountId = data.chatgptAccountId ?? parsed.chatgptAccountId;
+  if (!accessToken) {
+    throw new ProviderCredentialAdminError("invalid_subscription_token", 400, [
+      { path: "apiKey", message: "Expected an OpenAI Codex access token." }
+    ]);
+  }
+  if (!chatgptAccountId) {
+    throw new ProviderCredentialAdminError("invalid_subscription_account_id", 400, [
+      { path: "chatgptAccountId", message: "Expected a ChatGPT account ID for OpenAI subscription auth." }
+    ]);
+  }
+
+  return {
+    secret: accessToken,
+    settings: {
+      tokenKind: "openai_chatgpt",
+      source: parsed.source,
+      chatgptAccountId
+    }
+  };
+}
+
+function parseOpenAISecretInput(input: string) {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith("{")) {
+    return { accessToken: trimmed, chatgptAccountId: undefined, source: "codex-access-token" };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new ProviderCredentialAdminError("invalid_subscription_token", 400, [
+      { path: "apiKey", message: "Expected a valid OpenAI Codex access token or auth JSON." }
+    ]);
+  }
+  if (!isRecord(parsed)) {
+    throw new ProviderCredentialAdminError("invalid_subscription_token", 400, [
+      { path: "apiKey", message: "Expected a valid OpenAI Codex access token or auth JSON." }
+    ]);
+  }
+
+  const tokens = isRecord(parsed.tokens) ? parsed.tokens : undefined;
+  return {
+    accessToken: stringValue(parsed.access_token) ?? stringValue(parsed.accessToken) ??
+      stringValue(tokens?.access_token) ?? stringValue(tokens?.accessToken),
+    chatgptAccountId: stringValue(parsed.chatgpt_account_id) ?? stringValue(parsed.chatgptAccountId) ??
+      stringValue(parsed.account_id) ?? stringValue(parsed.accountId),
+    source: "codex-auth-json"
+  };
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function validationError(message: string, error: z.ZodError) {

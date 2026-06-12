@@ -40,7 +40,8 @@ const CreateProviderCredentialInput = builder.inputType("CreateProviderCredentia
     name: t.string({ required: true }),
     authType: t.field({ type: ProviderAccountAuthType }),
     // Carries the API key or, for authType "oauth", the subscription token.
-    apiKey: t.string({ required: true })
+    apiKey: t.string({ required: true }),
+    chatgptAccountId: t.string()
   })
 });
 
@@ -538,7 +539,8 @@ builder.mutationFields((t) => ({
             provider: args.input.provider,
             name: args.input.name,
             authType: args.input.authType ?? undefined,
-            apiKey: args.input.apiKey
+            apiKey: args.input.apiKey,
+            chatgptAccountId: args.input.chatgptAccountId ?? undefined
           }
         });
         const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
