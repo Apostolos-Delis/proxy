@@ -2,7 +2,6 @@ import type { CSSProperties, ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, Box, Copy, Info } from "lucide-react";
 
 import { compactId } from "./format";
-import { JsonView } from "./jsonView";
 
 export type ConsoleMetric = {
   label: string;
@@ -198,15 +197,6 @@ export function ConsoleButton({ children, type = "button", disabled = false, var
 }) {
   const variantClass = buttonVariantClass(variant);
   return <button className={`btn ${variantClass}`} type={type} disabled={disabled} onClick={onClick}>{children}</button>;
-}
-
-export function JsonPanel({ title, value }: { title: string; value: unknown }) {
-  return (
-    <GlassCard className="code-panel">
-      <div className="card-title">{title}</div>
-      <JsonView value={value} maxHeight={520} />
-    </GlassCard>
-  );
 }
 
 export function CompactId({ value }: { value: string }) {
