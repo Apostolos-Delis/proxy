@@ -1,13 +1,14 @@
-import { Link } from "@tanstack/react-router";
-import { GitBranch, KeySquare } from "lucide-react";
+import { GitBranch, KeySquare, Plus } from "lucide-react";
+import { useState } from "react";
 
+import { CreateProviderKeyModal } from "../createProviderKeyModal";
 import type { ProviderAccountSummary, ProviderName } from "../providers/data";
 import { PROVIDER_OPTIONS } from "../providers";
 import type { RoutingConfigSummary } from "../routing/data";
 import { SearchSelect } from "../table/SearchSelect";
 import { GlassCard } from "../ui";
 import { WizardStepHead } from "./stepHead";
-import { orgDefaultConfigLabel, withProviderKeyMode, type CreateKeyDraft } from "./wizard";
+import { orgDefaultConfigLabel, withCreatedProviderKey, withProviderKeyMode, type CreateKeyDraft } from "./wizard";
 
 export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, onChange }: {
   draft: CreateKeyDraft;
@@ -16,6 +17,7 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
   providerAccounts: ProviderAccountSummary[];
   onChange: (draft: CreateKeyDraft) => void;
 }) {
+  const [showAddKey, setShowAddKey] = useState(false);
   const activeAccounts = providerAccounts.filter((account) => account.status === "active");
   return (
     <>
@@ -56,7 +58,9 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
         {activeAccounts.length === 0 ? (
           <div className="wizard-provider-note">
             <span className="faint">No provider keys linked yet — this key's upstream traffic uses the platform keys.</span>
-            <Link to="/provider-keys" className="btn btn-sm">Add provider keys</Link>
+            <button type="button" className="btn btn-sm" onClick={() => setShowAddKey(true)}>
+              <Plus />Add provider key
+            </button>
           </div>
         ) : (
           <div className="wizard-step-body">
@@ -83,24 +87,37 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
               </label>
             </div>
             {draft.linkProviderKeys ? (
-              <div className="wizard-provider-grid">
-                {PROVIDER_OPTIONS.map((provider) => (
-                  <ProviderBindingField
-                    key={provider.value}
-                    provider={provider}
-                    accounts={activeAccounts.filter((account) => account.provider === provider.value)}
-                    value={draft.providerBindings[provider.value]}
-                    onChange={(providerAccountId) => onChange({
-                      ...draft,
-                      providerBindings: { ...draft.providerBindings, [provider.value]: providerAccountId }
-                    })}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="wizard-provider-grid">
+                  {PROVIDER_OPTIONS.map((provider) => (
+                    <ProviderBindingField
+                      key={provider.value}
+                      provider={provider}
+                      accounts={activeAccounts.filter((account) => account.provider === provider.value)}
+                      value={draft.providerBindings[provider.value]}
+                      onChange={(providerAccountId) => onChange({
+                        ...draft,
+                        providerBindings: { ...draft.providerBindings, [provider.value]: providerAccountId }
+                      })}
+                    />
+                  ))}
+                </div>
+                <div>
+                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowAddKey(true)}>
+                    <Plus />Add provider key
+                  </button>
+                </div>
+              </>
             ) : null}
           </div>
         )}
       </GlassCard>
+      {showAddKey ? (
+        <CreateProviderKeyModal
+          onClose={() => setShowAddKey(false)}
+          onCreated={({ id, provider }) => onChange(withCreatedProviderKey(draft, provider, id))}
+        />
+      ) : null}
     </>
   );
 }
