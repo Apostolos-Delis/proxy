@@ -146,10 +146,45 @@ describe("routing config runtime resolution", () => {
     await response.text();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("balanced");
+    // Classifier failure falls back to the routing config's limits.fallbackRoute
+    // (seeded as "hard"), not the no-config "balanced" constant.
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
     expect(activeFixture.openai.records.filter((record) =>
       record.body.model === "route-classifier-retry-once"
     )).toHaveLength(1);
+  });
+
+  it("uses the routing config fallback route when the classifier fails", async () => {
+    const organizationId = "org_config_fallback_route";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: { invalidClassifier: true }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "fallback-route-token",
+      slug: "fallback-route",
+      configHash: "sha256:fallback-route-config",
+      configure: (config) => {
+        config.limits = { ...config.limits, fallbackRoute: "fast" };
+        return config;
+      }
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer fallback-route-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this failing test",
+        stream: false
+      })
+    });
+    await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
   });
 
   it("escalates past fallback-route surface gaps when the classifier fails", async () => {
@@ -162,7 +197,7 @@ describe("routing config runtime resolution", () => {
       slug: "fallback-gap",
       configHash: "sha256:fallback-gap-config",
       configure: (config) => {
-        delete config.routes.balanced.openai;
+        delete config.routes.hard.openai;
         return config;
       }
     });
@@ -458,6 +493,83 @@ describe("routing config runtime resolution", () => {
     expect(activeFixture.openai.records.filter((record) =>
       record.body.model !== "route-classifier-cheap"
     )).toHaveLength(0);
+  });
+
+  it("rejects requests over the routing config input-token cap before classifier spend", async () => {
+    const organizationId = "org_config_input_cap";
+    activeFixture = await captureFixture(organizationId);
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "input-cap-token",
+      slug: "input-cap",
+      configHash: "sha256:input-cap-config",
+      configure: (config) => {
+        config.limits = { ...config.limits, maxEstimatedInputTokens: 1 };
+        return config;
+      }
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer input-cap-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "this request is intentionally too large for the tiny budget",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const eventRows = await activeFixture.db.select().from(events);
+    const decision = eventRows.find((event) => event.eventType === "routing.decision_recorded");
+    const payload = (decision?.payload ?? {}) as { budgetChecks?: Array<{ status: string }> };
+
+    expect(response.status).toBe(429);
+    expect(activeFixture.openai.records).toHaveLength(0);
+    expect(eventRows.map((event) => event.eventType)).toContain("budget.checked");
+    expect(payload.budgetChecks?.[0]?.status).toBe("reject");
+  });
+
+  it("rejects routes above the routing config max route without mutating session memory", async () => {
+    const organizationId = "org_config_max_route";
+    activeFixture = await captureFixture(organizationId);
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "max-route-token",
+      slug: "max-route",
+      configHash: "sha256:max-route-config",
+      configure: (config) => {
+        config.limits = { ...config.limits, maxRoute: "balanced", fallbackRoute: "balanced" };
+        return config;
+      }
+    });
+
+    // The mock classifier recommends "hard", which is above the balanced cap.
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer max-route-token",
+        "content-type": "application/json",
+        "x-codex-session-id": "max-route-session"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug auth regression",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const sessions = await fetch(`${activeFixture.proxyUrl}/_debug/sessions`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+
+    expect(response.status).toBe(429);
+    expect(activeFixture.openai.records.filter((record) =>
+      record.body.model !== "route-classifier-cheap"
+    )).toHaveLength(0);
+    expect(sessions).toHaveLength(0);
   });
 });
 

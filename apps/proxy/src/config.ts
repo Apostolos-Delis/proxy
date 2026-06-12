@@ -6,7 +6,6 @@ import {
   settingsPathFromEnv,
   settingsToEnv
 } from "./settings.js";
-import type { RouteName } from "./types.js";
 
 function normalizeBooleanEnv(value: unknown) {
   if (value === undefined) return undefined;
@@ -21,35 +20,6 @@ function normalizeBooleanEnv(value: unknown) {
 
 const booleanEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().default(false));
 const enabledBooleanEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().default(true));
-
-const optionalPositiveIntSchema = z.preprocess((value) => {
-  if (value === undefined || value === "") return undefined;
-  return value;
-}, z.coerce.number().int().positive().optional());
-
-const routeNameSchema = z.enum(["fast", "balanced", "hard", "deep"]);
-
-const optionalRouteNameSchema = z.preprocess((value) => {
-  if (value === undefined || value === "") return undefined;
-  return value;
-}, routeNameSchema.optional());
-
-const jsonNumberMapSchema = z.preprocess((value) => {
-  if (value === undefined || value === "") return {};
-  if (typeof value !== "string") return value;
-  return JSON.parse(value);
-}, z.record(z.string(), z.coerce.number().int().positive()).default({}));
-
-const routeNumberMapSchema = z.preprocess((value) => {
-  if (value === undefined || value === "") return {};
-  if (typeof value !== "string") return value;
-  return JSON.parse(value);
-}, z.object({
-  fast: z.coerce.number().int().positive().optional(),
-  balanced: z.coerce.number().int().positive().optional(),
-  hard: z.coerce.number().int().positive().optional(),
-  deep: z.coerce.number().int().positive().optional()
-}).strict().default({}));
 
 const modelCostsSchema = z.preprocess((value) => {
   if (value === undefined || value === "") return {};
@@ -87,12 +57,6 @@ const configSchema = z.object({
   CLASSIFIER_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   CLASSIFIER_MAX_ATTEMPTS: z.coerce.number().int().positive().default(2),
   CLASSIFIER_ALLOW_REDACTED_EXCERPT: booleanEnvSchema,
-  BUDGET_MAX_ESTIMATED_INPUT_TOKENS: optionalPositiveIntSchema,
-  BUDGET_WARNING_ESTIMATED_INPUT_TOKENS: optionalPositiveIntSchema,
-  BUDGET_MAX_ROUTE: optionalRouteNameSchema,
-  BUDGET_USER_ESTIMATED_INPUT_LIMITS: jsonNumberMapSchema,
-  BUDGET_TEAM_ESTIMATED_INPUT_LIMITS: jsonNumberMapSchema,
-  BUDGET_ROUTE_ESTIMATED_INPUT_LIMITS: routeNumberMapSchema,
   MODEL_COSTS_JSON: modelCostsSchema,
   ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.55),
   EVENT_STORE_PATH: z.string().optional(),
@@ -162,12 +126,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     classifierTimeoutMs: parsed.CLASSIFIER_TIMEOUT_MS,
     classifierMaxAttempts: parsed.CLASSIFIER_MAX_ATTEMPTS,
     classifierAllowRedactedExcerpt: parsed.CLASSIFIER_ALLOW_REDACTED_EXCERPT,
-    budgetMaxEstimatedInputTokens: parsed.BUDGET_MAX_ESTIMATED_INPUT_TOKENS,
-    budgetWarningEstimatedInputTokens: parsed.BUDGET_WARNING_ESTIMATED_INPUT_TOKENS,
-    budgetMaxRoute: parsed.BUDGET_MAX_ROUTE,
-    budgetUserEstimatedInputLimits: parsed.BUDGET_USER_ESTIMATED_INPUT_LIMITS,
-    budgetTeamEstimatedInputLimits: parsed.BUDGET_TEAM_ESTIMATED_INPUT_LIMITS,
-    budgetRouteEstimatedInputLimits: parsed.BUDGET_ROUTE_ESTIMATED_INPUT_LIMITS as Partial<Record<RouteName, number>>,
     modelCosts: buildModelPricingTable(parsed.MODEL_COSTS_JSON),
     modelCostsFromEnv: Object.keys(parsed.MODEL_COSTS_JSON),
     routeQualityLowConfidenceThreshold: parsed.ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD,

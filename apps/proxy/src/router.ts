@@ -10,7 +10,7 @@ import { defaultClassifierSettings } from "./classifier.js";
 import type { ClassificationResult, ClassifierSettings, LlmClassifier } from "./classifier.js";
 import { jsonPayload, type EventService } from "./events.js";
 import type { AppConfig } from "./config.js";
-import type { BudgetResult, BudgetService, SessionRouteStore } from "./policy.js";
+import { checkBeforeClassification, checkDecision, type BudgetResult, type SessionRouteStore } from "./policy.js";
 import type {
   JsonObject,
   Provider,
@@ -72,7 +72,6 @@ export class RoutingService {
     private readonly classifier: LlmClassifier,
     private readonly events: EventService,
     private readonly modelCatalog: ModelCatalog,
-    private readonly budget: BudgetService,
     private readonly sessions: SessionRouteStore
   ) {}
 
@@ -113,7 +112,7 @@ export class RoutingService {
       }
     });
 
-    const preBudget = this.budget.checkBeforeClassification(context);
+    const preBudget = checkBeforeClassification(context, routingConfig?.config.limits);
     await this.appendBudgetEvents(requestId, idempotencyKey, preBudget);
     if (preBudget.rejected) {
       const rejected = this.reject(context, preBudget.rejected.reason, preBudget.checks, 429);
@@ -165,7 +164,7 @@ export class RoutingService {
           if (cacheKey) this.storeClassification(cacheKey, classification);
         } catch {
           classifierFailed = true;
-          requestedRoute = classifierFailureFallbackRoute;
+          requestedRoute = routingConfig?.config.limits.fallbackRoute ?? classifierFailureFallbackRoute;
         }
       }
     }
@@ -197,7 +196,7 @@ export class RoutingService {
       decision.reasonCodes = ["session_route_ceiling"];
     }
     if (decision.outcome === "route" && decision.finalRoute) {
-      const postBudget = this.budget.checkDecision(context, decision.finalRoute);
+      const postBudget = checkDecision(context, decision.finalRoute, routingConfig?.config.limits);
       decision.budgetChecks = [...preBudget.checks, ...postBudget.checks];
       await this.appendBudgetEvents(requestId, idempotencyKey, postBudget);
       if (postBudget.rejected) {
@@ -579,18 +578,6 @@ export class RoutingService {
         checks: jsonPayload(result.checks)
       }
     });
-    for (const check of result.checks) {
-      if (check.status !== "warning") continue;
-      await this.events.append({
-        scopeType: "request",
-        scopeId: requestId,
-        correlationId: requestId,
-        idempotencyKey,
-        producer: "prompt-proxy.budget",
-        eventType: "budget.warning_emitted",
-        payload: jsonPayload(check) as JsonObject
-      });
-    }
   }
 
   private async recordDecision(

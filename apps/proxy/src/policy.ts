@@ -1,5 +1,6 @@
+import type { RoutingConfigLimits } from "@prompt-proxy/schema";
+
 import { routeOrder } from "./catalog.js";
-import type { AppConfig } from "./config.js";
 import type { BudgetCheck, RouteContext, RouteName, SelectedRouteSettings, Surface } from "./types.js";
 import { stableJson } from "./util.js";
 
@@ -8,55 +9,32 @@ export type BudgetResult = {
   rejected?: BudgetCheck;
 };
 
-export class BudgetService {
-  constructor(private readonly config: AppConfig) {}
-
-  checkBeforeClassification(context: RouteContext): BudgetResult {
-    const checks: BudgetCheck[] = [];
-    pushTokenLimit(
-      checks,
-      "request",
-      context.estimatedInputTokens,
-      this.config.budgetMaxEstimatedInputTokens,
-      "request_estimated_input_limit"
-    );
-    pushTokenLimit(
-      checks,
-      "user",
-      context.estimatedInputTokens,
-      context.userId ? this.config.budgetUserEstimatedInputLimits[context.userId] : undefined,
-      "user_estimated_input_limit"
-    );
-    pushTokenLimit(
-      checks,
-      "team",
-      context.estimatedInputTokens,
-      context.teamId ? this.config.budgetTeamEstimatedInputLimits[context.teamId] : undefined,
-      "team_estimated_input_limit"
-    );
-    pushWarning(
-      checks,
-      context.estimatedInputTokens,
-      this.config.budgetWarningEstimatedInputTokens
-    );
-    if (context.explicitAlias) {
-      pushRouteLimit(checks, context.explicitAlias, this.config.budgetMaxRoute);
-    }
-    return result(checks);
+export function checkBeforeClassification(context: RouteContext, limits?: RoutingConfigLimits): BudgetResult {
+  const checks: BudgetCheck[] = [];
+  pushTokenLimit(
+    checks,
+    "request",
+    context.estimatedInputTokens,
+    limits?.maxEstimatedInputTokens,
+    "request_estimated_input_limit"
+  );
+  if (context.explicitAlias) {
+    pushRouteLimit(checks, context.explicitAlias, limits?.maxRoute);
   }
+  return result(checks);
+}
 
-  checkDecision(context: RouteContext, route: RouteName): BudgetResult {
-    const checks: BudgetCheck[] = [];
-    pushRouteLimit(checks, route, this.config.budgetMaxRoute);
-    pushTokenLimit(
-      checks,
-      "route",
-      context.estimatedInputTokens,
-      this.config.budgetRouteEstimatedInputLimits[route],
-      "route_estimated_input_limit"
-    );
-    return result(checks);
-  }
+export function checkDecision(context: RouteContext, route: RouteName, limits?: RoutingConfigLimits): BudgetResult {
+  const checks: BudgetCheck[] = [];
+  pushRouteLimit(checks, route, limits?.maxRoute);
+  pushTokenLimit(
+    checks,
+    "route",
+    context.estimatedInputTokens,
+    limits?.routeEstimatedInputLimits?.[route],
+    "route_estimated_input_limit"
+  );
+  return result(checks);
 }
 
 export type SessionPin = {
@@ -212,21 +190,6 @@ function pushTokenLimit(
     scope,
     status: current > limit ? "reject" : "ok",
     reason,
-    current,
-    limit
-  });
-}
-
-function pushWarning(
-  checks: BudgetCheck[],
-  current: number,
-  limit: number | undefined
-) {
-  if (limit === undefined || current <= limit) return;
-  checks.push({
-    scope: "request",
-    status: "warning",
-    reason: "request_estimated_input_warning",
     current,
     limit
   });

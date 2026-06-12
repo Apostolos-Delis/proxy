@@ -4,12 +4,6 @@ type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
 /** Internal type. DO NOT USE DIRECTLY. */
 export type Incremental<T> = T | { [P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never };
 import { DocumentTypeDecoration } from '@graphql-typed-document-node/core';
-export type BudgetSettingsInput = {
-  maxEstimatedInputTokens?: number | null | undefined;
-  maxRoute?: string | null | undefined;
-  warningEstimatedInputTokens?: number | null | undefined;
-};
-
 export type ClassifierSettingsInput = {
   allowRedactedExcerpt?: boolean | null | undefined;
   maxAttempts?: number | null | undefined;
@@ -97,7 +91,6 @@ export type SetModelPricingInput = {
 
 export type SettingsInput = {
   automaticCaching?: boolean | null | undefined;
-  budgets?: BudgetSettingsInput | null | undefined;
   cacheTtlUpgrade?: boolean | null | undefined;
   classifier?: ClassifierSettingsInput | null | undefined;
   costBaseline?: CostBaselineSettingsInput | null | undefined;
@@ -125,7 +118,7 @@ export type UsageInterval =
 export type BillingPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type BillingPageQuery = { overview: { requestCount: number, cost: { selected: number, baseline: number, savings: number } }, settings: { budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null } } };
+export type BillingPageQuery = { overview: { requestCount: number, cost: { selected: number, baseline: number, savings: number } } };
 
 export type TokenAttributionViewQueryVariables = Exact<{
   start?: string | null | undefined;
@@ -425,19 +418,19 @@ export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, requestCount: number, startedAt: string, endedAt: string | null, recentActivity: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
-export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
+export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
 
 export type SettingsViewQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type UpdateSettingsMutationVariables = Exact<{
   input: SettingsInput;
 }>;
 
 
-export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, budgets: { warningEstimatedInputTokens: number | null, maxEstimatedInputTokens: number | null, maxRoute: string | null }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type ActiveSessionsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -653,11 +646,6 @@ export const SettingsViewFieldsFragmentDoc = new TypedDocumentString(`
       maxAttempts
       allowRedactedExcerpt
     }
-    budgets {
-      warningEstimatedInputTokens
-      maxEstimatedInputTokens
-      maxRoute
-    }
     routeQuality {
       lowConfidenceThreshold
     }
@@ -704,13 +692,6 @@ export const BillingPageDocument = new TypedDocumentString(`
       selected
       baseline
       savings
-    }
-  }
-  settings {
-    budgets {
-      warningEstimatedInputTokens
-      maxEstimatedInputTokens
-      maxRoute
     }
   }
 }
@@ -1776,11 +1757,6 @@ export const SettingsViewDocument = new TypedDocumentString(`
       maxAttempts
       allowRedactedExcerpt
     }
-    budgets {
-      warningEstimatedInputTokens
-      maxEstimatedInputTokens
-      maxRoute
-    }
     routeQuality {
       lowConfidenceThreshold
     }
@@ -1820,11 +1796,6 @@ export const UpdateSettingsDocument = new TypedDocumentString(`
       timeoutMs
       maxAttempts
       allowRedactedExcerpt
-    }
-    budgets {
-      warningEstimatedInputTokens
-      maxEstimatedInputTokens
-      maxRoute
     }
     routeQuality {
       lowConfidenceThreshold

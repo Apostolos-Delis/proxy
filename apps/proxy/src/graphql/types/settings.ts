@@ -7,7 +7,6 @@ export type PromptCaptureConfigModel = Awaited<
 >;
 
 type ClassifierRuntimeModel = SettingsPayload["classifier"];
-type BudgetSettingsModel = SettingsPayload["budgets"];
 type PromptCaptureStateModel = SettingsPayload["promptCapture"];
 type StorageInfoModel = SettingsPayload["storage"];
 type EditableSettingsModel = SettingsPayload["settings"];
@@ -27,14 +26,6 @@ export const ClassifierRuntime = builder
       contentMode: t.exposeString("contentMode")
     })
   });
-
-export const BudgetSettings = builder.objectRef<BudgetSettingsModel>("BudgetSettings").implement({
-  fields: (t) => ({
-    warningEstimatedInputTokens: t.exposeFloat("warningEstimatedInputTokens", { nullable: true }),
-    maxEstimatedInputTokens: t.exposeFloat("maxEstimatedInputTokens", { nullable: true }),
-    maxRoute: t.exposeString("maxRoute", { nullable: true })
-  })
-});
 
 export const PromptCaptureState = builder
   .objectRef<PromptCaptureStateModel>("PromptCaptureState")
@@ -102,7 +93,6 @@ export const EditableSettings = builder
       toolResultCompression: t.exposeBoolean("toolResultCompression"),
       costBaseline: t.expose("costBaseline", { type: CostBaselineSettings }),
       classifier: t.expose("classifier", { type: EditableClassifier }),
-      budgets: t.expose("budgets", { type: BudgetSettings }),
       routeQuality: t.expose("routeQuality", { type: RouteQualitySettings }),
       promptCapture: t.expose("promptCapture", { type: PromptCaptureState })
     })
@@ -112,8 +102,7 @@ export const RuntimeSettings = builder
   .objectRef<RuntimeSettingsModel>("RuntimeSettings")
   .implement({
     fields: (t) => ({
-      classifier: t.expose("classifier", { type: ClassifierRuntime }),
-      budgets: t.expose("budgets", { type: BudgetSettings })
+      classifier: t.expose("classifier", { type: ClassifierRuntime })
     })
   });
 
@@ -123,7 +112,6 @@ export const Settings = builder.objectRef<SettingsPayload>("Settings").implement
     databaseEnabled: t.exposeBoolean("databaseEnabled"),
     subscriptionOAuthEnabled: t.exposeBoolean("subscriptionOAuthEnabled"),
     classifier: t.expose("classifier", { type: ClassifierRuntime }),
-    budgets: t.expose("budgets", { type: BudgetSettings }),
     promptCapture: t.expose("promptCapture", { type: PromptCaptureState }),
     storage: t.expose("storage", { type: StorageInfo }),
     restartRequiredFor: t.exposeStringList("restartRequiredFor"),
@@ -144,14 +132,6 @@ export const ClassifierSettingsInput = builder.inputType("ClassifierSettingsInpu
     timeoutMs: t.int(),
     maxAttempts: t.int(),
     allowRedactedExcerpt: t.boolean()
-  })
-});
-
-export const BudgetSettingsInput = builder.inputType("BudgetSettingsInput", {
-  fields: (t) => ({
-    warningEstimatedInputTokens: t.float(),
-    maxEstimatedInputTokens: t.float(),
-    maxRoute: t.string()
   })
 });
 
@@ -187,7 +167,6 @@ export const SettingsInput = builder.inputType("SettingsInput", {
     toolResultCompression: t.boolean(),
     costBaseline: t.field({ type: CostBaselineSettingsInput }),
     classifier: t.field({ type: ClassifierSettingsInput }),
-    budgets: t.field({ type: BudgetSettingsInput }),
     routeQuality: t.field({ type: RouteQualitySettingsInput }),
     promptCapture: t.field({ type: PromptCaptureSettingsInput })
   })

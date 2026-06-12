@@ -6,7 +6,7 @@ import { formatInteger, formatMoney } from "./format";
 import { graphql } from "./gql";
 import { gqlFetch } from "./graphql";
 import { ModelPricingCard } from "./modelPricingCard";
-import { Badge, GlassCard, PageSkeleton, PageState, PageTitle, ProgressMeter, RouteBadge } from "./ui";
+import { Badge, GlassCard, PageSkeleton, PageState, PageTitle, ProgressMeter } from "./ui";
 
 const BillingPageDocument = graphql(`
   query BillingPage {
@@ -16,13 +16,6 @@ const BillingPageDocument = graphql(`
         selected
         baseline
         savings
-      }
-    }
-    settings {
-      budgets {
-        warningEstimatedInputTokens
-        maxEstimatedInputTokens
-        maxRoute
       }
     }
   }
@@ -35,18 +28,13 @@ export function BillingPage() {
   if (query.error) return <PageState title="Billing" label={query.error.message} />;
 
   const overview = query.data?.overview;
-  const settings = query.data?.settings;
-  if (!overview || !settings) return <PageState title="Billing" label="No billing data" />;
+  if (!overview) return <PageState title="Billing" label="No billing data" />;
 
   const comparison = Math.max(overview.cost.baseline, overview.cost.selected);
   const projected = overview.requestCount === 0 ? 0 : overview.cost.selected;
-  const budgets = settings.budgets;
-  const hasGuardrails = budgets.warningEstimatedInputTokens != null
-    || budgets.maxEstimatedInputTokens != null
-    || budgets.maxRoute != null;
   return (
     <div className="page page-enter">
-      <PageTitle title="Billing" subtitle="Spend, budgets, and invoices for Proxy Labs." />
+      <PageTitle title="Billing" subtitle="Spend and invoices for Proxy Labs." />
       <div className="billing-kpis">
         <GlassCard>
           <div className="card-title">Current selected spend</div>
@@ -74,10 +62,10 @@ export function BillingPage() {
           <div className="card-title"><CreditCard />Spend controls</div>
           <div className="billing-control-row">
             <div>
-              <strong>Budget policy</strong>
-              <span>Warning and hard limits on estimated input tokens, enforced by the proxy on every request.</span>
+              <strong>Budget limits</strong>
+              <span>Per-request token caps and route ceilings live on each routing config and are enforced on every request.</span>
             </div>
-            <Link to="/settings" className="card-link">Configure<ArrowUpRight /></Link>
+            <Link to="/routing-configs" className="card-link">Configure<ArrowUpRight /></Link>
           </div>
           <div className="billing-control-row">
             <div>
@@ -93,37 +81,6 @@ export function BillingPage() {
             </div>
             <Badge>Planned</Badge>
           </div>
-        </GlassCard>
-        <GlassCard>
-          <div className="card-head">
-            <div className="card-title">Budget guardrails</div>
-            <Link to="/settings" className="card-link">Settings<ArrowUpRight /></Link>
-          </div>
-          {hasGuardrails ? (
-            <div>
-              <div className="billing-budget-line">
-                <span>Warning input tokens</span>
-                {budgets.warningEstimatedInputTokens != null
-                  ? <strong className="mono">{formatInteger(budgets.warningEstimatedInputTokens)} tok</strong>
-                  : <span className="faint">No limit</span>}
-              </div>
-              <div className="billing-budget-line">
-                <span>Max input tokens</span>
-                {budgets.maxEstimatedInputTokens != null
-                  ? <strong className="mono">{formatInteger(budgets.maxEstimatedInputTokens)} tok</strong>
-                  : <span className="faint">No limit</span>}
-              </div>
-              <div className="billing-budget-line">
-                <span>Max route</span>
-                {budgets.maxRoute ? <RouteBadge route={budgets.maxRoute} /> : <span className="faint">Uncapped</span>}
-              </div>
-            </div>
-          ) : (
-            <div className="savings-empty">
-              <strong>No guardrails set</strong>
-              <span>Requests route without budget warnings or hard limits. Set thresholds in Settings.</span>
-            </div>
-          )}
         </GlassCard>
       </div>
     </div>

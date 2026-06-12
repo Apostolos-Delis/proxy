@@ -33,11 +33,6 @@ graphql(`
         maxAttempts
         allowRedactedExcerpt
       }
-      budgets {
-        warningEstimatedInputTokens
-        maxEstimatedInputTokens
-        maxRoute
-      }
       routeQuality {
         lowConfidenceThreshold
       }

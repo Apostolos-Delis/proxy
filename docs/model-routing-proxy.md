@@ -226,7 +226,6 @@ retry.scheduled
 fallback.applied
 usage.recorded
 cost.estimated
-budget.warning_emitted
 routing_override.trust_checked
 routing_override.rejected
 ```

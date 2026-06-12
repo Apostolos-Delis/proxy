@@ -57,14 +57,6 @@ export type SettingsSectionDef = {
   rows: SettingRowDef[];
 };
 
-const routeOptions = [
-  { value: "", label: "No limit" },
-  { value: "fast", label: "fast" },
-  { value: "balanced", label: "balanced" },
-  { value: "hard", label: "hard" },
-  { value: "deep", label: "deep" }
-] as const;
-
 const promptCaptureOptions = [
   { value: "none", label: "None" },
   { value: "hash_only", label: "Hash only" },
@@ -197,45 +189,6 @@ export const settingsSections: SettingsSectionDef[] = [
     ]
   },
   {
-    id: "budgets",
-    title: "Budgets",
-    description: "Request-size guardrails enforced by routing policy.",
-    restartKey: "budgets",
-    rows: [
-      {
-        id: "budgetWarningTokens",
-        type: "number",
-        label: "Warning input tokens",
-        desc: "Records a budget warning when a request's estimated input tokens exceed this value. The request still proceeds.",
-        unit: "tok",
-        min: 1,
-        placeholder: "No limit",
-        get: (settings) => settings.budgets.warningEstimatedInputTokens,
-        set: (settings, value) => ({ ...settings, budgets: { ...settings.budgets, warningEstimatedInputTokens: value } })
-      },
-      {
-        id: "budgetMaxTokens",
-        type: "number",
-        label: "Max input tokens",
-        desc: "Rejects requests whose estimated input tokens exceed this value.",
-        unit: "tok",
-        min: 1,
-        placeholder: "No limit",
-        get: (settings) => settings.budgets.maxEstimatedInputTokens,
-        set: (settings, value) => ({ ...settings, budgets: { ...settings.budgets, maxEstimatedInputTokens: value } })
-      },
-      {
-        id: "budgetMaxRoute",
-        type: "select",
-        label: "Max route",
-        desc: "Caps routing at this route tier (fast < balanced < hard < deep). Requests routed above the cap are rejected.",
-        options: routeOptions,
-        get: (settings) => settings.budgets.maxRoute ?? "",
-        set: (settings, value) => ({ ...settings, budgets: { ...settings.budgets, maxRoute: value || null } })
-      }
-    ]
-  },
-  {
     id: "capture",
     title: "Prompt capture",
     description: "What the proxy persists from each prompt.",
@@ -336,11 +289,6 @@ export function settingsInput(settings: EditableSettings) {
       timeoutMs: settings.classifier.timeoutMs,
       maxAttempts: settings.classifier.maxAttempts,
       allowRedactedExcerpt: settings.classifier.allowRedactedExcerpt
-    },
-    budgets: {
-      warningEstimatedInputTokens: settings.budgets.warningEstimatedInputTokens,
-      maxEstimatedInputTokens: settings.budgets.maxEstimatedInputTokens,
-      maxRoute: settings.budgets.maxRoute
     },
     routeQuality: {
       lowConfidenceThreshold: settings.routeQuality.lowConfidenceThreshold

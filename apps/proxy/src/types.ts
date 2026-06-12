@@ -85,8 +85,8 @@ export type RouteContext = {
 };
 
 export type BudgetCheck = {
-  readonly scope: "request" | "user" | "team" | "route";
-  readonly status: "ok" | "warning" | "reject";
+  readonly scope: "request" | "route";
+  readonly status: "ok" | "reject";
   readonly reason: string;
   readonly current: number | string;
   readonly limit?: number | string;
