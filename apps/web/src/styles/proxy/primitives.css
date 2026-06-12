@@ -179,6 +179,22 @@
 .user-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .user-email { font-size: 11.5px; color: var(--fg-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+.user-avatar-hint { position: relative; display: inline-flex; flex: none; border-radius: 50%; }
+.user-avatar-hint:focus-visible { outline: none; box-shadow: var(--ring); }
+.user-avatar-hint .info-hint-bubble {
+  bottom: auto;
+  top: 50%;
+  left: calc(100% + 9px);
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.user-avatar-hint:hover .info-hint-bubble,
+.user-avatar-hint:focus-visible .info-hint-bubble { opacity: 1; }
+.user-hint-name { font-weight: 600; }
+.user-hint-detail { color: var(--fg-muted); }
+
 /* progress / meters */
 .meter { height: 8px; border-radius: 999px; background: var(--track); overflow: hidden; }
 .meter > i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }

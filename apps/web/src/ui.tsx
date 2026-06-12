@@ -129,10 +129,16 @@ export function Avatar({ label, color = "var(--accent)", size = 30 }: { label: s
 export function UserCell({ name, detail, color, size }: { name: string; detail?: string | null; color?: string; size?: number }) {
   return (
     <div className="user-cell">
-      <Avatar label={name} color={color} size={size} />
+      <span className="user-avatar-hint" tabIndex={0}>
+        <Avatar label={name} color={color} size={size} />
+        <span className="info-hint-bubble" role="tooltip">
+          <span className="user-hint-name">{name}</span>
+          {detail ? <span className="user-hint-detail">{detail}</span> : null}
+        </span>
+      </span>
       <div>
-        <div className="user-name" title={name}>{name}</div>
-        {detail ? <div className="user-email" title={detail}>{detail}</div> : null}
+        <div className="user-name">{name}</div>
+        {detail ? <div className="user-email">{detail}</div> : null}
       </div>
     </div>
   );
