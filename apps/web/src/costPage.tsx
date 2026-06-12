@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
-import { fetchUnpricedModels, fetchUsageLookups, fetchUsageReport, fetchUsageTimeseries, type UnpricedModel } from "./usageData";
+import { fetchUnpricedModels, fetchUsageDashboard, fetchUsageLookups, fetchUsageReport, type UnpricedModel } from "./usageData";
 import { ChartLegend, StackedBarsChart } from "./charts";
 import { downloadJson } from "./dashboard";
 import { formatCompactMoney, formatMoney, formatPercent } from "./format";
@@ -34,14 +34,9 @@ export function CostPage() {
   // Individual useQuery calls, not useQueries: useQueries matches observers by query
   // hash, so a dimension/range switch spins up fresh observers and keepPreviousData
   // has no previous data to keep — the skeleton swap collapses the page scroll.
-  const usageQuery = useQuery({
-    queryKey: ["usage", dimension, start, end],
-    queryFn: () => fetchUsageReport(dimension, { start, end }),
-    placeholderData: keepPreviousData
-  });
-  const timeseriesQuery = useQuery({
-    queryKey: ["usage-timeseries", dimension, start, end, interval],
-    queryFn: () => fetchUsageTimeseries(dimension, { start, end, interval }),
+  const dashboardQuery = useQuery({
+    queryKey: ["usage-dashboard", dimension, start, end, interval],
+    queryFn: () => fetchUsageDashboard(dimension, { start, end, interval }),
     placeholderData: keepPreviousData
   });
   const lookupsQuery = useQuery({ queryKey: ["usage-lookups"], queryFn: fetchUsageLookups });
@@ -49,14 +44,15 @@ export function CostPage() {
   const spendTabQuery = useQuery({
     queryKey: ["usage", spendTab, start, end],
     queryFn: () => fetchUsageReport(spendTab, { start, end }),
-    placeholderData: keepPreviousData
+    placeholderData: keepPreviousData,
+    enabled: spendTab !== dimension
   });
-  const error = usageQuery.error ?? timeseriesQuery.error;
+  const error = dashboardQuery.error;
 
   if (error) return <PageState title="Cost" label={error.message} />;
 
-  const usage = usageQuery.data;
-  const timeseries = timeseriesQuery.data;
+  const usage = dashboardQuery.data?.usage;
+  const timeseries = dashboardQuery.data?.timeseries;
   if (!usage || !timeseries) return <PageSkeleton blocks={[460, 260]} />;
 
   const totals = usage.totals;
@@ -147,7 +143,13 @@ export function CostPage() {
                 </button>
               ))}
             </div>
-            <TopGroupsList dimension={spendTab} rows={spendTabQuery.data?.data ?? []} lookups={lookups} limit={6} emptyLabel="No spend recorded yet." />
+            <TopGroupsList
+              dimension={spendTab}
+              rows={spendTab === dimension ? usage.data : spendTabQuery.data?.data ?? []}
+              lookups={lookups}
+              limit={6}
+              emptyLabel="No spend recorded yet."
+            />
           </GlassCard>
         </div>
       </div>

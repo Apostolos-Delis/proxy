@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
-import { fetchUsageLookups, fetchUsageReport, fetchUsageTimeseries } from "./usageData";
+import { fetchUsageDashboard, fetchUsageLookups, fetchUsageReport } from "./usageData";
 import { ChartLegend, StackedBarsChart } from "./charts";
 import { downloadJson } from "./dashboard";
 import { formatCompact, formatInteger, formatPercent } from "./format";
@@ -57,27 +57,20 @@ export function UsagePage() {
   // Individual useQuery calls, not useQueries: useQueries matches observers by query
   // hash, so a dimension/range switch spins up fresh observers and keepPreviousData
   // has no previous data to keep — the skeleton swap collapses the page scroll.
-  const usageQuery = useQuery({
-    queryKey: ["usage", dimension, start, end],
-    queryFn: () => fetchUsageReport(dimension, { start, end }),
-    placeholderData: keepPreviousData
-  });
-  const timeseriesQuery = useQuery({
-    queryKey: ["usage-timeseries", dimension, start, end, interval],
-    queryFn: () => fetchUsageTimeseries(dimension, { start, end, interval }),
+  const dashboardQuery = useQuery({
+    queryKey: ["usage-dashboard", dimension, start, end, interval],
+    queryFn: () => fetchUsageDashboard(dimension, { start, end, interval }),
     placeholderData: keepPreviousData
   });
   const lookupsQuery = useQuery({ queryKey: ["usage-lookups"], queryFn: fetchUsageLookups });
-  // The Grid/Focus widgets always slice by model and user, independent of the
-  // console breakdown dimension, and compare against the preceding window. The
-  // ["usage", groupBy, start, end] key shape is canonical for fetchUsageReport
-  // (costPage keys the same way), so these intentionally dedupe with usageQuery
-  // whenever the console dimension matches.
+  // The Grid/Focus widgets slice by model and user independently of the
+  // console breakdown dimension, and compare against the preceding window.
+  // When the main dashboard is already grouped by model, reuse that payload.
   const modelQuery = useQuery({
     queryKey: ["usage", "model", start, end],
     queryFn: () => fetchUsageReport("model", { start, end }),
     placeholderData: keepPreviousData,
-    enabled: layout !== "console"
+    enabled: layout !== "console" && dimension !== "model"
   });
   const userQuery = useQuery({
     queryKey: ["usage", "user", start, end],
@@ -91,12 +84,12 @@ export function UsagePage() {
     placeholderData: keepPreviousData,
     enabled: layout !== "console"
   });
-  const error = usageQuery.error ?? timeseriesQuery.error;
+  const error = dashboardQuery.error;
 
   if (error) return <PageState title="Usage" label={error.message} />;
 
-  const usage = usageQuery.data;
-  const timeseries = timeseriesQuery.data;
+  const usage = dashboardQuery.data?.usage;
+  const timeseries = dashboardQuery.data?.timeseries;
   if (!usage || !timeseries) return <PageSkeleton blocks={[460, 260]} />;
 
   const totals = usage.totals;
@@ -124,7 +117,7 @@ export function UsagePage() {
     totals,
     previousTotals: previousQuery.data?.totals,
     timeseries,
-    modelGroups: modelQuery.data?.data,
+    modelGroups: dimension === "model" ? usage.data : modelQuery.data?.data,
     userGroups: userQuery.data?.data,
     lookups
   };

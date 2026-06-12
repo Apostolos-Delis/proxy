@@ -4,7 +4,8 @@
  *
  *   pnpm --filter @prompt-proxy/proxy profile:graphql
  */
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
@@ -41,25 +42,42 @@ const DAY_MS = 86_400_000;
 const SEED_EPOCH = Date.parse("2026-06-10T12:00:00.000Z");
 
 const sqlCounter = { count: 0 };
+const sqlSamples: { op: string; duration: number; sql: string }[] = [];
+let currentOperation = "setup";
+
+async function timeSql<T>(sql: unknown, run: () => Promise<T>) {
+  const startedAt = performance.now();
+  try {
+    return await run();
+  } finally {
+    if (process.env.PROFILE_SQL === "1") {
+      sqlSamples.push({
+        op: currentOperation,
+        duration: performance.now() - startedAt,
+        sql: typeof sql === "string" ? sql.replace(/\s+/g, " ").trim() : String(sql)
+      });
+    }
+  }
+}
 
 async function createFixture() {
   const client = new PGlite();
-  const migration = await readFile(
-    fileURLToPath(new URL("../../../packages/db/migrations/0000_foundation.sql", import.meta.url)),
-    "utf8"
-  );
-  await client.exec(migration);
+  const migrationsDir = fileURLToPath(new URL("../../../packages/db/migrations", import.meta.url));
+  const migrationFiles = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
+  for (const file of migrationFiles) {
+    await client.exec(await readFile(join(migrationsDir, file), "utf8"));
+  }
 
   // Count every SQL statement the app issues.
   const originalQuery = client.query.bind(client);
   client.query = ((...args: Parameters<typeof originalQuery>) => {
     sqlCounter.count += 1;
-    return originalQuery(...args);
+    return timeSql(args[0], () => originalQuery(...args));
   }) as typeof client.query;
   const originalExec = client.exec.bind(client);
   client.exec = ((...args: Parameters<typeof originalExec>) => {
     sqlCounter.count += 1;
-    return originalExec(...args);
+    return timeSql(args[0], () => originalExec(...args));
   }) as typeof client.exec;
 
   const db = createPgliteDatabase(client);
@@ -77,7 +95,7 @@ async function createFixture() {
     ADMIN_DEV_LOGIN_PASSWORD: "dev-password",
     SEED_USER_ID: "local-user",
     DEFAULT_ORGANIZATION_ID: ORG,
-    LOG_LEVEL: "fatal"
+    LOG_LEVEL: process.env.LOG_LEVEL ?? "fatal"
   };
   const config = loadConfig(env);
   const catalog = buildModelCatalog(config);
@@ -324,6 +342,7 @@ const mutations: Operation[] = [
 ];
 
 async function gql(proxyUrl: string, cookie: string, op: Operation) {
+  currentOperation = op.name;
   const response = await fetch(`${proxyUrl}/admin/graphql`, {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
@@ -400,6 +419,18 @@ try {
   console.log("-".repeat(width + 16));
   for (const row of [...rows].sort((left, right) => right.median - left.median)) {
     console.log(`${row.name.padEnd(width)}${row.median.toFixed(1).padStart(10)}${String(row.sqlCount).padStart(6)}`);
+  }
+  if (process.env.PROFILE_SQL === "1") {
+    const slow = [...sqlSamples]
+      .filter((sample) => sample.op !== "setup")
+      .sort((left, right) => right.duration - left.duration)
+      .slice(0, 20);
+    const sqlWidth = Math.max(...slow.map((sample) => sample.op.length), "operation".length) + 2;
+    console.log(`\n${"operation".padEnd(sqlWidth)}${"sql ms".padStart(10)}  sql`);
+    console.log("-".repeat(sqlWidth + 80));
+    for (const sample of slow) {
+      console.log(`${sample.op.padEnd(sqlWidth)}${sample.duration.toFixed(1).padStart(10)}  ${sample.sql.slice(0, 240)}`);
+    }
   }
 } catch (error) {
   console.error(error);

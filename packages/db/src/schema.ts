@@ -555,6 +555,12 @@ export const providerAttempts = pgTable(
   (table) => [
     index("provider_attempts_request_id_idx").on(table.requestId),
     index("provider_attempts_organization_id_idx").on(table.organizationId),
+    index("provider_attempts_org_workspace_request_started_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.requestId,
+      table.startedAt
+    ),
     index("provider_attempts_model_idx").on(table.organizationId, table.workspaceId, table.provider, table.model)
   ]
 );
@@ -597,6 +603,7 @@ export const usageLedger = pgTable(
     uniqueIndex("usage_ledger_classifier_request_idx")
       .on(table.requestId)
       .where(sql`${table.kind} = 'classifier'`),
+    index("usage_ledger_org_workspace_request_idx").on(table.organizationId, table.workspaceId, table.requestId),
     index("usage_ledger_org_workspace_created_idx").on(table.organizationId, table.workspaceId, table.createdAt),
     index("usage_ledger_user_created_idx").on(table.organizationId, table.workspaceId, table.userId, table.createdAt),
     index("usage_ledger_model_idx").on(table.organizationId, table.workspaceId, table.provider, table.model)
