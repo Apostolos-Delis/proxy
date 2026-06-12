@@ -125,7 +125,6 @@ export function UsagePage() {
   return (
     <div className="page page-enter">
       <div className="usage-toolbar">
-        <span className="faint usage-toolbar-label">Layout</span>
         <Segmented accent options={layoutOptions} value={layout} onChange={changeLayout} />
         <button className="btn btn-icon" type="button" aria-label="Refresh" onClick={refresh}><RefreshCw /></button>
         <button className="btn btn-icon" type="button" aria-label="Export" onClick={exportUsage}><Download /></button>
