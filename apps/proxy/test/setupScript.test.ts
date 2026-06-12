@@ -1,4 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -33,8 +36,8 @@ describe("buildSetupScript", () => {
 
   it("keeps the idempotency and permission guards", () => {
     const script = buildSetupScript("https://proxy.example.com");
-    expect(script).toContain('grep -q "PROMPT_PROXY_TOKEN"');
-    expect(script).toContain('grep -qF "[model_providers.prompt_proxy]"');
+    expect(script).toContain("grep -Eq");
+    expect(script).toContain('tmp_config="$(mktemp)"');
     expect(script).toContain('chmod 600 "$HOME/.prompt-proxy/token"');
   });
 
@@ -58,6 +61,54 @@ describe("buildSetupScript", () => {
     // Codex via the provider http_headers map.
     expect(script).toContain('PP_CODEX_HEADERS="http_headers = { \\"x-prompt-proxy-user-id\\" = \\"$PP_USER_ID\\" }"');
     expect(script).toContain("$PP_CODEX_HEADERS");
+  });
+
+  it("selects and refreshes the Codex prompt_proxy provider for existing configs", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-"));
+    try {
+      const codexDir = join(home, ".codex");
+      mkdirSync(codexDir, { recursive: true });
+      writeFileSync(join(codexDir, "config.toml"), `# Existing Codex config
+model = "gpt-5.5"
+
+[features]
+goals = true
+
+[model_providers.prompt_proxy]
+name = "Old Proxy"
+base_url = "http://old-proxy/v1"
+env_key = "OLD_PROMPT_PROXY_TOKEN"
+`);
+      writeFileSync(join(home, ".zshrc"), 'export PROMPT_PROXY_TOKEN="old-token"\n');
+
+      const result = spawnSync("bash", ["-s", "--", "proxy-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: {
+          ...process.env,
+          HOME: home,
+          PROMPT_PROXY_USER_ID: "dev@example.com",
+          USER: "dev"
+        }
+      });
+
+      expect(result.status).toBe(0);
+      const config = readFileSync(join(codexDir, "config.toml"), "utf8");
+      expect(config).toContain('model = "router-auto"');
+      expect(config).toContain('model_provider = "prompt_proxy"');
+      expect(config).toContain("[features]");
+      expect(config).toContain("goals = true");
+      expect(config).toContain('base_url = "https://proxy.example.com/v1"');
+      expect(config).toContain('env_key = "PROMPT_PROXY_TOKEN"');
+      expect(config).toContain('http_headers = { "x-prompt-proxy-user-id" = "dev@example.com" }');
+      expect(config).not.toContain('model = "gpt-5.5"');
+      expect(config).not.toContain("http://old-proxy/v1");
+      expect(config).not.toContain("OLD_PROMPT_PROXY_TOKEN");
+      const zshrc = readFileSync(join(home, ".zshrc"), "utf8");
+      expect(zshrc).toContain('export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"');
+      expect(zshrc).not.toContain("old-token");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it("is valid bash", () => {
