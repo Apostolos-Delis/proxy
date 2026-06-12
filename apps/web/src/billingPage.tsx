@@ -65,7 +65,7 @@ export function BillingPage() {
               <strong>Budget limits</strong>
               <span>Per-request token caps and route ceilings live on each routing config and are enforced on every request.</span>
             </div>
-            <Link to="/routing-configs" className="card-link">Configure<ArrowUpRight /></Link>
+            <Link to="/routing" className="card-link">Configure<ArrowUpRight /></Link>
           </div>
           <div className="billing-control-row">
             <div>
