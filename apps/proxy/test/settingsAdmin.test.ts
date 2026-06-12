@@ -45,6 +45,21 @@ describe("persistent settings admin APIs", () => {
     expect(config.routeQualityLowConfidenceThreshold).toBe(0.42);
   });
 
+  it("ignores the budgets block in settings files saved before limits moved to routing configs", async () => {
+    const settingsPath = await tempSettingsPath();
+    await writeFile(settingsPath, JSON.stringify({
+      schemaVersion: 1,
+      classifier: { model: "legacy-classifier" },
+      budgets: { warningEstimatedInputTokens: 1000, maxEstimatedInputTokens: 2000, maxRoute: "hard" },
+      routeQuality: {},
+      promptCapture: {}
+    }), "utf8");
+
+    const config = loadConfig({ PROMPT_PROXY_SETTINGS_PATH: settingsPath });
+
+    expect(config.classifierModel).toBe("legacy-classifier");
+  });
+
   it("writes validated JSON settings and applies prompt capture persistence", async () => {
     const settingsPath = await tempSettingsPath();
     const promptCapture = { promptCaptureMode: "raw_text" as PromptCaptureMode, retentionDays: 30 };

@@ -198,7 +198,7 @@ turn             one Codex turn when a turn identifier is available
 session          longer proxy-side grouping for route memory and cost accounting
 provider_request one upstream provider attempt
 routing_config   routing config version and trust changes
-budget           budget ledger and warnings
+budget           budget limit checks
 eval             later route-quality labels and replay results
 ```
 
@@ -341,7 +341,6 @@ Async:
 - Terminal reconciliation for pending provider attempts.
 - Cost rollups.
 - Savings reports.
-- Budget notifications after soft thresholds.
 - Route-quality evals.
 - Missed-savings discovery.
 - Future memory extraction.
@@ -841,7 +840,7 @@ The proxy should separate caller auth from provider auth.
 - Incoming `Authorization` should not be forwarded upstream as-is.
 - Logs must redact auth headers and cookies.
 - Do not log request bodies by default.
-- Add per-user, per-team, and per-route budgets later.
+- Budget limits (per-request and per-route input caps, route ceiling) live in each routing config's limits block.
 
 Routing configuration is security-sensitive because it can redirect requests, increase spend, or downgrade model quality. Project-local overrides should be treated like executable configuration:
 
@@ -1076,7 +1075,6 @@ Once that works, add providers and surfaces incrementally.
 - Cost estimation from a model catalog.
 - Per-route and per-user summaries.
 - Request IDs and trace IDs.
-- Basic budget warnings.
 - RTK-style savings reports.
 - Missed-savings reports.
 - Usage and savings projections with replay cursors.

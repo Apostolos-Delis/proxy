@@ -86,7 +86,11 @@ export function settingsToEnv(settings: ProxySettings): NodeJS.ProcessEnv {
 
 function parseSettings(raw: string) {
   try {
-    return proxySettingsSchema.parse(JSON.parse(raw));
+    const value: unknown = JSON.parse(raw);
+    // Files saved before budget limits moved to routing configs carry a
+    // "budgets" key; the strict schema would reject it and fail boot.
+    if (value && typeof value === "object") delete (value as Record<string, unknown>).budgets;
+    return proxySettingsSchema.parse(value);
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error("settings_file_invalid_json");

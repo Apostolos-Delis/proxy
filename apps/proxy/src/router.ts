@@ -566,7 +566,9 @@ export class RoutingService {
     idempotencyKey: string,
     result: BudgetResult
   ) {
-    if (result.checks.length === 0) return;
+    // Seeded configs always carry limits, so all-ok checks would add two event
+    // rows per request; the full check list is already on the decision row.
+    if (!result.rejected) return;
     await this.events.append({
       scopeType: "request",
       scopeId: requestId,

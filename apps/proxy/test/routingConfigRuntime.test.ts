@@ -566,10 +566,84 @@ describe("routing config runtime resolution", () => {
     }).then((item) => item.json());
 
     expect(response.status).toBe(429);
+    // Route-limit rejection happens after classification, not before.
+    expect(activeFixture.openai.records.filter((record) =>
+      record.body.model === "route-classifier-cheap"
+    )).toHaveLength(1);
     expect(activeFixture.openai.records.filter((record) =>
       record.body.model !== "route-classifier-cheap"
     )).toHaveLength(0);
     expect(sessions).toHaveLength(0);
+  });
+
+  it("rejects explicit aliases above the routing config max route before classifier spend", async () => {
+    const organizationId = "org_config_alias_cap";
+    activeFixture = await captureFixture(organizationId);
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "alias-cap-token",
+      slug: "alias-cap",
+      configHash: "sha256:alias-cap-config",
+      configure: (config) => {
+        config.limits = { ...config.limits, maxRoute: "balanced", fallbackRoute: "balanced" };
+        return config;
+      }
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer alias-cap-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-deep",
+        input: "explicitly requesting the deep tier",
+        stream: true
+      })
+    });
+    await response.text();
+
+    expect(response.status).toBe(429);
+    expect(activeFixture.openai.records).toHaveLength(0);
+  });
+
+  it("rejects requests over a per-route input-token limit", async () => {
+    const organizationId = "org_config_route_input_cap";
+    activeFixture = await captureFixture(organizationId);
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "route-input-cap-token",
+      slug: "route-input-cap",
+      configHash: "sha256:route-input-cap-config",
+      configure: (config) => {
+        // The mock classifier recommends "hard".
+        config.limits = { ...config.limits, routeEstimatedInputLimits: { hard: 1 } };
+        return config;
+      }
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer route-input-cap-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "this request exceeds the hard route's tiny input cap",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const eventRows = await activeFixture.db.select().from(events);
+    const decision = eventRows.find((event) => event.eventType === "routing.decision_recorded");
+    const payload = (decision?.payload ?? {}) as { reasonCodes?: string[] };
+
+    expect(response.status).toBe(429);
+    expect(activeFixture.openai.records.filter((record) =>
+      record.body.model !== "route-classifier-cheap"
+    )).toHaveLength(0);
+    expect(payload.reasonCodes).toEqual(["route_estimated_input_limit"]);
   });
 });
 
