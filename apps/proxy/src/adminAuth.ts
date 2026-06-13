@@ -79,6 +79,7 @@ export class AdminAuthService {
       "Path=/",
       "HttpOnly",
       "SameSite=Lax",
+      ...(this.config.adminSessionCookieSecure ? ["Secure"] : []),
       `Expires=${expiresAt.toUTCString()}`
     ].join("; ");
   }
@@ -89,6 +90,7 @@ export class AdminAuthService {
       "Path=/",
       "HttpOnly",
       "SameSite=Lax",
+      ...(this.config.adminSessionCookieSecure ? ["Secure"] : []),
       "Max-Age=0"
     ].join("; ");
   }

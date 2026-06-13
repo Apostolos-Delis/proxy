@@ -11,6 +11,7 @@ import {
   workspaces,
   type PromptProxyDbSession
 } from "@prompt-proxy/db";
+import type { OrganizationMemberRole } from "@prompt-proxy/schema";
 
 import { createId, sha256 } from "../util.js";
 
@@ -21,7 +22,7 @@ export type AdminSessionIdentity = {
   userId: string;
   email?: string;
   name?: string;
-  role: string;
+  role: OrganizationMemberRole;
 };
 
 export class AdminSessionStore {

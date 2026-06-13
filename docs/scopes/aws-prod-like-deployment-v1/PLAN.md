@@ -198,8 +198,11 @@ Runtime service:
 - `PROVIDER_RATE_LIMIT_BASE_DELAY_MS`
 - `PROVIDER_RATE_LIMIT_MAX_DELAY_MS`
 - `MODEL_COSTS_JSON`
+- `DEBUG_ENDPOINTS_ENABLED=false`
 - `ADMIN_CORS_ORIGIN` only if the console and API are not same-origin
 - `ADMIN_DEV_LOGIN_ENABLED=false` for true production; for first internal staging, use a strong temporary password and restrict access
+- `ADMIN_GRAPHIQL_ENABLED=false` for true production
+- `ADMIN_SESSION_COOKIE_SECURE=true` when the console is served over HTTPS (the proxy also derives this from `ADMIN_CONSOLE_URL=https://...`)
 - `LOG_LEVEL=info`
 
 Web build:

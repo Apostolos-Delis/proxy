@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { KeyRound, RefreshCw, TriangleAlert, Zap } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { isAdminRole } from "./access";
 import {
   bucketLabels,
   bustCauses,
@@ -36,6 +37,7 @@ import {
   type UsageRangeKey
 } from "./usageAnalytics";
 import { fetchUsageLookups, fetchUsageReport, fetchUsageTimeseries, type UsageGroup } from "./usageData";
+import { fetchMe } from "./session";
 
 const flowSeries: LayeredAreaSeries[] = [
   { key: "reads", label: "Cache reads", color: "#38bdf8", filled: true },
@@ -47,6 +49,8 @@ export function CachingPage() {
   const [anchor, setAnchor] = useState(() => new Date());
   const { start, end, interval } = usageRangeQuery(range, anchor);
   const previousRange = usagePreviousRangeQuery(range, anchor);
+  const { data: meQueryData } = useQuery({ queryKey: ["me"], queryFn: fetchMe });
+  const isAdmin = isAdminRole(meQueryData?.user.role);
   const { error: usageQueryError, data: usageQueryData } = useQuery({
     queryKey: ["usage", "provider", start, end],
     queryFn: () => fetchUsageReport("provider", { start, end }),
@@ -73,7 +77,11 @@ export function CachingPage() {
     placeholderData: keepPreviousData
   });
   const { error: ratesQueryError, data: ratesQueryData } = useQuery({ queryKey: ["cache-pricing-rates"], queryFn: fetchCachePricingRates });
-  const { data: lookupsQueryData } = useQuery({ queryKey: ["usage-lookups"], queryFn: fetchUsageLookups });
+  const { data: lookupsQueryData } = useQuery({
+    queryKey: ["usage-lookups"],
+    queryFn: fetchUsageLookups,
+    enabled: isAdmin
+  });
   const { error: bustsQueryError, data: bustsQueryData } = useQuery({
     queryKey: ["cache-busts", start, end],
     queryFn: () => fetchCacheBusts({ start, end }),
@@ -118,9 +126,10 @@ export function CachingPage() {
   const savings = modelUsageQueryData && ratesQueryData
     ? cacheSavings(modelUsageQueryData.data, ratesQueryData)
     : undefined;
+  const visibleLookups = isAdmin ? lookupsQueryData : undefined;
   const lookups = {
-    usersById: new Map((lookupsQueryData?.members ?? []).map((user) => [user.userId, user])),
-    apiKeysById: new Map((lookupsQueryData?.apiKeys ?? []).map((key) => [key.id, key]))
+    usersById: new Map((visibleLookups?.members ?? []).map((user) => [user.userId, user])),
+    apiKeysById: new Map((visibleLookups?.apiKeys ?? []).map((key) => [key.id, key]))
   };
 
   return (

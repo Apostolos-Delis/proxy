@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
+import { isAdminRole } from "./access";
 import { fetchUnpricedModels, fetchUsageDashboard, fetchUsageLookups, fetchUsageReport, type UnpricedModel } from "./usageData";
 import { ChartLegend, StackedBarsChart } from "./charts";
 import { downloadJson } from "./dashboard";
@@ -16,6 +17,7 @@ import {
   type UsageRangeKey
 } from "./usageAnalytics";
 import { TopGroupsList, UsageBreakdownTable, UsageDimensionTabs } from "./usageBreakdown";
+import { fetchMe } from "./session";
 
 const spendTabs = [
   { value: "user", label: "Top users" },
@@ -31,6 +33,8 @@ export function CostPage() {
   const [dimension, setDimension] = useState<UsageDimension>("model");
   const [spendTab, setSpendTab] = useState<SpendTab>("user");
   const { start, end, interval } = usageRangeQuery(range, anchor);
+  const { data: meQueryData } = useQuery({ queryKey: ["me"], queryFn: fetchMe });
+  const isAdmin = isAdminRole(meQueryData?.user.role);
   // Individual useQuery calls, not useQueries: useQueries matches observers by query
   // hash, so a dimension/range switch spins up fresh observers and keepPreviousData
   // has no previous data to keep — the skeleton swap collapses the page scroll.
@@ -39,7 +43,11 @@ export function CostPage() {
     queryFn: () => fetchUsageDashboard(dimension, { start, end, interval }),
     placeholderData: keepPreviousData
   });
-  const { data: lookupsQueryData } = useQuery({ queryKey: ["usage-lookups"], queryFn: fetchUsageLookups });
+  const { data: lookupsQueryData } = useQuery({
+    queryKey: ["usage-lookups"],
+    queryFn: fetchUsageLookups,
+    enabled: isAdmin
+  });
   const { data: unpricedQueryData } = useQuery({ queryKey: ["unpriced-models"], queryFn: fetchUnpricedModels });
   const { data: spendTabQueryData } = useQuery({
     queryKey: ["usage", spendTab, start, end],
@@ -56,9 +64,10 @@ export function CostPage() {
   if (!usage || !timeseries) return <PageSkeleton blocks={[460, 260]} />;
 
   const totals = usage.totals;
+  const visibleLookups = isAdmin ? lookupsQueryData : undefined;
   const lookups: GroupLabelLookups = {
-    usersById: new Map((lookupsQueryData?.members ?? []).map((user) => [user.userId, user])),
-    apiKeysById: new Map((lookupsQueryData?.apiKeys ?? []).map((key) => [key.id, key]))
+    usersById: new Map((visibleLookups?.members ?? []).map((user) => [user.userId, user])),
+    apiKeysById: new Map((visibleLookups?.apiKeys ?? []).map((key) => [key.id, key]))
   };
   const { series, rows } = stackedUsageSeries(timeseries, dimension, "cost", lookups);
   const days = Number(range);
@@ -155,8 +164,8 @@ export function CostPage() {
       </div>
 
       <section className="usage-breakdown">
-        <UsageDimensionTabs dimension={dimension} onDimension={setDimension} />
-        <UsageBreakdownTable mode="cost" dimension={dimension} range={range} rows={usage.data} totals={totals} lookups={lookups} />
+        <UsageDimensionTabs dimension={dimension} onDimension={setDimension} canOpenDetails={isAdmin} />
+        <UsageBreakdownTable mode="cost" dimension={dimension} range={range} rows={usage.data} totals={totals} lookups={lookups} canOpenDetails={isAdmin} />
       </section>
     </div>
   );

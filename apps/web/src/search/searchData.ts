@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  CircleDollarSign,
   CreditCard,
   FileText,
   Gauge,
@@ -14,6 +15,9 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import { canAccessPath } from "../access";
+import { formatDateTime } from "../format";
+
 export type SearchHitKind = "session" | "log" | "user" | "routing_config" | "api_key";
 
 export type SearchHit = {
@@ -25,11 +29,11 @@ export type SearchHit = {
   snippet: string | null;
   occurredAt: string | null;
 };
-import { formatDateTime } from "../format";
 
 export type PalettePagePath =
   | "/"
   | "/usage"
+  | "/cost"
   | "/caching"
   | "/logs"
   | "/sessions"
@@ -83,6 +87,7 @@ export const MIN_SEARCH_LENGTH = 2;
 export const palettePages: PalettePage[] = [
   { path: "/", title: "Overview", subtitle: "Spend, savings & route quality", keywords: ["dashboard", "home", "metrics", "savings"], icon: Gauge },
   { path: "/usage", title: "Usage", subtitle: "Token metering & spend", keywords: ["tokens", "cost", "spend", "metering", "analytics"], icon: BarChart3 },
+  { path: "/cost", title: "Cost", subtitle: "Spend, savings & attribution", keywords: ["spend", "savings", "attribution", "models"], icon: CircleDollarSign },
   { path: "/caching", title: "Caching", subtitle: "Prompt-cache performance", keywords: ["cache", "hit rate", "savings", "prefix", "ttl", "tokens"], icon: Layers },
   { path: "/logs", title: "Logs", subtitle: "Request stream", keywords: ["requests", "traffic", "prompts", "stream"], icon: Logs },
   { path: "/sessions", title: "Sessions", subtitle: "Agent session replay", keywords: ["replay", "conversations", "agents", "turns"], icon: MessagesSquare },
@@ -115,19 +120,24 @@ export function buildPaletteGroups(input: {
   query: string;
   hits: SearchHit[];
   recents: RecentSearchEntry[];
+  isAdmin?: boolean;
 }): PaletteGroup[] {
   const query = input.query.trim().toLowerCase();
+  const isAdmin = input.isAdmin ?? true;
+  const pages = palettePages.filter((page) => canAccessPath(page.path, isAdmin));
+  const hits = isAdmin ? input.hits : [];
+  const recents = input.recents.filter((entry) => recentAllowed(entry, isAdmin));
   if (!query) {
     return withoutEmptyGroups([
-      { label: "Recent", actions: input.recents.map(actionForRecent) },
-      { label: "Pages", actions: palettePages.map(actionForPage) }
+      { label: "Recent", actions: recents.map(actionForRecent) },
+      { label: "Pages", actions: pages.map(actionForPage) }
     ]);
   }
   return withoutEmptyGroups([
-    { label: "Pages", actions: palettePages.filter((page) => pageMatches(page, query)).map(actionForPage) },
+    { label: "Pages", actions: pages.filter((page) => pageMatches(page, query)).map(actionForPage) },
     ...hitGroups.map((group) => ({
       label: group.label,
-      actions: input.hits.filter((hit) => hit.kind === group.kind).map(actionForHit)
+      actions: hits.filter((hit) => hit.kind === group.kind).map(actionForHit)
     }))
   ]);
 }
@@ -235,6 +245,11 @@ function visibleStatus(status: string | null) {
 
 function withoutEmptyGroups(groups: PaletteGroup[]) {
   return groups.filter((group) => group.actions.length > 0);
+}
+
+function recentAllowed(entry: RecentSearchEntry, isAdmin: boolean) {
+  if (entry.kind !== "page") return isAdmin;
+  return canAccessPath(entry.id, isAdmin);
 }
 
 function isRecentEntry(value: unknown): value is RecentSearchEntry {

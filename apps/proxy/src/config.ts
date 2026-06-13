@@ -19,7 +19,7 @@ function normalizeBooleanEnv(value: unknown) {
 }
 
 const booleanEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().default(false));
-const enabledBooleanEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().default(true));
+const optionalBooleanEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().optional());
 
 const modelCostsSchema = z.preprocess((value) => {
   if (value === undefined || value === "") return {};
@@ -33,6 +33,7 @@ const modelCostsSchema = z.preprocess((value) => {
 })).default({}));
 
 const configSchema = z.object({
+  NODE_ENV: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(8787),
   PROMPT_PROXY_TOKEN: z.string().min(1).default("dev-proxy-token"),
   PROMPT_PROXY_SETTINGS_PATH: z.string().optional(),
@@ -80,11 +81,13 @@ const configSchema = z.object({
   // surfaced to external customers. See docs/scopes/subscription-auth-v1/PLAN.md.
   SUBSCRIPTION_OAUTH_ENABLED: booleanEnvSchema,
   ALLOW_DEV_PROXY_TOKEN_FALLBACK: booleanEnvSchema,
+  DEBUG_ENDPOINTS_ENABLED: booleanEnvSchema,
   ADMIN_DEV_LOGIN_ENABLED: booleanEnvSchema,
-  ADMIN_GRAPHIQL_ENABLED: enabledBooleanEnvSchema,
+  ADMIN_GRAPHIQL_ENABLED: optionalBooleanEnvSchema,
   ADMIN_DEV_LOGIN_EMAIL: z.string().email().default("local@example.com"),
   ADMIN_DEV_LOGIN_PASSWORD: z.string().min(1).default("dev-password"),
   ADMIN_SESSION_COOKIE_NAME: z.string().min(1).default("prompt_proxy_session"),
+  ADMIN_SESSION_COOKIE_SECURE: optionalBooleanEnvSchema,
   ADMIN_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 8),
   SEED_USER_ID: z.string().min(1).default("local-user"),
   ADMIN_CORS_ORIGIN: z.string().default("http://127.0.0.1:5173,http://localhost:5173"),
@@ -106,6 +109,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     ...env,
     PROMPT_PROXY_SETTINGS_PATH: settingsPath
   });
+  const production = parsed.NODE_ENV === "production";
+  const debugEndpointsEnabled = parsed.DEBUG_ENDPOINTS_ENABLED || (!production && !parsed.DATABASE_URL);
+  if (production && debugEndpointsEnabled && parsed.PROMPT_PROXY_TOKEN === "dev-proxy-token") {
+    throw new Error("PROMPT_PROXY_TOKEN must be set before enabling debug endpoints in production.");
+  }
+  if (production && parsed.DATABASE_URL && parsed.ADMIN_DEV_LOGIN_ENABLED && parsed.ADMIN_DEV_LOGIN_PASSWORD === "dev-password") {
+    throw new Error("ADMIN_DEV_LOGIN_PASSWORD must be changed before enabling dev login with DATABASE_URL.");
+  }
 
   return {
     port: parsed.PORT,
@@ -140,12 +151,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     providerSecretEncryptionKey: parsed.PROVIDER_SECRET_ENCRYPTION_KEY,
     defaultOrganizationId: parsed.DEFAULT_ORGANIZATION_ID,
     subscriptionOAuthEnabled: parsed.SUBSCRIPTION_OAUTH_ENABLED,
-    allowDevProxyTokenFallback: parsed.ALLOW_DEV_PROXY_TOKEN_FALLBACK || !parsed.DATABASE_URL,
+    allowDevProxyTokenFallback: parsed.ALLOW_DEV_PROXY_TOKEN_FALLBACK || (!production && !parsed.DATABASE_URL),
+    debugEndpointsEnabled,
     adminDevLoginEnabled: parsed.ADMIN_DEV_LOGIN_ENABLED,
-    adminGraphiqlEnabled: parsed.ADMIN_GRAPHIQL_ENABLED,
+    adminGraphiqlEnabled: parsed.ADMIN_GRAPHIQL_ENABLED ?? !production,
     adminDevLoginEmail: parsed.ADMIN_DEV_LOGIN_EMAIL,
     adminDevLoginPassword: parsed.ADMIN_DEV_LOGIN_PASSWORD,
     adminSessionCookieName: parsed.ADMIN_SESSION_COOKIE_NAME,
+    adminSessionCookieSecure: parsed.ADMIN_SESSION_COOKIE_SECURE ?? parsed.ADMIN_CONSOLE_URL.startsWith("https://"),
     adminSessionTtlSeconds: parsed.ADMIN_SESSION_TTL_SECONDS,
     seedUserId: parsed.SEED_USER_ID,
     adminCorsOrigins: parsed.ADMIN_CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean),

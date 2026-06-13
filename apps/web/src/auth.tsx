@@ -4,8 +4,9 @@ import { ArrowRight, LogOut } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 
+import { isAdminRole } from "./access";
 import { startLiveUpdates, stopLiveUpdates } from "./liveUpdates";
-import { fetchMe, login, logout } from "./session";
+import { fetchMe, login, logout, type AuthMe } from "./session";
 import { ConsoleButton } from "./ui";
 
 export type RouterContext = {
@@ -13,8 +14,9 @@ export type RouterContext = {
 };
 
 export async function requireAuth({ context }: { context: RouterContext }) {
+  let me: AuthMe;
   try {
-    await context.queryClient.ensureQueryData({
+    me = await context.queryClient.ensureQueryData({
       queryKey: ["me"],
       queryFn: fetchMe,
       retry: false
@@ -23,6 +25,14 @@ export async function requireAuth({ context }: { context: RouterContext }) {
     throw redirect({ to: "/login" });
   }
   startLiveUpdates(context.queryClient);
+  return me;
+}
+
+export async function requireAdmin({ context }: { context: RouterContext }) {
+  const me = await requireAuth({ context });
+  if (!isAdminRole(me.user.role)) {
+    throw redirect({ to: "/" });
+  }
 }
 
 export function LoginPage() {

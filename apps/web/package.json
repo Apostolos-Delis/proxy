@@ -19,7 +19,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.8.1",
-    "vite": "7.2.6"
+    "vite": "7.3.2"
   },
   "devDependencies": {
     "@graphql-codegen/cli": "^7.1.2",

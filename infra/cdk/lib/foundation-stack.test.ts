@@ -28,6 +28,16 @@ describe("PromptProxyFoundationStack", () => {
       ])
     );
   });
+
+  it("only lets the deploy workflow read the proxy smoke token directly", () => {
+    const template = foundationTemplate();
+    const policies = template.findResources("AWS::IAM::Policy");
+    const policyJson = JSON.stringify(Object.values(policies).map((policy) => policy.Properties.PolicyDocument));
+
+    expect(policyJson).toContain("secretsmanager:GetSecretValue");
+    expect(policyJson).toContain("proxy-token");
+    expect(policyJson).not.toContain("admin-credentials");
+  });
 });
 
 function foundationTemplate() {

@@ -1,13 +1,32 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, KeySquare, Layers, Logs, MessagesSquare, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
+import { canAccessPath, isAdminRole } from "./access";
 import { LogoutButton } from "./auth";
 import { OrgSwitcher } from "./orgSwitcher";
 import { SearchPalette } from "./search/SearchPalette";
 import { useSearchShortcut } from "./search/useSearchShortcut";
+import { fetchMe } from "./session";
 import { WorkspaceSwitcher } from "./workspaceSwitcher";
+
+type NavPath =
+  | "/"
+  | "/usage"
+  | "/cost"
+  | "/caching"
+  | "/logs"
+  | "/sessions"
+  | "/routing"
+  | "/settings"
+  | "/api-keys"
+  | "/provider-keys"
+  | "/users"
+  | "/billing";
+
+type NavItem = { to: NavPath; label: string; icon: LucideIcon };
 
 const workspaceNav = [
   { to: "/", label: "Overview", icon: Gauge },
@@ -54,7 +73,15 @@ export function AppShell() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [searchOpen, setSearchOpen] = useState(false);
   useSearchShortcut(() => setSearchOpen((value) => !value));
-  if (location.pathname === "/login" || location.pathname.startsWith("/invite/")) {
+  const publicRoute = location.pathname === "/login" || location.pathname.startsWith("/invite/");
+  const { data: meQueryData } = useQuery({
+    queryKey: ["me"],
+    queryFn: fetchMe,
+    enabled: !publicRoute
+  });
+  const isAdmin = isAdminRole(meQueryData?.user.role);
+
+  if (publicRoute) {
     return (
       <main className="login-shell">
         <Outlet />
@@ -68,9 +95,9 @@ export function AppShell() {
       <aside className="sidebar">
         <Brand collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
         <WorkspaceSwitcher />
-        <NavGroup title="Workspace" items={workspaceNav} collapsed={collapsed} />
-        <NavGroup title="Operations" items={operationsNav} collapsed={collapsed} />
-        <NavGroup title="Manage" items={manageNav} collapsed={collapsed} />
+        <NavGroup title="Workspace" items={visibleNavItems(workspaceNav, isAdmin)} collapsed={collapsed} />
+        <NavGroup title="Operations" items={visibleNavItems(operationsNav, isAdmin)} collapsed={collapsed} />
+        <NavGroup title="Manage" items={visibleNavItems(manageNav, isAdmin)} collapsed={collapsed} />
         <div className="sidebar-foot">
           <OrgSwitcher />
           <LogoutButton />
@@ -96,16 +123,16 @@ export function AppShell() {
           >
             {theme === "dark" ? <Sun /> : <Moon />}
           </button>
-          <Link to="/settings" className="btn btn-ghost btn-icon" aria-label="Settings">
+          {isAdmin ? <Link to="/settings" className="btn btn-ghost btn-icon" aria-label="Settings">
             <Settings />
-          </Link>
+          </Link> : null}
           <div className="avatar operator">AD</div>
         </header>
         <div className="scroll">
           <Outlet />
         </div>
       </main>
-      {searchOpen ? <SearchPalette onClose={() => setSearchOpen(false)} /> : null}
+      {searchOpen ? <SearchPalette isAdmin={isAdmin} onClose={() => setSearchOpen(false)} /> : null}
     </div>
   );
 }
@@ -129,7 +156,8 @@ function Brand({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => vo
   );
 }
 
-function NavGroup({ title, items, collapsed }: { title: string; items: readonly { to: string; label: string; icon: LucideIcon }[]; collapsed: boolean }) {
+function NavGroup({ title, items, collapsed }: { title: string; items: readonly NavItem[]; collapsed: boolean }) {
+  if (items.length === 0) return null;
   return (
     <>
       <div className="nav-group-label brand-text">{title}</div>
@@ -146,6 +174,10 @@ function NavGroup({ title, items, collapsed }: { title: string; items: readonly 
       </nav>
     </>
   );
+}
+
+function visibleNavItems(items: readonly NavItem[], isAdmin: boolean) {
+  return items.filter((item) => canAccessPath(item.to, isAdmin));
 }
 
 function titleForPath(pathname: string) {

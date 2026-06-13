@@ -1,5 +1,6 @@
 import { builder } from "../builder.js";
 import type { RequestDetailShape, RequestSummaryShape } from "../models.js";
+import { hasAdminRole } from "../authz.js";
 import { ProxyEvent, RoutingConfigSnapshot, TokenTotals } from "./core.js";
 
 export const RequestSummary = builder.objectRef<RequestSummaryShape>("RequestSummary").implement({
@@ -16,12 +17,12 @@ export const RequestSummary = builder.objectRef<RequestSummaryShape>("RequestSum
     routingConfig: t.field({
       type: RoutingConfigSnapshot,
       nullable: true,
-      resolve: (request) => request.routingConfig ?? null
+      resolve: (request, _args, context) => hasAdminRole(context) ? request.routingConfig ?? null : null
     }),
     classifier: t.field({
       type: "JSON",
       nullable: true,
-      resolve: (request) => request.classifier ?? null
+      resolve: (request, _args, context) => hasAdminRole(context) ? request.classifier ?? null : null
     }),
     terminalStatus: t.exposeString("terminalStatus"),
     inputChars: t.exposeFloat("inputChars", { nullable: true }),
@@ -44,6 +45,9 @@ export const RequestDetail = builder.objectRef<RequestDetailShape>("RequestDetai
       nullable: true,
       resolve: (detail) => detail.request
     }),
-    events: t.expose("events", { type: [ProxyEvent] })
+    events: t.field({
+      type: [ProxyEvent],
+      resolve: (detail, _args, context) => hasAdminRole(context) ? detail.events : []
+    })
   })
 });

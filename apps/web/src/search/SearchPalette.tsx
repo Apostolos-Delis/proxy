@@ -4,6 +4,7 @@ import { LoaderCircle, Search } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 
+import { canAccessPath } from "../access";
 import { graphql } from "../gql";
 import { gqlFetch } from "../graphql";
 import {
@@ -32,7 +33,7 @@ const GlobalSearchDocument = graphql(`
   }
 `);
 
-export function SearchPalette({ onClose }: { onClose: () => void }) {
+export function SearchPalette({ isAdmin, onClose }: { isAdmin: boolean; onClose: () => void }) {
   const navigate = useNavigate();
   const [input, setInput] = useState("");
   const [requestedIndex, setRequestedIndex] = useState(0);
@@ -44,13 +45,13 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
   const { data: searchData, isFetching: searchIsFetching, error: searchError } = useQuery({
     queryKey: ["global-search", deferredQuery],
     queryFn: async () => (await gqlFetch(GlobalSearchDocument, { query: deferredQuery })).search,
-    enabled: canSearch,
+    enabled: isAdmin && canSearch,
     placeholderData: keepPreviousData,
     staleTime: 15_000
   });
 
   const hits = canSearch && searchData ? searchData.results : [];
-  const groups = buildPaletteGroups({ query, hits, recents });
+  const groups = buildPaletteGroups({ query, hits, recents, isAdmin });
   const actions = groups.flatMap((group) => group.actions);
   const activeIndex = actions.length > 0 ? Math.min(requestedIndex, actions.length - 1) : -1;
   const searching = query.length >= MIN_SEARCH_LENGTH;
@@ -59,6 +60,7 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
   const errorMessage = searchError instanceof Error ? searchError.message : null;
 
   const openAction = (action: PaletteAction) => {
+    if (!isAdmin && action.kind !== "page") return;
     rememberRecent(action);
     onClose();
     if (action.kind === "session") {
@@ -82,7 +84,7 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
       return;
     }
     const page = palettePages.find((item) => item.path === action.id);
-    if (page) void navigate({ to: page.path });
+    if (page && canAccessPath(page.path, isAdmin)) void navigate({ to: page.path });
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -130,7 +132,7 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
             aria-controls="palette-results"
             aria-activedescendant={activeIndex >= 0 ? paletteOptionId(activeIndex) : undefined}
             aria-label="Search the console"
-            placeholder="Search sessions, prompts, users, configs..."
+            placeholder={isAdmin ? "Search sessions, prompts, users, configs..." : "Search pages..."}
             value={input}
             onChange={(event) => {
               setInput(event.target.value);

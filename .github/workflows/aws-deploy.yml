@@ -125,22 +125,13 @@ jobs:
             --secret-id "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-proxy-token" \
             --query SecretString \
             --output text)"
-          admin_credentials="$(aws secretsmanager get-secret-value \
-            --secret-id "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-admin-credentials" \
-            --query SecretString \
-            --output text)"
-          admin_email="$(node -e 'const value = JSON.parse(process.argv[1]); process.stdout.write(value.email)' "${admin_credentials}")"
-          admin_password="$(node -e 'const value = JSON.parse(process.argv[1]); process.stdout.write(value.password)' "${admin_credentials}")"
 
           echo "::add-mask::${proxy_token}"
-          echo "::add-mask::${admin_password}"
           {
             echo "PROMPT_PROXY_WEB_BUCKET=${web_bucket}"
             echo "PROMPT_PROXY_DEPLOYED_BASE_URL=https://${distribution_domain}"
             echo "PROMPT_PROXY_DEPLOYED_API_KEY=${proxy_token}"
             echo "PROMPT_PROXY_DEPLOYED_ORGANIZATION_ID=prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}"
-            echo "PROMPT_PROXY_DEPLOYED_ADMIN_EMAIL=${admin_email}"
-            echo "PROMPT_PROXY_DEPLOYED_ADMIN_PASSWORD=${admin_password}"
             echo "PROMPT_PROXY_CLOUDFRONT_DISTRIBUTION_ID=${distribution_id}"
             echo "PROMPT_PROXY_ECS_CLUSTER=${cluster_name}"
             echo "PROMPT_PROXY_ECS_SERVICE=${service_name}"

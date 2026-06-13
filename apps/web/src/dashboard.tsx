@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import { Delta, GlassCard, type ConsoleMetric } from "./ui";
 
-export type AppPath = "/" | "/usage" | "/logs" | "/api-keys" | "/users" | "/billing" | "/settings" | "/prompts" | "/sessions";
+export type AppPath = "/" | "/usage" | "/cost" | "/logs" | "/api-keys" | "/users" | "/billing" | "/settings" | "/prompts" | "/sessions";
 
 export type InspectorRow = {
   label: string;

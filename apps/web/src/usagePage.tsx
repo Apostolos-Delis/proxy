@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
+import { isAdminRole } from "./access";
 import { fetchUsageDashboard, fetchUsageLookups, fetchUsageReport } from "./usageData";
 import { ChartLegend, StackedBarsChart } from "./charts";
 import { downloadJson } from "./dashboard";
@@ -18,6 +19,7 @@ import {
 } from "./usageAnalytics";
 import { UsageBreakdownTable, UsageDimensionTabs, formatDurationMs } from "./usageBreakdown";
 import { UsageFocusLayout, UsageGridLayout, type UsageDashboardData } from "./usageLayouts";
+import { fetchMe } from "./session";
 
 const metricOptions = [
   { value: "tokens", label: "Tokens" },
@@ -54,6 +56,8 @@ export function UsagePage() {
   const [dimension, setDimension] = useState<UsageDimension>("model");
   const { start, end, interval } = usageRangeQuery(range, anchor);
   const previousRange = usagePreviousRangeQuery(range, anchor);
+  const { data: meQueryData } = useQuery({ queryKey: ["me"], queryFn: fetchMe });
+  const isAdmin = isAdminRole(meQueryData?.user.role);
   // Individual useQuery calls, not useQueries: useQueries matches observers by query
   // hash, so a dimension/range switch spins up fresh observers and keepPreviousData
   // has no previous data to keep — the skeleton swap collapses the page scroll.
@@ -62,7 +66,11 @@ export function UsagePage() {
     queryFn: () => fetchUsageDashboard(dimension, { start, end, interval }),
     placeholderData: keepPreviousData
   });
-  const { data: lookupsQueryData } = useQuery({ queryKey: ["usage-lookups"], queryFn: fetchUsageLookups });
+  const { data: lookupsQueryData } = useQuery({
+    queryKey: ["usage-lookups"],
+    queryFn: fetchUsageLookups,
+    enabled: isAdmin
+  });
   // The Grid/Focus widgets slice by model and user independently of the
   // console breakdown dimension, and compare against the preceding window.
   // When the main dashboard is already grouped by model, reuse that payload.
@@ -93,9 +101,10 @@ export function UsagePage() {
   if (!usage || !timeseries) return <PageSkeleton blocks={[460, 260]} />;
 
   const totals = usage.totals;
+  const visibleLookups = isAdmin ? lookupsQueryData : undefined;
   const lookups = {
-    usersById: new Map((lookupsQueryData?.members ?? []).map((user) => [user.userId, user])),
-    apiKeysById: new Map((lookupsQueryData?.apiKeys ?? []).map((key) => [key.id, key]))
+    usersById: new Map((visibleLookups?.members ?? []).map((user) => [user.userId, user])),
+    apiKeysById: new Map((visibleLookups?.apiKeys ?? []).map((key) => [key.id, key]))
   };
   const { series, rows } = stackedUsageSeries(timeseries, dimension, metric, lookups);
   const breakdownRows = usage.data;
@@ -174,8 +183,8 @@ export function UsagePage() {
           </GlassCard>
 
           <section className="usage-breakdown">
-            <UsageDimensionTabs dimension={dimension} onDimension={setDimension} />
-            <UsageBreakdownTable mode="tokens" dimension={dimension} range={range} rows={breakdownRows} totals={totals} lookups={lookups} />
+            <UsageDimensionTabs dimension={dimension} onDimension={setDimension} canOpenDetails={isAdmin} />
+            <UsageBreakdownTable mode="tokens" dimension={dimension} range={range} rows={breakdownRows} totals={totals} lookups={lookups} canOpenDetails={isAdmin} />
           </section>
         </>
       ) : null}

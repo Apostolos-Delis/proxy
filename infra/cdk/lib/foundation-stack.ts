@@ -128,8 +128,7 @@ export class PromptProxyFoundationStack extends Stack {
       effect: Effect.ALLOW,
       actions: ["secretsmanager:GetSecretValue"],
       resources: [
-        `arn:${partition}:secretsmanager:${config.region}:${config.awsAccountId}:secret:${resourceName(config, "proxy-token")}*`,
-        `arn:${partition}:secretsmanager:${config.region}:${config.awsAccountId}:secret:${resourceName(config, "admin-credentials")}*`
+        `arn:${partition}:secretsmanager:${config.region}:${config.awsAccountId}:secret:${resourceName(config, "proxy-token")}*`
       ]
     }));
   }
