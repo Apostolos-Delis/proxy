@@ -7,6 +7,7 @@
 - [Persistence and admin console scope](scopes/persistence-admin-v1/PLAN.md)
 - [TanStack admin app scope](scopes/tanstack-admin-app-v1/PLAN.md)
 - [Routing configs scope](scopes/routing-configs-v1/PLAN.md)
+- [Model access profiles scope](scopes/model-access-profiles-v1/PLAN.md)
 - [AWS prod-like deployment scope](scopes/aws-prod-like-deployment-v1/PLAN.md)
 - [Subscription auth scope](scopes/subscription-auth-v1/PLAN.md)
 - [Provider architecture scope](scopes/provider-architecture-v1/PLAN.md)
