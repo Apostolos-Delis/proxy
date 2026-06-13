@@ -160,6 +160,8 @@ Customer secrets are encrypted at rest with AES-256-GCM using `PROVIDER_SECRET_E
 pnpm db:up        # start Postgres via Docker Compose
 pnpm db:migrate   # apply migrations
 pnpm db:seed      # idempotent baseline seed
+pnpm db:console   # interactive Drizzle console with schema tables preloaded
+pnpm db:runner -- 'await db.select().from(organizations).limit(5)'
 ```
 
 Editable runtime settings live as JSON at `.prompt-proxy/settings.json` (or `PROMPT_PROXY_SETTINGS_PATH`); the `/settings` console page reads and writes that file. Environment variables take precedence, and classifier, budget, and route-quality changes apply after restart.
