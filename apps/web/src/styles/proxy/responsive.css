@@ -158,16 +158,18 @@
   .request-detail-grid,
   .detail-grid,
   .snapshot-grid,
-  .settings-layout,
-  .routing-create-grid,
-  .wizard-provider-grid,
-  .config-facts,
-  .config-card-grid,
-  .tier-table-row,
-  .billing-kpis,
-  .usage-kpi-grid,
-  .usage-side-rail,
-  .caching-anatomy {
+    .settings-layout,
+    .routing-create-grid,
+    .wizard-provider-grid,
+    .config-facts,
+    .config-card-grid,
+    .tier-table-row,
+    .route-target,
+    .route-target-fields,
+    .billing-kpis,
+    .usage-kpi-grid,
+    .usage-side-rail,
+    .caching-anatomy {
     grid-template-columns: 1fr;
   }
 
@@ -204,15 +206,12 @@
     display: none;
   }
 
-  /* The table header is hidden, so label each provider cell instead. */
-  .tier-model::before {
-    content: attr(data-provider);
-    color: var(--fg-faint);
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+  .route-target-actions {
+    justify-content: flex-start;
+  }
+
+  .route-target-notes {
+    grid-column: 1;
   }
 
   .config-facts .routing-metric + .routing-metric {

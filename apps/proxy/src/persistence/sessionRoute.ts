@@ -26,7 +26,10 @@ export async function persistSessionRoute(tx: PromptProxyTransaction, event: {
 }) {
   const payload = event.payload;
   const sessionId = stringValue(payload.sessionId) ?? event.sessionId;
-  const surface = surfaceValue(payload.surface) ?? "openai-responses";
+  // No sentinel here: a session row keyed on an absent surface has no
+  // consumer (the pin loader looks up by the live request's surface), so
+  // ensureSession's absent-surface guard skips the write instead.
+  const surface = surfaceValue(payload.surface);
   const userId = stringValue(payload.userId);
   const route = routeValue(payload.currentRoute);
   const dbSessionId = await ensureSession(tx, {

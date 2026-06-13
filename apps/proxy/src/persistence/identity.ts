@@ -14,7 +14,7 @@ import {
 } from "@prompt-proxy/db";
 import { eq } from "drizzle-orm";
 
-import type { RouteName, Surface } from "../types.js";
+import type { RouteName } from "../types.js";
 
 export type ResolvedApiKeyIdentity = {
   apiKeyId: string;
@@ -97,7 +97,7 @@ export async function ensureUser(tx: PromptProxyTransaction, userId: string | un
 export async function ensureSession(tx: PromptProxyTransaction, input: {
   organizationId: string;
   workspaceId: string;
-  surface: Surface | undefined;
+  surface: string | undefined;
   sessionId: string | undefined;
   requestId?: string;
   userId: string | undefined;
@@ -145,7 +145,7 @@ export async function ensureSession(tx: PromptProxyTransaction, input: {
 
 // Workspace ids embed the organization id, so the row id stays globally
 // unique while sessions with the same external id stay distinct per workspace.
-export function sessionRowId(workspaceId: string, surface: Surface, sessionId: string) {
+export function sessionRowId(workspaceId: string, surface: string, sessionId: string) {
   return `${workspaceId}:${surface}:${sessionId}`;
 }
 

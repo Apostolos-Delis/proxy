@@ -26,7 +26,13 @@ import { ModelPricingEntry } from "./types/pricing.js";
 import { Invitation, PublicInvitation } from "./types/invitations.js";
 import { PromptAccessAuditEntry, PromptDetail, PromptPage } from "./types/prompts.js";
 import { RequestDetail, RequestSummary } from "./types/requests.js";
-import { ApiKey, ProviderAccount, RoutingConfigDetail, RoutingConfigSummary } from "./types/routing.js";
+import {
+  ApiKey,
+  ProviderAccount,
+  ProviderRegistryEntry,
+  RoutingConfigDetail,
+  RoutingConfigSummary
+} from "./types/routing.js";
 import { SearchResult } from "./types/search.js";
 import { SessionDetail, SessionSummary } from "./types/sessions.js";
 import { Settings } from "./types/settings.js";
@@ -453,6 +459,14 @@ builder.queryFields((t) => ({
       requireAdminRole(context);
       const queries = scopedQueries(context);
       return queries ? (await queries.providerAccounts()).data : [];
+    }
+  }),
+
+  providers: t.field({
+    type: [ProviderRegistryEntry],
+    resolve: async (_root, _args, context) => {
+      const queries = scopedQueries(context);
+      return queries ? (await queries.providers()).data : [];
     }
   }),
 

@@ -1,7 +1,7 @@
 import { graphql } from "../gql";
 import type { RoutingApiKeysQuery, RoutingConfigDetailViewQuery, RoutingConfigsListQuery } from "../gql/graphql";
 import { gqlFetch } from "../graphql";
-import type { RoutingConfigDocument } from "../routingConfigEditor";
+import type { RoutingConfigDocument, RoutingEditorCatalog } from "../routingConfigEditor";
 
 graphql(`
   fragment RoutingConfigSummaryFields on RoutingConfigSummary {
@@ -18,13 +18,15 @@ graphql(`
       version
       configHash
     }
-    routeMatrix {
+    routes {
       route
       description
-      openaiModel
-      openaiEffort
-      anthropicModel
-      anthropicEffort
+      targets {
+        providerId
+        model
+        effort
+        effectiveEffort
+      }
     }
   }
 `);
@@ -87,6 +89,28 @@ const RoutingApiKeysDocument = graphql(`
         name
         status
       }
+    }
+  }
+`);
+
+const RoutingModelCatalogDocument = graphql(`
+  query RoutingModelCatalog {
+    providers {
+      slug
+      displayName
+      authStyle
+      enabled
+      builtin
+      endpoints {
+        dialect
+        path
+      }
+    }
+    modelPricing {
+      provider
+      model
+      source
+      seenInTraffic
     }
   }
 `);
@@ -163,7 +187,7 @@ const AssignRoutingConfigKeyDocument = graphql(`
 `);
 
 export type RoutingConfigSummary = RoutingConfigsListQuery["routingConfigs"][number];
-export type RouteMatrixRow = RoutingConfigSummary["routeMatrix"][number];
+export type RoutingConfigRoute = RoutingConfigSummary["routes"][number];
 export type ApiKeySummary = RoutingApiKeysQuery["apiKeys"][number];
 
 type RawRoutingConfigDetail = NonNullable<RoutingConfigDetailViewQuery["routingConfig"]>;
@@ -199,6 +223,14 @@ export async function fetchRoutingConfigs() {
 
 export async function fetchApiKeys() {
   return (await gqlFetch(RoutingApiKeysDocument)).apiKeys;
+}
+
+export async function fetchRoutingModelCatalog(): Promise<RoutingEditorCatalog> {
+  const data = await gqlFetch(RoutingModelCatalogDocument);
+  return {
+    providers: data.providers,
+    models: data.modelPricing
+  };
 }
 
 export async function fetchRoutingConfigDetail(configId: string): Promise<RoutingConfigDetail | null> {

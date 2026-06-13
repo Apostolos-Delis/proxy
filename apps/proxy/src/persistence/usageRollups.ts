@@ -34,6 +34,8 @@ export type UsageRollupRow = {
   groupKey: string;
   surface: string;
   requestedModel: string;
+  selectedProvider?: string;
+  selectedModel?: string;
   requestCount: number;
   failedRequests: number;
   retriedRequests: number;
@@ -154,6 +156,8 @@ function requestMetricsCtes(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: S
         ${bucketExpr ? bucketExpr : sql`null::double precision`} as bucket_ts,
         r.surface as surface,
         r.requested_model as requested_model,
+        coalesce(d.selected_provider, aa.last_provider) as selected_provider,
+        coalesce(d.selected_model, aa.last_model) as selected_model,
         coalesce(aa.last_status, r.status) as terminal_status,
         coalesce(aa.attempt_count, 0) as attempt_count,
         coalesce(la.input_tokens, 0)::double precision as input_tokens,
@@ -195,6 +199,8 @@ function reportSelect(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: SQL | n
       ${bucketed ? sql`0::int` : sql`null::int`} as bucket_grouped,
       surface,
       requested_model,
+      selected_provider,
+      selected_model,
       count(*)::int as request_count,
       (count(*) filter (where terminal_status = 'failed'))::int as failed_requests,
       (count(*) filter (where attempt_count > 1))::int as retried_requests,
@@ -212,8 +218,8 @@ function reportSelect(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: SQL | n
       null::double precision as p95_ms
     from request_metrics
     group by ${bucketed
-      ? sql.raw("group_key, bucket_ts, surface, requested_model")
-      : sql.raw("group_key, surface, requested_model")}
+      ? sql.raw("group_key, bucket_ts, surface, requested_model, selected_provider, selected_model")
+      : sql.raw("group_key, surface, requested_model, selected_provider, selected_model")}
     union all
     select
       'latency'::text as row_kind,
@@ -223,6 +229,8 @@ function reportSelect(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: SQL | n
       ${bucketed ? sql`grouping(bucket_ts)::int` : sql`null::int`} as bucket_grouped,
       null::text as surface,
       null::text as requested_model,
+      null::text as selected_provider,
+      null::text as selected_model,
       null::int as request_count,
       null::int as failed_requests,
       null::int as retried_requests,
@@ -283,6 +291,8 @@ function rollupRow(row: RawRow): UsageRollupRow {
     groupKey: String(row.group_key),
     surface: String(row.surface),
     requestedModel: String(row.requested_model),
+    selectedProvider: stringValue(row.selected_provider),
+    selectedModel: stringValue(row.selected_model),
     requestCount: toNumber(row.request_count),
     failedRequests: toNumber(row.failed_requests),
     retriedRequests: toNumber(row.retried_requests),
@@ -326,4 +336,8 @@ function splitReportRows(rows: RawRow[], bucketed: boolean): UsageRollupReport |
 
 function toNumber(value: unknown): number {
   return typeof value === "number" ? value : Number(value);
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value !== "" ? value : undefined;
 }

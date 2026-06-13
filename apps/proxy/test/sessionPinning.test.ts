@@ -7,6 +7,7 @@ import {
   defaultWorkspaceId,
   events,
   hashApiKey,
+  providers,
   routingConfigs,
   routingConfigVersions
 } from "@prompt-proxy/db";
@@ -56,7 +57,7 @@ describe("session pinning", () => {
       configure: (config) => withHardAnthropic(config, {
         model: "claude-pin-v1",
         thinking: { type: "adaptive" },
-        output_config: { effort: "high" }
+        effort: "high"
       })
     });
 
@@ -70,7 +71,7 @@ describe("session pinning", () => {
       configure: (config) => withHardAnthropic(config, {
         model: "claude-pin-v2",
         thinking: { type: "adaptive" },
-        output_config: { effort: "max" }
+        effort: "max"
       })
     });
 
@@ -103,7 +104,7 @@ describe("session pinning", () => {
       configure: (config) => withHardAnthropic(config, {
         model: "claude-restart-pin",
         thinking: { type: "adaptive" },
-        output_config: { effort: "high" }
+        effort: "high"
       })
     });
 
@@ -133,7 +134,7 @@ describe("session pinning", () => {
       configure: (config) => withHardAnthropic(config, {
         model: "claude-upgrade-hard",
         thinking: { type: "adaptive" },
-        output_config: { effort: "high" }
+        effort: "high"
       })
     });
 
@@ -259,7 +260,7 @@ describe("session pinning", () => {
       configure: (config) => withHardAnthropic(config, {
         model: "claude-stale-fresh",
         thinking: { type: "adaptive" },
-        output_config: { effort: "high" }
+        effort: "high"
       })
     });
     await activeFixture.db.insert(agentSessions).values({
@@ -270,9 +271,9 @@ describe("session pinning", () => {
       externalSessionId: "stale-session",
       currentRoute: "hard",
       pinnedSettings: {
-        provider: "openai",
+        providerId: "openai",
         model: "gpt-stale-pin",
-        openai: { model: "gpt-stale-pin" }
+        dialect: "openai-responses"
       },
       requestCount: 3,
       metadata: {}
@@ -284,6 +285,107 @@ describe("session pinning", () => {
 
     const decision = await lastDecisionPayload(activeFixture);
     expect(decision?.guardrailActions).toContain("session_pin_invalidated");
+  });
+
+  it("rebounds a stateless pinned session when its provider is disabled", async () => {
+    const organizationId = "org_session_pin_rebound";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: { ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8" },
+      openAIOptions: { classifierOutput: hardClassifierOutput }
+    });
+    await insertOrgProvider(activeFixture, organizationId, {
+      id: "10000000-0000-0000-0000-000000000101",
+      slug: "anthropic",
+      baseUrl: activeFixture.anthropic.url,
+      dialect: "anthropic-messages"
+    });
+    await insertOrgProvider(activeFixture, organizationId, {
+      id: "10000000-0000-0000-0000-000000000102",
+      slug: "backup-anthropic",
+      baseUrl: activeFixture.anthropic.url,
+      dialect: "anthropic-messages"
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "session-rebound-token",
+      slug: "session-rebound",
+      configHash: "sha256:session-rebound-v1",
+      configure: (config) => withHardTargets(config, [
+        { providerId: "anthropic", model: "claude-primary-pin", effort: "high" },
+        { providerId: "backup-anthropic", model: "claude-backup-pin", effort: "high" }
+      ])
+    });
+
+    const first = await sendMessages(activeFixture, "session-rebound-token", "rebound-session");
+    expect(first.status).toBe(200);
+    expect(lastAnthropicModel(activeFixture)).toBe("claude-primary-pin");
+
+    await activeFixture.db
+      .update(providers)
+      .set({ enabled: false })
+      .where(eq(providers.id, "10000000-0000-0000-0000-000000000101"));
+
+    const second = await sendMessages(activeFixture, "session-rebound-token", "rebound-session");
+    expect(second.status).toBe(200);
+    expect(lastAnthropicModel(activeFixture)).toBe("claude-backup-pin");
+
+    const decision = await lastDecisionPayload(activeFixture);
+    expect(decision?.guardrailActions).toEqual(expect.arrayContaining([
+      "session_pin_invalidated",
+      "pin_rebound",
+      "target_skipped_provider_disabled:anthropic"
+    ]));
+  });
+
+  it("fails a stateful pinned Responses session when its provider is disabled", async () => {
+    const organizationId = "org_session_pin_stateful_disabled";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: { ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8" },
+      openAIOptions: { classifierOutput: hardClassifierOutput }
+    });
+    await insertOrgProvider(activeFixture, organizationId, {
+      id: "10000000-0000-0000-0000-000000000103",
+      slug: "openai",
+      baseUrl: activeFixture.openai.url,
+      dialect: "openai-responses"
+    });
+    await insertOrgProvider(activeFixture, organizationId, {
+      id: "10000000-0000-0000-0000-000000000104",
+      slug: "backup-openai",
+      baseUrl: activeFixture.openai.url,
+      dialect: "openai-responses"
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "session-stateful-disabled-token",
+      slug: "session-stateful-disabled",
+      configHash: "sha256:session-stateful-disabled-v1",
+      configure: (config) => withHardTargets(config, [
+        { providerId: "openai", model: "gpt-primary-pin", effort: "high" },
+        { providerId: "backup-openai", model: "gpt-backup-pin", effort: "high" }
+      ])
+    });
+
+    const first = await sendResponses(activeFixture, "session-stateful-disabled-token", "stateful-disabled-session");
+    expect(first.status).toBe(200);
+    await first.text();
+    expect(activeFixture.openai.records.find((record) => record.body.model === "gpt-primary-pin")).toBeTruthy();
+
+    await activeFixture.db
+      .update(providers)
+      .set({ enabled: false })
+      .where(eq(providers.id, "10000000-0000-0000-0000-000000000103"));
+
+    const second = await sendResponses(activeFixture, "session-stateful-disabled-token", "stateful-disabled-session");
+    const body = await second.json();
+    expect(second.status).toBe(400);
+    expect(body.error).toBe("session_pin_unavailable");
+    expect(activeFixture.openai.records.find((record) => record.body.model === "gpt-backup-pin")).toBeUndefined();
+
+    const decision = await lastDecisionPayload(activeFixture);
+    expect(decision?.guardrailActions).toEqual(expect.arrayContaining([
+      "session_pin_invalidated",
+      "pin_skipped_provider_disabled:openai"
+    ]));
+    expect(decision?.guardrailActions).not.toContain("pin_rebound");
   });
 });
 
@@ -377,6 +479,27 @@ async function sendToolResultMessages(
   return response;
 }
 
+async function sendResponses(
+  fixture: PromptTestFixture,
+  secret: string,
+  sessionId: string
+) {
+  requestNonce += 1;
+  return fetch(`${fixture.proxyUrl}/v1/responses`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${secret}`,
+      "content-type": "application/json",
+      "x-codex-session-id": sessionId
+    },
+    body: JSON.stringify({
+      model: "router-auto",
+      input: `debug this failing integration test (${requestNonce})`,
+      stream: true
+    })
+  });
+}
+
 function lastAnthropicModel(fixture: PromptTestFixture) {
   return fixture.anthropic.records.at(-1)?.body.model;
 }
@@ -399,7 +522,7 @@ async function lastDecisionPayload(fixture: PromptTestFixture) {
 
 function withHardAnthropic(
   config: RoutingConfig,
-  anthropic: NonNullable<RoutingConfig["routes"]["hard"]["anthropic"]>
+  anthropic: Omit<RoutingConfig["routes"]["hard"]["targets"][number], "providerId">
 ): RoutingConfig {
   return {
     ...config,
@@ -407,10 +530,52 @@ function withHardAnthropic(
       ...config.routes,
       hard: {
         ...config.routes.hard,
-        anthropic
+        targets: config.routes.hard.targets.map((target) =>
+          target.providerId === "anthropic" ? { ...target, ...anthropic } : target
+        )
       }
     }
   };
+}
+
+function withHardTargets(
+  config: RoutingConfig,
+  targets: RoutingConfig["routes"]["hard"]["targets"]
+): RoutingConfig {
+  return {
+    ...config,
+    routes: {
+      ...config.routes,
+      hard: {
+        ...config.routes.hard,
+        targets
+      }
+    }
+  };
+}
+
+async function insertOrgProvider(
+  fixture: PromptTestFixture,
+  organizationId: string,
+  input: {
+    id: string;
+    slug: string;
+    baseUrl: string;
+    dialect: "anthropic-messages" | "openai-responses";
+  }
+) {
+  await fixture.db.insert(providers).values({
+    id: input.id,
+    organizationId,
+    slug: input.slug,
+    displayName: input.slug,
+    baseUrl: input.baseUrl,
+    authStyle: "none",
+    endpoints: [{ dialect: input.dialect, path: input.dialect === "anthropic-messages" ? "/messages" : "/responses" }],
+    defaultHeaders: {},
+    forwardHarnessHeaders: false,
+    enabled: true
+  });
 }
 
 async function assignRouteConfig(

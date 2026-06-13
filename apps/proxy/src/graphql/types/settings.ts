@@ -77,8 +77,9 @@ export const CostBaselineSettings = builder
   .objectRef<CostBaselineSettingsModel>("CostBaselineSettings")
   .implement({
     fields: (t) => ({
-      anthropicModel: t.exposeString("anthropicModel"),
-      openaiModel: t.exposeString("openaiModel")
+      anthropicMessagesModel: t.exposeString("anthropicMessagesModel"),
+      openaiResponsesModel: t.exposeString("openaiResponsesModel"),
+      openaiChatModel: t.exposeString("openaiChatModel")
     })
   });
 
@@ -149,13 +150,13 @@ export const PromptCaptureSettingsInput = builder.inputType("PromptCaptureSettin
   })
 });
 
-// Both surfaces travel together — requiring them prevents a partial input
-// from silently resetting the omitted surface. Empty string clears that
-// surface back to its default baseline model.
+// All dialects travel together so a partial input cannot silently reset an
+// omitted dialect. Empty string clears that dialect back to its default model.
 export const CostBaselineSettingsInput = builder.inputType("CostBaselineSettingsInput", {
   fields: (t) => ({
-    anthropicModel: t.string({ required: true }),
-    openaiModel: t.string({ required: true })
+    anthropicMessagesModel: t.string({ required: true }),
+    openaiResponsesModel: t.string({ required: true }),
+    openaiChatModel: t.string({ required: true })
   })
 });
 

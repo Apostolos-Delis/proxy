@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
   apiKeys,
+  providerAccounts,
+  providers,
   routingConfigs,
   routingConfigVersions,
   workspaces,
@@ -54,6 +56,7 @@ export class RoutingConfigAdminService {
 
     return this.db.transaction(async (tx) => {
       await rejectDuplicateSlug(tx, input.organizationId, input.workspaceId, slug);
+      await validateRoutingConfigPublishability(tx, input.organizationId, config);
       await tx.insert(routingConfigs).values({
         id: configId,
         organizationId: input.organizationId,
@@ -159,6 +162,7 @@ export class RoutingConfigAdminService {
       const configRow = await lockedConfig(tx, input.organizationId, input.workspaceId, input.configId);
       if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
       if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
+      await validateRoutingConfigPublishability(tx, input.organizationId, config);
 
       const version = await nextVersion(tx, input.organizationId, input.configId);
       await tx.insert(routingConfigVersions).values({
@@ -229,6 +233,7 @@ export class RoutingConfigAdminService {
       if (version.archivedAt || version.status === "archived") {
         throw new RoutingConfigAdminError("routing_config_version_archived", 409);
       }
+      await validateRoutingConfigPublishability(tx, input.organizationId, parseRoutingConfig(version.config));
 
       await tx
         .update(routingConfigVersions)
@@ -455,6 +460,114 @@ async function rejectDuplicateSlug(tx: PromptProxyTransaction, organizationId: s
     ))
     .limit(1);
   if (existing) throw new RoutingConfigAdminError("routing_config_name_exists", 409);
+}
+
+async function validateClassifierProvider(
+  tx: PromptProxyTransaction,
+  organizationId: string,
+  config: RoutingConfig
+) {
+  const provider = await providerForSlug(tx, organizationId, config.classifier.providerId);
+  const path = "classifier.providerId";
+  if (!provider) {
+    throw new RoutingConfigAdminError("routing_config_classifier_provider_not_found", 400, [{
+      path,
+      message: "Classifier provider must resolve to a provider registry row."
+    }]);
+  }
+  if (!provider.enabled) {
+    throw new RoutingConfigAdminError("routing_config_classifier_provider_disabled", 400, [{
+      path,
+      message: "Classifier provider must be enabled."
+    }]);
+  }
+  if (!provider.endpoints.some((endpoint) => endpoint.dialect === "openai-responses")) {
+    throw new RoutingConfigAdminError("routing_config_classifier_provider_responses_endpoint_required", 400, [{
+      path,
+      message: "Classifier provider must expose an OpenAI Responses endpoint."
+    }]);
+  }
+}
+
+async function validateRoutingConfigPublishability(
+  tx: PromptProxyTransaction,
+  organizationId: string,
+  config: RoutingConfig
+) {
+  await validateClassifierProvider(tx, organizationId, config);
+  const issues: { path: string; message: string }[] = [];
+  for (const [route, routeConfig] of Object.entries(config.routes)) {
+    for (const [index, target] of routeConfig.targets.entries()) {
+      const path = `routes.${route}.targets.${index}.providerId`;
+      const provider = await providerForSlug(tx, organizationId, target.providerId);
+      if (!provider) {
+        issues.push({ path, message: "Target provider must resolve to a provider registry row." });
+        continue;
+      }
+      if (!provider.enabled) {
+        issues.push({ path, message: "Target provider must be enabled." });
+        continue;
+      }
+      if (!canServeCurrentSurface(provider.endpoints)) {
+        issues.push({ path, message: "Target provider must expose an OpenAI Responses, OpenAI Chat, or Anthropic Messages endpoint." });
+      }
+      if (!provider.organizationId || provider.authStyle === "none") continue;
+      if (!await hasProviderCredential(tx, organizationId, provider.id)) {
+        issues.push({ path, message: "Auth-required custom target providers need a provider credential before publishing." });
+      }
+    }
+  }
+  if (issues.length > 0) {
+    throw new RoutingConfigAdminError("routing_config_target_validation_failed", 400, issues);
+  }
+}
+
+function canServeCurrentSurface(endpoints: { dialect: string; path: string }[]) {
+  return endpoints.some((endpoint) =>
+    endpoint.dialect === "openai-responses" || endpoint.dialect === "openai-chat" || endpoint.dialect === "anthropic-messages");
+}
+
+async function hasProviderCredential(
+  tx: PromptProxyTransaction,
+  organizationId: string,
+  providerId: string
+) {
+  const [account] = await tx
+    .select({ id: providerAccounts.id })
+    .from(providerAccounts)
+    .where(and(
+      eq(providerAccounts.organizationId, organizationId),
+      eq(providerAccounts.providerId, providerId),
+      eq(providerAccounts.status, "active")
+    ))
+    .limit(1);
+  return Boolean(account);
+}
+
+async function providerForSlug(
+  tx: PromptProxyTransaction,
+  organizationId: string,
+  slug: string
+) {
+  const [orgProvider] = await tx
+    .select()
+    .from(providers)
+    .where(and(
+      eq(providers.organizationId, organizationId),
+      eq(providers.slug, slug)
+    ))
+    .limit(1);
+  if (orgProvider) return orgProvider;
+
+  const [builtinProvider] = await tx
+    .select()
+    .from(providers)
+    .where(and(
+      eq(providers.slug, slug),
+      isNull(providers.organizationId)
+    ))
+    .limit(1);
+  return builtinProvider ?? null;
 }
 
 export async function routingConfigForAssignment(

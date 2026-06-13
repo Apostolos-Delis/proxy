@@ -1,14 +1,19 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
+import WebSocket from "ws";
 
 import {
   agentSessions,
+  apiKeyProviderAccounts,
   apiKeys,
   defaultWorkspaceId,
+  encryptSecret,
   events,
   hashApiKey,
   organizationSettings,
   promptArtifacts,
+  providers,
+  providerAccounts,
   routingConfigs,
   routingConfigVersions
 } from "@prompt-proxy/db";
@@ -16,6 +21,8 @@ import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 import { composeClassifierInstructions, type RoutingConfig } from "@prompt-proxy/schema";
 
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
+
+const ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 
 describe("routing config runtime resolution", () => {
   let activeFixture: PromptTestFixture | undefined;
@@ -199,7 +206,7 @@ describe("routing config runtime resolution", () => {
       slug: "fallback-gap",
       configHash: "sha256:fallback-gap-config",
       configure: (config) => {
-        delete config.routes.hard.openai;
+        config.routes.hard.targets = config.routes.hard.targets.filter((target) => target.providerId !== "openai");
         return config;
       }
     });
@@ -247,12 +254,15 @@ describe("routing config runtime resolution", () => {
           ...config.routes,
           hard: {
             ...config.routes.hard,
-            openai: {
-              model: "gpt-config-hard",
-              reasoning: { effort: "xhigh" },
-              text: { verbosity: "high" },
-              maxOutputTokens: 1234
-            }
+            targets: config.routes.hard.targets.map((target) => target.providerId === "openai"
+              ? {
+                  ...target,
+                  model: "gpt-config-hard",
+                  effort: "xhigh",
+                  verbosity: "high",
+                  maxOutputTokens: 1234
+                }
+              : target)
           }
         }
       })
@@ -299,6 +309,169 @@ describe("routing config runtime resolution", () => {
     expect(decision?.payload).not.toHaveProperty("providerSettings");
   });
 
+  it("routes WebSocket requests to custom responses providers", async () => {
+    const organizationId = "org_config_custom_ws_provider";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: {
+        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8"
+      }
+    });
+    await activeFixture.db.insert(providers).values({
+      id: "00000000-0000-0000-0000-00000000c015",
+      organizationId,
+      slug: "custom-responses",
+      displayName: "Custom Responses",
+      baseUrl: activeFixture.openai.url,
+      authStyle: "none",
+      endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "custom-ws-route-token",
+      slug: "custom-ws",
+      configHash: "sha256:custom-ws-route-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            targets: [{
+              providerId: "custom-responses",
+              model: "gpt-custom-ws",
+              effort: "high",
+              verbosity: "medium"
+            }]
+          }
+        }
+      })
+    });
+
+    const ws = new WebSocket(activeFixture.proxyUrl.replace("http://", "ws://") + "/v1/responses", {
+      headers: {
+        authorization: "Bearer custom-ws-route-token",
+        "openai-beta": "responses_websockets=2026-02-06",
+        session_id: "custom-ws-session"
+      }
+    });
+    await websocketOpen(ws);
+    ws.send(JSON.stringify({
+      type: "response.create",
+      model: "router-hard",
+      input: "debug this failing websocket route",
+      stream: true
+    }));
+    await nextWebSocketCompletion(ws);
+    ws.close();
+
+    const eventRows = await activeFixture.db.select().from(events);
+    const decision = eventRows.find((event) => event.eventType === "routing.decision_recorded");
+    const providerCalls = activeFixture.openai.records.filter((record) => record.body.type === "response.create");
+
+    expect(providerCalls).toHaveLength(1);
+    expect(providerCalls[0]?.path).toBe("/responses");
+    expect(providerCalls[0]?.body.model).toBe("gpt-custom-ws");
+    expect(providerCalls[0]?.headers["openai-beta"]).toBe("responses_websockets=2026-02-06");
+    expect(decision?.payload).toEqual(expect.objectContaining({
+      outcome: "route",
+      provider: "custom-responses",
+      selectedModel: "gpt-custom-ws"
+    }));
+    expect(eventRows.filter((event) => event.eventType === "provider.response_completed")).toHaveLength(1);
+  });
+
+  it("routes WebSocket requests with bound custom provider credentials", async () => {
+    const organizationId = "org_config_custom_ws_byok";
+    const providerId = "00000000-0000-0000-0000-00000000c016";
+    const providerAccountId = `${organizationId}:provider-account:custom-ws`;
+    const routeSlug = "custom-ws-byok";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: {
+        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8",
+        PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY
+      }
+    });
+    await activeFixture.db.insert(providers).values({
+      id: providerId,
+      organizationId,
+      slug: "custom-responses-byok",
+      displayName: "Custom Responses BYOK",
+      baseUrl: activeFixture.openai.url,
+      authStyle: "bearer",
+      endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+      defaultHeaders: { "x-custom-provider": "byok" },
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+    await activeFixture.db.insert(providerAccounts).values({
+      id: providerAccountId,
+      organizationId,
+      providerId,
+      name: "Custom WS key",
+      authType: "api_key",
+      secretCiphertext: encryptSecret("sk-custom-ws", ENCRYPTION_KEY),
+      secretHint: "••••m-ws",
+      settings: {}
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "custom-ws-byok-route-token",
+      slug: routeSlug,
+      configHash: "sha256:custom-ws-byok-route-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            targets: [{
+              providerId: "custom-responses-byok",
+              model: "gpt-custom-ws-byok",
+              effort: "high",
+              verbosity: "medium"
+            }]
+          }
+        }
+      })
+    });
+    await activeFixture.db.insert(apiKeyProviderAccounts).values({
+      organizationId,
+      workspaceId: defaultWorkspaceId(organizationId),
+      apiKeyId: `api_key_${routeSlug}`,
+      providerId,
+      providerAccountId
+    });
+
+    const ws = new WebSocket(activeFixture.proxyUrl.replace("http://", "ws://") + "/v1/responses", {
+      headers: {
+        authorization: "Bearer custom-ws-byok-route-token",
+        "openai-beta": "responses_websockets=2026-02-06",
+        session_id: "custom-ws-byok-session"
+      }
+    });
+    await websocketOpen(ws);
+    ws.send(JSON.stringify({
+      type: "response.create",
+      model: "router-hard",
+      input: "debug this credentialed websocket route",
+      stream: true
+    }));
+    await nextWebSocketCompletion(ws);
+    ws.close();
+
+    const providerCall = activeFixture.openai.records.find((record) =>
+      record.body.type === "response.create" && record.body.model === "gpt-custom-ws-byok"
+    );
+    const eventRows = await activeFixture.db.select().from(events);
+
+    expect(providerCall).toBeTruthy();
+    expect(providerCall?.headers.authorization).toBe("Bearer sk-custom-ws");
+    expect(providerCall?.headers["x-custom-provider"]).toBe("byok");
+    expect(providerCall?.headers["openai-beta"]).toBe("responses_websockets=2026-02-06");
+    expect(eventRows.filter((event) => event.eventType === "provider.response_completed")).toHaveLength(1);
+  });
+
   it("uses Anthropic route tier settings from the assigned routing config", async () => {
     const organizationId = "org_config_anthropic_routes";
     activeFixture = await captureFixture(organizationId, "raw_text", false, {
@@ -324,12 +497,15 @@ describe("routing config runtime resolution", () => {
           ...config.routes,
           deep: {
             ...config.routes.deep,
-            anthropic: {
-              model: "claude-config-deep",
-              thinking: { type: "adaptive", display: "summarized" },
-              output_config: { effort: "max" },
-              maxTokens: 4096
-            }
+            targets: config.routes.deep.targets.map((target) => target.providerId === "anthropic"
+              ? {
+                  ...target,
+                  model: "claude-config-deep",
+                  thinking: { type: "adaptive", display: "summarized" },
+                  effort: "max",
+                  maxOutputTokens: 4096
+                }
+              : target)
           }
         }
       })
@@ -368,7 +544,6 @@ describe("routing config runtime resolution", () => {
     ]);
     expect(providerCall?.headers["x-claude-code-session-id"]).toBe("claude-session-config");
   });
-
   it("prepends the organization system prompt to OpenAI Responses instructions", async () => {
     const organizationId = "org_system_prompt_openai";
     activeFixture = await captureFixture(organizationId);
@@ -546,7 +721,7 @@ describe("routing config runtime resolution", () => {
           ...config.routes,
           hard: {
             ...config.routes.hard,
-            openai: undefined
+            targets: config.routes.hard.targets.filter((target) => target.providerId !== "openai")
           }
         }
       })
@@ -941,4 +1116,21 @@ async function activeVersion(
     .limit(1);
   expect(version).toBeTruthy();
   return version!;
+}
+
+function websocketOpen(ws: WebSocket) {
+  return new Promise<void>((resolve, reject) => {
+    ws.once("open", () => resolve());
+    ws.once("error", reject);
+  });
+}
+
+function nextWebSocketCompletion(ws: WebSocket) {
+  return new Promise<any>((resolve, reject) => {
+    ws.on("message", (data) => {
+      const event = JSON.parse(String(data));
+      if (event.type === "response.completed" || event.type === "response.incomplete") resolve(event);
+    });
+    ws.once("error", reject);
+  });
 }

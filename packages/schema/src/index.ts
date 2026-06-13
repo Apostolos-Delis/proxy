@@ -9,19 +9,30 @@ export const ROUTES = {
   DEEP: ROUTE_NAMES[3]
 } as const;
 
-export const SURFACE_NAMES = ["openai-responses", "anthropic-messages"] as const;
+export const SURFACE_NAMES = ["openai-responses", "anthropic-messages", "openai-chat"] as const;
 
 export const SURFACES = {
   OPENAI_RESPONSES: SURFACE_NAMES[0],
-  ANTHROPIC_MESSAGES: SURFACE_NAMES[1]
+  ANTHROPIC_MESSAGES: SURFACE_NAMES[1],
+  OPENAI_CHAT: SURFACE_NAMES[2]
 } as const;
 
-export const PROVIDER_NAMES = ["openai", "anthropic"] as const;
+export const DIALECT_NAMES = ["anthropic-messages", "openai-responses", "openai-chat"] as const;
+
+export const DIALECTS = {
+  ANTHROPIC_MESSAGES: DIALECT_NAMES[0],
+  OPENAI_RESPONSES: DIALECT_NAMES[1],
+  OPENAI_CHAT: DIALECT_NAMES[2]
+} as const;
+
+export const BUILTIN_PROVIDER_NAMES = ["openai", "anthropic"] as const;
 
 export const PROVIDERS = {
-  OPENAI: PROVIDER_NAMES[0],
-  ANTHROPIC: PROVIDER_NAMES[1]
+  OPENAI: BUILTIN_PROVIDER_NAMES[0],
+  ANTHROPIC: BUILTIN_PROVIDER_NAMES[1]
 } as const;
+
+export const PROVIDER_AUTH_STYLES = ["bearer", "x-api-key", "none"] as const;
 
 export const PROVIDER_ACCOUNT_AUTH_TYPES = ["api_key", "oauth"] as const;
 
@@ -34,9 +45,7 @@ export const PROVIDER_ACCOUNT_STATUSES = {
   DISABLED: "disabled"
 } as const;
 
-export const OPENAI_REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as const;
-
-export const ANTHROPIC_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export const EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
 export const VERBOSITIES = ["low", "medium", "high"] as const;
 
@@ -156,11 +165,13 @@ export function composeClassifierInstructions(rules?: string): string {
 
 export type RouteName = typeof ROUTE_NAMES[number];
 export type Surface = typeof SURFACE_NAMES[number];
-export type Provider = typeof PROVIDER_NAMES[number];
+export type Dialect = typeof DIALECT_NAMES[number];
+export type BuiltinProvider = typeof BUILTIN_PROVIDER_NAMES[number];
+export type Provider = string;
+export type ProviderAuthStyle = typeof PROVIDER_AUTH_STYLES[number];
 export type ProviderAccountAuthType = typeof PROVIDER_ACCOUNT_AUTH_TYPES[number];
 export type ProviderAccountStatus = typeof PROVIDER_ACCOUNT_STATUSES[keyof typeof PROVIDER_ACCOUNT_STATUSES];
-export type OpenAIReasoningEffort = typeof OPENAI_REASONING_EFFORTS[number];
-export type AnthropicEffort = typeof ANTHROPIC_EFFORTS[number];
+export type Effort = typeof EFFORTS[number];
 export type Verbosity = typeof VERBOSITIES[number];
 export type EventOutboxStatus = typeof EVENT_OUTBOX_STATUSES[keyof typeof EVENT_OUTBOX_STATUSES];
 export type RequestStatus = typeof REQUEST_STATUSES[keyof typeof REQUEST_STATUSES];
@@ -183,9 +194,17 @@ export type JsonObject = { [key: string]: JsonValue };
 
 export const routeNameSchema = z.enum(ROUTE_NAMES);
 export const surfaceSchema = z.enum(SURFACE_NAMES);
-export const providerSchema = z.enum(PROVIDER_NAMES);
-export const openAIReasoningEffortSchema = z.enum(OPENAI_REASONING_EFFORTS);
-export const anthropicEffortSchema = z.enum(ANTHROPIC_EFFORTS);
+export const dialectSchema = z.enum(DIALECT_NAMES);
+export const providerSchema = z.string().min(1, "Provider slug is required.").refine(
+  (value) => value.trim().length > 0,
+  { message: "Provider slug must contain non-whitespace text." }
+).refine(
+  (value) => value === value.trim(),
+  { message: "Provider slug must not include leading or trailing whitespace." }
+);
+export const builtinProviderSchema = z.enum(BUILTIN_PROVIDER_NAMES);
+export const providerAuthStyleSchema = z.enum(PROVIDER_AUTH_STYLES);
+export const effortSchema = z.enum(EFFORTS);
 export const verbositySchema = z.enum(VERBOSITIES);
 export const routingConfigTextSchema = z.string().refine((value) => value.trim().length > 0, {
   message: "Must contain non-whitespace text."
@@ -205,11 +224,30 @@ export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() => z.union([
 
 export const jsonObjectSchema: z.ZodType<JsonObject> = z.record(z.string(), jsonValueSchema);
 
+export const providerRegistryEndpointSchema = z.strictObject({
+  dialect: dialectSchema,
+  path: routingConfigIdentifierSchema.refine((value) => value.startsWith("/"), {
+    message: "Endpoint path must start with '/'."
+  })
+});
+
+export const providerRegistryEntrySchema = z.strictObject({
+  slug: providerSchema,
+  base_url: z.string().url().refine((value) => value === value.trim(), {
+    message: "Base URL must not include leading or trailing whitespace."
+  }),
+  auth_style: providerAuthStyleSchema,
+  endpoints: z.array(providerRegistryEndpointSchema).min(1, "At least one endpoint is required."),
+  default_headers: z.record(z.string(), routingConfigTextSchema),
+  forward_harness_headers: z.boolean(),
+  enabled: z.boolean()
+});
+
 export const routingConfigClassifierSchema = z.strictObject({
-  provider: providerSchema,
+  providerId: providerSchema,
   model: routingConfigIdentifierSchema,
   rules: routingConfigTextSchema.optional(),
-  reasoningEffort: openAIReasoningEffortSchema.optional(),
+  effort: effortSchema.optional(),
   timeoutMs: z.number().int().positive().max(30000),
   maxAttempts: z.number().int().positive().max(5),
   allowRedactedExcerpt: z.boolean(),
@@ -217,18 +255,6 @@ export const routingConfigClassifierSchema = z.strictObject({
     mode: z.literal("json_schema"),
     schemaName: routingConfigIdentifierSchema.optional()
   })
-});
-
-export const routingConfigOpenAIRouteSchema = z.strictObject({
-  model: routingConfigIdentifierSchema,
-  reasoning: z.strictObject({
-    effort: openAIReasoningEffortSchema
-  }).optional(),
-  text: z.strictObject({
-    verbosity: verbositySchema
-  }).optional(),
-  maxOutputTokens: z.number().int().positive().optional(),
-  metadata: jsonObjectSchema.optional()
 });
 
 export const routingConfigAnthropicThinkingSchema = z.discriminatedUnion("type", [
@@ -241,28 +267,19 @@ export const routingConfigAnthropicThinkingSchema = z.discriminatedUnion("type",
   })
 ]);
 
-export const routingConfigAnthropicRouteSchema = z.strictObject({
+export const routeTargetSchema = z.strictObject({
+  providerId: providerSchema,
   model: routingConfigIdentifierSchema,
+  effort: effortSchema.optional(),
   thinking: routingConfigAnthropicThinkingSchema.optional(),
-  output_config: z.strictObject({
-    effort: anthropicEffortSchema
-  }).optional(),
-  maxTokens: z.number().int().positive().optional(),
+  maxOutputTokens: z.number().int().positive().optional(),
+  verbosity: verbositySchema.optional(),
   metadata: jsonObjectSchema.optional()
 });
 
 export const routingConfigRouteSchema = z.strictObject({
   description: routingConfigTextSchema.optional(),
-  openai: routingConfigOpenAIRouteSchema.optional(),
-  anthropic: routingConfigAnthropicRouteSchema.optional()
-}).superRefine((route, context) => {
-  if (!route.openai && !route.anthropic) {
-    context.addIssue({
-      code: "custom",
-      message: "At least one provider block is required.",
-      path: ["openai"]
-    });
-  }
+  targets: z.array(routeTargetSchema).min(1, "At least one route target is required.")
 });
 
 export const routingConfigRoutesSchema = z.strictObject({
@@ -301,7 +318,7 @@ export const routingConfigSessionSchema = z.strictObject({
 });
 
 export const routingConfigSchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   displayName: routingConfigTextSchema,
   description: routingConfigTextSchema.optional(),
   classifier: routingConfigClassifierSchema,
@@ -311,22 +328,12 @@ export const routingConfigSchema = z.strictObject({
 });
 
 export type RoutingConfigClassifier = z.infer<typeof routingConfigClassifierSchema>;
-export type RoutingConfigOpenAIRoute = z.infer<typeof routingConfigOpenAIRouteSchema>;
-export type RoutingConfigAnthropicRoute = z.infer<typeof routingConfigAnthropicRouteSchema>;
 export type RoutingConfigLimits = z.infer<typeof routingConfigLimitsSchema>;
+export type RouteTarget = z.infer<typeof routeTargetSchema>;
 
-export const sessionPinnedSettingsSchema = z.discriminatedUnion("provider", [
-  z.strictObject({
-    provider: z.literal("openai"),
-    model: routingConfigIdentifierSchema,
-    openai: routingConfigOpenAIRouteSchema
-  }),
-  z.strictObject({
-    provider: z.literal("anthropic"),
-    model: routingConfigIdentifierSchema,
-    anthropic: routingConfigAnthropicRouteSchema
-  })
-]);
+export const sessionPinnedSettingsSchema = routeTargetSchema.extend({
+  dialect: dialectSchema
+});
 
 export type SessionPinnedSettings = z.infer<typeof sessionPinnedSettingsSchema>;
 export type RoutingConfigRoute = z.infer<typeof routingConfigRouteSchema>;

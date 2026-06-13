@@ -24,7 +24,6 @@ import {
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
-import { buildModelCatalog } from "../src/catalog.js";
 import { loadConfig } from "../src/config.js";
 import { EventService } from "../src/events.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
@@ -44,7 +43,7 @@ describe("postgres persistence", () => {
     const first = await fixture.persistence.requestStates.begin("idem_1", "request_first", context);
     await fixture.persistence.requestStates.finish("idem_1", "completed");
 
-    const restarted = createDatabasePersistence(fixture.db, fixture.catalog, fixture.config, false);
+    const restarted = createDatabasePersistence(fixture.db, fixture.config, false);
     const retry = await restarted.requestStates.begin("idem_1", "request_second", context);
 
     expect(first.duplicate).toBe(false);
@@ -149,7 +148,7 @@ describe("postgres persistence", () => {
         surface: "openai-responses",
         requestedModel: "router-auto",
         finalRoute: "hard",
-        selectedModel: "gpt-routed-hard-test",
+        selectedModel: "gpt-5.5",
         provider: "openai",
         reasoningEffort: "high",
         verbosity: "medium",
@@ -176,7 +175,7 @@ describe("postgres persistence", () => {
       payload: {
         surface: "openai-responses",
         provider: "openai",
-        model: "gpt-routed-hard-test",
+        model: "gpt-5.5",
         providerAttemptId: "attempt_cost"
       }
     });
@@ -190,7 +189,7 @@ describe("postgres persistence", () => {
       payload: {
         surface: "openai-responses",
         provider: "openai",
-        selectedModel: "gpt-routed-hard-test",
+        selectedModel: "gpt-5.5",
         providerAttemptId: "attempt_cost",
         upstreamStatus: 200,
         usage: {
@@ -219,7 +218,7 @@ describe("postgres persistence", () => {
     expect(decisionRows[0]?.routingConfigHash).toBe("sha256:routing-config-test");
     expect(attemptRows[0]?.terminalStatus).toBe("completed");
     expect(usageRows[0]?.totalTokens).toBe(120);
-    expect(usageRows[0]?.totalCostMicros).toBe(400);
+    expect(usageRows[0]?.totalCostMicros).toBe(325);
     expect(eventRows.map((row) => row.sequence)).toEqual([1, 2, 3, 4, 5]);
   });
 
@@ -280,6 +279,146 @@ describe("postgres persistence", () => {
     expect(requestRows[0]?.status).toBe("cancelled");
     expect(attemptRows[0]?.terminalStatus).toBe("cancelled");
     expect(attemptRows[0]?.error).toBe("client_closed");
+  });
+
+  it("stores unknown surface/provider values verbatim and absent ones as the unknown sentinel", async () => {
+    const fixture = await persistenceFixture("org_unknown");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_unknown");
+    const append = (eventType: string, payload: Record<string, unknown>) =>
+      eventService.append({
+        scopeType: "request",
+        scopeId: "request_unknown",
+        correlationId: "request_unknown",
+        idempotencyKey: "idem_unknown",
+        producer: "test",
+        eventType,
+        payload
+      });
+
+    await append("proxy.request_received", {
+      requestedModel: "router-auto",
+      inputHash: "sha256:input",
+      inputChars: 10
+    });
+    await append("routing.decision_recorded", {
+      outcome: "route",
+      surface: "openai-chat",
+      requestedModel: "router-auto",
+      finalRoute: "fast",
+      selectedModel: "qwen3-coder-30b",
+      provider: "acme-vllm",
+      guardrailActions: [],
+      reasonCodes: ["test"],
+      classifier: { confidence: 0.5 },
+      policyVersion: "test"
+    });
+    await append("provider.request_started", {
+      surface: "openai-chat",
+      provider: "acme-vllm",
+      model: "qwen3-coder-30b",
+      providerAttemptId: "attempt_unknown"
+    });
+    await append("provider.response_completed", {
+      surface: "openai-chat",
+      provider: "acme-vllm",
+      selectedModel: "qwen3-coder-30b",
+      providerAttemptId: "attempt_unknown",
+      upstreamStatus: 200,
+      usage: {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15
+      }
+    });
+
+    const requestRows = await fixture.db.select().from(requests).where(eq(requests.id, "request_unknown"));
+    const decisionRows = await fixture.db.select().from(routeDecisions).where(eq(routeDecisions.requestId, "request_unknown"));
+    const attemptRows = await fixture.db.select().from(providerAttempts).where(eq(providerAttempts.id, "attempt_unknown"));
+    const usageRows = await fixture.db.select().from(usageLedger).where(eq(usageLedger.providerAttemptId, "attempt_unknown"));
+
+    expect(requestRows[0]?.surface).toBe("unknown");
+    expect(decisionRows[0]?.selectedProvider).toBe("acme-vllm");
+    expect(attemptRows[0]?.surface).toBe("openai-chat");
+    expect(attemptRows[0]?.provider).toBe("acme-vllm");
+    expect(usageRows[0]?.provider).toBe("acme-vllm");
+    expect(usageRows[0]?.totalTokens).toBe(15);
+  });
+
+  it("stores an unrecognized surface verbatim on requests and sessions", async () => {
+    const fixture = await persistenceFixture("org_verbatim");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_verbatim");
+
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_verbatim",
+      correlationId: "request_verbatim",
+      idempotencyKey: "idem_verbatim",
+      producer: "test",
+      eventType: "proxy.request_received",
+      payload: {
+        surface: "openai-chat",
+        sessionId: "chat-session",
+        requestedModel: "router-auto",
+        inputHash: "sha256:input",
+        inputChars: 10
+      }
+    });
+
+    const requestRows = await fixture.db.select().from(requests).where(eq(requests.id, "request_verbatim"));
+    const sessionRows = await fixture.db.select().from(agentSessions).where(eq(agentSessions.organizationId, "org_verbatim"));
+
+    expect(requestRows[0]?.surface).toBe("openai-chat");
+    expect(sessionRows[0]?.surface).toBe("openai-chat");
+    expect(sessionRows[0]?.id).toBe("org_verbatim:workspace:default:openai-chat:chat-session");
+  });
+
+  it("books absent provider/surface as the unknown sentinel on attempts and classifier usage", async () => {
+    const fixture = await persistenceFixture("org_absent");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_absent");
+    const append = (eventType: string, payload: Record<string, unknown>) =>
+      eventService.append({
+        scopeType: "request",
+        scopeId: "request_absent",
+        correlationId: "request_absent",
+        idempotencyKey: "idem_absent",
+        producer: "test",
+        eventType,
+        payload
+      });
+
+    await append("proxy.request_received", {
+      surface: "openai-responses",
+      requestedModel: "router-auto",
+      inputHash: "sha256:input",
+      inputChars: 10
+    });
+    await append("routing.classification_recorded", {
+      model: "gpt-5-nano",
+      usage: { input_tokens: 5, output_tokens: 1, total_tokens: 6 }
+    });
+    await append("provider.request_started", {
+      model: "mystery-model",
+      providerAttemptId: "attempt_absent"
+    });
+
+    const attemptRows = await fixture.db.select().from(providerAttempts).where(eq(providerAttempts.id, "attempt_absent"));
+    const classifierRows = await fixture.db.select().from(usageLedger).where(eq(usageLedger.id, "usage_classifier_request_absent"));
+
+    expect(attemptRows[0]?.surface).toBe("unknown");
+    expect(attemptRows[0]?.provider).toBe("unknown");
+    expect(classifierRows[0]?.provider).toBe("unknown");
+  });
+
+  it("treats a route context with an unrecognized surface as absent", async () => {
+    const fixture = await persistenceFixture("org_strict_guard");
+    const context = { ...routeContext(), surface: "future-surface" } as unknown as RouteContext;
+
+    await fixture.persistence.requestStates.begin("idem_strict_guard", "request_strict_guard", context);
+
+    const requestRows = await fixture.db.select().from(requests).where(eq(requests.id, "request_strict_guard"));
+
+    expect(requestRows[0]?.surface).toBe("unknown");
+    expect(requestRows[0]?.requestedModel).toBe("unknown");
   });
 
   it("keeps provider terminal state owned by terminal event projection", async () => {
@@ -852,7 +991,7 @@ describe("postgres persistence", () => {
       DEFAULT_ORGANIZATION_ID: "org_b",
       MODEL_COSTS_JSON: JSON.stringify({ "gpt-routed-hard-test": { inputCostPerMtok: 2, outputCostPerMtok: 10 } })
     });
-    const orgBPersistence = createDatabasePersistence(fixture.db, fixture.catalog, orgBConfig, false);
+    const orgBPersistence = createDatabasePersistence(fixture.db, orgBConfig, false);
 
     await new EventService(undefined, undefined, fixture.persistence.eventSink, "org_a").append({
       scopeType: "session",
@@ -905,9 +1044,8 @@ describe("postgres persistence", () => {
       OPENAI_HARD_MODEL: "gpt-routed-hard-test",
       MODEL_COSTS_JSON: JSON.stringify({ "gpt-routed-hard-test": { inputCostPerMtok: 2, outputCostPerMtok: 10 } })
     });
-    const catalog = buildModelCatalog(config);
-    const persistence = createDatabasePersistence(db, catalog, config, false);
-    return { db, config, catalog, persistence };
+    const persistence = createDatabasePersistence(db, config, false);
+    return { db, config, persistence };
   }
 
   async function activeVersion(

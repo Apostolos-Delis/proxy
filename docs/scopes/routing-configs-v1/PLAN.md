@@ -25,7 +25,6 @@ provider_accounts     upstream provider secret references
 model_catalog         provider/model metadata
 routing_configs       durable routing config identities
 routing_config_versions immutable config JSON snapshots
-route_policies        legacy early policy placeholder, superseded by routing configs
 organization_settings org-level defaults
 route_decisions       selected route/model audit rows
 requests              request current-state rows

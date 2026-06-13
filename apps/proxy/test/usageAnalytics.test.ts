@@ -335,6 +335,65 @@ describe("usage analytics admin APIs", () => {
     expect(keyUsage.data[0].requestCount).toBe(1);
   });
 
+  it("keeps OpenAI Chat as its own usage surface with its own baseline", async () => {
+    const fixture = await setup("org_usage_chat_surface");
+    const createdAt = new Date("2026-06-08T12:00:00.000Z");
+
+    await fixture.persistence.organizationSettings.setCostBaseline("org_usage_chat_surface", {
+      anthropicMessagesModel: null,
+      openaiResponsesModel: "gpt-5.5-pro",
+      openaiChatModel: "gpt-5.4-mini"
+    });
+    await fixture.db.insert(users).values([{ id: "user_chat_surface" }]);
+    await fixture.db.insert(agentSessions).values([
+      {
+        id: "session_responses_surface",
+        organizationId: "org_usage_chat_surface",
+        workspaceId: defaultWorkspaceId("org_usage_chat_surface"),
+        userId: "user_chat_surface",
+        surface: "openai-responses"
+      },
+      {
+        id: "session_chat_surface",
+        organizationId: "org_usage_chat_surface",
+        workspaceId: defaultWorkspaceId("org_usage_chat_surface"),
+        userId: "user_chat_surface",
+        surface: "openai-chat"
+      }
+    ]);
+    await fixture.db.insert(requests).values([
+      usageRequest("surface_responses_request", "org_usage_chat_surface", "user_chat_surface", "session_responses_surface", "openai-responses", createdAt),
+      usageRequest("surface_chat_request", "org_usage_chat_surface", "user_chat_surface", "session_chat_surface", "openai-chat", createdAt)
+    ]);
+    await fixture.db.insert(routeDecisions).values([
+      usageDecision("surface_responses_decision", "surface_responses_request", "org_usage_chat_surface", "fast", "openai", "gpt-5.4-mini"),
+      usageDecision("surface_chat_decision", "surface_chat_request", "org_usage_chat_surface", "fast", "openai", "gpt-5.4-mini")
+    ]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("surface_responses_attempt", "surface_responses_request", "org_usage_chat_surface", "openai-responses", "openai", "gpt-5.4-mini", "completed", createdAt),
+      usageAttempt("surface_chat_attempt", "surface_chat_request", "org_usage_chat_surface", "openai-chat", "openai", "gpt-5.4-mini", "completed", createdAt)
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      usageRow("surface_responses_usage", "surface_responses_request", "surface_responses_attempt", "org_usage_chat_surface", "openai", "gpt-5.4-mini", "fast", 1000, 100, 450),
+      usageRow("surface_chat_usage", "surface_chat_request", "surface_chat_attempt", "org_usage_chat_surface", "openai", "gpt-5.4-mini", "fast", 1000, 100, 450)
+    ]);
+
+    const usage = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { usage(groupBy: surface) { data { key requestCount cost { baseline } } totals { requestCount cost { baseline } } } }`
+    )).data?.usage;
+    const bySurface = new Map(usage.data.map((row: { key: string; requestCount: number; cost: { baseline: number } }) => [row.key, row]));
+
+    expect([...bySurface.keys()].sort()).toEqual(["openai-chat", "openai-responses"]);
+    expect(bySurface.get("openai-responses")?.requestCount).toBe(1);
+    expect(bySurface.get("openai-chat")?.requestCount).toBe(1);
+    expect(bySurface.get("openai-responses")?.cost.baseline).toBeCloseTo(0.027);
+    expect(bySurface.get("openai-chat")?.cost.baseline).toBeCloseTo(0.00045);
+    expect(usage.totals.requestCount).toBe(2);
+    expect(usage.totals.cost.baseline).toBeCloseTo(0.02745);
+  });
+
   it("keeps concurrent root fields consistent when they share request scans", async () => {
     const fixture = await setup("org_usage_shared_scan");
     const createdAt = new Date("2026-06-08T12:00:00.000Z");
@@ -482,8 +541,9 @@ describe("usage analytics admin APIs", () => {
     expect(before.totals.cost.savings).toBeCloseTo(0.0075);
 
     await fixture.persistence.organizationSettings.setCostBaseline("org_usage_baseline", {
-      anthropicModel: "claude-haiku-4-5",
-      openaiModel: null
+      anthropicMessagesModel: "claude-haiku-4-5",
+      openaiResponsesModel: null,
+      openaiChatModel: null
     });
 
     // Configured counterfactual claude-haiku-4-5 ($1/$5): the same tokens
@@ -501,6 +561,12 @@ describe("usage analytics admin APIs", () => {
     }]);
     await fixture.db.insert(providerAttempts).values([
       usageAttempt("bl_alias_attempt", "bl_alias_request", "org_usage_baseline", "anthropic-messages", "anthropic", "claude-opus-4-8", "completed", createdAt)
+    ]);
+    await fixture.db.insert(routeDecisions).values([
+      {
+        ...usageDecision("bl_alias_decision", "bl_alias_request", "org_usage_baseline", "hard", "anthropic", "claude-sonnet-4-5"),
+        requestedModel: "claude-router-hard"
+      }
     ]);
     await fixture.db.insert(usageLedger).values([
       usageRow("bl_alias_usage", "bl_alias_request", "bl_alias_attempt", "org_usage_baseline", "anthropic", "claude-opus-4-8", "hard", 1000, 100, 7500)

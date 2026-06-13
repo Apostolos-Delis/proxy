@@ -4,11 +4,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
 import { EventService } from "../src/events.js";
+import { claudeCodeHarness, codexHarness, cursorHarness, opencodeHarness } from "../src/harness.js";
 import {
   compressForForward,
   compressToolResults,
   MIN_COMPRESSIBLE_CHARS,
   compressionRules,
+  compressionRulesForProfile,
   type CompressionRule
 } from "../src/toolResultCompression.js";
 import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
@@ -22,13 +24,30 @@ const truncateRule: CompressionRule = {
 };
 
 const big = "x".repeat(MIN_COMPRESSIBLE_CHARS + 100);
+const duplicateBig = "d".repeat(MIN_COMPRESSIBLE_CHARS + 100);
 const truncatedBig = "xxxxxxxxxx…[truncated]";
 const estimatedTokens = (chars: number) => Math.ceil(chars / 4);
 const esc = String.fromCharCode(27);
 const hashFor = (value: string) => createHash("sha256").update(value).digest("hex");
 
 describe("compressToolResults", () => {
-  it("leaves non-JSON shell output untouched under the default registry", () => {
+  it("builds shell compression rules from the harness profile", () => {
+    const codexRules = compressionRulesForProfile(codexHarness);
+    const claudeRules = compressionRulesForProfile(claudeCodeHarness);
+    const cursorRules = compressionRulesForProfile(cursorHarness);
+    const opencodeRules = compressionRulesForProfile(opencodeHarness);
+
+    expect(codexRules.some((rule) => rule.matches("shell"))).toBe(true);
+    expect(codexRules.some((rule) => rule.matches("Bash"))).toBe(false);
+    expect(claudeRules.some((rule) => rule.matches("Bash"))).toBe(true);
+    expect(claudeRules.some((rule) => rule.matches("local_shell"))).toBe(false);
+    expect(cursorRules.some((rule) => rule.matches("run_terminal_cmd"))).toBe(true);
+    expect(opencodeRules.some((rule) => rule.matches("shell"))).toBe(true);
+  });
+
+  it("leaves non-matching tools untouched under the default registry", () => {
+    // Plain Bash output has no noise for the default Bash filter to strip, so
+    // its content is preserved verbatim.
     const body = {
       messages: [
         { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] },
@@ -257,6 +276,66 @@ ${items}
     const result = compressToolResults("openai-responses", body, [truncateRule]) as any;
     expect(result.records[0].tool).toBe("Bash");
     expect(result.body.input[1].output).toBe("xxxxxxxxxx…[truncated]");
+  });
+
+  it("elides duplicate large OpenAI function outputs that no rule rewrites", () => {
+    const body = {
+      input: [
+        { type: "function_call", call_id: "c1", name: "read_file", arguments: "{}" },
+        { type: "function_call_output", call_id: "c1", output: duplicateBig },
+        { type: "function_call", call_id: "c2", name: "read_file", arguments: "{}" },
+        { type: "function_call_output", call_id: "c2", output: duplicateBig }
+      ]
+    };
+
+    const result = compressToolResults("openai-responses", body, [], { deduplicateToolResults: true }) as any;
+
+    expect(result.records).toEqual([
+      expect.objectContaining({
+        tool: "read_file",
+        rule: "duplicate-tool-result-reference",
+        ruleVersion: 1,
+        beforeChars: duplicateBig.length
+      })
+    ]);
+    expect(result.body.input[1].output).toBe(duplicateBig);
+    expect(result.body.input[3].output).toContain("duplicate tool result omitted");
+    expect(result.body.input[3].output).toContain(`contentHash=sha256:${hashFor(duplicateBig)}`);
+    expect(result.body.input[3].output).not.toContain(duplicateBig.slice(0, 50));
+  });
+
+  it("maps flat chat tool calls to tool names", () => {
+    const rule: CompressionRule = {
+      label: "cursor-truncate",
+      version: 1,
+      matches: (name) => name === "run_terminal_cmd",
+      filter: ({ content }) => (typeof content === "string" ? `${content.slice(0, 10)}…[truncated]` : undefined)
+    };
+    const body = {
+      messages: [
+        {
+          role: "assistant",
+          tool_calls: [{ id: "call_1", name: "run_terminal_cmd", arguments: { command: "pwd" } }]
+        },
+        { role: "tool", tool_call_id: "call_1", content: big }
+      ]
+    };
+
+    const result = compressToolResults("openai-chat", body, [rule]) as any;
+
+    expect(result.records).toEqual([
+      {
+        tool: "run_terminal_cmd",
+        rule: "cursor-truncate",
+        ruleVersion: 1,
+        beforeChars: big.length,
+        afterChars: truncatedBig.length,
+        beforeEstimatedTokens: estimatedTokens(big.length),
+        afterEstimatedTokens: estimatedTokens(truncatedBig.length),
+        savedEstimatedTokens: estimatedTokens(big.length) - estimatedTokens(truncatedBig.length)
+      }
+    ]);
+    expect(result.body.messages[1].content).toBe("xxxxxxxxxx…[truncated]");
   });
 
   it("never grows a block: a rule that expands content is discarded", () => {

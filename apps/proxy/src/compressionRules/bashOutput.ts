@@ -11,7 +11,7 @@ import { mapTextContent, type CompressionRule } from "../toolResultCompression.j
 // command-specific guesswork. This stays a pure function of the input bytes.
 
 // Per harness: Bash (Claude Code), shell/local_shell (Codex), run_terminal_cmd (Cursor).
-const SHELL_TOOL_NAMES = new Set(["Bash", "shell", "local_shell", "run_terminal_cmd"]);
+const SHELL_TOOL_NAMES = ["Bash", "shell", "local_shell", "run_terminal_cmd"];
 
 // ANSI escape sequences, every alternative anchored on the ESC control byte
 // () so only true escape sequences match — never ordinary bracketed text.
@@ -26,14 +26,19 @@ const ANSI_PATTERN = new RegExp(
   "g"
 );
 
-export const bashOutputRule: CompressionRule = {
-  label: "bash-output-noise",
-  version: 1,
-  matches: (toolName) => SHELL_TOOL_NAMES.has(toolName),
-  filter: ({ content }) => mapTextContent(content, stripNoise),
-  // Cheap O(n) scan — worth running on mid-size outputs too.
-  minChars: 512
-};
+export const bashOutputRule = bashOutputRuleForNames(SHELL_TOOL_NAMES);
+
+export function bashOutputRuleForNames(names: readonly string[]): CompressionRule {
+  const toolNames = new Set(names);
+  return {
+    label: "bash-output-noise",
+    version: 1,
+    matches: (toolName) => toolNames.has(toolName),
+    filter: ({ content }) => mapTextContent(content, stripNoise),
+    // Cheap O(n) scan — worth running on mid-size outputs too.
+    minChars: 512
+  };
+}
 
 function stripNoise(text: string): string | undefined {
   const result = collapseCarriageReturns(text.replace(ANSI_PATTERN, ""));

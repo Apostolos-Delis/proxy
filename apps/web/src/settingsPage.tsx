@@ -25,8 +25,9 @@ graphql(`
       toolResultCompression
       duplicateToolResultReferences
       costBaseline {
-        anthropicModel
-        openaiModel
+        anthropicMessagesModel
+        openaiResponsesModel
+        openaiChatModel
       }
       classifier {
         model

@@ -5,6 +5,7 @@ import { AdminAuthService } from "./adminAuth.js";
 import { registerAdminEventStream } from "./adminEvents.js";
 import {
   anthropicMessagesSurface,
+  openAIChatSurface,
   openAIResponsesSurface,
   rewriteSurfaceRequest,
   rewriteTokenCountRequest
@@ -18,14 +19,18 @@ import {
   type RequestIdentity
 } from "./auth.js";
 import { loadConfig, type AppConfig } from "./config.js";
-import { buildModelCatalog } from "./catalog.js";
+import { DefaultRoutingConfigResolver } from "./defaultRoutingConfig.js";
 import { LlmClassifier } from "./classifier.js";
 import { EmailService } from "./email.js";
 import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStateGate } from "./events.js";
 import { registerAdminGraphQL } from "./graphql/route.js";
+import { harnessProfileByName } from "./harness.js";
+import { scheduleDailyModelCatalogRefresh } from "./jobs/modelCatalogRefresh.js";
 import { SessionRouteStore } from "./policy.js";
 import { createPostgresPersistence } from "./persistence/index.js";
-import { resolveRoutingSelection } from "./persistence/routingConfig.js";
+import { ConfigProviderRegistry } from "./persistence/providers.js";
+import { resolveRoutingSelection, type RoutingConfigResolverLike } from "./persistence/routingConfig.js";
+import { modelDiscoveryResponse } from "./modelDiscovery.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
 import { appendTokensAttributed } from "./tokenAttribution.js";
@@ -40,7 +45,6 @@ import { WebSocketRoutingProxy } from "./wsProxy.js";
 type AppPersistence = ReturnType<typeof createPostgresPersistence>;
 
 export function buildServer(config: AppConfig = loadConfig(), options: { persistence?: AppPersistence } = {}) {
-  const modelCatalog = buildModelCatalog(config);
   const app = Fastify({
     logger: { level: config.logLevel },
     bodyLimit: 1024 * 1024 * 50
@@ -51,8 +55,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     methods: ["GET", "HEAD", "POST"]
   });
   const persistence = options.persistence ?? (config.databaseUrl
-    ? createPostgresPersistence(config.databaseUrl, modelCatalog, config)
+    ? createPostgresPersistence(config.databaseUrl, config)
     : undefined);
+  const routingConfigs = persistence?.routingConfigs ?? new DefaultRoutingConfigResolver(config);
   const events = new EventService(
     config.eventStorePath,
     undefined,
@@ -65,8 +70,16 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   const requestStates = persistence?.requestStates ?? new RequestStateStore();
   const sessions = new SessionRouteStore(persistence?.sessionPins);
   const classifier = new LlmClassifier(config);
-  const routing = new RoutingService(config, classifier, events, modelCatalog, sessions);
-  const proxy = new ProviderProxy(config, events, attempts, requestStates);
+  const providerRegistry = persistence?.providerRegistry ?? new ConfigProviderRegistry(config);
+  const routing = new RoutingService(
+    config,
+    classifier,
+    events,
+    sessions,
+    providerRegistry,
+    persistence?.providerCredentials
+  );
+  const proxy = new ProviderProxy(config, events, attempts, requestStates, providerRegistry);
   const assistantResponseCapture = (input: {
     identity: RequestIdentity;
     requestId: string;
@@ -106,12 +119,14 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     events,
     attempts,
     requestStates,
+    providerRegistry,
+    persistence?.providerCredentials,
     persistence?.promptArtifacts,
-    persistence?.routingConfigs,
+    routingConfigs,
     persistence?.sessionPrompts,
     app.log
   );
-  const projections = new ProjectionService(modelCatalog, config);
+  const projections = new ProjectionService(config);
   const emailService = new EmailService(config, app.log);
   registerAdminGraphQL(app, { config, adminAuth, emailService, events, projections, persistence });
   registerAdminEventStream(app, events, adminAuth);
@@ -129,21 +144,11 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     return buildSetupScript(`${proto}://${host}`);
   });
 
-  app.get("/v1/models", async () => ({
-    object: "list",
-    data: [
-      { id: "router-auto", object: "model", owned_by: "prompt-proxy" },
-      { id: "router-fast", object: "model", owned_by: "prompt-proxy" },
-      { id: "router-balanced", object: "model", owned_by: "prompt-proxy" },
-      { id: "router-hard", object: "model", owned_by: "prompt-proxy" },
-      { id: "router-deep", object: "model", owned_by: "prompt-proxy" },
-      { id: "claude-router-auto", type: "model", display_name: "Claude Router: Auto" },
-      { id: "claude-router-fast", type: "model", display_name: "Claude Router: Fast" },
-      { id: "claude-router-balanced", type: "model", display_name: "Claude Router: Balanced" },
-      { id: "claude-router-hard", type: "model", display_name: "Claude Router: Hard" },
-      { id: "claude-router-deep", type: "model", display_name: "Claude Router: Deep" }
-    ]
-  }));
+  app.get("/v1/models", async (request) => {
+    const identity = await optionalIdentity(auth, request.headers);
+    const catalogModels = await persistence?.modelDiscovery.catalogModels(identity?.organizationId) ?? [];
+    return modelDiscoveryResponse(catalogModels);
+  });
 
   if (config.debugEndpointsEnabled) {
     app.get("/_debug/events", async (request) => {
@@ -215,7 +220,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         artifacts: capturedArtifacts
       });
 
-      const resolved = await resolveRoutingConfig(persistence, identity, identity.routingConfigId);
+      const resolved = await resolveRoutingConfig(routingConfigs, identity);
       const systemPrompt = await effectiveSystemPrompt(
         persistence,
         identity,
@@ -259,24 +264,136 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         body: request.body,
         enabled: resolved.toolResultCompression,
         deduplicateToolResults: resolved.duplicateToolResultReferences,
+        profile: harnessProfileByName(context.harness),
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       await proxy.forward({
         requestId,
         idempotencyKey,
+        organizationId: identity.organizationId,
         surface: openAIResponsesSurface.surface,
-        provider: openAIResponsesSurface.provider,
+        provider: routedProvider(decision),
         body: rewriteSurfaceRequest(compressedBody, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
-        credential: await resolveUpstreamCredential(persistence, identity, openAIResponsesSurface.provider),
+        credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
         onAssistantText: assistantResponseCapture({
           identity,
           requestId,
           idempotencyKey,
           sessionId: context.sessionId,
           surface: openAIResponsesSurface.surface
+        })
+      });
+    } catch (error) {
+      await requestStates.finish(idempotencyKey, "failed", {
+        error: error instanceof Error ? error.message : "Request failed."
+      });
+      throw error;
+    }
+  });
+
+  app.post("/v1/chat/completions", async (request, reply) => {
+    const identity = await auth.resolve(request.headers);
+    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
+      openAIChatSurface.createOperation,
+      request.body,
+      request.headers
+    ));
+    const rawContext = openAIChatSurface.buildContext(request.body, lowerHeaders(request.headers));
+    const context = contextForIdentity(rawContext, identity);
+    const proposedRequestId = createId("request");
+    const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
+    if (sendDuplicateRequest(gate, reply)) return;
+    const requestId = gate.state.requestId ?? proposedRequestId;
+
+    try {
+      await events.append({
+        tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
+        scopeType: "request",
+        scopeId: requestId,
+        correlationId: requestId,
+        idempotencyKey,
+        actor: actorForIdentity(identity),
+        producer: "prompt-proxy.surface.openai-chat",
+        eventType: "proxy.request_received",
+        payload: requestReceivedPayload(openAIChatSurface.surface, context, rawContext, identity)
+      });
+      const capturedArtifacts = await persistence?.promptArtifacts.capture({
+        organizationId: identity.organizationId,
+        workspaceId: identity.workspaceId,
+        requestId,
+        surface: openAIChatSurface.surface,
+        body: request.body
+      }) ?? [];
+      await appendPromptCaptureEvent({
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: openAIChatSurface.surface,
+        artifacts: capturedArtifacts
+      });
+
+      const resolved = await resolveRoutingConfig(routingConfigs, identity);
+      await appendTokensAttributed({
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: openAIChatSurface.surface,
+        body: request.body,
+        orgSystemPrompt: resolved.systemPrompt,
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
+      const decision = await routing.decide({
+        requestId,
+        context,
+        body: request.body,
+        idempotencyKey,
+        routingConfig: resolved.routingConfig
+      });
+      if (decision.outcome === "reject") {
+        await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+        reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
+        return;
+      }
+
+      const compressedBody = await compressForForward({
+        events,
+        tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: openAIChatSurface.surface,
+        body: request.body,
+        enabled: resolved.toolResultCompression,
+        deduplicateToolResults: resolved.duplicateToolResultReferences,
+        profile: harnessProfileByName(context.harness),
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
+      await proxy.forward({
+        requestId,
+        idempotencyKey,
+        organizationId: identity.organizationId,
+        surface: openAIChatSurface.surface,
+        provider: routedProvider(decision),
+        body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
+        headers: lowerHeaders(request.headers),
+        decision,
+        reply,
+        credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
+        onAssistantText: assistantResponseCapture({
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          surface: openAIChatSurface.surface
         })
       });
     } catch (error) {
@@ -332,7 +449,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         artifacts: capturedArtifacts
       });
 
-      const resolved = await resolveRoutingConfig(persistence, identity, identity.routingConfigId);
+      const resolved = await resolveRoutingConfig(routingConfigs, identity);
       const systemPrompt = await effectiveSystemPrompt(
         persistence,
         identity,
@@ -376,18 +493,20 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         body: request.body,
         enabled: resolved.toolResultCompression,
         deduplicateToolResults: resolved.duplicateToolResultReferences,
+        profile: harnessProfileByName(context.harness),
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       await proxy.forward({
         requestId,
         idempotencyKey,
+        organizationId: identity.organizationId,
         surface: anthropicMessagesSurface.surface,
-        provider: anthropicMessagesSurface.provider,
+        provider: routedProvider(decision),
         body: rewriteSurfaceRequest(compressedBody, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
-        credential: await resolveUpstreamCredential(persistence, identity, anthropicMessagesSurface.provider),
+        credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
         onAssistantText: assistantResponseCapture({
           identity,
           requestId,
@@ -431,7 +550,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         eventType: "proxy.request_received",
         payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
       });
-      const resolved = await resolveRoutingConfig(persistence, identity, identity.routingConfigId);
+      const resolved = await resolveRoutingConfig(routingConfigs, identity);
       const systemPrompt = await effectiveSystemPrompt(
         persistence,
         identity,
@@ -439,7 +558,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         context.sessionId,
         resolved.systemPrompt
       );
-      const decision = routing.tokenCountDecision(context, resolved.routingConfig);
+      const decision = await routing.tokenCountDecision(context, resolved.routingConfig);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
         reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
@@ -456,19 +575,23 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         request.body,
         resolved.toolResultCompression,
         (err, message) => app.log.warn({ err, requestId }, message),
-        { deduplicateToolResults: resolved.duplicateToolResultReferences }
+        {
+          deduplicateToolResults: resolved.duplicateToolResultReferences,
+          profile: harnessProfileByName(context.harness)
+        }
       );
       await proxy.forward({
         requestId,
         idempotencyKey,
+        organizationId: identity.organizationId,
         surface: anthropicMessagesSurface.surface,
-        provider: anthropicMessagesSurface.provider,
+        provider: routedProvider(decision),
         body: rewriteTokenCountRequest(countBody, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade }),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
         path: "/messages/count_tokens",
-        credential: await resolveUpstreamCredential(persistence, identity, anthropicMessagesSurface.provider)
+        credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision))
       });
     } catch (error) {
       await requestStates.finish(idempotencyKey, "failed", {
@@ -479,6 +602,11 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   });
 
   return app;
+}
+
+function routedProvider(decision: { provider?: Provider }) {
+  if (!decision.provider) throw new Error("Missing routed provider.");
+  return decision.provider;
 }
 
 function resolveUpstreamCredential(
@@ -494,15 +622,25 @@ function resolveUpstreamCredential(
   });
 }
 
-async function resolveRoutingConfig(
-  persistence: AppPersistence | undefined,
-  identity: RequestIdentity,
-  routingConfigId: string | null
+async function optionalIdentity(
+  auth: ProxyAuthService,
+  headers: Record<string, unknown>
 ) {
-  return resolveRoutingSelection(persistence?.routingConfigs, {
+  try {
+    return await auth.resolve(headers);
+  } catch {
+    return undefined;
+  }
+}
+
+async function resolveRoutingConfig(
+  routingConfigs: RoutingConfigResolverLike,
+  identity: RequestIdentity
+) {
+  return resolveRoutingSelection(routingConfigs, {
     organizationId: identity.organizationId,
     workspaceId: identity.workspaceId,
-    routingConfigId
+    routingConfigId: identity.routingConfigId
   });
 }
 
@@ -567,7 +705,7 @@ function sendDuplicateRequest(
 if (import.meta.url === `file://${process.argv[1]}`) {
   const config = loadConfig();
   const persistence = config.databaseUrl
-    ? createPostgresPersistence(config.databaseUrl, buildModelCatalog(config), config)
+    ? createPostgresPersistence(config.databaseUrl, config)
     : undefined;
   const app = buildServer(config, { persistence });
   await app.listen({ port: config.port, host: "0.0.0.0" });
@@ -575,6 +713,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // counts into input/total, then reprice rows that booked $0 before their
   // model's rate existed — in that order, so repricing sees healed tokens.
   if (persistence) {
+    scheduleDailyModelCatalogRefresh(persistence.modelCatalogRefresh, app.log);
     void persistence
       .normalizeLegacyCachedUsage()
       .then(

@@ -18,7 +18,6 @@ import {
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
-import { buildModelCatalog } from "../src/catalog.js";
 import { loadConfig } from "../src/config.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
 import { buildServer } from "../src/server.js";
@@ -91,8 +90,7 @@ export async function captureFixture(
     ANTHROPIC_BASE_URL: anthropic.url,
     LOG_LEVEL: "fatal"
   });
-  const catalog = buildModelCatalog(config);
-  const persistence = createDatabasePersistence(db, catalog, config, false);
+  const persistence = createDatabasePersistence(db, config, false);
   if (failCapture) {
     persistence.promptArtifacts.capture = async () => {
       throw new Error("capture_failed");
@@ -203,7 +201,7 @@ export function usageRequest(
   organizationId: string,
   userId: string,
   sessionId: string,
-  surface: "openai-responses" | "anthropic-messages",
+  surface: "openai-responses" | "anthropic-messages" | "openai-chat",
   createdAt: Date,
   apiKeyId?: string
 ) {
@@ -249,7 +247,7 @@ export function usageAttempt(
   id: string,
   requestId: string,
   organizationId: string,
-  surface: "openai-responses" | "anthropic-messages",
+  surface: "openai-responses" | "anthropic-messages" | "openai-chat",
   provider: "openai" | "anthropic",
   model: string,
   terminalStatus: "completed" | "failed",

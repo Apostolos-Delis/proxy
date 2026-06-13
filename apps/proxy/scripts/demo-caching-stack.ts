@@ -21,7 +21,6 @@ import { PGlite } from "@electric-sql/pglite";
 import { createPgliteDatabase, defaultWorkspaceId } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
-import { buildModelCatalog } from "../src/catalog.js";
 import { loadConfig } from "../src/config.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
 import { buildServer } from "../src/server.js";
@@ -207,7 +206,7 @@ for (const file of (await readdir(migrationsDir)).filter((name) => name.endsWith
 }
 const db = createPgliteDatabase(client);
 await seedDatabase(db, seedOptionsFromEnv(demoEnv));
-const persistence = createDatabasePersistence(db, buildModelCatalog(config), config, false);
+const persistence = createDatabasePersistence(db, config, false);
 const app = buildServer(config, { persistence });
 await app.listen({ port: config.port, host: "127.0.0.1" });
 const proxyUrl = `http://127.0.0.1:${config.port}`;

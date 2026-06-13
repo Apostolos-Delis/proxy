@@ -130,22 +130,31 @@ export const settingsSections: SettingsSectionDef[] = [
     requiresDatabase: true,
     rows: [
       {
-        id: "anthropicBaselineModel",
+        id: "anthropicMessagesBaselineModel",
         type: "text",
         mono: true,
-        label: "Anthropic baseline model",
-        desc: "Anthropic-surface traffic is re-priced against this model to compute baseline cost. Use the model your engineers would run without the proxy; it must have pricing configured on the Models page.",
-        get: (settings) => settings.costBaseline.anthropicModel,
-        set: (settings, value) => ({ ...settings, costBaseline: { ...settings.costBaseline, anthropicModel: value } })
+        label: "Anthropic Messages baseline model",
+        desc: "Anthropic Messages traffic is re-priced against this model to compute baseline cost. Use the model your engineers would run without the proxy; it must have pricing configured on the Models page.",
+        get: (settings) => settings.costBaseline.anthropicMessagesModel,
+        set: (settings, value) => ({ ...settings, costBaseline: { ...settings.costBaseline, anthropicMessagesModel: value } })
       },
       {
-        id: "openaiBaselineModel",
+        id: "openaiResponsesBaselineModel",
         type: "text",
         mono: true,
-        label: "OpenAI baseline model",
-        desc: "OpenAI-surface traffic is re-priced against this model to compute baseline cost. Use the model your engineers would run without the proxy; it must have pricing configured on the Models page.",
-        get: (settings) => settings.costBaseline.openaiModel,
-        set: (settings, value) => ({ ...settings, costBaseline: { ...settings.costBaseline, openaiModel: value } })
+        label: "OpenAI Responses baseline model",
+        desc: "OpenAI Responses traffic is re-priced against this model to compute baseline cost. Use the model your engineers would run without the proxy; it must have pricing configured on the Models page.",
+        get: (settings) => settings.costBaseline.openaiResponsesModel,
+        set: (settings, value) => ({ ...settings, costBaseline: { ...settings.costBaseline, openaiResponsesModel: value } })
+      },
+      {
+        id: "openaiChatBaselineModel",
+        type: "text",
+        mono: true,
+        label: "OpenAI Chat baseline model",
+        desc: "OpenAI Chat Completions traffic is re-priced against this model to compute baseline cost. Use the model your engineers would run without the proxy; it must have pricing configured on the Models page.",
+        get: (settings) => settings.costBaseline.openaiChatModel,
+        set: (settings, value) => ({ ...settings, costBaseline: { ...settings.costBaseline, openaiChatModel: value } })
       }
     ]
   },
@@ -290,8 +299,9 @@ export function settingsInput(settings: EditableSettings) {
     toolResultCompression: settings.toolResultCompression,
     duplicateToolResultReferences: settings.duplicateToolResultReferences,
     costBaseline: {
-      anthropicModel: settings.costBaseline.anthropicModel,
-      openaiModel: settings.costBaseline.openaiModel
+      anthropicMessagesModel: settings.costBaseline.anthropicMessagesModel,
+      openaiResponsesModel: settings.costBaseline.openaiResponsesModel,
+      openaiChatModel: settings.costBaseline.openaiChatModel
     },
     classifier: {
       model: settings.classifier.model,
@@ -311,8 +321,9 @@ export function settingsInput(settings: EditableSettings) {
 
 export function validate(settings: EditableSettings) {
   const errors: string[] = [];
-  if (!settings.costBaseline.anthropicModel.trim()) errors.push("Anthropic baseline model is required.");
-  if (!settings.costBaseline.openaiModel.trim()) errors.push("OpenAI baseline model is required.");
+  if (!settings.costBaseline.anthropicMessagesModel.trim()) errors.push("Anthropic Messages baseline model is required.");
+  if (!settings.costBaseline.openaiResponsesModel.trim()) errors.push("OpenAI Responses baseline model is required.");
+  if (!settings.costBaseline.openaiChatModel.trim()) errors.push("OpenAI Chat baseline model is required.");
   if (!settings.classifier.model.trim()) errors.push("Classifier model is required.");
   if (settings.classifier.timeoutMs < 1 || settings.classifier.timeoutMs > 30000) errors.push("Classifier timeout must be between 1 and 30000 ms.");
   if (settings.classifier.maxAttempts < 1 || settings.classifier.maxAttempts > 5) errors.push("Classifier attempts must be between 1 and 5.");

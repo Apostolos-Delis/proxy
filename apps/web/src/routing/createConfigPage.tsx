@@ -7,6 +7,7 @@ import {
   assignApiKeyRoutingConfig,
   createRoutingConfig,
   fetchApiKeys,
+  fetchRoutingModelCatalog,
   fetchRoutingConfigDetail,
   fetchRoutingConfigs,
   type ApiKeySummary,
@@ -17,7 +18,7 @@ import {
 import { applyDraft, draftError, draftFromConfig, type ConfigEditorDraft } from "../routingConfigEditor";
 import { SearchSelect } from "../table/SearchSelect";
 import { FormField as Field, GlassCard, PageState, PageTitle } from "../ui";
-import { RoutingRulesEditor, RouteMatrixEditor } from "./configEditorFields";
+import { RoutingRulesEditor, RouteTargetsEditor } from "./configEditorFields";
 import { isUsableKey, KeyPickList } from "./keyAssignment";
 
 type CreateForm = {
@@ -35,9 +36,14 @@ export function CreateRoutingConfigPage() {
       { queryKey: ["api-keys"], queryFn: fetchApiKeys }
     ]
   });
+  const catalogQuery = useQuery({
+    queryKey: ["routing-model-catalog"],
+    queryFn: fetchRoutingModelCatalog
+  });
 
-  if (configsQuery.isLoading) return <PageState title="New routing config" label="Loading routing configs" />;
-  if (configsQuery.error) return <PageState title="New routing config" label={configsQuery.error.message} />;
+  if (configsQuery.isLoading || catalogQuery.isLoading) return <PageState title="New routing config" label="Loading routing configs" />;
+  const loadError = configsQuery.error ?? catalogQuery.error;
+  if (loadError) return <PageState title="New routing config" label={loadError.message} />;
 
   const sourceConfigs = (configsQuery.data ?? []).filter(
     (config) => config.status === "active" && Boolean(config.activeVersion)
@@ -46,12 +52,13 @@ export function CreateRoutingConfigPage() {
     return <PageState title="New routing config" label="Creating a config requires an active source config to clone." />;
   }
   const apiKeys = (keysQuery.data ?? []).filter(isUsableKey);
-  return <CreateConfigForm sourceConfigs={sourceConfigs} apiKeys={apiKeys} />;
+  return <CreateConfigForm sourceConfigs={sourceConfigs} apiKeys={apiKeys} catalog={catalogQuery.data ?? { providers: [], models: [] }} />;
 }
 
-function CreateConfigForm({ sourceConfigs, apiKeys }: {
+function CreateConfigForm({ sourceConfigs, apiKeys, catalog }: {
   sourceConfigs: RoutingConfigSummary[];
   apiKeys: ApiKeySummary[];
+  catalog: Awaited<ReturnType<typeof fetchRoutingModelCatalog>>;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -180,12 +187,13 @@ function CreateConfigForm({ sourceConfigs, apiKeys }: {
               <div className="card-head">
                 <div>
                   <div className="card-title"><Layers />Route tier models</div>
-                  <div className="faint">The model each tier uses per provider. Every tier needs at least one model.</div>
+                  <div className="faint">Ordered provider/model targets for each route tier. The first compatible target wins.</div>
                 </div>
               </div>
-              <RouteMatrixEditor
+              <RouteTargetsEditor
                 draft={draft}
                 baseConfig={sourceVersion.config}
+                catalog={catalog}
                 onChange={(next) => setDraftState({ versionId: sourceVersion.id, draft: next })}
               />
             </GlassCard>

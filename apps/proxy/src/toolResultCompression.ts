@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 
-import { bashOutputRule } from "./compressionRules/bashOutput.js";
+import { bashOutputRule, bashOutputRuleForNames } from "./compressionRules/bashOutput.js";
 import { jsonWhitespaceRule } from "./compressionRules/jsonWhitespace.js";
 import { mcpJsonRule } from "./compressionRules/mcpJson.js";
 import type { EventService } from "./events.js";
+import type { HarnessProfile } from "./harness.js";
 import type { JsonObject, Surface } from "./types.js";
-import { isRecord, roughTokenEstimate, stableJson, stringField } from "./util.js";
+import { isRecord, roughTokenEstimate, stableJson, stringField, unreachable } from "./util.js";
 
 // Deterministic compression of tool-result content before it reaches the
 // provider. Determinism is non-negotiable: the harness re-sends the full
@@ -48,7 +49,7 @@ export type CompressionRecord = {
 };
 
 export type CompressionResult = { body: unknown; records: CompressionRecord[] };
-export type CompressionOptions = { deduplicateToolResults?: boolean };
+export type CompressionOptions = { deduplicateToolResults?: boolean; profile?: HarnessProfile };
 type DuplicateTracker = Set<string>;
 
 // Only results above this size are eligible — keeps the transform off the hot
@@ -60,6 +61,10 @@ export const MIN_COMPRESSIBLE_CHARS = 2048;
 // applied for orgs that have opted into tool-result compression.
 export const compressionRules: CompressionRule[] = [mcpJsonRule, jsonWhitespaceRule, bashOutputRule];
 
+export function compressionRulesForProfile(profile: HarnessProfile): CompressionRule[] {
+  return [mcpJsonRule, bashOutputRuleForNames(profile.bashToolNames)];
+}
+
 export function compressToolResults(
   surface: Surface,
   body: unknown,
@@ -69,10 +74,27 @@ export function compressToolResults(
   if ((!options.deduplicateToolResults && rules.length === 0) || !isRecord(body)) return { body, records: [] };
   const records: CompressionRecord[] = [];
   const duplicates: DuplicateTracker | undefined = options.deduplicateToolResults ? new Set() : undefined;
-  const compressed = surface === "anthropic-messages"
-    ? compressAnthropic(body, rules, records, duplicates)
-    : compressOpenAI(body, rules, records, duplicates);
+  const compressed = compressForSurface(surface, body, rules, records, duplicates);
   return { body: compressed, records };
+}
+
+function compressForSurface(
+  surface: Surface,
+  body: Record<string, unknown>,
+  rules: CompressionRule[],
+  records: CompressionRecord[],
+  duplicates: DuplicateTracker | undefined
+) {
+  switch (surface) {
+    case "openai-responses":
+      return compressOpenAI(body, rules, records, duplicates);
+    case "openai-chat":
+      return compressOpenAIChat(body, rules, records, duplicates);
+    case "anthropic-messages":
+      return compressAnthropic(body, rules, records, duplicates);
+    default:
+      return unreachable(surface);
+  }
 }
 
 // Compress deterministically, falling back to the original body if the filter
@@ -88,7 +110,8 @@ export function compressOrFallback(
 ): CompressionResult {
   if (!enabled) return { body, records: [] };
   try {
-    return compressToolResults(surface, body, compressionRules, options);
+    const rules = options.profile ? compressionRulesForProfile(options.profile) : compressionRules;
+    return compressToolResults(surface, body, rules, options);
   } catch (error) {
     warn(error, "tool result compression failed");
     return { body, records: [] };
@@ -110,6 +133,7 @@ export async function compressForForward(input: {
   body: unknown;
   enabled: boolean;
   deduplicateToolResults?: boolean;
+  profile?: HarnessProfile;
   warn: (error: unknown, message: string) => void;
 }): Promise<unknown> {
   const { body, records } = compressOrFallback(
@@ -117,7 +141,10 @@ export async function compressForForward(input: {
     input.body,
     input.enabled,
     input.warn,
-    { deduplicateToolResults: input.deduplicateToolResults === true }
+    {
+      deduplicateToolResults: input.deduplicateToolResults === true,
+      profile: input.profile
+    }
   );
   if (records.length === 0) return body;
   const beforeChars = records.reduce((sum, record) => sum + record.beforeChars, 0);
@@ -227,6 +254,36 @@ function compressOpenAI(
   return changed ? { ...request, input } : request;
 }
 
+function compressOpenAIChat(
+  request: Record<string, unknown>,
+  rules: CompressionRule[],
+  records: CompressionRecord[],
+  duplicates: DuplicateTracker | undefined
+): unknown {
+  if (!Array.isArray(request.messages)) return request;
+  const callRefs = openAIChatCallRefs(request.messages);
+  let changed = false;
+  const messages = request.messages.map((message) => {
+    if (!isRecord(message) || message.role !== "tool") return message;
+    const toolCallId = stringField(message, "tool_call_id");
+    const ref = toolCallId ? callRefs.get(toolCallId) : undefined;
+    const toolName = ref?.name ?? "unknown";
+    const duplicate = applyDuplicateReference(toolName, message.content, records, duplicates);
+    if (duplicate !== undefined) {
+      changed = true;
+      return { ...message, content: duplicate };
+    }
+    const replaced = applyRules(rules, toolName, ref?.input, message.content, records);
+    if (replaced === undefined) {
+      trackDuplicateContent(message.content, duplicates);
+      return message;
+    }
+    changed = true;
+    return { ...message, content: replaced };
+  });
+  return changed ? { ...request, messages } : request;
+}
+
 // Apply the first rule that shrinks a tool-result content payload. Records the
 // before/after size only when the filter actually shrank the content.
 function applyRules(
@@ -326,6 +383,20 @@ function openAICallNames(input: unknown[]): Map<string, ToolRef> {
   for (const item of input) {
     if (isRecord(item) && item.type === "function_call" && typeof item.call_id === "string" && typeof item.name === "string") {
       map.set(item.call_id, { name: item.name, input: item.arguments });
+    }
+  }
+  return map;
+}
+
+function openAIChatCallRefs(messages: unknown[]): Map<string, ToolRef> {
+  const map = new Map<string, ToolRef>();
+  for (const message of messages) {
+    if (!isRecord(message) || !Array.isArray(message.tool_calls)) continue;
+    for (const call of message.tool_calls) {
+      if (!isRecord(call) || typeof call.id !== "string") continue;
+      const fn = isRecord(call.function) ? call.function : undefined;
+      const name = (fn ? stringField(fn, "name") : undefined) ?? stringField(call, "name");
+      if (name) map.set(call.id, { name, input: fn?.arguments ?? call.arguments });
     }
   }
   return map;

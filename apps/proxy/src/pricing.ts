@@ -1,4 +1,5 @@
-import type { Provider, Surface } from "./types.js";
+import type { Dialect, Provider, Surface } from "./types.js";
+import { unreachable } from "./util.js";
 
 export type ModelPricing = {
   readonly inputCostPerMtok: number;
@@ -29,52 +30,41 @@ export type UsageTokens = {
 const CACHE_READ_INPUT_FRACTION = 0.1;
 const CACHE_WRITE_INPUT_MULTIPLIER = 1.25;
 
-// Point-in-time snapshot of published list prices (USD per million tokens) for
-// the models this proxy ships configured with. Providers do not return dollar
-// amounts in API responses, so spend is always computed locally from these
-// rates. MODEL_COSTS_JSON overrides per model at boot; the model_catalog table
-// overrides per organization at runtime. Keys must stay undated: dated
-// identifiers (claude-sonnet-4-5-20250929) resolve through undatedModel(), and
-// the admin pricing listing relies on dated names never being table keys.
-export const defaultModelPricing: Readonly<Record<string, { provider: Provider } & ModelPricing>> = Object.freeze({
-  "claude-fable-5": pricedModel("anthropic", 10.0, 50.0),
-  "claude-haiku-4-5": pricedModel("anthropic", 1.0, 5.0),
-  "claude-sonnet-4-5": pricedModel("anthropic", 3.0, 15.0),
-  "claude-sonnet-4-6": pricedModel("anthropic", 3.0, 15.0),
-  "claude-opus-4-5": pricedModel("anthropic", 5.0, 25.0),
-  "claude-opus-4-6": pricedModel("anthropic", 5.0, 25.0),
-  "claude-opus-4-7": pricedModel("anthropic", 5.0, 25.0),
-  "claude-opus-4-8": pricedModel("anthropic", 5.0, 25.0),
-  "gpt-5.4-mini": pricedModel("openai", 0.25, 2.0),
-  "gpt-5.4": pricedModel("openai", 1.25, 10.0),
-  "gpt-5.5": pricedModel("openai", 1.25, 10.0),
-  "gpt-5.5-pro": pricedModel("openai", 15.0, 120.0),
-  "gpt-5-nano": pricedModel("openai", 0.05, 0.4)
-});
-
-// The no-routing counterfactual behind baseline cost and savings: what each
-// request would have cost on the model a harness runs by default when pointed
-// straight at its provider. Organizations override per surface via settings
-// (organization_settings.costBaseline*Model keys).
-export type CostBaseline = {
-  readonly anthropicModel: string;
-  readonly openaiModel: string;
-};
+export type CostBaseline = Readonly<Record<Dialect, string>>;
 
 export const defaultCostBaseline: CostBaseline = Object.freeze({
-  anthropicModel: "claude-fable-5",
-  openaiModel: "gpt-5.5"
+  "anthropic-messages": "claude-fable-5",
+  "openai-responses": "gpt-5.5",
+  "openai-chat": "gpt-5.5"
 });
 
 export function baselineModelForSurface(baseline: CostBaseline, surface: Surface) {
-  return surface === "openai-responses" ? baseline.openaiModel : baseline.anthropicModel;
+  switch (surface) {
+    case "openai-responses":
+      return baseline["openai-responses"];
+    case "openai-chat":
+      return baseline["openai-chat"];
+    case "anthropic-messages":
+      return baseline["anthropic-messages"];
+    default:
+      return unreachable(surface);
+  }
 }
 
-function pricedModel(provider: Provider, inputCostPerMtok: number, outputCostPerMtok: number) {
-  return Object.freeze({
-    provider,
-    ...completeModelPricing({ inputCostPerMtok, outputCostPerMtok })
-  });
+export function baselineModelForDialect(baseline: CostBaseline, dialect: Dialect) {
+  return baseline[dialect] ?? baseline["openai-responses"];
+}
+
+export function providerForDialect(dialect: Dialect): Provider {
+  switch (dialect) {
+    case "anthropic-messages":
+      return "anthropic";
+    case "openai-responses":
+    case "openai-chat":
+      return "openai";
+    default:
+      return unreachable(dialect);
+  }
 }
 
 export function completeModelPricing(input: ModelPricingInput): ModelPricing {
@@ -95,10 +85,6 @@ function roundMicroRate(value: number) {
 
 export function buildModelPricingTable(envCosts: Record<string, ModelPricingInput>): ModelPricingTable {
   const table: Record<string, ModelPricing> = {};
-  for (const [model, entry] of Object.entries(defaultModelPricing)) {
-    const { provider: _provider, ...pricing } = entry;
-    table[model] = pricing;
-  }
   for (const [model, entry] of Object.entries(envCosts)) {
     table[model] = completeModelPricing(entry);
   }
@@ -116,6 +102,21 @@ export function pricingForModel(table: ModelPricingTable, model: string): ModelP
   if (exact) return exact;
   const undated = undatedModel(model);
   return undated === model ? undefined : table[undated];
+}
+
+export function providerModelPricingKey(provider: string, model: string) {
+  return `${provider}:${model}`;
+}
+
+export function pricingForProviderModel(
+  table: ModelPricingTable,
+  provider: string,
+  model: string
+): ModelPricing | undefined {
+  const exact = table[providerModelPricingKey(provider, model)];
+  if (exact) return exact;
+  const undated = undatedModel(model);
+  return undated === model ? undefined : table[providerModelPricingKey(provider, undated)];
 }
 
 export type ModelPricingSource = "default" | "env" | "custom" | "unpriced";
@@ -158,21 +159,10 @@ export function emptyPricingEntry(model: string, provider: string | null): Model
   };
 }
 
-export function providerFromModelName(model: string) {
-  if (model.startsWith("claude")) return "anthropic";
-  if (model.startsWith("gpt") || /^o\d/.test(model)) return "openai";
-  return null;
-}
-
-// The pricing rows that exist before any database state: built-in defaults
-// plus MODEL_COSTS_JSON entries.
 export function staticPricingEntries(table: ModelPricingTable, envModels: string[]): ModelPricingEntry[] {
   const envModelSet = new Set(envModels);
   return Object.entries(table).map(([model, pricing]) => {
-    const entry = emptyPricingEntry(
-      model,
-      defaultModelPricing[model]?.provider ?? providerFromModelName(model)
-    );
+    const entry = emptyPricingEntry(model, null);
     applyPricingToEntry(entry, pricing, envModelSet.has(model) ? "env" : "default");
     return entry;
   });

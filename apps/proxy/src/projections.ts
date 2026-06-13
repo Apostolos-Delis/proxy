@@ -1,8 +1,7 @@
-import { baselineUpstreamModel, routeOrder } from "./catalog.js";
-import type { ModelCatalog } from "./catalog.js";
+import { explicitAlias, routeOrder } from "./catalog.js";
 import type { AppConfig } from "./config.js";
 import type { ProxyEvent } from "./events.js";
-import { normalizeUsage, type NormalizedUsage } from "./persistence/values.js";
+import { knownSurfaceValue, normalizeUsage, type NormalizedUsage } from "./persistence/values.js";
 import {
   defaultCostBaseline,
   pricingForModel,
@@ -14,7 +13,6 @@ import { isRecord } from "./util.js";
 
 export class ProjectionService {
   constructor(
-    private readonly catalog: ModelCatalog,
     private readonly config: AppConfig
   ) {}
 
@@ -44,12 +42,12 @@ export class ProjectionService {
       addUsage(totals, usage);
 
       const selectedModel = stringValue((event.payload as JsonObject).selectedModel);
-      const surface = stringValue(decision?.surface) as Surface | undefined;
+      const surface = knownSurfaceValue(decision?.surface);
       const requestedModel = stringValue(decision?.requestedModel);
       const finalRoute = stringValue(decision?.finalRoute) as RouteName | undefined;
       const selected = estimateCost(selectedModel, usage, this.config.modelCosts);
       const baseline = estimateCost(
-        baselineModel(this.catalog, surface, requestedModel),
+        baselineModel(surface, requestedModel, selectedModel),
         usage,
         this.config.modelCosts
       );
@@ -225,12 +223,21 @@ function estimateCost(model: string | undefined, usage: NormalizedUsage, pricing
 // No-database mode has no organization settings, so the baseline is always
 // the default counterfactual.
 function baselineModel(
-  catalog: ModelCatalog,
   surface: Surface | undefined,
-  requestedModel: string | undefined
+  requestedModel: string | undefined,
+  selectedModel: string | undefined
 ) {
   if (!surface) return undefined;
-  return baselineUpstreamModel(catalog, defaultCostBaseline, surface, requestedModel);
+  const route = requestedModel ? explicitAlias(surface, requestedModel) : undefined;
+  if (route) return selectedModel;
+  switch (surface) {
+    case "openai-responses":
+      return defaultCostBaseline["openai-responses"];
+    case "openai-chat":
+      return defaultCostBaseline["openai-chat"];
+    case "anthropic-messages":
+      return defaultCostBaseline["anthropic-messages"];
+  }
 }
 
 function missingUsage(events: ProxyEvent[]) {

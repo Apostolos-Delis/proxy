@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LlmClassifier, type ClassifierSettings } from "../src/classifier.js";
+import { LlmClassifier, type ClassifierSettings, type ClassifierTarget } from "../src/classifier.js";
 import type { AppConfig } from "../src/config.js";
 import { buildAnthropicContext } from "../src/features.js";
 
@@ -21,18 +21,34 @@ const validOutput = {
 
 function settings(
   model: string,
-  reasoningEffort?: ClassifierSettings["reasoningEffort"]
+  effort?: ClassifierSettings["effort"]
 ): ClassifierSettings {
   return {
-    provider: "openai",
+    providerId: "openai",
     model,
     timeoutMs: 1000,
     maxAttempts: 1,
     allowRedactedExcerpt: false,
     structuredOutput: { mode: "json_schema", schemaName: "route_classification" },
-    ...(reasoningEffort ? { reasoningEffort } : {})
+    ...(effort ? { effort } : {})
   };
 }
+
+const classifierTarget: ClassifierTarget = {
+  provider: {
+    id: "provider_openai",
+    organizationId: null,
+    slug: "openai",
+    baseUrl: "https://openai.test/v1",
+    authStyle: "bearer",
+    endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+    defaultHeaders: {},
+    forwardHarnessHeaders: true,
+    enabled: true,
+    builtin: true
+  },
+  endpoint: { dialect: "openai-responses", path: "/responses" }
+};
 
 async function classifierRequestBody(classifierSettings: ClassifierSettings) {
   const fetchMock = vi.fn(async () =>
@@ -47,7 +63,7 @@ async function classifierRequestBody(classifierSettings: ClassifierSettings) {
     },
     {}
   );
-  await new LlmClassifier(config).classify(context, classifierSettings);
+  await new LlmClassifier(config).classify(context, classifierSettings, classifierTarget);
 
   expect(fetchMock).toHaveBeenCalledTimes(1);
   const init = fetchMock.mock.calls[0]?.[1] as RequestInit;

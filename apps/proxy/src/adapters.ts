@@ -1,12 +1,13 @@
 import type { FastifyReply } from "fastify";
 
-import { buildAnthropicContext, buildOpenAIContext } from "./features.js";
-import type { RouteContext, RouteDecision, Surface, Provider, SelectedRouteSettings, UpstreamCredential } from "./types.js";
+import { buildAnthropicContext, buildOpenAIChatContext, buildOpenAIContext } from "./features.js";
+import { translators } from "./translators/index.js";
+import type { Dialect, RouteContext, RouteDecision, Surface, Provider, SelectedRouteSettings, UpstreamCredential } from "./types.js";
 import { isRecord, roughTokenEstimate, stableJson } from "./util.js";
 
 export type SurfaceAdapter = {
   readonly surface: Surface;
-  readonly provider: Provider;
+  readonly dialect: Dialect;
   readonly createOperation: string;
   readonly countTokensOperation?: string;
   buildContext(body: unknown, headers: Record<string, string | undefined>): RouteContext;
@@ -15,6 +16,7 @@ export type SurfaceAdapter = {
 export type ProviderForwardInput = {
   requestId: string;
   idempotencyKey: string;
+  organizationId: string;
   surface: Surface;
   provider: Provider;
   body: unknown;
@@ -32,14 +34,21 @@ export type ProviderAdapter = {
 
 export const openAIResponsesSurface: SurfaceAdapter = {
   surface: "openai-responses",
-  provider: "openai",
+  dialect: "openai-responses",
   createOperation: "openai-responses:create",
   buildContext: buildOpenAIContext
 };
 
+export const openAIChatSurface: SurfaceAdapter = {
+  surface: "openai-chat",
+  dialect: "openai-chat",
+  createOperation: "openai-chat:create",
+  buildContext: buildOpenAIChatContext
+};
+
 export const anthropicMessagesSurface: SurfaceAdapter = {
   surface: "anthropic-messages",
-  provider: "anthropic",
+  dialect: "anthropic-messages",
   createOperation: "anthropic-messages:create",
   countTokensOperation: "anthropic-messages:count_tokens",
   buildContext: buildAnthropicContext
@@ -61,11 +70,19 @@ export function rewriteSurfaceRequest(
   if (!decision.providerSettings) {
     throw new Error("Cannot rewrite request without selected provider settings.");
   }
-  if (decision.surface === "openai-responses" && decision.providerSettings.provider === "openai") {
-    return rewriteOpenAIResponsesRequest(body, decision.providerSettings, systemPrompt);
+  const translator = translators.get(decision.surface, decision.providerSettings.dialect);
+  if (decision.surface !== decision.providerSettings.dialect && !translator) {
+    throw new Error("Selected provider settings do not match the request surface.");
   }
-  if (decision.surface === "anthropic-messages" && decision.providerSettings.provider === "anthropic") {
-    const rewritten = rewriteAnthropicMessagesRequest(body, decision.providerSettings, systemPrompt);
+  const targetBody = translator ? translator.request(body) : body;
+  if (decision.providerSettings.dialect === "openai-responses") {
+    return rewriteOpenAIResponsesRequest(targetBody, decision.providerSettings, systemPrompt);
+  }
+  if (decision.providerSettings.dialect === "openai-chat") {
+    return rewriteOpenAIChatRequest(targetBody, decision.providerSettings, systemPrompt);
+  }
+  if (decision.providerSettings.dialect === "anthropic-messages") {
+    const rewritten = rewriteAnthropicMessagesRequest(targetBody, decision.providerSettings, systemPrompt);
     // Inject before the TTL policy runs so automatic breakpoints are eligible
     // for the same adaptive 1-hour upgrade as client-provided breakpoints.
     if (options.automaticCaching) injectAutomaticCacheControl(rewritten);
@@ -87,7 +104,7 @@ export function rewriteTokenCountRequest(
 
   const request = structuredClone(isRecord(body) ? body : {});
   request.model = decision.selectedModel;
-  if (decision.providerSettings?.provider === "anthropic" && systemPrompt) {
+  if (decision.providerSettings?.dialect === "anthropic-messages" && systemPrompt) {
     request.system = prependAnthropicSystemPrompt(request.system, systemPrompt);
   }
   // Deliberately no automatic-caching injection here: cache_control changes
@@ -263,7 +280,7 @@ function upgradeBlock(block: unknown) {
 
 function rewriteOpenAIResponsesRequest(
   body: unknown,
-  settings: Extract<SelectedRouteSettings, { provider: "openai" }>,
+  settings: SelectedRouteSettings,
   systemPrompt?: string
 ) {
   const request = structuredClone(isRecord(body) ? body : {});
@@ -280,10 +297,10 @@ function rewriteOpenAIResponsesRequest(
       ? `${systemPrompt}\n\n${request.instructions}`
       : systemPrompt;
   }
-  if (settings.openai.reasoning) {
+  if (settings.effort) {
     request.reasoning = {
       ...(isRecord(request.reasoning) ? request.reasoning : {}),
-      ...settings.openai.reasoning
+      effort: settings.effort === "max" ? "xhigh" : settings.effort
     };
   } else if (isRecord(request.reasoning)) {
     const reasoning = { ...request.reasoning };
@@ -291,10 +308,10 @@ function rewriteOpenAIResponsesRequest(
     if (Object.keys(reasoning).length > 0) request.reasoning = reasoning;
     else delete request.reasoning;
   }
-  if (settings.openai.text) {
+  if (settings.verbosity) {
     request.text = {
       ...(isRecord(request.text) ? request.text : {}),
-      ...settings.openai.text
+      verbosity: settings.verbosity
     };
   } else if (isRecord(request.text)) {
     const text = { ...request.text };
@@ -302,15 +319,48 @@ function rewriteOpenAIResponsesRequest(
     if (Object.keys(text).length > 0) request.text = text;
     else delete request.text;
   }
-  if (settings.openai.maxOutputTokens !== undefined) {
-    request.max_output_tokens = settings.openai.maxOutputTokens;
+  if (settings.maxOutputTokens !== undefined) {
+    request.max_output_tokens = settings.maxOutputTokens;
   }
   return request;
 }
 
+function rewriteOpenAIChatRequest(
+  body: unknown,
+  settings: SelectedRouteSettings,
+  systemPrompt?: string
+) {
+  const request = structuredClone(isRecord(body) ? body : {});
+  request.model = settings.model;
+  if (systemPrompt) {
+    request.messages = prependOpenAIChatSystemPrompt(request.messages, systemPrompt);
+  }
+  if (settings.effort) {
+    request.reasoning_effort = settings.effort === "max" ? "xhigh" : settings.effort;
+  } else {
+    delete request.reasoning_effort;
+  }
+  if (settings.maxOutputTokens !== undefined) {
+    request.max_completion_tokens = settings.maxOutputTokens;
+  }
+  if (request.stream === true) {
+    const streamOptions = isRecord(request.stream_options) ? request.stream_options : {};
+    if (streamOptions.include_usage === undefined) {
+      request.stream_options = { ...streamOptions, include_usage: true };
+    }
+  }
+  return request;
+}
+
+function prependOpenAIChatSystemPrompt(messages: unknown, systemPrompt: string) {
+  const systemMessage = { role: "system", content: systemPrompt };
+  if (Array.isArray(messages)) return [systemMessage, ...messages];
+  return [systemMessage];
+}
+
 function rewriteAnthropicMessagesRequest(
   body: unknown,
-  settings: Extract<SelectedRouteSettings, { provider: "anthropic" }>,
+  settings: SelectedRouteSettings,
   systemPrompt?: string
 ) {
   const request = structuredClone(isRecord(body) ? body : {});
@@ -318,15 +368,15 @@ function rewriteAnthropicMessagesRequest(
   if (systemPrompt) {
     request.system = prependAnthropicSystemPrompt(request.system, systemPrompt);
   }
-  if (settings.anthropic.thinking) {
-    request.thinking = settings.anthropic.thinking;
+  if (settings.thinking) {
+    request.thinking = settings.thinking;
   } else {
     delete request.thinking;
   }
-  if (settings.anthropic.output_config) {
+  if (settings.effort) {
     request.output_config = {
       ...(isRecord(request.output_config) ? request.output_config : {}),
-      ...settings.anthropic.output_config
+      effort: settings.effort === "minimal" ? "low" : settings.effort
     };
   } else if (isRecord(request.output_config)) {
     const outputConfig = { ...request.output_config };
@@ -334,8 +384,8 @@ function rewriteAnthropicMessagesRequest(
     if (Object.keys(outputConfig).length > 0) request.output_config = outputConfig;
     else delete request.output_config;
   }
-  if (settings.anthropic.maxTokens !== undefined) {
-    request.max_tokens = settings.anthropic.maxTokens;
+  if (settings.maxOutputTokens !== undefined) {
+    request.max_tokens = settings.maxOutputTokens;
   }
   return request;
 }

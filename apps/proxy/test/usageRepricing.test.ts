@@ -1,10 +1,9 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { usageLedger } from "@prompt-proxy/db";
+import { modelCatalog, usageLedger } from "@prompt-proxy/db";
 
 import { EventService } from "../src/events.js";
-import { buildModelPricingTable } from "../src/pricing.js";
 import { repriceZeroCostUsage } from "../src/persistence/usageRepricing.js";
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
@@ -114,7 +113,7 @@ describe("zero-cost usage repricing", () => {
     expect((await ledgerRow(fixture, "request_reprice_snapshot")).totalCostMicros).toBe(600);
   });
 
-  it("boot repricing heals rows whose model gained a static-table rate", async () => {
+  it("boot repricing heals rows whose model gained a catalog rate", async () => {
     const fixture = await setup("org_reprice_boot");
     const events = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_reprice_boot");
 
@@ -125,11 +124,15 @@ describe("zero-cost usage repricing", () => {
     });
     expect((await ledgerRow(fixture, "request_reprice_boot")).totalCostMicros).toBe(0);
 
-    // Simulates restarting on a build whose default table now prices the model.
-    const repriced = await repriceZeroCostUsage(
-      fixture.db,
-      buildModelPricingTable({ "claude-boot-test": { inputCostPerMtok: 5, outputCostPerMtok: 25 } })
-    );
+    await fixture.db.insert(modelCatalog).values({
+      id: "model:anthropic:claude-boot-test",
+      organizationId: null,
+      providerId: "00000000-0000-0000-0000-000000000002",
+      model: "claude-boot-test",
+      capabilities: {},
+      pricing: { inputCostPerMtok: 5, outputCostPerMtok: 25 }
+    });
+    const repriced = await repriceZeroCostUsage(fixture.db);
     expect(repriced).toBe(1);
 
     expect(await ledgerRow(fixture, "request_reprice_boot")).toEqual(expect.objectContaining({

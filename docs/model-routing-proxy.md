@@ -2,15 +2,20 @@
 
 ## Summary
 
-This project should start as a small, protocol-preserving LLM gateway for coding harnesses. The MVP supports Codex through the OpenAI Responses API and Claude Code through the Anthropic Messages API. The proxy receives the request, chooses the appropriate model and reasoning settings, rewrites only those routing fields, then forwards the request upstream.
+Prompt Proxy is a protocol-aware LLM gateway for coding harnesses. It supports Codex through the OpenAI Responses API, OpenAI-compatible callers through Chat Completions, and Claude Code through the Anthropic Messages API. The proxy receives the request, chooses the appropriate route target, rewrites only routing fields, and forwards the request through the provider registry.
 
-The goal is cost reduction without breaking harness behavior. That means the first version should avoid prompt rewriting, cross-provider translation, or stream reconstruction. Those can be added after the proxy proves it can preserve Codex behavior under real agent workloads.
+The goal is cost reduction without breaking harness behavior. Same-dialect paths preserve the provider wire shape. The only built-in translated path is the same-family OpenAI pair, Responses ↔ Chat Completions, used when a route target exposes one OpenAI dialect and the caller uses the other. Cross-family Anthropic ↔ OpenAI translation remains out of scope.
 
 ```text
 Codex CLI / IDE
   -> POST /v1/responses
   -> prompt-proxy routing service
   -> OpenAI Responses API
+
+OpenAI-compatible SDKs / opencode / Cursor BYOK
+  -> POST /v1/chat/completions
+  -> prompt-proxy routing service
+  -> OpenAI Chat Completions API or translated OpenAI Responses API
 
 Claude Code
   -> POST /v1/messages
@@ -23,6 +28,7 @@ Internally, the proxy should be event-driven, but not pure event sourced. Curren
 ## Goals
 
 - Route Codex requests to cheaper or stronger OpenAI models based on request complexity.
+- Route OpenAI-compatible Chat Completions requests from opencode, Cursor BYOK, and SDK callers.
 - Route Claude Code requests to cheaper or stronger Anthropic models based on request complexity.
 - Adjust OpenAI reasoning effort and text verbosity per request.
 - Preserve streaming, tool calls, request state, and response shape.
@@ -33,8 +39,7 @@ Internally, the proxy should be event-driven, but not pure event sourced. Curren
 
 - Prompt rewriting.
 - Memory injection.
-- OpenAI Chat Completions support.
-- Provider-to-provider protocol translation.
+- Cross-family Anthropic Messages ↔ OpenAI Chat/Responses translation.
 - Classifier-driven prompt rewriting.
 - Rule-based complexity scoring.
 - Rule-based route fallback when classifier calls fail.
@@ -49,23 +54,32 @@ The service should separate client-facing protocol adapters from upstream provid
 Surface adapters:
   openai-responses     # Codex
   anthropic-messages   # Claude Code
-  openai-chat          # older harnesses later
+  openai-chat          # opencode, Cursor BYOK, OpenAI-compatible SDKs
 
-Provider adapters:
-  openai
-  anthropic
-  openrouter           # later
-  bedrock / vertex     # later
+Provider registry rows:
+  builtin openai       # openai-responses + openai-chat endpoints
+  builtin anthropic    # anthropic-messages endpoint
+  org-defined rows     # one or more dialect endpoints, auth style, default headers
 ```
 
-For the MVP, implement direct protocol-preserving paths:
+A surface speaks exactly one dialect. A provider row may expose one or more dialect endpoints:
+
+```text
+Dialect:
+  openai-responses
+  openai-chat
+  anthropic-messages
+```
+
+The normal path is protocol-preserving:
 
 ```text
 OpenAI Responses surface -> OpenAI provider
+OpenAI Chat surface      -> OpenAI-compatible provider
 Anthropic Messages surface -> Anthropic provider
 ```
 
-This avoids the hard correctness risks that come from translating tool calls, reasoning state, and streaming events across incompatible APIs.
+When a route needs to cross between OpenAI Responses and OpenAI Chat, the translator registry owns request mapping, non-streaming response mapping, and SSE transform. Translated route decisions are tagged so they can be filtered during review. Anthropic ↔ OpenAI translation is intentionally not implemented.
 
 The request path should stay synchronous where the harness requires a response, while decisions and state transitions are emitted as events:
 
@@ -353,6 +367,7 @@ This keeps the latency-critical path small while making every important decision
 GET  /healthz
 GET  /v1/models
 POST /v1/responses
+POST /v1/chat/completions
 POST /v1/messages
 POST /v1/messages/count_tokens
 ```
@@ -378,7 +393,8 @@ Returns router aliases that clients can select for explicit control. Clients may
     { "id": "router-auto", "object": "model", "owned_by": "prompt-proxy" },
     { "id": "router-fast", "object": "model", "owned_by": "prompt-proxy" },
     { "id": "router-balanced", "object": "model", "owned_by": "prompt-proxy" },
-    { "id": "router-hard", "object": "model", "owned_by": "prompt-proxy" }
+    { "id": "router-hard", "object": "model", "owned_by": "prompt-proxy" },
+    { "id": "router-deep", "object": "model", "owned_by": "prompt-proxy" }
   ]
 }
 ```
@@ -432,6 +448,32 @@ Headers the router should preserve when present:
 - `x-stainless-*`
 - request ID and trace headers
 
+### `POST /v1/chat/completions`
+
+Chat Completions is a first-class inbound surface for opencode, Cursor BYOK, and ordinary OpenAI-compatible SDK callers.
+
+Request flow matches `/v1/responses`:
+
+1. Parse the JSON body.
+2. Build a chat `RouteContext` from `messages`, `tools`, image parts, and metadata.
+3. Run compatibility and budget gates.
+4. Classify non-explicit requests or honor a `router-*` alias.
+5. Choose the final route target.
+6. Rewrite only routing fields.
+7. Forward to a native `openai-chat` endpoint, or translate to `openai-responses` when the selected target is Responses-only.
+
+Fields the router may rewrite:
+
+```json
+{
+  "model": "gpt-5.4-mini",
+  "reasoning_effort": "low",
+  "max_completion_tokens": 4096
+}
+```
+
+For streaming chat requests, the proxy injects `stream_options.include_usage: true` when the caller did not set it, so token usage can be observed without changing the requested model behavior. Chat callers use `router-auto`, `router-fast`, `router-balanced`, `router-hard`, and `router-deep`; `claude-router-*` aliases are reserved for Anthropic Messages callers.
+
 ## Codex Integration
 
 Codex can point at a proxy with either `openai_base_url` or a custom model provider. For company usage, prefer a custom provider so developers use a proxy token while the service owns the real upstream API key.
@@ -458,7 +500,7 @@ model = "router-auto"
 openai_base_url = "http://127.0.0.1:8787/v1"
 ```
 
-The proxy should accept Codex's request as-is, authenticate the caller, replace upstream auth with `OPENAI_API_KEY`, and forward to `https://api.openai.com/v1/responses`.
+The proxy accepts Codex's request as-is, authenticates the caller, resolves a provider target from the active routing config, and forwards with the selected provider credential. Builtin OpenAI targets use the operator key unless the Prompt Proxy API key is bound to a BYOK credential.
 For Codex efficiency, the custom provider should opt into Responses WebSockets. Without that, Codex falls back to HTTP replay and large sessions repeatedly send the full context, which defeats RTK's local token-saving guidance.
 
 Codex-specific compatibility requirements:
@@ -740,9 +782,11 @@ Do not use `x-codex-turn-state` as a durable session key. It is useful for prese
 
 ## Streaming Requirements
 
-Streaming must be pass-through.
+Streaming must be pass-through on native same-dialect routes.
 
-For OpenAI Responses, the upstream emits typed server-sent events. The proxy should make the routing decision before the upstream request and then pipe the stream back without reconstructing events.
+For OpenAI Responses, the upstream emits typed server-sent events. The proxy should make the routing decision before the upstream request and then pipe the stream back without reconstructing events when the selected endpoint also speaks OpenAI Responses.
+
+For translated OpenAI Responses ↔ Chat routes, byte passthrough is intentionally abandoned for that request. The translator re-emits SSE frames in the inbound dialect, preserving text deltas, tool-call deltas, terminal status, and usage frames.
 
 For accounting, the proxy may attach a non-mutating SSE observer. The observer tees the upstream byte stream, forwards bytes to the client unchanged, and parses only enough event structure to capture terminal usage, response IDs, error events, and completion status. Observer failure must not corrupt the client stream.
 
@@ -752,7 +796,7 @@ Required behavior:
 - Preserve response status and content type.
 - Forward client cancellation to upstream with `AbortController`.
 - Do not buffer the full stream.
-- Do not mutate `response.output_text.delta`, tool-call argument deltas, reasoning summary events, or error events.
+- Do not mutate `response.output_text.delta`, tool-call argument deltas, reasoning summary events, or error events on native same-dialect routes.
 - Do not retry midway through a streaming response unless the upstream request has not produced any bytes.
 - Preserve upstream request IDs and trace headers where safe.
 - Count bytes, status, latency, and time to first byte directly from the stream.

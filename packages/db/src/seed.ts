@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 import { and, eq, isNull } from "drizzle-orm";
 import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
@@ -6,7 +7,7 @@ import postgres from "postgres";
 
 import {
   routingConfigSchema,
-  type Provider,
+  type BuiltinProvider,
   type RouteName,
   type RoutingConfig
 } from "@prompt-proxy/schema";
@@ -20,8 +21,8 @@ import {
   organizationMembers,
   organizationSettings,
   organizations,
+  providers,
   providerAccounts,
-  routePolicies,
   routingConfigs,
   routingConfigVersions,
   users,
@@ -47,11 +48,27 @@ export type SeedOptions = {
 };
 
 export type SeedModel = {
-  provider: Provider;
+  provider: BuiltinProvider;
   model: string;
   route: RouteName;
-  surface: "openai-responses" | "anthropic-messages";
+  surface: "openai-responses" | "openai-chat" | "anthropic-messages";
 };
+
+const BUILTIN_PROVIDER_IDS: Record<BuiltinProvider, string> = {
+  openai: "00000000-0000-0000-0000-000000000001",
+  anthropic: "00000000-0000-0000-0000-000000000002"
+};
+
+type ModelsDevSnapshotEntry = {
+  provider: BuiltinProvider;
+  model: string;
+  capabilities: Record<string, unknown>;
+  pricing: Record<string, unknown>;
+};
+
+const modelsDevSnapshot = JSON.parse(
+  readFileSync(new URL("../data/models-dev-snapshot.json", import.meta.url), "utf8")
+) as ModelsDevSnapshotEntry[];
 
 export async function seedDatabase(db: PromptProxyDbSession, options: SeedOptions) {
   const now = new Date();
@@ -217,27 +234,24 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
     });
 
   await upsertDefaultWorkspace(db, sandboxOrganizationId, now);
+  await upsertBuiltinProviders(db, options, now);
 
   const providerRows = [
     {
       id: `${options.organizationId}:provider:openai`,
       organizationId: options.organizationId,
-      provider: "openai" as const,
+      providerId: BUILTIN_PROVIDER_IDS.openai,
       name: "OpenAI",
       secretRef: "env:OPENAI_API_KEY",
-      settings: {
-        baseUrl: options.openaiBaseUrl
-      }
+      settings: {}
     },
     {
       id: `${options.organizationId}:provider:anthropic`,
       organizationId: options.organizationId,
-      provider: "anthropic" as const,
+      providerId: BUILTIN_PROVIDER_IDS.anthropic,
       name: "Anthropic",
       secretRef: "env:ANTHROPIC_API_KEY",
-      settings: {
-        baseUrl: options.anthropicBaseUrl
-      }
+      settings: {}
     }
   ];
 
@@ -266,7 +280,7 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
       .insert(modelCatalog)
       .values(row)
       .onConflictDoUpdate({
-        target: [modelCatalog.organizationId, modelCatalog.provider, modelCatalog.model],
+        target: [modelCatalog.organizationId, modelCatalog.providerId, modelCatalog.model],
         set: {
           route: row.route,
           capabilities: row.capabilities,
@@ -274,28 +288,6 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
         }
       });
   }
-
-  await db
-    .insert(routePolicies)
-    .values({
-      id: `${options.organizationId}:route-policy:default`,
-      organizationId: options.organizationId,
-      name: "default",
-      classifierModel: options.classifierModel,
-      classifierPromptVersion: options.classifierPromptVersion,
-      policy: {
-        routeAliases: ["router-auto", "router-fast", "router-balanced", "router-hard", "router-deep"],
-        seeded: true
-      }
-    })
-    .onConflictDoUpdate({
-      target: routePolicies.id,
-      set: {
-        classifierModel: options.classifierModel,
-        classifierPromptVersion: options.classifierPromptVersion,
-        updatedAt: now
-      }
-    });
 
   const routingConfig = defaultRoutingConfig(options);
   const routingConfigVersionId = `${routingConfigId}:v1`;
@@ -436,6 +428,63 @@ async function upsertDefaultWorkspace(db: PromptProxyDbSession, organizationId: 
     });
 }
 
+async function upsertBuiltinProviders(db: PromptProxyDbSession, options: SeedOptions, now: Date) {
+  const rows = [
+    {
+      id: BUILTIN_PROVIDER_IDS.openai,
+      organizationId: null,
+      slug: "openai",
+      displayName: "OpenAI",
+      baseUrl: trimTrailingSlash(options.openaiBaseUrl),
+      authStyle: "bearer" as const,
+      endpoints: [
+        { dialect: "openai-responses", path: "/responses" },
+        { dialect: "openai-chat", path: "/chat/completions" }
+      ],
+      defaultHeaders: {},
+      forwardHarnessHeaders: true,
+      enabled: true
+    },
+    {
+      id: BUILTIN_PROVIDER_IDS.anthropic,
+      organizationId: null,
+      slug: "anthropic",
+      displayName: "Anthropic",
+      baseUrl: trimTrailingSlash(options.anthropicBaseUrl),
+      authStyle: "x-api-key" as const,
+      endpoints: [
+        { dialect: "anthropic-messages", path: "/messages" }
+      ],
+      defaultHeaders: {},
+      forwardHarnessHeaders: true,
+      enabled: true
+    }
+  ];
+
+  for (const row of rows) {
+    await db
+      .insert(providers)
+      .values(row)
+      .onConflictDoUpdate({
+        target: providers.id,
+        set: {
+          displayName: row.displayName,
+          baseUrl: row.baseUrl,
+          authStyle: row.authStyle,
+          endpoints: row.endpoints,
+          defaultHeaders: row.defaultHeaders,
+          forwardHarnessHeaders: row.forwardHarnessHeaders,
+          enabled: row.enabled,
+          updatedAt: now
+        }
+      });
+  }
+}
+
+function trimTrailingSlash(value: string) {
+  return value.replace(/\/+$/g, "");
+}
+
 export function seedOptionsFromEnv(env: NodeJS.ProcessEnv): SeedOptions {
   return {
     organizationId: env.DEFAULT_ORGANIZATION_ID ?? "local",
@@ -452,9 +501,13 @@ export function seedOptionsFromEnv(env: NodeJS.ProcessEnv): SeedOptions {
     proxyToken: env.PROMPT_PROXY_TOKEN ?? "dev-proxy-token",
     models: [
       model("openai", env.OPENAI_FAST_MODEL ?? "gpt-5.4-mini", "fast", "openai-responses"),
+      model("openai", env.OPENAI_FAST_MODEL ?? "gpt-5.4-mini", "fast", "openai-chat"),
       model("openai", env.OPENAI_BALANCED_MODEL ?? "gpt-5.4", "balanced", "openai-responses"),
+      model("openai", env.OPENAI_BALANCED_MODEL ?? "gpt-5.4", "balanced", "openai-chat"),
       model("openai", env.OPENAI_HARD_MODEL ?? "gpt-5.5", "hard", "openai-responses"),
+      model("openai", env.OPENAI_HARD_MODEL ?? "gpt-5.5", "hard", "openai-chat"),
       model("openai", env.OPENAI_DEEP_MODEL ?? "gpt-5.5-pro", "deep", "openai-responses"),
+      model("openai", env.OPENAI_DEEP_MODEL ?? "gpt-5.5-pro", "deep", "openai-chat"),
       model("anthropic", env.ANTHROPIC_FAST_MODEL ?? "claude-haiku-4-5", "fast", "anthropic-messages"),
       model("anthropic", env.ANTHROPIC_BALANCED_MODEL ?? "claude-sonnet-4-5", "balanced", "anthropic-messages"),
       model("anthropic", env.ANTHROPIC_HARD_MODEL ?? "claude-sonnet-4-5", "hard", "anthropic-messages"),
@@ -463,7 +516,7 @@ export function seedOptionsFromEnv(env: NodeJS.ProcessEnv): SeedOptions {
   };
 }
 
-function model(provider: Provider, modelName: string, route: RouteName, surface: SeedModel["surface"]) {
+function model(provider: BuiltinProvider, modelName: string, route: RouteName, surface: SeedModel["surface"]) {
   return {
     provider,
     model: modelName,
@@ -474,13 +527,13 @@ function model(provider: Provider, modelName: string, route: RouteName, surface:
 
 function defaultRoutingConfig(options: SeedOptions): RoutingConfig {
   return routingConfigSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: 2,
     displayName: "Default coding router",
     description: "Seeded default routing config for coding-agent traffic.",
     classifier: {
-      provider: "openai",
+      providerId: "openai",
       model: options.classifierModel,
-      reasoningEffort: "minimal",
+      effort: "minimal",
       timeoutMs: options.classifierTimeoutMs,
       maxAttempts: 2,
       allowRedactedExcerpt: options.classifierAllowRedactedExcerpt,
@@ -516,25 +569,24 @@ function routeConfig(
 ): RoutingConfig["routes"][RouteName] {
   return {
     description,
-    openai: {
-      model: modelFor(options, "openai", route),
-      reasoning: {
-        effort: openaiEffort
+    targets: [
+      {
+        providerId: "anthropic",
+        model: modelFor(options, "anthropic", route),
+        effort: openaiEffort,
+        ...(route === "fast" ? {} : { thinking: { type: "adaptive" as const, display: "omitted" as const } })
       },
-      text: {
+      {
+        providerId: "openai",
+        model: modelFor(options, "openai", route),
+        effort: openaiEffort,
         verbosity: route === "fast" || route === "balanced" ? "low" : "medium"
       }
-    },
-    anthropic: {
-      model: modelFor(options, "anthropic", route),
-      // Fast omits thinking: "disabled" is rejected by adaptive-only models,
-      // while omitting the field lets the provider apply its default.
-      ...(route === "fast" ? {} : { thinking: { type: "adaptive" as const, display: "omitted" as const } })
-    }
+    ]
   };
 }
 
-function modelFor(options: SeedOptions, provider: Provider, route: RouteName) {
+function modelFor(options: SeedOptions, provider: BuiltinProvider, route: RouteName) {
   const match = options.models.find((entry) => entry.provider === provider && entry.route === route);
   if (!match) throw new Error(`Missing seeded model for provider=${provider} route=${route}`);
   return match.model;
@@ -543,30 +595,50 @@ function modelFor(options: SeedOptions, provider: Provider, route: RouteName) {
 function modelCatalogRows(options: SeedOptions) {
   const rows = new Map<string, {
     id: string;
-    organizationId: string;
-    provider: Provider;
+    organizationId: string | null;
+    providerId: string;
     model: string;
-    route: RouteName;
+    route?: RouteName;
     capabilities: Record<string, unknown>;
     pricing: Record<string, unknown>;
   }>();
 
+  for (const entry of modelsDevSnapshot) {
+    const providerId = BUILTIN_PROVIDER_IDS[entry.provider];
+    const key = `${providerId}:${entry.model}`;
+    rows.set(key, {
+      id: `model:${entry.provider}:${slug(entry.model)}`,
+      organizationId: null,
+      providerId,
+      model: entry.model,
+      capabilities: {
+        ...entry.capabilities,
+        source: "models.dev-snapshot"
+      },
+      pricing: entry.pricing
+    });
+  }
+
   for (const entry of options.models) {
-    const key = `${entry.provider}:${entry.model}`;
+    const providerId = BUILTIN_PROVIDER_IDS[entry.provider];
+    const key = `${providerId}:${entry.model}`;
     const existing = rows.get(key);
     if (existing) {
       const routes = Array.isArray(existing.capabilities.routes) ? existing.capabilities.routes : [];
+      const surfaces = Array.isArray(existing.capabilities.surfaces) ? existing.capabilities.surfaces : [];
       existing.capabilities = {
         ...existing.capabilities,
+        surfaces: [...new Set([...surfaces, entry.surface])],
         routes: [...new Set([...routes, entry.route])]
       };
+      existing.route ??= entry.route;
       continue;
     }
 
     rows.set(key, {
-      id: `${options.organizationId}:model:${entry.provider}:${slug(entry.model)}`,
-      organizationId: options.organizationId,
-      provider: entry.provider,
+      id: `model:${entry.provider}:${slug(entry.model)}`,
+      organizationId: null,
+      providerId,
       model: entry.model,
       route: entry.route,
       capabilities: {

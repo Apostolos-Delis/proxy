@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildAnthropicContext, buildOpenAIContext, classifierView } from "../src/features.js";
+import { buildAnthropicContext, buildOpenAIChatContext, buildOpenAIContext, classifierView } from "../src/features.js";
 
 const conductorPreamble = [
   "<system_instruction>",
@@ -25,6 +25,102 @@ function anthropicBody(messages: unknown) {
 }
 
 describe("harness block stripping", () => {
+  it("recognizes every router alias spelling on every surface", () => {
+    expect(buildOpenAIContext({ model: "claude-router-fast", input: "status" }, {}).explicitAlias).toBe("fast");
+    expect(buildOpenAIContext({ model: "anthropic-router-deep", input: "status" }, {}).explicitAlias).toBe("deep");
+    expect(buildAnthropicContext({
+      model: "router-hard",
+      messages: [{ role: "user", content: "status" }]
+    }, {}).explicitAlias).toBe("hard");
+    expect(buildOpenAIChatContext({
+      model: "anthropic-router-balanced",
+      messages: [{ role: "user", content: "status" }]
+    }, {}).explicitAlias).toBe("balanced");
+  });
+
+  it("detects Codex sessions from prompt_cache_key", () => {
+    const context = buildOpenAIContext(
+      {
+        model: "router-auto",
+        input: "fix the parser",
+        prompt_cache_key: "codex-session-1234"
+      },
+      {}
+    );
+
+    expect(context.harness).toBe("codex");
+    expect(context.statefulResponses).toBe(true);
+    expect(context.sessionId).toBe("codex-session-1234");
+  });
+
+  it("keeps Codex websocket session ids", () => {
+    const context = buildOpenAIContext(
+      {
+        model: "router-auto",
+        input: "fix the parser"
+      },
+      { session_id: "codex-ws-session" }
+    );
+
+    expect(context.harness).toBe("codex");
+    expect(context.statefulResponses).toBe(true);
+    expect(context.sessionId).toBe("codex-ws-session");
+  });
+
+  it("detects opencode chat sessions from prompt_cache_key", () => {
+    const context = buildOpenAIChatContext(
+      {
+        model: "router-auto",
+        prompt_cache_key: "opencode-session-1234",
+        messages: [{ role: "user", content: "fix the parser" }]
+      },
+      {}
+    );
+
+    expect(context.harness).toBe("opencode");
+    expect(context.statefulResponses).toBe(false);
+    expect(context.sessionId).toBe("opencode-session-1234");
+  });
+
+  it("detects Cursor chat sessions and strips harness blocks", () => {
+    const context = buildOpenAIChatContext(
+      {
+        model: "router-auto",
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "<system-reminder>background</system-reminder>\nfix the terminal parser" }
+          ]
+        }],
+        tools: [{ name: "run_terminal_cmd", parameters: { type: "object" } }]
+      },
+      {
+        "user-agent": "Cursor/1.0",
+        "x-cursor-session-id": "cursor-session-1234"
+      }
+    );
+
+    expect(context.harness).toBe("cursor");
+    expect(context.statefulResponses).toBe(false);
+    expect(context.sessionId).toBe("cursor-session-1234");
+    expect(context.routingInputText).toBe("fix the terminal parser");
+  });
+
+  it("detects Claude Code sessions from metadata", () => {
+    const context = buildAnthropicContext(
+      {
+        model: "claude-router-auto",
+        metadata: { user_id: "user_abcd_account_1234_session_12345678-abcd" },
+        messages: [{ role: "user", content: "fix the parser" }]
+      },
+      {}
+    );
+
+    expect(context.harness).toBe("claude-code");
+    expect(context.statefulResponses).toBe(false);
+    expect(context.sessionId).toBe("12345678-abcd");
+  });
+
   it("drops Conductor system_instruction blocks from the routing input", () => {
     const context = buildAnthropicContext(
       anthropicBody([{ role: "user", content: `${conductorPreamble}\n\n${dashboardAsk}` }]),
@@ -82,6 +178,36 @@ describe("harness block stripping", () => {
 
     expect(context.routingInputText).toBe("add a unit test for the parser");
   });
+
+  it("builds OpenAI Chat context from messages, tools, and image parts", () => {
+    const context = buildOpenAIChatContext(
+      {
+        model: "anthropic-router-hard",
+        messages: [
+          { role: "system", content: "You are terse." },
+          { role: "user", content: "debug the production checkout bug" },
+          { role: "assistant", content: "I will inspect logs." },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "git status" },
+              { type: "image_url", image_url: { url: "data:image/png;base64,abc" } }
+            ]
+          }
+        ],
+        tools: [{ type: "function", function: { name: "run_terminal_cmd" } }]
+      },
+      {}
+    );
+
+    expect(context.surface).toBe("openai-chat");
+    expect(context.explicitAlias).toBe("hard");
+    expect(context.routingInputText).toBe("git status");
+    expect(context.routingExtractedHints).toEqual([]);
+    expect(context.hasTools).toBe(true);
+    expect(context.toolCount).toBe(1);
+    expect(context.hasImages).toBe(true);
+  });
 });
 
 describe("tool_result handling", () => {
@@ -117,6 +243,30 @@ describe("tool_result handling", () => {
     );
 
     expect(context.routingInputText).toBe("now write the migration");
+  });
+
+  it("classifies OpenAI Chat tool-result tails on the previous human turn", () => {
+    const context = buildOpenAIChatContext(
+      {
+        model: "router-auto",
+        messages: [
+          { role: "user", content: "investigate the production payment outage" },
+          {
+            role: "assistant",
+            tool_calls: [{
+              id: "call_1",
+              type: "function",
+              function: { name: "run_terminal_cmd", arguments: "{}" }
+            }]
+          },
+          { role: "tool", tool_call_id: "call_1", content: "total 0\n-rw-r-- README.md" }
+        ]
+      },
+      {}
+    );
+
+    expect(context.routingInputText).toBe("investigate the production payment outage");
+    expect(context.routingExtractedHints).toContain("production");
   });
 });
 

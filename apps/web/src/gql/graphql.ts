@@ -12,8 +12,9 @@ export type ClassifierSettingsInput = {
 };
 
 export type CostBaselineSettingsInput = {
-  anthropicModel: string;
-  openaiModel: string;
+  anthropicMessagesModel: string;
+  openaiChatModel: string;
+  openaiResponsesModel: string;
 };
 
 export type CreateApiKeyInput = {
@@ -31,9 +32,21 @@ export type CreateInvitationInput = {
 export type CreateProviderCredentialInput = {
   apiKey: string;
   authType?: ProviderAccountAuthType | null | undefined;
+  baseUrl?: string | null | undefined;
   chatgptAccountId?: string | null | undefined;
   name: string;
   provider: string;
+};
+
+export type CreateProviderInput = {
+  authStyle: string;
+  baseUrl: string;
+  defaultHeaders?: unknown;
+  displayName: string;
+  enabled?: boolean | null | undefined;
+  endpoints: Array<ProviderEndpointInput>;
+  forwardHarnessHeaders?: boolean | null | undefined;
+  slug: string;
 };
 
 export type CreateRoutingConfigInput = {
@@ -69,6 +82,11 @@ export type ProviderAccountAuthType =
   | 'api_key'
   | 'oauth';
 
+export type ProviderEndpointInput = {
+  dialect: string;
+  path: string;
+};
+
 export type RouteQualitySettingsInput = {
   lowConfidenceThreshold?: number | null | undefined;
 };
@@ -100,6 +118,17 @@ export type SettingsInput = {
   schemaVersion?: number | null | undefined;
   systemPrompt?: string | null | undefined;
   toolResultCompression?: boolean | null | undefined;
+};
+
+export type UpdateProviderInput = {
+  authStyle: string;
+  baseUrl: string;
+  defaultHeaders?: unknown;
+  displayName: string;
+  enabled?: boolean | null | undefined;
+  endpoints: Array<ProviderEndpointInput>;
+  forwardHarnessHeaders?: boolean | null | undefined;
+  providerId: string | number;
 };
 
 export type UsageGroupBy =
@@ -253,7 +282,12 @@ export type SubscriptionAuthSettingQuery = { settings: { subscriptionOAuthEnable
 export type ProviderAccountsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type ProviderAccountsQuery = { providerAccounts: Array<{ id: string, organizationId: string, provider: string, name: string, authType: ProviderAccountAuthType, status: string, secretHint: string | null, ownerUserId: string | null, boundKeyCount: number, createdAt: string, lastUsedAt: string | null }> };
+export type ProviderAccountsQuery = { providerAccounts: Array<{ id: string, organizationId: string, provider: string, name: string, authType: ProviderAccountAuthType, status: string, baseUrl: string | null, secretHint: string | null, ownerUserId: string | null, boundKeyCount: number, createdAt: string, lastUsedAt: string | null }> };
+
+export type ProviderRegistryQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type ProviderRegistryQuery = { providers: Array<{ id: string, organizationId: string | null, slug: string, displayName: string, baseUrl: string, authStyle: string, defaultHeaders: unknown, forwardHarnessHeaders: boolean, enabled: boolean, builtin: boolean, endpoints: Array<{ dialect: string, path: string }> }> };
 
 export type CreateProviderCredentialMutationVariables = Exact<{
   input: CreateProviderCredentialInput;
@@ -261,6 +295,27 @@ export type CreateProviderCredentialMutationVariables = Exact<{
 
 
 export type CreateProviderCredentialMutation = { createProviderCredential: { id: string, name: string } | null };
+
+export type CreateProviderMutationVariables = Exact<{
+  input: CreateProviderInput;
+}>;
+
+
+export type CreateProviderMutation = { createProvider: { id: string, slug: string, displayName: string, baseUrl: string, authStyle: string, enabled: boolean, builtin: boolean } | null };
+
+export type UpdateProviderMutationVariables = Exact<{
+  input: UpdateProviderInput;
+}>;
+
+
+export type UpdateProviderMutation = { updateProvider: { id: string, slug: string, displayName: string, baseUrl: string, authStyle: string, enabled: boolean, builtin: boolean } | null };
+
+export type DisableProviderMutationVariables = Exact<{
+  providerId: string | number;
+}>;
+
+
+export type DisableProviderMutation = { disableProvider: { id: string, enabled: boolean } | null };
 
 export type RevokeProviderCredentialMutationVariables = Exact<{
   providerAccountId: string | number;
@@ -287,26 +342,31 @@ export type RequestsPageQueryVariables = Exact<{
 
 export type RequestsPageQuery = { prompts: { data: Array<{ artifactId: string, requestId: string, sessionId: string | null, userId: string | null, surface: string, kind: string, preview: string | null, tokenEstimate: number | null, selectedModel: string | null, finalRoute: string | null, provider: string | null, createdAt: string, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }> }, requests: Array<{ requestId: string, selectedModel: string | null, terminalStatus: string, latencyMs: number | null, finalRoute: string | null, provider: string | null, apiKeyId: string | null, sessionId: string | null, selectedCost: number, usage: { totalTokens: number }, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
-export type RoutingConfigSummaryFieldsFragment = { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routeMatrix: Array<{ route: string, description: string | null, openaiModel: string | null, openaiEffort: string | null, anthropicModel: string | null, anthropicEffort: string | null }> };
+export type RoutingConfigSummaryFieldsFragment = { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> };
 
-export type RoutingConfigDetailFieldsFragment = { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routeMatrix: Array<{ route: string, description: string | null, openaiModel: string | null, openaiEffort: string | null, anthropicModel: string | null, anthropicEffort: string | null }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> };
+export type RoutingConfigDetailFieldsFragment = { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> };
 
 export type RoutingConfigsListQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type RoutingConfigsListQuery = { routingConfigs: Array<{ trafficShare: number, id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routeMatrix: Array<{ route: string, description: string | null, openaiModel: string | null, openaiEffort: string | null, anthropicModel: string | null, anthropicEffort: string | null }> }> };
+export type RoutingConfigsListQuery = { routingConfigs: Array<{ trafficShare: number, id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }> };
 
 export type RoutingConfigDetailViewQueryVariables = Exact<{
   configId: string | number;
 }>;
 
 
-export type RoutingConfigDetailViewQuery = { routingConfig: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routeMatrix: Array<{ route: string, description: string | null, openaiModel: string | null, openaiEffort: string | null, anthropicModel: string | null, anthropicEffort: string | null }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } | null };
+export type RoutingConfigDetailViewQuery = { routingConfig: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } | null };
 
 export type RoutingApiKeysQueryVariables = Exact<{ [key: string]: never; }>;
 
 
 export type RoutingApiKeysQuery = { apiKeys: Array<{ id: string, name: string, userId: string | null, scopes: Array<string>, routingConfigId: string | null, createdAt: string, expiresAt: string | null, revokedAt: string | null, lastUsedAt: string | null, routingConfig: { id: string, name: string | null, status: string | null } | null, providerCredentials: Array<{ provider: string, providerAccountId: string, name: string | null, status: string | null }> }> };
+
+export type RoutingModelCatalogQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type RoutingModelCatalogQuery = { providers: Array<{ slug: string, displayName: string, authStyle: string, enabled: boolean, builtin: boolean, endpoints: Array<{ dialect: string, path: string }> }>, modelPricing: Array<{ provider: string | null, model: string, source: ModelPricingSource, seenInTraffic: boolean }> };
 
 export type CreateApiKeyMutationVariables = Exact<{
   input: CreateApiKeyInput;
@@ -334,7 +394,7 @@ export type CreateRoutingConfigMutationVariables = Exact<{
 }>;
 
 
-export type CreateRoutingConfigMutation = { createRoutingConfig: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routeMatrix: Array<{ route: string, description: string | null, openaiModel: string | null, openaiEffort: string | null, anthropicModel: string | null, anthropicEffort: string | null }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } };
+export type CreateRoutingConfigMutation = { createRoutingConfig: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } };
 
 export type CreateRoutingConfigVersionMutationVariables = Exact<{
   configId: string | number;
@@ -342,7 +402,7 @@ export type CreateRoutingConfigVersionMutationVariables = Exact<{
 }>;
 
 
-export type CreateRoutingConfigVersionMutation = { createRoutingConfigVersion: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routeMatrix: Array<{ route: string, description: string | null, openaiModel: string | null, openaiEffort: string | null, anthropicModel: string | null, anthropicEffort: string | null }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } };
+export type CreateRoutingConfigVersionMutation = { createRoutingConfigVersion: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } };
 
 export type ActivateRoutingConfigVersionMutationVariables = Exact<{
   configId: string | number;
@@ -350,14 +410,14 @@ export type ActivateRoutingConfigVersionMutationVariables = Exact<{
 }>;
 
 
-export type ActivateRoutingConfigVersionMutation = { activateRoutingConfigVersion: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routeMatrix: Array<{ route: string, description: string | null, openaiModel: string | null, openaiEffort: string | null, anthropicModel: string | null, anthropicEffort: string | null }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } };
+export type ActivateRoutingConfigVersionMutation = { activateRoutingConfigVersion: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } };
 
 export type ArchiveRoutingConfigMutationVariables = Exact<{
   configId: string | number;
 }>;
 
 
-export type ArchiveRoutingConfigMutation = { archiveRoutingConfig: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routeMatrix: Array<{ route: string, description: string | null, openaiModel: string | null, openaiEffort: string | null, anthropicModel: string | null, anthropicEffort: string | null }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } };
+export type ArchiveRoutingConfigMutation = { archiveRoutingConfig: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } };
 
 export type AssignRoutingConfigKeyMutationVariables = Exact<{
   apiKeyId: string | number;
@@ -427,19 +487,19 @@ export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, requestCount: number, startedAt: string, endedAt: string | null, recentActivity: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
-export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, duplicateToolResultReferences: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
+export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, duplicateToolResultReferences: boolean, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
 
 export type SettingsViewQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, duplicateToolResultReferences: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, duplicateToolResultReferences: boolean, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type UpdateSettingsMutationVariables = Exact<{
   input: SettingsInput;
 }>;
 
 
-export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, duplicateToolResultReferences: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, duplicateToolResultReferences: boolean, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } };
 
@@ -557,13 +617,15 @@ export const RoutingConfigSummaryFieldsFragmentDoc = new TypedDocumentString(`
     version
     configHash
   }
-  routeMatrix {
+  routes {
     route
     description
-    openaiModel
-    openaiEffort
-    anthropicModel
-    anthropicEffort
+    targets {
+      providerId
+      model
+      effort
+      effectiveEffort
+    }
   }
 }
     `, {"fragmentName":"RoutingConfigSummaryFields"}) as unknown as TypedDocumentString<RoutingConfigSummaryFieldsFragment, unknown>;
@@ -597,13 +659,15 @@ export const RoutingConfigDetailFieldsFragmentDoc = new TypedDocumentString(`
     version
     configHash
   }
-  routeMatrix {
+  routes {
     route
     description
-    openaiModel
-    openaiEffort
-    anthropicModel
-    anthropicEffort
+    targets {
+      providerId
+      model
+      effort
+      effectiveEffort
+    }
   }
 }`, {"fragmentName":"RoutingConfigDetailFields"}) as unknown as TypedDocumentString<RoutingConfigDetailFieldsFragment, unknown>;
 export const ViewerFieldsFragmentDoc = new TypedDocumentString(`
@@ -650,8 +714,9 @@ export const SettingsViewFieldsFragmentDoc = new TypedDocumentString(`
     toolResultCompression
     duplicateToolResultReferences
     costBaseline {
-      anthropicModel
-      openaiModel
+      anthropicMessagesModel
+      openaiResponsesModel
+      openaiChatModel
     }
     classifier {
       model
@@ -1135,6 +1200,7 @@ export const ProviderAccountsDocument = new TypedDocumentString(`
     name
     authType
     status
+    baseUrl
     secretHint
     ownerUserId
     boundKeyCount
@@ -1143,6 +1209,26 @@ export const ProviderAccountsDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<ProviderAccountsQuery, ProviderAccountsQueryVariables>;
+export const ProviderRegistryDocument = new TypedDocumentString(`
+    query ProviderRegistry {
+  providers {
+    id
+    organizationId
+    slug
+    displayName
+    baseUrl
+    authStyle
+    endpoints {
+      dialect
+      path
+    }
+    defaultHeaders
+    forwardHarnessHeaders
+    enabled
+    builtin
+  }
+}
+    `) as unknown as TypedDocumentString<ProviderRegistryQuery, ProviderRegistryQueryVariables>;
 export const CreateProviderCredentialDocument = new TypedDocumentString(`
     mutation CreateProviderCredential($input: CreateProviderCredentialInput!) {
   createProviderCredential(input: $input) {
@@ -1151,6 +1237,40 @@ export const CreateProviderCredentialDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CreateProviderCredentialMutation, CreateProviderCredentialMutationVariables>;
+export const CreateProviderDocument = new TypedDocumentString(`
+    mutation CreateProvider($input: CreateProviderInput!) {
+  createProvider(input: $input) {
+    id
+    slug
+    displayName
+    baseUrl
+    authStyle
+    enabled
+    builtin
+  }
+}
+    `) as unknown as TypedDocumentString<CreateProviderMutation, CreateProviderMutationVariables>;
+export const UpdateProviderDocument = new TypedDocumentString(`
+    mutation UpdateProvider($input: UpdateProviderInput!) {
+  updateProvider(input: $input) {
+    id
+    slug
+    displayName
+    baseUrl
+    authStyle
+    enabled
+    builtin
+  }
+}
+    `) as unknown as TypedDocumentString<UpdateProviderMutation, UpdateProviderMutationVariables>;
+export const DisableProviderDocument = new TypedDocumentString(`
+    mutation DisableProvider($providerId: ID!) {
+  disableProvider(providerId: $providerId) {
+    id
+    enabled
+  }
+}
+    `) as unknown as TypedDocumentString<DisableProviderMutation, DisableProviderMutationVariables>;
 export const RevokeProviderCredentialDocument = new TypedDocumentString(`
     mutation RevokeProviderCredential($providerAccountId: ID!) {
   revokeProviderCredential(providerAccountId: $providerAccountId) {
@@ -1251,13 +1371,15 @@ export const RoutingConfigsListDocument = new TypedDocumentString(`
     version
     configHash
   }
-  routeMatrix {
+  routes {
     route
     description
-    openaiModel
-    openaiEffort
-    anthropicModel
-    anthropicEffort
+    targets {
+      providerId
+      model
+      effort
+      effectiveEffort
+    }
   }
 }`) as unknown as TypedDocumentString<RoutingConfigsListQuery, RoutingConfigsListQueryVariables>;
 export const RoutingConfigDetailViewDocument = new TypedDocumentString(`
@@ -1280,13 +1402,15 @@ export const RoutingConfigDetailViewDocument = new TypedDocumentString(`
     version
     configHash
   }
-  routeMatrix {
+  routes {
     route
     description
-    openaiModel
-    openaiEffort
-    anthropicModel
-    anthropicEffort
+    targets {
+      providerId
+      model
+      effort
+      effectiveEffort
+    }
   }
 }
 fragment RoutingConfigDetailFields on RoutingConfigDetail {
@@ -1330,6 +1454,27 @@ export const RoutingApiKeysDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<RoutingApiKeysQuery, RoutingApiKeysQueryVariables>;
+export const RoutingModelCatalogDocument = new TypedDocumentString(`
+    query RoutingModelCatalog {
+  providers {
+    slug
+    displayName
+    authStyle
+    enabled
+    builtin
+    endpoints {
+      dialect
+      path
+    }
+  }
+  modelPricing {
+    provider
+    model
+    source
+    seenInTraffic
+  }
+}
+    `) as unknown as TypedDocumentString<RoutingModelCatalogQuery, RoutingModelCatalogQueryVariables>;
 export const CreateApiKeyDocument = new TypedDocumentString(`
     mutation CreateApiKey($input: CreateApiKeyInput!) {
   createApiKey(input: $input) {
@@ -1377,13 +1522,15 @@ export const CreateRoutingConfigDocument = new TypedDocumentString(`
     version
     configHash
   }
-  routeMatrix {
+  routes {
     route
     description
-    openaiModel
-    openaiEffort
-    anthropicModel
-    anthropicEffort
+    targets {
+      providerId
+      model
+      effort
+      effectiveEffort
+    }
   }
 }
 fragment RoutingConfigDetailFields on RoutingConfigDetail {
@@ -1421,13 +1568,15 @@ export const CreateRoutingConfigVersionDocument = new TypedDocumentString(`
     version
     configHash
   }
-  routeMatrix {
+  routes {
     route
     description
-    openaiModel
-    openaiEffort
-    anthropicModel
-    anthropicEffort
+    targets {
+      providerId
+      model
+      effort
+      effectiveEffort
+    }
   }
 }
 fragment RoutingConfigDetailFields on RoutingConfigDetail {
@@ -1465,13 +1614,15 @@ export const ActivateRoutingConfigVersionDocument = new TypedDocumentString(`
     version
     configHash
   }
-  routeMatrix {
+  routes {
     route
     description
-    openaiModel
-    openaiEffort
-    anthropicModel
-    anthropicEffort
+    targets {
+      providerId
+      model
+      effort
+      effectiveEffort
+    }
   }
 }
 fragment RoutingConfigDetailFields on RoutingConfigDetail {
@@ -1509,13 +1660,15 @@ export const ArchiveRoutingConfigDocument = new TypedDocumentString(`
     version
     configHash
   }
-  routeMatrix {
+  routes {
     route
     description
-    openaiModel
-    openaiEffort
-    anthropicModel
-    anthropicEffort
+    targets {
+      providerId
+      model
+      effort
+      effectiveEffort
+    }
   }
 }
 fragment RoutingConfigDetailFields on RoutingConfigDetail {
@@ -1796,8 +1949,9 @@ export const SettingsViewDocument = new TypedDocumentString(`
     toolResultCompression
     duplicateToolResultReferences
     costBaseline {
-      anthropicModel
-      openaiModel
+      anthropicMessagesModel
+      openaiResponsesModel
+      openaiChatModel
     }
     classifier {
       model
@@ -1837,8 +1991,9 @@ export const UpdateSettingsDocument = new TypedDocumentString(`
     toolResultCompression
     duplicateToolResultReferences
     costBaseline {
-      anthropicModel
-      openaiModel
+      anthropicMessagesModel
+      openaiResponsesModel
+      openaiChatModel
     }
     classifier {
       model

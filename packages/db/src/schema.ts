@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, type PgTableExtraConfigValue } from "drizzle-orm/pg-core";
+import { boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, type PgTableExtraConfigValue } from "drizzle-orm/pg-core";
 
 import type {
   EventOutboxStatus,
@@ -7,14 +7,12 @@ import type {
   OrganizationMemberRole,
   OrganizationMemberStatus,
   PromptCaptureMode,
-  Provider,
   ProviderAccountAuthType,
   ProviderAttemptStatus,
   RequestStatus,
   RoutingConfig,
   RouteName,
   SessionPinnedSettings,
-  Surface,
   UsageLedgerKind
 } from "@prompt-proxy/schema";
 
@@ -289,6 +287,27 @@ export const userSettings = pgTable(
   ]
 );
 
+export const providers = pgTable(
+  "providers",
+  {
+    id: uuid("id").primaryKey(),
+    organizationId: text("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    displayName: text("display_name").notNull(),
+    baseUrl: text("base_url").notNull(),
+    authStyle: text("auth_style").$type<"bearer" | "x-api-key" | "none">().notNull(),
+    endpoints: jsonb("endpoints").$type<{ dialect: string; path: string }[]>().notNull().default([]),
+    defaultHeaders: jsonb("default_headers").$type<Record<string, string>>().notNull().default({}),
+    forwardHarnessHeaders: boolean("forward_harness_headers").notNull().default(false),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("providers_org_slug_idx").on(table.organizationId, table.slug)
+  ]
+);
+
 export const providerAccounts = pgTable(
   "provider_accounts",
   {
@@ -296,8 +315,11 @@ export const providerAccounts = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    provider: text("provider").$type<Provider>().notNull(),
+    providerId: uuid("provider_id")
+      .notNull()
+      .references(() => providers.id),
     name: text("name").notNull(),
+    baseUrl: text("base_url"),
     authType: text("auth_type").$type<ProviderAccountAuthType>().notNull().default("api_key"),
     secretRef: text("secret_ref"),
     secretCiphertext: text("secret_ciphertext"),
@@ -310,8 +332,8 @@ export const providerAccounts = pgTable(
     lastUsedAt: timestamp("last_used_at", { withTimezone: true })
   },
   (table): PgTableExtraConfigValue[] => [
-    uniqueIndex("provider_accounts_org_provider_name_idx")
-      .on(table.organizationId, table.provider, table.name)
+    uniqueIndex("provider_accounts_org_provider_id_name_idx")
+      .on(table.organizationId, table.providerId, table.name)
       .where(sql`status = 'active'`),
     uniqueIndex("provider_accounts_org_id_idx").on(table.organizationId, table.id),
     index("provider_accounts_organization_id_idx").on(table.organizationId)
@@ -326,14 +348,16 @@ export const apiKeyProviderAccounts = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     workspaceId: text("workspace_id").notNull(),
     apiKeyId: text("api_key_id").notNull(),
-    provider: text("provider").$type<Provider>().notNull(),
+    providerId: uuid("provider_id")
+      .notNull()
+      .references(() => providers.id),
     providerAccountId: text("provider_account_id").notNull(),
     createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
   (table): PgTableExtraConfigValue[] => [
-    primaryKey({ name: "api_key_provider_accounts_pk", columns: [table.organizationId, table.apiKeyId, table.provider] }),
+    primaryKey({ name: "api_key_provider_accounts_pk", columns: [table.organizationId, table.apiKeyId, table.providerId] }),
     index("api_key_provider_accounts_account_idx").on(table.organizationId, table.providerAccountId),
     index("api_key_provider_accounts_api_key_idx").on(table.organizationId, table.apiKeyId),
     foreignKey({
@@ -354,7 +378,9 @@ export const modelCatalog = pgTable(
   {
     id: text("id").primaryKey(),
     organizationId: text("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
-    provider: text("provider").$type<Provider>().notNull(),
+    providerId: uuid("provider_id")
+      .notNull()
+      .references(() => providers.id),
     model: text("model").notNull(),
     route: text("route").$type<RouteName>(),
     capabilities: jsonb("capabilities").$type<Record<string, unknown>>().notNull().default({}),
@@ -363,28 +389,8 @@ export const modelCatalog = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
   (table) => [
-    uniqueIndex("model_catalog_org_provider_model_idx").on(table.organizationId, table.provider, table.model),
+    uniqueIndex("model_catalog_org_provider_id_model_idx").on(table.organizationId, table.providerId, table.model),
     index("model_catalog_route_idx").on(table.organizationId, table.route)
-  ]
-);
-
-export const routePolicies = pgTable(
-  "route_policies",
-  {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    classifierModel: text("classifier_model").notNull(),
-    classifierPromptVersion: text("classifier_prompt_version").notNull(),
-    policy: jsonb("policy").$type<Record<string, unknown>>().notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
-  },
-  (table) => [
-    uniqueIndex("route_policies_org_name_idx").on(table.organizationId, table.name),
-    index("route_policies_organization_id_idx").on(table.organizationId)
   ]
 );
 
@@ -399,7 +405,7 @@ export const agentSessions = pgTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
-    surface: text("surface").$type<Surface>().notNull(),
+    surface: text("surface").notNull(),
     externalSessionId: text("external_session_id"),
     currentRoute: text("current_route").$type<RouteName>(),
     pinnedSettings: jsonb("pinned_settings").$type<SessionPinnedSettings>(),
@@ -459,7 +465,7 @@ export const requests = pgTable(
     sessionId: text("session_id").references(() => agentSessions.id, { onDelete: "set null" }),
     turnId: text("turn_id").references(() => turns.id, { onDelete: "set null" }),
     apiKeyId: text("api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
-    surface: text("surface").$type<Surface>().notNull(),
+    surface: text("surface").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     requestedModel: text("requested_model").notNull(),
     inputHash: text("input_hash").notNull(),
@@ -503,7 +509,7 @@ export const routeDecisions = pgTable(
     requestedModel: text("requested_model").notNull(),
     classifierRoute: text("classifier_route").$type<RouteName>(),
     finalRoute: text("final_route").$type<RouteName>(),
-    selectedProvider: text("selected_provider").$type<Provider>(),
+    selectedProvider: text("selected_provider"),
     selectedModel: text("selected_model"),
     reasoningEffort: text("reasoning_effort"),
     verbosity: text("verbosity"),
@@ -540,8 +546,8 @@ export const providerAttempts = pgTable(
     workspaceId: text("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
-    surface: text("surface").$type<Surface>().notNull(),
-    provider: text("provider").$type<Provider>().notNull(),
+    surface: text("surface").notNull(),
+    provider: text("provider").notNull(),
     model: text("model").notNull(),
     upstreamRequestId: text("upstream_request_id"),
     terminalStatus: text("terminal_status").$type<ProviderAttemptStatus>().notNull().default("pending"),
@@ -583,7 +589,7 @@ export const usageLedger = pgTable(
     providerAttemptId: text("provider_attempt_id")
       .references(() => providerAttempts.id, { onDelete: "cascade" }),
     kind: text("kind").$type<UsageLedgerKind>().notNull().default("provider"),
-    provider: text("provider").$type<Provider>().notNull(),
+    provider: text("provider").notNull(),
     model: text("model").notNull(),
     route: text("route").$type<RouteName>(),
     inputTokens: integer("input_tokens").notNull().default(0),

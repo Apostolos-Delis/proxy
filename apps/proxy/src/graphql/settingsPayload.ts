@@ -25,7 +25,11 @@ export async function settingsResponse(
         automaticCaching: false,
         toolResultCompression: false,
         duplicateToolResultReferences: false,
-        costBaseline: defaultCostBaseline
+        costBaseline: {
+          anthropicMessagesModel: defaultCostBaseline["anthropic-messages"],
+          openaiResponsesModel: defaultCostBaseline["openai-responses"],
+          openaiChatModel: defaultCostBaseline["openai-chat"]
+        }
       };
   const settings = {
     schemaVersion: 1,

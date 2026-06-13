@@ -4,22 +4,58 @@ import type {
   ApiKeyModel,
   ApiKeyProviderBindingModel,
   ApiKeyRoutingConfigRefModel,
+  ProviderEndpointModel,
   ProviderAccountModel,
-  RouteMatrixRowModel,
+  ProviderRegistryEntryModel,
+  RouteTargetModel,
+  RoutingConfigRouteModel,
   RoutingConfigDetailModel,
   RoutingConfigSummaryModel,
   RoutingConfigVersionDetailModel,
   RoutingConfigVersionModel
 } from "../models.js";
 
-export const RouteMatrixRow = builder.objectRef<RouteMatrixRowModel>("RouteMatrixRow").implement({
+export const ProviderEndpoint = builder.objectRef<ProviderEndpointModel>("ProviderEndpoint").implement({
+  fields: (t) => ({
+    dialect: t.exposeString("dialect"),
+    path: t.exposeString("path")
+  })
+});
+
+export const ProviderRegistryEntry = builder.objectRef<ProviderRegistryEntryModel>("ProviderRegistryEntry").implement({
+  fields: (t) => ({
+    id: t.exposeString("id"),
+    organizationId: t.exposeString("organizationId", { nullable: true }),
+    slug: t.exposeString("slug"),
+    displayName: t.exposeString("displayName"),
+    baseUrl: t.exposeString("baseUrl"),
+    authStyle: t.exposeString("authStyle"),
+    endpoints: t.expose("endpoints", { type: [ProviderEndpoint] }),
+    defaultHeaders: t.field({ type: "JSON", resolve: (provider) => provider.defaultHeaders }),
+    forwardHarnessHeaders: t.exposeBoolean("forwardHarnessHeaders"),
+    enabled: t.exposeBoolean("enabled"),
+    builtin: t.exposeBoolean("builtin")
+  })
+});
+
+export const RouteTarget = builder.objectRef<RouteTargetModel>("RouteTarget").implement({
+  fields: (t) => ({
+    providerId: t.exposeString("providerId"),
+    model: t.exposeString("model"),
+    effort: t.exposeString("effort", { nullable: true }),
+    effectiveEffort: t.exposeString("effectiveEffort", { nullable: true }),
+    thinking: t.field({ type: "JSON", nullable: true, resolve: (target) => target.thinking }),
+    maxOutputTokens: t.exposeInt("maxOutputTokens", { nullable: true }),
+    verbosity: t.exposeString("verbosity", { nullable: true }),
+    metadata: t.field({ type: "JSON", nullable: true, resolve: (target) => target.metadata })
+  })
+});
+
+export const RoutingConfigRoute = builder.objectRef<RoutingConfigRouteModel>("RoutingConfigRoute").implement({
   fields: (t) => ({
     route: t.exposeString("route"),
     description: t.exposeString("description", { nullable: true }),
-    openaiModel: t.exposeString("openaiModel", { nullable: true }),
-    openaiEffort: t.exposeString("openaiEffort", { nullable: true }),
-    anthropicModel: t.exposeString("anthropicModel", { nullable: true }),
-    anthropicEffort: t.exposeString("anthropicEffort", { nullable: true })
+    targets: t.expose("targets", { type: [RouteTarget] })
   })
 });
 
@@ -76,7 +112,7 @@ export const RoutingConfigSummary = builder
         nullable: true,
         resolve: (config) => config.activeVersion
       }),
-      routeMatrix: t.expose("routeMatrix", { type: [RouteMatrixRow] }),
+      routes: t.expose("routes", { type: [RoutingConfigRoute] }),
       assignedApiKeyCount: t.exposeInt("assignedApiKeyCount"),
       trafficShare: t.exposeFloat("trafficShare", {
         description: "Share of routed requests handled by this config over the trailing 7 days (0..1)."
@@ -110,6 +146,7 @@ export const ApiKeyProviderBinding = builder
   .implement({
     fields: (t) => ({
       provider: t.exposeString("provider"),
+      providerId: t.exposeString("providerId"),
       providerAccountId: t.exposeString("providerAccountId"),
       name: t.exposeString("name", { nullable: true }),
       status: t.exposeString("status", { nullable: true })
@@ -138,12 +175,14 @@ export const ApiKey = builder.objectRef<ApiKeyModel>("ApiKey").implement({
 });
 
 export const ProviderAccount = builder.objectRef<ProviderAccountModel>("ProviderAccount").implement({
-  fields: (t) => ({
-    id: t.exposeString("id"),
-    organizationId: t.exposeString("organizationId"),
-    provider: t.exposeString("provider"),
-    name: t.exposeString("name"),
-    authType: t.expose("authType", { type: ProviderAccountAuthType }),
+    fields: (t) => ({
+      id: t.exposeString("id"),
+      organizationId: t.exposeString("organizationId"),
+      providerId: t.exposeString("providerId"),
+      provider: t.exposeString("provider"),
+      name: t.exposeString("name"),
+      baseUrl: t.exposeString("baseUrl", { nullable: true }),
+      authType: t.expose("authType", { type: ProviderAccountAuthType }),
     status: t.exposeString("status"),
     secretHint: t.exposeString("secretHint", { nullable: true }),
     ownerUserId: t.exposeString("ownerUserId", { nullable: true }),

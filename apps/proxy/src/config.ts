@@ -50,10 +50,8 @@ const configSchema = z.object({
   ANTHROPIC_BALANCED_MODEL: z.string().min(1).default("claude-sonnet-4-5"),
   ANTHROPIC_HARD_MODEL: z.string().min(1).default("claude-sonnet-4-5"),
   ANTHROPIC_DEEP_MODEL: z.string().min(1).default("claude-opus-4-5"),
-  CLASSIFIER_PROVIDER: z.literal("openai").default("openai"),
-  // A real, priced model: the classifier makes a billed call per request, so an
-  // unconfigured default must resolve to a known price (gpt-5-nano via undated
-  // lookup) rather than an unpriced placeholder that books its spend as $0.
+  CLASSIFIER_PROVIDER: z.string().trim().min(1).default("openai"),
+  // A real, catalog-priced model: the classifier makes a billed call per request.
   CLASSIFIER_MODEL: z.string().min(1).default("gpt-5-nano-2025-08-07"),
   CLASSIFIER_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   CLASSIFIER_MAX_ATTEMPTS: z.coerce.number().int().positive().default(2),
@@ -80,6 +78,7 @@ const configSchema = z.object({
   // design (never settings-file editable) and internal-only — must not be
   // surfaced to external customers. See docs/scopes/subscription-auth-v1/PLAN.md.
   SUBSCRIPTION_OAUTH_ENABLED: booleanEnvSchema,
+  ALLOWED_PRIVATE_UPSTREAM_CIDRS: z.string().default(""),
   ALLOW_DEV_PROXY_TOKEN_FALLBACK: booleanEnvSchema,
   DEBUG_ENDPOINTS_ENABLED: booleanEnvSchema,
   ADMIN_DEV_LOGIN_ENABLED: booleanEnvSchema,
@@ -151,6 +150,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     providerSecretEncryptionKey: parsed.PROVIDER_SECRET_ENCRYPTION_KEY,
     defaultOrganizationId: parsed.DEFAULT_ORGANIZATION_ID,
     subscriptionOAuthEnabled: parsed.SUBSCRIPTION_OAUTH_ENABLED,
+    allowedPrivateUpstreamCidrs: parsed.ALLOWED_PRIVATE_UPSTREAM_CIDRS.split(",").map((cidr) => cidr.trim()).filter(Boolean),
     allowDevProxyTokenFallback: parsed.ALLOW_DEV_PROXY_TOKEN_FALLBACK || (!production && !parsed.DATABASE_URL),
     debugEndpointsEnabled,
     adminDevLoginEnabled: parsed.ADMIN_DEV_LOGIN_ENABLED,

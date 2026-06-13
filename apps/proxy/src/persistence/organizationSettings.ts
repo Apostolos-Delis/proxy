@@ -17,10 +17,26 @@ export async function orgCostBaseline(
 }
 
 function costBaselineFromSettings(settings: Record<string, unknown> | undefined): CostBaseline {
+  const byDialect = recordSetting(settings?.costBaselineByDialect);
   return {
-    anthropicModel: modelSetting(settings?.costBaselineAnthropicModel) ?? defaultCostBaseline.anthropicModel,
-    openaiModel: modelSetting(settings?.costBaselineOpenaiModel) ?? defaultCostBaseline.openaiModel
+    "anthropic-messages": modelSetting(byDialect?.["anthropic-messages"]) ?? defaultCostBaseline["anthropic-messages"],
+    "openai-responses": modelSetting(byDialect?.["openai-responses"]) ?? defaultCostBaseline["openai-responses"],
+    "openai-chat": modelSetting(byDialect?.["openai-chat"]) ?? defaultCostBaseline["openai-chat"]
   };
+}
+
+function settingsCostBaseline(baseline: CostBaseline) {
+  return {
+    anthropicMessagesModel: baseline["anthropic-messages"],
+    openaiResponsesModel: baseline["openai-responses"],
+    openaiChatModel: baseline["openai-chat"]
+  };
+}
+
+function recordSetting(value: unknown) {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
 }
 
 function modelSetting(value: unknown) {
@@ -56,7 +72,7 @@ export class OrganizationSettingsStore {
     automaticCaching: boolean;
     toolResultCompression: boolean;
     duplicateToolResultReferences: boolean;
-    costBaseline: CostBaseline;
+    costBaseline: { anthropicMessagesModel: string; openaiResponsesModel: string; openaiChatModel: string };
   }> {
     const [row] = await this.db
       .select({
@@ -72,7 +88,7 @@ export class OrganizationSettingsStore {
       automaticCaching: row?.settings?.automaticCaching === true,
       toolResultCompression: row?.settings?.toolResultCompression === true,
       duplicateToolResultReferences: row?.settings?.duplicateToolResultReferences === true,
-      costBaseline: costBaselineFromSettings(row?.settings)
+      costBaseline: settingsCostBaseline(costBaselineFromSettings(row?.settings))
     };
   }
 
@@ -80,31 +96,36 @@ export class OrganizationSettingsStore {
   // the default baseline models.
   async setCostBaseline(
     organizationId: string,
-    baseline: { anthropicModel: string | null; openaiModel: string | null }
-  ): Promise<CostBaseline> {
-    const anthropicModel = baseline.anthropicModel?.trim() || null;
-    const openaiModel = baseline.openaiModel?.trim() || null;
+    baseline: { anthropicMessagesModel: string | null; openaiResponsesModel: string | null; openaiChatModel: string | null }
+  ): Promise<{ anthropicMessagesModel: string; openaiResponsesModel: string; openaiChatModel: string }> {
+    const anthropicMessagesModel = baseline.anthropicMessagesModel?.trim() || null;
+    const openaiResponsesModel = baseline.openaiResponsesModel?.trim() || null;
+    const openaiChatModel = baseline.openaiChatModel?.trim() || null;
     await this.db
       .insert(organizationSettings)
       .values({
         organizationId,
         settings: {
-          costBaselineAnthropicModel: anthropicModel,
-          costBaselineOpenaiModel: openaiModel
+          costBaselineByDialect: {
+            "anthropic-messages": anthropicMessagesModel,
+            "openai-responses": openaiResponsesModel,
+            "openai-chat": openaiChatModel
+          }
         },
         updatedAt: new Date()
       })
       .onConflictDoUpdate({
         target: organizationSettings.organizationId,
         set: {
-          settings: sql`organization_settings.settings || jsonb_build_object('costBaselineAnthropicModel', ${anthropicModel}::text, 'costBaselineOpenaiModel', ${openaiModel}::text)`,
+          settings: sql`(organization_settings.settings - 'costBaselineAnthropicModel' - 'costBaselineOpenaiModel') || jsonb_build_object('costBaselineByDialect', jsonb_build_object('anthropic-messages', ${anthropicMessagesModel}::text, 'openai-responses', ${openaiResponsesModel}::text, 'openai-chat', ${openaiChatModel}::text))`,
           updatedAt: new Date()
         }
       });
-    return {
-      anthropicModel: anthropicModel ?? defaultCostBaseline.anthropicModel,
-      openaiModel: openaiModel ?? defaultCostBaseline.openaiModel
-    };
+    return settingsCostBaseline({
+      "anthropic-messages": anthropicMessagesModel ?? defaultCostBaseline["anthropic-messages"],
+      "openai-responses": openaiResponsesModel ?? defaultCostBaseline["openai-responses"],
+      "openai-chat": openaiChatModel ?? defaultCostBaseline["openai-chat"]
+    });
   }
 
   async setToolResultCompression(organizationId: string, enabled: boolean): Promise<boolean> {

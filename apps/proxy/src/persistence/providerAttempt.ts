@@ -8,9 +8,9 @@ import {
   type PromptProxyTransaction
 } from "@prompt-proxy/db";
 
-import { pricingForModel, usageCostMicros, type ModelPricingTable } from "../pricing.js";
+import { usageCostMicros } from "../pricing.js";
 import { createId } from "../util.js";
-import { orgPricingOverrideForModel } from "./modelPricing.js";
+import { catalogPricingForModel } from "./modelPricing.js";
 import { routeForRequest } from "./routeDecision.js";
 import {
   normalizeUsage,
@@ -41,8 +41,8 @@ export async function persistProviderStarted(tx: PromptProxyTransaction, event: 
       requestId: event.scopeId,
       organizationId: event.tenantId,
       workspaceId: event.workspaceId ?? defaultWorkspaceId(event.tenantId),
-      surface: surfaceValue(payload.surface) ?? "openai-responses",
-      provider: providerValue(payload.provider) ?? "openai",
+      surface: surfaceValue(payload.surface) ?? "unknown",
+      provider: providerValue(payload.provider) ?? "unknown",
       model: stringValue(payload.model) ?? "unknown",
       terminalStatus: "pending",
       startedAt: new Date(event.createdAt)
@@ -62,7 +62,7 @@ export async function persistStreamStarted(tx: PromptProxyTransaction, event: {
     .where(eq(providerAttempts.id, providerAttemptId));
 }
 
-export async function persistProviderTerminal(tx: PromptProxyTransaction, pricing: ModelPricingTable, event: {
+export async function persistProviderTerminal(tx: PromptProxyTransaction, event: {
   tenantId: string;
   scopeId: string;
   createdAt: string;
@@ -112,9 +112,7 @@ export async function persistProviderTerminal(tx: PromptProxyTransaction, pricin
   if (!attempt || !request) return;
 
   const normalized = normalizeUsage(usage);
-  const modelPricing =
-    await orgPricingOverrideForModel(tx, event.tenantId, attempt.provider, attempt.model) ??
-    pricingForModel(pricing, attempt.model);
+  const modelPricing = await catalogPricingForModel(tx, event.tenantId, attempt.provider, attempt.model);
   const costs = usageCostMicros(modelPricing, normalized);
   const route = await routeForRequest(tx, event.scopeId);
 

@@ -1,0 +1,104 @@
+import type { LookupFunction } from "node:net";
+
+import { Agent, fetch as undiciFetch, type Dispatcher } from "undici";
+
+import type { AppConfig } from "./config.js";
+import type { ProviderRegistryEndpoint, ProviderRegistryEntry } from "./persistence/providers.js";
+import type { PinnedUpstreamAddress, UpstreamCredential } from "./types.js";
+
+const pinnedDispatchers = new Map<string, Dispatcher>();
+
+export function providerRequestUrl(input: {
+  provider: ProviderRegistryEntry;
+  endpoint: ProviderRegistryEndpoint;
+  path?: string;
+  config: AppConfig;
+  credential?: UpstreamCredential;
+}) {
+  return `${providerRequestBaseUrl(input)}${input.path ?? input.endpoint.path}`;
+}
+
+export function providerRequestPinnedAddress(input: {
+  provider: ProviderRegistryEntry;
+  config: AppConfig;
+  credential?: UpstreamCredential;
+}) {
+  if (isOpenAIChatGPTCredential(input.provider, input.credential, input.config)) return undefined;
+  const credential = credentialForProvider(input.provider, input.credential);
+  if (credential?.baseUrl) return credential.pinnedAddress;
+  return input.provider.pinnedAddress;
+}
+
+export function providerRequestRedirect(input: {
+  provider: ProviderRegistryEntry;
+  credential?: UpstreamCredential;
+}) {
+  const credential = credentialForProvider(input.provider, input.credential);
+  if (!input.provider.builtin || credential?.baseUrl) return "manual";
+  return "follow";
+}
+
+export async function fetchWithPinnedAddress(
+  url: string,
+  init: RequestInit,
+  pinnedAddress?: PinnedUpstreamAddress
+) {
+  if (!pinnedAddress) return fetch(url, init);
+  const pinnedInit = {
+    ...init,
+    dispatcher: dispatcherForPinnedAddress(pinnedAddress)
+  } as unknown as NonNullable<Parameters<typeof undiciFetch>[1]> & { dispatcher: Dispatcher };
+  return undiciFetch(url, pinnedInit) as unknown as Promise<Response>;
+}
+
+export function lookupForPinnedAddress(pinnedAddress: PinnedUpstreamAddress): LookupFunction {
+  return (_hostname, options, callback) => {
+    if (options.all) {
+      callback(null, [{ address: pinnedAddress.address, family: pinnedAddress.family }]);
+      return;
+    }
+    callback(null, pinnedAddress.address, pinnedAddress.family);
+  };
+}
+
+function providerRequestBaseUrl(input: {
+  provider: ProviderRegistryEntry;
+  config: AppConfig;
+  credential?: UpstreamCredential;
+}) {
+  if (isOpenAIChatGPTCredential(input.provider, input.credential, input.config)) {
+    return input.config.openaiChatgptBaseUrl;
+  }
+  const credential = credentialForProvider(input.provider, input.credential);
+  return credential?.baseUrl ?? input.provider.baseUrl;
+}
+
+function credentialForProvider(
+  provider: ProviderRegistryEntry,
+  credential: UpstreamCredential | undefined
+) {
+  return credential?.provider === provider.slug ? credential : undefined;
+}
+
+function isOpenAIChatGPTCredential(
+  provider: ProviderRegistryEntry,
+  credential: UpstreamCredential | undefined,
+  config: AppConfig
+) {
+  return provider.slug === "openai" &&
+    credential?.provider === provider.slug &&
+    credential.authType === "oauth" &&
+    config.subscriptionOAuthEnabled &&
+    Boolean(credential.chatgptAccountId);
+}
+
+function dispatcherForPinnedAddress(pinnedAddress: PinnedUpstreamAddress) {
+  const key = `${pinnedAddress.hostname}/${pinnedAddress.address}/${pinnedAddress.family}`;
+  const existing = pinnedDispatchers.get(key);
+  if (existing) return existing;
+  const dispatcher = new Agent({
+    connect: { lookup: lookupForPinnedAddress(pinnedAddress) }
+  });
+  pinnedDispatchers.set(key, dispatcher);
+  return dispatcher;
+}

@@ -35,7 +35,15 @@ export class RoutingConfigResolutionError extends Error {
   statusCode = 500;
 }
 
-export class RoutingConfigResolver {
+export type RoutingConfigResolverLike = {
+  resolve(input: {
+    organizationId: string;
+    workspaceId: string;
+    routingConfigId?: string | null;
+  }): Promise<ResolvedRoutingConfig>;
+};
+
+export class RoutingConfigResolver implements RoutingConfigResolverLike {
   private readonly cacheTtlPolicy = new Map<string, { eligible: boolean; expiresAt: number }>();
 
   constructor(private readonly db: PromptProxyDbSession) {}
@@ -168,7 +176,7 @@ export function routingConfigSnapshot(resolved: ResolvedRoutingConfig): RoutingC
 }
 
 export async function resolveRoutingSelection(
-  resolver: RoutingConfigResolver | undefined,
+  resolver: RoutingConfigResolverLike | undefined,
   input: { organizationId: string; workspaceId: string; routingConfigId?: string | null }
 ): Promise<{
   routingConfig?: RoutingConfigSelection;

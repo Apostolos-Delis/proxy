@@ -31,7 +31,6 @@ import {
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
-import { buildModelCatalog } from "../src/catalog.js";
 import { loadConfig } from "../src/config.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
 import { buildServer } from "../src/server.js";
@@ -98,8 +97,7 @@ async function createFixture() {
     LOG_LEVEL: process.env.LOG_LEVEL ?? "fatal"
   };
   const config = loadConfig(env);
-  const catalog = buildModelCatalog(config);
-  const persistence = createDatabasePersistence(db, catalog, config, false);
+  const persistence = createDatabasePersistence(db, config, false);
 
   await db.insert(organizations).values({ id: ORG, slug: ORG, name: ORG });
   await db.insert(workspaces).values({ id: WS, organizationId: ORG, slug: "default", name: "Default" });

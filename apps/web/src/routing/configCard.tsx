@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, KeyRound } from "lucide-react";
 
-import type { RouteMatrixRow, RoutingConfigSummary } from "./data";
+import type { RoutingConfigRoute, RoutingConfigSummary } from "./data";
 import { formatDateTime, formatInteger } from "../format";
 import { ProgressMeter } from "../ui";
 import { EffortMeter, TierGauge } from "./tierViz";
@@ -34,7 +34,7 @@ export function RoutingConfigCard({ config }: { config: RoutingConfigSummary }) 
         </span>
         {config.activeVersion ? <span className="mono faint">v{config.activeVersion.version}</span> : null}
       </div>
-      <RouteMatrixSection routes={config.routeMatrix} dim={archived} />
+      <RouteMatrixSection routes={config.routes} dim={archived} />
       <div className="config-card-foot">
         <span className="config-card-usage">
           <KeyCount count={config.assignedApiKeyCount} />
@@ -46,7 +46,7 @@ export function RoutingConfigCard({ config }: { config: RoutingConfigSummary }) 
   );
 }
 
-function RouteMatrixSection({ routes, dim }: { routes: RouteMatrixRow[]; dim: boolean }) {
+function RouteMatrixSection({ routes, dim }: { routes: RoutingConfigRoute[]; dim: boolean }) {
   if (routes.length === 0) {
     return <span className="faint">No active version.</span>;
   }
@@ -54,25 +54,26 @@ function RouteMatrixSection({ routes, dim }: { routes: RouteMatrixRow[]; dim: bo
     <div className="config-card-matrix">
       <div className="config-card-matrix-row config-card-matrix-header">
         <span />
-        <span>OPENAI</span>
-        <span>ANTHROPIC</span>
+        <span>PRIMARY</span>
+        <span>FALLBACK</span>
       </div>
       {routes.map((route) => (
         <div key={route.route} className="config-card-matrix-row" title={route.description ?? undefined}>
           <TierGauge route={route.route} dim={dim} />
-          <ModelCell model={route.openaiModel} effort={route.openaiEffort} dim={dim} />
-          <ModelCell model={route.anthropicModel} effort={route.anthropicEffort} dim={dim} />
+          <ModelCell target={route.targets[0]} dim={dim} />
+          <ModelCell target={route.targets[1]} dim={dim} />
         </div>
       ))}
     </div>
   );
 }
 
-function ModelCell({ model, effort, dim }: { model: string | null; effort: string | null; dim: boolean }) {
-  if (!model) return <span className="mono faint">—</span>;
+function ModelCell({ target, dim }: { target: RoutingConfigRoute["targets"][number] | undefined; dim: boolean }) {
+  if (!target) return <span className="mono faint">—</span>;
+  const effort = target.effectiveEffort ?? target.effort;
   return (
     <span className="config-card-model">
-      <span className="mono">{model}</span>
+      <span className="mono">{target.providerId} / {target.model}</span>
       <EffortMeter effort={effort} dim={dim} />
     </span>
   );

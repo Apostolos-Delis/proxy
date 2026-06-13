@@ -1,0 +1,17 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_fixture","model":"gpt-source","status":"in_progress"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_translated","type":"message","status":"in_progress","role":"assistant","content":[]}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"msg_translated","output_index":0,"content_index":0,"delta":"Hello "}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":1,"item":{"id":"call_tool","type":"function_call","call_id":"call_tool","name":"shell","arguments":"","status":"in_progress"}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"call_tool","delta":"{\"cmd\":\"ls\"}"}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_fixture","model":"gpt-source","status":"completed","usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":4},"output_tokens":6,"output_tokens_details":{"reasoning_tokens":2},"total_tokens":16}}}

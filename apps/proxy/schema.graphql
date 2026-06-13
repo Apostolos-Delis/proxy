@@ -30,6 +30,7 @@ type ApiKeyProviderBinding {
   name: String
   provider: String!
   providerAccountId: String!
+  providerId: String!
   status: String
 }
 
@@ -110,13 +111,15 @@ type CompressionSavingsRow {
 }
 
 type CostBaselineSettings {
-  anthropicModel: String!
-  openaiModel: String!
+  anthropicMessagesModel: String!
+  openaiChatModel: String!
+  openaiResponsesModel: String!
 }
 
 input CostBaselineSettingsInput {
-  anthropicModel: String!
-  openaiModel: String!
+  anthropicMessagesModel: String!
+  openaiChatModel: String!
+  openaiResponsesModel: String!
 }
 
 type CostTotals {
@@ -146,9 +149,21 @@ input CreateInvitationInput {
 input CreateProviderCredentialInput {
   apiKey: String!
   authType: ProviderAccountAuthType
+  baseUrl: String
   chatgptAccountId: String
   name: String!
   provider: String!
+}
+
+input CreateProviderInput {
+  authStyle: String!
+  baseUrl: String!
+  defaultHeaders: JSON
+  displayName: String!
+  enabled: Boolean
+  endpoints: [ProviderEndpointInput!]!
+  forwardHarnessHeaders: Boolean
+  slug: String!
 }
 
 input CreateRoutingConfigInput {
@@ -283,11 +298,13 @@ type Mutation {
   configurePromptCapture(promptCaptureMode: String!, retentionDays: Int!): PromptCaptureConfig!
   createApiKey(input: CreateApiKeyInput!): CreateApiKeyResult!
   createInvitation(input: CreateInvitationInput!): InvitationActionResult!
+  createProvider(input: CreateProviderInput!): ProviderRegistryEntry
   createProviderCredential(input: CreateProviderCredentialInput!): ProviderAccount
   createRoutingConfig(input: CreateRoutingConfigInput!): RoutingConfigDetail!
   createRoutingConfigVersion(config: JSON!, configId: ID!): RoutingConfigDetail!
   createWorkspace(input: CreateWorkspaceInput!): WorkspaceSummary!
   deactivateUser(userId: ID!): UserStatusResult!
+  disableProvider(providerId: ID!): ProviderRegistryEntry
   login(email: String!, password: String!): Viewer!
   logout: Boolean!
   reactivateUser(userId: ID!): UserStatusResult!
@@ -298,6 +315,7 @@ type Mutation {
   setModelPricing(input: SetModelPricingInput!): [ModelPricingEntry!]!
   switchOrganization(organizationId: ID!): Viewer!
   switchWorkspace(workspaceId: ID!): Viewer!
+  updateProvider(input: UpdateProviderInput!): ProviderRegistryEntry
   updateSettings(input: SettingsInput!): Settings!
   updateUserRole(role: MemberRole!, userId: ID!): UpdateUserRoleResult!
 }
@@ -454,6 +472,7 @@ type PromptSummary implements PromptArtifactBase {
 
 type ProviderAccount {
   authType: ProviderAccountAuthType!
+  baseUrl: String
   boundKeyCount: Int!
   createdAt: String!
   id: String!
@@ -462,6 +481,7 @@ type ProviderAccount {
   organizationId: String!
   ownerUserId: String
   provider: String!
+  providerId: String!
   secretHint: String
   status: String!
 }
@@ -485,6 +505,30 @@ type ProviderAttempt {
   terminalStatus: String!
   upstreamRequestId: String
   usage: JSON!
+}
+
+type ProviderEndpoint {
+  dialect: String!
+  path: String!
+}
+
+input ProviderEndpointInput {
+  dialect: String!
+  path: String!
+}
+
+type ProviderRegistryEntry {
+  authStyle: String!
+  baseUrl: String!
+  builtin: Boolean!
+  defaultHeaders: JSON!
+  displayName: String!
+  enabled: Boolean!
+  endpoints: [ProviderEndpoint!]!
+  forwardHarnessHeaders: Boolean!
+  id: String!
+  organizationId: String
+  slug: String!
 }
 
 type ProxyEvent {
@@ -527,6 +571,7 @@ type Query {
   promptAccessAudit: [PromptAccessAuditEntry!]!
   prompts(end: String, limit: Int, model: String, offset: Int, route: String, start: String, surface: String, userId: String): PromptPage!
   providerAccounts: [ProviderAccount!]!
+  providers: [ProviderRegistryEntry!]!
   publicInvitation(token: String!): PublicInvitation
   request(requestId: ID!): RequestDetail!
   requests(end: String, limit: Int, start: String): [RequestSummary!]!
@@ -595,15 +640,6 @@ type RouteDecision {
   verbosity: String
 }
 
-type RouteMatrixRow {
-  anthropicEffort: String
-  anthropicModel: String
-  description: String
-  openaiEffort: String
-  openaiModel: String
-  route: String!
-}
-
 type RouteOutputGroupRow {
   avgOutputTokens: Float!
   key: String!
@@ -646,9 +682,26 @@ input RouteQualitySettingsInput {
   lowConfidenceThreshold: Float
 }
 
+type RouteTarget {
+  effectiveEffort: String
+  effort: String
+  maxOutputTokens: Int
+  metadata: JSON
+  model: String!
+  providerId: String!
+  thinking: JSON
+  verbosity: String
+}
+
 type RoutingConfigDetail {
   config: RoutingConfigSummary!
   versions: [RoutingConfigVersionDetail!]!
+}
+
+type RoutingConfigRoute {
+  description: String
+  route: String!
+  targets: [RouteTarget!]!
 }
 
 type RoutingConfigSnapshot {
@@ -668,7 +721,7 @@ type RoutingConfigSummary {
   id: String!
   name: String!
   organizationId: String!
-  routeMatrix: [RouteMatrixRow!]!
+  routes: [RoutingConfigRoute!]!
   slug: String!
   status: String!
 
@@ -850,6 +903,17 @@ type TokenTotals {
   outputTokens: Float!
   reasoningTokens: Float!
   totalTokens: Float!
+}
+
+input UpdateProviderInput {
+  authStyle: String!
+  baseUrl: String!
+  defaultHeaders: JSON
+  displayName: String!
+  enabled: Boolean
+  endpoints: [ProviderEndpointInput!]!
+  forwardHarnessHeaders: Boolean
+  providerId: ID!
 }
 
 type UpdateUserRoleResult {

@@ -78,7 +78,7 @@ describe("persistent settings admin APIs", () => {
         query: `mutation UpdateSettings($input: SettingsInput!) {
           updateSettings(input: $input) {
             storage { format path }
-            settings { systemPrompt classifier { model } costBaseline { anthropicModel openaiModel } }
+            settings { systemPrompt classifier { model } costBaseline { anthropicMessagesModel openaiResponsesModel openaiChatModel } }
           }
         }`,
         variables: {
@@ -86,8 +86,9 @@ describe("persistent settings admin APIs", () => {
             schemaVersion: 1,
             systemPrompt: "  Follow organization proxy policy.  ",
             costBaseline: {
-              anthropicModel: "claude-opus-4-8",
-              openaiModel: "gpt-5.5-pro"
+              anthropicMessagesModel: "claude-opus-4-8",
+              openaiResponsesModel: "gpt-5.5-pro",
+              openaiChatModel: "gpt-5.5-chat-baseline"
             },
             classifier: {
               model: "route-classifier-ui",
@@ -116,8 +117,9 @@ describe("persistent settings admin APIs", () => {
     expect(body.settings.classifier.model).toBe("route-classifier-ui");
     expect(body.settings.systemPrompt).toBe("Follow organization proxy policy.");
     expect(body.settings.costBaseline).toEqual({
-      anthropicModel: "claude-opus-4-8",
-      openaiModel: "gpt-5.5-pro"
+      anthropicMessagesModel: "claude-opus-4-8",
+      openaiResponsesModel: "gpt-5.5-pro",
+      openaiChatModel: "gpt-5.5-chat-baseline"
     });
     expect(file.classifier.timeoutMs).toBe(1800);
     expect(file.promptCapture.promptCaptureMode).toBe("hash_only");
@@ -151,8 +153,9 @@ describe("persistent settings admin APIs", () => {
           input: {
             schemaVersion: 1,
             costBaseline: {
-              anthropicModel: "claude-not-a-model",
-              openaiModel: "gpt-5.5"
+              anthropicMessagesModel: "claude-fable-5",
+              openaiResponsesModel: "gpt-5.5",
+              openaiChatModel: "gpt-chat-not-a-model"
             },
             classifier: {
               model: "route-classifier-ui",
@@ -170,7 +173,7 @@ describe("persistent settings admin APIs", () => {
 
     await app.close();
 
-    expect(body.errors?.[0]?.message).toBe("baseline_model_unpriced: claude-not-a-model");
+    expect(body.errors?.[0]?.message).toBe("baseline_model_unpriced: gpt-chat-not-a-model");
     expect(body.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
     await expect(readFile(settingsPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -264,8 +267,12 @@ function fakePersistence(
   organizationId = "local",
   orgSystemPrompt = { value: null as string | null }
 ) {
-  const orgCostBaseline = { anthropicModel: "claude-fable-5", openaiModel: "gpt-5.5" };
-  const pricedModels = ["claude-fable-5", "claude-opus-4-8", "gpt-5.5", "gpt-5.5-pro"];
+  const orgCostBaseline = {
+    anthropicMessagesModel: "claude-fable-5",
+    openaiResponsesModel: "gpt-5.5",
+    openaiChatModel: "gpt-5.5"
+  };
+  const pricedModels = ["claude-fable-5", "claude-opus-4-8", "gpt-5.5", "gpt-5.5-pro", "gpt-5.5-chat-baseline"];
   return {
     adminQueries: {
       forScope: () => ({
@@ -295,9 +302,14 @@ function fakePersistence(
       setAutomaticCaching: async (_organizationId: string, enabled: boolean) => enabled,
       setToolResultCompression: async (_organizationId: string, enabled: boolean) => enabled,
       setDuplicateToolResultReferences: async (_organizationId: string, enabled: boolean) => enabled,
-      setCostBaseline: async (_organizationId: string, baseline: { anthropicModel: string | null; openaiModel: string | null }) => {
-        orgCostBaseline.anthropicModel = baseline.anthropicModel?.trim() || "claude-fable-5";
-        orgCostBaseline.openaiModel = baseline.openaiModel?.trim() || "gpt-5.5";
+      setCostBaseline: async (_organizationId: string, baseline: {
+        anthropicMessagesModel: string | null;
+        openaiResponsesModel: string | null;
+        openaiChatModel: string | null;
+      }) => {
+        orgCostBaseline.anthropicMessagesModel = baseline.anthropicMessagesModel?.trim() || "claude-fable-5";
+        orgCostBaseline.openaiResponsesModel = baseline.openaiResponsesModel?.trim() || "gpt-5.5";
+        orgCostBaseline.openaiChatModel = baseline.openaiChatModel?.trim() || "gpt-5.5";
         return { ...orgCostBaseline };
       },
       editable: async () => ({

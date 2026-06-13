@@ -1,4 +1,7 @@
+import { SURFACE_NAMES } from "@prompt-proxy/schema";
+
 import type { JsonObject, RoutingConfigSnapshot } from "../types.js";
+import type { Surface } from "../types.js";
 import { isRecord } from "../util.js";
 
 export type NormalizedUsage = {
@@ -17,17 +20,29 @@ export type NormalizedUsage = {
 // reports input_tokens EXCLUSIVE of its top-level cache_read_input_tokens and
 // cache_creation_input_tokens — those are folded back in here. Anthropic's
 // shape is detected by its top-level cache keys, so re-normalizing an
-// already-normalized (camelCase) object stays a no-op.
+// already-normalized (camelCase) object stays a no-op. Chat-completions
+// usage (prompt_tokens/completion_tokens + prompt_tokens_details/
+// completion_tokens_details) reports inclusively like Responses does.
 export function normalizeUsage(usage: Record<string, unknown>): NormalizedUsage {
-  const inputDetails = recordValue(usage.input_tokens_details) ?? {};
-  const outputDetails = recordValue(usage.output_tokens_details) ?? {};
+  const inputDetails =
+    recordValue(usage.input_tokens_details) ?? recordValue(usage.prompt_tokens_details) ?? {};
+  const outputDetails =
+    recordValue(usage.output_tokens_details) ?? recordValue(usage.completion_tokens_details) ?? {};
   const anthropicCacheReadTokens = numberValue(usage.cache_read_input_tokens);
   const anthropicCacheCreationTokens = numberValue(usage.cache_creation_input_tokens);
   const exclusiveInputShape =
     anthropicCacheReadTokens !== undefined || anthropicCacheCreationTokens !== undefined;
 
-  const reportedInputTokens = numberValue(usage.input_tokens) ?? numberValue(usage.inputTokens) ?? 0;
-  const outputTokens = numberValue(usage.output_tokens) ?? numberValue(usage.outputTokens) ?? 0;
+  const reportedInputTokens =
+    numberValue(usage.input_tokens) ??
+    numberValue(usage.prompt_tokens) ??
+    numberValue(usage.inputTokens) ??
+    0;
+  const outputTokens =
+    numberValue(usage.output_tokens) ??
+    numberValue(usage.completion_tokens) ??
+    numberValue(usage.outputTokens) ??
+    0;
   const cachedInputTokens =
     numberValue(inputDetails.cached_tokens) ??
     anthropicCacheReadTokens ??
@@ -86,14 +101,21 @@ export function routeValue(value: unknown) {
   return undefined;
 }
 
+// Storage paths must record surfaces/providers verbatim — an unrecognized
+// value (a third provider, a new surface) is stored as-is rather than
+// misattributed to a known one. Absent values are handled at call sites
+// (NOT NULL columns insert the "unknown" sentinel). Guards and filters that
+// must only accept the closed set use knownSurfaceValue instead.
 export function surfaceValue(value: unknown) {
-  if (value === "openai-responses" || value === "anthropic-messages") return value;
-  return undefined;
+  return typeof value === "string" && value !== "" ? value : undefined;
 }
 
 export function providerValue(value: unknown) {
-  if (value === "openai" || value === "anthropic") return value;
-  return undefined;
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+export function knownSurfaceValue(value: unknown): Surface | undefined {
+  return SURFACE_NAMES.find((surface) => surface === value);
 }
 
 export function routingConfigSnapshotValue(value: unknown): RoutingConfigSnapshot | undefined {

@@ -1,10 +1,10 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import {
   modelCatalog,
-  type PromptProxyDbSession,
-  type PromptProxyTransaction
+  providers,
+  type PromptProxyDbSession
 } from "@prompt-proxy/db";
 
 import { completeModelPricing, undatedModel, type ModelPricing } from "../pricing.js";
@@ -25,51 +25,61 @@ export function pricingFromRow(value: unknown): ModelPricing | undefined {
   return completeModelPricing(parsed.data);
 }
 
-export type OrgPricingOverride = {
-  provider: string;
-  model: string;
-  pricing: ModelPricing;
-  updatedAt: Date;
-};
-
-export async function orgPricingOverrides(
+export async function catalogPricingForModel(
   db: PromptProxyDbSession,
-  organizationId: string
-): Promise<OrgPricingOverride[]> {
-  const rows = await db
-    .select({
-      provider: modelCatalog.provider,
-      model: modelCatalog.model,
-      pricing: modelCatalog.pricing,
-      updatedAt: modelCatalog.updatedAt
-    })
-    .from(modelCatalog)
-    .where(eq(modelCatalog.organizationId, organizationId));
-  return rows.flatMap((row) => {
-    const pricing = pricingFromRow(row.pricing);
-    return pricing
-      ? [{ provider: row.provider, model: row.model, pricing, updatedAt: row.updatedAt }]
-      : [];
-  });
-}
-
-// Overrides are stored under the model name the operator typed (usually
-// undated), while provider attempts carry the requested identifier (often
-// dated) — check the exact name first, then its undated form.
-export async function orgPricingOverrideForModel(
-  tx: PromptProxyTransaction,
   organizationId: string,
   provider: string,
   model: string
 ): Promise<ModelPricing | undefined> {
-  if (provider !== "openai" && provider !== "anthropic") return undefined;
-  const candidates = [...new Set([model, undatedModel(model)])];
-  const rows = await tx
+  const providerRow = await providerForSlug(db, organizationId, provider);
+  if (!providerRow) return undefined;
+  const candidates = candidateModels(model);
+  const override = await pricingForProviderModels(db, organizationId, providerRow.id, candidates);
+  if (override) return override;
+  if (providerRow.organizationId !== null) return undefined;
+  return pricingForProviderModels(db, null, providerRow.id, candidates);
+}
+
+async function providerForSlug(
+  db: PromptProxyDbSession,
+  organizationId: string,
+  slug: string
+) {
+  const [orgProvider] = await db
+    .select({ id: providers.id, organizationId: providers.organizationId })
+    .from(providers)
+    .where(and(
+      eq(providers.organizationId, organizationId),
+      eq(providers.slug, slug)
+    ))
+    .limit(1);
+  if (orgProvider) return orgProvider;
+
+  const [builtinProvider] = await db
+    .select({ id: providers.id, organizationId: providers.organizationId })
+    .from(providers)
+    .where(and(
+      isNull(providers.organizationId),
+      eq(providers.slug, slug)
+    ))
+    .limit(1);
+  return builtinProvider ?? null;
+}
+
+async function pricingForProviderModels(
+  db: PromptProxyDbSession,
+  organizationId: string | null,
+  providerId: string,
+  candidates: string[]
+) {
+  const rows = await db
     .select({ model: modelCatalog.model, pricing: modelCatalog.pricing })
     .from(modelCatalog)
     .where(and(
-      eq(modelCatalog.organizationId, organizationId),
-      eq(modelCatalog.provider, provider),
+      organizationId === null
+        ? isNull(modelCatalog.organizationId)
+        : eq(modelCatalog.organizationId, organizationId),
+      eq(modelCatalog.providerId, providerId),
       inArray(modelCatalog.model, candidates)
     ));
   const pricingByModel = new Map(rows.map((row) => [row.model, row.pricing]));
@@ -78,4 +88,8 @@ export async function orgPricingOverrideForModel(
     if (pricing) return pricing;
   }
   return undefined;
+}
+
+function candidateModels(model: string) {
+  return [...new Set([model, undatedModel(model)])];
 }

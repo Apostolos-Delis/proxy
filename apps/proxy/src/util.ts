@@ -59,6 +59,10 @@ export function headerValue(headers: Record<string, unknown>, key: string) {
   return undefined;
 }
 
+export function unreachable(value: never): never {
+  throw new Error(`Unhandled value: ${String(value)}`);
+}
+
 export function idempotencyFrom(
   surface: string,
   body: unknown,

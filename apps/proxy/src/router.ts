@@ -1,18 +1,22 @@
 import {
-  modelForRoute,
   nearestReasoningEffort,
-  routeOrder,
-  routes,
-  supportsSurface
+  routeOrder
 } from "./catalog.js";
-import type { ModelCatalog } from "./catalog.js";
-import { defaultClassifierSettings } from "./classifier.js";
-import type { ClassificationResult, ClassifierSettings, LlmClassifier } from "./classifier.js";
+import { ClassifierError, defaultClassifierSettings } from "./classifier.js";
+import type { ClassificationResult, ClassifierSettings, ClassifierTarget, LlmClassifier } from "./classifier.js";
 import { hasUserSignal } from "./features.js";
 import { jsonPayload, type EventService } from "./events.js";
 import type { AppConfig } from "./config.js";
+import {
+  ProviderRegistryError,
+  providerEndpointForDialect,
+  type ProviderRegistryEntry,
+  type ProviderRegistryResolver
+} from "./persistence/providers.js";
 import { capRoute, checkBeforeClassification, checkDecision, type SessionRouteStore } from "./policy.js";
+import { translators, translationTag } from "./translators/index.js";
 import type {
+  Dialect,
   JsonObject,
   Provider,
   ProviderEffort,
@@ -22,9 +26,10 @@ import type {
   RoutingConfigSelection,
   RoutingConfigSnapshot,
   SelectedRouteSettings,
+  UpstreamCredential,
   Verbosity
 } from "./types.js";
-import type { AnthropicEffort, RoutingConfig } from "@prompt-proxy/schema";
+import type { RoutingConfig, RouteTarget } from "@prompt-proxy/schema";
 
 const classifierFailureFallbackRoute: RouteName = "balanced";
 const classificationCacheTtlMs = 5 * 60 * 1000;
@@ -35,31 +40,34 @@ type ResolvedRouteSettings = {
   providerSettings: SelectedRouteSettings;
   reasoningEffort?: ProviderEffort;
   verbosity?: Verbosity;
-  provider: SelectedRouteSettings["provider"];
+  provider: Provider;
 };
 
-function settingsForSurface(
-  selected: SelectedRouteSettings,
-  surface: RouteContext["surface"]
-): ResolvedRouteSettings | undefined {
-  if (surface === "openai-responses" && selected.provider === "openai") {
-    return {
-      selectedModel: selected.model,
-      provider: "openai",
-      reasoningEffort: selected.openai.reasoning?.effort,
-      verbosity: selected.openai.text?.verbosity,
-      providerSettings: selected
-    };
-  }
-  if (surface === "anthropic-messages" && selected.provider === "anthropic") {
-    return {
-      selectedModel: selected.model,
-      provider: "anthropic",
-      reasoningEffort: selected.anthropic.output_config?.effort,
-      providerSettings: selected
-    };
-  }
-  return undefined;
+type ProviderCredentialResolver = {
+  resolveForRequest(input: {
+    organizationId: string;
+    apiKeyId?: string;
+    provider: Provider;
+  }): Promise<UpstreamCredential | undefined>;
+};
+
+type TargetAvailability =
+  | { status: "available"; dialect: Dialect }
+  | { status: "unavailable"; reason: string };
+
+function routeSettings(selected: SelectedRouteSettings): ResolvedRouteSettings {
+  const supportedEfforts = selected.dialect === "anthropic-messages"
+    ? ["low", "medium", "high", "xhigh", "max"]
+    : ["minimal", "low", "medium", "high", "xhigh", "max"];
+  const requestedEffort = selected.effort ?? "medium";
+  const effort = nearestReasoningEffort(requestedEffort, supportedEfforts as ProviderEffort[]) ?? requestedEffort;
+  return {
+    selectedModel: selected.model,
+    provider: selected.providerId,
+    reasoningEffort: effort,
+    verbosity: selected.dialect === "openai-responses" ? selected.verbosity : undefined,
+    providerSettings: { ...selected, effort }
+  };
 }
 
 export class RoutingService {
@@ -72,8 +80,9 @@ export class RoutingService {
     private readonly config: AppConfig,
     private readonly classifier: LlmClassifier,
     private readonly events: EventService,
-    private readonly modelCatalog: ModelCatalog,
-    private readonly sessions: SessionRouteStore
+    private readonly sessions: SessionRouteStore,
+    private readonly providerRegistry: ProviderRegistryResolver,
+    private readonly credentials?: ProviderCredentialResolver
   ) {}
 
   async decide(input: {
@@ -255,29 +264,19 @@ export class RoutingService {
     return decision;
   }
 
-  tokenCountDecision(context: RouteContext, routingConfig?: RoutingConfigSelection): RouteDecision {
+  async tokenCountDecision(context: RouteContext, routingConfig?: RoutingConfigSelection): Promise<RouteDecision> {
     // Clamp so token counts are computed against a model the real request can
     // actually reach.
     let finalRoute = capRoute(context.explicitAlias ?? "hard", routingConfig?.config.limits.maxRoute);
     const guardrailActions: string[] = [];
     const routingConfigSnapshot = routingConfig?.snapshot;
 
-    if (!routingConfig) {
-      let model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
-
-      if (!supportsSurface(model, context.surface)) {
-        const compatible = routeOrder.find((route) =>
-          supportsSurface(modelForRoute(this.modelCatalog, route, context.surface), context.surface)
-        );
-        if (!compatible) return this.reject(context, "no_compatible_route");
-        finalRoute = compatible;
-        model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
-        guardrailActions.push("surface_compatibility_escalated");
-      }
+    const routeSettings = await this.resolveProviderSettings(context, finalRoute, routingConfig?.config, guardrailActions);
+    if (!routeSettings) {
+      const rejected = this.reject(context, "route_not_available_for_surface");
+      rejected.guardrailActions = guardrailActions;
+      return rejected;
     }
-
-    const routeSettings = this.resolveProviderSettings(context, finalRoute, routingConfig?.config);
-    if (!routeSettings) return this.reject(context, "route_not_available_for_surface");
 
     return {
       outcome: "route",
@@ -305,7 +304,8 @@ export class RoutingService {
     routingConfig?: RoutingConfigSnapshot
   ) {
     try {
-      const result = await this.classifier.classify(context, classifierSettings);
+      const target = await this.classifierTarget(context, classifierSettings);
+      const result = await this.classifier.classify(context, classifierSettings, target);
       await this.appendClassificationRecorded(
         requestId,
         idempotencyKey,
@@ -333,6 +333,45 @@ export class RoutingService {
     }
   }
 
+  private async classifierTarget(
+    context: RouteContext,
+    settings: ClassifierSettings
+  ): Promise<ClassifierTarget> {
+    const organizationId = context.organizationId ?? this.config.defaultOrganizationId;
+    let provider;
+    try {
+      provider = await this.providerRegistry.resolve({
+        organizationId,
+        provider: settings.providerId
+      });
+    } catch (error) {
+      throw new ClassifierError(
+        error instanceof ProviderRegistryError ? error.code : "classifier_provider_registry_unavailable"
+      );
+    }
+    if (!provider) throw new ClassifierError(`Classifier provider ${settings.providerId} was not found.`);
+    if (!provider.enabled) throw new ClassifierError(`Classifier provider ${settings.providerId} is disabled.`);
+
+    const endpoint = providerEndpointForDialect(provider, "openai-responses");
+    if (!endpoint) {
+      throw new ClassifierError(`Classifier provider ${settings.providerId} does not expose an OpenAI Responses endpoint.`);
+    }
+
+    let credential;
+    if (!provider.builtin && provider.authStyle !== "none") {
+      credential = await this.credentials?.resolveForRequest({
+        organizationId,
+        apiKeyId: context.apiKeyId,
+        provider: settings.providerId
+      });
+      if (!credential) {
+        throw new ClassifierError(`Classifier provider ${settings.providerId} credential is not configured.`);
+      }
+    }
+
+    return { provider, endpoint, credential };
+  }
+
   private async appendClassificationRecorded(
     requestId: string,
     idempotencyKey: string,
@@ -350,7 +389,7 @@ export class RoutingService {
       eventType: "routing.classification_recorded",
       payload: {
         model: classifierSettings.model,
-        provider: classifierSettings.provider,
+        provider: classifierSettings.providerId,
         attempts: options.cached ? 0 : result.attempts,
         cached: options.cached,
         // Only a fresh classifier call costs tokens; cache hits reuse a prior
@@ -367,7 +406,7 @@ export class RoutingService {
           ? "redacted_excerpt"
           : "features_only",
         redactionState: "redacted",
-        provider: classifierSettings.provider
+        provider: classifierSettings.providerId
       }
     });
   }
@@ -424,29 +463,6 @@ export class RoutingService {
       guardrailActions.push("route_limit_clamped");
     }
 
-    if (!routingConfig) {
-      let model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
-
-      if (!supportsSurface(model, context.surface)) {
-        const compatible = routeOrder.find((route) =>
-          supportsSurface(modelForRoute(this.modelCatalog, route, context.surface), context.surface)
-        );
-        if (!compatible) return this.reject(context, "no_compatible_route");
-        finalRoute = compatible;
-        model = modelForRoute(this.modelCatalog, finalRoute, context.surface);
-        guardrailActions.push("surface_compatibility_escalated");
-      }
-
-      if (context.hasTools && !model.supportsTools) {
-        const compatible = routeOrder.find(
-          (route) => modelForRoute(this.modelCatalog, route, context.surface).supportsTools
-        );
-        if (!compatible) return this.reject(context, "no_tool_compatible_route");
-        finalRoute = compatible;
-        guardrailActions.push("tool_compatibility_escalated");
-      }
-    }
-
     const session = await this.sessions.plan(context, finalRoute, maxRoute, floorSignal);
     if (session) {
       finalRoute = session.selectedRoute;
@@ -462,21 +478,31 @@ export class RoutingService {
     let pinnedRouteSettings: ResolvedRouteSettings | undefined;
     let invalidatedPin: { provider: Provider; routingConfigVersionId?: string } | undefined;
     if (session?.action === "kept" && session.pin) {
-      pinnedRouteSettings = settingsForSurface(session.pin.settings, context.surface);
+      pinnedRouteSettings = await this.resolvePinnedSettings(context, session.pin.settings, guardrailActions);
       if (pinnedRouteSettings) {
         guardrailActions.push("session_settings_pinned");
       } else {
         guardrailActions.push("session_pin_invalidated");
         invalidatedPin = {
-          provider: session.pin.settings.provider,
+          provider: session.pin.settings.providerId,
           routingConfigVersionId: session.pin.routingConfigVersionId
         };
+        if (context.statefulResponses === true) {
+          const rejected = this.reject(context, "session_pin_unavailable");
+          rejected.guardrailActions = guardrailActions;
+          return rejected;
+        }
+        guardrailActions.push("pin_rebound");
       }
     }
 
     const routeSettings =
-      pinnedRouteSettings ?? this.resolveProviderSettings(context, finalRoute, routingConfig?.config);
-    if (!routeSettings) return this.reject(context, "route_not_available_for_surface");
+      pinnedRouteSettings ?? await this.resolveProviderSettings(context, finalRoute, routingConfig?.config, guardrailActions);
+    if (!routeSettings) {
+      const rejected = this.reject(context, "route_not_available_for_surface");
+      rejected.guardrailActions = guardrailActions;
+      return rejected;
+    }
 
     let sessionPin: NonNullable<RouteDecision["session"]>["pin"];
     if (session) {
@@ -518,7 +544,7 @@ export class RoutingService {
         : undefined,
       classifier: classification
         ? {
-            provider: classifierSettings.provider,
+            provider: classifierSettings.providerId,
             model: classifierSettings.model,
             attempts: classification.attempts,
             confidence: classification.output.confidence,
@@ -536,57 +562,83 @@ export class RoutingService {
   private resolveProviderSettings(
     context: RouteContext,
     route: RouteName,
-    routingConfig?: RoutingConfig
-  ): ResolvedRouteSettings | undefined {
+    routingConfig: RoutingConfig | undefined,
+    guardrailActions: string[] = []
+  ): Promise<ResolvedRouteSettings | undefined> {
     if (routingConfig) {
       const routeConfig = routingConfig.routes[route];
-      if (context.surface === "openai-responses") {
-        if (!routeConfig.openai) return undefined;
-        return settingsForSurface(
-          { provider: "openai", model: routeConfig.openai.model, openai: routeConfig.openai },
-          context.surface
-        );
-      }
-      if (!routeConfig.anthropic) return undefined;
-      return settingsForSurface(
-        { provider: "anthropic", model: routeConfig.anthropic.model, anthropic: routeConfig.anthropic },
-        context.surface
-      );
+      return this.resolveTargets(context, routeConfig.targets, guardrailActions);
     }
 
-    const model = modelForRoute(this.modelCatalog, route, context.surface);
-    const routeConfig = routes[route];
-    const effort = nearestReasoningEffort(
-      routeConfig.reasoningEffort,
-      model.supportedReasoningEfforts
-    );
-    const anthropicEffort: AnthropicEffort = effort === "minimal" ? "low" : effort;
-    const providerSettings = context.surface === "openai-responses"
-      ? {
-          provider: "openai" as const,
-          model: model.upstreamModel,
-          openai: {
-            model: model.upstreamModel,
-            reasoning: { effort },
-            text: { verbosity: routeConfig.verbosity }
-          }
-        }
-      : {
-          provider: "anthropic" as const,
-          model: model.upstreamModel,
-          anthropic: {
-            model: model.upstreamModel,
-            thinking: { type: "adaptive" as const },
-            output_config: { effort: anthropicEffort }
-          }
-        };
-    return {
-      selectedModel: model.upstreamModel,
-      provider: model.provider,
-      reasoningEffort: context.surface === "openai-responses" ? effort : anthropicEffort,
-      verbosity: routeConfig.verbosity,
-      providerSettings
-    };
+    return Promise.resolve(undefined);
+  }
+
+  private async resolveTargets(
+    context: RouteContext,
+    targets: RouteTarget[],
+    guardrailActions: string[]
+  ): Promise<ResolvedRouteSettings | undefined> {
+    for (const target of targets) {
+      const availability = await this.targetAvailability(context, target);
+      if (availability.status === "unavailable") {
+        guardrailActions.push(`target_skipped_${availability.reason}:${target.providerId}`);
+        continue;
+      }
+      appendTranslationAction(guardrailActions, context.surface, availability.dialect);
+      return routeSettings({ ...target, dialect: availability.dialect });
+    }
+    return undefined;
+  }
+
+  private async resolvePinnedSettings(
+    context: RouteContext,
+    settings: SelectedRouteSettings,
+    guardrailActions: string[]
+  ): Promise<ResolvedRouteSettings | undefined> {
+    const availability = await this.targetAvailability(context, settings);
+    if (availability.status === "unavailable") {
+      guardrailActions.push(`pin_skipped_${availability.reason}:${settings.providerId}`);
+      return undefined;
+    }
+    appendTranslationAction(guardrailActions, context.surface, availability.dialect);
+    return routeSettings(settings);
+  }
+
+  private async targetAvailability(
+    context: RouteContext,
+    target: Pick<RouteTarget, "providerId"> & { dialect?: Dialect }
+  ): Promise<TargetAvailability> {
+    const organizationId = context.organizationId ?? this.config.defaultOrganizationId;
+    let provider;
+    try {
+      provider = await this.providerRegistry.resolve({
+        organizationId,
+        provider: target.providerId
+      });
+    } catch (error) {
+      return {
+        status: "unavailable",
+        reason: error instanceof ProviderRegistryError ? error.code : "provider_registry_unavailable"
+      };
+    }
+    if (!provider) return { status: "unavailable", reason: "provider_not_found" };
+    if (!provider.enabled) return { status: "unavailable", reason: "provider_disabled" };
+    const endpoint = targetEndpoint(context, provider, target);
+    if (!endpoint) return { status: "unavailable", reason: "dialect_unavailable" };
+    if (endpoint.dialect !== context.surface) {
+      if (context.statefulResponses === true) return { status: "unavailable", reason: "stateful_translation_unavailable" };
+      if (context.hasPreviousResponseId) return { status: "unavailable", reason: "previous_response_translation_unavailable" };
+      if (!translators.get(context.surface, endpoint.dialect)) return { status: "unavailable", reason: "translator_unavailable" };
+    }
+    if (!provider.builtin && provider.authStyle !== "none") {
+      const credential = await this.credentials?.resolveForRequest({
+        organizationId,
+        apiKeyId: context.apiKeyId,
+        provider: target.providerId
+      });
+      if (!credential) return { status: "unavailable", reason: "provider_credential_unresolved" };
+    }
+    return { status: "available", dialect: endpoint.dialect };
   }
 
   private async recordDecision(
@@ -629,6 +681,24 @@ export class RoutingService {
 
 function atOrAbove(route: RouteName | undefined, ceiling: RouteName) {
   return route !== undefined && routeOrder.indexOf(route) >= routeOrder.indexOf(ceiling);
+}
+
+function appendTranslationAction(guardrailActions: string[], from: Dialect, to: Dialect) {
+  if (from === to) return;
+  const tag = translationTag(from, to);
+  if (!guardrailActions.includes(tag)) guardrailActions.push(tag);
+}
+
+function targetEndpoint(
+  context: RouteContext,
+  provider: ProviderRegistryEntry,
+  target: Pick<RouteTarget, "providerId"> & { dialect?: Dialect }
+) {
+  if (context.transport === "websocket") return providerEndpointForDialect(provider, context.surface);
+  if (target.dialect) return providerEndpointForDialect(provider, target.dialect);
+  return providerEndpointForDialect(provider, context.surface) ?? provider.endpoints.find((candidate) =>
+    translators.canTranslate(context.surface, candidate.dialect)
+  );
 }
 
 // Key on the routing view, not the byte-identical provider body. The full
