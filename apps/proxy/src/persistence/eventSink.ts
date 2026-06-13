@@ -11,23 +11,21 @@ import {
 } from "@prompt-proxy/db";
 
 import type { OutboxItem, PersistentEventSink, ProxyEvent } from "../events.js";
-import type { ModelPricingTable } from "../pricing.js";
 import { ensureOrganization } from "./identity.js";
 import { projectEvent } from "./eventProjector.js";
 
-export function createPostgresEventSink(databaseUrl: string, pricing: ModelPricingTable) {
+export function createPostgresEventSink(databaseUrl: string) {
   const db = createPostgresDatabase(databaseUrl);
-  return new DatabaseEventSink(createTransactionalDatabase(db), pricing, true);
+  return new DatabaseEventSink(createTransactionalDatabase(db), true);
 }
 
-export function createDatabaseEventSink(db: PromptProxyDatabase, pricing: ModelPricingTable) {
-  return new DatabaseEventSink(createTransactionalDatabase(db), pricing, false);
+export function createDatabaseEventSink(db: PromptProxyDatabase) {
+  return new DatabaseEventSink(createTransactionalDatabase(db), false);
 }
 
 export class DatabaseEventSink implements PersistentEventSink {
   constructor(
     private readonly db: PromptProxyTransactionalDatabase,
-    private readonly pricing: ModelPricingTable,
     private readonly useAdvisoryLocks: boolean
   ) {}
 
@@ -35,7 +33,7 @@ export class DatabaseEventSink implements PersistentEventSink {
     await this.db.transaction(async (tx) => {
       await ensureOrganization(tx, event.tenantId);
       const sequence = await nextEventSequence(tx, event, this.useAdvisoryLocks);
-      await projectEvent(tx, this.pricing, event);
+      await projectEvent(tx, event);
       await tx.insert(events).values({
         id: event.eventId,
         sequence,

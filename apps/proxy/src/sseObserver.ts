@@ -1,4 +1,4 @@
-import type { JsonValue } from "./types.js";
+import type { Dialect, JsonValue } from "./types.js";
 import { isRecord } from "./util.js";
 
 export type StreamObservation = {
@@ -14,10 +14,30 @@ export type StreamObservation = {
 
 export const MAX_OUTPUT_TEXT_CHARS = 200_000;
 
-export class SseObserver {
+export type SseObserver = {
+  observe(chunk: Uint8Array): void;
+  finish(status?: "cancelled"): StreamObservation;
+};
+
+export function sseObserverForDialect(dialect: Dialect): SseObserver {
+  switch (dialect) {
+    case "anthropic-messages":
+      return new AnthropicMessagesSseObserver();
+    case "openai-chat":
+      return new OpenAiChatSseObserver();
+    case "openai-responses":
+      return new OpenAiResponsesSseObserver();
+  }
+}
+
+// Shared SSE plumbing: byte accounting, frame splitting, decode-error
+// capture, and the output-text cap. Subclasses interpret events for exactly
+// one dialect — the dialect is known at construction, never sniffed from
+// frame shapes.
+abstract class DialectSseObserver implements SseObserver {
   private readonly decoder = new TextDecoder();
   private buffer = "";
-  private readonly observation: StreamObservation = { bytes: 0 };
+  protected readonly observation: StreamObservation = { bytes: 0 };
 
   observe(chunk: Uint8Array) {
     this.observation.bytes += chunk.byteLength;
@@ -42,6 +62,8 @@ export class SseObserver {
     }
     return { ...this.observation };
   }
+
+  protected abstract applyEvent(event: Record<string, unknown>): void;
 
   private drain(final = false) {
     while (true) {
@@ -69,39 +91,22 @@ export class SseObserver {
 
     try {
       const parsed = JSON.parse(data);
-      this.applyEvent(parsed);
+      if (isRecord(parsed)) this.applyEvent(parsed);
     } catch {
       this.observation.observerError = "SSE observer could not parse event data.";
     }
   }
 
-  private applyEvent(event: unknown) {
-    if (!isRecord(event)) return;
-
-    const type = typeof event.type === "string" ? event.type : undefined;
-    if (type?.includes("completed") || type === "message_stop") {
-      this.observation.status = "completed";
-    }
-    if (type?.includes("failed") || type === "error") {
-      this.observation.status = "failed";
-    }
-
-    const usage = findUsage(event);
-    if (usage !== undefined) {
-      this.observation.usage = mergeUsage(this.observation.usage, usage);
-    }
-
-    const id = findId(event);
-    if (id) this.observation.upstreamResponseId = id;
-
-    const error = findError(event);
-    if (error) this.observation.error = error;
-
-    const textDelta = outputTextDelta(type, event);
-    if (textDelta) this.appendOutputText(textDelta);
+  protected eventType(event: Record<string, unknown>) {
+    return typeof event.type === "string" ? event.type : undefined;
   }
 
-  private appendOutputText(delta: string) {
+  protected mergeUsage(next: Record<string, unknown>) {
+    const current = this.observation.usage;
+    this.observation.usage = (isRecord(current) ? { ...current, ...next } : next) as JsonValue;
+  }
+
+  protected appendOutputText(delta: string) {
     if (this.observation.outputTextTruncated) return;
     const current = this.observation.outputText ?? "";
     const remaining = MAX_OUTPUT_TEXT_CHARS - current.length;
@@ -114,55 +119,93 @@ export class SseObserver {
   }
 }
 
-function outputTextDelta(type: string | undefined, event: Record<string, unknown>) {
-  if (type === "response.output_text.delta" && typeof event.delta === "string") {
-    return event.delta;
-  }
-  if (type === "content_block_delta" && isRecord(event.delta) && event.delta.type === "text_delta" && typeof event.delta.text === "string") {
-    return event.delta.text;
-  }
-  return undefined;
-}
+class OpenAiResponsesSseObserver extends DialectSseObserver {
+  protected applyEvent(event: Record<string, unknown>) {
+    const type = this.eventType(event);
+    if (type === "response.completed") this.observation.status = "completed";
+    if (type === "response.failed" || type === "error") this.observation.status = "failed";
 
-function mergeUsage(current: JsonValue | undefined, next: JsonValue): JsonValue {
-  if (!isRecord(current) || !isRecord(next)) return next;
+    const response = isRecord(event.response) ? event.response : undefined;
+    if (response) {
+      if (isRecord(response.usage)) this.mergeUsage(response.usage);
+      if (typeof response.id === "string") this.observation.upstreamResponseId = response.id;
+      if (isRecord(response.error) && typeof response.error.message === "string") {
+        this.observation.error = response.error.message;
+      }
+    }
 
-  return {
-    ...current,
-    ...next
-  } as JsonValue;
-}
+    if (type === "error") {
+      if (typeof event.message === "string") {
+        this.observation.error = event.message;
+      } else if (isRecord(event.error) && typeof event.error.message === "string") {
+        this.observation.error = event.error.message;
+      }
+    }
 
-function findUsage(value: unknown): JsonValue | undefined {
-  if (isRecord(value) && isRecord(value.usage)) return value.usage as JsonValue;
-  if (isRecord(value)) {
-    for (const item of Object.values(value)) {
-      const found = findUsage(item);
-      if (found !== undefined) return found;
+    if (type === "response.output_text.delta" && typeof event.delta === "string") {
+      this.appendOutputText(event.delta);
     }
   }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = findUsage(item);
-      if (found !== undefined) return found;
-    }
-  }
-  return undefined;
 }
 
-function findId(value: unknown): string | undefined {
-  if (isRecord(value) && typeof value.id === "string") return value.id;
-  if (isRecord(value)) {
-    for (const item of Object.values(value)) {
-      const found = findId(item);
-      if (found) return found;
+class OpenAiChatSseObserver extends DialectSseObserver {
+  protected applyEvent(event: Record<string, unknown>) {
+    const type = this.eventType(event);
+    if (typeof event.id === "string") this.observation.upstreamResponseId = event.id;
+    if (isRecord(event.usage)) this.mergeUsage(event.usage);
+
+    if (type === "error" || isRecord(event.error)) {
+      this.observation.status = "failed";
+      if (isRecord(event.error) && typeof event.error.message === "string") {
+        this.observation.error = event.error.message;
+      } else if (typeof event.message === "string") {
+        this.observation.error = event.message;
+      }
+    }
+
+    if (!Array.isArray(event.choices)) return;
+    for (const choice of event.choices) {
+      if (!isRecord(choice)) continue;
+      if (choice.finish_reason !== undefined && choice.finish_reason !== null && this.observation.status !== "failed") {
+        this.observation.status = "completed";
+      }
+      const delta = isRecord(choice.delta) ? choice.delta : undefined;
+      if (delta && typeof delta.content === "string") {
+        this.appendOutputText(delta.content);
+      }
     }
   }
-  return undefined;
 }
 
-function findError(value: unknown): string | undefined {
-  if (isRecord(value) && typeof value.message === "string") return value.message;
-  if (isRecord(value) && isRecord(value.error)) return findError(value.error);
-  return undefined;
+class AnthropicMessagesSseObserver extends DialectSseObserver {
+  protected applyEvent(event: Record<string, unknown>) {
+    const type = this.eventType(event);
+    if (type === "message_stop") this.observation.status = "completed";
+    if (type === "error") this.observation.status = "failed";
+
+    // Usage arrives across two frames: message_start carries input/cache
+    // tokens (under message.usage), message_delta carries the final output
+    // tokens (top-level usage). The shallow merge folds them into one record.
+    const message = isRecord(event.message) ? event.message : undefined;
+    if (message) {
+      if (isRecord(message.usage)) this.mergeUsage(message.usage);
+      if (typeof message.id === "string") this.observation.upstreamResponseId = message.id;
+    }
+    if (type === "message_delta" && isRecord(event.usage)) {
+      this.mergeUsage(event.usage);
+    }
+
+    if (type === "error" && isRecord(event.error) && typeof event.error.message === "string") {
+      this.observation.error = event.error.message;
+    }
+
+    if (
+      type === "content_block_delta" &&
+      isRecord(event.delta) &&
+      event.delta.type === "text_delta" &&
+      typeof event.delta.text === "string"
+    ) {
+      this.appendOutputText(event.delta.text);
+    }
+  }
 }

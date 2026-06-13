@@ -33,7 +33,6 @@ provider_accounts
 model_catalog
 routing_configs
 routing_config_versions
-route_policies            legacy placeholder, superseded by routing configs
 agent_sessions
 turns
 requests

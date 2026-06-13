@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { actorForIdentity, type RequestIdentity } from "./auth.js";
 import { jsonPayload, type EventService } from "./events.js";
 import type { JsonObject, Surface } from "./types.js";
-import { isRecord, roughTokenEstimate, stableJson, stringField } from "./util.js";
+import { isRecord, roughTokenEstimate, stableJson, stringField, unreachable } from "./util.js";
 
 // Bounds the per-name lists so a tool-heavy request cannot bloat the event
 // payload; overflow rolls up into a synthetic __other entry.
@@ -28,7 +28,7 @@ export type TokenAttribution = {
 
 export function attributeTokens(surface: Surface, body: unknown, orgSystemPrompt?: string): TokenAttribution {
   const request = isRecord(body) ? body : {};
-  const parts = surface === "openai-responses" ? attributeOpenAI(request) : attributeAnthropic(request);
+  const parts = attributionParts(surface, request);
   const orgChars = orgSystemPrompt?.length ?? 0;
   const totalChars =
     parts.systemChars +
@@ -38,7 +38,7 @@ export function attributeTokens(surface: Surface, body: unknown, orgSystemPrompt
     parts.newToolResults.total +
     parts.latestUserChars;
 
-  const fallbackModel = surface === "openai-responses" ? "router-auto" : "claude-router-auto";
+  const fallbackModel = fallbackModelForSurface(surface);
   return {
     surface,
     requestedModel: typeof request.model === "string" ? request.model : fallbackModel,
@@ -63,6 +63,32 @@ export function attributeTokens(surface: Surface, body: unknown, orgSystemPrompt
       estimatedTokens: roughTokenEstimate(entry.chars)
     }))
   };
+}
+
+function attributionParts(surface: Surface, request: Record<string, unknown>) {
+  switch (surface) {
+    case "openai-responses":
+      return attributeOpenAI(request);
+    case "openai-chat":
+      return attributeOpenAIChat(request);
+    case "anthropic-messages":
+      return attributeAnthropic(request);
+    default:
+      return unreachable(surface);
+  }
+}
+
+function fallbackModelForSurface(surface: Surface) {
+  switch (surface) {
+    case "openai-responses":
+      return "router-auto";
+    case "openai-chat":
+      return "router-auto";
+    case "anthropic-messages":
+      return "claude-router-auto";
+    default:
+      return unreachable(surface);
+  }
 }
 
 export async function appendTokensAttributed(input: {
@@ -220,6 +246,78 @@ function attributeOpenAI(request: Record<string, unknown>): AttributionParts {
     newToolResults,
     latestUserChars
   };
+}
+
+function attributeOpenAIChat(request: Record<string, unknown>): AttributionParts {
+  const toolSchemas = groupToolSchemas(request.tools, openAIChatToolName);
+  const messages = Array.isArray(request.messages) ? request.messages : [];
+  const toolNames = openAIChatToolCallNames(messages);
+  const newToolResults = emptyResultGroup();
+  let systemChars = 0;
+  let latestUserChars = 0;
+  let historyChars = 0;
+  let historyMessages = 0;
+
+  let tailStart = messages.length;
+  while (tailStart > 0 && isOpenAIChatNewTurnMessage(messages[tailStart - 1])) {
+    tailStart -= 1;
+  }
+
+  for (const message of messages.slice(0, tailStart)) {
+    if (!isRecord(message)) continue;
+    if (message.role === "system" || message.role === "developer") {
+      systemChars += contentChars(message.content);
+      continue;
+    }
+    historyChars += contentChars(message.content) + contentChars(message.tool_calls);
+    historyMessages += 1;
+  }
+
+  for (const message of messages.slice(tailStart)) {
+    if (!isRecord(message)) continue;
+    if (message.role === "tool") {
+      const toolCallId = stringField(message, "tool_call_id");
+      addResult(newToolResults, toolGroupKey(toolNames.get(toolCallId ?? "") ?? "unknown"), contentChars(message.content));
+    } else if (message.role === "user") {
+      latestUserChars += contentChars(message.content);
+    } else if (message.role === "system" || message.role === "developer") {
+      systemChars += contentChars(message.content);
+    }
+  }
+
+  return {
+    systemChars,
+    toolSchemas,
+    historyChars,
+    historyMessages,
+    newToolResults,
+    latestUserChars
+  };
+}
+
+function isOpenAIChatNewTurnMessage(item: unknown) {
+  if (!isRecord(item)) return false;
+  return item.role === "tool" || item.role === "user";
+}
+
+function openAIChatToolName(tool: Record<string, unknown>) {
+  if (typeof tool.name === "string") return tool.name;
+  const fn = isRecord(tool.function) ? tool.function : undefined;
+  return typeof fn?.name === "string" ? fn.name : stringField(tool, "type");
+}
+
+function openAIChatToolCallNames(messages: unknown[]) {
+  const map = new Map<string, string>();
+  for (const message of messages) {
+    if (!isRecord(message) || !Array.isArray(message.tool_calls)) continue;
+    for (const call of message.tool_calls) {
+      if (!isRecord(call) || typeof call.id !== "string") continue;
+      const fn = isRecord(call.function) ? call.function : undefined;
+      const name = typeof fn?.name === "string" ? fn.name : stringField(call, "name");
+      if (name) map.set(call.id, name);
+    }
+  }
+  return map;
 }
 
 function isNewTurnItem(item: unknown) {

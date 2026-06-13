@@ -47,6 +47,69 @@ describe("prompt proxy", () => {
     await anthropic.close();
   });
 
+  it("keeps debug endpoints and GraphiQL off by default in production", async () => {
+    const config = loadConfig({
+      ...testEnv(),
+      NODE_ENV: "production",
+      PROMPT_PROXY_TOKEN: "prod-proxy-token",
+      LOG_LEVEL: "fatal"
+    });
+    const app = buildServer(config);
+    const proxyUrl = await listen(app);
+
+    const debugResponse = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer prod-proxy-token" }
+    });
+    await debugResponse.text();
+    await app.close();
+
+    expect(config.debugEndpointsEnabled).toBe(false);
+    expect(config.adminGraphiqlEnabled).toBe(false);
+    expect(config.allowDevProxyTokenFallback).toBe(false);
+    expect(debugResponse.status).toBe(404);
+  });
+
+  it("lists all router alias spellings for model discovery", async () => {
+    const app = buildServer(loadConfig({
+      ...testEnv(),
+      LOG_LEVEL: "fatal"
+    }));
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/models`);
+    const body = await response.json();
+    await app.close();
+
+    const ids = body.data.map((model: any) => model.id);
+    expect(ids).toEqual(expect.arrayContaining([
+      "router-auto",
+      "router-fast",
+      "router-balanced",
+      "router-hard",
+      "router-deep",
+      "claude-router-auto",
+      "claude-router-fast",
+      "claude-router-balanced",
+      "claude-router-hard",
+      "claude-router-deep",
+      "anthropic-router-auto",
+      "anthropic-router-fast",
+      "anthropic-router-balanced",
+      "anthropic-router-hard",
+      "anthropic-router-deep"
+    ]));
+    expect(body.data.find((model: any) => model.id === "router-auto")).toEqual({
+      id: "router-auto",
+      object: "model",
+      owned_by: "prompt-proxy"
+    });
+    expect(body.data.find((model: any) => model.id === "claude-router-auto")).toEqual({
+      id: "claude-router-auto",
+      type: "model",
+      display_name: "Claude Router: Auto"
+    });
+  });
+
   it("routes Codex-style OpenAI Responses requests through the classifier", async () => {
     const app = buildServer(
       loadConfig({
@@ -126,7 +189,16 @@ describe("prompt proxy", () => {
     expect(sessions).toHaveLength(0);
   });
 
-  it("routes Codex WebSocket requests and pins continuations via session memory", async () => {
+  it("routes Codex WebSocket requests and pins previous response continuations", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({
+      wsUpgradeHeaders: {
+        "x-codex-turn-state": "turn-state-upstream",
+        "x-models-etag": "models-etag-upstream",
+        "x-reasoning-included": "true",
+        "openai-model": "gpt-ws-hard-test"
+      }
+    });
     const app = buildServer(
       loadConfig({
         ...testEnv(),
@@ -149,6 +221,7 @@ describe("prompt proxy", () => {
         session_id: "codex-ws-session"
       }
     });
+    const upgradeHeaders = websocketUpgradeHeaders(ws);
     await websocketOpen(ws);
 
     ws.send(JSON.stringify({
@@ -188,9 +261,14 @@ describe("prompt proxy", () => {
 
     const classifierCalls = openai.records.filter((record) => record.body.model === "route-classifier-cheap");
     const providerCalls = openai.records.filter((record) => record.body.model === "gpt-ws-hard-test");
+    const headers = await upgradeHeaders;
 
-    expect(classifierCalls).toHaveLength(2);
+    expect(classifierCalls).toHaveLength(1);
     expect(providerCalls).toHaveLength(3);
+    expect(headers["x-codex-turn-state"]).toBe("turn-state-upstream");
+    expect(headers["x-models-etag"]).toBe("models-etag-upstream");
+    expect(headers["x-reasoning-included"]).toBe("true");
+    expect(headers["openai-model"]).toBe("gpt-ws-hard-test");
     expect(providerCalls[0].headers.authorization).toBe("Bearer openai-upstream-key");
     expect(providerCalls[0].headers["openai-beta"]).toBe("responses_websockets=2026-02-06");
     expect(providerCalls[0].body.type).toBe("response.create");
@@ -202,12 +280,9 @@ describe("prompt proxy", () => {
     const decisions = events.filter((event: any) => event.eventType === "routing.decision_recorded");
     expect(decisions.map((event: any) => event.payload.requestedModel)).toEqual([
       "gpt-5.5",
-      "gpt-5.5",
-      "gpt-5.5"
+      "router-hard",
+      "router-hard"
     ]);
-    expect(decisions[2].payload.reasonCodes).toContain("session_route_no_user_signal");
-    expect(decisions[2].payload.guardrailActions).toContain("session_route_kept");
-    expect(decisions[2].payload.guardrailActions).toContain("session_settings_pinned");
     expect(events.filter((event: any) => event.eventType === "provider.response_completed")).toHaveLength(3);
   });
 
@@ -395,6 +470,163 @@ describe("prompt proxy", () => {
     expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
     expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("low");
     expect(providerCall).toBeTruthy();
+  });
+
+  it("routes OpenAI Chat Completions requests to chat-capable targets", async () => {
+    const app = buildServer(
+      loadConfig({
+        ...testEnv(),
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        OPENAI_HARD_MODEL: "gpt-chat-hard-test",
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        CLASSIFIER_ALLOW_REDACTED_EXCERPT: "true",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        messages: [
+          { role: "system", content: "You are terse." },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "debug the failing auth test and find root cause" },
+              { type: "image_url", image_url: { url: "data:image/png;base64,abc" } }
+            ]
+          }
+        ],
+        tools: [{ type: "function", function: { name: "run_terminal_cmd", parameters: { type: "object" } } }],
+        stream: true
+      })
+    });
+
+    const body = await response.text();
+    const providerCall = openai.records.find((record) => record.path === "/chat/completions");
+    const classifierCall = openai.records.find((record) => record.body.model === "route-classifier-cheap");
+    const classifierInput = JSON.parse(classifierCall?.body.input);
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    await app.close();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(body).toContain("chatcmpl_mock");
+    expect(providerCall).toBeTruthy();
+    expect(providerCall?.headers.authorization).toBe("Bearer openai-upstream-key");
+    expect(providerCall?.body.model).toBe("gpt-chat-hard-test");
+    expect(providerCall?.body.reasoning_effort).toBe("high");
+    expect(providerCall?.body.stream_options).toEqual({ include_usage: true });
+    expect(providerCall?.body.tools).toHaveLength(1);
+    expect(classifierInput.surface).toBe("openai-chat");
+    expect(classifierInput.routing_basis).toBe("latest_user_message");
+    expect(classifierInput.input_excerpt).toBe("debug the failing auth test and find root cause");
+    expect(classifierInput.has_tools).toBe(true);
+    expect(classifierInput.has_images).toBe(true);
+    const usageEvent = events.find((event: any) => event.eventType === "usage.recorded");
+    expect(usageEvent.payload.usage.prompt_tokens).toBe(100);
+    expect(usageEvent.payload.usage.completion_tokens).toBe(20);
+  });
+
+  it("does not expose count_tokens for OpenAI Chat Completions", async () => {
+    const app = buildServer(loadConfig({
+      ...testEnv(),
+      LOG_LEVEL: "fatal"
+    }));
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/chat/completions/count_tokens`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        messages: [{ role: "user", content: "hi" }]
+      })
+    });
+    await app.close();
+
+    expect(response.status).toBe(404);
+  });
+
+  it("attributes opencode and Cursor chat sessions", async () => {
+    const app = buildServer(
+      loadConfig({
+        ...testEnv(),
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        OPENAI_HARD_MODEL: "gpt-chat-hard-test",
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const opencode = await fetch(`${proxyUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-hard",
+        prompt_cache_key: "opencode-session-1234",
+        messages: [{ role: "user", content: "debug auth" }],
+        stream: true
+      })
+    });
+    await opencode.text();
+
+    const cursor = await fetch(`${proxyUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "user-agent": "Cursor/1.0",
+        "x-cursor-session-id": "cursor-session-1234"
+      },
+      body: JSON.stringify({
+        model: "router-hard",
+        messages: [{ role: "user", content: "debug auth" }],
+        tools: [{ name: "run_terminal_cmd", parameters: { type: "object" } }],
+        stream: true
+      })
+    });
+    await cursor.text();
+
+    const sessions = await fetch(`${proxyUrl}/_debug/sessions`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    await app.close();
+
+    expect(opencode.status).toBe(200);
+    expect(cursor.status).toBe(200);
+    expect(opencode.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(cursor.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(new Set(sessions.map((session: any) => session.sessionId))).toEqual(new Set([
+      "opencode-session-1234",
+      "cursor-session-1234"
+    ]));
   });
 
   it("classifies the latest user message instead of the full Codex envelope", async () => {
@@ -863,7 +1095,7 @@ describe("prompt proxy", () => {
     await failingOpenAI.close();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("balanced");
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
     const decision = eventRows.find((event: { eventType: string }) => event.eventType === "routing.decision_recorded");
     expect(decision?.payload?.reasonCodes).toEqual(["classifier_failure_fallback"]);
     expect(decision?.payload?.guardrailActions).toContain("classifier_failure_fallback");
@@ -875,7 +1107,7 @@ describe("prompt proxy", () => {
     );
     expect(classifierCalls).toHaveLength(2);
     expect(providerCalls).toHaveLength(1);
-    expect(providerCalls[0].body.model).toBe("gpt-5.4");
+    expect(providerCalls[0].body.model).toBe("gpt-5.5");
   });
 
   it("reprocesses failed requests instead of replaying the failure", async () => {
@@ -1506,7 +1738,8 @@ describe("prompt proxy", () => {
         CLASSIFIER_MODEL: "route-classifier-cheap",
         MODEL_COSTS_JSON: JSON.stringify({
           "gpt-5.4": { inputCostPerMtok: 1, outputCostPerMtok: 2 },
-          "gpt-5.5": { inputCostPerMtok: 3, outputCostPerMtok: 4 }
+          "gpt-5.5": { inputCostPerMtok: 3, outputCostPerMtok: 4 },
+          "gpt-5.5-pro": { inputCostPerMtok: 15, outputCostPerMtok: 120 }
         }),
         ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD: "0.55",
         LOG_LEVEL: "fatal"
@@ -1558,6 +1791,12 @@ function websocketOpen(ws: WebSocket) {
   return new Promise<void>((resolve, reject) => {
     ws.once("open", () => resolve());
     ws.once("error", reject);
+  });
+}
+
+function websocketUpgradeHeaders(ws: WebSocket) {
+  return new Promise<Record<string, string | string[] | undefined>>((resolve) => {
+    ws.once("upgrade", (response) => resolve(response.headers));
   });
 }
 

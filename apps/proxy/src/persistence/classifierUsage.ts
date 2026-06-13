@@ -2,8 +2,8 @@ import { eq } from "drizzle-orm";
 
 import { requests, usageLedger, type PromptProxyTransaction } from "@prompt-proxy/db";
 
-import { pricingForModel, usageCostMicros, type ModelPricingTable } from "../pricing.js";
-import { orgPricingOverrideForModel } from "./modelPricing.js";
+import { usageCostMicros } from "../pricing.js";
+import { catalogPricingForModel } from "./modelPricing.js";
 import { routeForRequest } from "./routeDecision.js";
 import { normalizeUsage, providerValue, recordValue, stringValue } from "./values.js";
 
@@ -12,7 +12,7 @@ import { normalizeUsage, providerValue, recordValue, stringValue } from "./value
 // dedicated ledger row (kind = "classifier") rather than folded into the
 // request's provider usage — keeping it out of token totals and the baseline
 // counterfactual while still counting toward what the proxy actually spends.
-export async function persistClassifierUsage(tx: PromptProxyTransaction, pricing: ModelPricingTable, event: {
+export async function persistClassifierUsage(tx: PromptProxyTransaction, event: {
   tenantId: string;
   scopeId: string;
   payload: Record<string, unknown>;
@@ -21,7 +21,7 @@ export async function persistClassifierUsage(tx: PromptProxyTransaction, pricing
   if (!usage) return;
   const model = stringValue(event.payload.model);
   if (!model) return;
-  const provider = providerValue(event.payload.provider) ?? "openai";
+  const provider = providerValue(event.payload.provider) ?? "unknown";
 
   const [request] = await tx
     .select()
@@ -31,9 +31,7 @@ export async function persistClassifierUsage(tx: PromptProxyTransaction, pricing
   if (!request) return;
 
   const normalized = normalizeUsage(usage);
-  const modelPricing =
-    await orgPricingOverrideForModel(tx, event.tenantId, provider, model) ??
-    pricingForModel(pricing, model);
+  const modelPricing = await catalogPricingForModel(tx, event.tenantId, provider, model);
   const costs = usageCostMicros(modelPricing, normalized);
   const route = await routeForRequest(tx, event.scopeId);
 

@@ -7,6 +7,7 @@ import {
   activateRoutingConfigVersion,
   archiveRoutingConfig,
   createRoutingConfigVersion,
+  fetchRoutingModelCatalog,
   fetchRoutingConfigDetail,
   type RoutingConfigDetail,
   type RoutingConfigVersionDetail
@@ -14,7 +15,7 @@ import {
 import type { RoutingConfigDocument } from "./routingConfigEditor";
 import { compactId, formatDateTime, formatInteger } from "./format";
 import { ConfigApiKeysCard } from "./routing/keyAssignment";
-import { RoutingRulesEditor, RouteMatrixEditor } from "./routing/configEditorFields";
+import { RoutingRulesEditor, RouteTargetsEditor } from "./routing/configEditorFields";
 import { ArchivePanel, VersionHistory } from "./routing/versionHistory";
 import { applyDraft, draftError, draftFromConfig, parseConfigJson } from "./routingConfigEditor";
 import { JsonEditor } from "./jsonView";
@@ -96,7 +97,7 @@ function FactsStrip({ detail, activeVersion }: { detail: RoutingConfigDetail; ac
       <Fact
         label="Classifier"
         value={classifier?.model ?? "none"}
-        detail={classifier ? `${classifier.provider} · ${formatInteger(classifier.maxAttempts)} attempts` : undefined}
+        detail={classifier ? `${classifier.providerId} · ${formatInteger(classifier.maxAttempts)} attempts` : undefined}
       />
       <Fact
         label="Updated"
@@ -128,6 +129,10 @@ function MissingActiveConfig() {
 
 function ConfigEditorCard({ configId, version }: { configId: string; version: RoutingConfigVersionDetail }) {
   const queryClient = useQueryClient();
+  const catalogQuery = useQuery({
+    queryKey: ["routing-model-catalog"],
+    queryFn: fetchRoutingModelCatalog
+  });
   const [baseConfig, setBaseConfig] = useState(version.config);
   const [draft, setDraft] = useState(() => draftFromConfig(version.config));
   const [view, setView] = useState<"form" | "json">("form");
@@ -219,8 +224,14 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
         {view === "form" ? (
           <>
             <RoutingRulesEditor draft={draft} onChange={setDraft} />
-            <div className="editor-subhead"><Layers />Route tier models</div>
-            <RouteMatrixEditor draft={draft} baseConfig={baseConfig} onChange={setDraft} />
+            <div className="editor-subhead"><Layers />Route tier targets</div>
+            <RouteTargetsEditor
+              draft={draft}
+              baseConfig={baseConfig}
+              catalog={catalogQuery.data ?? { providers: [], models: [] }}
+              onChange={setDraft}
+            />
+            {catalogQuery.error ? <div className="action-error">{catalogQuery.error.message}</div> : null}
           </>
         ) : (
           <div className="config-json-editor">

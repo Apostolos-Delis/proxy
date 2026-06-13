@@ -6,9 +6,11 @@ import {
   apiKeys,
   events,
   invitations,
+  modelCatalog,
   organizationMembers,
   organizations,
   promptArtifacts,
+  providers,
   providerAccounts,
   providerAttempts,
   requests,
@@ -20,15 +22,15 @@ import {
   type PromptProxyDbSession
 } from "@prompt-proxy/db";
 
-import { baselineUpstreamModel } from "../catalog.js";
-import type { ModelCatalog } from "../catalog.js";
+import { explicitAlias } from "../catalog.js";
 import {
   applyPricingToEntry,
+  baselineModelForDialect,
   compareModelPricingEntries,
   emptyPricingEntry,
-  pricingForModel,
-  providerFromModelName,
-  staticPricingEntries,
+  pricingForProviderModel,
+  providerForDialect,
+  providerModelPricingKey,
   undatedModel,
   usageCostMicros,
   type CostBaseline,
@@ -45,7 +47,7 @@ import {
   eventSummary,
   invitationSummary,
   providerAttemptSummary,
-  routeMatrixSummary,
+  routingConfigRoutesSummary,
   routeDecisionSummary,
   routingConfigSummary,
   usageLedgerSummary
@@ -54,7 +56,7 @@ import { CACHE_TTL_DEFAULT_MS } from "../cacheWindows.js";
 import { CACHE_BUST_SAMPLE_CAP, detectCacheBusts } from "./cacheBusts.js";
 import { aggregateCompressionSavings, COMPRESSION_SAVINGS_SAMPLE_CAP } from "./compressionSavings.js";
 import { aggregateIdleGaps, IDLE_GAP_SAMPLE_CAP } from "./idleGaps.js";
-import { orgPricingOverrides, type OrgPricingOverride } from "./modelPricing.js";
+import { pricingFromRow } from "./modelPricing.js";
 import { orgCostBaseline } from "./organizationSettings.js";
 import { aggregateTokenAttribution, TOKEN_ATTRIBUTION_SAMPLE_CAP } from "./tokenAttributionReport.js";
 import {
@@ -67,7 +69,7 @@ import {
   type UsageRollupRow,
   type UsageRollupScope
 } from "./usageRollups.js";
-import { routeValue, surfaceValue } from "./values.js";
+import { knownSurfaceValue, routeValue } from "./values.js";
 
 type DateRangeFilters = {
   start?: string;
@@ -76,8 +78,6 @@ type DateRangeFilters = {
 
 export type AdminQueryConfig = {
   routeQualityLowConfidenceThreshold: number;
-  modelCosts: ModelPricingTable;
-  modelCostsFromEnv: string[];
   classifierModel: string;
   classifierProvider: string;
 };
@@ -119,7 +119,6 @@ export class AdminQueryService {
 
   constructor(
     private readonly db: PromptProxyDbSession,
-    private readonly catalog: ModelCatalog,
     private readonly organizationId: string,
     private readonly workspaceId: string,
     private readonly config: AdminQueryConfig
@@ -208,8 +207,10 @@ export class AdminQueryService {
       .select({
         id: providerAccounts.id,
         organizationId: providerAccounts.organizationId,
-        provider: providerAccounts.provider,
+        providerId: providerAccounts.providerId,
+        provider: providers.slug,
         name: providerAccounts.name,
+        baseUrl: providerAccounts.baseUrl,
         authType: providerAccounts.authType,
         status: providerAccounts.status,
         secretHint: providerAccounts.secretHint,
@@ -218,6 +219,7 @@ export class AdminQueryService {
         lastUsedAt: providerAccounts.lastUsedAt
       })
       .from(providerAccounts)
+      .innerJoin(providers, eq(providers.id, providerAccounts.providerId))
       .where(and(
         eq(providerAccounts.organizationId, this.organizationId),
         isNotNull(providerAccounts.secretCiphertext)
@@ -230,18 +232,50 @@ export class AdminQueryService {
     };
   }
 
+  async providers() {
+    const rows = await this.db
+      .select({
+        id: providers.id,
+        organizationId: providers.organizationId,
+        slug: providers.slug,
+        displayName: providers.displayName,
+        authStyle: providers.authStyle,
+        endpoints: providers.endpoints,
+        forwardHarnessHeaders: providers.forwardHarnessHeaders,
+        enabled: providers.enabled
+      })
+      .from(providers)
+      .where(or(
+        isNull(providers.organizationId),
+        eq(providers.organizationId, this.organizationId)
+      ))
+      .orderBy(asc(providers.slug), asc(providers.organizationId));
+
+    const bySlug = new Map<string, ReturnType<typeof providerRegistrySummary>>();
+    for (const row of rows) {
+      const summary = providerRegistrySummary(row);
+      const existing = bySlug.get(row.slug);
+      if (!existing || row.organizationId === this.organizationId) bySlug.set(row.slug, summary);
+    }
+    return {
+      data: [...bySlug.values()].sort((left, right) => left.slug.localeCompare(right.slug))
+    };
+  }
+
   private async apiKeyProviderBindings(apiKeyIds: string[]) {
     const bindings = new Map<string, ProviderBindingSummary[]>();
     if (apiKeyIds.length === 0) return bindings;
     const rows = await this.db
       .select({
         apiKeyId: apiKeyProviderAccounts.apiKeyId,
-        provider: apiKeyProviderAccounts.provider,
+        provider: providers.slug,
+        providerId: apiKeyProviderAccounts.providerId,
         providerAccountId: apiKeyProviderAccounts.providerAccountId,
         providerAccountName: providerAccounts.name,
         providerAccountStatus: providerAccounts.status
       })
       .from(apiKeyProviderAccounts)
+      .innerJoin(providers, eq(providers.id, apiKeyProviderAccounts.providerId))
       .leftJoin(providerAccounts, and(
         eq(providerAccounts.organizationId, apiKeyProviderAccounts.organizationId),
         eq(providerAccounts.id, apiKeyProviderAccounts.providerAccountId)
@@ -254,6 +288,7 @@ export class AdminQueryService {
       const list = bindings.get(row.apiKeyId) ?? [];
       list.push({
         provider: row.provider,
+        providerId: row.providerId,
         providerAccountId: row.providerAccountId,
         name: row.providerAccountName ?? null,
         status: row.providerAccountStatus ?? null
@@ -531,7 +566,7 @@ export class AdminQueryService {
     group.usage.outputTokens += row.outputTokens;
     group.usage.reasoningTokens += row.reasoningTokens;
     group.usage.totalTokens += row.totalTokens;
-    const baseline = baselineCostFor(this.catalog, pricing, costBaseline, row.surface, row.requestedModel, {
+    const baseline = baselineCostFor(pricing, costBaseline, row.surface, row.requestedModel, row.selectedProvider, row.selectedModel, {
       inputTokens: row.uncachedInputTokens + row.cachedInputTokens + row.cacheCreationInputTokens,
       cachedInputTokens: row.cachedInputTokens,
       cacheCreationInputTokens: row.cacheCreationInputTokens,
@@ -935,20 +970,32 @@ export class AdminQueryService {
     };
   }
 
-  // Effective pricing for this organization: boot defaults and env overrides,
-  // then per-org rows from model_catalog on top.
   private effectivePricing(): Promise<ModelPricingTable> {
     return this.cached("model-pricing", async () => {
-      const overrides = await this.pricingOverrideRows();
-      const table: Record<string, ModelPricing> = { ...this.config.modelCosts };
-      for (const override of overrides) table[override.model] = override.pricing;
+      const rows = await this.db
+        .select({
+          organizationId: modelCatalog.organizationId,
+          provider: providers.slug,
+          model: modelCatalog.model,
+          pricing: modelCatalog.pricing
+        })
+        .from(modelCatalog)
+        .innerJoin(providers, eq(providers.id, modelCatalog.providerId))
+        .where(or(
+          isNull(modelCatalog.organizationId),
+          eq(modelCatalog.organizationId, this.organizationId)
+        ));
+      const table: Record<string, ModelPricing> = {};
+      for (const row of rows.filter((row) => row.organizationId === null)) {
+        const pricing = pricingFromRow(row.pricing);
+        if (pricing) table[providerModelPricingKey(row.provider, row.model)] = pricing;
+      }
+      for (const row of rows.filter((row) => row.organizationId !== null)) {
+        const pricing = pricingFromRow(row.pricing);
+        if (pricing) table[providerModelPricingKey(row.provider, row.model)] = pricing;
+      }
       return Object.freeze(table);
     });
-  }
-
-  private pricingOverrideRows(): Promise<OrgPricingOverride[]> {
-    return this.cached("model-pricing-overrides", () =>
-      orgPricingOverrides(this.db, this.organizationId));
   }
 
   // Savings counterfactual for this organization: the baseline models from
@@ -961,11 +1008,10 @@ export class AdminQueryService {
   // the memoized override rows so the re-read reflects the write.
   invalidateModelPricing() {
     this.requestScopedCache.delete("model-pricing");
-    this.requestScopedCache.delete("model-pricing-overrides");
   }
 
   async modelPricing() {
-    const overrides = await this.pricingOverrideRows();
+    const pricing = await this.effectivePricing();
     // Deliberately org-wide (no workspaceScope): pricing is an org-level
     // resource, so unpriced traffic in any workspace is actionable here.
     const ledgerModels = await this.db
@@ -975,30 +1021,49 @@ export class AdminQueryService {
       })
       .from(usageLedger)
       .where(eq(usageLedger.organizationId, this.organizationId));
+    const catalogModels = await this.db
+      .select({
+        organizationId: modelCatalog.organizationId,
+        provider: providers.slug,
+        model: modelCatalog.model,
+        pricing: modelCatalog.pricing,
+        updatedAt: modelCatalog.updatedAt
+      })
+      .from(modelCatalog)
+      .innerJoin(providers, eq(providers.id, modelCatalog.providerId))
+      .where(or(
+        isNull(modelCatalog.organizationId),
+        eq(modelCatalog.organizationId, this.organizationId)
+      ));
 
     const entries = new Map<string, ModelPricingEntry>();
     const upsert = (model: string, provider: string | null) => {
-      const existing = entries.get(model);
+      const key = providerModelPricingKey(provider ?? "unknown", model);
+      const existing = entries.get(key);
       if (existing) {
         existing.provider ??= provider;
         return existing;
       }
       const entry = emptyPricingEntry(model, provider);
-      entries.set(model, entry);
+      entries.set(key, entry);
       return entry;
     };
 
-    const overridesByModel = new Map(overrides.map((override) => [override.model, override]));
-    const envModels = new Set(this.config.modelCostsFromEnv);
-    for (const staticEntry of staticPricingEntries(this.config.modelCosts, this.config.modelCostsFromEnv)) {
-      entries.set(staticEntry.model, staticEntry);
+    for (const catalogEntry of catalogModels.filter((entry) => entry.organizationId === null)) {
+      const row = upsert(catalogEntry.model, catalogEntry.provider);
+      const rowPricing = pricingFromRow(catalogEntry.pricing);
+      if (rowPricing) applyPricingToEntry(row, rowPricing, "default");
     }
-    for (const catalogEntry of Object.values(this.catalog)) {
-      upsert(catalogEntry.upstreamModel, catalogEntry.provider);
+    for (const catalogEntry of catalogModels.filter((entry) => entry.organizationId !== null)) {
+      const row = upsert(catalogEntry.model, catalogEntry.provider);
+      const rowPricing = pricingFromRow(catalogEntry.pricing);
+      if (!rowPricing) continue;
+      applyPricingToEntry(row, rowPricing, "custom");
+      row.updatedAt = catalogEntry.updatedAt.toISOString();
     }
     // The routing classifier bills its own model on every request, so list it
     // even before traffic — operators must be able to confirm it is priced.
-    this.seedClassifierPricingRow(upsert);
+    this.seedClassifierPricingRow(upsert, pricing);
     for (const ledgerModel of ledgerModels) {
       const row = upsert(ledgerModel.model, ledgerModel.provider);
       row.seenInTraffic = true;
@@ -1006,21 +1071,16 @@ export class AdminQueryService {
       // Dated identifiers (claude-sonnet-4-5-20250929) price through their
       // undated entry — including org overrides; reflect that in the listing.
       const undated = undatedModel(ledgerModel.model);
-      const override = overridesByModel.get(ledgerModel.model) ?? overridesByModel.get(undated);
-      if (override) {
-        applyPricingToEntry(row, override.pricing, "custom");
-        row.updatedAt = override.updatedAt.toISOString();
-        continue;
+      const exactRow = entries.get(providerModelPricingKey(ledgerModel.provider, ledgerModel.model));
+      const undatedRow = entries.get(providerModelPricingKey(ledgerModel.provider, undated));
+      const pricedRow = exactRow && exactRow.source !== "unpriced" ? exactRow : undatedRow;
+      if (pricedRow && pricedRow.source !== "unpriced") {
+        const modelPricing = pricingForProviderModel(pricing, ledgerModel.provider, ledgerModel.model);
+        if (modelPricing) {
+          applyPricingToEntry(row, modelPricing, pricedRow.source);
+          row.updatedAt = pricedRow.updatedAt;
+        }
       }
-      const pricing = pricingForModel(this.config.modelCosts, ledgerModel.model);
-      if (pricing) {
-        applyPricingToEntry(row, pricing, envModels.has(ledgerModel.model) || envModels.has(undated) ? "env" : "default");
-      }
-    }
-    for (const override of overrides) {
-      const row = upsert(override.model, override.provider);
-      applyPricingToEntry(row, override.pricing, "custom");
-      row.updatedAt = override.updatedAt.toISOString();
     }
 
     return [...entries.values()].sort(compareModelPricingEntries);
@@ -1029,20 +1089,17 @@ export class AdminQueryService {
   // Adds the configured classifier model to the pricing listing if traffic has
   // not surfaced it yet, resolving its rate through the static table (including
   // the undated fallback) so it shows as priced rather than missing.
-  private seedClassifierPricingRow(upsert: (model: string, provider: string | null) => ModelPricingEntry) {
+  private seedClassifierPricingRow(
+    upsert: (model: string, provider: string | null) => ModelPricingEntry,
+    pricing: ModelPricingTable
+  ) {
     const model = this.config.classifierModel;
     if (!model) return;
-    const provider = providerFromModelName(model) ?? this.config.classifierProvider ?? null;
+    const provider = this.config.classifierProvider;
     const row = upsert(model, provider);
     if (row.source !== "unpriced") return;
-    const pricing = pricingForModel(this.config.modelCosts, model);
-    if (pricing) {
-      const undated = undatedModel(model);
-      const source = this.config.modelCostsFromEnv.includes(model) || this.config.modelCostsFromEnv.includes(undated)
-        ? "env"
-        : "default";
-      applyPricingToEntry(row, pricing, source);
-    }
+    const modelPricing = pricingForProviderModel(pricing, provider, model);
+    if (modelPricing) applyPricingToEntry(row, modelPricing, "default");
   }
 
   private async summarizeRequests(
@@ -1080,7 +1137,7 @@ export class AdminQueryService {
         usage,
         classifierCost: classifierCostByRequest.get(request.id) ?? 0,
         attemptCount: attemptCountsByRequest.get(request.id) ?? 0
-      }, this.catalog, pricing, costBaseline);
+      }, pricing, costBaseline);
     });
     return this.addRoutingConfigNames(summaries);
   }
@@ -1573,6 +1630,7 @@ type ApiKeySummaryRow = {
 
 type ProviderBindingSummary = {
   provider: string;
+  providerId: string;
   providerAccountId: string;
   name: string | null;
   status: string | null;
@@ -1581,14 +1639,27 @@ type ProviderBindingSummary = {
 type ProviderAccountSummaryRow = {
   id: string;
   organizationId: string;
+  providerId: string;
   provider: string;
   name: string;
+  baseUrl: string | null;
   authType: ProviderAccountAuthType;
   status: string;
   secretHint: string | null;
   createdByUserId: string | null;
   createdAt: Date;
   lastUsedAt: Date | null;
+};
+
+type ProviderRegistryRow = {
+  id: string;
+  organizationId: string | null;
+  slug: string;
+  displayName: string;
+  authStyle: "bearer" | "x-api-key" | "none";
+  endpoints: { dialect: string; path: string }[];
+  forwardHarnessHeaders: boolean;
+  enabled: boolean;
 };
 
 function routingConfigListSummary(
@@ -1606,7 +1677,7 @@ function routingConfigListSummary(
     status: row.status,
     activeVersionId: row.activeVersionId ?? null,
     activeVersion: activeVersion ? routingConfigVersionSummary(activeVersion, true) : null,
-    routeMatrix: activeVersion ? routeMatrixSummary(activeVersion.config) : [],
+    routes: activeVersion ? routingConfigRoutesSummary(activeVersion.config) : [],
     assignedApiKeyCount,
     trafficShare,
     createdAt: row.createdAt.toISOString(),
@@ -1649,7 +1720,7 @@ function promptConditions(organizationId: string, workspaceId: string, filters: 
     workspaceScope(requests, organizationId, workspaceId)
   ];
   if (filters.userId) conditions.push(eq(requests.userId, filters.userId));
-  const surface = surfaceValue(filters.surface);
+  const surface = knownSurfaceValue(filters.surface);
   if (surface) conditions.push(eq(requests.surface, surface));
   const route = routeValue(filters.route);
   if (route) conditions.push(eq(routeDecisions.finalRoute, route));
@@ -1688,8 +1759,10 @@ function providerAccountSummary(row: ProviderAccountSummaryRow, boundKeyCount: n
   return {
     id: row.id,
     organizationId: row.organizationId,
+    providerId: row.providerId,
     provider: row.provider,
     name: row.name,
+    baseUrl: row.baseUrl,
     authType: row.authType,
     status: row.status,
     secretHint: row.secretHint ?? null,
@@ -1697,6 +1770,20 @@ function providerAccountSummary(row: ProviderAccountSummaryRow, boundKeyCount: n
     boundKeyCount,
     createdAt: row.createdAt.toISOString(),
     lastUsedAt: row.lastUsedAt?.toISOString() ?? null
+  };
+}
+
+function providerRegistrySummary(row: ProviderRegistryRow) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    slug: row.slug,
+    displayName: row.displayName,
+    authStyle: row.authStyle,
+    endpoints: row.endpoints,
+    forwardHarnessHeaders: row.forwardHarnessHeaders,
+    enabled: row.enabled,
+    builtin: row.organizationId === null
   };
 }
 
@@ -1783,7 +1870,7 @@ function requestSummary(row: {
   usage: UsageAggregate | null;
   classifierCost: number;
   attemptCount: number;
-}, catalog: ModelCatalog, pricing: ModelPricingTable, costBaseline: CostBaseline) {
+}, pricing: ModelPricingTable, costBaseline: CostBaseline) {
   const usage = row.usage
     ? {
         inputTokens: row.usage.inputTokens,
@@ -1795,6 +1882,7 @@ function requestSummary(row: {
       }
     : emptyUsage();
   const selectedModel = row.decision?.selectedModel ?? row.attempt?.model ?? undefined;
+  const selectedProvider = row.decision?.selectedProvider ?? row.attempt?.provider ?? undefined;
   // A decision row without a model means the router rejected the request
   // before selecting one (budget/compatibility); no decision at all means the
   // request died before routing finished.
@@ -1806,7 +1894,15 @@ function requestSummary(row: {
   // — savings therefore absorb the routing overhead honestly.
   const classifierCost = row.classifierCost;
   const selectedCost = providerCost + classifierCost;
-  const baselineCost = baselineCostFor(catalog, pricing, costBaseline, row.request.surface, row.request.requestedModel, usage);
+  const baselineCost = baselineCostFor(
+    pricing,
+    costBaseline,
+    row.request.surface,
+    row.request.requestedModel,
+    selectedProvider,
+    selectedModel,
+    usage
+  );
   return {
     requestId: row.request.id,
     userId: row.request.userId ?? undefined,
@@ -2213,17 +2309,24 @@ function timestamp(value: Date | null | undefined) {
 }
 
 function baselineCostFor(
-  catalog: ModelCatalog,
   pricing: ModelPricingTable,
   costBaseline: CostBaseline,
   surface: string,
   requestedModel: string,
+  selectedProvider: string | undefined,
+  selectedModel: string | undefined,
   usage: ReturnType<typeof emptyUsage>
 ) {
-  const compatibleSurface = surfaceValue(surface);
+  const compatibleSurface = knownSurfaceValue(surface);
   if (!compatibleSurface) return 0;
-  const model = baselineUpstreamModel(catalog, costBaseline, compatibleSurface, requestedModel);
-  return usageCostMicros(pricingForModel(pricing, model), usage).totalCostMicros / 1_000_000;
+  const route = explicitAlias(compatibleSurface, requestedModel);
+  const provider = route
+    ? selectedProvider
+    : providerForDialect(compatibleSurface);
+  const model = route ? selectedModel : baselineModelForDialect(costBaseline, compatibleSurface);
+  if (!provider) return 0;
+  if (!model) return 0;
+  return usageCostMicros(pricingForProviderModel(pricing, provider, model), usage).totalCostMicros / 1_000_000;
 }
 
 function elapsedMs(start: Date | null | undefined, end: Date | null | undefined) {

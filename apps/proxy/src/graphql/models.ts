@@ -49,10 +49,13 @@ export type ApiKeyRoutingConfigRefModel = NonNullable<ApiKeyModel["routingConfig
 export type ApiKeyProviderBindingModel = ApiKeyModel["providerCredentials"][number];
 
 export type ProviderAccountModel = Awaited<ReturnType<Q["providerAccounts"]>>["data"][number];
+export type ProviderRegistryEntryModel = Awaited<ReturnType<Q["providers"]>>["data"][number];
+export type ProviderEndpointModel = ProviderRegistryEntryModel["endpoints"][number];
 
 export type RoutingConfigSummaryModel = Awaited<ReturnType<Q["routingConfigs"]>>["data"][number];
 export type RoutingConfigVersionModel = NonNullable<RoutingConfigSummaryModel["activeVersion"]>;
-export type RouteMatrixRowModel = RoutingConfigSummaryModel["routeMatrix"][number];
+export type RoutingConfigRouteModel = RoutingConfigSummaryModel["routes"][number];
+export type RouteTargetModel = RoutingConfigRouteModel["targets"][number];
 export type RoutingConfigDetailModel = NonNullable<Awaited<ReturnType<Q["routingConfigDetail"]>>>;
 export type RoutingConfigVersionDetailModel = RoutingConfigDetailModel["versions"][number];
 

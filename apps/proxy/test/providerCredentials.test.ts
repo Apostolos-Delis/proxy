@@ -8,25 +8,45 @@ import {
   defaultWorkspaceId,
   decryptSecret,
   encryptSecret,
+  events,
+  modelCatalog,
+  providers,
   providerAccounts,
   users
 } from "@prompt-proxy/db";
 
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
+import { startAnthropicMock, startOpenAIMock } from "./helpers.js";
 
 const ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 const CUSTOMER_KEY = "sk-ant-customer-zzz";
+const ANTHROPIC_PROVIDER_ID = "00000000-0000-0000-0000-000000000002";
+const CUSTOM_PROVIDER_ID = "10000000-0000-0000-0000-000000000001";
+const SHADOW_OPENAI_PROVIDER_ID = "10000000-0000-0000-0000-000000000002";
+const UNBOUND_OPENAI_PROVIDER_ID = "10000000-0000-0000-0000-000000000003";
+const REDIRECT_OPENAI_PROVIDER_ID = "10000000-0000-0000-0000-000000000004";
+const CUSTOM_ANTHROPIC_PROVIDER_ID = "10000000-0000-0000-0000-000000000005";
 
 const CREATE = `mutation Create($input: CreateProviderCredentialInput!) {
-  createProviderCredential(input: $input) { id provider name status authType secretHint ownerUserId }
+  createProviderCredential(input: $input) { id providerId provider baseUrl name status authType secretHint ownerUserId }
 }`;
 const REVOKE = `mutation Revoke($id: ID!) { revokeProviderCredential(providerAccountId: $id) { id status } }`;
 const BIND = `mutation Bind($apiKeyId: ID!, $provider: String!, $providerAccountId: ID) {
   assignApiKeyProviderAccount(apiKeyId: $apiKeyId, provider: $provider, providerAccountId: $providerAccountId) {
-    id providerCredentials { provider providerAccountId name status }
+    id providerCredentials { provider providerId providerAccountId name status }
   }
 }`;
-const LIST = `query { providerAccounts { id provider name authType status secretHint ownerUserId boundKeyCount } }`;
+const LIST = `query { providerAccounts { id providerId provider baseUrl name authType status secretHint ownerUserId boundKeyCount } }`;
+const PROVIDERS = `query {
+  providers {
+    slug
+    displayName
+    authStyle
+    enabled
+    builtin
+    endpoints { dialect path }
+  }
+}`;
 
 const messageBody = JSON.stringify({
   model: "claude-router-auto",
@@ -58,6 +78,8 @@ describe("BYOK provider credentials", () => {
     expect(created.errors).toBeUndefined();
     const account = created.data?.createProviderCredential;
     expect(account.name).toBe("Acme key");
+    expect(account.providerId).toBe(ANTHROPIC_PROVIDER_ID);
+    expect(account.baseUrl).toBeNull();
     expect(account.secretHint.startsWith("••••")).toBe(true);
     expect(JSON.stringify(created)).not.toContain(CUSTOMER_KEY);
 
@@ -79,6 +101,336 @@ describe("BYOK provider credentials", () => {
     const serialized = JSON.stringify(list);
     expect(serialized).not.toContain(CUSTOMER_KEY);
     expect(serialized).not.toContain("secret_ciphertext");
+  });
+
+  it("round-trips a credential binding for an org-scoped custom provider", async () => {
+    const fixture = await setup("org_byok_custom");
+    await fixture.db.insert(providers).values({
+      id: CUSTOM_PROVIDER_ID,
+      organizationId: "org_byok_custom",
+      slug: "acme-vllm",
+      displayName: "Acme vLLM",
+      baseUrl: "http://10.0.0.5:8000/v1",
+      authStyle: "bearer",
+      endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+
+    const created = await gql(fixture, CREATE, {
+      input: {
+        provider: "acme-vllm",
+        name: "Acme custom key",
+        apiKey: "sk-acme-custom",
+        baseUrl: "http://10.0.0.6:8000/v1"
+      }
+    });
+    expect(created.errors).toBeUndefined();
+    const account = created.data?.createProviderCredential;
+    expect(account).toMatchObject({
+      providerId: CUSTOM_PROVIDER_ID,
+      provider: "acme-vllm",
+      baseUrl: "http://10.0.0.6:8000/v1",
+      name: "Acme custom key"
+    });
+
+    const bound = await gql(fixture, BIND, {
+      apiKeyId: "org_byok_custom:api-key:default",
+      provider: "acme-vllm",
+      providerAccountId: account.id
+    });
+    expect(bound.errors).toBeUndefined();
+    expect(bound.data?.assignApiKeyProviderAccount.providerCredentials).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        provider: "acme-vllm",
+        providerId: CUSTOM_PROVIDER_ID,
+        providerAccountId: account.id
+      })
+    ]));
+    expect(JSON.stringify(created)).not.toContain("sk-acme-custom");
+  });
+
+  it("lists effective registry providers for routing config editors", async () => {
+    const fixture = await setup("org_byok_provider_registry");
+    await fixture.db.insert(providers).values({
+      id: SHADOW_OPENAI_PROVIDER_ID,
+      organizationId: "org_byok_provider_registry",
+      slug: "openai",
+      displayName: "OpenAI Gateway",
+      baseUrl: "https://gateway.example.test/v1",
+      authStyle: "none",
+      endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+
+    const result = await gql(fixture, PROVIDERS);
+
+    expect(result.errors).toBeUndefined();
+    const rows = result.data?.providers ?? [];
+    expect(rows.filter((provider) => provider.slug === "openai")).toHaveLength(1);
+    expect(rows.find((provider) => provider.slug === "openai")).toMatchObject({
+      slug: "openai",
+      displayName: "OpenAI Gateway",
+      authStyle: "none",
+      builtin: false,
+      endpoints: [{ dialect: "openai-responses", path: "/responses" }]
+    });
+    expect(rows.find((provider) => provider.slug === "anthropic")).toMatchObject({
+      slug: "anthropic",
+      builtin: true
+    });
+  });
+
+  it("lists enabled provider catalog models in model discovery", async () => {
+    const organizationId = "org_byok_model_discovery";
+    const fixture = await setup(organizationId);
+    await fixture.db.insert(providers).values({
+      id: CUSTOM_PROVIDER_ID,
+      organizationId,
+      slug: "acme-responses",
+      displayName: "Acme Responses",
+      baseUrl: "https://acme.example.test/v1",
+      authStyle: "none",
+      endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+    await fixture.db.insert(modelCatalog).values({
+      id: `${organizationId}:model:acme-coder`,
+      organizationId,
+      providerId: CUSTOM_PROVIDER_ID,
+      model: "acme-coder",
+      capabilities: {},
+      pricing: {}
+    });
+
+    const response = await fetch(`${fixture.proxyUrl}/v1/models`, {
+      headers: { authorization: "Bearer proxy-token" }
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "anthropic-router-deep" }),
+      expect.objectContaining({
+        id: "acme-coder",
+        object: "model",
+        owned_by: "acme-responses",
+        type: "model",
+        display_name: "acme-coder"
+      })
+    ]));
+
+    const publicResponse = await fetch(`${fixture.proxyUrl}/v1/models`);
+    const publicBody = await publicResponse.json();
+    expect(publicBody.data.some((model) => model.id === "acme-coder")).toBe(false);
+  });
+
+  it("forwards through an org provider row that shadows a builtin slug", async () => {
+    const organizationId = "org_provider_shadow";
+    const fixture = await setup(organizationId);
+    const shadowOpenAI = await startOpenAIMock();
+    const providerAccountId = `${organizationId}:provider-account:shadow-openai`;
+
+    try {
+      await fixture.db.insert(providers).values({
+        id: SHADOW_OPENAI_PROVIDER_ID,
+        organizationId,
+        slug: "openai",
+        displayName: "Shadow OpenAI",
+        baseUrl: shadowOpenAI.url,
+        authStyle: "bearer",
+        endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+        defaultHeaders: { "x-acme-provider": "shadow" },
+        forwardHarnessHeaders: false,
+        enabled: true
+      });
+      await fixture.db.insert(providerAccounts).values({
+        id: providerAccountId,
+        organizationId,
+        providerId: SHADOW_OPENAI_PROVIDER_ID,
+        name: "Shadow OpenAI key",
+        authType: "api_key",
+        secretCiphertext: encryptSecret("sk-shadow-openai", ENCRYPTION_KEY),
+        secretHint: "••••enai",
+        settings: {}
+      });
+      await fixture.db.insert(apiKeyProviderAccounts).values({
+        organizationId,
+        workspaceId: defaultWorkspaceId(organizationId),
+        apiKeyId: `${organizationId}:api-key:default`,
+        providerId: SHADOW_OPENAI_PROVIDER_ID,
+        providerAccountId
+      });
+
+      const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer proxy-token",
+          "content-type": "application/json",
+          "x-codex-turn-state": "should-not-forward"
+        },
+        body: JSON.stringify({
+          model: "router-auto",
+          input: "fix the failing auth test and find root cause",
+          stream: true
+        })
+      });
+
+      expect(response.status).toBe(200);
+      await response.text();
+
+      const shadowCall = shadowOpenAI.records.find((record) =>
+        record.path === "/responses" && record.body.model === "gpt-5.5"
+      );
+      expect(shadowCall?.headers.authorization).toBe("Bearer sk-shadow-openai");
+      expect(shadowCall?.headers["x-acme-provider"]).toBe("shadow");
+      expect(shadowCall?.headers["x-codex-turn-state"]).toBeUndefined();
+      expect(shadowCall?.body.model).toBe("gpt-5.5");
+      expect(fixture.openai.records.find((record) => record.body.model === "gpt-5.5")).toBeUndefined();
+    } finally {
+      await shadowOpenAI.close();
+    }
+  });
+
+  it("rejects org provider rows without falling back to operator credentials", async () => {
+    const organizationId = "org_provider_unbound";
+    const fixture = await setup(organizationId);
+    const shadowOpenAI = await startOpenAIMock();
+
+    try {
+      await fixture.db.insert(providers).values({
+        id: UNBOUND_OPENAI_PROVIDER_ID,
+        organizationId,
+        slug: "openai",
+        displayName: "Unbound OpenAI",
+        baseUrl: shadowOpenAI.url,
+        authStyle: "bearer",
+        endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+        defaultHeaders: {},
+        forwardHarnessHeaders: true,
+        enabled: true
+      });
+
+      const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer proxy-token",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "router-auto",
+          input: "fix the failing auth test and find root cause",
+          stream: true
+        })
+      });
+      const body = await response.json();
+
+      const eventRows = await fixture.db.select().from(events);
+      const decision = eventRows.find((event) => event.eventType === "routing.decision_recorded");
+
+      expect(response.status).toBe(400);
+      expect(body.error).toBe("route_not_available_for_surface");
+      expect(decision?.payload).toEqual(expect.objectContaining({
+        guardrailActions: expect.arrayContaining([
+          "target_skipped_provider_credential_unresolved:openai"
+        ])
+      }));
+      expect(shadowOpenAI.records.find((record) => record.body.model === "gpt-5.5")).toBeUndefined();
+      expect(fixture.openai.records.find((record) => record.body.model === "gpt-5.5")).toBeUndefined();
+    } finally {
+      await shadowOpenAI.close();
+    }
+  });
+
+  it("forwards dialect headers but not identity headers to org Anthropic endpoints by default", async () => {
+    const organizationId = "org_provider_anthropic_headers";
+    const fixture = await setup(organizationId);
+    const customAnthropic = await startAnthropicMock();
+
+    try {
+      await fixture.db.insert(providers).values({
+        id: CUSTOM_ANTHROPIC_PROVIDER_ID,
+        organizationId,
+        slug: "anthropic",
+        displayName: "Custom Anthropic",
+        baseUrl: customAnthropic.url,
+        authStyle: "none",
+        endpoints: [{ dialect: "anthropic-messages", path: "/messages" }],
+        defaultHeaders: {},
+        forwardHarnessHeaders: false,
+        enabled: true
+      });
+
+      const response = await fetch(`${fixture.proxyUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer proxy-token",
+          "content-type": "application/json",
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "oauth-2025-04-20",
+          "x-claude-code-session-id": "claude-private-session"
+        },
+        body: messageBody
+      });
+
+      expect(response.status).toBe(200);
+      await response.text();
+
+      const providerCall = customAnthropic.records.find((record) => record.path === "/messages");
+      expect(providerCall?.headers["anthropic-version"]).toBe("2023-06-01");
+      expect(providerCall?.headers["anthropic-beta"]).toBe("oauth-2025-04-20");
+      expect(providerCall?.headers["x-claude-code-session-id"]).toBeUndefined();
+      expect(fixture.anthropic.records.find((record) => record.path === "/messages")).toBeUndefined();
+    } finally {
+      await customAnthropic.close();
+    }
+  });
+
+  it("does not follow redirects from org upstream providers", async () => {
+    const organizationId = "org_provider_redirect";
+    const fixture = await setup(organizationId);
+    const redirectTarget = await startOpenAIMock();
+    const redirectSource = await startOpenAIMock({ redirectProviderTo: redirectTarget.url });
+
+    try {
+      await fixture.db.insert(providers).values({
+        id: REDIRECT_OPENAI_PROVIDER_ID,
+        organizationId,
+        slug: "openai",
+        displayName: "Redirecting OpenAI",
+        baseUrl: redirectSource.url,
+        authStyle: "none",
+        endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+        defaultHeaders: {},
+        forwardHarnessHeaders: true,
+        enabled: true
+      });
+
+      const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+        method: "POST",
+        redirect: "manual",
+        headers: {
+          authorization: "Bearer proxy-token",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "router-auto",
+          input: "fix the failing auth test and find root cause",
+          stream: true
+        })
+      });
+
+      expect(response.status).toBe(302);
+      expect(redirectTarget.records.find((record) => record.body.model === "gpt-5.5")).toBeUndefined();
+    } finally {
+      await redirectSource.close();
+      await redirectTarget.close();
+    }
   });
 
   it("falls back to the company key when no credential is bound", async () => {
@@ -125,7 +477,10 @@ describe("BYOK provider credentials", () => {
 
   async function setup(organizationId: string) {
     activeFixture = await captureFixture(organizationId, "raw_text", false, {
-      envOverrides: { PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY }
+      envOverrides: {
+        PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY,
+        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8"
+      }
     });
     return activeFixture;
   }
@@ -635,7 +990,7 @@ describe("subscription oauth credentials", () => {
     await fixture.db.insert(providerAccounts).values({
       id: accountId,
       organizationId,
-      provider: "anthropic",
+      providerId: ANTHROPIC_PROVIDER_ID,
       name: "Pasted subscription",
       authType: "oauth",
       secretCiphertext: ciphertext,
@@ -647,7 +1002,7 @@ describe("subscription oauth credentials", () => {
       organizationId,
       workspaceId: defaultWorkspaceId(organizationId),
       apiKeyId: `${organizationId}:api-key:default`,
-      provider: "anthropic",
+      providerId: ANTHROPIC_PROVIDER_ID,
       providerAccountId: accountId,
       createdByUserId: "local-user"
     });

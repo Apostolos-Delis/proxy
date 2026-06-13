@@ -1,56 +1,81 @@
-// The editor manipulates the raw config document as loose JSON; the server's
-// zod schema (@prompt-proxy/schema routingConfigSchema) is the validator of
-// record when a draft is saved.
-export type RoutingConfigProviderSettings = {
-  model?: string;
-  reasoning?: { effort?: string };
-  text?: { verbosity?: string };
-  thinking?: { type?: string; display?: string };
-  output_config?: { effort?: string };
+export type RoutingConfigThinking = {
+  type?: string;
+  display?: string;
+};
+
+export type RoutingConfigRouteTarget = {
+  providerId: string;
+  model: string;
+  effort?: string;
+  thinking?: RoutingConfigThinking;
   maxOutputTokens?: number;
-  maxTokens?: number;
+  verbosity?: string;
   metadata?: Record<string, unknown>;
 };
 
+export type RoutingConfigRoute = {
+  description?: string;
+  targets: RoutingConfigRouteTarget[];
+};
+
 export type RoutingConfigDocument = {
-  schemaVersion: number;
+  schemaVersion: 2;
   displayName: string;
   description?: string;
   classifier: {
-    provider: string;
+    providerId: string;
     model: string;
+    effort?: string;
     rules?: string;
     timeoutMs: number;
     maxAttempts: number;
     allowRedactedExcerpt: boolean;
     structuredOutput?: Record<string, unknown>;
   };
-  routes: Record<string, {
-    description?: string;
-    openai?: RoutingConfigProviderSettings;
-    anthropic?: RoutingConfigProviderSettings;
-  }>;
+  routes: Record<string, RoutingConfigRoute>;
   limits: Record<string, unknown>;
   session: Record<string, unknown>;
+};
+
+export type RoutingCatalogProvider = {
+  slug: string;
+  displayName: string;
+  authStyle: string;
+  enabled: boolean;
+  builtin: boolean;
+  endpoints: { dialect: string; path: string }[];
+};
+
+export type RoutingCatalogModel = {
+  provider?: string | null;
+  model: string;
+  source: string;
+  seenInTraffic: boolean;
+};
+
+export type RoutingEditorCatalog = {
+  providers: RoutingCatalogProvider[];
+  models: RoutingCatalogModel[];
 };
 
 export const editorRouteOrder = ["fast", "balanced", "hard", "deep"] as const;
 
 export type EditorRouteName = typeof editorRouteOrder[number];
 
-export const OPENAI_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as const;
-
-export const ANTHROPIC_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
-
-// Both provider scales merged into one ordinal ladder; display meters rank
-// any effort value against it.
 export const EFFORT_SCALE = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
+export type RouteTargetDraft = {
+  providerId: string;
+  model: string;
+  effort: string;
+  thinking?: RoutingConfigThinking;
+  maxOutputTokens?: number;
+  verbosity?: string;
+  metadata?: Record<string, unknown>;
+};
+
 export type RouteTierDraft = {
-  openaiModel: string;
-  openaiEffort: string;
-  anthropicModel: string;
-  anthropicEffort: string;
+  targets: RouteTargetDraft[];
 };
 
 export type ConfigEditorDraft = {
@@ -63,10 +88,15 @@ export function draftFromConfig(config: RoutingConfigDocument): ConfigEditorDraf
   for (const route of editorRouteOrder) {
     const tier = config.routes[route];
     routes[route] = {
-      openaiModel: tier?.openai?.model ?? "",
-      openaiEffort: tier?.openai?.reasoning?.effort ?? "",
-      anthropicModel: tier?.anthropic?.model ?? "",
-      anthropicEffort: tier?.anthropic?.output_config?.effort ?? ""
+      targets: (tier?.targets ?? []).map((target) => ({
+        providerId: target.providerId ?? "",
+        model: target.model ?? "",
+        effort: target.effort ?? "",
+        thinking: target.thinking,
+        maxOutputTokens: target.maxOutputTokens,
+        verbosity: target.verbosity,
+        metadata: target.metadata
+      }))
     };
   }
   return {
@@ -78,16 +108,13 @@ export function draftFromConfig(config: RoutingConfigDocument): ConfigEditorDraf
 export function applyDraft(base: RoutingConfigDocument, draft: ConfigEditorDraft): RoutingConfigDocument {
   const routes: RoutingConfigDocument["routes"] = { ...base.routes };
   for (const route of editorRouteOrder) {
-    const baseRoute = base.routes[route] ?? {};
-    const nextRoute = { ...baseRoute };
-    const tier = draft.routes[route];
-    const openai = providerBlock(baseRoute.openai, tier.openaiModel, "reasoning", tier.openaiEffort);
-    const anthropic = providerBlock(baseRoute.anthropic, tier.anthropicModel, "output_config", tier.anthropicEffort);
-    if (openai) nextRoute.openai = openai;
-    else delete nextRoute.openai;
-    if (anthropic) nextRoute.anthropic = anthropic;
-    else delete nextRoute.anthropic;
-    routes[route] = nextRoute;
+    const baseRoute = base.routes[route] ?? { targets: [] };
+    routes[route] = {
+      ...baseRoute,
+      targets: draft.routes[route].targets
+        .map(routeTargetFromDraft)
+        .filter((target): target is RoutingConfigRouteTarget => Boolean(target))
+    };
   }
   const next = {
     ...base,
@@ -101,11 +128,20 @@ export function applyDraft(base: RoutingConfigDocument, draft: ConfigEditorDraft
 }
 
 export function draftError(draft: ConfigEditorDraft): string | undefined {
-  const missing = editorRouteOrder.filter((route) =>
-    !draft.routes[route].openaiModel.trim() && !draft.routes[route].anthropicModel.trim()
-  );
-  if (missing.length === 0) return undefined;
-  return `Each tier needs at least one model. Missing: ${missing.join(", ")}.`;
+  const emptyRoutes = editorRouteOrder.filter((route) => draft.routes[route].targets.length === 0);
+  if (emptyRoutes.length > 0) {
+    return `Each tier needs at least one target. Missing: ${emptyRoutes.join(", ")}.`;
+  }
+
+  for (const route of editorRouteOrder) {
+    const incompleteIndex = draft.routes[route].targets.findIndex((target) =>
+      !target.providerId.trim() || !target.model.trim()
+    );
+    if (incompleteIndex >= 0) {
+      return `${route} target ${incompleteIndex + 1} needs both a provider and model.`;
+    }
+  }
+  return undefined;
 }
 
 export function draftsEqual(left: ConfigEditorDraft, right: ConfigEditorDraft) {
@@ -124,19 +160,47 @@ export function parseConfigJson(text: string): { config?: RoutingConfigDocument;
   }
 }
 
-function providerBlock(
-  base: RoutingConfigProviderSettings | undefined,
-  model: string,
-  effortKey: "reasoning" | "output_config",
-  effort: string
-) {
-  const trimmed = model.trim();
-  if (!trimmed) return undefined;
-  const block: RoutingConfigProviderSettings = { ...base, model: trimmed };
-  const container: { effort?: string } = { ...base?.[effortKey] };
-  if (effort) container.effort = effort;
-  else delete container.effort;
-  if (Object.keys(container).length > 0) block[effortKey] = container;
-  else delete block[effortKey];
-  return block;
+export function emptyRouteTarget(providerId = "", model = ""): RouteTargetDraft {
+  return {
+    providerId,
+    model,
+    effort: ""
+  };
+}
+
+export function effectiveEffortForTarget(target: Pick<RouteTargetDraft, "providerId" | "effort">) {
+  const effort = target.effort.trim();
+  if (!effort) return "";
+  if (target.providerId.trim() !== "anthropic") return effort;
+  return nearestEffort(effort, ["low", "medium", "high", "xhigh", "max"]) ?? effort;
+}
+
+function routeTargetFromDraft(target: RouteTargetDraft) {
+  const providerId = target.providerId.trim();
+  const model = target.model.trim();
+  if (!providerId && !model) return undefined;
+  const next: RoutingConfigRouteTarget = { providerId, model };
+  const effort = target.effort.trim();
+  if (effort) next.effort = effort;
+  if (target.thinking) next.thinking = target.thinking;
+  if (target.maxOutputTokens) next.maxOutputTokens = target.maxOutputTokens;
+  if (target.verbosity) next.verbosity = target.verbosity;
+  if (target.metadata) next.metadata = target.metadata;
+  return next;
+}
+
+function nearestEffort(value: string, supported: readonly string[]) {
+  if (supported.includes(value)) return value;
+  const requestedIndex = EFFORT_SCALE.indexOf(value as typeof EFFORT_SCALE[number]);
+  if (requestedIndex < 0) return undefined;
+  let closest: string | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const effort of supported) {
+    const distance = Math.abs(EFFORT_SCALE.indexOf(effort as typeof EFFORT_SCALE[number]) - requestedIndex);
+    if (distance < bestDistance) {
+      closest = effort;
+      bestDistance = distance;
+    }
+  }
+  return closest;
 }

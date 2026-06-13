@@ -4,8 +4,9 @@ import {
   type PromptProxyDatabase
 } from "@prompt-proxy/db";
 
-import type { ModelCatalog } from "../catalog.js";
 import type { AppConfig } from "../config.js";
+import { ModelDiscoveryStore } from "../modelDiscovery.js";
+import { ModelCatalogRefreshJob } from "../jobs/modelCatalogRefresh.js";
 import { AdminQueryService, type AdminQueryConfig } from "./adminQueries.js";
 import { AdminSessionStore } from "./adminSessions.js";
 import { ApiKeyAdminService } from "./apiKeyAdmin.js";
@@ -15,6 +16,7 @@ import { ModelPricingAdminService } from "./modelPricingAdmin.js";
 import { OrganizationSettingsStore } from "./organizationSettings.js";
 import { ProviderCredentialAdminService } from "./providerCredentialAdmin.js";
 import { ProviderCredentialStore, type ProviderCredentialOptions } from "./providerCredentials.js";
+import { ProviderRegistryStore } from "./providers.js";
 import { PromptAccessAuditStore } from "./promptAccessAudit.js";
 import { PromptArtifactStore } from "./promptArtifacts.js";
 import { PersistentRequestStateStore } from "./requestState.js";
@@ -29,17 +31,17 @@ import { WorkspaceAdminService } from "./workspaceAdmin.js";
 export type DatabasePersistenceConfig = AdminQueryConfig & {
   defaultOrganizationId: string;
   invitationTtlSeconds: number;
+  allowedPrivateUpstreamCidrs: string[];
   providerSecretEncryptionKey?: string;
   subscriptionOAuthEnabled: boolean;
 };
 
-export function createPostgresPersistence(databaseUrl: string, catalog: ModelCatalog, config: AppConfig) {
-  return createDatabasePersistence(createPostgresDatabase(databaseUrl), catalog, config, true);
+export function createPostgresPersistence(databaseUrl: string, config: AppConfig) {
+  return createDatabasePersistence(createPostgresDatabase(databaseUrl), config, true);
 }
 
 export function createDatabasePersistence(
   db: PromptProxyDatabase,
-  catalog: ModelCatalog,
   config: DatabasePersistenceConfig,
   useAdvisoryLocks: boolean
 ) {
@@ -58,8 +60,13 @@ export function createDatabasePersistence(
     adminSessions: new AdminSessionStore(db),
     providerCredentials: new ProviderCredentialStore(db, credentialOptions),
     providerCredentialAdmin: new ProviderCredentialAdminService(transactional, credentialOptions),
-    eventSink: new DatabaseEventSink(transactional, config.modelCosts, useAdvisoryLocks),
-    modelPricingAdmin: new ModelPricingAdminService(transactional, config.modelCosts),
+    providerRegistry: new ProviderRegistryStore(db, config),
+    eventSink: new DatabaseEventSink(transactional, useAdvisoryLocks),
+    modelCatalogRefresh: new ModelCatalogRefreshJob(transactional, {
+      auditOrganizationId: config.defaultOrganizationId
+    }),
+    modelDiscovery: new ModelDiscoveryStore(db),
+    modelPricingAdmin: new ModelPricingAdminService(transactional),
     organizationSettings: new OrganizationSettingsStore(db),
     promptAccessAudit: new PromptAccessAuditStore(db),
     promptArtifacts: new PromptArtifactStore(transactional, db),
@@ -71,13 +78,11 @@ export function createDatabasePersistence(
     userAdmin: new UserAdminService(transactional, { invitationTtlSeconds: config.invitationTtlSeconds }),
     workspaceAdmin: new WorkspaceAdminService(transactional),
     normalizeLegacyCachedUsage: () => normalizeLegacyCachedUsage(db),
-    repriceZeroCostUsage: () => repriceZeroCostUsage(db, config.modelCosts),
+    repriceZeroCostUsage: () => repriceZeroCostUsage(db),
     adminQueries: {
       forScope: (organizationId: string, workspaceId: string) =>
-        new AdminQueryService(db, catalog, organizationId, workspaceId, {
+        new AdminQueryService(db, organizationId, workspaceId, {
           routeQualityLowConfidenceThreshold: config.routeQualityLowConfidenceThreshold,
-          modelCosts: config.modelCosts,
-          modelCostsFromEnv: config.modelCostsFromEnv,
           classifierModel: config.classifierModel,
           classifierProvider: config.classifierProvider
         })

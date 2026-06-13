@@ -6,6 +6,7 @@ import {
   events,
   promptAccessAudit,
   promptArtifacts,
+  providers,
   requests,
   routingConfigs,
   routingConfigVersions,
@@ -17,6 +18,7 @@ describe("prompt proxy database schema", () => {
   it("exposes the core durable tables", () => {
     expect(events).toBeTruthy();
     expect(promptArtifacts).toBeTruthy();
+    expect(providers).toBeTruthy();
     expect(promptAccessAudit).toBeTruthy();
     expect(requests).toBeTruthy();
     expect(routingConfigs).toBeTruthy();

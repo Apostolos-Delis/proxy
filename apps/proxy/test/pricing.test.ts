@@ -1,49 +1,22 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeUsage } from "../src/persistence/values.js";
 import {
   buildModelPricingTable,
   completeModelPricing,
+  pricingForProviderModel,
   pricingForModel,
+  providerModelPricingKey,
   usageCostMicros
 } from "../src/pricing.js";
 
 describe("model pricing table", () => {
-  it("ships default pricing for the configured route models", () => {
+  it("starts empty without explicit no-database pricing", () => {
     const table = buildModelPricingTable({});
 
-    expect(table["claude-haiku-4-5"]).toEqual({
-      inputCostPerMtok: 1,
-      outputCostPerMtok: 5,
-      cacheReadCostPerMtok: 0.1,
-      cacheWriteCostPerMtok: 1.25
-    });
-    expect(table["claude-sonnet-4-5"]).toEqual({
-      inputCostPerMtok: 3,
-      outputCostPerMtok: 15,
-      cacheReadCostPerMtok: 0.3,
-      cacheWriteCostPerMtok: 3.75
-    });
-    expect(table["claude-opus-4-5"].inputCostPerMtok).toBe(5);
-    expect(table["gpt-5.4-mini"].cacheReadCostPerMtok).toBe(0.025);
-    expect(table["gpt-5.5-pro"].outputCostPerMtok).toBe(120);
-    // Current production models must be priced or their spend silently books $0.
-    expect(table["claude-fable-5"]).toEqual({
-      inputCostPerMtok: 10,
-      outputCostPerMtok: 50,
-      cacheReadCostPerMtok: 1,
-      cacheWriteCostPerMtok: 12.5
-    });
-    expect(table["claude-opus-4-7"].inputCostPerMtok).toBe(5);
-    expect(table["claude-opus-4-8"]).toEqual({
-      inputCostPerMtok: 5,
-      outputCostPerMtok: 25,
-      cacheReadCostPerMtok: 0.5,
-      cacheWriteCostPerMtok: 6.25
-    });
+    expect(table).toEqual({});
   });
 
-  it("lets MODEL_COSTS_JSON override defaults and price unknown models", () => {
+  it("lets MODEL_COSTS_JSON price no-database models", () => {
     const table = buildModelPricingTable({
       "claude-haiku-4-5": { inputCostPerMtok: 2, outputCostPerMtok: 8 },
       "my-private-model": {
@@ -66,16 +39,44 @@ describe("model pricing table", () => {
       cacheReadCostPerMtok: 0.5,
       cacheWriteCostPerMtok: 11
     });
-    expect(table["claude-sonnet-4-5"].inputCostPerMtok).toBe(3);
+    expect(table["claude-sonnet-4-5"]).toBeUndefined();
   });
 
   it("resolves dated model identifiers to their undated pricing entry", () => {
-    const table = buildModelPricingTable({});
+    const table = buildModelPricingTable({
+      "claude-sonnet-4-5": { inputCostPerMtok: 3, outputCostPerMtok: 15 },
+      "gpt-5-nano": { inputCostPerMtok: 0.05, outputCostPerMtok: 0.4 },
+      "gpt-5.4": { inputCostPerMtok: 1.25, outputCostPerMtok: 10 }
+    });
 
     expect(pricingForModel(table, "claude-sonnet-4-5-20250929")).toEqual(table["claude-sonnet-4-5"]);
     expect(pricingForModel(table, "gpt-5-nano-2025-08-07")).toEqual(table["gpt-5-nano"]);
     expect(pricingForModel(table, "gpt-5.4")).toEqual(table["gpt-5.4"]);
     expect(pricingForModel(table, "totally-unknown-model")).toBeUndefined();
+  });
+
+  it("resolves provider-qualified catalog pricing without crossing providers", () => {
+    const table = {
+      [providerModelPricingKey("openai", "shared-model")]: completeModelPricing({
+        inputCostPerMtok: 1,
+        outputCostPerMtok: 2
+      }),
+      [providerModelPricingKey("acme", "shared-model")]: completeModelPricing({
+        inputCostPerMtok: 10,
+        outputCostPerMtok: 20
+      }),
+      [providerModelPricingKey("anthropic", "claude-sonnet-4-5")]: completeModelPricing({
+        inputCostPerMtok: 3,
+        outputCostPerMtok: 15
+      })
+    };
+
+    expect(pricingForProviderModel(table, "openai", "shared-model")?.inputCostPerMtok).toBe(1);
+    expect(pricingForProviderModel(table, "acme", "shared-model")?.inputCostPerMtok).toBe(10);
+    expect(pricingForProviderModel(table, "anthropic", "claude-sonnet-4-5-20250929")).toEqual(
+      table[providerModelPricingKey("anthropic", "claude-sonnet-4-5")]
+    );
+    expect(pricingForProviderModel(table, "openai", "claude-sonnet-4-5")).toBeUndefined();
   });
 });
 
@@ -133,67 +134,5 @@ describe("usageCostMicros", () => {
       cacheCreationInputTokens: 0,
       outputTokens: 1000
     })).toEqual({ inputCostMicros: 0, outputCostMicros: 0, totalCostMicros: 0 });
-  });
-});
-
-describe("normalizeUsage", () => {
-  it("keeps openai responses usage inclusive of cached tokens", () => {
-    expect(normalizeUsage({
-      input_tokens: 1000,
-      input_tokens_details: { cached_tokens: 600 },
-      output_tokens: 100,
-      output_tokens_details: { reasoning_tokens: 20 },
-      total_tokens: 1100
-    })).toEqual({
-      inputTokens: 1000,
-      cachedInputTokens: 600,
-      cacheCreationInputTokens: 0,
-      outputTokens: 100,
-      reasoningTokens: 20,
-      totalTokens: 1100
-    });
-  });
-
-  it("folds anthropic cache reads and writes back into total input", () => {
-    expect(normalizeUsage({
-      input_tokens: 1000,
-      cache_read_input_tokens: 10000,
-      cache_creation_input_tokens: 2000,
-      output_tokens: 500
-    })).toEqual({
-      inputTokens: 13000,
-      cachedInputTokens: 10000,
-      cacheCreationInputTokens: 2000,
-      outputTokens: 500,
-      reasoningTokens: 0,
-      totalTokens: 13500
-    });
-  });
-
-  it("treats anthropic zero-cache usage as plain input", () => {
-    expect(normalizeUsage({
-      input_tokens: 100,
-      cache_read_input_tokens: 0,
-      cache_creation_input_tokens: 0,
-      output_tokens: 5
-    })).toEqual({
-      inputTokens: 100,
-      cachedInputTokens: 0,
-      cacheCreationInputTokens: 0,
-      outputTokens: 5,
-      reasoningTokens: 0,
-      totalTokens: 105
-    });
-  });
-
-  it("is idempotent over already-normalized usage", () => {
-    const normalized = normalizeUsage({
-      input_tokens: 1000,
-      cache_read_input_tokens: 10000,
-      cache_creation_input_tokens: 2000,
-      output_tokens: 500
-    });
-
-    expect(normalizeUsage(normalized)).toEqual(normalized);
   });
 });

@@ -8,8 +8,18 @@ import {
   type ProviderAttemptStore,
   type RequestStateStoreLike
 } from "./events.js";
+import {
+  operatorTokenForProvider,
+  ProviderRegistryError,
+  providerEndpointForDialect,
+  type ProviderRegistryEndpoint,
+  type ProviderRegistryEntry,
+  type ProviderRegistryResolver
+} from "./persistence/providers.js";
 import { extractResponseText } from "./persistence/promptArtifacts.js";
-import { SseObserver, type StreamObservation } from "./sseObserver.js";
+import { copySelectedHeaders, detectHarness, dialectHeadersFor, identityHeadersFor } from "./harness.js";
+import { sseObserverForDialect, type StreamObservation } from "./sseObserver.js";
+import { translators, type DialectTranslator } from "./translators/index.js";
 import type { JsonObject, Provider, RouteDecision, Surface, UpstreamCredential } from "./types.js";
 
 export class ProviderProxy implements ProviderAdapter {
@@ -17,7 +27,8 @@ export class ProviderProxy implements ProviderAdapter {
     private readonly config: AppConfig,
     private readonly events: EventService,
     private readonly attempts: ProviderAttemptStore,
-    private readonly requestStates: RequestStateStoreLike
+    private readonly requestStates: RequestStateStoreLike,
+    private readonly providerRegistry: ProviderRegistryResolver
   ) {}
 
   async forward(input: ProviderForwardInput) {
@@ -25,7 +36,12 @@ export class ProviderProxy implements ProviderAdapter {
       input.reply.code(500).send({ error: "Missing selected model." });
       return;
     }
+    if (!input.decision.providerSettings) {
+      input.reply.code(500).send({ error: "Missing selected provider settings." });
+      return;
+    }
     const selectedModel = input.decision.selectedModel;
+    const targetDialect = input.decision.providerSettings.dialect;
 
     const { attempt, duplicate } = this.attempts.create({
       idempotencyKey: input.idempotencyKey,
@@ -63,11 +79,53 @@ export class ProviderProxy implements ProviderAdapter {
     };
     input.reply.raw.once("close", abortUpstream);
 
+    let resolvedProvider: ProviderRegistryEntry | undefined;
+    try {
+      resolvedProvider = await this.providerRegistry.resolve({
+        organizationId: input.organizationId,
+        provider: input.provider
+      });
+    } catch (error) {
+      const message = error instanceof ProviderRegistryError ? error.code : "provider_registry_resolution_failed";
+      streamCompleted = true;
+      input.reply.raw.off("close", abortUpstream);
+      await this.failBeforeFetch(input, attempt.id, message);
+      return;
+    }
+    const endpoint = resolvedProvider ? providerEndpointForDialect(resolvedProvider, targetDialect) : undefined;
+    if (!resolvedProvider || !resolvedProvider.enabled || !endpoint) {
+      const error = !resolvedProvider || !resolvedProvider.enabled
+        ? "provider_not_found"
+        : "provider_endpoint_not_found";
+      streamCompleted = true;
+      input.reply.raw.off("close", abortUpstream);
+      await this.failBeforeFetch(input, attempt.id, error);
+      return;
+    }
+    const responseTranslator = endpoint.dialect === input.surface
+      ? undefined
+      : translators.get(endpoint.dialect, input.surface);
+    if (endpoint.dialect !== input.surface && !responseTranslator) {
+      streamCompleted = true;
+      input.reply.raw.off("close", abortUpstream);
+      await this.failBeforeFetch(input, attempt.id, "translator_not_found");
+      return;
+    }
+    if (!canAuthenticateOrgProvider(resolvedProvider, input.credential)) {
+      const error = "provider_credential_unresolved";
+      streamCompleted = true;
+      input.reply.raw.off("close", abortUpstream);
+      await this.failBeforeFetch(input, attempt.id, error);
+      return;
+    }
+
     let upstream: Response;
     try {
       upstream = await this.fetchWithRateLimitRetries({
         input,
         providerAttemptId: attempt.id,
+        provider: resolvedProvider,
+        endpoint,
         signal: abortController.signal
       });
     } catch (error) {
@@ -99,7 +157,10 @@ export class ProviderProxy implements ProviderAdapter {
     }
 
     if (!isSse || !upstream.body) {
-      const text = await upstream.text();
+      const upstreamText = await upstream.text();
+      const text = upstream.ok && responseTranslator
+        ? translateResponseText(upstreamText, responseTranslator)
+        : upstreamText;
       const status = upstream.ok ? "completed" : "failed";
       const usage = tryExtractUsage(text);
       const error = upstream.ok ? undefined : errorExcerpt(text);
@@ -146,14 +207,17 @@ export class ProviderProxy implements ProviderAdapter {
     if (input.decision.reasoningEffort) {
       input.reply.raw.setHeader("x-prompt-proxy-reasoning-effort", input.decision.reasoningEffort);
     }
-    const observer = new SseObserver();
+    const observer = sseObserverForDialect(input.surface);
     let completed = false;
 
     try {
-      let observation: ReturnType<SseObserver["finish"]>;
+      let observation: StreamObservation;
       let status: "completed" | "failed";
       try {
-        for await (const chunk of upstream.body) {
+        const responseBody = responseTranslator
+          ? responseTranslator.sseTransform(upstream.body)
+          : upstream.body;
+        for await (const chunk of responseBody) {
           const bytes = chunk instanceof Uint8Array ? chunk : Buffer.from(chunk);
           observer.observe(bytes);
           if (!input.reply.raw.write(bytes)) {
@@ -281,22 +345,52 @@ export class ProviderProxy implements ProviderAdapter {
     }
   }
 
+  private async failBeforeFetch(
+    input: ProviderForwardInput,
+    providerAttemptId: string,
+    error: string
+  ) {
+    await this.appendTerminal(input, providerAttemptId, "failed", undefined, 0, { error });
+    this.attempts.update(providerAttemptId, {
+      terminalStatus: "failed",
+      error
+    });
+    await this.requestStates.finish(input.idempotencyKey, "failed", {
+      providerAttemptId,
+      error
+    });
+    input.reply.code(502).send({ error });
+  }
+
   private async fetchWithRateLimitRetries({
     input,
     providerAttemptId,
+    provider,
+    endpoint,
     signal
   }: {
     input: ProviderForwardInput;
     providerAttemptId: string;
+    provider: ProviderRegistryEntry;
+    endpoint: ProviderRegistryEndpoint;
     signal: AbortSignal;
   }) {
     const maxAttempts = this.config.providerRateLimitMaxAttempts;
 
     for (let upstreamAttempt = 1; upstreamAttempt <= maxAttempts; upstreamAttempt += 1) {
-      const upstream = await fetch(this.urlFor(input.provider, input.path, input.credential), {
+      const upstream = await fetch(urlFor(provider, endpoint, input.path, this.config, input.credential), {
         method: "POST",
-        headers: this.headersFor(input.provider, input.headers, input.credential),
+        headers: providerRequestHeaders({
+          config: this.config,
+          provider,
+          endpoint,
+          surface: input.surface,
+          body: input.body,
+          incoming: input.headers,
+          credential: input.credential
+        }),
         body: JSON.stringify(input.body),
+        redirect: provider.builtin ? "follow" : "manual",
         signal
       });
 
@@ -306,7 +400,7 @@ export class ProviderProxy implements ProviderAdapter {
 
       const delayMs = rateLimitRetryDelayMs({
         headers: upstream.headers,
-        provider: input.provider,
+        provider: provider.slug,
         attempt: upstreamAttempt,
         baseDelayMs: this.config.providerRateLimitBaseDelayMs,
         maxDelayMs: this.config.providerRateLimitMaxDelayMs
@@ -338,67 +432,90 @@ export class ProviderProxy implements ProviderAdapter {
 
     throw new Error("Provider rate-limit retry loop exhausted.");
   }
+}
 
-  private urlFor(provider: Provider, path?: string, credential?: UpstreamCredential) {
-    const openAIChatGPT = provider === "openai" && credential?.provider === provider &&
-      credential.authType === "oauth" && this.config.subscriptionOAuthEnabled;
-    let base = this.config.anthropicBaseUrl;
-    if (provider === "openai") {
-      base = openAIChatGPT ? this.config.openaiChatgptBaseUrl : this.config.openaiBaseUrl;
+function urlFor(
+  provider: ProviderRegistryEntry,
+  endpoint: ProviderRegistryEndpoint,
+  path: string | undefined,
+  config: AppConfig,
+  credential?: UpstreamCredential
+) {
+  const baseUrl = isOpenAIChatGPTCredential(provider, credential, config)
+    ? config.openaiChatgptBaseUrl
+    : provider.baseUrl;
+  return `${baseUrl}${path ?? endpoint.path}`;
+}
+
+export function providerRequestHeaders(input: {
+  config: AppConfig;
+  provider: ProviderRegistryEntry;
+  endpoint: ProviderRegistryEndpoint;
+  surface: Surface;
+  body: unknown;
+  incoming: Record<string, string | undefined>;
+  credential?: UpstreamCredential;
+}) {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    ...input.provider.defaultHeaders
+  };
+  const credentialForProvider = input.credential && input.credential.provider === input.provider.slug
+    ? input.credential
+    : undefined;
+  const operatorToken = input.provider.builtin ? operatorTokenForProvider(input.provider.slug, input.config) : undefined;
+  const chatgptCredential = isOpenAIChatGPTCredential(input.provider, credentialForProvider, input.config)
+    ? credentialForProvider
+    : undefined;
+  const token = chatgptCredential?.token ??
+    (credentialForProvider?.authType === "api_key" ? credentialForProvider.token : operatorToken);
+
+  if (input.provider.authStyle === "bearer" && token) {
+    headers.authorization = `Bearer ${token}`;
+    if (chatgptCredential?.chatgptAccountId) {
+      headers["ChatGPT-Account-Id"] = chatgptCredential.chatgptAccountId;
     }
-    return `${base}${path ?? (provider === "openai" ? "/responses" : "/messages")}`;
   }
-
-  private headersFor(
-    provider: Provider,
-    incoming: Record<string, string | undefined>,
-    credential?: UpstreamCredential
-  ) {
-    const headers: Record<string, string> = {
-      "content-type": "application/json"
-    };
-    const byok = credential && credential.provider === provider ? credential : undefined;
-
-    if (provider === "openai") {
-      const chatgptCredential = byok?.authType === "oauth" && this.config.subscriptionOAuthEnabled &&
-        byok.chatgptAccountId
-        ? byok
-        : undefined;
-      headers.authorization = `Bearer ${chatgptCredential?.token ?? (byok?.authType === "api_key" ? byok.token : this.config.openaiApiKey)}`;
-      if (chatgptCredential?.chatgptAccountId) {
-        headers["ChatGPT-Account-Id"] = chatgptCredential.chatgptAccountId;
-      }
-      copyIfPresent(incoming, headers, "x-codex-turn-state");
-      copyIfPresent(incoming, headers, "x-codex-turn-metadata");
-      copyIfPresent(incoming, headers, "x-openai-subagent");
-      copyIfPresent(incoming, headers, "x-request-id");
-      copyIfPresent(incoming, headers, "traceparent");
-      copyIfPresent(incoming, headers, "tracestate");
-      return headers;
-    }
-
-    if (byok?.authType === "oauth") {
-      // Forward-time kill-switch re-check: cached oauth credentials must die
-      // the moment the flag is off, and the subscription token must never go
-      // out as an x-api-key.
-      if (this.config.subscriptionOAuthEnabled) {
-        headers.authorization = `Bearer ${byok.token}`;
-      } else {
-        headers["x-api-key"] = this.config.anthropicApiKey;
+  if (input.provider.authStyle === "x-api-key" && token) {
+    if (input.provider.slug === "anthropic" && credentialForProvider?.authType === "oauth") {
+      if (input.config.subscriptionOAuthEnabled) {
+        headers.authorization = `Bearer ${credentialForProvider.token}`;
+      } else if (operatorToken) {
+        headers["x-api-key"] = operatorToken;
       }
     } else {
-      headers["x-api-key"] = byok?.token ?? this.config.anthropicApiKey;
+      headers["x-api-key"] = token;
     }
-    headers["anthropic-version"] = incoming["anthropic-version"] ?? "2023-06-01";
-    copyIfPresent(incoming, headers, "anthropic-beta");
-    copyIfPresent(incoming, headers, "x-claude-code-session-id");
-    copyIfPresent(incoming, headers, "x-claude-code-agent-id");
-    copyIfPresent(incoming, headers, "x-claude-code-parent-agent-id");
-    copyIfPresent(incoming, headers, "x-request-id");
-    copyIfPresent(incoming, headers, "traceparent");
-    copyIfPresent(incoming, headers, "tracestate");
-    return headers;
   }
+
+  const profile = detectHarness({ surface: input.surface, body: input.body, headers: input.incoming });
+  copySelectedHeaders(input.incoming, headers, dialectHeadersFor(input.endpoint.dialect));
+
+  if (input.endpoint.dialect === "anthropic-messages") {
+    headers["anthropic-version"] = headers["anthropic-version"] ?? "2023-06-01";
+  }
+  if (input.provider.builtin || input.provider.forwardHarnessHeaders) {
+    copySelectedHeaders(input.incoming, headers, identityHeadersFor(profile));
+  }
+
+  return headers;
+}
+
+export function canAuthenticateOrgProvider(provider: ProviderRegistryEntry, credential?: UpstreamCredential) {
+  if (provider.builtin || provider.authStyle === "none") return true;
+  return credential?.provider === provider.slug;
+}
+
+function isOpenAIChatGPTCredential(
+  provider: ProviderRegistryEntry,
+  credential: UpstreamCredential | undefined,
+  config: AppConfig
+) {
+  return provider.slug === "openai" &&
+    credential?.provider === provider.slug &&
+    credential.authType === "oauth" &&
+    config.subscriptionOAuthEnabled &&
+    Boolean(credential.chatgptAccountId);
 }
 
 function terminalEventType(status: "completed" | "failed" | "cancelled") {
@@ -435,15 +552,6 @@ const hopByHopHeaders = new Set([
   "upgrade"
 ]);
 
-function copyIfPresent(
-  from: Record<string, string | undefined>,
-  to: Record<string, string>,
-  key: string
-) {
-  const value = from[key.toLowerCase()] ?? from[key];
-  if (value) to[key] = value;
-}
-
 // Prefer the provider's structured error message over the raw body so event
 // payloads stay small and free of incidental request content.
 function errorExcerpt(text: string) {
@@ -475,6 +583,12 @@ function tryParseJson(text: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+function translateResponseText(text: string, translator: DialectTranslator) {
+  const parsed = tryParseJson(text);
+  if (parsed === undefined) return text;
+  return JSON.stringify(translator.response(parsed));
 }
 
 function withoutOutputText(observation: StreamObservation) {

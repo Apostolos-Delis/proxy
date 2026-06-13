@@ -36,7 +36,9 @@ export async function startOpenAIMock(
     rateLimitProviderOnce?: RateLimitMock;
     slowProvider?: boolean;
     wsTerminalEvent?: "response.completed" | "response.incomplete";
+    wsUpgradeHeaders?: Record<string, string>;
     outputText?: string;
+    redirectProviderTo?: string;
   } = {}
 ): Promise<MockServer> {
   const records: RecordedRequest[] = [];
@@ -110,6 +112,12 @@ export async function startOpenAIMock(
       return;
     }
 
+    if (options.redirectProviderTo) {
+      response.writeHead(302, { location: `${options.redirectProviderTo}/responses` });
+      response.end();
+      return;
+    }
+
     if (options.compressedJsonProvider) {
       const payload = JSON.stringify({
         id: "resp_mock",
@@ -125,6 +133,52 @@ export async function startOpenAIMock(
         "content-encoding": "gzip"
       });
       response.end(gzipSync(payload));
+      return;
+    }
+
+    if (request.url === "/chat/completions") {
+      const usage = {
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        completion_tokens_details: { reasoning_tokens: 5 },
+        total_tokens: 120
+      };
+      if (!body.stream) {
+        sendJson(response, {
+          id: "chatcmpl_mock",
+          choices: [{ message: { role: "assistant", content: options.outputText ?? "chat mock" } }],
+          usage
+        });
+        return;
+      }
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.on("close", () => resolveProviderClosed?.());
+      response.write(
+        `data: ${JSON.stringify({
+          id: "chatcmpl_mock",
+          object: "chat.completion.chunk",
+          choices: [{ index: 0, delta: { content: options.outputText ?? "chat mock" }, finish_reason: null }],
+          usage: null
+        })}\n\n`
+      );
+      response.write(
+        `data: ${JSON.stringify({
+          id: "chatcmpl_mock",
+          object: "chat.completion.chunk",
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          usage: null
+        })}\n\n`
+      );
+      response.write(
+        `data: ${JSON.stringify({
+          id: "chatcmpl_mock",
+          object: "chat.completion.chunk",
+          choices: [],
+          usage
+        })}\n\n`
+      );
+      response.write("data: [DONE]\n\n");
+      response.end();
       return;
     }
 
@@ -154,6 +208,14 @@ export async function startOpenAIMock(
     );
     response.end();
   });
+
+  if (options.wsUpgradeHeaders) {
+    wss.on("headers", (headers) => {
+      for (const [key, value] of Object.entries(options.wsUpgradeHeaders ?? {})) {
+        headers.push(`${key}: ${value}`);
+      }
+    });
+  }
 
   server.on("upgrade", (request, socket, head) => {
     if (request.url !== "/responses") {
@@ -207,12 +269,10 @@ function isClassifierRequest(body: Record<string, unknown>) {
     );
 }
 
-export async function startAnthropicMock(
-  options: {
-    outputText?: string;
-    rateLimitProviderOnce?: RateLimitMock;
-  } = {}
-): Promise<MockServer> {
+export async function startAnthropicMock(options: {
+  outputText?: string;
+  rateLimitProviderOnce?: RateLimitMock;
+} = {}): Promise<MockServer> {
   const records: RecordedRequest[] = [];
   let providerRateLimited = false;
   const server = createServer(async (request, response) => {

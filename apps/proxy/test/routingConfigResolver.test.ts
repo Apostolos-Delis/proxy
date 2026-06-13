@@ -15,7 +15,6 @@ import {
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
-import { buildModelCatalog } from "../src/catalog.js";
 import { loadConfig } from "../src/config.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
 
@@ -201,8 +200,7 @@ describe("routing config resolver guardrails", () => {
       OPENAI_HARD_MODEL: "gpt-routed-hard-test",
       MODEL_COSTS_JSON: JSON.stringify({ "gpt-routed-hard-test": { inputCostPerMtok: 2, outputCostPerMtok: 10 } })
     });
-    const catalog = buildModelCatalog(config);
-    const persistence = createDatabasePersistence(db, catalog, config, false);
+    const persistence = createDatabasePersistence(db, config, false);
     return { db, persistence };
   }
 

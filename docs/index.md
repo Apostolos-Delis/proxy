@@ -18,9 +18,15 @@
 - [Routing configs V1 tickets](scopes/routing-configs-v1/TICKETS.md)
 - [AWS prod-like deployment tickets](scopes/aws-prod-like-deployment-v1/TICKETS.md)
 - [Subscription auth V1 tickets](scopes/subscription-auth-v1/TICKETS.md)
+- [Provider architecture V1 tickets](scopes/provider-architecture-v1/TICKETS.md)
 - [Routing configs runbook](runbooks/routing-configs.md)
 - [AWS deployment runbook](runbooks/aws-deployment.md)
 - [Subscription auth runbook](runbooks/subscription-auth.md)
+
+## Harness Setup
+
+- [opencode setup](harnesses/opencode.md)
+- [Cursor BYOK setup](harnesses/cursor-byok.md)
 
 ## Future Work
 

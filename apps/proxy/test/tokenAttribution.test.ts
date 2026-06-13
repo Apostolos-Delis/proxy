@@ -127,6 +127,29 @@ describe("attributeTokens", () => {
     expect(attribution.newToolResults.blocks).toBe(0);
   });
 
+  it("attributes Cursor-style flat chat tool calls", () => {
+    const output = "z".repeat(1200);
+    const body = {
+      model: "router-auto",
+      tools: [{ name: "run_terminal_cmd", parameters: { type: "object" } }],
+      messages: [
+        { role: "user", content: "run the command" },
+        {
+          role: "assistant",
+          tool_calls: [{ id: "call_1", name: "run_terminal_cmd", arguments: { command: "pwd" } }]
+        },
+        { role: "tool", tool_call_id: "call_1", content: output }
+      ]
+    };
+
+    const attribution = attributeTokens("openai-chat", body);
+
+    expect(attribution.toolSchemasByName[0]?.name).toBe("run_terminal_cmd");
+    expect(attribution.newToolResults.blocks).toBe(1);
+    expect(attribution.newToolResults.chars).toBe(output.length);
+    expect(attribution.newToolResultsByTool[0]?.tool).toBe("run_terminal_cmd");
+  });
+
   it("counts everything as history when the last message is from the assistant", () => {
     const attribution = attributeTokens("anthropic-messages", {
       messages: [

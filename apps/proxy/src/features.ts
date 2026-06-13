@@ -2,6 +2,7 @@ import { ROUTING_HINT_NAMES, type RoutingHintName } from "@prompt-proxy/schema";
 
 import type { RouteContext } from "./types.js";
 import { explicitAlias } from "./catalog.js";
+import { detectHarness, promptBlockTagsForSurface } from "./harness.js";
 import { isRecord, roughTokenEstimate, sha256, stableJson } from "./util.js";
 
 const hintPatterns: Record<RoutingHintName, RegExp> = {
@@ -16,18 +17,23 @@ const hintPatterns: Record<RoutingHintName, RegExp> = {
 
 export function buildOpenAIContext(body: unknown, headers: Record<string, string | undefined>): RouteContext {
   const request = isRecord(body) ? body : {};
+  const surface = "openai-responses";
+  const profile = detectHarness({ surface, body: request, headers });
+  const promptBlockTags = promptBlockTagsForSurface(surface);
   const fullText = [
     stringifyText(request.instructions),
     stringifyText(request.input),
     stringifyText(request.metadata)
   ].join("\n");
-  const latestUserText = latestOpenAIUserText(request.input);
+  const latestUserText = latestOpenAIUserText(request.input, promptBlockTags);
   const routingInput = routingInputFrom(latestUserText, fullText);
   const tools = Array.isArray(request.tools) ? request.tools : [];
   const requestedModel = typeof request.model === "string" ? request.model : "router-auto";
 
   return {
-    surface: "openai-responses",
+    surface,
+    harness: profile.name,
+    statefulResponses: profile.statefulResponses,
     requestedModel,
     inputChars: fullText.length,
     inputHash: sha256(fullText),
@@ -43,28 +49,31 @@ export function buildOpenAIContext(body: unknown, headers: Record<string, string
     hasImages: hasImageInput(request.input),
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
-    sessionId: headers["x-codex-session-id"] ?? headers.session_id ?? headers["x-client-request-id"]
-      ?? promptCacheKeySessionId(request.prompt_cache_key),
+    sessionId: profile.sessionId(request, headers),
     userId: headers["x-prompt-proxy-user-id"] ?? headers["x-user-id"],
     teamId: headers["x-prompt-proxy-team-id"] ?? headers["x-team-id"],
-    explicitAlias: explicitAlias("openai-responses", requestedModel)
+    explicitAlias: explicitAlias(surface, requestedModel)
   };
 }
 
-export function buildAnthropicContext(body: unknown, headers: Record<string, string | undefined>): RouteContext {
+export function buildOpenAIChatContext(body: unknown, headers: Record<string, string | undefined>): RouteContext {
   const request = isRecord(body) ? body : {};
+  const surface = "openai-chat";
+  const profile = detectHarness({ surface, body: request, headers });
+  const promptBlockTags = promptBlockTagsForSurface(surface);
   const fullText = [
-    stringifyText(request.system),
     stringifyText(request.messages),
     stringifyText(request.metadata)
   ].join("\n");
-  const latestUserText = latestAnthropicUserText(request.messages);
+  const latestUserText = latestOpenAIChatUserText(request.messages, promptBlockTags);
   const routingInput = routingInputFrom(latestUserText, fullText);
   const tools = Array.isArray(request.tools) ? request.tools : [];
-  const requestedModel = typeof request.model === "string" ? request.model : "claude-router-auto";
+  const requestedModel = typeof request.model === "string" ? request.model : "router-auto";
 
   return {
-    surface: "anthropic-messages",
+    surface,
+    harness: profile.name,
+    statefulResponses: profile.statefulResponses,
     requestedModel,
     inputChars: fullText.length,
     inputHash: sha256(fullText),
@@ -80,10 +89,51 @@ export function buildAnthropicContext(body: unknown, headers: Record<string, str
     hasImages: hasImageInput(request.messages),
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
-    sessionId: headers["x-claude-code-session-id"] ?? anthropicMetadataSessionId(request.metadata),
+    sessionId: profile.sessionId(request, headers),
     userId: headers["x-prompt-proxy-user-id"] ?? headers["x-user-id"],
     teamId: headers["x-prompt-proxy-team-id"] ?? headers["x-team-id"],
-    explicitAlias: explicitAlias("anthropic-messages", requestedModel)
+    explicitAlias: explicitAlias(surface, requestedModel)
+  };
+}
+
+export function buildAnthropicContext(body: unknown, headers: Record<string, string | undefined>): RouteContext {
+  const request = isRecord(body) ? body : {};
+  const surface = "anthropic-messages";
+  const profile = detectHarness({ surface, body: request, headers });
+  const promptBlockTags = promptBlockTagsForSurface(surface);
+  const fullText = [
+    stringifyText(request.system),
+    stringifyText(request.messages),
+    stringifyText(request.metadata)
+  ].join("\n");
+  const latestUserText = latestAnthropicUserText(request.messages, promptBlockTags);
+  const routingInput = routingInputFrom(latestUserText, fullText);
+  const tools = Array.isArray(request.tools) ? request.tools : [];
+  const requestedModel = typeof request.model === "string" ? request.model : "claude-router-auto";
+
+  return {
+    surface,
+    harness: profile.name,
+    statefulResponses: profile.statefulResponses,
+    requestedModel,
+    inputChars: fullText.length,
+    inputHash: sha256(fullText),
+    estimatedInputTokens: roughTokenEstimate(fullText.length),
+    routingInputSource: routingInput.source,
+    routingInputText: routingInput.text,
+    routingInputChars: routingInput.text.length,
+    routingInputHash: sha256(routingInput.text),
+    routingEstimatedInputTokens: roughTokenEstimate(routingInput.text.length),
+    hasTools: tools.length > 0,
+    toolCount: tools.length,
+    hasPreviousResponseId: false,
+    hasImages: hasImageInput(request.messages),
+    extractedHints: extractHints(fullText),
+    routingExtractedHints: extractHints(routingInput.text),
+    sessionId: profile.sessionId(request, headers),
+    userId: headers["x-prompt-proxy-user-id"] ?? headers["x-user-id"],
+    teamId: headers["x-prompt-proxy-team-id"] ?? headers["x-team-id"],
+    explicitAlias: explicitAlias(surface, requestedModel)
   };
 }
 
@@ -111,21 +161,6 @@ export function classifierView(context: RouteContext, allowExcerpt: boolean, sou
   };
 }
 
-// Claude Code stamps metadata.user_id as "user_<hash>_account_<uuid>_session_<uuid>";
-// the session suffix links requests when no session header is configured.
-function anthropicMetadataSessionId(metadata: unknown) {
-  if (!isRecord(metadata) || typeof metadata.user_id !== "string") return undefined;
-  const match = /_session_([0-9a-f][0-9a-f-]{7,})$/i.exec(metadata.user_id);
-  return match?.[1];
-}
-
-// Codex sets prompt_cache_key to its conversation id on every request.
-// Client-supplied, so only accept id-shaped values.
-function promptCacheKeySessionId(value: unknown) {
-  if (typeof value !== "string") return undefined;
-  return /^[A-Za-z0-9._:-]{8,128}$/.test(value) ? value : undefined;
-}
-
 export function hasUserSignal(context: RouteContext) {
   return context.routingInputSource === "latest_user_message";
 }
@@ -144,39 +179,60 @@ function routingInputFrom(latestUserText: string | undefined, fullText: string) 
   };
 }
 
-// Harnesses inject tag-delimited blocks inside the user turn (Conductor
-// <system_instruction>, Claude Code <system-reminder> and command wrappers,
-// Codex <environment_context>/<user_instructions>). They describe the harness,
-// not the user's ask, so routing ignores them. <command-args> is kept: it
-// carries the user's actual input.
-const harnessBlockPattern =
-  /<(system_instruction|system-reminder|command-name|command-message|local-command-stdout|environment_context|user_instructions)>[\s\S]*?<\/\1>/g;
-
-function stripHarnessBlocks(text: string): string {
-  return text.replace(harnessBlockPattern, "").replace(/\n{3,}/g, "\n\n").trim();
+function stripHarnessBlocks(text: string, tags: ReadonlySet<string>): string {
+  let stripped = text;
+  for (const tag of tags) {
+    stripped = stripped.replace(new RegExp(`<${escapeRegExp(tag)}>[\\s\\S]*?<\\/${escapeRegExp(tag)}>`, "g"), "");
+  }
+  return stripped.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function latestOpenAIUserText(input: unknown): string | undefined {
-  if (typeof input === "string") return stripHarnessBlocks(input) || undefined;
+function latestOpenAIUserText(input: unknown, promptBlockTags: ReadonlySet<string>): string | undefined {
+  if (typeof input === "string") return stripHarnessBlocks(input, promptBlockTags) || undefined;
   if (!Array.isArray(input)) return undefined;
 
   for (let index = input.length - 1; index >= 0; index -= 1) {
     const item = input[index];
     if (!isRecord(item)) continue;
     if (item.role !== "user") continue;
-    const text = stripHarnessBlocks(textContent(item.content ?? item.text ?? item.input));
+    const text = stripHarnessBlocks(textContent(item.content ?? item.text ?? item.input), promptBlockTags);
     if (text) return text;
   }
   return undefined;
 }
 
-function latestAnthropicUserText(messages: unknown): string | undefined {
+function latestOpenAIChatUserText(messages: unknown, promptBlockTags: ReadonlySet<string>): string | undefined {
   if (!Array.isArray(messages)) return undefined;
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!isRecord(message) || message.role !== "user") continue;
-    const text = stripHarnessBlocks(textContent(nonToolResultContent(message.content)));
+    const text = stripHarnessBlocks(openAIChatContentText(message.content), promptBlockTags);
+    if (text) return text;
+  }
+  return undefined;
+}
+
+function openAIChatContentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return textContent(content);
+  return content.map((part) => {
+    if (!isRecord(part)) return textContent(part);
+    if ((part.type === "text" || part.type === "input_text") && typeof part.text === "string") {
+      return part.text;
+    }
+    if (typeof part.content === "string") return part.content;
+    return "";
+  }).filter(Boolean).join("\n");
+}
+
+function latestAnthropicUserText(messages: unknown, promptBlockTags: ReadonlySet<string>): string | undefined {
+  if (!Array.isArray(messages)) return undefined;
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!isRecord(message) || message.role !== "user") continue;
+    const text = stripHarnessBlocks(textContent(nonToolResultContent(message.content)), promptBlockTags);
     if (text) return text;
   }
   return undefined;
@@ -230,6 +286,10 @@ function hasImageInput(value: unknown): boolean {
   if (typeof type === "string" && /image/i.test(type)) return true;
 
   return Object.values(value).some(hasImageInput);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 const EXCERPT_HEAD_CHARS = 300;

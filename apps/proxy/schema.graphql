@@ -30,6 +30,7 @@ type ApiKeyProviderBinding {
   name: String
   provider: String!
   providerAccountId: String!
+  providerId: String!
   status: String
 }
 
@@ -110,13 +111,15 @@ type CompressionSavingsRow {
 }
 
 type CostBaselineSettings {
-  anthropicModel: String!
-  openaiModel: String!
+  anthropicMessagesModel: String!
+  openaiChatModel: String!
+  openaiResponsesModel: String!
 }
 
 input CostBaselineSettingsInput {
-  anthropicModel: String!
-  openaiModel: String!
+  anthropicMessagesModel: String!
+  openaiChatModel: String!
+  openaiResponsesModel: String!
 }
 
 type CostTotals {
@@ -146,6 +149,7 @@ input CreateInvitationInput {
 input CreateProviderCredentialInput {
   apiKey: String!
   authType: ProviderAccountAuthType
+  baseUrl: String
   chatgptAccountId: String
   name: String!
   provider: String!
@@ -454,6 +458,7 @@ type PromptSummary implements PromptArtifactBase {
 
 type ProviderAccount {
   authType: ProviderAccountAuthType!
+  baseUrl: String
   boundKeyCount: Int!
   createdAt: String!
   id: String!
@@ -462,6 +467,7 @@ type ProviderAccount {
   organizationId: String!
   ownerUserId: String
   provider: String!
+  providerId: String!
   secretHint: String
   status: String!
 }
@@ -485,6 +491,23 @@ type ProviderAttempt {
   terminalStatus: String!
   upstreamRequestId: String
   usage: JSON!
+}
+
+type ProviderEndpoint {
+  dialect: String!
+  path: String!
+}
+
+type ProviderRegistryEntry {
+  authStyle: String!
+  builtin: Boolean!
+  displayName: String!
+  enabled: Boolean!
+  endpoints: [ProviderEndpoint!]!
+  forwardHarnessHeaders: Boolean!
+  id: String!
+  organizationId: String
+  slug: String!
 }
 
 type ProxyEvent {
@@ -527,6 +550,7 @@ type Query {
   promptAccessAudit: [PromptAccessAuditEntry!]!
   prompts(end: String, limit: Int, model: String, offset: Int, route: String, start: String, surface: String, userId: String): PromptPage!
   providerAccounts: [ProviderAccount!]!
+  providers: [ProviderRegistryEntry!]!
   publicInvitation(token: String!): PublicInvitation
   request(requestId: ID!): RequestDetail!
   requests(end: String, limit: Int, start: String): [RequestSummary!]!
@@ -595,15 +619,6 @@ type RouteDecision {
   verbosity: String
 }
 
-type RouteMatrixRow {
-  anthropicEffort: String
-  anthropicModel: String
-  description: String
-  openaiEffort: String
-  openaiModel: String
-  route: String!
-}
-
 type RouteOutputGroupRow {
   avgOutputTokens: Float!
   key: String!
@@ -646,9 +661,26 @@ input RouteQualitySettingsInput {
   lowConfidenceThreshold: Float
 }
 
+type RouteTarget {
+  effectiveEffort: String
+  effort: String
+  maxOutputTokens: Int
+  metadata: JSON
+  model: String!
+  providerId: String!
+  thinking: JSON
+  verbosity: String
+}
+
 type RoutingConfigDetail {
   config: RoutingConfigSummary!
   versions: [RoutingConfigVersionDetail!]!
+}
+
+type RoutingConfigRoute {
+  description: String
+  route: String!
+  targets: [RouteTarget!]!
 }
 
 type RoutingConfigSnapshot {
@@ -668,7 +700,7 @@ type RoutingConfigSummary {
   id: String!
   name: String!
   organizationId: String!
-  routeMatrix: [RouteMatrixRow!]!
+  routes: [RoutingConfigRoute!]!
   slug: String!
   status: String!
 

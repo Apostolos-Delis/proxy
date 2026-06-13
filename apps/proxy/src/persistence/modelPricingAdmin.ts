@@ -1,19 +1,21 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import {
   modelCatalog,
+  providers,
+  type PromptProxyTransaction,
   type PromptProxyTransactionalDatabase
 } from "@prompt-proxy/db";
 
-import { completeModelPricing, type ModelPricingTable } from "../pricing.js";
+import { completeModelPricing } from "../pricing.js";
 import { createId } from "../util.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
 import { AdminMutationError } from "./adminErrors.js";
 import { repriceZeroCostUsage } from "./usageRepricing.js";
 
 const setPricingBodySchema = z.object({
-  provider: z.enum(["openai", "anthropic"]),
+  provider: z.string().trim().min(1),
   model: z.string().trim().min(1).max(256),
   inputCostPerMtok: z.number().nonnegative().finite(),
   outputCostPerMtok: z.number().nonnegative().finite(),
@@ -22,17 +24,14 @@ const setPricingBodySchema = z.object({
 }).strict();
 
 const clearPricingBodySchema = z.object({
-  provider: z.enum(["openai", "anthropic"]),
+  provider: z.string().trim().min(1),
   model: z.string().trim().min(1).max(256)
 }).strict();
 
 export class ModelPricingAdminError extends AdminMutationError {}
 
 export class ModelPricingAdminService {
-  constructor(
-    private readonly db: PromptProxyTransactionalDatabase,
-    private readonly staticPricing: ModelPricingTable
-  ) {}
+  constructor(private readonly db: PromptProxyTransactionalDatabase) {}
 
   async setPricing(input: {
     organizationId: string;
@@ -46,19 +45,21 @@ export class ModelPricingAdminService {
     const now = new Date();
 
     return this.db.transaction(async (tx) => {
+      const providerRow = await providerBySlug(tx, input.organizationId, provider);
+      if (!providerRow) throw new ModelPricingAdminError("provider_not_found", 404);
       await tx
         .insert(modelCatalog)
         .values({
           id: createId("model"),
           organizationId: input.organizationId,
-          provider,
+          providerId: providerRow.id,
           model,
           pricing,
           createdAt: now,
           updatedAt: now
         })
         .onConflictDoUpdate({
-          target: [modelCatalog.organizationId, modelCatalog.provider, modelCatalog.model],
+          target: [modelCatalog.organizationId, modelCatalog.providerId, modelCatalog.model],
           set: {
             pricing,
             updatedAt: now
@@ -80,7 +81,7 @@ export class ModelPricingAdminService {
       });
       // Heal traffic that booked $0 while this model had no rate; rows priced
       // at ingest keep their snapshot.
-      await repriceZeroCostUsage(tx, this.staticPricing, {
+      await repriceZeroCostUsage(tx, {
         organizationId: input.organizationId,
         provider,
         model
@@ -100,6 +101,8 @@ export class ModelPricingAdminService {
     const now = new Date();
 
     return this.db.transaction(async (tx) => {
+      const providerRow = await providerBySlug(tx, input.organizationId, provider);
+      if (!providerRow) throw new ModelPricingAdminError("provider_not_found", 404);
       const updated = await tx
         .update(modelCatalog)
         .set({
@@ -108,7 +111,7 @@ export class ModelPricingAdminService {
         })
         .where(and(
           eq(modelCatalog.organizationId, input.organizationId),
-          eq(modelCatalog.provider, provider),
+          eq(modelCatalog.providerId, providerRow.id),
           eq(modelCatalog.model, model)
         ))
         .returning();
@@ -131,6 +134,32 @@ export class ModelPricingAdminService {
       return { provider, model };
     });
   }
+}
+
+async function providerBySlug(
+  tx: PromptProxyTransaction,
+  organizationId: string,
+  slug: string
+) {
+  const [orgProvider] = await tx
+    .select({ id: providers.id })
+    .from(providers)
+    .where(and(
+      eq(providers.organizationId, organizationId),
+      eq(providers.slug, slug)
+    ))
+    .limit(1);
+  if (orgProvider) return orgProvider;
+
+  const [provider] = await tx
+    .select({ id: providers.id })
+    .from(providers)
+    .where(and(
+      isNull(providers.organizationId),
+      eq(providers.slug, slug)
+    ))
+    .limit(1);
+  return provider;
 }
 
 function validationError(message: string, error: z.ZodError): never {

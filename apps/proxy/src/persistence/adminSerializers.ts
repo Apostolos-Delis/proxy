@@ -5,8 +5,9 @@ import {
   routeDecisions,
   usageLedger
 } from "@prompt-proxy/db";
-import { ROUTE_NAMES, type RoutingConfig } from "@prompt-proxy/schema";
+import { ROUTE_NAMES, type RouteTarget, type RoutingConfig } from "@prompt-proxy/schema";
 
+import { nearestReasoningEffort } from "../catalog.js";
 import type { JsonObject } from "../types.js";
 import { effectiveInvitationStatus } from "./userAdmin.js";
 
@@ -81,18 +82,34 @@ export function routingConfigSummary(row: {
   };
 }
 
-export function routeMatrixSummary(config: RoutingConfig) {
+export function routingConfigRoutesSummary(config: RoutingConfig) {
   return ROUTE_NAMES.map((route) => {
     const routeConfig = config.routes[route];
     return {
       route,
       description: routeConfig.description ?? null,
-      openaiModel: routeConfig.openai?.model ?? null,
-      openaiEffort: routeConfig.openai?.reasoning?.effort ?? null,
-      anthropicModel: routeConfig.anthropic?.model ?? null,
-      anthropicEffort: routeConfig.anthropic?.output_config?.effort ?? null
+      targets: routeConfig.targets.map(routeTargetSummary)
     };
   });
+}
+
+function routeTargetSummary(target: RouteTarget) {
+  return {
+    providerId: target.providerId,
+    model: target.model,
+    effort: target.effort ?? null,
+    effectiveEffort: effectiveEffort(target),
+    thinking: target.thinking ?? null,
+    maxOutputTokens: target.maxOutputTokens ?? null,
+    verbosity: target.verbosity ?? null,
+    metadata: target.metadata ?? null
+  };
+}
+
+function effectiveEffort(target: RouteTarget) {
+  if (!target.effort) return null;
+  if (target.providerId !== "anthropic") return target.effort;
+  return nearestReasoningEffort(target.effort, ["low", "medium", "high", "xhigh", "max"]) ?? target.effort;
 }
 
 export function providerAttemptSummary(row: ProviderAttemptRow) {

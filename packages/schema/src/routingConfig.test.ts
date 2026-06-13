@@ -2,19 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import {
   composeClassifierInstructions,
+  providerRegistryEntrySchema,
   ROUTING_CLASSIFIER_BASE_INSTRUCTIONS,
   routingConfigSchema,
   type RoutingConfig
 } from "./index.js";
 
 const validConfig = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   displayName: "Default coding router",
   description: "Routes coding-agent traffic by complexity.",
   classifier: {
-    provider: "openai",
+    providerId: "openai",
     model: "gpt-5-nano-2025-08-07",
     rules: "Keep auth/ and payments/ on hard or deep.",
+    effort: "minimal",
     timeoutMs: 1500,
     maxAttempts: 2,
     allowRedactedExcerpt: true,
@@ -26,58 +28,80 @@ const validConfig = {
   routes: {
     fast: {
       description: "Simple shell/status/read-only tasks",
-      openai: {
-        model: "gpt-5-nano-2025-08-07",
-        reasoning: { effort: "low" },
-        text: { verbosity: "low" },
-        metadata: {
-          surface: "responses"
+      targets: [
+        {
+          providerId: "anthropic",
+          model: "claude-haiku-4-5",
+          effort: "low",
+          thinking: { type: "disabled" }
+        },
+        {
+          providerId: "openai",
+          model: "gpt-5-nano-2025-08-07",
+          effort: "low",
+          verbosity: "low",
+          metadata: {
+            surface: "responses"
+          }
+        },
+        {
+          providerId: "acme-vllm",
+          model: "qwen3-coder-30b"
         }
-      },
-      anthropic: {
-        model: "claude-haiku-4-5",
-        thinking: { type: "disabled" },
-        output_config: { effort: "low" }
-      }
+      ]
     },
     balanced: {
       description: "Default coding tasks",
-      openai: {
-        model: "gpt-5.4",
-        reasoning: { effort: "medium" },
-        text: { verbosity: "low" }
-      },
-      anthropic: {
-        model: "claude-sonnet-4-5",
-        thinking: { type: "adaptive", display: "omitted" },
-        output_config: { effort: "medium" }
-      }
+      targets: [
+        {
+          providerId: "anthropic",
+          model: "claude-sonnet-4-5",
+          effort: "medium",
+          thinking: { type: "adaptive", display: "omitted" }
+        },
+        {
+          providerId: "openai",
+          model: "gpt-5.4",
+          effort: "medium",
+          verbosity: "low"
+        }
+      ]
     },
     hard: {
       description: "Debugging, multi-file edits, migrations",
-      openai: {
-        model: "gpt-5.5",
-        reasoning: { effort: "high" },
-        text: { verbosity: "medium" }
-      },
-      anthropic: {
-        model: "claude-sonnet-4-5",
-        thinking: { type: "adaptive", display: "omitted" },
-        output_config: { effort: "high" }
-      }
+      targets: [
+        {
+          providerId: "anthropic",
+          model: "claude-sonnet-4-5",
+          effort: "high",
+          thinking: { type: "adaptive", display: "omitted" }
+        },
+        {
+          providerId: "openai",
+          model: "gpt-5.5",
+          effort: "high",
+          verbosity: "medium"
+        }
+      ]
     },
     deep: {
       description: "Architecture, system design, security, storage design",
-      openai: {
-        model: "gpt-5.5-pro",
-        reasoning: { effort: "xhigh" },
-        text: { verbosity: "medium" }
-      },
-      anthropic: {
-        model: "claude-opus-4-5",
-        thinking: { type: "adaptive", display: "omitted" },
-        output_config: { effort: "xhigh" }
-      }
+      targets: [
+        {
+          providerId: "anthropic",
+          model: "claude-opus-4-5",
+          effort: "xhigh",
+          thinking: { type: "adaptive", display: "omitted" },
+          maxOutputTokens: 32000,
+          metadata: { retained: true }
+        },
+        {
+          providerId: "openai",
+          model: "gpt-5.5-pro",
+          effort: "xhigh",
+          verbosity: "medium"
+        }
+      ]
     }
   },
   limits: {
@@ -99,8 +123,42 @@ const validConfig = {
 } satisfies RoutingConfig;
 
 describe("routingConfigSchema", () => {
-  it("accepts a default OpenAI and Anthropic routing config", () => {
+  it("accepts a target-list routing config", () => {
     expect(routingConfigSchema.parse(validConfig)).toEqual(validConfig);
+  });
+
+  it("parses v2 configs without rewriting thinking or metadata", () => {
+    const parsed = routingConfigSchema.parse(validConfig);
+
+    expect(JSON.stringify(parsed)).toBe(JSON.stringify(validConfig));
+  });
+
+  it("rejects v1 provider-block configs at parse time", () => {
+    const result = routingConfigSchema.safeParse({
+      ...validConfig,
+      schemaVersion: 1,
+      classifier: {
+        provider: "openai",
+        model: "gpt-5-nano-2025-08-07",
+        timeoutMs: 1500,
+        maxAttempts: 2,
+        allowRedactedExcerpt: true,
+        structuredOutput: {
+          mode: "json_schema"
+        }
+      },
+      routes: {
+        ...validConfig.routes,
+        fast: {
+          openai: {
+            model: "gpt-5-nano-2025-08-07"
+          }
+        }
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(["schemaVersion"]);
   });
 
   it("accepts configs without classifier rules", () => {
@@ -196,7 +254,7 @@ describe("routingConfigSchema", () => {
     expect(attemptResult.error?.issues[0]?.path).toEqual(["classifier", "maxAttempts"]);
   });
 
-  it("rejects whitespace-only classifier and provider strings", () => {
+  it("rejects whitespace-only classifier and target strings", () => {
     const classifierResult = routingConfigSchema.safeParse({
       ...validConfig,
       classifier: {
@@ -210,10 +268,12 @@ describe("routingConfigSchema", () => {
         ...validConfig.routes,
         fast: {
           ...validConfig.routes.fast,
-          openai: {
-            ...validConfig.routes.fast.openai,
-            model: "\t"
-          }
+          targets: [
+            {
+              ...validConfig.routes.fast.targets[0],
+              model: "\t"
+            }
+          ]
         }
       }
     });
@@ -221,7 +281,7 @@ describe("routingConfigSchema", () => {
     expect(classifierResult.success).toBe(false);
     expect(classifierResult.error?.issues[0]?.path).toEqual(["classifier", "model"]);
     expect(providerResult.success).toBe(false);
-    expect(providerResult.error?.issues[0]?.path).toEqual(["routes", "fast", "openai", "model"]);
+    expect(providerResult.error?.issues[0]?.path).toEqual(["routes", "fast", "targets", 0, "model"]);
   });
 
   it("rejects model identifiers with surrounding whitespace", () => {
@@ -238,10 +298,12 @@ describe("routingConfigSchema", () => {
         ...validConfig.routes,
         deep: {
           ...validConfig.routes.deep,
-          anthropic: {
-            ...validConfig.routes.deep.anthropic,
-            model: "\tclaude-opus-4-5\n"
-          }
+          targets: [
+            {
+              ...validConfig.routes.deep.targets[0],
+              model: "\tclaude-opus-4-5\n"
+            }
+          ]
         }
       }
     });
@@ -249,7 +311,7 @@ describe("routingConfigSchema", () => {
     expect(classifierResult.success).toBe(false);
     expect(classifierResult.error?.issues[0]?.path).toEqual(["classifier", "model"]);
     expect(providerResult.success).toBe(false);
-    expect(providerResult.error?.issues[0]?.path).toEqual(["routes", "deep", "anthropic", "model"]);
+    expect(providerResult.error?.issues[0]?.path).toEqual(["routes", "deep", "targets", 0, "model"]);
   });
 
   it("rejects structured-output schema identifiers with surrounding whitespace", () => {
@@ -268,38 +330,41 @@ describe("routingConfigSchema", () => {
     expect(result.error?.issues[0]?.path).toEqual(["classifier", "structuredOutput", "schemaName"]);
   });
 
-  it("rejects invalid provider blocks before runtime", () => {
+  it("rejects invalid targets before runtime", () => {
     const result = routingConfigSchema.safeParse({
       ...validConfig,
       routes: {
         ...validConfig.routes,
         hard: {
           ...validConfig.routes.hard,
-          openai: {
-            ...validConfig.routes.hard.openai,
-            reasoning: { effort: "maximum" }
-          }
+          targets: [
+            {
+              ...validConfig.routes.hard.targets[0],
+              effort: "maximum"
+            }
+          ]
         }
       }
     });
 
     expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.path).toEqual(["routes", "hard", "openai", "reasoning", "effort"]);
+    expect(result.error?.issues[0]?.path).toEqual(["routes", "hard", "targets", 0, "effort"]);
   });
 
-  it("requires each route to define at least one provider", () => {
+  it("requires each route to define at least one target", () => {
     const result = routingConfigSchema.safeParse({
       ...validConfig,
       routes: {
         ...validConfig.routes,
         fast: {
-          description: "No provider"
+          description: "No target",
+          targets: []
         }
       }
     });
 
     expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.path).toEqual(["routes", "fast", "openai"]);
+    expect(result.error?.issues[0]?.path).toEqual(["routes", "fast", "targets"]);
   });
 
   it("accepts partial route estimated input limits", () => {
@@ -343,6 +408,51 @@ describe("routingConfigSchema", () => {
 
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.path).toEqual(["limits", "fallbackRoute"]);
+  });
+});
+
+describe("providerRegistryEntrySchema", () => {
+  it("accepts custom provider registry entries", () => {
+    const entry = {
+      slug: "acme-vllm",
+      base_url: "https://models.example.com/v1",
+      auth_style: "bearer",
+      endpoints: [
+        { dialect: "openai-chat", path: "/chat/completions" },
+        { dialect: "openai-responses", path: "/responses" }
+      ],
+      default_headers: {
+        "x-routing-pool": "primary"
+      },
+      forward_harness_headers: false,
+      enabled: true
+    };
+
+    expect(providerRegistryEntrySchema.parse(entry)).toEqual(entry);
+  });
+
+  it("rejects invalid registry entries with useful paths", () => {
+    const result = providerRegistryEntrySchema.safeParse({
+      slug: " acme-vllm ",
+      base_url: "not a url",
+      auth_style: "bearer",
+      endpoints: [
+        { dialect: "openai-chat", path: "chat/completions" }
+      ],
+      default_headers: {
+        "x-empty": ""
+      },
+      forward_harness_headers: false,
+      enabled: true
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.path)).toEqual(expect.arrayContaining([
+      ["slug"],
+      ["base_url"],
+      ["endpoints", 0, "path"],
+      ["default_headers", "x-empty"]
+    ]));
   });
 });
 

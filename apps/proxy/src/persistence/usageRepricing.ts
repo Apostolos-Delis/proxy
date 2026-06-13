@@ -3,13 +3,10 @@ import { and, eq, gt } from "drizzle-orm";
 import { usageLedger, type PromptProxyDbSession } from "@prompt-proxy/db";
 
 import {
-  pricingForModel,
   undatedModel,
-  usageCostMicros,
-  type ModelPricing,
-  type ModelPricingTable
+  usageCostMicros
 } from "../pricing.js";
-import { orgPricingOverrides, type OrgPricingOverride } from "./modelPricing.js";
+import { catalogPricingForModel } from "./modelPricing.js";
 import type { Provider } from "../types.js";
 
 export type RepriceScope = {
@@ -26,7 +23,6 @@ export type RepriceScope = {
 // priced at ingest keep their snapshot; only the never-priced ones heal.
 export async function repriceZeroCostUsage(
   db: PromptProxyDbSession,
-  pricing: ModelPricingTable,
   scope?: RepriceScope
 ) {
   const conditions = [eq(usageLedger.totalCostMicros, 0), gt(usageLedger.totalTokens, 0)];
@@ -48,18 +44,10 @@ export async function repriceZeroCostUsage(
     .from(usageLedger)
     .where(and(...conditions));
 
-  const overridesByOrg = new Map<string, OrgPricingOverride[]>();
   let repriced = 0;
   for (const row of rows) {
     if (scope && row.model !== scope.model && undatedModel(row.model) !== scope.model) continue;
-    let overrides = overridesByOrg.get(row.organizationId);
-    if (!overrides) {
-      overrides = await orgPricingOverrides(db, row.organizationId);
-      overridesByOrg.set(row.organizationId, overrides);
-    }
-    const modelPricing =
-      overridePricingFor(overrides, row.provider, row.model) ??
-      pricingForModel(pricing, row.model);
+    const modelPricing = await catalogPricingForModel(db, row.organizationId, row.provider, row.model);
     if (!modelPricing) continue;
     const costs = usageCostMicros(modelPricing, row);
     if (costs.totalCostMicros === 0) continue;
@@ -74,16 +62,4 @@ export async function repriceZeroCostUsage(
     repriced += 1;
   }
   return repriced;
-}
-
-function overridePricingFor(
-  overrides: OrgPricingOverride[],
-  provider: string,
-  model: string
-): ModelPricing | undefined {
-  for (const candidate of [model, undatedModel(model)]) {
-    const match = overrides.find((entry) => entry.provider === provider && entry.model === candidate);
-    if (match) return match.pricing;
-  }
-  return undefined;
 }

@@ -24,9 +24,9 @@ function anthropicDecision(model = "claude-opus-4-8") {
     surface: "anthropic-messages" as const,
     provider: "anthropic" as const,
     providerSettings: {
-      provider: "anthropic" as const,
+      providerId: "anthropic" as const,
       model,
-      anthropic: {}
+      dialect: "anthropic-messages" as const
     }
   };
 }

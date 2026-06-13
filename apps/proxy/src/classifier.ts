@@ -5,8 +5,17 @@ import {
 } from "@prompt-proxy/schema";
 
 import type { AppConfig } from "./config.js";
-import type { ClassifierOutput, RouteContext } from "./types.js";
+import type {
+  ClassifierOutput,
+  RouteContext,
+  UpstreamCredential
+} from "./types.js";
 import { classifierView } from "./features.js";
+import {
+  operatorTokenForProvider,
+  type ProviderRegistryEndpoint,
+  type ProviderRegistryEntry
+} from "./persistence/providers.js";
 import { isRecord } from "./util.js";
 
 const classifierOutputSchema = z.object({
@@ -27,6 +36,12 @@ export type ClassificationResult = {
 
 export type ClassifierSettings = RoutingConfigClassifier;
 
+export type ClassifierTarget = {
+  provider: ProviderRegistryEntry;
+  endpoint: ProviderRegistryEndpoint;
+  credential?: UpstreamCredential;
+};
+
 export class ClassifierError extends Error {
   constructor(message: string) {
     super(message);
@@ -39,13 +54,14 @@ export class LlmClassifier {
 
   async classify(
     context: RouteContext,
-    settings: ClassifierSettings = defaultClassifierSettings(this.config)
+    settings: ClassifierSettings,
+    target: ClassifierTarget
   ): Promise<ClassificationResult> {
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= settings.maxAttempts; attempt += 1) {
       try {
-        const { output, usage } = await this.callClassifier(context, settings);
+        const { output, usage } = await this.callClassifier(context, settings, target);
         return { output, attempts: attempt, usage };
       } catch (error) {
         lastError = error;
@@ -59,26 +75,18 @@ export class LlmClassifier {
 
   private async callClassifier(
     context: RouteContext,
-    settings: ClassifierSettings
+    settings: ClassifierSettings,
+    target: ClassifierTarget
   ): Promise<{ output: ClassifierOutput; usage?: Record<string, unknown> }> {
-    if (settings.provider !== "openai") {
-      throw new ClassifierError(`Classifier provider ${settings.provider} is not supported.`);
-    }
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), settings.timeoutMs);
 
     try {
-      const baseUrl = this.config.openaiBaseUrl;
-      const key = this.config.openaiApiKey;
-      const url = `${baseUrl}/responses`;
+      const url = `${target.provider.baseUrl}${target.endpoint.path}`;
       const view = classifierView(context, settings.allowRedactedExcerpt);
       const response = await fetch(url, {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${key}`
-        },
+        headers: classifierHeaders(this.config, target),
         body: JSON.stringify(classifierRequest(settings, view)),
         signal: controller.signal
       });
@@ -103,7 +111,7 @@ export class LlmClassifier {
 
 export function defaultClassifierSettings(config: AppConfig): ClassifierSettings {
   return {
-    provider: config.classifierProvider,
+    providerId: config.classifierProvider,
     model: config.classifierModel,
     timeoutMs: config.classifierTimeoutMs,
     maxAttempts: config.classifierMaxAttempts,
@@ -115,10 +123,30 @@ export function defaultClassifierSettings(config: AppConfig): ClassifierSettings
   };
 }
 
+function classifierHeaders(config: AppConfig, target: ClassifierTarget) {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    ...target.provider.defaultHeaders
+  };
+  const credential = target.credential?.provider === target.provider.slug ? target.credential : undefined;
+  const operatorToken = target.provider.builtin
+    ? operatorTokenForProvider(target.provider.slug, config)
+    : undefined;
+  const token = credential?.token ?? operatorToken;
+
+  if (target.provider.authStyle === "bearer" && token) headers.authorization = `Bearer ${token}`;
+  if (target.provider.authStyle === "x-api-key" && token) headers["x-api-key"] = token;
+  if (target.provider.authStyle !== "none" && !token) {
+    throw new ClassifierError(`Classifier provider ${target.provider.slug} credential is not configured.`);
+  }
+
+  return headers;
+}
+
 function classifierRequest(settings: ClassifierSettings, view: unknown) {
   const reasoningEffort = normalizeReasoningEffort(
     settings.model,
-    settings.reasoningEffort ?? defaultReasoningEffort(settings.model)
+    settings.effort ?? defaultReasoningEffort(settings.model)
   );
   return {
     model: settings.model,

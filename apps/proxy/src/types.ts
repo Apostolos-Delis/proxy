@@ -1,20 +1,24 @@
 import type {
-  AnthropicEffort,
-  OpenAIReasoningEffort,
+  Dialect as SchemaDialect,
+  Effort,
+  Provider as SchemaProvider,
   ProviderAccountAuthType,
   RoutingConfig,
   SessionPinnedSettings,
+  Surface as SchemaSurface,
   Verbosity as RoutingVerbosity
 } from "@prompt-proxy/schema";
 
-export type Surface = "openai-responses" | "anthropic-messages";
+export type Surface = SchemaSurface;
 
-export type Provider = "openai" | "anthropic";
+export type Dialect = SchemaDialect;
+
+export type Provider = SchemaProvider;
 
 export type RouteName = "fast" | "balanced" | "hard" | "deep";
 
-export type ReasoningEffort = OpenAIReasoningEffort;
-export type ProviderEffort = OpenAIReasoningEffort | AnthropicEffort;
+export type ReasoningEffort = Effort;
+export type ProviderEffort = Effort;
 
 export type UpstreamCredential = {
   readonly provider: Provider;
@@ -36,32 +40,13 @@ export type JsonValue =
 
 export type JsonObject = { [key: string]: JsonValue };
 
-export type ModelCatalogEntry = {
-  readonly id: string;
-  readonly provider: Provider;
-  readonly upstreamModel: string;
-  readonly supportsResponses: boolean;
-  readonly supportsMessages: boolean;
-  readonly supportsTools: boolean;
-  readonly supportsStreaming: boolean;
-  readonly supportsReasoning: boolean;
-  readonly supportedReasoningEfforts: readonly ReasoningEffort[];
-  readonly supportsVerbosity: boolean;
-  readonly contextWindow: number;
-};
-
-export type RouteConfig = {
-  name: RouteName;
-  openaiModel: string;
-  anthropicModel: string;
-  reasoningEffort: ReasoningEffort;
-  verbosity: Verbosity;
-};
-
 export type RouteContext = {
   organizationId?: string;
   workspaceId?: string;
   surface: Surface;
+  transport?: "http" | "websocket";
+  harness?: "claude-code" | "codex" | "opencode" | "cursor" | "generic";
+  statefulResponses?: boolean;
   requestedModel: string;
   inputChars: number;
   inputHash: string;

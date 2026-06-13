@@ -9,3 +9,4 @@ infra/cdk/cdk.out/
 .DS_Store
 
 .worktrees
+.gstack/

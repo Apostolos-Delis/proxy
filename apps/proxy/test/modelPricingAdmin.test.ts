@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { usageLedger } from "@prompt-proxy/db";
+import { providers, usageLedger } from "@prompt-proxy/db";
 
 import { EventService } from "../src/events.js";
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
@@ -208,6 +208,61 @@ describe("model pricing admin", () => {
     expect(overview.cost.savings).toBeCloseTo(0.0014);
   });
 
+  it("prices custom provider traffic from provider-specific catalog rows", async () => {
+    const fixture = await setup("org_pricing_custom_provider");
+    const events = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_pricing_custom_provider");
+    await fixture.db.insert(providers).values({
+      id: "00000000-0000-0000-0000-00000000c018",
+      organizationId: "org_pricing_custom_provider",
+      slug: "oss-host",
+      displayName: "OSS Host",
+      baseUrl: "https://oss-host.example/v1",
+      authStyle: "none",
+      endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+
+    await appendCompletedRequest(events, {
+      requestId: "request_pricing_custom_provider",
+      provider: "oss-host",
+      surface: "openai-responses",
+      model: "shared-model",
+      usage: { input_tokens: 100, output_tokens: 10 }
+    });
+    expect((await ledgerRow(fixture, "request_pricing_custom_provider")).totalCostMicros).toBe(0);
+
+    const updated = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `mutation Set($input: SetModelPricingInput!) { setModelPricing(input: $input) ${pricingFields} }`,
+      {
+        input: {
+          provider: "oss-host",
+          model: "shared-model",
+          inputCostPerMtok: 7,
+          outputCostPerMtok: 11
+        }
+      }
+    );
+    expect(updated.errors).toBeUndefined();
+
+    expect(await ledgerRow(fixture, "request_pricing_custom_provider")).toEqual(expect.objectContaining({
+      inputCostMicros: 700,
+      outputCostMicros: 110,
+      totalCostMicros: 810
+    }));
+    expect(updated.data?.setModelPricing.find((entry: any) =>
+      entry.provider === "oss-host" && entry.model === "shared-model"
+    )).toEqual(expect.objectContaining({
+      source: "custom",
+      seenInTraffic: true,
+      inputCostPerMtok: 7,
+      outputCostPerMtok: 11
+    }));
+  });
+
   it("rejects clearing pricing that does not exist", async () => {
     const fixture = await setup("org_pricing_missing");
 
@@ -231,11 +286,24 @@ describe("model pricing admin", () => {
     return result.data?.modelPricing ?? [];
   }
 
+  async function ledgerRow(fixture: PromptTestFixture, requestId: string) {
+    const [row] = await fixture.db
+      .select()
+      .from(usageLedger)
+      .where(eq(usageLedger.requestId, requestId));
+    expect(row).toBeDefined();
+    return row;
+  }
+
   async function appendCompletedRequest(events: EventService, input: {
     requestId: string;
+    provider?: string;
+    surface?: "openai-responses" | "anthropic-messages";
     model: string;
     usage: Record<string, number>;
   }) {
+    const provider = input.provider ?? "anthropic";
+    const surface = input.surface ?? "anthropic-messages";
     await events.append({
       scopeType: "request",
       scopeId: input.requestId,
@@ -244,7 +312,7 @@ describe("model pricing admin", () => {
       producer: "test",
       eventType: "proxy.request_received",
       payload: {
-        surface: "anthropic-messages",
+        surface,
         requestedModel: "claude-router-auto",
         inputHash: `sha256:${input.requestId}`,
         inputChars: 64
@@ -258,8 +326,8 @@ describe("model pricing admin", () => {
       producer: "test",
       eventType: "provider.request_started",
       payload: {
-        surface: "anthropic-messages",
-        provider: "anthropic",
+        surface,
+        provider,
         model: input.model,
         providerAttemptId: `attempt_${input.requestId}`
       }
@@ -272,8 +340,8 @@ describe("model pricing admin", () => {
       producer: "test",
       eventType: "provider.response_completed",
       payload: {
-        surface: "anthropic-messages",
-        provider: "anthropic",
+        surface,
+        provider,
         selectedModel: input.model,
         providerAttemptId: `attempt_${input.requestId}`,
         upstreamStatus: 200,

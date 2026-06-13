@@ -398,7 +398,9 @@ describe("admin prompt APIs", () => {
     await seedDatabase(fixture.db, seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_seeded_harness_identity",
       SEED_USER_ID: "local-user",
-      PROMPT_PROXY_TOKEN: "proxy-token"
+      PROMPT_PROXY_TOKEN: "proxy-token",
+      OPENAI_BASE_URL: fixture.openai.url,
+      ANTHROPIC_BASE_URL: fixture.anthropic.url
     }));
 
     const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
@@ -444,7 +446,9 @@ describe("admin prompt APIs", () => {
     await seedDatabase(fixture.db, seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_admin_api_keys",
       SEED_USER_ID: "local-user",
-      PROMPT_PROXY_TOKEN: "proxy-token"
+      PROMPT_PROXY_TOKEN: "proxy-token",
+      OPENAI_BASE_URL: fixture.openai.url,
+      ANTHROPIC_BASE_URL: fixture.anthropic.url
     }));
 
     const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, apiKeysQuery);

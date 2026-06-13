@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import type { RoutingConfig } from "@prompt-proxy/schema";
 
@@ -15,8 +15,8 @@ import {
   organizationMembers,
   organizationSettings,
   organizations,
+  providers,
   providerAccounts,
-  routePolicies,
   routingConfigs,
   routingConfigVersions,
   users,
@@ -36,7 +36,7 @@ async function migratedClient() {
 }
 
 describe("database seed", () => {
-  it("creates local organization, user, providers, models, routing config, API key, and policy idempotently", async () => {
+  it("creates local organization, user, providers, models, routing config, and API key idempotently", async () => {
     const client = await migratedClient();
     const db = createPgliteDatabase(client);
     const options = seedOptionsFromEnv({
@@ -58,18 +58,18 @@ describe("database seed", () => {
       .select()
       .from(organizationMembers)
       .where(eq(organizationMembers.organizationId, "org_seed"));
-    const providerRows = await db
+    const providerAccountRows = await db
       .select()
       .from(providerAccounts)
       .where(eq(providerAccounts.organizationId, "org_seed"));
+    const registryProviderRows = await db
+      .select()
+      .from(providers)
+      .where(isNull(providers.organizationId));
     const modelRows = await db
       .select()
       .from(modelCatalog)
-      .where(eq(modelCatalog.organizationId, "org_seed"));
-    const policyRows = await db
-      .select()
-      .from(routePolicies)
-      .where(eq(routePolicies.organizationId, "org_seed"));
+      .where(isNull(modelCatalog.organizationId));
     const settingsRows = await db
       .select()
       .from(organizationSettings)
@@ -102,6 +102,18 @@ describe("database seed", () => {
       .select()
       .from(workspaces)
       .where(eq(workspaces.organizationId, "org_seed-sandbox"));
+    await expect(db.insert(providers).values({
+      id: "00000000-0000-0000-0000-000000000099",
+      organizationId: null,
+      slug: "openai",
+      displayName: "Duplicate OpenAI",
+      baseUrl: "https://duplicate.example/v1",
+      authStyle: "bearer",
+      endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    })).rejects.toThrow();
     await client.close();
 
     expect(orgRows).toHaveLength(1);
@@ -112,9 +124,57 @@ describe("database seed", () => {
     expect(sandboxMemberRows).toEqual([
       expect.objectContaining({ userId: "user_seed", role: "owner", status: "active" })
     ]);
-    expect(providerRows).toHaveLength(2);
-    expect(modelRows).toHaveLength(7);
-    expect(policyRows[0]?.name).toBe("default");
+    expect(providerAccountRows).toHaveLength(2);
+    expect(registryProviderRows).toHaveLength(2);
+    expect(registryProviderRows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "00000000-0000-0000-0000-000000000001",
+        slug: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        authStyle: "bearer",
+        endpoints: [
+          { dialect: "openai-responses", path: "/responses" },
+          { dialect: "openai-chat", path: "/chat/completions" }
+        ],
+        forwardHarnessHeaders: true,
+        enabled: true
+      }),
+      expect.objectContaining({
+        id: "00000000-0000-0000-0000-000000000002",
+        slug: "anthropic",
+        baseUrl: "https://api.anthropic.com/v1",
+        authStyle: "x-api-key",
+        endpoints: [
+          { dialect: "anthropic-messages", path: "/messages" }
+        ],
+        forwardHarnessHeaders: true,
+        enabled: true
+      })
+    ]));
+    expect(modelRows).toHaveLength(15);
+    expect(modelRows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        providerId: "00000000-0000-0000-0000-000000000001",
+        model: "gpt-5.4-mini",
+        capabilities: expect.objectContaining({
+          source: "models.dev-snapshot",
+          surfaces: ["openai-responses", "openai-chat"],
+          routes: ["fast"]
+        }),
+        pricing: expect.objectContaining({
+          inputCostPerMtok: 0.25,
+          outputCostPerMtok: 2
+        })
+      }),
+      expect.objectContaining({
+        providerId: "00000000-0000-0000-0000-000000000002",
+        model: "claude-sonnet-seed",
+        capabilities: expect.objectContaining({
+          routes: ["balanced", "hard"],
+          seeded: true
+        })
+      })
+    ]));
     expect(settingsRows[0]?.promptCaptureMode).toBe("raw_text");
     expect(workspaceRows).toEqual([
       expect.objectContaining({
@@ -134,30 +194,28 @@ describe("database seed", () => {
     expect(routingConfigVersionRows[0]?.version).toBe(1);
     expect(routingConfigVersionRows[0]?.status).toBe("active");
     expect(routingConfigVersionRows[0]?.config).toEqual(expect.objectContaining({
-      schemaVersion: 1,
+      schemaVersion: 2,
       classifier: expect.objectContaining({
         model: options.classifierModel,
         allowRedactedExcerpt: false
       }),
       routes: expect.objectContaining({
         fast: expect.objectContaining({
-          openai: expect.objectContaining({
-            model: "gpt-5.4-mini"
-          }),
-          anthropic: expect.objectContaining({
-            model: "claude-haiku-4-5"
-          })
+          targets: expect.arrayContaining([
+            expect.objectContaining({ providerId: "openai", model: "gpt-5.4-mini" }),
+            expect.objectContaining({ providerId: "anthropic", model: "claude-haiku-4-5" })
+          ])
         }),
         hard: expect.objectContaining({
-          anthropic: expect.objectContaining({
-            model: "claude-sonnet-seed"
-          })
+          targets: expect.arrayContaining([
+            expect.objectContaining({ providerId: "anthropic", model: "claude-sonnet-seed" })
+          ])
         })
       })
     }));
     const seededConfig = routingConfigVersionRows[0]?.config as RoutingConfig;
     expect(seededConfig.classifier.rules).toBeUndefined();
-    expect(seededConfig.routes.hard.anthropic?.output_config).toBeUndefined();
+    expect(seededConfig.routes.fast.targets.find((target) => target.providerId === "anthropic")?.thinking).toBeUndefined();
     expect(keyRows).toHaveLength(1);
     expect(keyRows[0]?.workspaceId).toBe(defaultWorkspaceId("org_seed"));
     expect(keyRows[0]?.routingConfigId).toBe("org_seed:routing-config:default");
@@ -194,9 +252,9 @@ describe("database seed", () => {
     expect(version?.config).toEqual(expect.objectContaining({
       routes: expect.objectContaining({
         fast: expect.objectContaining({
-          openai: expect.objectContaining({
-            model: "gpt-initial-fast"
-          })
+          targets: expect.arrayContaining([
+            expect.objectContaining({ providerId: "openai", model: "gpt-initial-fast" })
+          ])
         })
       })
     }));
@@ -277,14 +335,13 @@ describe("database seed", () => {
       configHash: "sha256:manual-v2",
       config: {
         ...v1Config,
-        schemaVersion: 1,
         displayName: "Manual",
         description: "Manual active version",
         classifier: {
           ...v1Config.classifier,
           model: "manual"
         }
-      } as RoutingConfig,
+      },
       status: "active",
       createdByUserId: "user_seed",
       activatedAt: new Date("2026-06-08T00:00:00.000Z")
@@ -307,7 +364,7 @@ describe("database seed", () => {
     await client.close();
 
     expect(config?.activeVersionId).toBe("org_replace_seed:routing-config:default:v1");
-    expect(version?.config.routes.fast.openai?.model).toBe("gpt-replaced-fast");
+    expect(version?.config.routes.fast.targets.find((target) => target.providerId === "openai")?.model).toBe("gpt-replaced-fast");
     expect(version?.config.classifier.timeoutMs).toBe(30000);
   });
 

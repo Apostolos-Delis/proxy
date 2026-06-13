@@ -46,7 +46,6 @@ provider_accounts            company env-backed rows plus customer BYOK credenti
 model_catalog                seeded route models plus per-organization model pricing overrides (pricing jsonb)
 routing_configs
 routing_config_versions
-route_policies            legacy placeholder, superseded by routing configs
 agent_sessions
 turns
 requests
@@ -68,7 +67,7 @@ Every durable operational row is scoped by `organization_id`. Event rows use the
 Organizations contain workspaces (modeled on the Anthropic Console / OpenAI Platform hierarchy): identity and membership stay at the organization, traffic and traffic configuration live in a workspace.
 
 - Workspace-scoped (`workspace_id NOT NULL`): `api_keys`, `routing_configs`, `routing_config_versions`, `api_key_provider_accounts`, `agent_sessions`, `turns`, `requests`, `route_decisions`, `provider_attempts`, `usage_ledger`, `prompt_artifacts`, `prompt_access_audit`.
-- Org-scoped (unchanged): `users`, `organization_members`, `invitations`, `organization_settings` (prompt capture + retention), `user_settings`, `provider_accounts` (BYOK credentials are shared infrastructure; only the key→credential bindings are workspace rows), `model_catalog`, `route_policies`, `projection_cursors`.
+- Org-scoped (unchanged): `users`, `organization_members`, `invitations`, `organization_settings` (prompt capture + retention), `user_settings`, `provider_accounts` (BYOK credentials are shared infrastructure; only the key→credential bindings are workspace rows), `model_catalog`, `projection_cursors`.
 - `events.workspace_id` is nullable: traffic and workspace-entity events carry it; org-level events (members, invitations, provider accounts) leave it null.
 - Every organization has a default workspace with the deterministic id `${organizationId}:workspace:default` (`defaultWorkspaceId()` in `@prompt-proxy/db`); migration `0006_workspaces.sql` backfills all pre-workspace rows into it.
 - The proxy resolves the request workspace from the API key (`api_keys.workspace_id`); the dev proxy token maps to the default workspace. Request idempotency keys are hashed per workspace.

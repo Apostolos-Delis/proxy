@@ -9,8 +9,9 @@ import {
 } from "@prompt-proxy/db";
 import type { PromptCaptureMode } from "@prompt-proxy/schema";
 
+import { promptBlockTagsForSurface } from "../harness.js";
 import type { Surface } from "../types.js";
-import { createId, isRecord, roughTokenEstimate, sha256, stableJson } from "../util.js";
+import { createId, isRecord, roughTokenEstimate, sha256, stableJson, unreachable } from "../util.js";
 
 export type PromptArtifactCaptureInput = {
   organizationId: string;
@@ -227,8 +228,16 @@ export function promptCaptureEventPayload(surface: Surface, artifacts: CapturedP
 }
 
 export function extractPromptArtifacts(surface: Surface, body: unknown): ExtractedPromptArtifact[] {
-  if (surface === "openai-responses") return extractOpenAIArtifacts(body);
-  return extractAnthropicArtifacts(body);
+  switch (surface) {
+    case "openai-responses":
+      return extractOpenAIArtifacts(body);
+    case "openai-chat":
+      return extractOpenAIChatArtifacts(body);
+    case "anthropic-messages":
+      return extractAnthropicArtifacts(body);
+    default:
+      return unreachable(surface);
+  }
 }
 
 function artifactKey(row: CapturedPromptArtifact) {
@@ -237,8 +246,16 @@ function artifactKey(row: CapturedPromptArtifact) {
 
 export function extractResponseText(surface: Surface, body: unknown): string {
   if (!isRecord(body)) return "";
-  if (surface === "openai-responses") return openAIOutputText(body.output);
-  return anthropicOutputText(body.content);
+  switch (surface) {
+    case "openai-responses":
+      return openAIOutputText(body.output);
+    case "openai-chat":
+      return openAIChatOutputText(body.choices);
+    case "anthropic-messages":
+      return anthropicOutputText(body.content);
+    default:
+      return unreachable(surface);
+  }
 }
 
 function openAIOutputText(output: unknown) {
@@ -251,6 +268,18 @@ function openAIOutputText(output: unknown) {
         parts.push(block.text);
       }
     }
+  }
+  return parts.join("\n");
+}
+
+function openAIChatOutputText(choices: unknown) {
+  if (!Array.isArray(choices)) return "";
+  const parts: string[] = [];
+  for (const choice of choices) {
+    if (!isRecord(choice)) continue;
+    const message = isRecord(choice.message) ? choice.message : undefined;
+    const content = textContent(message?.content);
+    if (content) parts.push(content);
   }
   return parts.join("\n");
 }
@@ -314,28 +343,42 @@ function expiry(now: Date, retentionDays: number) {
 function extractOpenAIArtifacts(body: unknown): ExtractedPromptArtifact[] {
   const request = isRecord(body) ? body : {};
   const artifacts: ExtractedPromptArtifact[] = [];
+  const promptBlockTags = promptBlockTagsForSurface("openai-responses");
   pushTextArtifact(artifacts, {
     kind: "instructions",
     content: textContent(request.instructions),
     sourceRole: "system"
   });
   if (typeof request.input === "string") {
-    pushTextArtifact(artifacts, {
-      kind: "user_message",
-      content: request.input,
-      sourceRole: "user",
-      sourceIndex: 0
-    });
+    pushUserBlocks(artifacts, splitInjectedContext(request.input, promptBlockTags), 0);
   } else if (Array.isArray(request.input)) {
     request.input.forEach((item, index) => {
-      pushOpenAIInputItem(artifacts, item, index);
+      pushOpenAIInputItem(artifacts, item, index, promptBlockTags);
     });
   }
   pushToolMetadata(artifacts, request.tools);
   return artifacts;
 }
 
-function pushOpenAIInputItem(artifacts: ExtractedPromptArtifact[], item: unknown, index: number) {
+function extractOpenAIChatArtifacts(body: unknown): ExtractedPromptArtifact[] {
+  const request = isRecord(body) ? body : {};
+  const artifacts: ExtractedPromptArtifact[] = [];
+  const promptBlockTags = promptBlockTagsForSurface("openai-chat");
+  if (Array.isArray(request.messages)) {
+    request.messages.forEach((message, index) => {
+      pushOpenAIChatMessage(artifacts, message, index, promptBlockTags);
+    });
+  }
+  pushToolMetadata(artifacts, request.tools);
+  return artifacts;
+}
+
+function pushOpenAIInputItem(
+  artifacts: ExtractedPromptArtifact[],
+  item: unknown,
+  index: number,
+  promptBlockTags: ReadonlySet<string>
+) {
   if (!isRecord(item)) return;
   if (item.type === "function_call") {
     pushTextArtifact(artifacts, {
@@ -359,7 +402,7 @@ function pushOpenAIInputItem(artifacts: ExtractedPromptArtifact[], item: unknown
   if (item.type !== undefined && item.type !== "message") return;
   const content = textContent(item.content ?? item.text ?? item.input);
   if (item.role === "user") {
-    pushUserBlocks(artifacts, splitInjectedContext(content), index);
+    pushUserBlocks(artifacts, splitInjectedContext(content, promptBlockTags), index);
     return;
   }
   if (item.role === "assistant") {
@@ -381,9 +424,67 @@ function pushOpenAIInputItem(artifacts: ExtractedPromptArtifact[], item: unknown
   }
 }
 
+function pushOpenAIChatMessage(
+  artifacts: ExtractedPromptArtifact[],
+  message: unknown,
+  index: number,
+  promptBlockTags: ReadonlySet<string>
+) {
+  if (!isRecord(message)) return;
+  const content = textContent(message.content);
+  if (message.role === "user") {
+    pushUserBlocks(artifacts, splitInjectedContext(content, promptBlockTags), index);
+    return;
+  }
+  if (message.role === "system" || message.role === "developer") {
+    pushTextArtifact(artifacts, {
+      kind: "instructions",
+      content,
+      sourceRole: "system",
+      sourceIndex: index
+    });
+    return;
+  }
+  if (message.role === "tool") {
+    pushTextArtifact(artifacts, {
+      kind: "tool_result",
+      content,
+      sourceRole: "tool",
+      sourceIndex: index
+    });
+    return;
+  }
+  if (message.role !== "assistant") return;
+  pushTextArtifact(artifacts, {
+    kind: "assistant_response",
+    content,
+    sourceRole: "assistant",
+    sourceIndex: index
+  });
+  const toolUses: string[] = [];
+  const toolNames: string[] = [];
+  if (Array.isArray(message.tool_calls)) {
+    for (const call of message.tool_calls) {
+      if (!isRecord(call)) continue;
+      const fn = isRecord(call.function) ? call.function : undefined;
+      const name = stringValue(fn?.name) ?? stringValue(call.name);
+      toolUses.push(toolUseText(name, fn?.arguments ?? call.arguments));
+      if (name) toolNames.push(name);
+    }
+  }
+  pushTextArtifact(artifacts, {
+    kind: "tool_use",
+    content: toolUses.join("\n\n"),
+    sourceRole: "assistant",
+    sourceIndex: index,
+    metadata: toolNames.length > 0 ? { toolNames } : undefined
+  });
+}
+
 function extractAnthropicArtifacts(body: unknown): ExtractedPromptArtifact[] {
   const request = isRecord(body) ? body : {};
   const artifacts: ExtractedPromptArtifact[] = [];
+  const promptBlockTags = promptBlockTagsForSurface("anthropic-messages");
   pushTextArtifact(artifacts, {
     kind: "system",
     content: textContent(request.system),
@@ -391,14 +492,19 @@ function extractAnthropicArtifacts(body: unknown): ExtractedPromptArtifact[] {
   });
   if (Array.isArray(request.messages)) {
     request.messages.forEach((message, index) => {
-      pushAnthropicMessage(artifacts, message, index);
+      pushAnthropicMessage(artifacts, message, index, promptBlockTags);
     });
   }
   pushToolMetadata(artifacts, request.tools);
   return artifacts;
 }
 
-function pushAnthropicMessage(artifacts: ExtractedPromptArtifact[], message: unknown, index: number) {
+function pushAnthropicMessage(
+  artifacts: ExtractedPromptArtifact[],
+  message: unknown,
+  index: number,
+  promptBlockTags: ReadonlySet<string>
+) {
   if (!isRecord(message)) return;
   const blocks = Array.isArray(message.content)
     ? message.content
@@ -411,7 +517,7 @@ function pushAnthropicMessage(artifacts: ExtractedPromptArtifact[], message: unk
       if (block.type === "tool_result") toolResults.push(textContent(block.content));
       else if (block.type === "text" && typeof block.text === "string") texts.push(block.text);
     }
-    pushUserBlocks(artifacts, splitInjectedContext(texts.join("\n")), index);
+    pushUserBlocks(artifacts, splitInjectedContext(texts.join("\n"), promptBlockTags), index);
     pushTextArtifact(artifacts, {
       kind: "tool_result",
       content: toolResults.join("\n"),
@@ -448,26 +554,26 @@ function pushAnthropicMessage(artifacts: ExtractedPromptArtifact[], message: unk
   });
 }
 
-// Agent harnesses prepend <system-reminder> blocks to the user's message;
-// keep them out of the prompt artifact so the typed text stays readable.
-function splitInjectedContext(text: string) {
+function splitInjectedContext(text: string, tags: ReadonlySet<string>) {
   const injected: string[] = [];
   const typed: string[] = [];
-  for (const part of text.split(/(?=<system-reminder>)/)) {
-    if (part.trimStart().startsWith("<system-reminder>")) {
-      const end = part.indexOf("</system-reminder>");
-      if (end >= 0) {
-        injected.push(part.slice(0, end + "</system-reminder>".length));
-        const rest = part.slice(end + "</system-reminder>".length);
-        if (rest.trim()) typed.push(rest.trim());
-        continue;
-      }
-      injected.push(part);
-      continue;
-    }
-    if (part.trim()) typed.push(part.trim());
+  const tagPattern = Array.from(tags).map(escapeRegExp).join("|");
+  if (!tagPattern) return { typed: text.trim(), injected: "" };
+  const blockPattern = new RegExp(`<(${tagPattern})>[\\s\\S]*?<\\/\\1>`, "g");
+  let cursor = 0;
+  for (const match of text.matchAll(blockPattern)) {
+    const before = text.slice(cursor, match.index);
+    if (before.trim()) typed.push(before.trim());
+    injected.push(match[0]);
+    cursor = (match.index ?? 0) + match[0].length;
   }
+  const rest = text.slice(cursor);
+  if (rest.trim()) typed.push(rest.trim());
   return { typed: typed.join("\n"), injected: injected.join("\n") };
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function pushUserBlocks(

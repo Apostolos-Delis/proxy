@@ -1,6 +1,6 @@
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Boxes, Download, Shield, Users } from "lucide-react";
+import { Boxes, Download, Layers, Shield, Users } from "lucide-react";
 import { useState } from "react";
 
 import { isListedPromptArtifact, promptArtifactRank } from "./artifactKinds";
@@ -226,6 +226,7 @@ function ModelCell({ row }: { row: PromptLogRow }) {
 function requestFilters(rows: PromptLogRow[]): ConsoleTableFilter<PromptLogRow>[] {
   return [
     { id: "user", label: "User", allLabel: "All users", icon: <Users />, options: uniqueOptionItems(rows.map((row) => ({ value: row.prompt.userId ?? "unknown", label: row.userName }))), getValue: (row) => row.prompt.userId ?? "unknown" },
+    { id: "surface", label: "Surface", allLabel: "All surfaces", icon: <Layers />, options: optionItems(rows.map((row) => row.prompt.surface)), getValue: (row) => row.prompt.surface },
     { id: "model", label: "Model", allLabel: "All models", icon: <Boxes />, options: optionItems(rows.map(selectedModel)), getValue: selectedModel },
     { id: "status", label: "Status", allLabel: "All statuses", icon: <Shield />, options: optionItems(rows.map(terminalStatus)), getValue: terminalStatus }
   ];

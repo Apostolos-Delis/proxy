@@ -1,13 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import { applyDraft, draftError, draftFromConfig, parseConfigJson, type RoutingConfigDocument } from "./routingConfigEditor";
+import {
+  applyDraft,
+  draftError,
+  draftFromConfig,
+  effectiveEffortForTarget,
+  parseConfigJson,
+  type RoutingConfigDocument
+} from "./routingConfigEditor";
 
 const baseConfig: RoutingConfigDocument = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   displayName: "Default coding router",
   classifier: {
-    provider: "openai",
+    providerId: "openai",
     model: "route-classifier",
+    effort: "minimal",
     rules: "Keep auth/ on hard.",
     timeoutMs: 1500,
     maxAttempts: 2,
@@ -16,20 +24,28 @@ const baseConfig: RoutingConfigDocument = {
   routes: {
     fast: {
       description: "Simple tasks",
-      openai: { model: "gpt-fast", reasoning: { effort: "low" }, text: { verbosity: "low" } },
-      anthropic: { model: "claude-fast", thinking: { type: "disabled" } }
+      targets: [
+        { providerId: "anthropic", model: "claude-fast", effort: "minimal", thinking: { type: "disabled" } },
+        { providerId: "openai", model: "gpt-fast", effort: "low", verbosity: "low" }
+      ]
     },
     balanced: {
-      openai: { model: "gpt-balanced", reasoning: { effort: "medium" } },
-      anthropic: { model: "claude-balanced" }
+      targets: [
+        { providerId: "anthropic", model: "claude-balanced", effort: "medium" },
+        { providerId: "openai", model: "gpt-balanced", effort: "medium" }
+      ]
     },
     hard: {
-      openai: { model: "gpt-hard", reasoning: { effort: "high" } },
-      anthropic: { model: "claude-hard" }
+      targets: [
+        { providerId: "anthropic", model: "claude-hard", effort: "high" },
+        { providerId: "openai", model: "gpt-hard", effort: "high" }
+      ]
     },
     deep: {
-      openai: { model: "gpt-deep", reasoning: { effort: "xhigh" } },
-      anthropic: { model: "claude-deep" }
+      targets: [
+        { providerId: "anthropic", model: "claude-deep", effort: "max", metadata: { lane: "deep" } },
+        { providerId: "openai", model: "gpt-deep", effort: "xhigh", maxOutputTokens: 20000 }
+      ]
     }
   },
   limits: { maxRoute: "deep", fallbackRoute: "hard" },
@@ -37,37 +53,30 @@ const baseConfig: RoutingConfigDocument = {
 };
 
 describe("draftFromConfig", () => {
-  it("extracts the routing rules, tier models, and efforts", () => {
+  it("extracts routing rules and ordered targets", () => {
     const draft = draftFromConfig(baseConfig);
 
     expect(draft.classifierRules).toBe("Keep auth/ on hard.");
-    expect(draft.routes.fast).toEqual({
-      openaiModel: "gpt-fast",
-      openaiEffort: "low",
-      anthropicModel: "claude-fast",
-      anthropicEffort: ""
-    });
-    expect(draft.routes.deep).toEqual({
-      openaiModel: "gpt-deep",
-      openaiEffort: "xhigh",
-      anthropicModel: "claude-deep",
-      anthropicEffort: ""
+    expect(draft.routes.fast.targets).toEqual([
+      { providerId: "anthropic", model: "claude-fast", effort: "minimal", thinking: { type: "disabled" } },
+      { providerId: "openai", model: "gpt-fast", effort: "low", verbosity: "low" }
+    ]);
+    expect(draft.routes.deep.targets[1]).toEqual({
+      providerId: "openai",
+      model: "gpt-deep",
+      effort: "xhigh",
+      maxOutputTokens: 20000
     });
   });
 
-  it("uses empty strings for missing provider blocks", () => {
+  it("uses an empty target list for missing route configs", () => {
     const config = {
       ...baseConfig,
-      routes: { ...baseConfig.routes, fast: { openai: { model: "gpt-fast" } } }
+      routes: { ...baseConfig.routes, fast: { targets: [] } }
     };
     const draft = draftFromConfig(config);
 
-    expect(draft.routes.fast).toEqual({
-      openaiModel: "gpt-fast",
-      openaiEffort: "",
-      anthropicModel: "",
-      anthropicEffort: ""
-    });
+    expect(draft.routes.fast.targets).toEqual([]);
   });
 });
 
@@ -76,54 +85,27 @@ describe("applyDraft", () => {
     expect(applyDraft(baseConfig, draftFromConfig(baseConfig))).toEqual(baseConfig);
   });
 
-  it("updates models while preserving other provider settings", () => {
+  it("updates target order and trims provider/model/effort values", () => {
     const draft = draftFromConfig(baseConfig);
-    draft.routes.fast.openaiModel = " gpt-fast-next ";
+    draft.routes.fast.targets = [
+      { providerId: " openai ", model: " gpt-fast-next ", effort: " low ", verbosity: "low" },
+      { providerId: "anthropic", model: "claude-fast", effort: "minimal", thinking: { type: "disabled" } }
+    ];
     const next = applyDraft(baseConfig, draft);
 
-    expect(next.routes.fast.openai).toEqual({
-      model: "gpt-fast-next",
-      reasoning: { effort: "low" },
-      text: { verbosity: "low" }
-    });
-    expect(next.routes.fast.anthropic).toEqual(baseConfig.routes.fast.anthropic);
+    expect(next.routes.fast.targets).toEqual([
+      { providerId: "openai", model: "gpt-fast-next", effort: "low", verbosity: "low" },
+      { providerId: "anthropic", model: "claude-fast", effort: "minimal", thinking: { type: "disabled" } }
+    ]);
     expect(next.routes.fast.description).toBe("Simple tasks");
   });
 
-  it("sets efforts, creating the effort container when missing", () => {
+  it("drops completely blank target rows while preserving target metadata", () => {
     const draft = draftFromConfig(baseConfig);
-    draft.routes.fast.openaiEffort = "xhigh";
-    draft.routes.fast.anthropicEffort = "max";
+    draft.routes.deep.targets.push({ providerId: " ", model: " ", effort: " " });
     const next = applyDraft(baseConfig, draft);
 
-    expect(next.routes.fast.openai?.reasoning).toEqual({ effort: "xhigh" });
-    expect(next.routes.fast.anthropic).toEqual({
-      model: "claude-fast",
-      thinking: { type: "disabled" },
-      output_config: { effort: "max" }
-    });
-  });
-
-  it("clears efforts and drops empty containers while keeping other settings", () => {
-    const draft = draftFromConfig(baseConfig);
-    draft.routes.fast.openaiEffort = "";
-    const next = applyDraft(baseConfig, draft);
-
-    expect(next.routes.fast.openai).toEqual({
-      model: "gpt-fast",
-      text: { verbosity: "low" }
-    });
-    expect("reasoning" in (next.routes.fast.openai ?? {})).toBe(false);
-  });
-
-  it("drops a provider block when its model is cleared", () => {
-    const draft = draftFromConfig(baseConfig);
-    draft.routes.fast.anthropicModel = "";
-    const next = applyDraft(baseConfig, draft);
-
-    expect(next.routes.fast.anthropic).toBeUndefined();
-    expect("anthropic" in next.routes.fast).toBe(false);
-    expect(next.routes.fast.openai?.model).toBe("gpt-fast");
+    expect(next.routes.deep.targets).toEqual(baseConfig.routes.deep.targets);
   });
 
   it("updates the classifier rules while preserving other classifier settings", () => {
@@ -147,7 +129,7 @@ describe("applyDraft", () => {
   it("does not mutate the base config", () => {
     const snapshot = structuredClone(baseConfig);
     const draft = draftFromConfig(baseConfig);
-    draft.routes.deep.openaiModel = "gpt-other";
+    draft.routes.deep.targets[0].model = "claude-other";
     draft.classifierRules = "";
     applyDraft(baseConfig, draft);
 
@@ -156,19 +138,25 @@ describe("applyDraft", () => {
 });
 
 describe("draftError", () => {
-  it("accepts drafts with at least one model per tier", () => {
+  it("accepts drafts with at least one complete target per tier", () => {
     const draft = draftFromConfig(baseConfig);
-    draft.routes.fast.openaiModel = "";
+    draft.routes.fast.targets = draft.routes.fast.targets.slice(0, 1);
 
     expect(draftError(draft)).toBeUndefined();
   });
 
-  it("rejects tiers with no models", () => {
+  it("rejects tiers with no targets", () => {
     const draft = draftFromConfig(baseConfig);
-    draft.routes.hard.openaiModel = " ";
-    draft.routes.hard.anthropicModel = "";
+    draft.routes.hard.targets = [];
 
     expect(draftError(draft)).toContain("hard");
+  });
+
+  it("rejects incomplete targets", () => {
+    const draft = draftFromConfig(baseConfig);
+    draft.routes.hard.targets[0].model = " ";
+
+    expect(draftError(draft)).toBe("hard target 1 needs both a provider and model.");
   });
 
   it("accepts blank routing rules", () => {
@@ -176,6 +164,13 @@ describe("draftError", () => {
     draft.classifierRules = "   ";
 
     expect(draftError(draft)).toBeUndefined();
+  });
+});
+
+describe("effectiveEffortForTarget", () => {
+  it("shows Anthropic effort clamping without changing the draft", () => {
+    expect(effectiveEffortForTarget({ providerId: "anthropic", effort: "minimal" })).toBe("low");
+    expect(effectiveEffortForTarget({ providerId: "openai", effort: "minimal" })).toBe("minimal");
   });
 });
 

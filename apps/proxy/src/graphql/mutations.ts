@@ -40,6 +40,7 @@ const CreateProviderCredentialInput = builder.inputType("CreateProviderCredentia
     provider: t.string({ required: true }),
     name: t.string({ required: true }),
     authType: t.field({ type: ProviderAccountAuthType }),
+    baseUrl: t.string(),
     // Carries the API key or, for authType "oauth", the subscription token.
     apiKey: t.string({ required: true }),
     chatgptAccountId: t.string()
@@ -81,7 +82,7 @@ const SetModelPricingInput = builder.inputType("SetModelPricingInput", {
 // always-priced defaults.
 async function assertBaselineModelsPriced(
   context: Parameters<typeof scopedQueries>[0],
-  costBaseline: { anthropicModel: string; openaiModel: string }
+  costBaseline: { anthropicMessagesModel: string; openaiResponsesModel: string; openaiChatModel: string }
 ) {
   const queries = scopedQueries(context);
   if (!queries) return;
@@ -89,7 +90,11 @@ async function assertBaselineModelsPriced(
   const priced = new Set(
     entries.filter((entry) => entry.source !== "unpriced").map((entry) => entry.model)
   );
-  for (const model of [costBaseline.anthropicModel.trim(), costBaseline.openaiModel.trim()]) {
+  for (const model of [
+    costBaseline.anthropicMessagesModel.trim(),
+    costBaseline.openaiResponsesModel.trim(),
+    costBaseline.openaiChatModel.trim()
+  ]) {
     if (!model || priced.has(model) || priced.has(undatedModel(model))) continue;
     throw adminGraphQLError(`baseline_model_unpriced: ${model}`, 400);
   }
@@ -567,6 +572,7 @@ builder.mutationFields((t) => ({
             provider: args.input.provider,
             name: args.input.name,
             authType: args.input.authType ?? undefined,
+            baseUrl: args.input.baseUrl ?? undefined,
             apiKey: args.input.apiKey,
             chatgptAccountId: args.input.chatgptAccountId ?? undefined
           }

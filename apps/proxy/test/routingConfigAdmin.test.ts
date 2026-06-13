@@ -5,6 +5,7 @@ import {
   eventOutbox,
   events,
   organizations,
+  providers,
   routingConfigs,
   routingConfigVersions,
   workspaces
@@ -32,12 +33,15 @@ const detailFields = `{
       configHash
       createdByUserId
     }
-    routeMatrix {
+    routes {
       route
-      openaiModel
-      openaiEffort
-      anthropicModel
-      anthropicEffort
+      targets {
+        providerId
+        model
+        effort
+        effectiveEffort
+        verbosity
+      }
     }
   }
   versions {
@@ -62,7 +66,7 @@ const listQuery = `query {
     activeVersionId
     assignedApiKeyCount
     activeVersion { id version status active configHash }
-    routeMatrix { route openaiModel openaiEffort anthropicModel anthropicEffort }
+    routes { route targets { providerId model effort effectiveEffort verbosity } }
   }
 }`;
 
@@ -145,25 +149,37 @@ describe("routing config admin APIs", () => {
         active: true,
         configHash: expect.stringMatching(/^[a-f0-9]{64}$/)
       }),
-      routeMatrix: expect.arrayContaining([
+      routes: expect.arrayContaining([
         expect.objectContaining({
           route: "fast",
-          openaiModel: "gpt-5.4-mini",
-          openaiEffort: "low",
-          anthropicModel: "claude-haiku-4-5",
-          anthropicEffort: null
+          targets: expect.arrayContaining([
+            expect.objectContaining({
+              providerId: "openai",
+              model: "gpt-5.4-mini",
+              effort: "low",
+              effectiveEffort: "low"
+            }),
+            expect.objectContaining({
+              providerId: "anthropic",
+              model: "claude-haiku-4-5",
+              effort: "low",
+              effectiveEffort: "low"
+            })
+          ])
         }),
         expect.objectContaining({
           route: "deep",
-          openaiEffort: "xhigh",
-          anthropicEffort: null
+          targets: expect.arrayContaining([
+            expect.objectContaining({ providerId: "openai", effectiveEffort: "xhigh" }),
+            expect.objectContaining({ providerId: "anthropic", effectiveEffort: "xhigh" })
+          ])
         })
       ])
     }));
     expect(archived).toEqual(expect.objectContaining({
       status: "archived",
       activeVersion: null,
-      routeMatrix: [],
+      routes: [],
       assignedApiKeyCount: 0
     }));
     expect(serialized).not.toContain("openai-upstream-key");
@@ -225,8 +241,8 @@ describe("routing config admin APIs", () => {
         config: expect.any(Object)
       })
     ]);
-    expect(versionConfig.routes.hard.openai?.model).toBe("gpt-5.5");
-    expect(versionConfig.routes.hard.anthropic?.model).toBe("claude-sonnet-4-5");
+    expect(versionConfig.routes.hard.targets.find((target) => target.providerId === "openai")?.model).toBe("gpt-5.5");
+    expect(versionConfig.routes.hard.targets.find((target) => target.providerId === "anthropic")?.model).toBe("claude-sonnet-4-5");
     expect(JSON.stringify(body)).not.toContain("openai-upstream-key");
     expect(JSON.stringify(body)).not.toContain("anthropic-upstream-key");
     expect(crossOrg.data?.routingConfig).toBeNull();
@@ -460,6 +476,168 @@ describe("routing config admin APIs", () => {
     ]));
     expect(after).toHaveLength(before.length);
     expect(eventRows).toHaveLength(0);
+  });
+
+  it("rejects classifier providers without a Responses endpoint before inserting versions", async () => {
+    const fixture = await setup("org_routing_config_classifier_provider");
+    const organizationId = "org_routing_config_classifier_provider";
+    const configId = `${organizationId}:routing-config:default`;
+    const baseConfig = await activeConfig(fixture, configId);
+    await fixture.db.insert(providers).values({
+      id: "00000000-0000-0000-0000-00000000c017",
+      organizationId,
+      slug: "chat-only-classifier",
+      displayName: "Chat-only classifier",
+      baseUrl: "https://chat-only-classifier.example/v1",
+      authStyle: "none",
+      endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+    const before = await fixture.db
+      .select()
+      .from(routingConfigVersions)
+      .where(eq(routingConfigVersions.routingConfigId, configId));
+
+    const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createVersionMutation, {
+      configId,
+      config: {
+        ...baseConfig,
+        classifier: {
+          ...baseConfig.classifier,
+          providerId: "chat-only-classifier"
+        }
+      }
+    });
+    const after = await fixture.db
+      .select()
+      .from(routingConfigVersions)
+      .where(eq(routingConfigVersions.routingConfigId, configId));
+    const eventRows = await fixture.db
+      .select()
+      .from(events)
+      .where(and(
+        eq(events.scopeId, configId),
+        eq(events.eventType, "routing_config.version_created")
+      ));
+
+    expect(result.errors?.[0]?.message).toBe("routing_config_classifier_provider_responses_endpoint_required");
+    expect(result.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
+    expect(result.errors?.[0]?.extensions?.issues).toEqual([{
+      path: "classifier.providerId",
+      message: "Classifier provider must expose an OpenAI Responses endpoint."
+    }]);
+    expect(after).toHaveLength(before.length);
+    expect(eventRows).toHaveLength(0);
+  });
+
+  it("rejects route targets that cannot serve current surfaces before inserting versions", async () => {
+    const fixture = await setup("org_routing_config_target_provider");
+    const organizationId = "org_routing_config_target_provider";
+    const configId = `${organizationId}:routing-config:default`;
+    const baseConfig = await activeConfig(fixture, configId);
+    await fixture.db.insert(providers).values({
+      id: "00000000-0000-0000-0000-00000000c019",
+      organizationId,
+      slug: "future-only-target",
+      displayName: "Future-only target",
+      baseUrl: "https://future-only-target.example/v1",
+      authStyle: "none",
+      endpoints: [{ dialect: "future-dialect", path: "/future" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+    const before = await fixture.db
+      .select()
+      .from(routingConfigVersions)
+      .where(eq(routingConfigVersions.routingConfigId, configId));
+
+    const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createVersionMutation, {
+      configId,
+      config: {
+        ...baseConfig,
+        routes: {
+          ...baseConfig.routes,
+          fast: {
+            ...baseConfig.routes.fast,
+            targets: [{
+              providerId: "future-only-target",
+              model: "future-only-model",
+              effort: "low"
+            }]
+          }
+        }
+      }
+    });
+    const after = await fixture.db
+      .select()
+      .from(routingConfigVersions)
+      .where(eq(routingConfigVersions.routingConfigId, configId));
+
+    expect(result.errors?.[0]?.message).toBe("routing_config_target_validation_failed");
+    expect(result.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
+    expect(result.errors?.[0]?.extensions?.issues).toEqual([{
+      path: "routes.fast.targets.0.providerId",
+      message: "Target provider must expose an OpenAI Responses, OpenAI Chat, or Anthropic Messages endpoint."
+    }]);
+    expect(after).toHaveLength(before.length);
+  });
+
+  it("rechecks classifier provider capabilities before activating drafts", async () => {
+    const fixture = await setup("org_routing_config_classifier_activate");
+    const organizationId = "org_routing_config_classifier_activate";
+    const configId = `${organizationId}:routing-config:default`;
+    const providerId = "00000000-0000-0000-0000-00000000c018";
+    const baseConfig = await activeConfig(fixture, configId);
+    await fixture.db.insert(providers).values({
+      id: providerId,
+      organizationId,
+      slug: "mutable-classifier",
+      displayName: "Mutable classifier",
+      baseUrl: "https://mutable-classifier.example/v1",
+      authStyle: "none",
+      endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+    const created = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createVersionMutation, {
+      configId,
+      config: {
+        ...baseConfig,
+        classifier: {
+          ...baseConfig.classifier,
+          providerId: "mutable-classifier"
+        }
+      }
+    });
+    const draft = created.data?.createRoutingConfigVersion.versions.find((version: any) => version.version === 2);
+    expect(created.errors).toBeUndefined();
+    expect(draft).toBeTruthy();
+    await fixture.db
+      .update(providers)
+      .set({ endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }] })
+      .where(eq(providers.id, providerId));
+
+    const activated = await adminGql(fixture.proxyUrl, fixture.adminHeaders, activateMutation, {
+      configId,
+      versionId: draft.id
+    });
+    const detail = await adminGql(fixture.proxyUrl, fixture.adminHeaders, detailQuery, { configId });
+    const activationEvents = await fixture.db
+      .select()
+      .from(events)
+      .where(and(
+        eq(events.scopeId, configId),
+        eq(events.eventType, "routing_config.version_activated")
+      ));
+
+    expect(activated.errors?.[0]?.message).toBe("routing_config_classifier_provider_responses_endpoint_required");
+    expect(activated.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
+    expect(detail.data?.routingConfig.config.activeVersionId).toBe(`${configId}:v1`);
+    expect(activationEvents).toHaveLength(0);
   });
 
   it("archives unassigned routing configs with an audit event", async () => {

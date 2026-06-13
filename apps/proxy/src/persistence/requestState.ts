@@ -14,7 +14,7 @@ import { jsonPayload, type RequestState, type RequestStateGate, type RequestStat
 import type { RouteContext } from "../types.js";
 import { createId } from "../util.js";
 import { ensureOrganization, ensureSession, ensureUser } from "./identity.js";
-import { numberValue, routingConfigSnapshotValue, stringValue, surfaceValue } from "./values.js";
+import { knownSurfaceValue, numberValue, routingConfigSnapshotValue, stringValue, surfaceValue } from "./values.js";
 
 export class PersistentRequestStateStore implements RequestStateStoreLike {
   constructor(
@@ -82,7 +82,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
           userId: routeContext?.userId,
           sessionId,
           apiKeyId: routeContext?.apiKeyId,
-          surface: routeContext?.surface ?? "openai-responses",
+          surface: routeContext?.surface ?? "unknown",
           idempotencyKey,
           requestedModel: routeContext?.requestedModel ?? "unknown",
           inputHash: routeContext?.inputHash ?? "unknown",
@@ -217,7 +217,7 @@ export async function persistRequestReceived(tx: PromptProxyTransaction, event: 
       userId,
       sessionId: dbSessionId,
       apiKeyId,
-      surface: surface ?? "openai-responses",
+      surface: surface ?? "unknown",
       idempotencyKey: event.idempotencyKey ?? event.scopeId,
       requestedModel: stringValue(payload.requestedModel) ?? "unknown",
       inputHash: stringValue(payload.inputHash) ?? event.payloadHash,
@@ -273,5 +273,5 @@ function requestStateStatus(status: string): RequestState["status"] {
 function isRouteContext(value: unknown): value is RouteContext {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
-  return surfaceValue(record.surface) !== undefined;
+  return knownSurfaceValue(record.surface) !== undefined;
 }
