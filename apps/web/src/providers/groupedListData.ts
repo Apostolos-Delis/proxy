@@ -47,8 +47,8 @@ export function providerGroups(
 
 export function authTypeLabel(account: ProviderAccountSummary) {
   if (account.authType !== "oauth") return "API key";
-  if (account.provider === "anthropic") return "Claude subscription";
-  if (account.provider === "openai") return "ChatGPT subscription";
+  if (account.provider === "anthropic") return "Claude sub";
+  if (account.provider === "openai") return "ChatGPT sub";
   return "Subscription";
 }
 
@@ -61,6 +61,8 @@ function orderedProviders(accounts: ProviderAccountSummary[]) {
 function compareAccounts(left: ProviderAccountSummary, right: ProviderAccountSummary) {
   const activeDelta = Number(right.status === "active") - Number(left.status === "active");
   if (activeDelta) return activeDelta;
+  const authDelta = Number(left.authType === "oauth") - Number(right.authType === "oauth");
+  if (authDelta) return authDelta;
   const lastUsedDelta = (right.lastUsedAt ?? "").localeCompare(left.lastUsedAt ?? "");
   if (lastUsedDelta) return lastUsedDelta;
   return right.createdAt.localeCompare(left.createdAt);

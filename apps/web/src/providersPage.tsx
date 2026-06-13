@@ -12,7 +12,7 @@ import { ProviderGroupsList } from "./providers/groupedList";
 import { boundKeysByAccount } from "./providers/groupedListData";
 import { CreateProviderKeyModal } from "./createProviderKeyModal";
 import { fetchApiKeys } from "./routing/data";
-import { PageState, PageTitle } from "./ui";
+import { PageState } from "./ui";
 import { fetchUserDirectory, type UserDirectory } from "./userDirectory";
 
 export function ProvidersPage() {
@@ -45,33 +45,33 @@ export function ProvidersPage() {
   const boundKeys = keysQueryData ? boundKeysByAccount(keysQueryData) : null;
   const openAccount = accounts.find((account) => account.id === openAccountId);
   return (
-    <div className="page page-enter">
-      <PageTitle
-        title="Provider keys"
-        subtitle="Customer-supplied provider keys (BYOK). Unbound traffic keeps using the company key."
-        actions={(
-          <>
-            <div className="input console-table-search provider-key-search">
-              <Search />
-              <input
-                value={searchValue}
-                onChange={(event) => setSearchValue(event.target.value)}
-                placeholder="Search keys, owners..."
-                aria-label="Search provider keys"
-              />
-              {searchValue ? (
-                <button type="button" aria-label="Clear search" onClick={() => setSearchValue("")}>
-                  <X />
-                </button>
-              ) : null}
-            </div>
-            <button className="btn btn-primary" type="button" onClick={() => setShowCreate(true)}>
-              <Plus />
-              Add provider key
-            </button>
-          </>
-        )}
-      />
+    <div className="page page-enter provider-keys-page">
+      <div className="provider-keys-title-row">
+        <div>
+          <h2>Provider keys</h2>
+          <div className="muted">Bring-your-own provider credentials. Unbound traffic uses the company key.</div>
+        </div>
+        <div className="provider-keys-actions">
+          <div className="input provider-key-search">
+            <Search />
+            <input
+              value={searchValue}
+              onChange={(event) => setSearchValue(event.target.value)}
+              placeholder="Search keys, owners..."
+              aria-label="Search provider keys"
+            />
+            {searchValue ? (
+              <button type="button" aria-label="Clear search" onClick={() => setSearchValue("")}>
+                <X />
+              </button>
+            ) : null}
+          </div>
+          <button className="btn btn-primary" type="button" onClick={() => setShowCreate(true)}>
+            <Plus />
+            Add provider key
+          </button>
+        </div>
+      </div>
       {showCreate ? <CreateProviderKeyModal onClose={() => setShowCreate(false)} /> : null}
       {openAccount ? <ProviderKeyDetailPanel account={openAccount} onClose={() => setOpenAccountId(null)} /> : null}
       <ProviderGroupsList
