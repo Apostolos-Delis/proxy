@@ -292,7 +292,9 @@ function fakePersistence(
       },
       cacheTtlUpgrade: async () => false,
       setCacheTtlUpgrade: async (_organizationId: string, enabled: boolean) => enabled,
+      setAutomaticCaching: async (_organizationId: string, enabled: boolean) => enabled,
       setToolResultCompression: async (_organizationId: string, enabled: boolean) => enabled,
+      setDuplicateToolResultReferences: async (_organizationId: string, enabled: boolean) => enabled,
       setCostBaseline: async (_organizationId: string, baseline: { anthropicModel: string | null; openaiModel: string | null }) => {
         orgCostBaseline.anthropicModel = baseline.anthropicModel?.trim() || "claude-fable-5";
         orgCostBaseline.openaiModel = baseline.openaiModel?.trim() || "gpt-5.5";
@@ -301,7 +303,9 @@ function fakePersistence(
       editable: async () => ({
         systemPrompt: orgSystemPrompt.value,
         cacheTtlUpgrade: false,
+        automaticCaching: false,
         toolResultCompression: false,
+        duplicateToolResultReferences: false,
         costBaseline: { ...orgCostBaseline }
       })
     },

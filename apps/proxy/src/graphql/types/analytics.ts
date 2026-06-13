@@ -3,9 +3,12 @@ import type {
   ActiveSessionCountModel,
   CacheBustModel,
   CacheBustReportModel,
+  CompressionSavingsReportModel,
+  CompressionSavingsRowModel,
   IdleGapBucketModel,
   IdleGapReportModel,
   LatencySummaryModel,
+  RouteOutputGroupRowModel,
   RouteOutputReportModel,
   RouteOutputRowModel,
   OverviewModel,
@@ -13,6 +16,7 @@ import type {
   TokenAttributionBucketModel,
   TokenAttributionOffenderModel,
   TokenAttributionReportModel,
+  TokenAttributionSchemaChurnModel,
   UsageGroupModel,
   UsageReportModel,
   UsageTimeseriesModel,
@@ -120,6 +124,21 @@ export const TokenAttributionOffender = builder
     })
   });
 
+export const TokenAttributionSchemaChurn = builder
+  .objectRef<TokenAttributionSchemaChurnModel>("TokenAttributionSchemaChurn")
+  .implement({
+    fields: (t) => ({
+      name: t.exposeString("name"),
+      chars: t.exposeFloat("chars"),
+      estimatedTokens: t.exposeFloat("estimatedTokens"),
+      requests: t.exposeFloat("requests"),
+      sessions: t.exposeFloat("sessions"),
+      schemaHashes: t.exposeFloat("schemaHashes"),
+      churningSessions: t.exposeFloat("churningSessions"),
+      status: t.exposeString("status")
+    })
+  });
+
 export const TokenAttributionReport = builder
   .objectRef<TokenAttributionReportModel>("TokenAttributionReport")
   .implement({
@@ -128,7 +147,42 @@ export const TokenAttributionReport = builder
       sampled: t.exposeBoolean("sampled"),
       buckets: t.expose("buckets", { type: [TokenAttributionBucket] }),
       toolSchemas: t.expose("toolSchemas", { type: [TokenAttributionOffender] }),
-      toolResults: t.expose("toolResults", { type: [TokenAttributionOffender] })
+      toolResults: t.expose("toolResults", { type: [TokenAttributionOffender] }),
+      schemaChurn: t.expose("schemaChurn", { type: [TokenAttributionSchemaChurn] })
+    })
+  });
+
+export const CompressionSavingsRow = builder
+  .objectRef<CompressionSavingsRowModel>("CompressionSavingsRow")
+  .implement({
+    fields: (t) => ({
+      rule: t.exposeString("rule"),
+      ruleVersion: t.exposeFloat("ruleVersion"),
+      tool: t.exposeString("tool"),
+      blocks: t.exposeFloat("blocks"),
+      beforeChars: t.exposeFloat("beforeChars"),
+      afterChars: t.exposeFloat("afterChars"),
+      savedChars: t.exposeFloat("savedChars"),
+      beforeEstimatedTokens: t.exposeFloat("beforeEstimatedTokens"),
+      afterEstimatedTokens: t.exposeFloat("afterEstimatedTokens"),
+      savedEstimatedTokens: t.exposeFloat("savedEstimatedTokens")
+    })
+  });
+
+export const CompressionSavingsReport = builder
+  .objectRef<CompressionSavingsReportModel>("CompressionSavingsReport")
+  .implement({
+    fields: (t) => ({
+      eventCount: t.exposeFloat("eventCount"),
+      sampled: t.exposeBoolean("sampled"),
+      blocks: t.exposeFloat("blocks"),
+      beforeChars: t.exposeFloat("beforeChars"),
+      afterChars: t.exposeFloat("afterChars"),
+      savedChars: t.exposeFloat("savedChars"),
+      beforeEstimatedTokens: t.exposeFloat("beforeEstimatedTokens"),
+      afterEstimatedTokens: t.exposeFloat("afterEstimatedTokens"),
+      savedEstimatedTokens: t.exposeFloat("savedEstimatedTokens"),
+      rows: t.expose("rows", { type: [CompressionSavingsRow] })
     })
   });
 
@@ -153,9 +207,27 @@ export const RouteOutputRow = builder.objectRef<RouteOutputRowModel>("RouteOutpu
   })
 });
 
+export const RouteOutputGroupRow = builder
+  .objectRef<RouteOutputGroupRowModel>("RouteOutputGroupRow")
+  .implement({
+    fields: (t) => ({
+      key: t.exposeString("key"),
+      requests: t.exposeFloat("requests"),
+      outputTokens: t.exposeFloat("outputTokens"),
+      reasoningTokens: t.exposeFloat("reasoningTokens"),
+      avgOutputTokens: t.exposeFloat("avgOutputTokens"),
+      reasoningShare: t.exposeFloat("reasoningShare"),
+      outputCost: t.exposeFloat("outputCost")
+    })
+  });
+
 export const RouteOutputReport = builder.objectRef<RouteOutputReportModel>("RouteOutputReport").implement({
   fields: (t) => ({
-    routes: t.expose("routes", { type: [RouteOutputRow] })
+    routes: t.expose("routes", { type: [RouteOutputRow] }),
+    models: t.expose("models", { type: [RouteOutputGroupRow] }),
+    users: t.expose("users", { type: [RouteOutputGroupRow] }),
+    apiKeys: t.expose("apiKeys", { type: [RouteOutputGroupRow] }),
+    workspaces: t.expose("workspaces", { type: [RouteOutputGroupRow] })
   })
 });
 
@@ -173,7 +245,13 @@ export const IdleGapReport = builder.objectRef<IdleGapReportModel>("IdleGapRepor
     totalGaps: t.exposeFloat("totalGaps"),
     overTtl: t.exposeFloat("overTtl"),
     recoverableByOneHourTtl: t.exposeFloat("recoverableByOneHourTtl"),
+    estimatedRecoverableCacheReadTokens: t.exposeFloat("estimatedRecoverableCacheReadTokens"),
+    recommendationThresholdTokens: t.exposeFloat("recommendationThresholdTokens"),
+    recommendedTtlUpgrade: t.exposeBoolean("recommendedTtlUpgrade"),
     sessionsScanned: t.exposeFloat("sessionsScanned"),
+    sampledRequests: t.exposeFloat("sampledRequests"),
+    sampleWindowStart: t.exposeString("sampleWindowStart", { nullable: true }),
+    sampleWindowEnd: t.exposeString("sampleWindowEnd", { nullable: true }),
     sampled: t.exposeBoolean("sampled")
   })
 });

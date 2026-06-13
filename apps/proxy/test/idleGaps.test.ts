@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { aggregateIdleGaps } from "../src/persistence/idleGaps.js";
+import { aggregateIdleGaps, type IdleGapRequestRow } from "../src/persistence/idleGaps.js";
 
-function row(sessionId: string, at: string) {
-  return { sessionId, createdAt: new Date(at) };
+function row(sessionId: string, at: string, overrides: Partial<IdleGapRequestRow> = {}) {
+  return { sessionId, createdAt: new Date(at), ...overrides };
 }
 
 describe("aggregateIdleGaps", () => {
@@ -13,9 +13,9 @@ describe("aggregateIdleGaps", () => {
         row("s1", "2026-06-08T12:00:00Z"),
         row("s1", "2026-06-08T12:00:30Z"), // 30s
         row("s1", "2026-06-08T12:03:30Z"), // 3m
-        row("s1", "2026-06-08T12:13:30Z"), // 10m
+        row("s1", "2026-06-08T12:13:30Z", { provider: "anthropic", cacheCreationInputTokens: 120_000 }), // 10m
         row("s2", "2026-06-08T13:00:00Z"),
-        row("s2", "2026-06-08T15:00:00Z") // 2h
+        row("s2", "2026-06-08T15:00:00Z", { provider: "anthropic", cacheCreationInputTokens: 500_000 }) // 2h
       ],
       false
     );
@@ -25,7 +25,12 @@ describe("aggregateIdleGaps", () => {
     expect(report.totalGaps).toBe(4);
     expect(report.overTtl).toBe(2);
     expect(report.recoverableByOneHourTtl).toBe(1);
+    expect(report.estimatedRecoverableCacheReadTokens).toBe(120_000);
+    expect(report.recommendedTtlUpgrade).toBe(true);
     expect(report.sessionsScanned).toBe(2);
+    expect(report.sampledRequests).toBe(6);
+    expect(report.sampleWindowStart).toBe("2026-06-08T12:00:00.000Z");
+    expect(report.sampleWindowEnd).toBe("2026-06-08T15:00:00.000Z");
     expect(report.sampled).toBe(false);
   });
 
@@ -40,6 +45,8 @@ describe("aggregateIdleGaps", () => {
     );
     expect(report.totalGaps).toBe(1);
     expect(report.overTtl).toBe(1);
+    expect(report.estimatedRecoverableCacheReadTokens).toBe(0);
+    expect(report.recommendedTtlUpgrade).toBe(false);
     expect(report.sampled).toBe(true);
   });
 
@@ -47,5 +54,8 @@ describe("aggregateIdleGaps", () => {
     const report = aggregateIdleGaps([], false);
     expect(report.totalGaps).toBe(0);
     expect(report.buckets.every((bucket) => bucket.count === 0)).toBe(true);
+    expect(report.sampledRequests).toBe(0);
+    expect(report.sampleWindowStart).toBeNull();
+    expect(report.sampleWindowEnd).toBeNull();
   });
 });

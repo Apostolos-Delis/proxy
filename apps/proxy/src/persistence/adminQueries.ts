@@ -52,6 +52,7 @@ import {
 } from "./adminSerializers.js";
 import { CACHE_TTL_DEFAULT_MS } from "../cacheWindows.js";
 import { CACHE_BUST_SAMPLE_CAP, detectCacheBusts } from "./cacheBusts.js";
+import { aggregateCompressionSavings, COMPRESSION_SAVINGS_SAMPLE_CAP } from "./compressionSavings.js";
 import { aggregateIdleGaps, IDLE_GAP_SAMPLE_CAP } from "./idleGaps.js";
 import { orgPricingOverrides, type OrgPricingOverride } from "./modelPricing.js";
 import { orgCostBaseline } from "./organizationSettings.js";
@@ -1163,22 +1164,73 @@ export class AdminQueryService {
   async routeOutputReport(filters: DateRangeFilters = {}) {
     const start = dateValue(filters.start);
     const end = dateValue(filters.end);
-    const conditions = [this.scopedTo(usageLedger), isNotNull(usageLedger.route)];
+    const conditions = [this.scopedTo(usageLedger), eq(usageLedger.kind, "provider")];
     if (start) conditions.push(gte(usageLedger.createdAt, start));
     if (end) conditions.push(lte(usageLedger.createdAt, end));
-    const rows = await this.db
-      .select({
-        route: usageLedger.route,
-        requests: sql<number>`count(*)`,
-        outputTokens: sql<number>`coalesce(sum(${usageLedger.outputTokens}), 0)`,
-        reasoningTokens: sql<number>`coalesce(sum(${usageLedger.reasoningTokens}), 0)`,
-        outputCostMicros: sql<number>`coalesce(sum(${usageLedger.outputCostMicros}), 0)`
-      })
-      .from(usageLedger)
-      .where(and(...conditions))
-      .groupBy(usageLedger.route);
+    const [routeRows, modelRows, userRows, apiKeyRows, workspaceRows] = await Promise.all([
+      this.db
+        .select({
+          route: usageLedger.route,
+          requests: sql<number>`count(*)`,
+          outputTokens: sql<number>`coalesce(sum(${usageLedger.outputTokens}), 0)`,
+          reasoningTokens: sql<number>`coalesce(sum(${usageLedger.reasoningTokens}), 0)`,
+          outputCostMicros: sql<number>`coalesce(sum(${usageLedger.outputCostMicros}), 0)`
+        })
+        .from(usageLedger)
+        .where(and(...conditions, isNotNull(usageLedger.route)))
+        .groupBy(usageLedger.route),
+      this.db
+        .select({
+          key: usageLedger.model,
+          requests: sql<number>`count(*)`,
+          outputTokens: sql<number>`coalesce(sum(${usageLedger.outputTokens}), 0)`,
+          reasoningTokens: sql<number>`coalesce(sum(${usageLedger.reasoningTokens}), 0)`,
+          outputCostMicros: sql<number>`coalesce(sum(${usageLedger.outputCostMicros}), 0)`
+        })
+        .from(usageLedger)
+        .where(and(...conditions))
+        .groupBy(usageLedger.model),
+      this.db
+        .select({
+          key: usageLedger.userId,
+          requests: sql<number>`count(*)`,
+          outputTokens: sql<number>`coalesce(sum(${usageLedger.outputTokens}), 0)`,
+          reasoningTokens: sql<number>`coalesce(sum(${usageLedger.reasoningTokens}), 0)`,
+          outputCostMicros: sql<number>`coalesce(sum(${usageLedger.outputCostMicros}), 0)`
+        })
+        .from(usageLedger)
+        .where(and(...conditions, isNotNull(usageLedger.userId)))
+        .groupBy(usageLedger.userId),
+      this.db
+        .select({
+          key: requests.apiKeyId,
+          requests: sql<number>`count(*)`,
+          outputTokens: sql<number>`coalesce(sum(${usageLedger.outputTokens}), 0)`,
+          reasoningTokens: sql<number>`coalesce(sum(${usageLedger.reasoningTokens}), 0)`,
+          outputCostMicros: sql<number>`coalesce(sum(${usageLedger.outputCostMicros}), 0)`
+        })
+        .from(usageLedger)
+        .innerJoin(requests, and(
+          eq(requests.organizationId, usageLedger.organizationId),
+          eq(requests.workspaceId, usageLedger.workspaceId),
+          eq(requests.id, usageLedger.requestId)
+        ))
+        .where(and(...conditions, isNotNull(requests.apiKeyId)))
+        .groupBy(requests.apiKeyId),
+      this.db
+        .select({
+          key: usageLedger.workspaceId,
+          requests: sql<number>`count(*)`,
+          outputTokens: sql<number>`coalesce(sum(${usageLedger.outputTokens}), 0)`,
+          reasoningTokens: sql<number>`coalesce(sum(${usageLedger.reasoningTokens}), 0)`,
+          outputCostMicros: sql<number>`coalesce(sum(${usageLedger.outputCostMicros}), 0)`
+        })
+        .from(usageLedger)
+        .where(and(...conditions))
+        .groupBy(usageLedger.workspaceId)
+    ]);
 
-    const routes = rows.map((row) => {
+    const routes = routeRows.map((row) => {
       const requests = Number(row.requests);
       const outputTokens = Number(row.outputTokens);
       const reasoningTokens = Number(row.reasoningTokens);
@@ -1193,7 +1245,13 @@ export class AdminQueryService {
       };
     });
     routes.sort((left, right) => routeIndex(routeValue(left.route)) - routeIndex(routeValue(right.route)));
-    return { routes };
+    return {
+      routes,
+      models: outputGroups(modelRows),
+      users: outputGroups(userRows),
+      apiKeys: outputGroups(apiKeyRows),
+      workspaces: outputGroups(workspaceRows)
+    };
   }
 
   // Sessions with a request inside the cache-warm window. Admin surfaces use
@@ -1214,17 +1272,37 @@ export class AdminQueryService {
   async idleGaps(filters: DateRangeFilters = {}) {
     const start = dateValue(filters.start);
     const end = dateValue(filters.end);
-    const conditions = [this.scopedTo(requests), isNotNull(requests.sessionId)];
-    if (start) conditions.push(gte(requests.createdAt, start));
-    if (end) conditions.push(lte(requests.createdAt, end));
+    const conditions = [
+      this.scopedTo(usageLedger),
+      eq(usageLedger.kind, "provider"),
+      isNotNull(usageLedger.sessionId)
+    ];
+    if (start) conditions.push(gte(usageLedger.createdAt, start));
+    if (end) conditions.push(lte(usageLedger.createdAt, end));
     const rows = await this.db
-      .select({ sessionId: requests.sessionId, createdAt: requests.createdAt })
-      .from(requests)
+      .select({
+        sessionId: usageLedger.sessionId,
+        requestId: usageLedger.requestId,
+        provider: usageLedger.provider,
+        inputTokens: usageLedger.inputTokens,
+        cachedInputTokens: usageLedger.cachedInputTokens,
+        cacheCreationInputTokens: usageLedger.cacheCreationInputTokens,
+        createdAt: usageLedger.createdAt
+      })
+      .from(usageLedger)
       .where(and(...conditions))
-      .orderBy(desc(requests.createdAt))
+      .orderBy(desc(usageLedger.createdAt))
       .limit(IDLE_GAP_SAMPLE_CAP);
     return aggregateIdleGaps(
-      rows.map((row) => ({ sessionId: row.sessionId ?? "", createdAt: row.createdAt })),
+      rows.map((row) => ({
+        sessionId: row.sessionId ?? "",
+        requestId: row.requestId,
+        provider: row.provider,
+        inputTokens: row.inputTokens,
+        cachedInputTokens: row.cachedInputTokens,
+        cacheCreationInputTokens: row.cacheCreationInputTokens,
+        createdAt: row.createdAt
+      })),
       rows.length === IDLE_GAP_SAMPLE_CAP
     );
   }
@@ -1278,6 +1356,24 @@ export class AdminQueryService {
     return aggregateTokenAttribution(
       rows.map((row) => row.payload),
       rows.length === TOKEN_ATTRIBUTION_SAMPLE_CAP
+    );
+  }
+
+  async compressionSavings(filters: DateRangeFilters = {}) {
+    const start = dateValue(filters.start);
+    const end = dateValue(filters.end);
+    const conditions = [this.scopedTo(events), eq(events.eventType, "compression.recorded")];
+    if (start) conditions.push(gte(events.createdAt, start));
+    if (end) conditions.push(lte(events.createdAt, end));
+    const rows = await this.db
+      .select({ payload: events.payload })
+      .from(events)
+      .where(and(...conditions))
+      .orderBy(desc(events.createdAt))
+      .limit(COMPRESSION_SAVINGS_SAMPLE_CAP);
+    return aggregateCompressionSavings(
+      rows.map((row) => row.payload),
+      rows.length === COMPRESSION_SAVINGS_SAMPLE_CAP
     );
   }
 
@@ -1986,6 +2082,33 @@ function latencySummaryFromRow(row: UsageLatencyRow | undefined) {
 
 function usageScopeKey(scope: UsageRollupScope) {
   return `${scope.start?.toISOString() ?? ""}:${scope.end?.toISOString() ?? ""}`;
+}
+
+type OutputGroupAggregateRow = {
+  key: string | null;
+  requests: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  outputCostMicros: number;
+};
+
+function outputGroups(rows: OutputGroupAggregateRow[]) {
+  return rows
+    .map((row) => {
+      const requests = Number(row.requests);
+      const outputTokens = Number(row.outputTokens);
+      const reasoningTokens = Number(row.reasoningTokens);
+      return {
+        key: row.key ?? "unknown",
+        requests,
+        outputTokens,
+        reasoningTokens,
+        avgOutputTokens: requests > 0 ? outputTokens / requests : 0,
+        reasoningShare: outputTokens > 0 ? reasoningTokens / outputTokens : 0,
+        outputCost: Number(row.outputCostMicros) / 1_000_000
+      };
+    })
+    .sort((left, right) => right.outputTokens - left.outputTokens || left.key.localeCompare(right.key));
 }
 
 /**

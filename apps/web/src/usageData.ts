@@ -1,5 +1,6 @@
 import { graphql } from "./gql";
 import type {
+  RouteOutputViewQuery,
   UsageDashboardViewQuery,
   UsageLookupsQuery,
   UsageReportViewQuery,
@@ -116,6 +117,58 @@ const UsageLookupsDocument = graphql(`
   }
 `);
 
+const RouteOutputViewDocument = graphql(`
+  query RouteOutputView($start: String, $end: String) {
+    routeOutputReport(start: $start, end: $end) {
+      routes {
+        route
+        requests
+        outputTokens
+        reasoningTokens
+        avgOutputTokens
+        reasoningShare
+        outputCost
+      }
+      models {
+        key
+        requests
+        outputTokens
+        reasoningTokens
+        avgOutputTokens
+        reasoningShare
+        outputCost
+      }
+      users {
+        key
+        requests
+        outputTokens
+        reasoningTokens
+        avgOutputTokens
+        reasoningShare
+        outputCost
+      }
+      apiKeys {
+        key
+        requests
+        outputTokens
+        reasoningTokens
+        avgOutputTokens
+        reasoningShare
+        outputCost
+      }
+      workspaces {
+        key
+        requests
+        outputTokens
+        reasoningTokens
+        avgOutputTokens
+        reasoningShare
+        outputCost
+      }
+    }
+  }
+`);
+
 const UnpricedModelsDocument = graphql(`
   query UnpricedModels {
     modelPricing {
@@ -131,6 +184,8 @@ export type UsageResponse = UsageReportViewQuery["usage"];
 export type UsageGroup = UsageResponse["totals"];
 export type UsageLookupUser = UsageLookupsQuery["members"][number];
 export type UsageLookupApiKey = UsageLookupsQuery["apiKeys"][number];
+export type RouteOutputReport = RouteOutputViewQuery["routeOutputReport"];
+export type RouteOutputRow = RouteOutputReport["routes"][number];
 
 export type UsageRangeFilters = {
   start?: string;
@@ -186,6 +241,10 @@ function normalizeTimeseries(raw: RawTimeseries): UsageTimeseries {
 
 export async function fetchUsageLookups() {
   return gqlFetch(UsageLookupsDocument);
+}
+
+export async function fetchRouteOutputReport(filters: UsageRangeFilters = {}) {
+  return (await gqlFetch(RouteOutputViewDocument, filters)).routeOutputReport;
 }
 
 export type UnpricedModel = { model: string; provider: string | null };

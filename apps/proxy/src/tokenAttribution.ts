@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { actorForIdentity, type RequestIdentity } from "./auth.js";
 import { jsonPayload, type EventService } from "./events.js";
 import type { JsonObject, Surface } from "./types.js";
@@ -20,6 +22,7 @@ export type TokenAttribution = {
   latestUser: Bucket;
   total: Bucket;
   toolSchemasByName: Array<{ name: string; chars: number; estimatedTokens: number }>;
+  toolSchemaHashesByName: Array<{ name: string; schemaHash: string; chars: number; estimatedTokens: number }>;
   newToolResultsByTool: Array<{ tool: string; chars: number; estimatedTokens: number; blocks: number }>;
 };
 
@@ -50,6 +53,10 @@ export function attributeTokens(surface: Surface, body: unknown, orgSystemPrompt
       name,
       chars,
       estimatedTokens: roughTokenEstimate(chars)
+    })),
+    toolSchemaHashesByName: capSchemaHashes(parts.toolSchemas.hashesByName).map((entry) => ({
+      ...entry,
+      estimatedTokens: roughTokenEstimate(entry.chars)
     })),
     newToolResultsByTool: cappedResults(parts.newToolResults).map((entry) => ({
       ...entry,
@@ -83,14 +90,19 @@ export async function appendTokensAttributed(input: {
       producer: "prompt-proxy.attribution",
       eventType: "tokens.attributed",
       redactionState: "not_applicable",
-      payload: jsonPayload(attribution) as JsonObject
+      payload: jsonPayload({ ...attribution, sessionId: input.sessionId }) as JsonObject
     });
   } catch (error) {
     input.warn(error, "token attribution failed");
   }
 }
 
-type ToolGroup = { total: number; count: number; byName: Map<string, number> };
+type ToolGroup = {
+  total: number;
+  count: number;
+  byName: Map<string, number>;
+  hashesByName: Map<string, Map<string, number>>;
+};
 type ResultGroup = { total: number; blocks: number; byTool: Map<string, number>; blocksByTool: Map<string, number> };
 
 type AttributionParts = {
@@ -217,15 +229,21 @@ function isNewTurnItem(item: unknown) {
 }
 
 function groupToolSchemas(tools: unknown, nameOf: (tool: Record<string, unknown>) => string | undefined): ToolGroup {
-  const group: ToolGroup = { total: 0, count: 0, byName: new Map() };
+  const group: ToolGroup = { total: 0, count: 0, byName: new Map(), hashesByName: new Map() };
   if (!Array.isArray(tools)) return group;
   for (const tool of tools) {
     if (!isRecord(tool)) continue;
-    const chars = stableJson(tool).length;
-    const key = toolGroupKey(nameOf(tool) ?? "unknown");
+    const serialized = stableJson(tool);
+    const chars = serialized.length;
+    const name = nameOf(tool) ?? "unknown";
+    const key = toolGroupKey(name);
+    const schemaHash = `sha256:${createHash("sha256").update(serialized).digest("hex")}`;
     group.total += chars;
     group.count += 1;
     group.byName.set(key, (group.byName.get(key) ?? 0) + chars);
+    const hashes = group.hashesByName.get(name) ?? new Map<string, number>();
+    hashes.set(schemaHash, (hashes.get(schemaHash) ?? 0) + chars);
+    group.hashesByName.set(name, hashes);
   }
   return group;
 }
@@ -296,4 +314,31 @@ function capEntries(byName: Map<string, number>) {
   const otherChars = sorted.slice(MAX_NAMED_ENTRIES).reduce((sum, [, chars]) => sum + chars, 0);
   kept.push(["__other", otherChars]);
   return kept;
+}
+
+function capSchemaHashes(hashesByName: Map<string, Map<string, number>>) {
+  const entries = [...hashesByName.entries()]
+    .map(([name, hashes]) => ({
+      name,
+      hashes,
+      totalChars: [...hashes.values()].reduce((sum, chars) => sum + chars, 0)
+    }))
+    .sort((left, right) =>
+      Number(right.hashes.size > 1) - Number(left.hashes.size > 1) ||
+      right.totalChars - left.totalChars ||
+      left.name.localeCompare(right.name)
+    )
+    .flatMap(({ name, hashes }) =>
+      [...hashes.entries()]
+        .map(([schemaHash, chars]) => ({ name, schemaHash, chars, churning: hashes.size > 1 }))
+        .sort((left, right) => right.chars - left.chars)
+    )
+    .sort((left, right) =>
+      Number(right.churning) - Number(left.churning) ||
+      right.chars - left.chars ||
+      left.name.localeCompare(right.name)
+    )
+    .map(({ name, schemaHash, chars }) => ({ name, schemaHash, chars }));
+  if (entries.length <= MAX_NAMED_ENTRIES) return entries;
+  return entries.slice(0, MAX_NAMED_ENTRIES);
 }

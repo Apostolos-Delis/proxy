@@ -17,6 +17,7 @@ function makeSettings(overrides: Partial<EditableSettings> = {}): EditableSettin
     cacheTtlUpgrade: false,
     automaticCaching: false,
     toolResultCompression: false,
+    duplicateToolResultReferences: false,
     costBaseline: { anthropicModel: "claude-fable-5", openaiModel: "gpt-5.5" },
     classifier: { model: "gpt-5-nano", timeoutMs: 4000, maxAttempts: 2, allowRedactedExcerpt: true },
     routeQuality: { lowConfidenceThreshold: 0.55 },

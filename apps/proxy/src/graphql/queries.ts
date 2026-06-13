@@ -1,4 +1,5 @@
 import { CACHE_TTL_DEFAULT_MS, CACHE_TTL_POLICY_LOOKBACK_MS, CACHE_TTL_UPGRADED_MS } from "../cacheWindows.js";
+import { aggregateCompressionSavings } from "../persistence/compressionSavings.js";
 import { aggregateIdleGaps } from "../persistence/idleGaps.js";
 import { aggregateTokenAttribution } from "../persistence/tokenAttributionReport.js";
 import { compareModelPricingEntries, staticPricingEntries } from "../pricing.js";
@@ -11,6 +12,7 @@ import { settingsResponse } from "./settingsPayload.js";
 import {
   ActiveSessionCount,
   CacheBustReport,
+  CompressionSavingsReport,
   IdleGapReport,
   Overview,
   RouteOutputReport,
@@ -192,7 +194,7 @@ builder.queryFields((t) => ({
           end: args.end ?? undefined
         });
       }
-      return { routes: [] };
+      return { routes: [], models: [], users: [], apiKeys: [], workspaces: [] };
     }
   }),
 
@@ -273,6 +275,28 @@ builder.queryFields((t) => ({
         .filter((event) => event.eventType === "tokens.attributed")
         .map((event) => event.payload);
       return aggregateTokenAttribution(payloads, false);
+    }
+  }),
+
+  compressionSavings: t.field({
+    type: CompressionSavingsReport,
+    args: {
+      start: t.arg.string(),
+      end: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) {
+        return queries.compressionSavings({
+          start: args.start ?? undefined,
+          end: args.end ?? undefined
+        });
+      }
+      const payloads = context.events
+        .listEvents()
+        .filter((event) => event.eventType === "compression.recorded")
+        .map((event) => event.payload);
+      return aggregateCompressionSavings(payloads, false);
     }
   }),
 

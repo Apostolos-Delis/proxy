@@ -55,6 +55,7 @@ export class OrganizationSettingsStore {
     cacheTtlUpgrade: boolean;
     automaticCaching: boolean;
     toolResultCompression: boolean;
+    duplicateToolResultReferences: boolean;
     costBaseline: CostBaseline;
   }> {
     const [row] = await this.db
@@ -70,6 +71,7 @@ export class OrganizationSettingsStore {
       cacheTtlUpgrade: row?.settings?.cacheTtlUpgrade === true,
       automaticCaching: row?.settings?.automaticCaching === true,
       toolResultCompression: row?.settings?.toolResultCompression === true,
+      duplicateToolResultReferences: row?.settings?.duplicateToolResultReferences === true,
       costBaseline: costBaselineFromSettings(row?.settings)
     };
   }
@@ -107,6 +109,10 @@ export class OrganizationSettingsStore {
 
   async setToolResultCompression(organizationId: string, enabled: boolean): Promise<boolean> {
     return this.setBooleanSetting(organizationId, "toolResultCompression", enabled);
+  }
+
+  async setDuplicateToolResultReferences(organizationId: string, enabled: boolean): Promise<boolean> {
+    return this.setBooleanSetting(organizationId, "duplicateToolResultReferences", enabled);
   }
 
   async setAutomaticCaching(organizationId: string, enabled: boolean): Promise<boolean> {

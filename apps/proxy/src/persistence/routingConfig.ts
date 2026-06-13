@@ -28,6 +28,7 @@ export type ResolvedRoutingConfig = {
   cacheTtlUpgrade: boolean;
   automaticCaching: boolean;
   toolResultCompression: boolean;
+  duplicateToolResultReferences: boolean;
 };
 
 export class RoutingConfigResolutionError extends Error {
@@ -101,7 +102,8 @@ export class RoutingConfigResolver {
       organizationSystemPrompt: orgSettings?.systemPrompt ?? undefined,
       cacheTtlUpgrade,
       automaticCaching: orgSettings?.settings?.automaticCaching === true,
-      toolResultCompression: orgSettings?.settings?.toolResultCompression === true
+      toolResultCompression: orgSettings?.settings?.toolResultCompression === true,
+      duplicateToolResultReferences: orgSettings?.settings?.duplicateToolResultReferences === true
     };
   }
 
@@ -174,9 +176,17 @@ export async function resolveRoutingSelection(
   cacheTtlUpgrade: boolean;
   automaticCaching: boolean;
   toolResultCompression: boolean;
+  duplicateToolResultReferences: boolean;
 }> {
   const resolved = await resolver?.resolve(input);
-  if (!resolved) return { cacheTtlUpgrade: false, automaticCaching: false, toolResultCompression: false };
+  if (!resolved) {
+    return {
+      cacheTtlUpgrade: false,
+      automaticCaching: false,
+      toolResultCompression: false,
+      duplicateToolResultReferences: false
+    };
+  }
   return {
     routingConfig: {
       snapshot: routingConfigSnapshot(resolved),
@@ -185,7 +195,8 @@ export async function resolveRoutingSelection(
     systemPrompt: resolved.organizationSystemPrompt,
     cacheTtlUpgrade: resolved.cacheTtlUpgrade,
     automaticCaching: resolved.automaticCaching,
-    toolResultCompression: resolved.toolResultCompression
+    toolResultCompression: resolved.toolResultCompression,
+    duplicateToolResultReferences: resolved.duplicateToolResultReferences
   };
 }
 

@@ -258,6 +258,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         surface: openAIResponsesSurface.surface,
         body: request.body,
         enabled: resolved.toolResultCompression,
+        deduplicateToolResults: resolved.duplicateToolResultReferences,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       await proxy.forward({
@@ -374,6 +375,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         surface: anthropicMessagesSurface.surface,
         body: request.body,
         enabled: resolved.toolResultCompression,
+        deduplicateToolResults: resolved.duplicateToolResultReferences,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       await proxy.forward({
@@ -453,7 +455,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         anthropicMessagesSurface.surface,
         request.body,
         resolved.toolResultCompression,
-        (err, message) => app.log.warn({ err, requestId }, message)
+        (err, message) => app.log.warn({ err, requestId }, message),
+        { deduplicateToolResults: resolved.duplicateToolResultReferences }
       );
       await proxy.forward({
         requestId,
