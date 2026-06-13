@@ -123,28 +123,18 @@ function ProviderDefaultRow({ provider }: { provider?: ProviderRegistrySummary }
   const builtin = provider?.builtin ?? groupIsBuiltinFallback(provider?.slug);
   const labels = providerDefaultLabels(provider, builtin);
   return (
-    <div className="provider-key-row provider-default-row">
-      <div className="provider-key-main">
+    <div className="provider-default-row">
+      <div className="provider-default-copy">
         <div className="provider-key-default-title">
           <ShieldCheck />
           <span>{labels.title}</span>
         </div>
-        <div className="provider-key-secret-pill mono">{labels.secret}</div>
+        <span className="provider-key-secret-pill mono">{labels.secret}</span>
       </div>
-      <div>
-        <span className="code-pill auth-pill">
-          <KeyRound />
-          API key
-        </span>
+      <div className="provider-default-meta">
+        <span className="code-pill provider-default-pill">{labels.auth} / {labels.state}</span>
+        <span className="provider-default-note mono">{builtin ? "unbound traffic" : "targeted traffic"}</span>
       </div>
-      <div className="cell-tags scope-tags">
-        <span className="code-pill provider-default-pill">{labels.auth}</span>
-        <span className="code-pill provider-default-pill">{labels.state}</span>
-      </div>
-      <span className="faint">Organization</span>
-      <span className="provider-key-lastused faint">{builtin ? "unbound traffic" : "targeted traffic"}</span>
-      <span className="badge provider-fallback-badge">{builtin ? "fallback" : "custom"}</span>
-      <span />
     </div>
   );
 }

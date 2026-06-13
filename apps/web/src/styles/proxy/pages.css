@@ -4061,15 +4061,20 @@ a.key-bound-row:hover {
 }
 
 .provider-keys-page {
-  max-width: 1080px;
+  width: min(1080px, 100%);
+  max-width: none;
 }
 
 .provider-keys-title-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 430px);
   align-items: flex-start;
-  justify-content: space-between;
   gap: 18px;
   margin-bottom: 26px;
+}
+
+.provider-keys-title-row > div:first-child {
+  min-width: 0;
 }
 
 .provider-keys-title-row h2 {
@@ -4087,8 +4092,18 @@ a.key-bound-row:hover {
 .provider-keys-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.provider-keys-actions .btn-primary {
   flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .provider-group {
@@ -4256,13 +4271,17 @@ a.key-bound-row:hover {
 
 .provider-key-row {
   display: grid;
-  grid-template-columns: minmax(190px, 1.35fr) 150px minmax(150px, 1fr) 110px 120px 80px 38px;
+  grid-template-columns: minmax(180px, 1.35fr) 118px minmax(130px, 1fr) minmax(104px, .8fr) 112px 76px 34px;
   align-items: center;
-  gap: 12px;
-  min-width: 980px;
-  min-height: 64px;
-  padding: 13px 16px;
+  gap: 10px;
+  min-width: 900px;
+  min-height: 58px;
+  padding: 11px 14px;
   transition: background .14s var(--ease);
+}
+
+.provider-key-row > * {
+  min-width: 0;
 }
 
 .provider-key-row:hover {
@@ -4280,9 +4299,11 @@ a.key-bound-row:hover {
 .provider-default-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
-  min-width: 980px;
-  min-height: 48px;
+  min-width: min(900px, 100%);
+  min-height: 46px;
   padding: 11px 16px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--glass-2) 82%, transparent);
@@ -4292,10 +4313,28 @@ a.key-bound-row:hover {
   background: color-mix(in srgb, var(--glass-hover) 70%, transparent);
 }
 
+.provider-default-copy,
+.provider-default-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.provider-default-copy {
+  flex: 1 1 260px;
+}
+
+.provider-default-meta {
+  justify-content: flex-end;
+  flex: 0 1 auto;
+}
+
 .provider-key-main {
   display: grid;
   justify-items: start;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -4306,6 +4345,7 @@ a.key-bound-row:hover {
   text-overflow: ellipsis;
   font-size: 13px;
   font-weight: 600;
+  line-height: 1.25;
   white-space: nowrap;
 }
 
@@ -4331,13 +4371,14 @@ a.key-bound-row:hover {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
-  min-height: 23px;
-  padding: 3px 8px;
+  min-height: 22px;
+  padding: 2px 7px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--glass-2);
   color: var(--fg-faint);
-  font-size: 11.5px;
+  font-size: 11px;
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4351,19 +4392,35 @@ a.key-bound-row:hover {
 }
 
 .provider-default-note {
-  margin-left: auto;
   color: var(--fg-faint);
-  font-size: 11.5px;
+  font-size: 11px;
   white-space: nowrap;
+}
+
+.provider-key-card .code-pill,
+.provider-key-card .badge {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .auth-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  width: max-content;
+  width: fit-content;
   max-width: 100%;
-  font-size: 11.5px;
+  min-height: 22px;
+  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auth-pill svg {
+  width: 13px;
+  height: 13px;
 }
 
 .auth-pill-subscription {
@@ -4404,7 +4461,9 @@ a.key-bound-row:hover {
 }
 
 .provider-key-lastused {
-  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
   color: var(--fg-muted);
   white-space: nowrap;
 }
@@ -4422,8 +4481,10 @@ a.key-bound-row:hover {
 }
 
 .provider-key-search {
-  width: 270px;
-  min-width: 200px;
+  flex: 1 1 220px;
+  width: auto;
+  min-width: 0;
+  max-width: 270px;
 }
 
 .provider-key-search button {
@@ -4444,17 +4505,15 @@ a.key-bound-row:hover {
 
 @media (max-width: 760px) {
   .provider-keys-title-row {
-    align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .provider-keys-actions {
-    flex-wrap: wrap;
-    flex: 1 1 auto;
+    justify-content: flex-start;
   }
 
   .provider-key-search {
-    flex: 1 1 100%;
-    width: auto;
+    flex-basis: 100%;
+    max-width: none;
   }
 }
