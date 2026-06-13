@@ -8,6 +8,7 @@ import {
   events,
   hashApiKey,
   organizationSettings,
+  promptArtifacts,
   routingConfigs,
   routingConfigVersions
 } from "@prompt-proxy/db";
@@ -402,6 +403,82 @@ describe("routing config runtime resolution", () => {
     expect(response.status).toBe(200);
     expect(providerCalls[0]?.body.instructions).toBe("You are Codex.");
     expect(providerCalls[1]?.body.instructions).toBe("Follow organization proxy policy.\n\nYou are Codex.");
+  });
+
+  it("pins the organization system prompt for active OpenAI sessions", async () => {
+    const organizationId = "org_system_prompt_pin";
+    activeFixture = await captureFixture(organizationId);
+    await activeFixture.db
+      .update(organizationSettings)
+      .set({ systemPrompt: "Initial proxy policy." })
+      .where(eq(organizationSettings.organizationId, organizationId));
+
+    const sendRequest = (sessionId: string, input: string) => fetch(`${activeFixture!.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "x-codex-session-id": sessionId
+      },
+      body: JSON.stringify({
+        model: "router-hard",
+        instructions: "You are Codex.",
+        input,
+        stream: true
+      })
+    });
+
+    const first = await sendRequest("prompt-pin-session", "debug the first failing test");
+    await first.text();
+    await activeFixture.db
+      .update(organizationSettings)
+      .set({ systemPrompt: "Updated proxy policy." })
+      .where(eq(organizationSettings.organizationId, organizationId));
+    const second = await sendRequest("prompt-pin-session", "debug the second failing test");
+    await second.text();
+    const third = await sendRequest("prompt-pin-session-new", "debug the third failing test");
+    await third.text();
+
+    const providerCalls = activeFixture.openai.records.filter((record) =>
+      record.body.model !== "route-classifier-cheap" && record.path === "/responses"
+    );
+    const [sessionRow] = await activeFixture.db
+      .select({ metadata: agentSessions.metadata })
+      .from(agentSessions)
+      .where(eq(agentSessions.externalSessionId, "prompt-pin-session"))
+      .limit(1);
+    const artifactId = sessionRow?.metadata.pinnedSystemPromptArtifactId;
+    const [pinnedArtifact] = typeof artifactId === "string"
+      ? await activeFixture.db
+        .select({ kind: promptArtifacts.kind, rawText: promptArtifacts.rawText })
+        .from(promptArtifacts)
+        .where(eq(promptArtifacts.id, artifactId))
+        .limit(1)
+      : [];
+    const eventRows = await activeFixture.db
+      .select({ eventType: events.eventType, payload: events.payload, metadata: events.metadata })
+      .from(events);
+    const normalRouteEvents = JSON.stringify(eventRows.filter((event) =>
+      event.eventType === "session.route_memory_recorded" || event.eventType === "routing.decision_recorded"
+    ));
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(third.status).toBe(200);
+    expect(providerCalls.map((record) => record.body.instructions)).toEqual([
+      "Initial proxy policy.\n\nYou are Codex.",
+      "Initial proxy policy.\n\nYou are Codex.",
+      "Updated proxy policy.\n\nYou are Codex."
+    ]);
+    expect(sessionRow?.metadata.pinnedSystemPrompt).toBeUndefined();
+    expect(sessionRow?.metadata.pinnedSystemPromptHash).toBe("sha256:3db3af6a5f7c0d28e75c87f9566d4ccf51d5fe400447f98d8cdb933eb0616ffc");
+    expect(pinnedArtifact).toEqual({
+      kind: "organization_system_prompt",
+      rawText: "Initial proxy policy."
+    });
+    expect(JSON.stringify(sessionRow?.metadata)).not.toContain("Initial proxy policy.");
+    expect(normalRouteEvents).not.toContain("Initial proxy policy.");
+    expect(normalRouteEvents).not.toContain("Updated proxy policy.");
   });
 
   it("prepends the organization system prompt to Anthropic Messages system blocks", async () => {

@@ -1,14 +1,19 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull } from "drizzle-orm";
 
 import {
   organizationSettings,
+  requests,
   routingConfigs,
   routingConfigVersions,
   workspaces,
   type PromptProxyDbSession
 } from "@prompt-proxy/db";
 import { routingConfigSchema, type RoutingConfig } from "@prompt-proxy/schema";
+import { CACHE_TTL_POLICY_LOOKBACK_MS } from "../cacheWindows.js";
 import type { RoutingConfigSelection, RoutingConfigSnapshot } from "../types.js";
+import { aggregateIdleGaps, IDLE_GAP_SAMPLE_CAP } from "./idleGaps.js";
+
+const CACHE_TTL_POLICY_CACHE_MS = 5 * 60 * 1000;
 
 export type ResolvedRoutingConfig = {
   organizationId: string;
@@ -30,6 +35,8 @@ export class RoutingConfigResolutionError extends Error {
 }
 
 export class RoutingConfigResolver {
+  private readonly cacheTtlPolicy = new Map<string, { eligible: boolean; expiresAt: number }>();
+
   constructor(private readonly db: PromptProxyDbSession) {}
 
   async resolve(input: {
@@ -77,6 +84,11 @@ export class RoutingConfigResolver {
       throw resolutionError(`routing_config_invalid:${paths}`);
     }
 
+    const cacheTtlSetting = orgSettings?.settings?.cacheTtlUpgrade === true;
+    const cacheTtlUpgrade = cacheTtlSetting
+      ? await this.hasRecoverableCacheIdleGap(input.organizationId, input.workspaceId)
+      : false;
+
     return {
       organizationId: input.organizationId,
       workspaceId: input.workspaceId,
@@ -87,7 +99,7 @@ export class RoutingConfigResolver {
       configHash: version.configHash,
       config: parsed.data,
       organizationSystemPrompt: orgSettings?.systemPrompt ?? undefined,
-      cacheTtlUpgrade: orgSettings?.settings?.cacheTtlUpgrade === true,
+      cacheTtlUpgrade,
       automaticCaching: orgSettings?.settings?.automaticCaching === true,
       toolResultCompression: orgSettings?.settings?.toolResultCompression === true
     };
@@ -112,6 +124,34 @@ export class RoutingConfigResolver {
       .where(eq(workspaces.id, workspaceId))
       .limit(1);
     return workspace?.defaultRoutingConfigId ?? undefined;
+  }
+
+  private async hasRecoverableCacheIdleGap(organizationId: string, workspaceId: string) {
+    const key = `${organizationId}:${workspaceId}`;
+    const now = Date.now();
+    const cached = this.cacheTtlPolicy.get(key);
+    if (cached && cached.expiresAt > now) return cached.eligible;
+
+    const rows = await this.db
+      .select({ sessionId: requests.sessionId, createdAt: requests.createdAt })
+      .from(requests)
+      .where(and(
+        eq(requests.organizationId, organizationId),
+        eq(requests.workspaceId, workspaceId),
+        isNotNull(requests.sessionId),
+        gte(requests.createdAt, new Date(now - CACHE_TTL_POLICY_LOOKBACK_MS))
+      ))
+      .orderBy(desc(requests.createdAt))
+      .limit(IDLE_GAP_SAMPLE_CAP);
+    const report = aggregateIdleGaps(rows.flatMap((row) =>
+      row.sessionId ? [{ sessionId: row.sessionId, createdAt: row.createdAt }] : []
+    ), rows.length === IDLE_GAP_SAMPLE_CAP);
+    const eligible = report.recoverableByOneHourTtl > 0;
+    this.cacheTtlPolicy.set(key, {
+      eligible,
+      expiresAt: now + CACHE_TTL_POLICY_CACHE_MS
+    });
+    return eligible;
   }
 }
 

@@ -481,6 +481,74 @@ describe("prompt proxy", () => {
     expect(contextEvent.payload.inputChars).toBeGreaterThan(10_000);
   });
 
+  it("reuses classifier results for the same latest user message across changed history", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({
+      classifierOutput: {
+        complexity: "simple",
+        risk: [],
+        recommended_route: "fast",
+        can_use_fast_model: true,
+        needs_deep_reasoning: false,
+        reason_codes: ["latest_user_intent_simple"],
+        confidence: 0.86
+      }
+    });
+    const app = buildServer(
+      loadConfig({
+        ...testEnv(),
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+    const sendRequest = (instructions: string) => fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        instructions,
+        input: [
+          {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "git status" }]
+          }
+        ],
+        stream: true
+      })
+    });
+
+    const first = await sendRequest("a".repeat(5000));
+    await first.text();
+    const second = await sendRequest("b".repeat(5000));
+    await second.text();
+
+    const events = await fetch(`${proxyUrl}/_debug/events`, {
+      headers: { authorization: "Bearer proxy-token" }
+    }).then((item) => item.json());
+    await app.close();
+
+    const classifierCalls = openai.records.filter((record) => record.body.model === "route-classifier-cheap");
+    const providerCalls = openai.records.filter((record) => record.body.model === "gpt-5.4-mini");
+    const classifierEvents = events.filter((event: any) => event.eventType === "routing.classification_recorded");
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(classifierCalls).toHaveLength(1);
+    expect(providerCalls).toHaveLength(2);
+    expect(classifierEvents.map((event: any) => event.payload.cached)).toEqual([false, true]);
+  });
+
   it("does not forward decoded upstream content encoding", async () => {
     await openai.close();
     openai = await startOpenAIMock({ compressedJsonProvider: true });

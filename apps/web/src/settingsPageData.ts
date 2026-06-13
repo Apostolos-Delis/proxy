@@ -69,14 +69,14 @@ export const settingsSections: SettingsSectionDef[] = [
   {
     id: "system",
     title: "System prompt",
-    description: "Prepended to the harness system prompt on every proxied request, across all routing configs.",
+    description: "Prepended ahead of harness prompts for new sessions and sessionless requests, across all routing configs.",
     requiresDatabase: true,
     rows: [
       {
         id: "systemPrompt",
         type: "textarea",
         label: "Organization system prompt",
-        desc: "Applied immediately to every routed request: prepended to OpenAI instructions and Anthropic system blocks ahead of harness prompts. Leave empty to forward harness prompts unchanged.",
+        desc: "Prepended to OpenAI instructions and Anthropic system blocks ahead of harness prompts. Active harness sessions keep the prompt they first used; leave empty to forward harness prompts unchanged.",
         placeholder: "e.g. Prefer TypeScript examples. Never include customer PII in completions.",
         get: (settings) => settings.systemPrompt ?? "",
         set: (settings, value) => ({ ...settings, systemPrompt: value })
@@ -100,8 +100,8 @@ export const settingsSections: SettingsSectionDef[] = [
       {
         id: "cacheTtlUpgrade",
         type: "toggle",
-        label: "Upgrade cache TTL to 1 hour",
-        desc: "Anthropic only. Rewrites ephemeral cache breakpoints to a 1-hour TTL. Costs 2x to write vs 1.25x for the 5-minute default, but breaks even at 3 reads — worth it when sessions have idle gaps past 5 minutes.",
+        label: "Adapt cache TTL to 1 hour",
+        desc: "Anthropic only. Lets large multi-turn requests upgrade ephemeral cache breakpoints to a 1-hour TTL after recent org reuse data shows idle gaps that 1-hour caching can recover. One-shot, small, and low-reuse requests stay on the default TTL.",
         get: (settings) => settings.cacheTtlUpgrade,
         set: (settings, value) => ({ ...settings, cacheTtlUpgrade: value })
       },

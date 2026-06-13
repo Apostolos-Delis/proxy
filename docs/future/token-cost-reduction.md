@@ -77,9 +77,9 @@ Likely the largest savings per line of code, and invisible to every client-side 
 
 **2a. Bust detection and attribution.** Alert/surface when a session's `cache_read_input_tokens` collapses mid-session. Known causes to classify: model/route switch (should be eliminated by session pinning), org system prompt edit, `anthropic-beta` header drift, harness restart, TTL expiry on idle gaps. This is a projection over data already collected.
 
-**2b. Cache TTL policy (high ROI candidate).** Developer sessions are gappy — any >5-minute pause (reading code, meetings) expires the default cache, and the next request rewrites the entire context at 1.25x. The proxy already rewrites bodies, so it can upgrade harness-set `cache_control` breakpoints to `{ttl: "1h"}` (2x write, break-even at 3 reads — trivially cleared by agentic sessions) as an org-level policy. Profiler data (gap distribution between requests per session) sizes the win before building.
+**2b. Adaptive cache TTL policy.** Developer sessions are gappy — any >5-minute pause (reading code, meetings) expires the default cache, and the next request rewrites the entire context at 1.25x. The proxy already rewrites bodies, so it can upgrade harness-set `cache_control` breakpoints to `{ttl: "1h"}` only when recent org/workspace request history shows recoverable 5-minute-to-1-hour idle gaps and the current request has proved it is a large multi-turn session. One-shot, small, and low-reuse requests stay on the default TTL to avoid the 2x write premium.
 
-**2c. Byte-stability of our own injection.** The prepended org system prompt sits at position ~0 of the prefix; any edit busts every active session org-wide. Treat org prompt changes as release events (surface the blast radius in the console when editing). Audit `rewriteSurfaceRequest` for any other nondeterminism on the prefix path.
+**2c. Byte-stability of our own injection.** The prepended org system prompt sits at position ~0 of the prefix; active sessions pin the prompt they first used so edits apply to new sessions instead of busting every warm prefix org-wide. Audit `rewriteSurfaceRequest` for any other nondeterminism on the prefix path.
 
 ## Workstream 3 — Frontier tool-result compression (RTK, generalized)
 
@@ -103,7 +103,8 @@ mcp__* results      verbose JSON; deterministic JSON compaction (strip nulls,
                     collapse repeated keys, tabularize uniform object arrays)
 Bash output         RTK-style per-command filters keyed on the command string
                     (pytest, git, build logs, linters)
-Read results        dedupe re-reads of identical content within a session
+Read results        dedupe identical large results inside a request with a
+                    deterministic content-hash marker
 generic             cap + head/tail elision with byte-count marker
 ```
 
@@ -187,10 +188,11 @@ Success metrics, per org: $ per session, cache hit rate, tokens saved by categor
 3. Console: per-org "where do tokens go" view with ranked offenders and cache trend.
 4. Cache bust detection projection with cause classification; surface in console.
 5. Idle-gap distribution report per org (sizes the TTL-policy win).
-6. Per-org `cache_control` TTL upgrade policy in `rewriteSurfaceRequest`, flag-gated.
-7. Org prompt edit flow: show active-session blast radius before saving.
+6. Adaptive per-org `cache_control` TTL upgrade policy in `rewriteSurfaceRequest`, gated to observed recoverable idle gaps and large multi-turn sessions.
+7. Org prompt pinning for active sessions; prompt edits apply to new sessions.
 8. `tool_use_id -> tool` mapper + transform pass scaffold in `rewriteSurfaceRequest`, `rewriteTokenCountRequest`, and `wsProxy`, with `compression.recorded` events.
 9. Deterministic MCP JSON compaction filter, size-thresholded, per-org flag.
-10. Bash output filters for top profiler-identified commands (pytest, git, build logs).
-11. Per-route output-token report; tune route effort/verbosity defaults from it.
-12. Spike: `defer_loading` + tool search injection behind a canary flag; verify harness round-trip per surface.
+10. Deterministic duplicate large tool-result elision.
+11. Bash output filters for top profiler-identified commands (pytest, git, build logs).
+12. Per-route output-token report; tune route effort/verbosity defaults from it.
+13. Spike: `defer_loading` + tool search injection behind a canary flag; verify harness round-trip per surface.

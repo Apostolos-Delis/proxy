@@ -108,6 +108,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     requestStates,
     persistence?.promptArtifacts,
     persistence?.routingConfigs,
+    persistence?.sessionPrompts,
     app.log
   );
   const projections = new ProjectionService(modelCatalog, config);
@@ -215,6 +216,13 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
 
       const resolved = await resolveRoutingConfig(persistence, identity, identity.routingConfigId);
+      const systemPrompt = await effectiveSystemPrompt(
+        persistence,
+        identity,
+        openAIResponsesSurface.surface,
+        context.sessionId,
+        resolved.systemPrompt
+      );
       await appendTokensAttributed({
         events,
         identity,
@@ -223,7 +231,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         sessionId: context.sessionId,
         surface: openAIResponsesSurface.surface,
         body: request.body,
-        orgSystemPrompt: resolved.systemPrompt,
+        orgSystemPrompt: systemPrompt,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       const decision = await routing.decide({
@@ -238,6 +246,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
         return;
       }
+      await pinSystemPrompt(persistence, identity, openAIResponsesSurface.surface, requestId, context.sessionId, systemPrompt);
 
       const compressedBody = await compressForForward({
         events,
@@ -256,7 +265,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         surface: openAIResponsesSurface.surface,
         provider: openAIResponsesSurface.provider,
-        body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
+        body: rewriteSurfaceRequest(compressedBody, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
@@ -323,6 +332,13 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
 
       const resolved = await resolveRoutingConfig(persistence, identity, identity.routingConfigId);
+      const systemPrompt = await effectiveSystemPrompt(
+        persistence,
+        identity,
+        anthropicMessagesSurface.surface,
+        context.sessionId,
+        resolved.systemPrompt
+      );
       await appendTokensAttributed({
         events,
         identity,
@@ -331,7 +347,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         sessionId: context.sessionId,
         surface: anthropicMessagesSurface.surface,
         body: request.body,
-        orgSystemPrompt: resolved.systemPrompt,
+        orgSystemPrompt: systemPrompt,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       const decision = await routing.decide({
@@ -346,6 +362,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
         return;
       }
+      await pinSystemPrompt(persistence, identity, anthropicMessagesSurface.surface, requestId, context.sessionId, systemPrompt);
 
       const compressedBody = await compressForForward({
         events,
@@ -364,7 +381,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         surface: anthropicMessagesSurface.surface,
         provider: anthropicMessagesSurface.provider,
-        body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
+        body: rewriteSurfaceRequest(compressedBody, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
@@ -413,6 +430,13 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
       });
       const resolved = await resolveRoutingConfig(persistence, identity, identity.routingConfigId);
+      const systemPrompt = await effectiveSystemPrompt(
+        persistence,
+        identity,
+        anthropicMessagesSurface.surface,
+        context.sessionId,
+        resolved.systemPrompt
+      );
       const decision = routing.tokenCountDecision(context, resolved.routingConfig);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
@@ -436,7 +460,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         surface: anthropicMessagesSurface.surface,
         provider: anthropicMessagesSurface.provider,
-        body: rewriteTokenCountRequest(countBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade }),
+        body: rewriteTokenCountRequest(countBody, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade }),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
@@ -476,6 +500,40 @@ async function resolveRoutingConfig(
     organizationId: identity.organizationId,
     workspaceId: identity.workspaceId,
     routingConfigId
+  });
+}
+
+async function effectiveSystemPrompt(
+  persistence: AppPersistence | undefined,
+  identity: RequestIdentity,
+  surface: Surface,
+  sessionId: string | undefined,
+  systemPrompt: string | undefined
+) {
+  const pinned = await persistence?.sessionPrompts.resolve({
+    organizationId: identity.organizationId,
+    workspaceId: identity.workspaceId,
+    surface,
+    sessionId
+  });
+  return pinned?.pinned ? pinned.systemPrompt : systemPrompt;
+}
+
+async function pinSystemPrompt(
+  persistence: AppPersistence | undefined,
+  identity: RequestIdentity,
+  surface: Surface,
+  requestId: string,
+  sessionId: string | undefined,
+  systemPrompt: string | undefined
+) {
+  await persistence?.sessionPrompts.pin({
+    organizationId: identity.organizationId,
+    workspaceId: identity.workspaceId,
+    surface,
+    requestId,
+    sessionId,
+    systemPrompt
   });
 }
 

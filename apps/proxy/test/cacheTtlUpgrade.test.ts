@@ -1,12 +1,18 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { organizationSettings } from "@prompt-proxy/db";
+import {
+  agentSessions,
+  defaultWorkspaceId,
+  organizationSettings,
+  requests,
+  users
+} from "@prompt-proxy/db";
 
 import { rewriteSurfaceRequest, rewriteTokenCountRequest } from "../src/adapters.js";
 import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
-import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
+import { captureFixture, usageRequest, type PromptTestFixture } from "./promptTestFixture.js";
 import { listen, startAnthropicMock, startOpenAIMock, type MockServer } from "./helpers.js";
 
 // A minimal RouteDecision shape that satisfies rewriteSurfaceRequest
@@ -26,14 +32,21 @@ function anthropicDecision(model = "claude-opus-4-8") {
 }
 
 describe("upgradeCacheControlTtl transform", () => {
+  const largeText = "x".repeat(8192);
+  const largeMultiTurnMessages = [
+    { role: "user", content: "first question" },
+    { role: "assistant", content: largeText },
+    { role: "user", content: "follow-up" }
+  ];
+
   it("upgrades ephemeral breakpoints in system array to 1h TTL", () => {
     const body = {
       model: "claude-router-hard",
       system: [
-        { type: "text", text: "You are helpful.", cache_control: { type: "ephemeral" } },
+        { type: "text", text: largeText, cache_control: { type: "ephemeral" } },
         { type: "text", text: "More instructions." }
       ],
-      messages: [{ role: "user", content: "hi" }]
+      messages: largeMultiTurnMessages
     };
 
     const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
@@ -47,6 +60,7 @@ describe("upgradeCacheControlTtl transform", () => {
       model: "claude-router-hard",
       messages: [
         { role: "user", content: [{ type: "text", text: "first", cache_control: { type: "ephemeral" } }] },
+        { role: "assistant", content: largeText },
         {
           role: "user",
           content: [
@@ -61,13 +75,15 @@ describe("upgradeCacheControlTtl transform", () => {
     // Every breakpoint upgraded — a block keeps ttl:1h once it becomes history,
     // so the cached prefix bytes do not shift turn over turn.
     expect(result.messages[0].content[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
-    expect(result.messages[1].content[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+    expect(result.messages[2].content[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
   it("upgrades breakpoints nested inside tool_result content", () => {
     const body = {
       model: "claude-router-hard",
       messages: [
+        { role: "user", content: "first" },
+        { role: "assistant", content: largeText },
         {
           role: "user",
           content: [
@@ -82,7 +98,7 @@ describe("upgradeCacheControlTtl transform", () => {
     };
 
     const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
-    expect(result.messages[0].content[0].content[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+    expect(result.messages[2].content[0].content[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
   it("does not touch blocks that already have a TTL", () => {
@@ -110,8 +126,8 @@ describe("upgradeCacheControlTtl transform", () => {
   it("also applies to rewriteTokenCountRequest", () => {
     const body = {
       model: "claude-router-hard",
-      system: [{ type: "text", text: "stable", cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: "hi" }]
+      system: [{ type: "text", text: largeText, cache_control: { type: "ephemeral" } }],
+      messages: largeMultiTurnMessages
     };
 
     const result = rewriteTokenCountRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
@@ -122,7 +138,7 @@ describe("upgradeCacheControlTtl transform", () => {
     const body = {
       model: "claude-router-hard",
       cache_control: { type: "ephemeral" },
-      messages: [{ role: "user", content: "hi" }]
+      messages: largeMultiTurnMessages
     };
 
     const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
@@ -149,8 +165,8 @@ describe("upgradeCacheControlTtl transform", () => {
         { name: "get_weather", input_schema: { type: "object" } },
         { name: "get_time", input_schema: { type: "object" }, cache_control: { type: "ephemeral" } }
       ],
-      system: [{ type: "text", text: "stable", cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: "hi" }]
+      system: [{ type: "text", text: largeText, cache_control: { type: "ephemeral" } }],
+      messages: largeMultiTurnMessages
     };
 
     const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
@@ -163,11 +179,96 @@ describe("upgradeCacheControlTtl transform", () => {
     const body = {
       model: "claude-router-hard",
       cache_control: { type: "ephemeral" },
-      messages: [{ role: "user", content: "hi" }]
+      messages: largeMultiTurnMessages
     };
 
     const result = rewriteTokenCountRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
     expect(result.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+  });
+
+  it("skips one-shot requests so true one-offs do not pay the 1h write premium", () => {
+    const body = {
+      model: "claude-router-hard",
+      system: [{ type: "text", text: largeText, cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content: "hi" }]
+    };
+
+    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    expect(result.system[0].cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("skips small multi-turn requests below the cacheable-prefix threshold", () => {
+    const body = {
+      model: "claude-router-hard",
+      cache_control: { type: "ephemeral" },
+      messages: [
+        { role: "user", content: "first question" },
+        { role: "assistant", content: "first answer" },
+        { role: "user", content: "follow-up" }
+      ]
+    };
+
+    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    expect(result.cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("skips large requests when the marked cache prefix is small", () => {
+    const body = {
+      model: "claude-router-hard",
+      system: [{ type: "text", text: "short stable prefix", cache_control: { type: "ephemeral" } }],
+      messages: [
+        { role: "user", content: "first question" },
+        { role: "assistant", content: largeText },
+        { role: "user", content: "follow-up" }
+      ]
+    };
+
+    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    expect(result.system[0].cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("does not count unmarked later tools toward an earlier tool breakpoint", () => {
+    const body = {
+      model: "claude-router-hard",
+      tools: [
+        { name: "small_marked_tool", input_schema: { type: "object" }, cache_control: { type: "ephemeral" } },
+        {
+          name: "large_unmarked_tool",
+          description: largeText,
+          input_schema: { type: "object", properties: { value: { type: "string", description: largeText } } }
+        }
+      ],
+      messages: largeMultiTurnMessages
+    };
+
+    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    expect(result.tools[0].cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("does not count unmarked later nested content toward an earlier nested breakpoint", () => {
+    const body = {
+      model: "claude-router-hard",
+      messages: [
+        { role: "user", content: "first question" },
+        { role: "assistant", content: "first answer" },
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "t1",
+              content: [
+                { type: "text", text: "short output", cache_control: { type: "ephemeral" } },
+                { type: "text", text: largeText }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    expect(result.messages[2].content[0].content[0].cache_control).toEqual({ type: "ephemeral" });
   });
 });
 
@@ -226,9 +327,9 @@ describe("cacheTtlUpgrade end to end (DB-backed)", () => {
     fixture = undefined;
   });
 
-  it("rewrites the outbound Anthropic body to ttl:1h when the org flag is on", async () => {
-    fixture = await captureFixture("org_cache_ttl");
-    await fixture.persistence.organizationSettings.setCacheTtlUpgrade("org_cache_ttl", true);
+  it("keeps large multi-turn Anthropic bodies on the default TTL until org reuse data supports 1h", async () => {
+    fixture = await captureFixture("org_cache_ttl_no_reuse");
+    await fixture.persistence.organizationSettings.setCacheTtlUpgrade("org_cache_ttl_no_reuse", true);
 
     await fetch(`${fixture.proxyUrl}/v1/messages`, {
       method: "POST",
@@ -236,13 +337,76 @@ describe("cacheTtlUpgrade end to end (DB-backed)", () => {
       body: JSON.stringify({
         model: "claude-router-hard",
         max_tokens: 256,
-        system: [{ type: "text", text: "Stable preamble.", cache_control: { type: "ephemeral" } }],
-        messages: [{ role: "user", content: "hello" }]
+        system: [{ type: "text", text: "x".repeat(8192), cache_control: { type: "ephemeral" } }],
+        messages: [
+          { role: "user", content: "first question" },
+          { role: "assistant", content: "x".repeat(8192) },
+          { role: "user", content: "follow-up" }
+        ]
+      })
+    });
+
+    const providerCall = fixture.anthropic.records.find((rec) => rec.path === "/messages");
+    expect(providerCall?.body.system[0].cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("rewrites large multi-turn outbound Anthropic bodies to ttl:1h when observed org reuse supports it", async () => {
+    fixture = await captureFixture("org_cache_ttl");
+    await fixture.persistence.organizationSettings.setCacheTtlUpgrade("org_cache_ttl", true);
+    const firstGap = new Date(Date.now() - 40 * 60 * 1000);
+    const secondGap = new Date(Date.now() - 10 * 60 * 1000);
+    await fixture.db.insert(users).values([{ id: "user_cache_ttl", email: "ttl@example.com", name: "TTL" }]);
+    await fixture.db.insert(agentSessions).values([{
+      id: "session_cache_ttl_gap",
+      organizationId: "org_cache_ttl",
+      workspaceId: defaultWorkspaceId("org_cache_ttl"),
+      userId: "user_cache_ttl",
+      surface: "anthropic-messages",
+      externalSessionId: "ttl-gap",
+      startedAt: firstGap,
+      updatedAt: secondGap
+    }]);
+    await fixture.db.insert(requests).values([
+      usageRequest("cache_ttl_gap_1", "org_cache_ttl", "user_cache_ttl", "session_cache_ttl_gap", "anthropic-messages", firstGap),
+      usageRequest("cache_ttl_gap_2", "org_cache_ttl", "user_cache_ttl", "session_cache_ttl_gap", "anthropic-messages", secondGap)
+    ]);
+
+    await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-router-hard",
+        max_tokens: 256,
+        system: [{ type: "text", text: "x".repeat(8192), cache_control: { type: "ephemeral" } }],
+        messages: [
+          { role: "user", content: "first question" },
+          { role: "assistant", content: "x".repeat(8192) },
+          { role: "user", content: "follow-up" }
+        ]
       })
     });
 
     const providerCall = fixture.anthropic.records.find((rec) => rec.path === "/messages");
     expect(providerCall?.body.system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+  });
+
+  it("keeps one-shot Anthropic bodies on the default TTL when the org flag is on", async () => {
+    fixture = await captureFixture("org_cache_ttl_one_shot");
+    await fixture.persistence.organizationSettings.setCacheTtlUpgrade("org_cache_ttl_one_shot", true);
+
+    await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-router-hard",
+        max_tokens: 256,
+        system: [{ type: "text", text: "x".repeat(8192), cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: "hello" }]
+      })
+    });
+
+    const providerCall = fixture.anthropic.records.find((rec) => rec.path === "/messages");
+    expect(providerCall?.body.system[0].cache_control).toEqual({ type: "ephemeral" });
   });
 
   it("setCacheTtlUpgrade merges into settings without clobbering other keys", async () => {
