@@ -61,15 +61,15 @@ const rangeOptions = [
 
 export function OverviewPage() {
   const [rangeDays, setRangeDays] = useState<"1" | "7" | "30" | "90">("7");
-  const query = useQuery({ queryKey: ["overview-page"], queryFn: () => gqlFetch(OverviewPageDocument) });
-  const meQuery = useQuery({ queryKey: ["me"], queryFn: fetchMe });
+  const { isLoading: queryIsLoading, error: queryError, data: queryData } = useQuery({ queryKey: ["overview-page"], queryFn: () => gqlFetch(OverviewPageDocument) });
+  const { data: meQueryData } = useQuery({ queryKey: ["me"], queryFn: fetchMe });
 
-  if (query.isLoading) return <PageSkeleton blocks={[186, 380, 150]} />;
-  if (query.error) return <PageState title="Overview" label={query.error.message} />;
-  if (!query.data) return <PageState title="Overview" label="No overview data" />;
+  if (queryIsLoading) return <PageSkeleton blocks={[186, 380, 150]} />;
+  if (queryError) return <PageState title="Overview" label={queryError.message} />;
+  if (!queryData) return <PageState title="Overview" label="No overview data" />;
 
-  const overview = query.data.overview;
-  const requests = query.data.requests;
+  const overview = queryData.overview;
+  const requests = queryData.requests;
   const days = Number(rangeDays);
   const spendSeries = seriesFromRequests(requests, "cost", days);
   const tokenSeries = seriesFromRequests(requests, "tokens", days);
@@ -79,7 +79,7 @@ export function OverviewPage() {
   const tokenDelta = periodDelta(seriesFromRequests(requests, "tokens", 14));
   const requestDelta = periodDelta(seriesFromRequests(requests, "requests", 14));
   const spendDelta = periodDelta(seriesFromRequests(requests, "cost", 14));
-  const modelRows = modelRowsFromUsage(query.data.modelUsage.data);
+  const modelRows = modelRowsFromUsage(queryData.modelUsage.data);
   const quality = overview.routeQuality;
   const exportOverview = () => downloadJson("proxy-overview.json", { overview, requests, rangeDays, modelRows });
 
@@ -87,8 +87,8 @@ export function OverviewPage() {
     <div className="page page-enter">
       <div className="row gap-12 page-hero-row">
         <div>
-          <div className="hero-greeting">{greetingFor(meQuery.data?.user)}</div>
-          <div className="muted">Here's what's happening across {organizationName(meQuery.data) ?? "your workspace"}.</div>
+          <div className="hero-greeting">{greetingFor(meQueryData?.user)}</div>
+          <div className="muted">Here's what's happening across {organizationName(meQueryData) ?? "your workspace"}.</div>
         </div>
         <div className="row gap-8">
           <Link to="/api-keys" className="btn"><KeyRound />Get API key</Link>

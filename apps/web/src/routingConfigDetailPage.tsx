@@ -22,7 +22,7 @@ import { GlassCard, PageState, StatusBadge } from "./ui";
 
 export function RoutingConfigDetailPage({ configId }: { configId: string }) {
   const queryClient = useQueryClient();
-  const query = useQuery({
+  const { isLoading: queryIsLoading, error: queryError, data: queryData } = useQuery({
     queryKey: ["routing-config", configId],
     queryFn: () => fetchRoutingConfigDetail(configId)
   });
@@ -41,11 +41,11 @@ export function RoutingConfigDetailPage({ configId }: { configId: string }) {
     }
   });
 
-  if (query.isLoading) return <PageState title="Routing config" label="Loading routing config" />;
-  if (query.error) return <PageState title="Routing config" label={query.error.message} />;
-  if (!query.data) return <PageState title="Routing config" label="No routing config data" />;
+  if (queryIsLoading) return <PageState title="Routing config" label="Loading routing config" />;
+  if (queryError) return <PageState title="Routing config" label={queryError.message} />;
+  if (!queryData) return <PageState title="Routing config" label="No routing config data" />;
 
-  const activeVersion = query.data.versions.find((version) => version.active);
+  const activeVersion = queryData.versions.find((version) => version.active);
   return (
     <div className="page page-enter routing-detail-stack">
       <div className="routing-back-row">
@@ -54,23 +54,23 @@ export function RoutingConfigDetailPage({ configId }: { configId: string }) {
       <div className="page-title-row routing-detail-title">
         <div>
           <div className="routing-detail-name">
-            <h2>{query.data.config.name}</h2>
-            <StatusBadge status={query.data.config.status} />
+            <h2>{queryData.config.name}</h2>
+            <StatusBadge status={queryData.config.status} />
           </div>
-          <div className="muted">{query.data.config.description ?? "No description"}</div>
+          <div className="muted">{queryData.config.description ?? "No description"}</div>
         </div>
       </div>
-      <FactsStrip detail={query.data} activeVersion={activeVersion} />
+      <FactsStrip detail={queryData} activeVersion={activeVersion} />
       <ConfigApiKeysCard configId={configId} />
       {activeVersion ? <ConfigEditorCard key={activeVersion.id} configId={configId} version={activeVersion} /> : <MissingActiveConfig />}
       <VersionHistory
-        versions={query.data.versions}
+        versions={queryData.versions}
         pendingVersionId={activateMutation.isPending ? activateMutation.variables : undefined}
         onActivate={(versionId) => activateMutation.mutate(versionId)}
         error={activateMutation.error?.message}
       />
       <ArchivePanel
-        detail={query.data}
+        detail={queryData}
         pending={archiveMutation.isPending}
         error={archiveMutation.error?.message}
         onArchive={() => archiveMutation.mutate()}
@@ -206,6 +206,7 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
                 type="checkbox"
                 role="switch"
                 checked={activateAfterSave}
+                aria-checked={activateAfterSave}
                 onChange={(event) => setActivateAfterSave(event.target.checked)}
               />
               Activate immediately

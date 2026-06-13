@@ -8,21 +8,21 @@ const JSON_TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false)\b|\bnull\b|-?\d+(?
 export function highlightJson(text: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   let cursor = 0;
-  let key = 0;
   for (const match of text.matchAll(JSON_TOKEN)) {
     const index = match.index ?? 0;
     if (index > cursor) nodes.push(text.slice(cursor, index));
     const [token, string, colon, boolean] = match;
+    const key = `${index}:${token}`;
     if (string !== undefined) {
       if (colon !== undefined) {
-        nodes.push(<span key={key++} className="json-key">{string}</span>, colon);
+        nodes.push(<span key={key} className="json-key">{string}</span>, colon);
       } else {
-        nodes.push(<span key={key++} className="json-string">{string}</span>);
+        nodes.push(<span key={key} className="json-string">{string}</span>);
       }
     } else if (boolean !== undefined || token === "null") {
-      nodes.push(<span key={key++} className="json-literal">{token}</span>);
+      nodes.push(<span key={key} className="json-literal">{token}</span>);
     } else {
-      nodes.push(<span key={key++} className="json-number">{token}</span>);
+      nodes.push(<span key={key} className="json-number">{token}</span>);
     }
     cursor = index + token.length;
   }

@@ -55,12 +55,12 @@ const SessionsPageDocument = graphql(`
 
 export function SessionsPage() {
   const navigate = useNavigate();
-  const query = useQuery({ queryKey: ["sessions-page"], queryFn: () => gqlFetch(SessionsPageDocument) });
+  const { isLoading: queryIsLoading, error: queryError, data: queryData } = useQuery({ queryKey: ["sessions-page"], queryFn: () => gqlFetch(SessionsPageDocument) });
 
-  if (query.isLoading) return <PageState title="Sessions" label="Loading sessions" />;
-  if (query.error) return <PageState title="Sessions" label={query.error.message} />;
+  if (queryIsLoading) return <PageState title="Sessions" label="Loading sessions" />;
+  if (queryError) return <PageState title="Sessions" label={queryError.message} />;
 
-  const rows = sessionRows(query.data?.sessions ?? [], query.data?.users ?? []);
+  const rows = sessionRows(queryData?.sessions ?? [], queryData?.users ?? []);
   const openSession = (row: SessionLogRow) =>
     void navigate({ to: "/sessions/$sessionId", params: { sessionId: row.session.sessionId } });
   return (

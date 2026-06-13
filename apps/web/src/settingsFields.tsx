@@ -62,6 +62,7 @@ function SettingControl({ row, settings, onChange }: {
         type="checkbox"
         role="switch"
         checked={row.get(settings)}
+        aria-checked={row.get(settings)}
         aria-label={row.label}
         onChange={(event) => onChange(row.set(settings, event.target.checked))}
       />

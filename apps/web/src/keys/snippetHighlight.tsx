@@ -11,10 +11,11 @@ export function highlightSnippet(text: string, language: SnippetLanguage): React
 
 function byLine(text: string, highlightLine: (line: string, push: Push) => void): ReactNode[] {
   const nodes: ReactNode[] = [];
-  let key = 0;
+  let offset = 0;
   const push: Push = (chunk, className) => {
     if (chunk === "") return;
-    nodes.push(className ? <span key={key++} className={className}>{chunk}</span> : chunk);
+    nodes.push(className ? <span key={`${offset}:${chunk}`} className={className}>{chunk}</span> : chunk);
+    offset += chunk.length;
   };
   text.split("\n").forEach((line, index) => {
     if (index > 0) push("\n");

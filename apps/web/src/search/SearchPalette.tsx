@@ -41,7 +41,7 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
   const query = input.trim();
   const deferredQuery = useDeferredValue(query);
   const canSearch = deferredQuery.length >= MIN_SEARCH_LENGTH;
-  const search = useQuery({
+  const { data: searchData, isFetching: searchIsFetching, error: searchError } = useQuery({
     queryKey: ["global-search", deferredQuery],
     queryFn: async () => (await gqlFetch(GlobalSearchDocument, { query: deferredQuery })).search,
     enabled: canSearch,
@@ -49,14 +49,14 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
     staleTime: 15_000
   });
 
-  const hits = canSearch && search.data ? search.data.results : [];
+  const hits = canSearch && searchData ? searchData.results : [];
   const groups = buildPaletteGroups({ query, hits, recents });
   const actions = groups.flatMap((group) => group.actions);
   const activeIndex = actions.length > 0 ? Math.min(requestedIndex, actions.length - 1) : -1;
   const searching = query.length >= MIN_SEARCH_LENGTH;
-  const pending = searching && (query !== deferredQuery || search.isFetching);
-  const settled = searching && !pending && !search.error;
-  const errorMessage = search.error instanceof Error ? search.error.message : null;
+  const pending = searching && (query !== deferredQuery || searchIsFetching);
+  const settled = searching && !pending && !searchError;
+  const errorMessage = searchError instanceof Error ? searchError.message : null;
 
   const openAction = (action: PaletteAction) => {
     rememberRecent(action);

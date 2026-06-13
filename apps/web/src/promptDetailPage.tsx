@@ -125,14 +125,14 @@ export function promptDetailQueryOptions(artifactId: string) {
 }
 
 export function PromptDetailPage({ artifactId }: { artifactId: string }) {
-  const query = useQuery(promptDetailQueryOptions(artifactId));
+  const { isLoading: queryIsLoading, error: queryError, data: queryData } = useQuery(promptDetailQueryOptions(artifactId));
 
-  if (query.isLoading) return <PageState title="Prompt" label="Loading prompt detail" />;
-  if (query.error) return <PageState title="Prompt" label={query.error.message} />;
-  if (!query.data) return <PageState title="Prompt" label="No prompt data" />;
+  if (queryIsLoading) return <PageState title="Prompt" label="Loading prompt detail" />;
+  if (queryError) return <PageState title="Prompt" label={queryError.message} />;
+  if (!queryData) return <PageState title="Prompt" label="No prompt data" />;
 
-  const { artifact, request, events } = query.data;
-  const artifacts = query.data.requestArtifacts ?? [artifact];
+  const { artifact, request, events } = queryData;
+  const artifacts = queryData.requestArtifacts ?? [artifact];
   return (
     <div className="page page-enter">
       <div className="detail-back-row">

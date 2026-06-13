@@ -62,8 +62,8 @@ export function UsersPage() {
   const [openRoleUserId, setOpenRoleUserId] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ["users"], queryFn: () => gqlFetch(UsersListDocument) });
-  const meQuery = useQuery({ queryKey: ["me"], queryFn: fetchMe });
+  const { isLoading: queryIsLoading, error: queryError, data: queryData } = useQuery({ queryKey: ["users"], queryFn: () => gqlFetch(UsersListDocument) });
+  const { data: meQueryData } = useQuery({ queryKey: ["me"], queryFn: fetchMe });
   const roleMutation = useMutation({
     mutationFn: (input: { userId: string; role: MemberRole }) =>
       gqlFetch(UpdateUserRoleDocument, { userId: input.userId, role: input.role }),
@@ -73,14 +73,14 @@ export function UsersPage() {
     }
   });
 
-  if (query.isLoading) return <PageState title="Users" label="Loading users" />;
-  if (query.error) return <PageState title="Users" label={query.error.message} />;
+  if (queryIsLoading) return <PageState title="Users" label="Loading users" />;
+  if (queryError) return <PageState title="Users" label={queryError.message} />;
 
-  const users = query.data?.users ?? [];
+  const users = queryData?.users ?? [];
   const memberCount = users.filter((user) => user.membership).length;
   const activeCount = users.filter((user) => userStatus(user) === "active").length;
   const selectedUser = users.find((user) => user.userId === selectedUserId) ?? users[0];
-  const currentUserId = meQuery.data?.user.userId;
+  const currentUserId = meQueryData?.user.userId;
   return (
     <div className="page page-enter">
       <PageTitle

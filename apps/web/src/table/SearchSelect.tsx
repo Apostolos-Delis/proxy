@@ -1,5 +1,5 @@
 import { Check, ChevronDown, Search } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { PopoverShell } from "./PopoverShell";
 
@@ -37,6 +37,7 @@ export function SearchSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const listboxId = `${useId()}-listbox`;
   const selected = options.find((option) => option.value === value) ?? options[0];
   const filtered = filterSearchOptions(options, query);
 
@@ -73,9 +74,10 @@ export function SearchSelect({
                 value={query}
                 placeholder={placeholder}
                 role="combobox"
-                aria-expanded
+                aria-expanded={open}
+                aria-controls={listboxId}
                 aria-label={`${ariaLabel} search`}
-                aria-activedescendant={filtered[activeIndex] ? optionDomId(ariaLabel, activeIndex) : undefined}
+                aria-activedescendant={filtered[activeIndex] ? optionDomId(listboxId, activeIndex) : undefined}
                 onChange={(event) => {
                   setQuery(event.target.value);
                   setActiveIndex(0);
@@ -94,11 +96,11 @@ export function SearchSelect({
                 }}
               />
             </div>
-            <div className="search-select-list" role="listbox" aria-label={ariaLabel}>
+            <div id={listboxId} className="search-select-list" role="listbox" aria-label={ariaLabel}>
               {filtered.map((option, index) => (
                 <button
                   key={option.value}
-                  id={optionDomId(ariaLabel, index)}
+                  id={optionDomId(listboxId, index)}
                   type="button"
                   role="option"
                   aria-selected={option.value === value}
@@ -135,8 +137,8 @@ export function filterSearchOptions(options: SearchSelectOption[], query: string
   return options.filter((option) => `${option.label} ${option.hint ?? ""}`.toLowerCase().includes(needle));
 }
 
-function optionDomId(ariaLabel: string, index: number) {
-  return `search-select-${ariaLabel.replace(/\s+/g, "-").toLowerCase()}-option-${index}`;
+function optionDomId(listboxId: string, index: number) {
+  return `${listboxId}-option-${index}`;
 }
 
 function scrollNearestRef(node: HTMLButtonElement | null) {

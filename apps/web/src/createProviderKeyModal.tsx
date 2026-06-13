@@ -45,11 +45,11 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
   const [form, setForm] = useState<CreateForm>(emptyForm);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const queryClient = useQueryClient();
-  const subscriptionAuthQuery = useQuery({
+  const { data: subscriptionAuthQueryData } = useQuery({
     queryKey: ["subscription-oauth-enabled"],
     queryFn: fetchSubscriptionOAuthEnabled
   });
-  const subscriptionAuthEnabled = subscriptionAuthQuery.data === true;
+  const subscriptionAuthEnabled = subscriptionAuthQueryData === true;
   const isSubscription = form.authType === "oauth";
   const isAnthropicSubscription = isSubscription && form.provider === "anthropic";
   const isOpenAISubscription = isSubscription && form.provider === "openai";

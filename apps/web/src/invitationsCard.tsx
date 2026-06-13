@@ -55,7 +55,7 @@ type InvitationSummary = InvitationsListQuery["invitations"][number];
 export function InvitationsCard() {
   const [resendResult, setResendResult] = useState<{ invitationId: string; result: InvitationActionResult } | null>(null);
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ["invitations"], queryFn: () => gqlFetch(InvitationsListDocument) });
+  const { data: queryData, isLoading: queryIsLoading } = useQuery({ queryKey: ["invitations"], queryFn: () => gqlFetch(InvitationsListDocument) });
   const resendMutation = useMutation({
     mutationFn: async (invitationId: string) =>
       (await gqlFetch(ResendInvitationDocument, { invitationId })).resendInvitation,
@@ -71,8 +71,8 @@ export function InvitationsCard() {
     }
   });
 
-  const invitationList = query.data?.invitations ?? [];
-  if (query.isLoading || invitationList.length === 0) return null;
+  const invitationList = queryData?.invitations ?? [];
+  if (queryIsLoading || invitationList.length === 0) return null;
 
   const actionError = resendMutation.error ?? revokeMutation.error;
   return (

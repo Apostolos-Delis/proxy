@@ -35,12 +35,12 @@ export function VerifyStep({ created }: { created: CreatedKeyResult }) {
 }
 
 function VerificationCard({ apiKeyId }: { apiKeyId: string }) {
-  const verification = useQuery({
+  const { data: verificationData, error: verificationError } = useQuery({
     queryKey: ["api-key-verification", apiKeyId],
     queryFn: () => fetchApiKeyVerification(apiKeyId),
     refetchInterval: (query) => (query.state.data?.lastUsedAt ? false : 5000)
   });
-  const lastUsedAt = verification.data?.lastUsedAt;
+  const lastUsedAt = verificationData?.lastUsedAt;
   return (
     <GlassCard>
       <WizardStepHead
@@ -53,7 +53,7 @@ function VerificationCard({ apiKeyId }: { apiKeyId: string }) {
         ) : (
           <Badge variant="warn" dot>Waiting for the first request…</Badge>
         )}
-        {verification.error ? <span className="action-error">{verification.error.message}</span> : null}
+        {verificationError ? <span className="action-error">{verificationError.message}</span> : null}
       </div>
     </GlassCard>
   );
