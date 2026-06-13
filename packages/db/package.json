@@ -13,7 +13,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm copy:migrations",
     "copy:migrations": "mkdir -p dist/migrations && cp migrations/*.sql dist/migrations/",
+    "console": "pnpm --filter @prompt-proxy/schema build && tsx --env-file-if-exists=../../.env src/console.ts",
     "migrate": "node --env-file-if-exists=../../.env dist/src/migrate.js",
+    "runner": "pnpm --filter @prompt-proxy/schema build && tsx --env-file-if-exists=../../.env src/runner.ts",
     "seed": "node --env-file-if-exists=../../.env dist/src/seed.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
