@@ -15,4 +15,3 @@ data: {"type":"response.output_text.done","item_id":"msg_item_1","output_index":
 
 event: response.completed
 data: {"type":"response.completed","response":{"id":"resp_abc123","object":"response","status":"completed","usage":{"input_tokens":1200,"input_tokens_details":{"cached_tokens":800},"output_tokens":45,"output_tokens_details":{"reasoning_tokens":12},"total_tokens":1245}}}
-

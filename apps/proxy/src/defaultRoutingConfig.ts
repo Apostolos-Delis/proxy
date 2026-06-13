@@ -22,7 +22,8 @@ export class DefaultRoutingConfigResolver {
       config: routingConfig,
       cacheTtlUpgrade: false,
       automaticCaching: false,
-      toolResultCompression: false
+      toolResultCompression: false,
+      duplicateToolResultReferences: false
     };
   }
 }

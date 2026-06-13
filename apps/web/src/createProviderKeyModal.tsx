@@ -3,13 +3,14 @@ import { useState } from "react";
 
 import {
   createProviderCredential,
+  fetchProviderRegistry,
   fetchSubscriptionOAuthEnabled,
   type CreateProviderCredentialInput,
   type ProviderName
 } from "./providers/data";
 import type { ProviderAccountAuthType } from "./gql/graphql";
 import { Modal } from "./modal";
-import { PROVIDER_OPTIONS } from "./providers";
+import { PROVIDER_OPTIONS, providerOptionsFromRegistry } from "./providers";
 import { MenuSelect } from "./table/MenuSelect";
 import { Badge, FormField as Field } from "./ui";
 
@@ -18,6 +19,7 @@ type CreateForm = {
   name: string;
   authType: ProviderAccountAuthType;
   apiKey: string;
+  baseUrl: string;
   chatgptAccountId: string;
 };
 
@@ -26,6 +28,7 @@ const emptyForm: CreateForm = {
   name: "",
   authType: "api_key",
   apiKey: "",
+  baseUrl: "",
   chatgptAccountId: ""
 };
 
@@ -49,6 +52,13 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
     queryKey: ["subscription-oauth-enabled"],
     queryFn: fetchSubscriptionOAuthEnabled
   });
+  const { data: providerRegistryQueryData } = useQuery({
+    queryKey: ["provider-registry"],
+    queryFn: fetchProviderRegistry
+  });
+  const providerOptions = providerRegistryQueryData
+    ? providerOptionsFromRegistry(providerRegistryQueryData)
+    : PROVIDER_OPTIONS;
   const subscriptionAuthEnabled = subscriptionAuthQueryData === true;
   const isSubscription = form.authType === "oauth";
   const isAnthropicSubscription = isSubscription && form.provider === "anthropic";
@@ -91,6 +101,7 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
             name: form.name.trim(),
             authType: form.authType,
             apiKey: form.apiKey.trim(),
+            baseUrl: form.baseUrl.trim() || undefined,
             chatgptAccountId: form.chatgptAccountId.trim() || undefined
           });
         }
@@ -115,7 +126,7 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
             <MenuSelect
               ariaLabel="Provider"
               value={form.provider}
-              options={PROVIDER_OPTIONS}
+              options={providerOptions}
               onChange={(value) => setForm((current) => ({ ...current, provider: value as ProviderName }))}
             />
           </div>
@@ -138,6 +149,15 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
               />
             </Field>
           ) : null}
+          <Field label="Base URL override">
+            <input
+              value={form.baseUrl}
+              onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))}
+              placeholder="https://provider.example/v1"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </Field>
         </div>
         <Field label={credentialSecretLabel(form)}>
           <input

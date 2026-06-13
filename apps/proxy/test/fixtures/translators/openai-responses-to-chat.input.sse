@@ -12,4 +12,3 @@ data: {"type":"response.function_call_arguments.delta","output_index":1,"delta":
 
 event: response.completed
 data: {"type":"response.completed","response":{"id":"resp_fixture","model":"gpt-source","usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":4},"output_tokens":6,"output_tokens_details":{"reasoning_tokens":2},"total_tokens":16}}}
-

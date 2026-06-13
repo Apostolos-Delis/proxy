@@ -16,6 +16,7 @@ import { ModelPricingAdminService } from "./modelPricingAdmin.js";
 import { OrganizationSettingsStore } from "./organizationSettings.js";
 import { ProviderCredentialAdminService } from "./providerCredentialAdmin.js";
 import { ProviderCredentialStore, type ProviderCredentialOptions } from "./providerCredentials.js";
+import { ProviderRegistryAdminService } from "./providerRegistryAdmin.js";
 import { ProviderRegistryStore } from "./providers.js";
 import { PromptAccessAuditStore } from "./promptAccessAudit.js";
 import { PromptArtifactStore } from "./promptArtifacts.js";
@@ -50,6 +51,7 @@ export function createDatabasePersistence(
   // and forward layers together (headersFor already reads config live).
   const credentialOptions: ProviderCredentialOptions = {
     encryptionKey: config.providerSecretEncryptionKey,
+    allowedPrivateUpstreamCidrs: config.allowedPrivateUpstreamCidrs,
     get subscriptionOAuthEnabled() {
       return config.subscriptionOAuthEnabled;
     }
@@ -60,6 +62,7 @@ export function createDatabasePersistence(
     adminSessions: new AdminSessionStore(db),
     providerCredentials: new ProviderCredentialStore(db, credentialOptions),
     providerCredentialAdmin: new ProviderCredentialAdminService(transactional, credentialOptions),
+    providerRegistryAdmin: new ProviderRegistryAdminService(transactional, config),
     providerRegistry: new ProviderRegistryStore(db, config),
     eventSink: new DatabaseEventSink(transactional, useAdvisoryLocks),
     modelCatalogRefresh: new ModelCatalogRefreshJob(transactional, {

@@ -20,7 +20,7 @@ import {
   type UsageRangeKey
 } from "./usageAnalytics";
 
-export function UsageDimensionTabs({ dimension, onDimension }: {
+export function UsageDimensionTabs({ dimension, onDimension, canOpenDetails }: {
   dimension: UsageDimension;
   onDimension: (dimension: UsageDimension) => void;
   canOpenDetails: boolean;

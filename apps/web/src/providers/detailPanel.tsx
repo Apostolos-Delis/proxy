@@ -47,6 +47,7 @@ export function ProviderKeyDetailPanel({ account, onClose }: {
         <div className="fact-grid key-panel-facts">
           <Fact label="Key ID"><span className="mono" title={account.id}>{compactId(account.id, 8)}</span></Fact>
           <Fact label="Secret"><span className="mono">{account.secretHint ?? "—"}</span></Fact>
+          <Fact label="Base URL">{account.baseUrl ? <span className="mono">{account.baseUrl}</span> : "provider default"}</Fact>
           <Fact label="Owner">{account.ownerUserId ? <span className="mono">{compactId(account.ownerUserId, 8)}</span> : "organization"}</Fact>
           <Fact label="Bound keys"><span className="mono">{boundKeys.length}</span></Fact>
           <Fact label="Created">{formatDateTime(account.createdAt)}</Fact>

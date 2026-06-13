@@ -28,8 +28,10 @@ export const ProviderRegistryEntry = builder.objectRef<ProviderRegistryEntryMode
     organizationId: t.exposeString("organizationId", { nullable: true }),
     slug: t.exposeString("slug"),
     displayName: t.exposeString("displayName"),
+    baseUrl: t.exposeString("baseUrl"),
     authStyle: t.exposeString("authStyle"),
     endpoints: t.expose("endpoints", { type: [ProviderEndpoint] }),
+    defaultHeaders: t.field({ type: "JSON", resolve: (provider) => provider.defaultHeaders }),
     forwardHarnessHeaders: t.exposeBoolean("forwardHarnessHeaders"),
     enabled: t.exposeBoolean("enabled"),
     builtin: t.exposeBoolean("builtin")

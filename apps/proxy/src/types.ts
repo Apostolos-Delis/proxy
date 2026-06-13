@@ -20,12 +20,20 @@ export type RouteName = "fast" | "balanced" | "hard" | "deep";
 export type ReasoningEffort = Effort;
 export type ProviderEffort = Effort;
 
+export type PinnedUpstreamAddress = {
+  readonly hostname: string;
+  readonly address: string;
+  readonly family: 4 | 6;
+};
+
 export type UpstreamCredential = {
   readonly provider: Provider;
   readonly token: string;
   readonly providerAccountId: string;
   readonly authType: ProviderAccountAuthType;
   readonly chatgptAccountId?: string;
+  readonly baseUrl?: string;
+  readonly pinnedAddress?: PinnedUpstreamAddress;
 };
 
 export type Verbosity = RoutingVerbosity;

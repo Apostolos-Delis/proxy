@@ -1,9 +1,9 @@
 import { ClipboardCheck } from "lucide-react";
 
 import type { ProviderAccountSummary } from "../providers/data";
-import { PROVIDER_OPTIONS } from "../providers";
 import type { RoutingConfigSummary } from "../routing/data";
 import { GlassCard } from "../ui";
+import { providerOptionsForAccounts } from "./providerOptions";
 import { WizardStepHead } from "./stepHead";
 import { orgDefaultConfigLabel, type CreateKeyDraft } from "./wizard";
 
@@ -16,6 +16,7 @@ export function ReviewStep({ draft, configs, defaultConfig, providerAccounts }: 
   const routingConfigName = draft.routingConfigId
     ? configs.find((config) => config.id === draft.routingConfigId)?.name ?? draft.routingConfigId
     : orgDefaultConfigLabel(defaultConfig);
+  const providerOptions = providerOptionsForAccounts(providerAccounts, draft.providerBindings);
   return (
     <GlassCard>
       <WizardStepHead
@@ -39,7 +40,7 @@ export function ReviewStep({ draft, configs, defaultConfig, providerAccounts }: 
           <dd>{routingConfigName}</dd>
         </div>
         {draft.linkProviderKeys ? (
-          PROVIDER_OPTIONS.map((provider) => (
+          providerOptions.map((provider) => (
             <div key={provider.value}>
               <dt>{provider.label} key</dt>
               <dd>{bindingLabel(draft.providerBindings[provider.value], providerAccounts)}</dd>

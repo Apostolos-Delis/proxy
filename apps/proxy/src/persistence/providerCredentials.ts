@@ -9,6 +9,10 @@ import { PROVIDER_ACCOUNT_STATUSES } from "@prompt-proxy/schema";
 import { and, eq, isNull } from "drizzle-orm";
 
 import type { Provider, UpstreamCredential } from "../types.js";
+import {
+  validateProviderBaseUrl,
+  type ProviderNetworkPolicy
+} from "./providers.js";
 
 type CacheEntry = {
   credential: UpstreamCredential;
@@ -26,6 +30,7 @@ export type ResolveCredentialInput = {
 export type ProviderCredentialOptions = {
   encryptionKey: string | undefined;
   subscriptionOAuthEnabled: boolean;
+  allowedPrivateUpstreamCidrs: ProviderNetworkPolicy["allowedPrivateUpstreamCidrs"];
 };
 
 export class ProviderCredentialStore {
@@ -60,6 +65,7 @@ export class ProviderCredentialStore {
         id: providerAccounts.id,
         providerId: providerAccounts.providerId,
         provider: providers.slug,
+        baseUrl: providerAccounts.baseUrl,
         status: providerAccounts.status,
         authType: providerAccounts.authType,
         settings: providerAccounts.settings,
@@ -91,12 +97,18 @@ export class ProviderCredentialStore {
     }
 
     const token = decryptSecret(account.secretCiphertext, this.options.encryptionKey);
+    const baseUrl = account.baseUrl ? trimTrailingSlash(account.baseUrl) : undefined;
+    const pinnedAddress = baseUrl
+      ? await validateProviderBaseUrl(baseUrl, this.options)
+      : undefined;
     const credential: UpstreamCredential = {
       provider: account.provider as Provider,
       token,
       providerAccountId: account.id,
       authType: account.authType,
-      chatgptAccountId
+      chatgptAccountId,
+      baseUrl,
+      pinnedAddress
     };
     this.cache.set(account.id, { credential, expiresAt: now + CACHE_TTL_MS });
 
@@ -113,6 +125,10 @@ function settingsString(settings: unknown, key: string) {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) return undefined;
   const value = (settings as Record<string, unknown>)[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function trimTrailingSlash(value: string) {
+  return value.replace(/\/+$/, "");
 }
 
 async function providerBySlug(db: PromptProxyDbSession, organizationId: string, slug: string) {

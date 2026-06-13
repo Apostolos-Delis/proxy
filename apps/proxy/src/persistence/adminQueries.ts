@@ -239,8 +239,10 @@ export class AdminQueryService {
         organizationId: providers.organizationId,
         slug: providers.slug,
         displayName: providers.displayName,
+        baseUrl: providers.baseUrl,
         authStyle: providers.authStyle,
         endpoints: providers.endpoints,
+        defaultHeaders: providers.defaultHeaders,
         forwardHarnessHeaders: providers.forwardHarnessHeaders,
         enabled: providers.enabled
       })
@@ -1656,8 +1658,10 @@ type ProviderRegistryRow = {
   organizationId: string | null;
   slug: string;
   displayName: string;
+  baseUrl: string;
   authStyle: "bearer" | "x-api-key" | "none";
   endpoints: { dialect: string; path: string }[];
+  defaultHeaders: Record<string, string>;
   forwardHarnessHeaders: boolean;
   enabled: boolean;
 };
@@ -1779,8 +1783,10 @@ function providerRegistrySummary(row: ProviderRegistryRow) {
     organizationId: row.organizationId,
     slug: row.slug,
     displayName: row.displayName,
+    baseUrl: row.baseUrl,
     authStyle: row.authStyle,
     endpoints: row.endpoints,
+    defaultHeaders: row.defaultHeaders,
     forwardHarnessHeaders: row.forwardHarnessHeaders,
     enabled: row.enabled,
     builtin: row.organizationId === null

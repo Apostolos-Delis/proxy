@@ -1,4 +1,5 @@
 import type { IncomingHttpHeaders, IncomingMessage, Server } from "node:http";
+import type { LookupFunction } from "node:net";
 import type { Duplex } from "node:stream";
 
 import WebSocket, { WebSocketServer, type RawData } from "ws";
@@ -30,6 +31,11 @@ import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { canAuthenticateOrgProvider, providerRequestHeaders } from "./proxy.js";
 import type { RoutingService } from "./router.js";
 import type { JsonObject, Provider, RouteDecision, RouteName, UpstreamCredential } from "./types.js";
+import {
+  lookupForPinnedAddress,
+  providerRequestPinnedAddress,
+  providerRequestUrl
+} from "./upstream.js";
 import { createId, headerValue, idempotencyFrom, isRecord, lowerHeaders } from "./util.js";
 
 type ActiveRequest = {
@@ -507,7 +513,7 @@ export class WebSocketRoutingProxy {
     if (!canAuthenticateOrgProvider(provider, credential)) throw new Error("provider_credential_unresolved");
     return {
       provider: provider.slug,
-      url: webSocketUrlFor(provider, endpoint),
+      ...webSocketTargetUrl(provider, endpoint, this.config, credential),
       headers: providerRequestHeaders({
         config: this.config,
         provider,
@@ -544,7 +550,7 @@ export class WebSocketRoutingProxy {
       if (!endpoint || !canAuthenticateOrgProvider(provider, credential)) return undefined;
       const target = {
         provider: provider.slug,
-        url: webSocketUrlFor(provider, endpoint),
+        ...webSocketTargetUrl(provider, endpoint, this.config, credential),
         headers: providerRequestHeaders({
           config: this.config,
           provider,
@@ -590,6 +596,7 @@ export class WebSocketRoutingProxy {
   private connectUpstreamWithUpgradeHeaders(target: WebSocketUpstreamTarget) {
     const upstream = new WebSocket(target.url, {
       headers: target.headers,
+      lookup: target.lookup,
       perMessageDeflate: true
     });
     let upgradeHeaders: IncomingHttpHeaders = {};
@@ -664,13 +671,23 @@ type WebSocketUpstreamTarget = {
   provider: Provider;
   url: string;
   headers: Record<string, string>;
+  lookup?: LookupFunction;
 };
 
-function webSocketUrlFor(provider: ProviderRegistryEntry, endpoint: ProviderRegistryEndpoint) {
-  const url = new URL(`${provider.baseUrl}${endpoint.path}`);
+function webSocketTargetUrl(
+  provider: ProviderRegistryEntry,
+  endpoint: ProviderRegistryEndpoint,
+  config: AppConfig,
+  credential?: UpstreamCredential
+) {
+  const pinnedAddress = providerRequestPinnedAddress({ provider, config, credential });
+  const url = new URL(providerRequestUrl({ provider, endpoint, config, credential }));
   if (url.protocol === "http:") url.protocol = "ws:";
   if (url.protocol === "https:") url.protocol = "wss:";
-  return url.toString();
+  return {
+    url: url.toString(),
+    lookup: pinnedAddress ? lookupForPinnedAddress(pinnedAddress) : undefined
+  };
 }
 
 function terminalEventType(status: "completed" | "failed" | "cancelled") {

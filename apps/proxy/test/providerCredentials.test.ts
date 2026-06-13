@@ -151,6 +151,81 @@ describe("BYOK provider credentials", () => {
     expect(JSON.stringify(created)).not.toContain("sk-acme-custom");
   });
 
+  it("forwards through a provider account base URL override", async () => {
+    const fixture = await setup("org_byok_account_base_url");
+    const alternateAnthropic = await startAnthropicMock();
+
+    try {
+      const created = await gql(fixture, CREATE, {
+        input: {
+          provider: "anthropic",
+          name: "Regional Anthropic key",
+          apiKey: CUSTOMER_KEY,
+          baseUrl: alternateAnthropic.url
+        }
+      });
+      expect(created.errors).toBeUndefined();
+      const account = created.data?.createProviderCredential;
+      expect(account.baseUrl).toBe(alternateAnthropic.url);
+
+      const bound = await gql(fixture, BIND, {
+        apiKeyId: "org_byok_account_base_url:api-key:default",
+        provider: "anthropic",
+        providerAccountId: account.id
+      });
+      expect(bound.errors).toBeUndefined();
+
+      await sendMessage(fixture);
+
+      const alternateCall = alternateAnthropic.records.find((record) => record.path === "/messages");
+      expect(alternateCall?.headers["x-api-key"]).toBe(CUSTOMER_KEY);
+      expect(fixture.anthropic.records.find((record) => record.path === "/messages")).toBeUndefined();
+    } finally {
+      await alternateAnthropic.close();
+    }
+  });
+
+  it("does not follow redirects from provider account base URL overrides", async () => {
+    const fixture = await setup("org_byok_account_base_url_redirect");
+    const redirectTarget = await startOpenAIMock();
+    const redirectSource = await startOpenAIMock({ redirectProviderTo: redirectTarget.url });
+
+    try {
+      const created = await gql(fixture, CREATE, {
+        input: {
+          provider: "openai",
+          name: "Redirecting OpenAI key",
+          apiKey: "sk-openai-redirect",
+          baseUrl: redirectSource.url
+        }
+      });
+      expect(created.errors).toBeUndefined();
+      const account = created.data?.createProviderCredential;
+      const bound = await gql(fixture, BIND, {
+        apiKeyId: "org_byok_account_base_url_redirect:api-key:default",
+        provider: "openai",
+        providerAccountId: account.id
+      });
+      expect(bound.errors).toBeUndefined();
+
+      const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+        method: "POST",
+        redirect: "manual",
+        headers: {
+          "x-api-key": "proxy-token",
+          "content-type": "application/json"
+        },
+        body: openAIResponseBody
+      });
+
+      expect(response.status).toBe(302);
+      expect(redirectTarget.records.find((record) => record.body.model === "gpt-router-auto")).toBeUndefined();
+    } finally {
+      await redirectSource.close();
+      await redirectTarget.close();
+    }
+  });
+
   it("lists effective registry providers for routing config editors", async () => {
     const fixture = await setup("org_byok_provider_registry");
     await fixture.db.insert(providers).values({
@@ -479,7 +554,7 @@ describe("BYOK provider credentials", () => {
     activeFixture = await captureFixture(organizationId, "raw_text", false, {
       envOverrides: {
         PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY,
-        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8"
+        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8,10.0.0.0/8"
       }
     });
     return activeFixture;

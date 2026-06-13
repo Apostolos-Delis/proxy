@@ -1,11 +1,11 @@
-import { KeyRound, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
+import { Ban, KeyRound, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 
 import { compactId, formatDateTime } from "../format";
 import type { ApiKeySummary } from "../routing/data";
-import { Avatar, GlassCard, StatusBadge } from "../ui";
-import { ownerLabel, type UserDirectory } from "../userDirectory";
-import type { ProviderAccountSummary } from "./data";
+import { GlassCard, StatusBadge } from "../ui";
+import { OwnerCell, type UserDirectory } from "../userDirectory";
+import type { ProviderAccountSummary, ProviderRegistrySummary } from "./data";
 import { authTypeLabel, providerGroups, type ProviderGroup } from "./groupedListData";
 import { ProviderMark } from "./icons";
 
@@ -16,6 +16,7 @@ const PROVIDER_META: Record<string, { label: string; domain: string }> = {
 
 export function ProviderGroupsList({
   accounts,
+  providers,
   searchValue,
   users,
   boundKeys,
@@ -26,6 +27,7 @@ export function ProviderGroupsList({
   onOpen
 }: {
   accounts: ProviderAccountSummary[];
+  providers: ProviderRegistrySummary[];
   searchValue: string;
   users: UserDirectory;
   boundKeys: Map<string, ApiKeySummary[]> | null;
@@ -35,7 +37,8 @@ export function ProviderGroupsList({
   onRevoke: (providerAccountId: string) => void;
   onOpen: (providerAccountId: string) => void;
 }) {
-  const groups = providerGroups(accounts, searchValue, users, boundKeys);
+  const groups = providerGroups(accounts, providers, searchValue, users, boundKeys);
+  const providerBySlug = new Map(providers.map((provider) => [provider.slug, provider]));
   if (groups.length === 0) {
     return (
       <GlassCard className="provider-key-card">
@@ -47,6 +50,7 @@ export function ProviderGroupsList({
     <ProviderGroupSection
       key={group.provider}
       group={group}
+      provider={providerBySlug.get(group.provider)}
       users={users}
       boundKeys={boundKeys}
       revokePendingId={revokePendingId}
@@ -60,6 +64,7 @@ export function ProviderGroupsList({
 
 function ProviderGroupSection({
   group,
+  provider,
   users,
   boundKeys,
   revokePendingId,
@@ -69,6 +74,7 @@ function ProviderGroupSection({
   onOpen
 }: {
   group: ProviderGroup;
+  provider?: ProviderRegistrySummary;
   users: UserDirectory;
   boundKeys: Map<string, ApiKeySummary[]> | null;
   revokePendingId?: string;
@@ -77,7 +83,7 @@ function ProviderGroupSection({
   onRevoke: (providerAccountId: string) => void;
   onOpen: (providerAccountId: string) => void;
 }) {
-  const meta = PROVIDER_META[group.provider] ?? { label: group.provider, domain: "" };
+  const meta = PROVIDER_META[group.provider] ?? { label: provider?.displayName ?? group.provider, domain: domainForProvider(provider) };
   return (
     <section className="provider-group">
       <div className="provider-group-head">
@@ -87,7 +93,7 @@ function ProviderGroupSection({
         <span className="provider-group-count">{groupCountLabel(group)}</span>
       </div>
       <GlassCard className="provider-key-card">
-        <ProviderDefaultRow providerLabel={meta.label} />
+        <ProviderDefaultRow provider={provider} />
         {group.accounts.length === 0 ? (
           <div className="empty">No {meta.label} keys yet.</div>
         ) : group.accounts.map((account) => (
@@ -113,18 +119,72 @@ function groupCountLabel(group: ProviderGroup) {
   return `${group.activeCount} of ${group.total} enabled`;
 }
 
-function ProviderDefaultRow({ providerLabel }: { providerLabel: string }) {
+function ProviderDefaultRow({ provider }: { provider?: ProviderRegistrySummary }) {
+  const builtin = provider?.builtin ?? groupIsBuiltinFallback(provider?.slug);
+  const labels = providerDefaultLabels(provider, builtin);
   return (
     <div className="provider-key-row provider-default-row">
-      <div className="provider-key-default-title">
-        <ShieldCheck />
-        <span>Company key</span>
+      <div className="provider-key-main">
+        <div className="provider-key-default-title">
+          <ShieldCheck />
+          <span>{labels.title}</span>
+        </div>
+        <div className="provider-key-secret-pill mono">{labels.secret}</div>
       </div>
-      <span className="provider-key-secret-pill mono">platform fallback</span>
-      <span className="badge badge-accent provider-default-pill">default · fallback</span>
-      <span className="provider-default-note mono">{providerLabel} fallback</span>
+      <div>
+        <span className="code-pill auth-pill">
+          <KeyRound />
+          API key
+        </span>
+      </div>
+      <div className="cell-tags scope-tags">
+        <span className="code-pill provider-default-pill">{labels.auth}</span>
+        <span className="code-pill provider-default-pill">{labels.state}</span>
+      </div>
+      <span className="faint">Organization</span>
+      <span className="provider-key-lastused faint">{builtin ? "unbound traffic" : "targeted traffic"}</span>
+      <span className="badge provider-fallback-badge">{builtin ? "fallback" : "custom"}</span>
+      <span />
     </div>
   );
+}
+
+function providerDefaultLabels(provider: ProviderRegistrySummary | undefined, builtin: boolean) {
+  if (builtin) {
+    return {
+      title: "Company key",
+      secret: "platform fallback",
+      auth: "default",
+      state: "fallback"
+    };
+  }
+  if (provider?.authStyle === "none") {
+    return {
+      title: "No credential required",
+      secret: "no auth",
+      auth: provider.authStyle,
+      state: provider.enabled ? "enabled" : "disabled"
+    };
+  }
+  return {
+    title: "No platform fallback",
+    secret: "credential required",
+    auth: provider?.authStyle ?? "custom",
+    state: provider?.enabled ? "enabled" : "disabled"
+  };
+}
+
+function domainForProvider(provider?: ProviderRegistrySummary) {
+  if (!provider) return "";
+  try {
+    return new URL(provider.baseUrl).host;
+  } catch {
+    return "";
+  }
+}
+
+function groupIsBuiltinFallback(provider?: string) {
+  return provider === "anthropic" || provider === "openai";
 }
 
 function ProviderKeyRow({
@@ -156,7 +216,7 @@ function ProviderKeyRow({
       </div>
       <div><AuthPill account={account} /></div>
       <BoundKeyTags boundKeys={boundKeys} boundKeyCount={account.boundKeyCount} boundKeysAvailable={boundKeysAvailable} />
-      <ProviderOwnerCell users={users} userId={account.ownerUserId} />
+      <OwnerCell users={users} userId={account.ownerUserId} />
       <div className="provider-key-lastused">
         {account.lastUsedAt ? formatDateTime(account.lastUsedAt) : <span className="faint">never</span>}
       </div>
@@ -172,27 +232,10 @@ function AuthPill({ account }: { account: ProviderAccountSummary }) {
   const subscription = account.authType === "oauth";
   return (
     <span className={`code-pill auth-pill auth-pill-${account.provider}${subscription ? " auth-pill-subscription" : ""}`}>
-      {subscription ? <Sparkles /> : <KeyRound />}
+      {subscription ? <ProviderMark provider={account.provider} /> : <KeyRound />}
       {authTypeLabel(account)}
     </span>
   );
-}
-
-function ProviderOwnerCell({ users, userId }: { users: UserDirectory; userId: string | null | undefined }) {
-  const label = ownerLabel(users, userId);
-  if (!userId) return <span className="provider-owner-cell faint">Organization</span>;
-  return (
-    <div className="provider-owner-cell">
-      <Avatar label={label} size={22} />
-      <span className="mono">{compactOwnerLabel(label)}</span>
-    </div>
-  );
-}
-
-function compactOwnerLabel(label: string) {
-  const emailName = label.split("@")[0];
-  const firstName = emailName.split(" ")[0];
-  return (firstName || label).toLowerCase();
 }
 
 function secretLabel(account: ProviderAccountSummary) {
@@ -266,5 +309,5 @@ function RevokeCredentialAction({ account, pending, error, onRevoke }: {
 function revokeContent(pending: boolean, confirming: boolean) {
   if (pending) return "Revoking...";
   if (confirming) return "Revoke?";
-  return <Trash2 />;
+  return <Ban />;
 }

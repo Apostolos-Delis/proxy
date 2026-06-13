@@ -3,10 +3,10 @@ import { useState } from "react";
 
 import { CreateProviderKeyModal } from "../createProviderKeyModal";
 import type { ProviderAccountSummary, ProviderName } from "../providers/data";
-import { PROVIDER_OPTIONS } from "../providers";
 import type { RoutingConfigSummary } from "../routing/data";
 import { SearchSelect } from "../table/SearchSelect";
 import { GlassCard } from "../ui";
+import { providerOptionsForAccounts } from "./providerOptions";
 import { WizardStepHead } from "./stepHead";
 import { orgDefaultConfigLabel, withCreatedProviderKey, withProviderKeyMode, type CreateKeyDraft } from "./wizard";
 
@@ -19,6 +19,7 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
 }) {
   const [showAddKey, setShowAddKey] = useState(false);
   const activeAccounts = providerAccounts.filter((account) => account.status === "active");
+  const providerOptions = providerOptionsForAccounts(activeAccounts, draft.providerBindings);
   return (
     <>
       <GlassCard>
@@ -89,7 +90,7 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
             {draft.linkProviderKeys ? (
               <>
                 <div className="wizard-provider-grid">
-                  {PROVIDER_OPTIONS.map((provider) => (
+                  {providerOptions.map((provider) => (
                     <ProviderBindingField
                       key={provider.value}
                       provider={provider}

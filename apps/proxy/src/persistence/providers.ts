@@ -6,6 +6,7 @@ import type { Dialect, Provider } from "@prompt-proxy/schema";
 import { and, eq, isNull } from "drizzle-orm";
 
 import type { AppConfig } from "../config.js";
+import type { PinnedUpstreamAddress } from "../types.js";
 
 export type ProviderRegistryEndpoint = {
   dialect: Dialect;
@@ -23,6 +24,7 @@ export type ProviderRegistryEntry = {
   forwardHarnessHeaders: boolean;
   enabled: boolean;
   builtin: boolean;
+  pinnedAddress?: PinnedUpstreamAddress;
 };
 
 export type ProviderRegistryResolver = {
@@ -71,8 +73,8 @@ export class ProviderRegistryStore implements ProviderRegistryResolver {
     if (orgProvider) {
       const entry = providerEntry(orgProvider);
       assertSafeDefaultHeaders(entry.defaultHeaders);
-      await validateProviderBaseUrl(entry.baseUrl, this.networkPolicy);
-      return entry;
+      const pinnedAddress = await validateProviderBaseUrl(entry.baseUrl, this.networkPolicy);
+      return { ...entry, pinnedAddress };
     }
 
     const [builtinProvider] = await this.db
@@ -133,7 +135,7 @@ function providerEntry(row: typeof providers.$inferSelect): ProviderRegistryEntr
     id: row.id,
     organizationId: row.organizationId,
     slug: row.slug,
-    baseUrl: trimTrailingSlash(row.baseUrl),
+    baseUrl: trimProviderBaseUrl(row.baseUrl),
     authStyle: row.authStyle,
     endpoints: row.endpoints.filter(isProviderEndpoint),
     defaultHeaders: row.defaultHeaders,
@@ -176,22 +178,36 @@ export async function validateProviderBaseUrl(
   const addresses = await addressesForHostname(url.hostname);
   if (addresses.length === 0) throw new ProviderRegistryError("provider_base_url_unresolvable");
   for (const address of addresses) {
-    if (isBlockedAddress(address)) {
+    if (isBlockedAddress(address.address)) {
       throw new ProviderRegistryError("provider_base_url_blocked");
     }
-    if (isPrivateAddress(address) && !isAllowedPrivateAddress(address, policy.allowedPrivateUpstreamCidrs)) {
+    if (isPrivateAddress(address.address) && !isAllowedPrivateAddress(address.address, policy.allowedPrivateUpstreamCidrs)) {
       throw new ProviderRegistryError("provider_base_url_private");
     }
   }
+  return {
+    hostname: url.hostname,
+    address: addresses[0].address,
+    family: addresses[0].family
+  } satisfies PinnedUpstreamAddress;
 }
 
 async function addressesForHostname(hostname: string) {
-  if (isIP(hostname)) return [hostname];
+  const ipFamily = isIP(hostname);
+  if (ipFamily) return [{ address: hostname, family: pinnedFamily(ipFamily) }];
   try {
-    return (await lookup(hostname, { all: true, verbatim: true })).map((entry) => entry.address);
+    return (await lookup(hostname, { all: true, verbatim: true })).map((entry) => ({
+      address: entry.address,
+      family: pinnedFamily(entry.family)
+    }));
   } catch {
     throw new ProviderRegistryError("provider_base_url_unresolvable");
   }
+}
+
+function pinnedFamily(family: number): 4 | 6 {
+  if (family === 4 || family === 6) return family;
+  throw new ProviderRegistryError("provider_base_url_unresolvable");
 }
 
 function isBlockedAddress(address: string) {
@@ -247,6 +263,6 @@ function isProviderEndpoint(value: { dialect: string; path: string }): value is 
   );
 }
 
-function trimTrailingSlash(value: string) {
+export function trimProviderBaseUrl(value: string) {
   return value.replace(/\/+$/g, "");
 }

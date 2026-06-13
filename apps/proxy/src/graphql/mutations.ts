@@ -15,7 +15,7 @@ import {
   UserStatusResult
 } from "./types/invitations.js";
 import { ModelPricingEntry } from "./types/pricing.js";
-import { ApiKey, CreateApiKeyResult, ProviderAccount, RoutingConfigDetail } from "./types/routing.js";
+import { ApiKey, CreateApiKeyResult, ProviderAccount, ProviderRegistryEntry, RoutingConfigDetail } from "./types/routing.js";
 import { PromptCaptureConfig, Settings, SettingsInput } from "./types/settings.js";
 import { Viewer, WorkspaceSummary } from "./types/viewer.js";
 
@@ -44,6 +44,39 @@ const CreateProviderCredentialInput = builder.inputType("CreateProviderCredentia
     // Carries the API key or, for authType "oauth", the subscription token.
     apiKey: t.string({ required: true }),
     chatgptAccountId: t.string()
+  })
+});
+
+const ProviderEndpointInput = builder.inputType("ProviderEndpointInput", {
+  fields: (t) => ({
+    dialect: t.string({ required: true }),
+    path: t.string({ required: true })
+  })
+});
+
+const CreateProviderInput = builder.inputType("CreateProviderInput", {
+  fields: (t) => ({
+    slug: t.string({ required: true }),
+    displayName: t.string({ required: true }),
+    baseUrl: t.string({ required: true }),
+    authStyle: t.string({ required: true }),
+    endpoints: t.field({ type: [ProviderEndpointInput], required: true }),
+    defaultHeaders: t.field({ type: "JSON" }),
+    forwardHarnessHeaders: t.boolean(),
+    enabled: t.boolean()
+  })
+});
+
+const UpdateProviderInput = builder.inputType("UpdateProviderInput", {
+  fields: (t) => ({
+    providerId: t.id({ required: true }),
+    displayName: t.string({ required: true }),
+    baseUrl: t.string({ required: true }),
+    authStyle: t.string({ required: true }),
+    endpoints: t.field({ type: [ProviderEndpointInput], required: true }),
+    defaultHeaders: t.field({ type: "JSON" }),
+    forwardHarnessHeaders: t.boolean(),
+    enabled: t.boolean()
   })
 });
 
@@ -579,6 +612,89 @@ builder.mutationFields((t) => ({
         });
         const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
         return accounts.find((account) => account.id === created.providerAccountId) ?? null;
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  createProvider: t.field({
+    type: ProviderRegistryEntry,
+    nullable: true,
+    args: { input: t.arg({ type: CreateProviderInput, required: true }) },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("providers_not_found");
+      const identity = requireAdminRole(context);
+      try {
+        const created = await context.persistence.providerRegistryAdmin.createProvider({
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
+          body: {
+            slug: args.input.slug,
+            displayName: args.input.displayName,
+            baseUrl: args.input.baseUrl,
+            authStyle: args.input.authStyle,
+            endpoints: args.input.endpoints,
+            defaultHeaders: args.input.defaultHeaders ?? undefined,
+            forwardHarnessHeaders: args.input.forwardHarnessHeaders ?? undefined,
+            enabled: args.input.enabled ?? undefined
+          }
+        });
+        const providers = (await scopedQueries(context)?.providers())?.data ?? [];
+        return providers.find((provider) => provider.id === created.providerId) ?? null;
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  updateProvider: t.field({
+    type: ProviderRegistryEntry,
+    nullable: true,
+    args: { input: t.arg({ type: UpdateProviderInput, required: true }) },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("provider_not_found");
+      const identity = requireAdminRole(context);
+      const providerId = String(args.input.providerId);
+      try {
+        await context.persistence.providerRegistryAdmin.updateProvider({
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
+          providerId,
+          body: {
+            displayName: args.input.displayName,
+            baseUrl: args.input.baseUrl,
+            authStyle: args.input.authStyle,
+            endpoints: args.input.endpoints,
+            defaultHeaders: args.input.defaultHeaders ?? undefined,
+            forwardHarnessHeaders: args.input.forwardHarnessHeaders ?? undefined,
+            enabled: args.input.enabled ?? undefined
+          }
+        });
+        const providers = (await scopedQueries(context)?.providers())?.data ?? [];
+        return providers.find((provider) => provider.id === providerId) ?? null;
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  disableProvider: t.field({
+    type: ProviderRegistryEntry,
+    nullable: true,
+    args: { providerId: t.arg.id({ required: true }) },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("provider_not_found");
+      const identity = requireAdminRole(context);
+      const providerId = String(args.providerId);
+      try {
+        await context.persistence.providerRegistryAdmin.disableProvider({
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
+          providerId
+        });
+        const providers = (await scopedQueries(context)?.providers())?.data ?? [];
+        return providers.find((provider) => provider.id === providerId) ?? null;
       } catch (error) {
         mapAdminError(error);
       }

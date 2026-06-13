@@ -16,6 +16,12 @@ import {
   type ProviderRegistryEndpoint,
   type ProviderRegistryEntry
 } from "./persistence/providers.js";
+import {
+  fetchWithPinnedAddress,
+  providerRequestPinnedAddress,
+  providerRequestRedirect,
+  providerRequestUrl
+} from "./upstream.js";
 import { isRecord } from "./util.js";
 
 const classifierOutputSchema = z.object({
@@ -82,14 +88,23 @@ export class LlmClassifier {
     const timeout = setTimeout(() => controller.abort(), settings.timeoutMs);
 
     try {
-      const url = `${target.provider.baseUrl}${target.endpoint.path}`;
       const view = classifierView(context, settings.allowRedactedExcerpt);
-      const response = await fetch(url, {
+      const response = await fetchWithPinnedAddress(providerRequestUrl({
+        provider: target.provider,
+        endpoint: target.endpoint,
+        config: this.config,
+        credential: target.credential
+      }), {
         method: "POST",
         headers: classifierHeaders(this.config, target),
         body: JSON.stringify(classifierRequest(settings, view)),
+        redirect: providerRequestRedirect({ provider: target.provider, credential: target.credential }),
         signal: controller.signal
-      });
+      }, providerRequestPinnedAddress({
+        provider: target.provider,
+        config: this.config,
+        credential: target.credential
+      }));
 
       if (!response.ok) {
         throw new ClassifierError(`Classifier HTTP ${response.status}`);

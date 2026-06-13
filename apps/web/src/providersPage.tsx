@@ -5,11 +5,13 @@ import { useState } from "react";
 
 import {
   fetchProviderAccounts,
+  fetchProviderRegistry,
   revokeProviderCredential
 } from "./providers/data";
 import { ProviderKeyDetailPanel } from "./providers/detailPanel";
 import { ProviderGroupsList } from "./providers/groupedList";
 import { boundKeysByAccount } from "./providers/groupedListData";
+import { ProviderRegistrySection } from "./providers/registrySection";
 import { CreateProviderKeyModal } from "./createProviderKeyModal";
 import { fetchApiKeys } from "./routing/data";
 import { PageState } from "./ui";
@@ -26,6 +28,7 @@ export function ProvidersPage() {
     void navigate({ to: ".", search: (current) => ({ ...current, key: accountId ?? undefined }), replace: true });
   const queryClient = useQueryClient();
   const { isLoading: accountsQueryIsLoading, error: accountsQueryError, data: accountsQueryData } = useQuery({ queryKey: ["provider-accounts"], queryFn: fetchProviderAccounts });
+  const { isLoading: registryQueryIsLoading, error: registryQueryError, data: registryQueryData } = useQuery({ queryKey: ["provider-registry"], queryFn: fetchProviderRegistry });
   const { isLoading: usersQueryIsLoading, error: usersQueryError, data: usersQueryData } = useQuery({ queryKey: ["user-directory"], queryFn: fetchUserDirectory });
   const { data: keysQueryData } = useQuery({ queryKey: ["api-keys"], queryFn: fetchApiKeys });
   const revokeMutation = useMutation({
@@ -36,11 +39,12 @@ export function ProvidersPage() {
     }
   });
 
-  if (accountsQueryIsLoading || usersQueryIsLoading) return <PageState title="Provider keys" label="Loading provider keys" />;
-  const error = accountsQueryError ?? usersQueryError;
+  if (accountsQueryIsLoading || registryQueryIsLoading || usersQueryIsLoading) return <PageState title="Provider keys" label="Loading provider keys" />;
+  const error = accountsQueryError ?? registryQueryError ?? usersQueryError;
   if (error) return <PageState title="Provider keys" label={error.message} />;
 
   const accounts = accountsQueryData ?? [];
+  const providers = registryQueryData ?? [];
   const users: UserDirectory = usersQueryData ?? new Map();
   const boundKeys = keysQueryData ? boundKeysByAccount(keysQueryData) : null;
   const openAccount = accounts.find((account) => account.id === openAccountId);
@@ -74,8 +78,10 @@ export function ProvidersPage() {
       </div>
       {showCreate ? <CreateProviderKeyModal onClose={() => setShowCreate(false)} /> : null}
       {openAccount ? <ProviderKeyDetailPanel account={openAccount} onClose={() => setOpenAccountId(null)} /> : null}
+      <ProviderRegistrySection providers={providers} />
       <ProviderGroupsList
         accounts={accounts}
+        providers={providers}
         searchValue={searchValue}
         users={users}
         boundKeys={boundKeys}

@@ -22,6 +22,7 @@ import { createId } from "../util.js";
 import { AdminMutationError } from "./adminErrors.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
 import type { ProviderCredentialOptions } from "./providerCredentials.js";
+import { ProviderRegistryError, validateProviderBaseUrl } from "./providers.js";
 
 const createCredentialBodySchema = z.object({
   provider: z.string().trim().min(1),
@@ -64,6 +65,9 @@ export class ProviderCredentialAdminService {
     const oauthCredential = body.data.authType === "oauth"
       ? parseOAuthCredential(body.data)
       : undefined;
+    if (body.data.baseUrl) {
+      await validateCredentialBaseUrl(body.data.baseUrl, this.options);
+    }
 
     const providerAccountId = createId("provider_account");
     const secret = oauthCredential?.secret ?? body.data.apiKey;
@@ -400,4 +404,17 @@ function validationError(message: string, error: z.ZodError) {
       message: issue.message
     }))
   );
+}
+
+async function validateCredentialBaseUrl(baseUrl: string, options: ProviderCredentialOptions) {
+  try {
+    await validateProviderBaseUrl(baseUrl, options);
+  } catch (error) {
+    if (error instanceof ProviderRegistryError) {
+      throw new ProviderCredentialAdminError(error.code, 400, [
+        { path: "baseUrl", message: error.message }
+      ]);
+    }
+    throw error;
+  }
 }

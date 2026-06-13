@@ -57,7 +57,7 @@ export function ApiKeyProviderBinding({ apiKey, providerAccounts }: {
                 <Link to="/provider-keys" className="btn btn-sm" onClick={() => setOpen(false)}>Add provider keys</Link>
               </div>
             ) : (
-              PROVIDER_ORDER.map((provider) => (
+              orderedProviders(activeAccounts, apiKey).map((provider) => (
                 <ProviderSection
                   key={provider}
                   provider={provider}
@@ -103,4 +103,13 @@ function bindingLabel(apiKey: ApiKeySummary) {
   const names = apiKey.providerCredentials.map((binding) => binding.name ?? binding.provider);
   if (names.length === 0) return "None";
   return names.join(", ");
+}
+
+function orderedProviders(accounts: ProviderAccountSummary[], apiKey: ApiKeySummary) {
+  const providers = new Set<ProviderName>([
+    ...PROVIDER_ORDER,
+    ...accounts.map((account) => account.provider),
+    ...apiKey.providerCredentials.map((binding) => binding.provider)
+  ]);
+  return [...providers];
 }

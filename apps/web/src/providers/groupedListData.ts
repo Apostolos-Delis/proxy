@@ -1,7 +1,7 @@
 import { PROVIDER_ORDER } from "../providers";
 import type { ApiKeySummary } from "../routing/data";
 import { ownerLabel, type UserDirectory } from "../userDirectory";
-import type { ProviderAccountSummary } from "./data";
+import type { ProviderAccountSummary, ProviderRegistrySummary } from "./data";
 
 export type ProviderGroup = {
   provider: string;
@@ -26,12 +26,13 @@ export function boundKeysByAccount(apiKeys: ApiKeySummary[]) {
 
 export function providerGroups(
   accounts: ProviderAccountSummary[],
+  providers: ProviderRegistrySummary[],
   searchValue: string,
   users: UserDirectory,
   boundKeys: Map<string, ApiKeySummary[]> | null
 ): ProviderGroup[] {
   const query = searchValue.trim().toLowerCase();
-  return orderedProviders(accounts)
+  return orderedProviders(accounts, providers)
     .map((provider) => {
       const all = accounts.filter((account) => account.provider === provider).sort(compareAccounts);
       const visible = query ? all.filter((account) => matchesQuery(account, query, users, boundKeys)) : all;
@@ -52,10 +53,11 @@ export function authTypeLabel(account: ProviderAccountSummary) {
   return "Subscription";
 }
 
-function orderedProviders(accounts: ProviderAccountSummary[]) {
+function orderedProviders(accounts: ProviderAccountSummary[], providers: ProviderRegistrySummary[]) {
   const known: string[] = [...PROVIDER_ORDER];
+  const registry = providers.map((provider) => provider.slug).filter((provider) => !known.includes(provider));
   const extras = accounts.map((account) => account.provider).filter((provider) => !known.includes(provider));
-  return [...known, ...new Set(extras)];
+  return [...known, ...new Set([...registry, ...extras])];
 }
 
 function compareAccounts(left: ProviderAccountSummary, right: ProviderAccountSummary) {

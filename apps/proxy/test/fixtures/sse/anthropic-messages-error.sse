@@ -3,4 +3,3 @@ data: {"type":"message_start","message":{"id":"msg_02ERR","type":"message","role
 
 event: error
 data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}
-

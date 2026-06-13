@@ -38,6 +38,17 @@ export type CreateProviderCredentialInput = {
   provider: string;
 };
 
+export type CreateProviderInput = {
+  authStyle: string;
+  baseUrl: string;
+  defaultHeaders?: unknown;
+  displayName: string;
+  enabled?: boolean | null | undefined;
+  endpoints: Array<ProviderEndpointInput>;
+  forwardHarnessHeaders?: boolean | null | undefined;
+  slug: string;
+};
+
 export type CreateRoutingConfigInput = {
   config: unknown;
   description?: string | null | undefined;
@@ -71,6 +82,11 @@ export type ProviderAccountAuthType =
   | 'api_key'
   | 'oauth';
 
+export type ProviderEndpointInput = {
+  dialect: string;
+  path: string;
+};
+
 export type RouteQualitySettingsInput = {
   lowConfidenceThreshold?: number | null | undefined;
 };
@@ -102,6 +118,17 @@ export type SettingsInput = {
   schemaVersion?: number | null | undefined;
   systemPrompt?: string | null | undefined;
   toolResultCompression?: boolean | null | undefined;
+};
+
+export type UpdateProviderInput = {
+  authStyle: string;
+  baseUrl: string;
+  defaultHeaders?: unknown;
+  displayName: string;
+  enabled?: boolean | null | undefined;
+  endpoints: Array<ProviderEndpointInput>;
+  forwardHarnessHeaders?: boolean | null | undefined;
+  providerId: string | number;
 };
 
 export type UsageGroupBy =
@@ -255,7 +282,12 @@ export type SubscriptionAuthSettingQuery = { settings: { subscriptionOAuthEnable
 export type ProviderAccountsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type ProviderAccountsQuery = { providerAccounts: Array<{ id: string, organizationId: string, provider: string, name: string, authType: ProviderAccountAuthType, status: string, secretHint: string | null, ownerUserId: string | null, boundKeyCount: number, createdAt: string, lastUsedAt: string | null }> };
+export type ProviderAccountsQuery = { providerAccounts: Array<{ id: string, organizationId: string, provider: string, name: string, authType: ProviderAccountAuthType, status: string, baseUrl: string | null, secretHint: string | null, ownerUserId: string | null, boundKeyCount: number, createdAt: string, lastUsedAt: string | null }> };
+
+export type ProviderRegistryQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type ProviderRegistryQuery = { providers: Array<{ id: string, organizationId: string | null, slug: string, displayName: string, baseUrl: string, authStyle: string, defaultHeaders: unknown, forwardHarnessHeaders: boolean, enabled: boolean, builtin: boolean, endpoints: Array<{ dialect: string, path: string }> }> };
 
 export type CreateProviderCredentialMutationVariables = Exact<{
   input: CreateProviderCredentialInput;
@@ -263,6 +295,27 @@ export type CreateProviderCredentialMutationVariables = Exact<{
 
 
 export type CreateProviderCredentialMutation = { createProviderCredential: { id: string, name: string } | null };
+
+export type CreateProviderMutationVariables = Exact<{
+  input: CreateProviderInput;
+}>;
+
+
+export type CreateProviderMutation = { createProvider: { id: string, slug: string, displayName: string, baseUrl: string, authStyle: string, enabled: boolean, builtin: boolean } | null };
+
+export type UpdateProviderMutationVariables = Exact<{
+  input: UpdateProviderInput;
+}>;
+
+
+export type UpdateProviderMutation = { updateProvider: { id: string, slug: string, displayName: string, baseUrl: string, authStyle: string, enabled: boolean, builtin: boolean } | null };
+
+export type DisableProviderMutationVariables = Exact<{
+  providerId: string | number;
+}>;
+
+
+export type DisableProviderMutation = { disableProvider: { id: string, enabled: boolean } | null };
 
 export type RevokeProviderCredentialMutationVariables = Exact<{
   providerAccountId: string | number;
@@ -1147,6 +1200,7 @@ export const ProviderAccountsDocument = new TypedDocumentString(`
     name
     authType
     status
+    baseUrl
     secretHint
     ownerUserId
     boundKeyCount
@@ -1155,6 +1209,26 @@ export const ProviderAccountsDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<ProviderAccountsQuery, ProviderAccountsQueryVariables>;
+export const ProviderRegistryDocument = new TypedDocumentString(`
+    query ProviderRegistry {
+  providers {
+    id
+    organizationId
+    slug
+    displayName
+    baseUrl
+    authStyle
+    endpoints {
+      dialect
+      path
+    }
+    defaultHeaders
+    forwardHarnessHeaders
+    enabled
+    builtin
+  }
+}
+    `) as unknown as TypedDocumentString<ProviderRegistryQuery, ProviderRegistryQueryVariables>;
 export const CreateProviderCredentialDocument = new TypedDocumentString(`
     mutation CreateProviderCredential($input: CreateProviderCredentialInput!) {
   createProviderCredential(input: $input) {
@@ -1163,6 +1237,40 @@ export const CreateProviderCredentialDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CreateProviderCredentialMutation, CreateProviderCredentialMutationVariables>;
+export const CreateProviderDocument = new TypedDocumentString(`
+    mutation CreateProvider($input: CreateProviderInput!) {
+  createProvider(input: $input) {
+    id
+    slug
+    displayName
+    baseUrl
+    authStyle
+    enabled
+    builtin
+  }
+}
+    `) as unknown as TypedDocumentString<CreateProviderMutation, CreateProviderMutationVariables>;
+export const UpdateProviderDocument = new TypedDocumentString(`
+    mutation UpdateProvider($input: UpdateProviderInput!) {
+  updateProvider(input: $input) {
+    id
+    slug
+    displayName
+    baseUrl
+    authStyle
+    enabled
+    builtin
+  }
+}
+    `) as unknown as TypedDocumentString<UpdateProviderMutation, UpdateProviderMutationVariables>;
+export const DisableProviderDocument = new TypedDocumentString(`
+    mutation DisableProvider($providerId: ID!) {
+  disableProvider(providerId: $providerId) {
+    id
+    enabled
+  }
+}
+    `) as unknown as TypedDocumentString<DisableProviderMutation, DisableProviderMutationVariables>;
 export const RevokeProviderCredentialDocument = new TypedDocumentString(`
     mutation RevokeProviderCredential($providerAccountId: ID!) {
   revokeProviderCredential(providerAccountId: $providerAccountId) {

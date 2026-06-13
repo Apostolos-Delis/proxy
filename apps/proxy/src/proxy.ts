@@ -21,6 +21,12 @@ import { copySelectedHeaders, detectHarness, dialectHeadersFor, identityHeadersF
 import { sseObserverForDialect, type StreamObservation } from "./sseObserver.js";
 import { translators, type DialectTranslator } from "./translators/index.js";
 import type { JsonObject, Provider, RouteDecision, Surface, UpstreamCredential } from "./types.js";
+import {
+  fetchWithPinnedAddress,
+  providerRequestPinnedAddress,
+  providerRequestRedirect,
+  providerRequestUrl
+} from "./upstream.js";
 
 export class ProviderProxy implements ProviderAdapter {
   constructor(
@@ -378,7 +384,13 @@ export class ProviderProxy implements ProviderAdapter {
     const maxAttempts = this.config.providerRateLimitMaxAttempts;
 
     for (let upstreamAttempt = 1; upstreamAttempt <= maxAttempts; upstreamAttempt += 1) {
-      const upstream = await fetch(urlFor(provider, endpoint, input.path, this.config, input.credential), {
+      const upstream = await fetchWithPinnedAddress(providerRequestUrl({
+        provider,
+        endpoint,
+        path: input.path,
+        config: this.config,
+        credential: input.credential
+      }), {
         method: "POST",
         headers: providerRequestHeaders({
           config: this.config,
@@ -390,9 +402,9 @@ export class ProviderProxy implements ProviderAdapter {
           credential: input.credential
         }),
         body: JSON.stringify(input.body),
-        redirect: provider.builtin ? "follow" : "manual",
+        redirect: providerRequestRedirect({ provider, credential: input.credential }),
         signal
-      });
+      }, providerRequestPinnedAddress({ provider, config: this.config, credential: input.credential }));
 
       if (upstream.status !== 429 || upstreamAttempt === maxAttempts) {
         return upstream;
@@ -432,19 +444,6 @@ export class ProviderProxy implements ProviderAdapter {
 
     throw new Error("Provider rate-limit retry loop exhausted.");
   }
-}
-
-function urlFor(
-  provider: ProviderRegistryEntry,
-  endpoint: ProviderRegistryEndpoint,
-  path: string | undefined,
-  config: AppConfig,
-  credential?: UpstreamCredential
-) {
-  const baseUrl = isOpenAIChatGPTCredential(provider, credential, config)
-    ? config.openaiChatgptBaseUrl
-    : provider.baseUrl;
-  return `${baseUrl}${path ?? endpoint.path}`;
 }
 
 export function providerRequestHeaders(input: {

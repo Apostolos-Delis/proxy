@@ -5,6 +5,7 @@ import {
   ProviderRegistryError,
   validateProviderBaseUrl
 } from "../src/persistence/providers.js";
+import { lookupForPinnedAddress } from "../src/upstream.js";
 
 describe("provider registry guards", () => {
   it("rejects auth-bearing default headers", () => {
@@ -38,7 +39,25 @@ describe("provider registry guards", () => {
 
     await expect(validateProviderBaseUrl("http://10.1.2.3:8000/v1", {
       allowedPrivateUpstreamCidrs: ["10.0.0.0/8"]
-    })).resolves.toBeUndefined();
+    })).resolves.toMatchObject({
+      hostname: "10.1.2.3",
+      address: "10.1.2.3",
+      family: 4
+    });
+  });
+
+  it("pins connection lookup to the validated address", async () => {
+    const lookup = lookupForPinnedAddress({
+      hostname: "provider.example",
+      address: "203.0.113.10",
+      family: 4
+    });
+    await expect(new Promise((resolve, reject) => {
+      lookup("provider.example", { all: true }, (error, address) => {
+        if (error) reject(error);
+        else resolve(address);
+      });
+    })).resolves.toEqual([{ address: "203.0.113.10", family: 4 }]);
   });
 });
 

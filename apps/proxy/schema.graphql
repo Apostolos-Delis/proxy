@@ -155,6 +155,17 @@ input CreateProviderCredentialInput {
   provider: String!
 }
 
+input CreateProviderInput {
+  authStyle: String!
+  baseUrl: String!
+  defaultHeaders: JSON
+  displayName: String!
+  enabled: Boolean
+  endpoints: [ProviderEndpointInput!]!
+  forwardHarnessHeaders: Boolean
+  slug: String!
+}
+
 input CreateRoutingConfigInput {
   config: JSON!
   description: String
@@ -287,11 +298,13 @@ type Mutation {
   configurePromptCapture(promptCaptureMode: String!, retentionDays: Int!): PromptCaptureConfig!
   createApiKey(input: CreateApiKeyInput!): CreateApiKeyResult!
   createInvitation(input: CreateInvitationInput!): InvitationActionResult!
+  createProvider(input: CreateProviderInput!): ProviderRegistryEntry
   createProviderCredential(input: CreateProviderCredentialInput!): ProviderAccount
   createRoutingConfig(input: CreateRoutingConfigInput!): RoutingConfigDetail!
   createRoutingConfigVersion(config: JSON!, configId: ID!): RoutingConfigDetail!
   createWorkspace(input: CreateWorkspaceInput!): WorkspaceSummary!
   deactivateUser(userId: ID!): UserStatusResult!
+  disableProvider(providerId: ID!): ProviderRegistryEntry
   login(email: String!, password: String!): Viewer!
   logout: Boolean!
   reactivateUser(userId: ID!): UserStatusResult!
@@ -302,6 +315,7 @@ type Mutation {
   setModelPricing(input: SetModelPricingInput!): [ModelPricingEntry!]!
   switchOrganization(organizationId: ID!): Viewer!
   switchWorkspace(workspaceId: ID!): Viewer!
+  updateProvider(input: UpdateProviderInput!): ProviderRegistryEntry
   updateSettings(input: SettingsInput!): Settings!
   updateUserRole(role: MemberRole!, userId: ID!): UpdateUserRoleResult!
 }
@@ -498,9 +512,16 @@ type ProviderEndpoint {
   path: String!
 }
 
+input ProviderEndpointInput {
+  dialect: String!
+  path: String!
+}
+
 type ProviderRegistryEntry {
   authStyle: String!
+  baseUrl: String!
   builtin: Boolean!
+  defaultHeaders: JSON!
   displayName: String!
   enabled: Boolean!
   endpoints: [ProviderEndpoint!]!
@@ -882,6 +903,17 @@ type TokenTotals {
   outputTokens: Float!
   reasoningTokens: Float!
   totalTokens: Float!
+}
+
+input UpdateProviderInput {
+  authStyle: String!
+  baseUrl: String!
+  defaultHeaders: JSON
+  displayName: String!
+  enabled: Boolean
+  endpoints: [ProviderEndpointInput!]!
+  forwardHarnessHeaders: Boolean
+  providerId: ID!
 }
 
 type UpdateUserRoleResult {
