@@ -20,7 +20,7 @@ import { PromptArtifactStore } from "./promptArtifacts.js";
 import { PersistentRequestStateStore } from "./requestState.js";
 import { RoutingConfigAdminService } from "./routingConfigAdmin.js";
 import { RoutingConfigResolver } from "./routingConfig.js";
-import { createSessionPinLoader } from "./sessionRoute.js";
+import { createSessionPinLoader, SessionSystemPromptStore } from "./sessionRoute.js";
 import { normalizeLegacyCachedUsage } from "./usageNormalization.js";
 import { repriceZeroCostUsage } from "./usageRepricing.js";
 import { UserAdminService } from "./userAdmin.js";
@@ -67,6 +67,7 @@ export function createDatabasePersistence(
     routingConfigAdmin: new RoutingConfigAdminService(transactional),
     routingConfigs: new RoutingConfigResolver(db),
     sessionPins: createSessionPinLoader(db),
+    sessionPrompts: new SessionSystemPromptStore(db),
     userAdmin: new UserAdminService(transactional, { invitationTtlSeconds: config.invitationTtlSeconds }),
     workspaceAdmin: new WorkspaceAdminService(transactional),
     normalizeLegacyCachedUsage: () => normalizeLegacyCachedUsage(db),

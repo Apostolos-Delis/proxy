@@ -38,9 +38,15 @@ function openaiDecision(model = "gpt-5.5") {
 }
 
 describe("injectAutomaticCacheControl transform", () => {
+  const largeText = "x".repeat(8192);
   const multiTurnMessages = [
     { role: "user", content: "first question" },
     { role: "assistant", content: "first answer" },
+    { role: "user", content: "follow-up" }
+  ];
+  const largeMultiTurnMessages = [
+    { role: "user", content: "first question" },
+    { role: "assistant", content: largeText },
     { role: "user", content: "follow-up" }
   ];
 
@@ -129,13 +135,23 @@ describe("injectAutomaticCacheControl transform", () => {
   });
 
   it("gives an injected breakpoint the 1h TTL when both settings are on", () => {
-    const body = { model: "claude-router-hard", messages: multiTurnMessages };
+    const body = { model: "claude-router-hard", messages: largeMultiTurnMessages };
 
     const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, {
       automaticCaching: true,
       upgradeCacheTtl: true
     }) as any;
     expect(result.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+  });
+
+  it("keeps an injected breakpoint at the default TTL for small multi-turn requests", () => {
+    const body = { model: "claude-router-hard", messages: multiTurnMessages };
+
+    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, {
+      automaticCaching: true,
+      upgradeCacheTtl: true
+    }) as any;
+    expect(result.cache_control).toEqual({ type: "ephemeral" });
   });
 
   it("is a no-op when automaticCaching is not set", () => {

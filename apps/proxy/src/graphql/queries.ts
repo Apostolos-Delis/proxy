@@ -1,4 +1,4 @@
-import { CACHE_TTL_DEFAULT_MS, CACHE_TTL_UPGRADED_MS } from "../cacheWindows.js";
+import { CACHE_TTL_DEFAULT_MS, CACHE_TTL_POLICY_LOOKBACK_MS, CACHE_TTL_UPGRADED_MS } from "../cacheWindows.js";
 import { aggregateIdleGaps } from "../persistence/idleGaps.js";
 import { aggregateTokenAttribution } from "../persistence/tokenAttributionReport.js";
 import { compareModelPricingEntries, staticPricingEntries } from "../pricing.js";
@@ -200,12 +200,15 @@ builder.queryFields((t) => ({
     resolve: async (_root, _args, context) => {
       const queries = scopedQueries(context);
       if (!queries) return { activeSessions: 0, windowMs: CACHE_TTL_DEFAULT_MS };
-      // The warm window is the org's effective cache TTL: with the 1h upgrade
-      // on, a prompt edit busts every session active within the last hour, not
-      // just five minutes.
       const upgraded = await context.persistence?.organizationSettings
         .cacheTtlUpgrade(context.identity().organizationId);
-      return queries.activeSessionCount(upgraded ? CACHE_TTL_UPGRADED_MS : CACHE_TTL_DEFAULT_MS);
+      const idleGaps = upgraded
+        ? await queries.idleGaps({ start: new Date(Date.now() - CACHE_TTL_POLICY_LOOKBACK_MS).toISOString() })
+        : undefined;
+      const windowMs = idleGaps && idleGaps.recoverableByOneHourTtl > 0
+        ? CACHE_TTL_UPGRADED_MS
+        : CACHE_TTL_DEFAULT_MS;
+      return queries.activeSessionCount(windowMs);
     }
   }),
 

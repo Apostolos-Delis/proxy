@@ -1196,9 +1196,8 @@ export class AdminQueryService {
     return { routes };
   }
 
-  // Sessions with a request inside the cache-warm window. Editing the org
-  // system prompt shifts the front of every prefix, so each of these sessions
-  // pays a full cache rebuild on its next request — this is the blast radius.
+  // Sessions with a request inside the cache-warm window. Admin surfaces use
+  // this to size warm traffic without reimplementing provider TTL policy.
   async activeSessionCount(withinMs = CACHE_TTL_DEFAULT_MS) {
     const since = new Date(Date.now() - withinMs);
     const [row] = await this.db

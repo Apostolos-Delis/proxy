@@ -60,25 +60,12 @@ const UpdateSettingsDocument = graphql(`
   }
 `);
 
-const ActiveSessionsDocument = graphql(`
-  query ActiveSessions {
-    activeSessionCount {
-      activeSessions
-      windowMs
-    }
-  }
-`);
-
 export function SettingsPage() {
   const queryClient = useQueryClient();
   const [savedNeedsRestart, setSavedNeedsRestart] = useState(false);
   const { isLoading: queryIsLoading, error: queryError, data: queryData } = useQuery({
     queryKey: ["settings"],
     queryFn: async () => (await gqlFetch(SettingsViewDocument)).settings
-  });
-  const { data: activeSessionsQueryData } = useQuery({
-    queryKey: ["active-sessions"],
-    queryFn: async () => (await gqlFetch(ActiveSessionsDocument)).activeSessionCount
   });
   const mutation = useMutation({
     mutationFn: async (settings: EditableSettings) =>
@@ -99,8 +86,6 @@ export function SettingsPage() {
         storagePath={queryData.storage.path}
         storageReason={queryData.storage.reason}
         restartRequiredFor={queryData.restartRequiredFor}
-        activeSessions={activeSessionsQueryData?.activeSessions ?? null}
-        activeWindowMs={activeSessionsQueryData?.windowMs ?? null}
         saving={mutation.isPending}
         justSaved={mutation.isSuccess}
         justSavedRestart={savedNeedsRestart}

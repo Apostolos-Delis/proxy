@@ -432,11 +432,6 @@ export type UpdateSettingsMutationVariables = Exact<{
 
 export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
-export type ActiveSessionsQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type ActiveSessionsQuery = { activeSessionCount: { activeSessions: number, windowMs: number } };
-
 export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } };
 
 export type UsageReportViewQueryVariables = Exact<{
@@ -1806,14 +1801,6 @@ export const UpdateSettingsDocument = new TypedDocumentString(`
     }
   }
 }`) as unknown as TypedDocumentString<UpdateSettingsMutation, UpdateSettingsMutationVariables>;
-export const ActiveSessionsDocument = new TypedDocumentString(`
-    query ActiveSessions {
-  activeSessionCount {
-    activeSessions
-    windowMs
-  }
-}
-    `) as unknown as TypedDocumentString<ActiveSessionsQuery, ActiveSessionsQueryVariables>;
 export const UsageReportViewDocument = new TypedDocumentString(`
     query UsageReportView($groupBy: UsageGroupBy!, $start: String, $end: String) {
   usage(groupBy: $groupBy, start: $start, end: $end) {

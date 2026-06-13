@@ -6,6 +6,7 @@ import {
   compressForForward,
   compressToolResults,
   MIN_COMPRESSIBLE_CHARS,
+  MIN_DUPLICATE_TOOL_RESULT_CHARS,
   compressionRules,
   type CompressionRule
 } from "../src/toolResultCompression.js";
@@ -19,11 +20,12 @@ const truncateRule: CompressionRule = {
 };
 
 const big = "x".repeat(MIN_COMPRESSIBLE_CHARS + 100);
+const duplicateBig = "d".repeat(MIN_DUPLICATE_TOOL_RESULT_CHARS + 100);
 
 describe("compressToolResults", () => {
   it("leaves non-matching tools untouched under the default registry", () => {
-    // The default registry only carries the mcp__* rule, so a Bash result is
-    // not compressed and its content is preserved verbatim.
+    // Plain Bash output has no noise for the default Bash filter to strip, so
+    // its content is preserved verbatim.
     const body = {
       messages: [
         { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] },
@@ -99,6 +101,65 @@ describe("compressToolResults", () => {
     expect(result.body.messages[1].content[0].content).toBe("compacted");
   });
 
+  it("elides duplicate large Anthropic tool results that no rule rewrites", () => {
+    const body = {
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "t1", name: "Read", input: { path: "a.ts" } },
+            { type: "tool_use", id: "t2", name: "Read", input: { path: "b.ts" } }
+          ]
+        },
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "t1", content: duplicateBig },
+            { type: "tool_result", tool_use_id: "t2", content: duplicateBig }
+          ]
+        }
+      ]
+    };
+
+    const result = compressToolResults("anthropic-messages", body) as any;
+
+    expect(result.records).toEqual([
+      expect.objectContaining({ tool: "Read", rule: "duplicate-tool-result", beforeChars: duplicateBig.length })
+    ]);
+    expect(result.body.messages[1].content[0].content).toBe(duplicateBig);
+    expect(result.body.messages[1].content[1].content).toContain("duplicate tool result omitted");
+    expect(result.body.messages[1].content[1].content).not.toContain(duplicateBig.slice(0, 50));
+  });
+
+  it("preserves duplicate array content when it carries cache_control markers", () => {
+    const markedContent = [
+      { type: "text", text: duplicateBig, cache_control: { type: "ephemeral" } }
+    ];
+    const body = {
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "t1", name: "Read", input: { path: "a.ts" } },
+            { type: "tool_use", id: "t2", name: "Read", input: { path: "b.ts" } }
+          ]
+        },
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "t1", content: markedContent },
+            { type: "tool_result", tool_use_id: "t2", content: markedContent }
+          ]
+        }
+      ]
+    };
+
+    const result = compressToolResults("anthropic-messages", body) as any;
+
+    expect(result.records).toEqual([]);
+    expect(result.body.messages[1].content[1].content).toEqual(markedContent);
+  });
+
   it("falls back to the unknown tool name when the assistant tool_use turn is missing", () => {
     const body = {
       messages: [
@@ -157,6 +218,26 @@ describe("compressToolResults", () => {
     const result = compressToolResults("openai-responses", body, [truncateRule]) as any;
     expect(result.records[0].tool).toBe("Bash");
     expect(result.body.input[1].output).toBe("xxxxxxxxxx…[truncated]");
+  });
+
+  it("elides duplicate large OpenAI function outputs that no rule rewrites", () => {
+    const body = {
+      input: [
+        { type: "function_call", call_id: "c1", name: "read_file", arguments: "{}" },
+        { type: "function_call_output", call_id: "c1", output: duplicateBig },
+        { type: "function_call", call_id: "c2", name: "read_file", arguments: "{}" },
+        { type: "function_call_output", call_id: "c2", output: duplicateBig }
+      ]
+    };
+
+    const result = compressToolResults("openai-responses", body) as any;
+
+    expect(result.records).toEqual([
+      expect.objectContaining({ tool: "read_file", rule: "duplicate-tool-result", beforeChars: duplicateBig.length })
+    ]);
+    expect(result.body.input[1].output).toBe(duplicateBig);
+    expect(result.body.input[3].output).toContain("duplicate tool result omitted");
+    expect(result.body.input[3].output).not.toContain(duplicateBig.slice(0, 50));
   });
 
   it("never grows a block: a rule that expands content is discarded", () => {

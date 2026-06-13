@@ -2,7 +2,7 @@ import { bashOutputRule } from "./compressionRules/bashOutput.js";
 import { mcpJsonRule } from "./compressionRules/mcpJson.js";
 import type { EventService } from "./events.js";
 import type { JsonObject, Surface } from "./types.js";
-import { isRecord, stableJson, stringField } from "./util.js";
+import { isRecord, sha256, stableJson, stringField } from "./util.js";
 
 // Deterministic compression of tool-result content before it reaches the
 // provider. Determinism is non-negotiable: the harness re-sends the full
@@ -45,6 +45,7 @@ export type CompressionResult = { body: unknown; records: CompressionRecord[] };
 // path for cheap calls and avoids touching small blocks where compression
 // cannot pay for itself.
 export const MIN_COMPRESSIBLE_CHARS = 2048;
+export const MIN_DUPLICATE_TOOL_RESULT_CHARS = 4096;
 
 // Registered rules, evaluated in order; first match wins. Only applied for
 // orgs that have opted into tool-result compression.
@@ -138,6 +139,7 @@ export async function compressForForward(input: {
 function compressAnthropic(request: Record<string, unknown>, rules: CompressionRule[], records: CompressionRecord[]): unknown {
   if (!Array.isArray(request.messages)) return request;
   const toolNames = anthropicToolNames(request.messages);
+  const seen = new Set<string>();
   let changed = false;
   const messages = request.messages.map((message) => {
     if (!isRecord(message) || message.role !== "user" || !Array.isArray(message.content)) return message;
@@ -148,7 +150,12 @@ function compressAnthropic(request: Record<string, unknown>, rules: CompressionR
       const ref = toolUseId ? toolNames.get(toolUseId) : undefined;
       const toolName = ref?.name ?? "unknown";
       const replaced = applyRules(rules, toolName, ref?.input, block.content, records);
-      if (replaced === undefined) return block;
+      if (replaced === undefined) {
+        const duplicate = duplicateToolResult(toolName, block.content, seen, records);
+        if (duplicate === undefined) return block;
+        messageChanged = true;
+        return { ...block, content: duplicate };
+      }
       messageChanged = true;
       return { ...block, content: replaced };
     });
@@ -162,6 +169,7 @@ function compressAnthropic(request: Record<string, unknown>, rules: CompressionR
 function compressOpenAI(request: Record<string, unknown>, rules: CompressionRule[], records: CompressionRecord[]): unknown {
   if (!Array.isArray(request.input)) return request;
   const callNames = openAICallNames(request.input);
+  const seen = new Set<string>();
   let changed = false;
   const input = request.input.map((item) => {
     if (!isRecord(item) || item.type !== "function_call_output") return item;
@@ -169,7 +177,12 @@ function compressOpenAI(request: Record<string, unknown>, rules: CompressionRule
     const ref = callId ? callNames.get(callId) : undefined;
     const toolName = ref?.name ?? "unknown";
     const replaced = applyRules(rules, toolName, ref?.input, item.output, records);
-    if (replaced === undefined) return item;
+    if (replaced === undefined) {
+      const duplicate = duplicateToolResult(toolName, item.output, seen, records);
+      if (duplicate === undefined) return item;
+      changed = true;
+      return { ...item, output: duplicate };
+    }
     changed = true;
     return { ...item, output: replaced };
   });
@@ -195,6 +208,35 @@ function applyRules(
   if (afterChars >= beforeChars) return undefined; // never grow a block
   records.push({ tool: toolName, rule: rule.label, beforeChars, afterChars });
   return replaced;
+}
+
+function duplicateToolResult(
+  toolName: string,
+  content: unknown,
+  seen: Set<string>,
+  records: CompressionRecord[]
+): unknown {
+  const beforeChars = contentChars(content);
+  if (beforeChars < MIN_DUPLICATE_TOOL_RESULT_CHARS) return undefined;
+  if (Array.isArray(content) && hasCacheControl(content)) return undefined;
+  const hash = sha256(typeof content === "string" ? content : stableJson(content));
+  if (!seen.has(hash)) {
+    seen.add(hash);
+    return undefined;
+  }
+  const marker = `[duplicate tool result omitted: same content appeared earlier in this request; chars=${beforeChars}; hash=${hash}]`;
+  const replaced = Array.isArray(content) ? [{ type: "text", text: marker }] : marker;
+  const afterChars = contentChars(replaced);
+  if (afterChars >= beforeChars) return undefined;
+  records.push({ tool: toolName, rule: "duplicate-tool-result", beforeChars, afterChars });
+  return replaced;
+}
+
+function hasCacheControl(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some((item) => hasCacheControl(item));
+  if (!isRecord(value)) return false;
+  if (value.cache_control !== undefined) return true;
+  return hasCacheControl(value.content);
 }
 
 function anthropicToolNames(messages: unknown): Map<string, ToolRef> {

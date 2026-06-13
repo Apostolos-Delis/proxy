@@ -21,8 +21,6 @@ export function SettingsForm({
   storagePath,
   storageReason,
   restartRequiredFor,
-  activeSessions,
-  activeWindowMs,
   saving,
   justSaved,
   justSavedRestart,
@@ -34,8 +32,6 @@ export function SettingsForm({
   storagePath: string;
   storageReason: string;
   restartRequiredFor: string[];
-  activeSessions: number | null;
-  activeWindowMs: number | null;
   saving: boolean;
   justSaved: boolean;
   justSavedRestart: boolean;
@@ -110,12 +106,9 @@ export function SettingsForm({
             {section.rows.map((row) => (
               <SettingRow key={row.id} row={row} settings={settings} initial={initial} onChange={setSettings} />
             ))}
-            {section.id === "system" && systemPromptEdited && activeSessions !== null && activeSessions > 0 ? (
+            {section.id === "system" && systemPromptEdited ? (
               <div className="settings-warning">
-                Editing the system prompt shifts the front of every cached prefix.
-                {" "}
-                <strong>{activeSessions}</strong> {activeSessions === 1 ? "session" : "sessions"} active in the
-                {" "}{windowLabel(activeWindowMs)} as of page load will pay a full cache rebuild on the next request.
+                Active harness sessions keep their pinned organization prompt. This change applies to new sessions and sessionless requests.
               </div>
             ) : null}
           </SettingsSectionCard>
@@ -152,13 +145,4 @@ export function SettingsForm({
       </div>
     </form>
   );
-}
-
-function windowLabel(windowMs: number | null) {
-  const minutes = Math.round((windowMs ?? 5 * 60 * 1000) / 60000);
-  if (minutes >= 60 && minutes % 60 === 0) {
-    const hours = minutes / 60;
-    return `last ${hours} ${hours === 1 ? "hour" : "hours"}`;
-  }
-  return `last ${minutes} minutes`;
 }

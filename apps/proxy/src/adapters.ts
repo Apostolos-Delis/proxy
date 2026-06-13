@@ -2,7 +2,7 @@ import type { FastifyReply } from "fastify";
 
 import { buildAnthropicContext, buildOpenAIContext } from "./features.js";
 import type { RouteContext, RouteDecision, Surface, Provider, SelectedRouteSettings, UpstreamCredential } from "./types.js";
-import { isRecord } from "./util.js";
+import { isRecord, roughTokenEstimate, stableJson } from "./util.js";
 
 export type SurfaceAdapter = {
   readonly surface: Surface;
@@ -50,6 +50,8 @@ export type RewriteOptions = {
   automaticCaching?: boolean;
 };
 
+const MIN_TTL_UPGRADE_CACHEABLE_TOKENS = 2048;
+
 export function rewriteSurfaceRequest(
   body: unknown,
   decision: RouteDecision,
@@ -64,10 +66,10 @@ export function rewriteSurfaceRequest(
   }
   if (decision.surface === "anthropic-messages" && decision.providerSettings.provider === "anthropic") {
     const rewritten = rewriteAnthropicMessagesRequest(body, decision.providerSettings, systemPrompt);
-    // Inject before the TTL upgrade so an injected breakpoint picks up the
-    // org's 1-hour TTL when both settings are on.
+    // Inject before the TTL policy runs so automatic breakpoints are eligible
+    // for the same adaptive 1-hour upgrade as client-provided breakpoints.
     if (options.automaticCaching) injectAutomaticCacheControl(rewritten);
-    if (options.upgradeCacheTtl) upgradeCacheControlTtl(rewritten);
+    if (options.upgradeCacheTtl && shouldUpgradeCacheControlTtl(rewritten)) upgradeCacheControlTtl(rewritten);
     return rewritten;
   }
   throw new Error("Selected provider settings do not match the request surface.");
@@ -91,7 +93,7 @@ export function rewriteTokenCountRequest(
   // Deliberately no automatic-caching injection here: cache_control changes
   // pricing, not token counts, so injecting would send count_tokens a field
   // it can't benefit from.
-  if (options.upgradeCacheTtl) upgradeCacheControlTtl(request);
+  if (options.upgradeCacheTtl && shouldUpgradeCacheControlTtl(request)) upgradeCacheControlTtl(request);
   return request;
 }
 
@@ -132,6 +134,12 @@ function injectAutomaticCacheControl(request: Record<string, unknown>) {
   request.cache_control = { type: "ephemeral" };
 }
 
+function shouldUpgradeCacheControlTtl(request: Record<string, unknown>) {
+  if (!Array.isArray(request.messages)) return false;
+  if (!request.messages.some((message) => isRecord(message) && message.role === "assistant")) return false;
+  return roughTokenEstimate(largestCacheControlPrefixChars(request)) >= MIN_TTL_UPGRADE_CACHEABLE_TOKENS;
+}
+
 function hasCacheControl(request: Record<string, unknown>): boolean {
   if (request.cache_control !== undefined) return true;
   if (anyBlockHasCacheControl(request.tools)) return true;
@@ -154,6 +162,83 @@ function anyBlockHasCacheControl(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if (value.cache_control !== undefined) return true;
   return Array.isArray(value.content) && anyBlockHasCacheControl(value.content);
+}
+
+function cacheablePrefixChars(request: Record<string, unknown>) {
+  let chars = 0;
+  chars += request.tools === undefined ? 0 : stableJson(request.tools).length;
+  chars += contentChars(request.system);
+  if (Array.isArray(request.messages)) {
+    for (const message of request.messages) {
+      chars += isRecord(message) ? contentChars(message.content) : contentChars(message);
+    }
+  }
+  return chars;
+}
+
+function largestCacheControlPrefixChars(request: Record<string, unknown>) {
+  let max = request.cache_control === undefined ? 0 : cacheablePrefixChars(request);
+  let prefix = accumulateCacheablePrefix(request.tools, 0, (chars) => {
+    max = Math.max(max, chars);
+  });
+  prefix = accumulateCacheablePrefix(request.system, prefix, (chars) => {
+    max = Math.max(max, chars);
+  });
+  if (Array.isArray(request.messages)) {
+    for (const message of request.messages) {
+      if (isRecord(message)) {
+        prefix += contentChars(message.role);
+        prefix = accumulateCacheablePrefix(message.content, prefix, (chars) => {
+          max = Math.max(max, chars);
+        });
+      } else {
+        prefix = accumulateCacheablePrefix(message, prefix, (chars) => {
+          max = Math.max(max, chars);
+        });
+      }
+    }
+  }
+  return max;
+}
+
+function accumulateCacheablePrefix(
+  value: unknown,
+  prefix: number,
+  onBreakpoint: (chars: number) => void
+): number {
+  if (Array.isArray(value)) {
+    let current = prefix;
+    for (const item of value) {
+      current = accumulateCacheablePrefix(item, current, onBreakpoint);
+    }
+    return current;
+  }
+  if (isRecord(value) && Array.isArray(value.content)) {
+    const base = prefix + recordShellChars(value);
+    const next = accumulateCacheablePrefix(value.content, base, onBreakpoint);
+    if (value.cache_control !== undefined) onBreakpoint(next);
+    return next;
+  }
+  const next = prefix + contentChars(value);
+  if (isRecord(value) && value.cache_control !== undefined) onBreakpoint(next);
+  return next;
+}
+
+function recordShellChars(value: Record<string, unknown>) {
+  return Object.entries(value)
+    .reduce((sum, [key, item]) => sum + key.length + (key === "content" ? 0 : contentChars(item)), 0);
+}
+
+function contentChars(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "string") return value.length;
+  if (typeof value === "number" || typeof value === "boolean") return String(value).length;
+  if (Array.isArray(value)) return value.reduce((sum, item) => sum + contentChars(item), 0);
+  if (isRecord(value)) {
+    return Object.entries(value)
+      .reduce((sum, [key, item]) => sum + key.length + contentChars(item), 0);
+  }
+  return 0;
 }
 
 // Mirrors the traversal of anyBlockHasCacheControl: every breakpoint the

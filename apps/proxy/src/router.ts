@@ -631,8 +631,10 @@ function atOrAbove(route: RouteName | undefined, ceiling: RouteName) {
   return route !== undefined && routeOrder.indexOf(route) >= routeOrder.indexOf(ceiling);
 }
 
-// Must cover every context field that feeds classifierView, or distinct
-// classifier inputs would share a cache entry.
+// Key on the routing view, not the byte-identical provider body. The full
+// input hash is deliberately omitted so repeated latest-user asks can reuse a
+// classifier result as history grows; the coarse token bucket still separates
+// materially different context sizes.
 function classificationCacheKey(
   organizationId: string,
   context: RouteContext,
@@ -644,11 +646,19 @@ function classificationCacheKey(
     context.teamId ?? "",
     context.surface,
     context.requestedModel,
-    context.inputHash,
+    context.routingInputSource,
+    context.routingInputHash,
+    context.routingEstimatedInputTokens,
+    inputTokenBucket(context.estimatedInputTokens),
     context.hasTools,
     context.toolCount,
     context.hasImages,
     context.hasPreviousResponseId,
+    context.routingExtractedHints.join(","),
     snapshot?.configHash ?? "default"
   ].join("|");
+}
+
+function inputTokenBucket(tokens: number) {
+  return Math.ceil(tokens / 1024);
 }

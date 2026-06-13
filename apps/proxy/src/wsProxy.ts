@@ -18,6 +18,7 @@ import type { AppConfig } from "./config.js";
 import { jsonPayload, type EventService, type ProviderAttemptStore, type RequestStateStoreLike } from "./events.js";
 import { extractResponseText, type PromptArtifactStore } from "./persistence/promptArtifacts.js";
 import { resolveRoutingSelection, type RoutingConfigResolver } from "./persistence/routingConfig.js";
+import type { SessionSystemPromptStore } from "./persistence/sessionRoute.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import type { RoutingService } from "./router.js";
 import type { JsonObject, RouteDecision } from "./types.js";
@@ -46,6 +47,7 @@ export class WebSocketRoutingProxy {
     private readonly requestStates: RequestStateStoreLike,
     private readonly promptArtifacts?: PromptArtifactStore,
     private readonly routingConfigs?: RoutingConfigResolver,
+    private readonly sessionPrompts?: SessionSystemPromptStore,
     private readonly log?: WsLogger
   ) {}
 
@@ -210,6 +212,7 @@ export class WebSocketRoutingProxy {
     });
 
     const resolved = await this.resolveRoutingConfig(identity);
+    const systemPrompt = await this.effectiveSystemPrompt(identity, context.sessionId, resolved.systemPrompt);
     await appendTokensAttributed({
       events: this.events,
       identity,
@@ -218,7 +221,7 @@ export class WebSocketRoutingProxy {
       sessionId: context.sessionId,
       surface: openAIResponsesSurface.surface,
       body: routeBody,
-      orgSystemPrompt: resolved.systemPrompt,
+      orgSystemPrompt: systemPrompt,
       warn: (err, message) => this.log?.warn({ err, requestId }, message)
     });
     const decision = await this.routing.decide({
@@ -232,6 +235,7 @@ export class WebSocketRoutingProxy {
       await this.requestStates.finish(idempotencyKey, "failed", { error: decision.error });
       throw new Error(decision.error ?? "websocket_request_rejected");
     }
+    await this.pinSystemPrompt(identity, requestId, context.sessionId, systemPrompt);
 
     const { attempt } = this.attempts.create({
       idempotencyKey,
@@ -288,7 +292,7 @@ export class WebSocketRoutingProxy {
       warn: (err, message) => this.log?.warn({ err, requestId }, message)
     });
     return {
-      body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
+      body: rewriteSurfaceRequest(compressedBody, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
       decision,
       activeRequest: {
         requestId,
@@ -439,6 +443,36 @@ export class WebSocketRoutingProxy {
       organizationId: identity.organizationId,
       workspaceId: identity.workspaceId,
       routingConfigId: identity.routingConfigId
+    });
+  }
+
+  private async effectiveSystemPrompt(
+    identity: RequestIdentity,
+    sessionId: string | undefined,
+    systemPrompt: string | undefined
+  ) {
+    const pinned = await this.sessionPrompts?.resolve({
+      organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId,
+      surface: openAIResponsesSurface.surface,
+      sessionId
+    });
+    return pinned?.pinned ? pinned.systemPrompt : systemPrompt;
+  }
+
+  private async pinSystemPrompt(
+    identity: RequestIdentity,
+    requestId: string,
+    sessionId: string | undefined,
+    systemPrompt: string | undefined
+  ) {
+    await this.sessionPrompts?.pin({
+      organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId,
+      surface: openAIResponsesSurface.surface,
+      requestId,
+      sessionId,
+      systemPrompt
     });
   }
 }
