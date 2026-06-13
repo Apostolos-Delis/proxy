@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
@@ -6,7 +8,6 @@ import {
   compressForForward,
   compressToolResults,
   MIN_COMPRESSIBLE_CHARS,
-  MIN_DUPLICATE_TOOL_RESULT_CHARS,
   compressionRules,
   type CompressionRule
 } from "../src/toolResultCompression.js";
@@ -15,17 +16,19 @@ import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 // A trivial deterministic rule for scaffold testing: truncate to a marker.
 const truncateRule: CompressionRule = {
   label: "test-truncate",
+  version: 1,
   matches: (name) => name === "Bash",
   filter: ({ content }) => (typeof content === "string" ? `${content.slice(0, 10)}…[truncated]` : undefined)
 };
 
 const big = "x".repeat(MIN_COMPRESSIBLE_CHARS + 100);
-const duplicateBig = "d".repeat(MIN_DUPLICATE_TOOL_RESULT_CHARS + 100);
+const truncatedBig = "xxxxxxxxxx…[truncated]";
+const estimatedTokens = (chars: number) => Math.ceil(chars / 4);
+const esc = String.fromCharCode(27);
+const hashFor = (value: string) => createHash("sha256").update(value).digest("hex");
 
 describe("compressToolResults", () => {
-  it("leaves non-matching tools untouched under the default registry", () => {
-    // Plain Bash output has no noise for the default Bash filter to strip, so
-    // its content is preserved verbatim.
+  it("leaves non-JSON shell output untouched under the default registry", () => {
     const body = {
       messages: [
         { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] },
@@ -48,7 +51,90 @@ describe("compressToolResults", () => {
     const result = compressToolResults("anthropic-messages", body) as any;
     expect(result.records).toHaveLength(1);
     expect(result.records[0].tool).toBe("mcp__linear__list");
+    expect(result.records[0].rule).toBe("mcp-json-whitespace");
     expect(result.body.messages[1].content[0].content.length).toBeLessThan(verbose.length);
+  });
+
+  it("compacts large JSON output from shell tools without normalizing numeric spellings", () => {
+    const items = Array.from({ length: 40 }, (_, index) =>
+      `    { "id": "${index}", "note": "value ${index}" }`
+    ).join(",\n");
+    const verbose = `{
+  "issue_id": 7234567890123456789,
+  "x": 1.0,
+  "z": 1,
+  "z": 2,
+  "items": [
+${items}
+  ]
+}`;
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "cat data.json" } }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: verbose }] }
+      ]
+    };
+    const result = compressToolResults("anthropic-messages", body) as any;
+    const compacted = result.body.messages[1].content[0].content as string;
+    expect(result.records[0].rule).toBe("json-whitespace");
+    expect(compacted).not.toContain("\n");
+    expect(compacted).toContain('"issue_id":7234567890123456789');
+    expect(compacted).toContain('"x":1.0');
+    expect(compacted).toContain('"z":1,"z":2');
+    expect(JSON.parse(compacted).items).toHaveLength(40);
+  });
+
+  it("compacts JSON inside Anthropic text blocks from custom tools", () => {
+    const verbose = JSON.stringify({ rows: Array.from({ length: 80 }, (_, id) => ({ id, value: `row ${id}` })) }, null, 2);
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "CustomJsonTool", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: verbose }] }] }
+      ]
+    };
+    const result = compressToolResults("anthropic-messages", body) as any;
+    const compacted = result.body.messages[1].content[0].content[0].text as string;
+    expect(result.records[0].rule).toBe("json-whitespace");
+    expect(compacted).toBe(JSON.stringify(JSON.parse(verbose)));
+  });
+
+  it("leaves invalid JSON output from custom tools untouched", () => {
+    const invalid = `{\n  "items": [\n${"    1,\n".repeat(200)}`;
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "CustomJsonTool", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: invalid }] }
+      ]
+    };
+    const result = compressToolResults("anthropic-messages", body) as any;
+    expect(result.records).toEqual([]);
+    expect(result.body.messages[1].content[0].content).toBe(invalid);
+  });
+
+  it("leaves non-JSON output from custom tools untouched", () => {
+    const output = "plain log line\n".repeat(200);
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "CustomTool", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: output }] }
+      ]
+    };
+    const result = compressToolResults("anthropic-messages", body) as any;
+    expect(result.records).toEqual([]);
+    expect(result.body.messages[1].content[0].content).toBe(output);
+  });
+
+  it("falls through to shell-output cleanup when generic JSON compaction declines", () => {
+    const noisy = `${esc}[32m${"ok line\n".repeat(100)}${esc}[0m`;
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "pytest" } }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: noisy }] }
+      ]
+    };
+    const result = compressToolResults("anthropic-messages", body) as any;
+    expect(result.records[0].rule).toBe("bash-output-noise");
+    expect(result.body.messages[1].content[0].content).not.toContain(esc);
   });
 
   it("maps tool_use_id to tool name and applies a matching rule (Anthropic)", () => {
@@ -75,9 +161,18 @@ describe("compressToolResults", () => {
 
     // Only the Bash result is compressed; Read does not match the rule.
     expect(result.records).toEqual([
-      { tool: "Bash", rule: "test-truncate", beforeChars: big.length, afterChars: "xxxxxxxxxx…[truncated]".length }
+      {
+        tool: "Bash",
+        rule: "test-truncate",
+        ruleVersion: 1,
+        beforeChars: big.length,
+        afterChars: truncatedBig.length,
+        beforeEstimatedTokens: estimatedTokens(big.length),
+        afterEstimatedTokens: estimatedTokens(truncatedBig.length),
+        savedEstimatedTokens: estimatedTokens(big.length) - estimatedTokens(truncatedBig.length)
+      }
     ]);
-    expect(result.body.messages[1].content[0].content).toBe("xxxxxxxxxx…[truncated]");
+    expect(result.body.messages[1].content[0].content).toBe(truncatedBig);
     expect(result.body.messages[1].content[1].content).toBe(big);
     // Original body is not mutated (rewritten spines are rebuilt, not aliased).
     expect((body.messages[1].content[0] as any).content).toBe(big);
@@ -93,71 +188,13 @@ describe("compressToolResults", () => {
     };
     const arrayRule: CompressionRule = {
       label: "array-rule",
+      version: 1,
       matches: (name) => name === "Bash",
       filter: () => "compacted"
     };
     const result = compressToolResults("anthropic-messages", body, [arrayRule]) as any;
     expect(result.records).toHaveLength(1);
     expect(result.body.messages[1].content[0].content).toBe("compacted");
-  });
-
-  it("elides duplicate large Anthropic tool results that no rule rewrites", () => {
-    const body = {
-      messages: [
-        {
-          role: "assistant",
-          content: [
-            { type: "tool_use", id: "t1", name: "Read", input: { path: "a.ts" } },
-            { type: "tool_use", id: "t2", name: "Read", input: { path: "b.ts" } }
-          ]
-        },
-        {
-          role: "user",
-          content: [
-            { type: "tool_result", tool_use_id: "t1", content: duplicateBig },
-            { type: "tool_result", tool_use_id: "t2", content: duplicateBig }
-          ]
-        }
-      ]
-    };
-
-    const result = compressToolResults("anthropic-messages", body) as any;
-
-    expect(result.records).toEqual([
-      expect.objectContaining({ tool: "Read", rule: "duplicate-tool-result", beforeChars: duplicateBig.length })
-    ]);
-    expect(result.body.messages[1].content[0].content).toBe(duplicateBig);
-    expect(result.body.messages[1].content[1].content).toContain("duplicate tool result omitted");
-    expect(result.body.messages[1].content[1].content).not.toContain(duplicateBig.slice(0, 50));
-  });
-
-  it("preserves duplicate array content when it carries cache_control markers", () => {
-    const markedContent = [
-      { type: "text", text: duplicateBig, cache_control: { type: "ephemeral" } }
-    ];
-    const body = {
-      messages: [
-        {
-          role: "assistant",
-          content: [
-            { type: "tool_use", id: "t1", name: "Read", input: { path: "a.ts" } },
-            { type: "tool_use", id: "t2", name: "Read", input: { path: "b.ts" } }
-          ]
-        },
-        {
-          role: "user",
-          content: [
-            { type: "tool_result", tool_use_id: "t1", content: markedContent },
-            { type: "tool_result", tool_use_id: "t2", content: markedContent }
-          ]
-        }
-      ]
-    };
-
-    const result = compressToolResults("anthropic-messages", body) as any;
-
-    expect(result.records).toEqual([]);
-    expect(result.body.messages[1].content[1].content).toEqual(markedContent);
   });
 
   it("falls back to the unknown tool name when the assistant tool_use turn is missing", () => {
@@ -169,6 +206,7 @@ describe("compressToolResults", () => {
     const seen: string[] = [];
     const recordingRule: CompressionRule = {
       label: "record",
+      version: 1,
       matches: (name) => { seen.push(name); return false; },
       filter: () => undefined
     };
@@ -188,6 +226,7 @@ describe("compressToolResults", () => {
     const seen: string[] = [];
     const recordingRule: CompressionRule = {
       label: "record",
+      version: 1,
       matches: (name) => { seen.push(name); return false; },
       filter: () => undefined
     };
@@ -220,29 +259,10 @@ describe("compressToolResults", () => {
     expect(result.body.input[1].output).toBe("xxxxxxxxxx…[truncated]");
   });
 
-  it("elides duplicate large OpenAI function outputs that no rule rewrites", () => {
-    const body = {
-      input: [
-        { type: "function_call", call_id: "c1", name: "read_file", arguments: "{}" },
-        { type: "function_call_output", call_id: "c1", output: duplicateBig },
-        { type: "function_call", call_id: "c2", name: "read_file", arguments: "{}" },
-        { type: "function_call_output", call_id: "c2", output: duplicateBig }
-      ]
-    };
-
-    const result = compressToolResults("openai-responses", body) as any;
-
-    expect(result.records).toEqual([
-      expect.objectContaining({ tool: "read_file", rule: "duplicate-tool-result", beforeChars: duplicateBig.length })
-    ]);
-    expect(result.body.input[1].output).toBe(duplicateBig);
-    expect(result.body.input[3].output).toContain("duplicate tool result omitted");
-    expect(result.body.input[3].output).not.toContain(duplicateBig.slice(0, 50));
-  });
-
   it("never grows a block: a rule that expands content is discarded", () => {
     const expandRule: CompressionRule = {
       label: "expand",
+      version: 1,
       matches: () => true,
       filter: ({ content }) => `${String(content)}-and-then-some-more-and-more`
     };
@@ -267,6 +287,90 @@ describe("compressToolResults", () => {
     const a = compressToolResults("anthropic-messages", make(), [truncateRule]);
     const b = compressToolResults("anthropic-messages", make(), [truncateRule]);
     expect(JSON.stringify(a.body)).toBe(JSON.stringify(b.body));
+  });
+
+  it("replaces later exact duplicate tool results with a deterministic reference when enabled", () => {
+    const duplicate = "file line\n".repeat(400);
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: { file_path: "a.txt" } }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: duplicate }] },
+        { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Read", input: { file_path: "a.txt" } }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: duplicate }] }
+      ]
+    };
+
+    const result = compressToolResults("anthropic-messages", body, [], { deduplicateToolResults: true }) as any;
+    const first = result.body.messages[1].content[0].content;
+    const second = result.body.messages[3].content[0].content;
+
+    expect(first).toBe(duplicate);
+    expect(second).toContain(`contentHash=sha256:${hashFor(duplicate)}`);
+    expect(second).toContain(`originalChars=${duplicate.length}`);
+    expect(second).not.toContain(duplicate.slice(0, 40));
+    expect(result.records).toEqual([
+      {
+        tool: "Read",
+        rule: "duplicate-tool-result-reference",
+        ruleVersion: 1,
+        beforeChars: duplicate.length,
+        afterChars: second.length,
+        beforeEstimatedTokens: estimatedTokens(duplicate.length),
+        afterEstimatedTokens: estimatedTokens(second.length),
+        savedEstimatedTokens: estimatedTokens(duplicate.length) - estimatedTokens(second.length)
+      }
+    ]);
+  });
+
+  it("does not replace a duplicate when the earlier content is not in forwarded context", () => {
+    const duplicate = "file line\n".repeat(400);
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Read", input: { file_path: "a.txt" } }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: duplicate }] }
+      ]
+    };
+
+    const result = compressToolResults("anthropic-messages", body, [], { deduplicateToolResults: true }) as any;
+
+    expect(result.body.messages[1].content[0].content).toBe(duplicate);
+    expect(result.records).toEqual([]);
+  });
+
+  it("leaves near-duplicate tool results untouched", () => {
+    const first = "file line\n".repeat(400);
+    const second = `${"file line\n".repeat(399)}different line\n`;
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: first }] },
+        { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Read", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: second }] }
+      ]
+    };
+
+    const result = compressToolResults("anthropic-messages", body, [], { deduplicateToolResults: true }) as any;
+
+    expect(result.body.messages[1].content[0].content).toBe(first);
+    expect(result.body.messages[3].content[0].content).toBe(second);
+    expect(result.records).toEqual([]);
+  });
+
+  it("does not reference content whose earlier occurrence was rewritten by another rule", () => {
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: big }] },
+        { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Bash", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: big }] }
+      ]
+    };
+
+    const result = compressToolResults("anthropic-messages", body, [truncateRule], { deduplicateToolResults: true }) as any;
+
+    expect(result.body.messages[1].content[0].content).toBe(truncatedBig);
+    expect(result.body.messages[3].content[0].content).toBe(truncatedBig);
+    expect(result.records.map((record: any) => record.rule)).toEqual(["test-truncate", "test-truncate"]);
   });
 });
 
@@ -328,10 +432,22 @@ describe("compressForForward", () => {
       const payload = recorded?.payload as Record<string, unknown>;
       expect(payload.blocks).toBe(1);
       expect(payload.savedChars).toBeGreaterThan(0);
+      expect(payload.beforeEstimatedTokens).toBe(estimatedTokens(big.length));
+      expect(payload.afterEstimatedTokens).toBe(estimatedTokens(truncatedBig.length));
+      expect(payload.savedEstimatedTokens).toBe(estimatedTokens(big.length) - estimatedTokens(truncatedBig.length));
       // The serialized payload must not leak the raw tool output.
       expect(JSON.stringify(payload)).not.toContain(big.slice(0, 50));
       const byRule = payload.byRule as Record<string, unknown>[];
-      expect(Object.keys(byRule[0]).sort()).toEqual(["afterChars", "beforeChars", "rule", "tool"]);
+      expect(Object.keys(byRule[0]).sort()).toEqual([
+        "afterChars",
+        "afterEstimatedTokens",
+        "beforeChars",
+        "beforeEstimatedTokens",
+        "rule",
+        "ruleVersion",
+        "savedEstimatedTokens",
+        "tool"
+      ]);
     } finally {
       compressionRules.pop();
     }
@@ -340,6 +456,7 @@ describe("compressForForward", () => {
 
 const truncateForward: CompressionRule = {
   label: "forward-truncate",
+  version: 1,
   matches: (name) => name === "StubTool",
   filter: ({ content }) => (typeof content === "string" ? `${content.slice(0, 10)}…[truncated]` : undefined)
 };
@@ -404,6 +521,67 @@ describe("toolResultCompression end to end (DB-backed)", () => {
 
     const providerCall = fixture.anthropic.records.find((rec) => rec.path === "/messages");
     expect(providerCall?.body.messages[2].content[0].content).toBe(verbose);
+  });
+
+  it("replaces repeated tool results in the forwarded Anthropic body when duplicate references are enabled", async () => {
+    fixture = await captureFixture("org_compress_duplicate_http");
+    await fixture.persistence.organizationSettings.setToolResultCompression("org_compress_duplicate_http", true);
+    await fixture.persistence.organizationSettings.setDuplicateToolResultReferences("org_compress_duplicate_http", true);
+    const repeated = "same file contents\n".repeat(300);
+
+    await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-router-hard",
+        max_tokens: 256,
+        messages: [
+          { role: "user", content: "read the file twice" },
+          { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: { file_path: "a.txt" } }] },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: repeated }] },
+          { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Read", input: { file_path: "a.txt" } }] },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: repeated }] }
+        ]
+      })
+    });
+
+    const providerCall = fixture.anthropic.records.find((rec) => rec.path === "/messages");
+    const first = providerCall?.body.messages[2].content[0].content;
+    const second = providerCall?.body.messages[4].content[0].content;
+    expect(first).toBe(repeated);
+    expect(second).toContain("duplicate tool result omitted");
+    expect(second).toContain(`contentHash=sha256:${hashFor(repeated)}`);
+    expect(second).toContain(`originalChars=${repeated.length}`);
+    expect(second).not.toContain(repeated.slice(0, 40));
+  });
+
+  it("applies duplicate references to Anthropic token-count requests", async () => {
+    fixture = await captureFixture("org_compress_duplicate_count");
+    await fixture.persistence.organizationSettings.setToolResultCompression("org_compress_duplicate_count", true);
+    await fixture.persistence.organizationSettings.setDuplicateToolResultReferences("org_compress_duplicate_count", true);
+    const repeated = "same file contents\n".repeat(300);
+
+    await fetch(`${fixture.proxyUrl}/v1/messages/count_tokens`, {
+      method: "POST",
+      headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-router-hard",
+        messages: [
+          { role: "user", content: "read the file twice" },
+          { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: { file_path: "a.txt" } }] },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: repeated }] },
+          { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Read", input: { file_path: "a.txt" } }] },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: repeated }] }
+        ]
+      })
+    });
+
+    const providerCall = fixture.anthropic.records.find((rec) => rec.path === "/messages/count_tokens");
+    const first = providerCall?.body.messages[2].content[0].content;
+    const second = providerCall?.body.messages[4].content[0].content;
+    expect(first).toBe(repeated);
+    expect(second).toContain(`contentHash=sha256:${hashFor(repeated)}`);
+    expect(second).not.toContain(repeated.slice(0, 40));
   });
 
   it("rewrites oversized function_call_output items on the WebSocket surface", async () => {

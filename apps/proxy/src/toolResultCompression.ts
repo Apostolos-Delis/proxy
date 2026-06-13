@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
+
 import { bashOutputRule } from "./compressionRules/bashOutput.js";
+import { jsonWhitespaceRule } from "./compressionRules/jsonWhitespace.js";
 import { mcpJsonRule } from "./compressionRules/mcpJson.js";
 import type { EventService } from "./events.js";
 import type { JsonObject, Surface } from "./types.js";
-import { isRecord, sha256, stableJson, stringField } from "./util.js";
+import { isRecord, roughTokenEstimate, stableJson, stringField } from "./util.js";
 
 // Deterministic compression of tool-result content before it reaches the
 // provider. Determinism is non-negotiable: the harness re-sends the full
@@ -25,6 +28,7 @@ export type CompressionFilter = (input: CompressionFilterInput) => unknown;
 
 export type CompressionRule = {
   label: string;
+  version: number;
   matches: (toolName: string) => boolean;
   filter: CompressionFilter;
   // Per-rule eligibility floor; defaults to MIN_COMPRESSIBLE_CHARS. Cheap O(n)
@@ -35,32 +39,39 @@ export type CompressionRule = {
 export type CompressionRecord = {
   tool: string;
   rule: string;
+  ruleVersion: number;
   beforeChars: number;
   afterChars: number;
+  beforeEstimatedTokens: number;
+  afterEstimatedTokens: number;
+  savedEstimatedTokens: number;
 };
 
 export type CompressionResult = { body: unknown; records: CompressionRecord[] };
+export type CompressionOptions = { deduplicateToolResults?: boolean };
+type DuplicateTracker = Set<string>;
 
 // Only results above this size are eligible — keeps the transform off the hot
 // path for cheap calls and avoids touching small blocks where compression
 // cannot pay for itself.
 export const MIN_COMPRESSIBLE_CHARS = 2048;
-export const MIN_DUPLICATE_TOOL_RESULT_CHARS = 4096;
 
-// Registered rules, evaluated in order; first match wins. Only applied for
-// orgs that have opted into tool-result compression.
-export const compressionRules: CompressionRule[] = [mcpJsonRule, bashOutputRule];
+// Registered rules, evaluated in order; first successful rewrite wins. Only
+// applied for orgs that have opted into tool-result compression.
+export const compressionRules: CompressionRule[] = [mcpJsonRule, jsonWhitespaceRule, bashOutputRule];
 
 export function compressToolResults(
   surface: Surface,
   body: unknown,
-  rules: CompressionRule[] = compressionRules
+  rules: CompressionRule[] = compressionRules,
+  options: CompressionOptions = {}
 ): CompressionResult {
-  if (rules.length === 0 || !isRecord(body)) return { body, records: [] };
+  if ((!options.deduplicateToolResults && rules.length === 0) || !isRecord(body)) return { body, records: [] };
   const records: CompressionRecord[] = [];
+  const duplicates: DuplicateTracker | undefined = options.deduplicateToolResults ? new Set() : undefined;
   const compressed = surface === "anthropic-messages"
-    ? compressAnthropic(body, rules, records)
-    : compressOpenAI(body, rules, records);
+    ? compressAnthropic(body, rules, records, duplicates)
+    : compressOpenAI(body, rules, records, duplicates);
   return { body: compressed, records };
 }
 
@@ -72,11 +83,12 @@ export function compressOrFallback(
   surface: Surface,
   body: unknown,
   enabled: boolean,
-  warn: (error: unknown, message: string) => void
+  warn: (error: unknown, message: string) => void,
+  options: CompressionOptions = {}
 ): CompressionResult {
   if (!enabled) return { body, records: [] };
   try {
-    return compressToolResults(surface, body);
+    return compressToolResults(surface, body, compressionRules, options);
   } catch (error) {
     warn(error, "tool result compression failed");
     return { body, records: [] };
@@ -97,12 +109,21 @@ export async function compressForForward(input: {
   surface: Surface;
   body: unknown;
   enabled: boolean;
+  deduplicateToolResults?: boolean;
   warn: (error: unknown, message: string) => void;
 }): Promise<unknown> {
-  const { body, records } = compressOrFallback(input.surface, input.body, input.enabled, input.warn);
+  const { body, records } = compressOrFallback(
+    input.surface,
+    input.body,
+    input.enabled,
+    input.warn,
+    { deduplicateToolResults: input.deduplicateToolResults === true }
+  );
   if (records.length === 0) return body;
   const beforeChars = records.reduce((sum, record) => sum + record.beforeChars, 0);
   const afterChars = records.reduce((sum, record) => sum + record.afterChars, 0);
+  const beforeEstimatedTokens = records.reduce((sum, record) => sum + record.beforeEstimatedTokens, 0);
+  const afterEstimatedTokens = records.reduce((sum, record) => sum + record.afterEstimatedTokens, 0);
   try {
     await input.events.append({
       tenantId: input.tenantId,
@@ -120,6 +141,9 @@ export async function compressForForward(input: {
         beforeChars,
         afterChars,
         savedChars: beforeChars - afterChars,
+        beforeEstimatedTokens,
+        afterEstimatedTokens,
+        savedEstimatedTokens: beforeEstimatedTokens - afterEstimatedTokens,
         blocks: records.length,
         byRule: records as unknown as JsonObject[]
       } as JsonObject
@@ -136,10 +160,14 @@ export async function compressForForward(input: {
 // per request would be an avoidable hot-path allocation. The input body is
 // never mutated; spreading a rewritten block preserves its other fields,
 // including any cache_control markers.
-function compressAnthropic(request: Record<string, unknown>, rules: CompressionRule[], records: CompressionRecord[]): unknown {
+function compressAnthropic(
+  request: Record<string, unknown>,
+  rules: CompressionRule[],
+  records: CompressionRecord[],
+  duplicates: DuplicateTracker | undefined
+): unknown {
   if (!Array.isArray(request.messages)) return request;
   const toolNames = anthropicToolNames(request.messages);
-  const seen = new Set<string>();
   let changed = false;
   const messages = request.messages.map((message) => {
     if (!isRecord(message) || message.role !== "user" || !Array.isArray(message.content)) return message;
@@ -149,12 +177,15 @@ function compressAnthropic(request: Record<string, unknown>, rules: CompressionR
       const toolUseId = stringField(block, "tool_use_id");
       const ref = toolUseId ? toolNames.get(toolUseId) : undefined;
       const toolName = ref?.name ?? "unknown";
-      const replaced = applyRules(rules, toolName, ref?.input, block.content, records);
-      if (replaced === undefined) {
-        const duplicate = duplicateToolResult(toolName, block.content, seen, records);
-        if (duplicate === undefined) return block;
+      const duplicate = applyDuplicateReference(toolName, block.content, records, duplicates);
+      if (duplicate !== undefined) {
         messageChanged = true;
         return { ...block, content: duplicate };
+      }
+      const replaced = applyRules(rules, toolName, ref?.input, block.content, records);
+      if (replaced === undefined) {
+        trackDuplicateContent(block.content, duplicates);
+        return block;
       }
       messageChanged = true;
       return { ...block, content: replaced };
@@ -166,22 +197,29 @@ function compressAnthropic(request: Record<string, unknown>, rules: CompressionR
   return changed ? { ...request, messages } : request;
 }
 
-function compressOpenAI(request: Record<string, unknown>, rules: CompressionRule[], records: CompressionRecord[]): unknown {
+function compressOpenAI(
+  request: Record<string, unknown>,
+  rules: CompressionRule[],
+  records: CompressionRecord[],
+  duplicates: DuplicateTracker | undefined
+): unknown {
   if (!Array.isArray(request.input)) return request;
   const callNames = openAICallNames(request.input);
-  const seen = new Set<string>();
   let changed = false;
   const input = request.input.map((item) => {
     if (!isRecord(item) || item.type !== "function_call_output") return item;
     const callId = stringField(item, "call_id");
     const ref = callId ? callNames.get(callId) : undefined;
     const toolName = ref?.name ?? "unknown";
-    const replaced = applyRules(rules, toolName, ref?.input, item.output, records);
-    if (replaced === undefined) {
-      const duplicate = duplicateToolResult(toolName, item.output, seen, records);
-      if (duplicate === undefined) return item;
+    const duplicate = applyDuplicateReference(toolName, item.output, records, duplicates);
+    if (duplicate !== undefined) {
       changed = true;
       return { ...item, output: duplicate };
+    }
+    const replaced = applyRules(rules, toolName, ref?.input, item.output, records);
+    if (replaced === undefined) {
+      trackDuplicateContent(item.output, duplicates);
+      return item;
     }
     changed = true;
     return { ...item, output: replaced };
@@ -189,7 +227,7 @@ function compressOpenAI(request: Record<string, unknown>, rules: CompressionRule
   return changed ? { ...request, input } : request;
 }
 
-// Apply the first matching rule to a tool-result content payload. Records the
+// Apply the first rule that shrinks a tool-result content payload. Records the
 // before/after size only when the filter actually shrank the content.
 function applyRules(
   rules: CompressionRule[],
@@ -198,45 +236,75 @@ function applyRules(
   content: unknown,
   records: CompressionRecord[]
 ): unknown {
-  const rule = rules.find((candidate) => candidate.matches(toolName));
-  if (!rule) return undefined;
   const beforeChars = contentChars(content);
-  if (beforeChars < (rule.minChars ?? MIN_COMPRESSIBLE_CHARS)) return undefined;
-  const replaced = rule.filter({ toolName, toolInput, content });
-  if (replaced === undefined) return undefined;
-  const afterChars = contentChars(replaced);
-  if (afterChars >= beforeChars) return undefined; // never grow a block
-  records.push({ tool: toolName, rule: rule.label, beforeChars, afterChars });
-  return replaced;
+  for (const rule of rules) {
+    if (!rule.matches(toolName)) continue;
+    if (beforeChars < (rule.minChars ?? MIN_COMPRESSIBLE_CHARS)) continue;
+    const replaced = rule.filter({ toolName, toolInput, content });
+    if (replaced === undefined) continue;
+    const afterChars = contentChars(replaced);
+    if (afterChars >= beforeChars) continue;
+    const beforeEstimatedTokens = roughTokenEstimate(beforeChars);
+    const afterEstimatedTokens = roughTokenEstimate(afterChars);
+    records.push({
+      tool: toolName,
+      rule: rule.label,
+      ruleVersion: rule.version,
+      beforeChars,
+      afterChars,
+      beforeEstimatedTokens,
+      afterEstimatedTokens,
+      savedEstimatedTokens: beforeEstimatedTokens - afterEstimatedTokens
+    });
+    return replaced;
+  }
+  return undefined;
 }
 
-function duplicateToolResult(
+function applyDuplicateReference(
   toolName: string,
   content: unknown,
-  seen: Set<string>,
-  records: CompressionRecord[]
+  records: CompressionRecord[],
+  duplicates: DuplicateTracker | undefined
 ): unknown {
-  const beforeChars = contentChars(content);
-  if (beforeChars < MIN_DUPLICATE_TOOL_RESULT_CHARS) return undefined;
-  if (Array.isArray(content) && hasCacheControl(content)) return undefined;
-  const hash = sha256(typeof content === "string" ? content : stableJson(content));
-  if (!seen.has(hash)) {
-    seen.add(hash);
-    return undefined;
-  }
-  const marker = `[duplicate tool result omitted: same content appeared earlier in this request; chars=${beforeChars}; hash=${hash}]`;
-  const replaced = Array.isArray(content) ? [{ type: "text", text: marker }] : marker;
-  const afterChars = contentChars(replaced);
-  if (afterChars >= beforeChars) return undefined;
-  records.push({ tool: toolName, rule: "duplicate-tool-result", beforeChars, afterChars });
-  return replaced;
+  if (!duplicates) return undefined;
+  const fingerprint = contentFingerprint(content);
+  if (fingerprint.chars < MIN_COMPRESSIBLE_CHARS) return undefined;
+  if (!duplicates.has(fingerprint.key)) return undefined;
+  const replacement = duplicateReference(content, fingerprint.hash, fingerprint.chars);
+  const afterChars = contentChars(replacement);
+  if (afterChars >= fingerprint.chars) return undefined;
+  const beforeEstimatedTokens = roughTokenEstimate(fingerprint.chars);
+  const afterEstimatedTokens = roughTokenEstimate(afterChars);
+  records.push({
+    tool: toolName,
+    rule: "duplicate-tool-result-reference",
+    ruleVersion: 1,
+    beforeChars: fingerprint.chars,
+    afterChars,
+    beforeEstimatedTokens,
+    afterEstimatedTokens,
+    savedEstimatedTokens: beforeEstimatedTokens - afterEstimatedTokens
+  });
+  return replacement;
 }
 
-function hasCacheControl(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some((item) => hasCacheControl(item));
-  if (!isRecord(value)) return false;
-  if (value.cache_control !== undefined) return true;
-  return hasCacheControl(value.content);
+function trackDuplicateContent(content: unknown, duplicates: DuplicateTracker | undefined) {
+  if (!duplicates) return;
+  const fingerprint = contentFingerprint(content);
+  if (fingerprint.chars >= MIN_COMPRESSIBLE_CHARS) duplicates.add(fingerprint.key);
+}
+
+function contentFingerprint(content: unknown) {
+  const serialized = typeof content === "string" ? content : stableJson(content);
+  const hash = createHash("sha256").update(serialized).digest("hex");
+  const chars = typeof content === "string" ? content.length : serialized.length;
+  return { hash, chars, key: `${hash}:${serialized.length}` };
+}
+
+function duplicateReference(content: unknown, hash: string, originalChars: number) {
+  const text = `[duplicate tool result omitted; contentHash=sha256:${hash}; originalChars=${originalChars}]`;
+  return Array.isArray(content) ? [{ type: "text", text }] : text;
 }
 
 function anthropicToolNames(messages: unknown): Map<string, ToolRef> {

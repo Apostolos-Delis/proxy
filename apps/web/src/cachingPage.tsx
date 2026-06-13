@@ -9,18 +9,22 @@ import {
   bustsByModel,
   cacheSavings,
   fetchCacheBusts,
+  fetchCompressionSavings,
   fetchCachePricingRates,
   fetchIdleGaps,
   fetchTokenAttribution,
   type CacheBustReport,
   type CacheSavings,
+  type CompressionSavingsReport,
+  type CompressionSavingsRow,
   type IdleGapReport,
   type ModelBustRow,
   type TokenAttributionOffender,
-  type TokenAttributionReport
+  type TokenAttributionReport,
+  type TokenAttributionSchemaChurn
 } from "./cachingData";
 import { LayeredAreaChart, MiniBars, Sparkline, type LayeredAreaSeries } from "./charts";
-import { formatCompact, formatInteger, formatMoney, formatPercent } from "./format";
+import { formatCompact, formatDateTime, formatInteger, formatMoney, formatPercent } from "./format";
 import { BarListRow, DataTable, Delta, GlassCard, PageSkeleton, PageState, Segmented } from "./ui";
 import {
   OTHER_GROUP_KEY,
@@ -87,6 +91,11 @@ export function CachingPage() {
     queryFn: () => fetchCacheBusts({ start, end }),
     placeholderData: keepPreviousData
   });
+  const { error: compressionSavingsQueryError, data: compressionSavingsQueryData } = useQuery({
+    queryKey: ["compression-savings", start, end],
+    queryFn: () => fetchCompressionSavings({ start, end }),
+    placeholderData: keepPreviousData
+  });
   const { error: attributionQueryError, data: attributionQueryData } = useQuery({
     queryKey: ["token-attribution", start, end],
     queryFn: () => fetchTokenAttribution({ start, end }),
@@ -100,7 +109,7 @@ export function CachingPage() {
 
   const error = usageQueryError ?? timeseriesQueryError ?? bustsQueryError
     ?? keyUsageQueryError ?? modelUsageQueryError ?? ratesQueryError
-    ?? attributionQueryError ?? idleGapsQueryError;
+    ?? compressionSavingsQueryError ?? attributionQueryError ?? idleGapsQueryError;
   if (error) return <PageState title="Caching" label={error.message} />;
 
   const usage = usageQueryData;
@@ -185,6 +194,7 @@ export function CachingPage() {
       <div className="caching-anatomy">
         <BucketBreakdown report={attributionQueryData} />
         <Offenders report={attributionQueryData} />
+        <CompressionSavings report={compressionSavingsQueryData} />
         <IdleGaps report={idleGapsQueryData} />
       </div>
     </div>
@@ -462,12 +472,16 @@ function Offenders({ report }: { report: TokenAttributionReport | undefined }) {
     );
   }
   const rows = tab === "schemas" ? report.toolSchemas : report.toolResults;
+  const churningSchemas = report.schemaChurn
+    .filter((row) => row.status === "churning")
+    .slice(0, 3);
   return (
     <GlassCard>
       <div className="card-head">
         <div className="card-title">Largest tool payloads</div>
         <Segmented options={offenderTabs} value={tab} onChange={setTab} />
       </div>
+      {tab === "schemas" ? <SchemaChurnWarning rows={churningSchemas} /> : null}
       <OffenderList rows={rows} unit={tab === "schemas" ? "schema" : "result"} />
       <div className="stat-sub">
         {tab === "schemas"
@@ -475,6 +489,18 @@ function Offenders({ report }: { report: TokenAttributionReport | undefined }) {
           : "fresh tool results are never cache reads; trim the biggest to shrink uncached input"}
       </div>
     </GlassCard>
+  );
+}
+
+function SchemaChurnWarning({ rows }: { rows: TokenAttributionSchemaChurn[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <>
+      <div className="caching-advice">
+        Schema churn detected: {rows.map(schemaChurnLabel).join("; ")}
+      </div>
+      <div className="sep" />
+    </>
   );
 }
 
@@ -499,6 +525,56 @@ function OffenderList({ rows, unit }: { rows: TokenAttributionOffender[]; unit: 
       ))}
     </div>
   );
+}
+
+function CompressionSavings({ report }: { report: CompressionSavingsReport | undefined }) {
+  if (!report) {
+    return (
+      <GlassCard>
+        <div className="card-title"><Zap />Compression savings</div>
+        <div className="inline-skeleton skeleton-pulse" style={{ height: 200 }} />
+      </GlassCard>
+    );
+  }
+  const rows = report.rows.slice(0, 8);
+  const max = Math.max(...rows.map((row) => row.savedEstimatedTokens), 1);
+  return (
+    <GlassCard>
+      <div className="card-head">
+        <div className="card-title">
+          <Zap />Compression savings
+          <span className="usage-scope-note">by rule and tool</span>
+        </div>
+        <span className="mono faint caching-miss-total">{formatCompact(report.savedEstimatedTokens)} tok</span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="empty compact-empty">No compression events in this window.</div>
+      ) : (
+        <>
+          <div className="barlist usage-top-list">
+            {rows.map((row, index) => (
+              <BarListRow
+                key={`${row.rule}:${row.ruleVersion}:${row.tool}`}
+                label={compressionSavingsLabel(row)}
+                value={`${formatCompact(row.savedEstimatedTokens)} tok · ${formatCompact(row.blocks)} blocks`}
+                width={(row.savedEstimatedTokens / max) * 100}
+                color={seriesColor(index, `${row.rule}:${row.tool}`)}
+                mono
+              />
+            ))}
+          </div>
+          <div className="stat-sub">
+            {formatCompact(report.savedEstimatedTokens)} estimated tokens saved across {formatCompact(report.blocks)} blocks
+            {report.sampled ? " · newest sample - window truncated" : ""}
+          </div>
+        </>
+      )}
+    </GlassCard>
+  );
+}
+
+function compressionSavingsLabel(row: CompressionSavingsRow) {
+  return `${row.rule} v${row.ruleVersion} · ${row.tool}`;
 }
 
 function IdleGaps({ report }: { report: IdleGapReport | undefined }) {
@@ -537,10 +613,32 @@ function IdleGaps({ report }: { report: IdleGapReport | undefined }) {
             {formatPercent(report.overTtl / report.totalGaps)} of gaps outlive the 5m cache TTL;{" "}
             {formatPercent(report.recoverableByOneHourTtl / report.totalGaps)} recoverable with a 1h TTL
           </div>
+          <div className="sep" />
+          <div className="caching-advice">
+            {idleGapRecommendation(report)}
+          </div>
+          <div className="stat-sub">{idleGapSampleNote(report)}</div>
         </>
       )}
     </GlassCard>
   );
+}
+
+function idleGapRecommendation(report: IdleGapReport) {
+  const tokens = formatCompact(report.estimatedRecoverableCacheReadTokens);
+  const threshold = formatCompact(report.recommendationThresholdTokens);
+  if (report.recommendedTtlUpgrade) {
+    return `Enable 1-hour TTL: ${tokens} cache-read tokens were recoverable from idle gaps in this window.`;
+  }
+  return `Keep the current TTL: ${tokens} recoverable tokens is below the ${threshold} recommendation threshold.`;
+}
+
+function idleGapSampleNote(report: IdleGapReport) {
+  const requestCount = formatCompact(report.sampledRequests);
+  const prefix = report.sampled ? `newest ${requestCount} requests` : `${requestCount} requests`;
+  if (!report.sampleWindowStart || !report.sampleWindowEnd) return `${prefix} sampled`;
+  const window = `from ${formatDateTime(report.sampleWindowStart)} to ${formatDateTime(report.sampleWindowEnd)}`;
+  return `${prefix} sampled ${window}${report.sampled ? " - window truncated" : ""}`;
 }
 
 function offenderValue(row: TokenAttributionOffender, unit: "schema" | "result") {
@@ -549,6 +647,13 @@ function offenderValue(row: TokenAttributionOffender, unit: "schema" | "result")
     return `${tokens} · ${formatCompact(row.blocks)} blocks`;
   }
   return tokens;
+}
+
+function schemaChurnLabel(row: TokenAttributionSchemaChurn) {
+  const sessionText = row.churningSessions > 0
+    ? `${formatCompact(row.churningSessions)} churning sessions`
+    : `${formatCompact(row.sessions)} sessions`;
+  return `${row.name} has ${formatCompact(row.schemaHashes)} hashes across ${formatCompact(row.requests)} requests (${sessionText})`;
 }
 
 /** One decimal where it matters: 75.8% reads differently than 76%. */

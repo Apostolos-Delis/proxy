@@ -4,7 +4,7 @@
 
 The `toolResultCompression` organization setting compresses large tool-result blocks before the proxy forwards a request to OpenAI or Anthropic. The current implementation focuses on deterministic, lossless rewrites:
 
-- MCP JSON results: strip insignificant whitespace outside JSON string literals.
+- JSON tool results: strip insignificant whitespace outside JSON string literals.
 - Shell output: strip terminal noise such as ANSI escapes and carriage-return progress rewrites.
 
 The main product value is compounding savings. Coding harnesses replay the full conversation history on every subsequent model request, so one large tool result is paid for again and again for the rest of the session. Shrinking it before forwarding reduces the first cache write and every later cache read, as long as the transform is deterministic.
@@ -39,7 +39,7 @@ The implementation deliberately does not use `JSON.stringify(JSON.parse(text))`.
 - Numeric spelling such as `1.0` can become `1`.
 - Object key order, duplicate keys, and explicit `null` values can be changed by reserialization.
 
-Instead, `apps/proxy/src/compressionRules/mcpJson.ts` validates that the text is JSON and then runs a character-level scanner that copies string literals verbatim while removing only spaces, tabs, and newlines outside strings.
+Instead, `apps/proxy/src/compressionRules/jsonWhitespace.ts` validates that the text is JSON and then runs a character-level scanner that copies string literals verbatim while removing only spaces, tabs, and newlines outside strings.
 
 ## Request Shapes
 
@@ -105,22 +105,22 @@ OpenAI Responses API uses flat input items paired by `call_id`:
 
 ## Pipeline
 
-1. The operations console setting is defined in `apps/web/src/settingsPageData.ts` as `toolResultCompression`.
-2. Routing config resolution exposes the setting as `resolved.toolResultCompression`.
+1. The operations console settings are defined in `apps/web/src/settingsPageData.ts` as `toolResultCompression` and `duplicateToolResultReferences`.
+2. Routing config resolution exposes the settings as `resolved.toolResultCompression` and `resolved.duplicateToolResultReferences`.
 3. Forwarding paths call `compressForForward` before sending bytes upstream.
 4. `compressToolResults` chooses the Anthropic or OpenAI walker.
-5. The walker maps tool result IDs to tool names and passes the content to the first matching `CompressionRule`.
+5. The walker maps tool result IDs to tool names and passes the content to the first successful `CompressionRule`.
 6. A rule can return replacement content or `undefined` to leave the block untouched.
 7. The shared guard records the rewrite only if the replacement is smaller than the original.
-8. Successful rewrites emit a `compression.recorded` event with before/after character counts.
+8. Successful rewrites emit a `compression.recorded` event with before/after character and estimated-token counts.
 
 Event write failures never affect the forwarded bytes. That matters because compression has to be a pure function of the block content and static org setting, not a function of per-request event I/O.
 
 ## Current Rules
 
-### MCP JSON Whitespace
+### JSON Whitespace
 
-`mcpJsonRule` matches tool names starting with `mcp__`. It accepts either a bare string or Anthropic-style text blocks. It only rewrites well-formed JSON whose trimmed text starts with `{` or `[`.
+`mcpJsonRule` matches tool names starting with `mcp__` so MCP events keep their existing rule label. `jsonWhitespaceRule` then applies the same lossless scanner to any other large tool result. Both accept either a bare string or Anthropic-style text blocks, and only rewrite well-formed JSON whose trimmed text starts with `{` or `[`.
 
 The rule is lossless for JSON values because it:
 
@@ -140,6 +140,10 @@ It removes formatting that a terminal would not display as durable output:
 - Carriage-return progress rewrites, keeping the final visible line state.
 
 It does not drop real output lines, summarize logs, or apply command-specific semantic filters. Those higher-gain RTK-style filters are client-side features unless the proxy can prove a lossless representation.
+
+### Duplicate References
+
+When `duplicateToolResultReferences` is enabled alongside `toolResultCompression`, later exact duplicate tool results are replaced with a deterministic reference containing the SHA-256 content hash and original character count. The earlier full content must still be present in the forwarded context; if the earlier occurrence was already rewritten by another rule, no duplicate reference is emitted.
 
 ## Cache-Stability Constraint
 
@@ -192,7 +196,7 @@ Before using it proxy-side, verify:
 - Stable, pinned rule version so byte output changes are deliberate.
 - Token-count guard or a narrow eligibility heuristic, not character count alone.
 
-This can be slotted ahead of `mcpJsonRule`: tabularize when safe and token-beneficial, otherwise fall through to whitespace stripping.
+This can be slotted ahead of `jsonWhitespaceRule`: tabularize when safe and token-beneficial, otherwise fall through to whitespace stripping.
 
 ### Learned Token Pruning
 
@@ -232,4 +236,4 @@ The immediate lossless program is narrower than "compress everything":
 7. Keep lossy filters client-side unless there is an explicit proxy product contract.
    RTK's 60-90% savings come from semantic, command-aware filters with a local escape hatch. A transparent proxy should not silently drop potentially needed data.
 
-The broader roadmap lives in [Token Cost Reduction](token-cost-reduction.md). This walkthrough is the implementation and decision context for the `toolResultCompression` setting and the next lossless compression candidates.
+The broader roadmap lives in [Token Cost Reduction](token-cost-reduction.md). This walkthrough is the implementation and decision context for the tool-result compression settings and the next lossless compression candidates.

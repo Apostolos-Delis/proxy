@@ -221,7 +221,15 @@ builder.mutationFields((t) => ({
     resolve: async (_root, args, context) => {
       try {
         const identity = requireAdminRole(context);
-        const { systemPrompt, cacheTtlUpgrade, automaticCaching, toolResultCompression, costBaseline, ...fileInput } = args.input;
+        const {
+          systemPrompt,
+          cacheTtlUpgrade,
+          automaticCaching,
+          toolResultCompression,
+          duplicateToolResultReferences,
+          costBaseline,
+          ...fileInput
+        } = args.input;
         if (context.persistence && costBaseline) {
           await assertBaselineModelsPriced(context, costBaseline);
         }
@@ -259,6 +267,12 @@ builder.mutationFields((t) => ({
           await context.persistence.organizationSettings.setToolResultCompression(
             identity.organizationId,
             toolResultCompression
+          );
+        }
+        if (context.persistence && duplicateToolResultReferences !== undefined && duplicateToolResultReferences !== null) {
+          await context.persistence.organizationSettings.setDuplicateToolResultReferences(
+            identity.organizationId,
+            duplicateToolResultReferences
           );
         }
         if (context.persistence && costBaseline) {

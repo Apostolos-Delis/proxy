@@ -23,6 +23,7 @@ graphql(`
       cacheTtlUpgrade
       automaticCaching
       toolResultCompression
+      duplicateToolResultReferences
       costBaseline {
         anthropicModel
         openaiModel

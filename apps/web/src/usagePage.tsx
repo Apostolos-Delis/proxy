@@ -3,11 +3,18 @@ import { Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 import { isAdminRole } from "./access";
-import { fetchUsageDashboard, fetchUsageLookups, fetchUsageReport } from "./usageData";
+import {
+  fetchRouteOutputReport,
+  fetchUsageDashboard,
+  fetchUsageLookups,
+  fetchUsageReport,
+  type RouteOutputReport,
+  type RouteOutputRow
+} from "./usageData";
 import { ChartLegend, StackedBarsChart } from "./charts";
 import { downloadJson } from "./dashboard";
-import { formatCompact, formatInteger, formatPercent } from "./format";
-import { GlassCard, PageSkeleton, PageState, Segmented } from "./ui";
+import { formatCompact, formatCompactMoney, formatInteger, formatPercent } from "./format";
+import { BarListRow, GlassCard, PageSkeleton, PageState, Segmented } from "./ui";
 import {
   stackedUsageSeries,
   usagePreviousRangeQuery,
@@ -66,6 +73,12 @@ export function UsagePage() {
     queryFn: () => fetchUsageDashboard(dimension, { start, end, interval }),
     placeholderData: keepPreviousData
   });
+  const { error: routeOutputQueryError, data: routeOutputQueryData } = useQuery({
+    queryKey: ["route-output-report", start, end],
+    queryFn: () => fetchRouteOutputReport({ start, end }),
+    placeholderData: keepPreviousData,
+    enabled: layout === "console"
+  });
   const { data: lookupsQueryData } = useQuery({
     queryKey: ["usage-lookups"],
     queryFn: fetchUsageLookups,
@@ -92,7 +105,7 @@ export function UsagePage() {
     placeholderData: keepPreviousData,
     enabled: layout !== "console"
   });
-  const error = dashboardQueryError;
+  const error = dashboardQueryError ?? routeOutputQueryError;
 
   if (error) return <PageState title="Usage" label={error.message} />;
 
@@ -182,6 +195,8 @@ export function UsagePage() {
             </div>
           </GlassCard>
 
+          <RouteOutputPanel report={routeOutputQueryData} />
+
           <section className="usage-breakdown">
             <UsageDimensionTabs dimension={dimension} onDimension={setDimension} canOpenDetails={isAdmin} />
             <UsageBreakdownTable mode="tokens" dimension={dimension} range={range} rows={breakdownRows} totals={totals} lookups={lookups} canOpenDetails={isAdmin} />
@@ -213,6 +228,40 @@ function Summary({ label, value, tone }: { label: string; value: string; tone?: 
       <strong className={tone}>{value}</strong>
     </div>
   );
+}
+
+function RouteOutputPanel({ report }: { report: RouteOutputReport | undefined }) {
+  const rows = report ? [...report.routes].sort(compareRouteOutputRows) : [];
+  const maxAvg = Math.max(1, ...rows.map((row) => row.avgOutputTokens));
+  return (
+    <GlassCard>
+      <div className="card-head">
+        <div>
+          <div className="card-title">Output by route</div>
+          <div className="stat-sub">Highest average output first</div>
+        </div>
+      </div>
+      {report && rows.length === 0 ? (
+        <div className="empty-inline">No provider output tokens in this window.</div>
+      ) : (
+        <div className="barlist usage-top-list">
+          {rows.map((row) => (
+            <BarListRow
+              key={row.route}
+              label={row.route}
+              value={`${formatCompact(row.avgOutputTokens)} avg / ${formatCompact(row.outputTokens)} out / ${formatCompactMoney(row.outputCost)}`}
+              width={(row.avgOutputTokens / maxAvg) * 100}
+              mono
+            />
+          ))}
+        </div>
+      )}
+    </GlassCard>
+  );
+}
+
+function compareRouteOutputRows(left: RouteOutputRow, right: RouteOutputRow) {
+  return right.avgOutputTokens - left.avgOutputTokens || right.outputTokens - left.outputTokens || left.route.localeCompare(right.route);
 }
 
 function rangeLabel(range: UsageRangeKey) {

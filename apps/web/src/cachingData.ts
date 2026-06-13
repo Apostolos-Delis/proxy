@@ -1,6 +1,7 @@
 import { graphql } from "./gql";
 import type {
   CacheBustsViewQuery,
+  CompressionSavingsViewQuery,
   CachePricingRatesQuery,
   IdleGapsViewQuery,
   TokenAttributionViewQuery
@@ -30,6 +31,15 @@ const TokenAttributionViewDocument = graphql(`
         estimatedTokens
         blocks
       }
+      schemaChurn {
+        name
+        estimatedTokens
+        requests
+        sessions
+        schemaHashes
+        churningSessions
+        status
+      }
     }
   }
 `);
@@ -45,7 +55,13 @@ const IdleGapsViewDocument = graphql(`
       totalGaps
       overTtl
       recoverableByOneHourTtl
+      estimatedRecoverableCacheReadTokens
+      recommendationThresholdTokens
+      recommendedTtlUpgrade
       sessionsScanned
+      sampledRequests
+      sampleWindowStart
+      sampleWindowEnd
       sampled
     }
   }
@@ -71,6 +87,26 @@ const CacheBustsViewDocument = graphql(`
   }
 `);
 
+const CompressionSavingsViewDocument = graphql(`
+  query CompressionSavingsView($start: String, $end: String) {
+    compressionSavings(start: $start, end: $end) {
+      eventCount
+      sampled
+      blocks
+      savedChars
+      savedEstimatedTokens
+      rows {
+        rule
+        ruleVersion
+        tool
+        blocks
+        savedChars
+        savedEstimatedTokens
+      }
+    }
+  }
+`);
+
 const CachePricingRatesDocument = graphql(`
   query CachePricingRates {
     modelPricing {
@@ -84,8 +120,11 @@ const CachePricingRatesDocument = graphql(`
 
 export type TokenAttributionReport = TokenAttributionViewQuery["tokenAttribution"];
 export type TokenAttributionOffender = TokenAttributionReport["toolSchemas"][number];
+export type TokenAttributionSchemaChurn = TokenAttributionReport["schemaChurn"][number];
 export type CacheBustReport = CacheBustsViewQuery["cacheBusts"];
 export type CacheBust = CacheBustReport["busts"][number];
+export type CompressionSavingsReport = CompressionSavingsViewQuery["compressionSavings"];
+export type CompressionSavingsRow = CompressionSavingsReport["rows"][number];
 export type CachePricingRate = CachePricingRatesQuery["modelPricing"][number];
 
 export async function fetchTokenAttribution(filters: UsageRangeFilters = {}) {
@@ -94,6 +133,10 @@ export async function fetchTokenAttribution(filters: UsageRangeFilters = {}) {
 
 export async function fetchCacheBusts(filters: UsageRangeFilters = {}) {
   return (await gqlFetch(CacheBustsViewDocument, { ...filters })).cacheBusts;
+}
+
+export async function fetchCompressionSavings(filters: UsageRangeFilters = {}) {
+  return (await gqlFetch(CompressionSavingsViewDocument, { ...filters })).compressionSavings;
 }
 
 export type IdleGapReport = IdleGapsViewQuery["idleGaps"];

@@ -24,6 +24,7 @@ export async function settingsResponse(
         cacheTtlUpgrade: false,
         automaticCaching: false,
         toolResultCompression: false,
+        duplicateToolResultReferences: false,
         costBaseline: defaultCostBaseline
       };
   const settings = {
@@ -32,6 +33,7 @@ export async function settingsResponse(
     cacheTtlUpgrade: editable.cacheTtlUpgrade,
     automaticCaching: editable.automaticCaching,
     toolResultCompression: editable.toolResultCompression,
+    duplicateToolResultReferences: editable.duplicateToolResultReferences,
     costBaseline: editable.costBaseline,
     classifier: {
       model: fileSettings.classifier.model ?? config.classifierModel,

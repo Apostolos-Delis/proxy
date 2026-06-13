@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   agentSessions,
+  apiKeys,
   defaultWorkspaceId,
+  hashApiKey,
   providerAttempts,
   requests,
   usageLedger,
@@ -217,12 +219,24 @@ describe("cacheBusts admin query", () => {
         totalGaps
         overTtl
         recoverableByOneHourTtl
+        estimatedRecoverableCacheReadTokens
+        recommendationThresholdTokens
+        recommendedTtlUpgrade
+        sampledRequests
+        sampleWindowStart
+        sampleWindowEnd
       } }`
     )).data?.idleGaps;
 
     expect(idleGaps.totalGaps).toBe(1);
     expect(idleGaps.overTtl).toBe(1);
     expect(idleGaps.recoverableByOneHourTtl).toBe(1);
+    expect(idleGaps.estimatedRecoverableCacheReadTokens).toBe(55_000);
+    expect(idleGaps.recommendationThresholdTokens).toBe(100_000);
+    expect(idleGaps.recommendedTtlUpgrade).toBe(false);
+    expect(idleGaps.sampledRequests).toBe(2);
+    expect(idleGaps.sampleWindowStart).toBe("2026-06-08T12:00:00.000Z");
+    expect(idleGaps.sampleWindowEnd).toBe("2026-06-08T12:10:00.000Z");
     const gapCounts = Object.fromEntries(idleGaps.buckets.map((bucket: any) => [bucket.key, bucket.count]));
     expect(gapCounts["5m_15m"]).toBe(1);
   });
@@ -300,6 +314,27 @@ describe("cacheBusts admin query", () => {
       usageRequest("req_30m_1", "org_active_1h", "user_1h", "session_30m", "anthropic-messages", earlier),
       usageRequest("req_30m_2", "org_active_1h", "user_1h", "session_30m", "anthropic-messages", recent)
     ]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("att_30m_1", "req_30m_1", "org_active_1h", "anthropic-messages", "anthropic", "claude-hard", "completed", earlier),
+      usageAttempt("att_30m_2", "req_30m_2", "org_active_1h", "anthropic-messages", "anthropic", "claude-hard", "completed", recent)
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      {
+        ...usageRow("use_30m_1", "req_30m_1", "att_30m_1", "org_active_1h", "anthropic", "claude-hard", "hard", 60_000, 100, 1000),
+        userId: "user_1h",
+        sessionId: "session_30m",
+        cachedInputTokens: 55_000,
+        createdAt: earlier
+      },
+      {
+        ...usageRow("use_30m_2", "req_30m_2", "att_30m_2", "org_active_1h", "anthropic", "claude-hard", "hard", 60_000, 100, 1000),
+        userId: "user_1h",
+        sessionId: "session_30m",
+        cachedInputTokens: 0,
+        cacheCreationInputTokens: 55_000,
+        createdAt: recent
+      }
+    ]);
 
     const result = (await adminGql(
       fixture.proxyUrl,
@@ -317,33 +352,81 @@ describe("cacheBusts admin query", () => {
     const at = new Date("2026-06-08T12:00:00.000Z");
 
     await fixture.db.insert(users).values([{ id: "user_ro", email: "ro@example.com", name: "RO" }]);
+    await fixture.db.insert(apiKeys).values({
+      id: "ro_key",
+      organizationId: "org_route_output",
+      workspaceId: defaultWorkspaceId("org_route_output"),
+      keyHash: hashApiKey("ro-secret"),
+      name: "Route output key",
+      scopes: ["proxy"]
+    });
     await fixture.db.insert(agentSessions).values([
       { id: "ro_session", organizationId: "org_route_output", workspaceId: defaultWorkspaceId("org_route_output"), userId: "user_ro", surface: "anthropic-messages", externalSessionId: "ro", startedAt: at, updatedAt: at }
     ]);
     await fixture.db.insert(requests).values([
-      usageRequest("ro_req_fast", "org_route_output", "user_ro", "ro_session", "anthropic-messages", at),
-      usageRequest("ro_req_deep", "org_route_output", "user_ro", "ro_session", "anthropic-messages", at)
+      usageRequest("ro_req_fast", "org_route_output", "user_ro", "ro_session", "anthropic-messages", at, "ro_key"),
+      usageRequest("ro_req_deep", "org_route_output", "user_ro", "ro_session", "anthropic-messages", at, "ro_key"),
+      usageRequest("ro_req_unrouted", "org_route_output", "user_ro", "ro_session", "anthropic-messages", at, "ro_key")
     ]);
     await fixture.db.insert(providerAttempts).values([
       usageAttempt("ro_att_fast", "ro_req_fast", "org_route_output", "anthropic-messages", "anthropic", "claude-fast", "completed", at),
-      usageAttempt("ro_att_deep", "ro_req_deep", "org_route_output", "anthropic-messages", "anthropic", "claude-deep", "completed", at)
+      usageAttempt("ro_att_deep", "ro_req_deep", "org_route_output", "anthropic-messages", "anthropic", "claude-deep", "completed", at),
+      usageAttempt("ro_att_unrouted", "ro_req_unrouted", "org_route_output", "anthropic-messages", "anthropic", "claude-unpriced", "completed", at)
     ]);
     await fixture.db.insert(usageLedger).values([
-      { ...usageRow("ro_use_fast", "ro_req_fast", "ro_att_fast", "org_route_output", "anthropic", "claude-fast", "fast", 100, 200, 1000), reasoningTokens: 0 },
-      { ...usageRow("ro_use_deep", "ro_req_deep", "ro_att_deep", "org_route_output", "anthropic", "claude-deep", "hard", 100, 1000, 5000), route: "deep", reasoningTokens: 400 }
+      {
+        ...usageRow("ro_use_fast", "ro_req_fast", "ro_att_fast", "org_route_output", "anthropic", "claude-fast", "fast", 100, 200, 1000),
+        userId: "user_ro",
+        sessionId: "ro_session",
+        reasoningTokens: 0
+      },
+      {
+        ...usageRow("ro_use_deep", "ro_req_deep", "ro_att_deep", "org_route_output", "anthropic", "claude-deep", "hard", 100, 1000, 5000),
+        userId: "user_ro",
+        sessionId: "ro_session",
+        route: "deep",
+        reasoningTokens: 400
+      },
+      {
+        ...usageRow("ro_use_unrouted", "ro_req_unrouted", "ro_att_unrouted", "org_route_output", "anthropic", "claude-unpriced", "fast", 100, 300, 0),
+        userId: "user_ro",
+        sessionId: "ro_session",
+        route: null
+      }
     ]);
 
     const report = (await adminGql(
       fixture.proxyUrl,
       fixture.adminHeaders,
-      `query { routeOutputReport { routes { route requests outputTokens avgOutputTokens reasoningShare } } }`
+      `query {
+        routeOutputReport {
+          routes { route requests outputTokens avgOutputTokens reasoningShare outputCost }
+          models { key requests outputTokens avgOutputTokens outputCost }
+          users { key outputTokens }
+          apiKeys { key outputTokens }
+          workspaces { key outputTokens }
+        }
+      }`
     )).data?.routeOutputReport;
 
     const byRoute = Object.fromEntries(report.routes.map((row: any) => [row.route, row]));
+    const byModel = Object.fromEntries(report.models.map((row: any) => [row.key, row]));
+    const byUser = Object.fromEntries(report.users.map((row: any) => [row.key, row]));
+    const byApiKey = Object.fromEntries(report.apiKeys.map((row: any) => [row.key, row]));
+    const byWorkspace = Object.fromEntries(report.workspaces.map((row: any) => [row.key, row]));
     expect(byRoute.fast.avgOutputTokens).toBe(200);
     expect(byRoute.fast.reasoningShare).toBe(0);
     expect(byRoute.deep.avgOutputTokens).toBe(1000);
     expect(byRoute.deep.reasoningShare).toBeCloseTo(0.4, 5);
+    expect(byRoute.deep.outputCost).toBe(0);
+    expect(byRoute.unknown).toBeUndefined();
+    expect(byModel["claude-deep"].outputTokens).toBe(1000);
+    expect(byModel["claude-deep"].avgOutputTokens).toBe(1000);
+    expect(byModel["claude-unpriced"].outputTokens).toBe(300);
+    expect(byModel["claude-unpriced"].outputCost).toBe(0);
+    expect(byUser.user_ro.outputTokens).toBe(1500);
+    expect(byApiKey.ro_key.outputTokens).toBe(1500);
+    expect(byWorkspace[defaultWorkspaceId("org_route_output")].outputTokens).toBe(1500);
     // Sorted fast < deep by route rank.
     expect(report.routes[0].route).toBe("fast");
   });

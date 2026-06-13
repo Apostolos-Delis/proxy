@@ -83,6 +83,32 @@ input ClassifierSettingsInput {
   timeoutMs: Int
 }
 
+type CompressionSavingsReport {
+  afterChars: Float!
+  afterEstimatedTokens: Float!
+  beforeChars: Float!
+  beforeEstimatedTokens: Float!
+  blocks: Float!
+  eventCount: Float!
+  rows: [CompressionSavingsRow!]!
+  sampled: Boolean!
+  savedChars: Float!
+  savedEstimatedTokens: Float!
+}
+
+type CompressionSavingsRow {
+  afterChars: Float!
+  afterEstimatedTokens: Float!
+  beforeChars: Float!
+  beforeEstimatedTokens: Float!
+  blocks: Float!
+  rule: String!
+  ruleVersion: Float!
+  savedChars: Float!
+  savedEstimatedTokens: Float!
+  tool: String!
+}
+
 type CostBaselineSettings {
   anthropicModel: String!
   openaiModel: String!
@@ -149,6 +175,7 @@ type EditableSettings {
   cacheTtlUpgrade: Boolean!
   classifier: EditableClassifier!
   costBaseline: CostBaselineSettings!
+  duplicateToolResultReferences: Boolean!
   promptCapture: PromptCaptureState!
   routeQuality: RouteQualitySettings!
   schemaVersion: Int!
@@ -170,9 +197,15 @@ type IdleGapBucket {
 
 type IdleGapReport {
   buckets: [IdleGapBucket!]!
+  estimatedRecoverableCacheReadTokens: Float!
   overTtl: Float!
+  recommendationThresholdTokens: Float!
+  recommendedTtlUpgrade: Boolean!
   recoverableByOneHourTtl: Float!
+  sampleWindowEnd: String
+  sampleWindowStart: String
   sampled: Boolean!
+  sampledRequests: Float!
   sessionsScanned: Float!
   totalGaps: Float!
 }
@@ -484,6 +517,7 @@ type Query {
   apiKey(apiKeyId: ID!): ApiKey
   apiKeys: [ApiKey!]!
   cacheBusts(end: String, start: String): CacheBustReport!
+  compressionSavings(end: String, start: String): CompressionSavingsReport!
   idleGaps(end: String, start: String): IdleGapReport!
   invitations: [Invitation!]!
   members: [OrgMember!]!
@@ -570,8 +604,22 @@ type RouteMatrixRow {
   route: String!
 }
 
+type RouteOutputGroupRow {
+  avgOutputTokens: Float!
+  key: String!
+  outputCost: Float!
+  outputTokens: Float!
+  reasoningShare: Float!
+  reasoningTokens: Float!
+  requests: Float!
+}
+
 type RouteOutputReport {
+  apiKeys: [RouteOutputGroupRow!]!
+  models: [RouteOutputGroupRow!]!
   routes: [RouteOutputRow!]!
+  users: [RouteOutputGroupRow!]!
+  workspaces: [RouteOutputGroupRow!]!
 }
 
 type RouteOutputRow {
@@ -748,6 +796,7 @@ input SettingsInput {
   cacheTtlUpgrade: Boolean
   classifier: ClassifierSettingsInput
   costBaseline: CostBaselineSettingsInput
+  duplicateToolResultReferences: Boolean
   promptCapture: PromptCaptureSettingsInput
   routeQuality: RouteQualitySettingsInput
   schemaVersion: Int
@@ -778,8 +827,20 @@ type TokenAttributionReport {
   buckets: [TokenAttributionBucket!]!
   requestCount: Float!
   sampled: Boolean!
+  schemaChurn: [TokenAttributionSchemaChurn!]!
   toolResults: [TokenAttributionOffender!]!
   toolSchemas: [TokenAttributionOffender!]!
+}
+
+type TokenAttributionSchemaChurn {
+  chars: Float!
+  churningSessions: Float!
+  estimatedTokens: Float!
+  name: String!
+  requests: Float!
+  schemaHashes: Float!
+  sessions: Float!
+  status: String!
 }
 
 type TokenTotals {

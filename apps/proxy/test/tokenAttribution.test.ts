@@ -57,6 +57,13 @@ describe("attributeTokens", () => {
     expect(schemaNames).toContain("Bash");
     expect(schemaNames).toContain("mcp__linear");
     expect(schemaNames).toHaveLength(2);
+    const schemaHashes = attribution.toolSchemaHashesByName;
+    expect(schemaHashes.map((entry) => entry.name)).toEqual(expect.arrayContaining([
+      "Bash",
+      "mcp__linear__create_issue",
+      "mcp__linear__list_issues"
+    ]));
+    expect(schemaHashes.every((entry) => entry.schemaHash.startsWith("sha256:"))).toBe(true);
     expect(attribution.total.chars).toBe(
       attribution.systemPrompt.chars +
         attribution.orgSystemPrompt.chars +

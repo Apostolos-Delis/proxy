@@ -112,6 +112,14 @@ export const settingsSections: SettingsSectionDef[] = [
         desc: "Strips insignificant whitespace from pretty-printed JSON returned by MCP tools before forwarding. Lossless — numbers, nulls, keys, and ordering are preserved exactly. Reduces tokens on MCP-heavy sessions.",
         get: (settings) => settings.toolResultCompression,
         set: (settings, value) => ({ ...settings, toolResultCompression: value })
+      },
+      {
+        id: "duplicateToolResultReferences",
+        type: "toggle",
+        label: "Reference duplicate tool results",
+        desc: "Replaces later exact duplicate tool-result payloads with a deterministic hash reference when the earlier content is still present in the forwarded context. Requires tool-result compression to be enabled.",
+        get: (settings) => settings.duplicateToolResultReferences,
+        set: (settings, value) => ({ ...settings, duplicateToolResultReferences: value })
       }
     ]
   },
@@ -280,6 +288,7 @@ export function settingsInput(settings: EditableSettings) {
     cacheTtlUpgrade: settings.cacheTtlUpgrade,
     automaticCaching: settings.automaticCaching,
     toolResultCompression: settings.toolResultCompression,
+    duplicateToolResultReferences: settings.duplicateToolResultReferences,
     costBaseline: {
       anthropicModel: settings.costBaseline.anthropicModel,
       openaiModel: settings.costBaseline.openaiModel

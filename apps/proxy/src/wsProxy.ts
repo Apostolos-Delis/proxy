@@ -289,6 +289,7 @@ export class WebSocketRoutingProxy {
       surface: openAIResponsesSurface.surface,
       body: routeBody,
       enabled: resolved.toolResultCompression,
+      deduplicateToolResults: resolved.duplicateToolResultReferences,
       warn: (err, message) => this.log?.warn({ err, requestId }, message)
     });
     return {

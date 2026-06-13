@@ -94,6 +94,7 @@ export type SettingsInput = {
   cacheTtlUpgrade?: boolean | null | undefined;
   classifier?: ClassifierSettingsInput | null | undefined;
   costBaseline?: CostBaselineSettingsInput | null | undefined;
+  duplicateToolResultReferences?: boolean | null | undefined;
   promptCapture?: PromptCaptureSettingsInput | null | undefined;
   routeQuality?: RouteQualitySettingsInput | null | undefined;
   schemaVersion?: number | null | undefined;
@@ -126,7 +127,7 @@ export type TokenAttributionViewQueryVariables = Exact<{
 }>;
 
 
-export type TokenAttributionViewQuery = { tokenAttribution: { requestCount: number, sampled: boolean, buckets: Array<{ key: string, chars: number, estimatedTokens: number }>, toolSchemas: Array<{ name: string, chars: number, estimatedTokens: number, blocks: number | null }>, toolResults: Array<{ name: string, chars: number, estimatedTokens: number, blocks: number | null }> } };
+export type TokenAttributionViewQuery = { tokenAttribution: { requestCount: number, sampled: boolean, buckets: Array<{ key: string, chars: number, estimatedTokens: number }>, toolSchemas: Array<{ name: string, chars: number, estimatedTokens: number, blocks: number | null }>, toolResults: Array<{ name: string, chars: number, estimatedTokens: number, blocks: number | null }>, schemaChurn: Array<{ name: string, estimatedTokens: number, requests: number, sessions: number, schemaHashes: number, churningSessions: number, status: string }> } };
 
 export type IdleGapsViewQueryVariables = Exact<{
   start?: string | null | undefined;
@@ -134,7 +135,7 @@ export type IdleGapsViewQueryVariables = Exact<{
 }>;
 
 
-export type IdleGapsViewQuery = { idleGaps: { totalGaps: number, overTtl: number, recoverableByOneHourTtl: number, sessionsScanned: number, sampled: boolean, buckets: Array<{ key: string, label: string, count: number }> } };
+export type IdleGapsViewQuery = { idleGaps: { totalGaps: number, overTtl: number, recoverableByOneHourTtl: number, estimatedRecoverableCacheReadTokens: number, recommendationThresholdTokens: number, recommendedTtlUpgrade: boolean, sessionsScanned: number, sampledRequests: number, sampleWindowStart: string | null, sampleWindowEnd: string | null, sampled: boolean, buckets: Array<{ key: string, label: string, count: number }> } };
 
 export type CacheBustsViewQueryVariables = Exact<{
   start?: string | null | undefined;
@@ -143,6 +144,14 @@ export type CacheBustsViewQueryVariables = Exact<{
 
 
 export type CacheBustsViewQuery = { cacheBusts: { countsByCause: unknown, sessionsScanned: number, sampled: boolean, busts: Array<{ sessionId: string, requestId: string, at: string, cause: string, droppedCacheReadTokens: number, rebuiltTokens: number, model: string, gapMs: number }> } };
+
+export type CompressionSavingsViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+}>;
+
+
+export type CompressionSavingsViewQuery = { compressionSavings: { eventCount: number, sampled: boolean, blocks: number, savedChars: number, savedEstimatedTokens: number, rows: Array<{ rule: string, ruleVersion: number, tool: string, blocks: number, savedChars: number, savedEstimatedTokens: number }> } };
 
 export type CachePricingRatesQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -418,19 +427,19 @@ export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, requestCount: number, startedAt: string, endedAt: string | null, recentActivity: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
-export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
+export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, duplicateToolResultReferences: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
 
 export type SettingsViewQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, duplicateToolResultReferences: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type UpdateSettingsMutationVariables = Exact<{
   input: SettingsInput;
 }>;
 
 
-export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, duplicateToolResultReferences: boolean, costBaseline: { anthropicModel: string, openaiModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } };
 
@@ -469,6 +478,14 @@ export type UsageLookupsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
 export type UsageLookupsQuery = { members: Array<{ userId: string, name: string | null, email: string | null }>, apiKeys: Array<{ id: string, name: string, revokedAt: string | null }> };
+
+export type RouteOutputViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+}>;
+
+
+export type RouteOutputViewQuery = { routeOutputReport: { routes: Array<{ route: string, requests: number, outputTokens: number, reasoningTokens: number, avgOutputTokens: number, reasoningShare: number, outputCost: number }>, models: Array<{ key: string, requests: number, outputTokens: number, reasoningTokens: number, avgOutputTokens: number, reasoningShare: number, outputCost: number }>, users: Array<{ key: string, requests: number, outputTokens: number, reasoningTokens: number, avgOutputTokens: number, reasoningShare: number, outputCost: number }>, apiKeys: Array<{ key: string, requests: number, outputTokens: number, reasoningTokens: number, avgOutputTokens: number, reasoningShare: number, outputCost: number }>, workspaces: Array<{ key: string, requests: number, outputTokens: number, reasoningTokens: number, avgOutputTokens: number, reasoningShare: number, outputCost: number }> } };
 
 export type UnpricedModelsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -631,6 +648,7 @@ export const SettingsViewFieldsFragmentDoc = new TypedDocumentString(`
     cacheTtlUpgrade
     automaticCaching
     toolResultCompression
+    duplicateToolResultReferences
     costBaseline {
       anthropicModel
       openaiModel
@@ -713,6 +731,15 @@ export const TokenAttributionViewDocument = new TypedDocumentString(`
       estimatedTokens
       blocks
     }
+    schemaChurn {
+      name
+      estimatedTokens
+      requests
+      sessions
+      schemaHashes
+      churningSessions
+      status
+    }
   }
 }
     `) as unknown as TypedDocumentString<TokenAttributionViewQuery, TokenAttributionViewQueryVariables>;
@@ -727,7 +754,13 @@ export const IdleGapsViewDocument = new TypedDocumentString(`
     totalGaps
     overTtl
     recoverableByOneHourTtl
+    estimatedRecoverableCacheReadTokens
+    recommendationThresholdTokens
+    recommendedTtlUpgrade
     sessionsScanned
+    sampledRequests
+    sampleWindowStart
+    sampleWindowEnd
     sampled
   }
 }
@@ -751,6 +784,25 @@ export const CacheBustsViewDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CacheBustsViewQuery, CacheBustsViewQueryVariables>;
+export const CompressionSavingsViewDocument = new TypedDocumentString(`
+    query CompressionSavingsView($start: String, $end: String) {
+  compressionSavings(start: $start, end: $end) {
+    eventCount
+    sampled
+    blocks
+    savedChars
+    savedEstimatedTokens
+    rows {
+      rule
+      ruleVersion
+      tool
+      blocks
+      savedChars
+      savedEstimatedTokens
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<CompressionSavingsViewQuery, CompressionSavingsViewQueryVariables>;
 export const CachePricingRatesDocument = new TypedDocumentString(`
     query CachePricingRates {
   modelPricing {
@@ -1742,6 +1794,7 @@ export const SettingsViewDocument = new TypedDocumentString(`
     cacheTtlUpgrade
     automaticCaching
     toolResultCompression
+    duplicateToolResultReferences
     costBaseline {
       anthropicModel
       openaiModel
@@ -1782,6 +1835,7 @@ export const UpdateSettingsDocument = new TypedDocumentString(`
     cacheTtlUpgrade
     automaticCaching
     toolResultCompression
+    duplicateToolResultReferences
     costBaseline {
       anthropicModel
       openaiModel
@@ -1964,6 +2018,57 @@ export const UsageLookupsDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<UsageLookupsQuery, UsageLookupsQueryVariables>;
+export const RouteOutputViewDocument = new TypedDocumentString(`
+    query RouteOutputView($start: String, $end: String) {
+  routeOutputReport(start: $start, end: $end) {
+    routes {
+      route
+      requests
+      outputTokens
+      reasoningTokens
+      avgOutputTokens
+      reasoningShare
+      outputCost
+    }
+    models {
+      key
+      requests
+      outputTokens
+      reasoningTokens
+      avgOutputTokens
+      reasoningShare
+      outputCost
+    }
+    users {
+      key
+      requests
+      outputTokens
+      reasoningTokens
+      avgOutputTokens
+      reasoningShare
+      outputCost
+    }
+    apiKeys {
+      key
+      requests
+      outputTokens
+      reasoningTokens
+      avgOutputTokens
+      reasoningShare
+      outputCost
+    }
+    workspaces {
+      key
+      requests
+      outputTokens
+      reasoningTokens
+      avgOutputTokens
+      reasoningShare
+      outputCost
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<RouteOutputViewQuery, RouteOutputViewQueryVariables>;
 export const UnpricedModelsDocument = new TypedDocumentString(`
     query UnpricedModels {
   modelPricing {
