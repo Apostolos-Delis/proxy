@@ -144,30 +144,32 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     ]
   }));
 
-  app.get("/_debug/events", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
-    return events.listEvents();
-  });
-  app.get("/_debug/provider-attempts", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
-    return attempts.list();
-  });
-  app.get("/_debug/outbox", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
-    return events.listOutbox();
-  });
-  app.get("/_debug/sessions", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
-    return sessions.list();
-  });
-  app.get("/_debug/projections", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
-    return projections.usage(events.listEvents());
-  });
-  app.get("/_debug/route-quality", async (request) => {
-    requireAuth(request.headers, config.proxyToken);
-    return projections.routeQuality(events.listEvents());
-  });
+  if (config.debugEndpointsEnabled) {
+    app.get("/_debug/events", async (request) => {
+      requireAuth(request.headers, config.proxyToken);
+      return events.listEvents();
+    });
+    app.get("/_debug/provider-attempts", async (request) => {
+      requireAuth(request.headers, config.proxyToken);
+      return attempts.list();
+    });
+    app.get("/_debug/outbox", async (request) => {
+      requireAuth(request.headers, config.proxyToken);
+      return events.listOutbox();
+    });
+    app.get("/_debug/sessions", async (request) => {
+      requireAuth(request.headers, config.proxyToken);
+      return sessions.list();
+    });
+    app.get("/_debug/projections", async (request) => {
+      requireAuth(request.headers, config.proxyToken);
+      return projections.usage(events.listEvents());
+    });
+    app.get("/_debug/route-quality", async (request) => {
+      requireAuth(request.headers, config.proxyToken);
+      return projections.routeQuality(events.listEvents());
+    });
+  }
   app.post("/v1/responses", async (request, reply) => {
     const identity = await auth.resolve(request.headers);
     const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(

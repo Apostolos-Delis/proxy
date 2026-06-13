@@ -125,7 +125,7 @@ The web app at `:5173` is an org-scoped operations console (with a ⌘K global s
 
 ### User management
 
-- **Invite** by email with a role (`owner`, `admin`, `member`, `viewer` — stored on `organization_members`, no permission checks yet). Emails go through [Resend](https://resend.com) when `RESEND_API_KEY` is set; without a key the proxy logs the message and the console shows a copyable invite link.
+- **Invite** by email with a role (`owner`, `admin`, `member`, `viewer`). Owner/admin sessions can manage users, settings, routing configs, API keys, provider keys, prompt logs, and other sensitive console surfaces; lower roles are limited to non-sensitive read-only dashboards for now. Emails go through [Resend](https://resend.com) when `RESEND_API_KEY` is set; without a key the proxy logs the message and the console shows a copyable invite link.
 - Invite links point at `ADMIN_CONSOLE_URL/invite/<token>`. Tokens are stored as hashes only, rotate on resend, and expire after `INVITATION_TTL_SECONDS` (default 7 days).
 - **Deactivate** instead of delete: blocks console sessions but keeps the user row, API keys, and usage history. The last active owner can't be demoted or deactivated; admins can't deactivate themselves.
 - Every mutation appends a `user.*` audit event to the event log.
@@ -150,7 +150,7 @@ Customer secrets are encrypted at rest with AES-256-GCM using `PROVIDER_SECRET_E
 
 **Admin (session-cookie auth):** everything the console reads or writes goes through the GraphQL API at `POST /admin/graphql`, including login/logout/org switching and the public invitation-accept flow (the only operations reachable without a session; anonymous introspection is rejected). The SDL lives at [`apps/proxy/schema.graphql`](apps/proxy/schema.graphql) (regenerate with `pnpm --filter @prompt-proxy/proxy schema:print`), and logged-in admins get GraphiQL by opening `/admin/graphql` in a browser.
 
-**Debug (local development, authenticated):** `GET /_debug/events`, `/_debug/provider-attempts`, `/_debug/outbox`, `/_debug/sessions`, `/_debug/projections`, `/_debug/route-quality`.
+**Debug (local development, authenticated):** `GET /_debug/events`, `/_debug/provider-attempts`, `/_debug/outbox`, `/_debug/sessions`, `/_debug/projections`, `/_debug/route-quality`. These endpoints are enabled automatically only when `DATABASE_URL` is unset; set `DEBUG_ENDPOINTS_ENABLED=true` to enable them with persistence, and never expose them with the default development proxy token.
 
 ## Persistence
 

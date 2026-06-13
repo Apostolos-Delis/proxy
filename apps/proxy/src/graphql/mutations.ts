@@ -1,5 +1,6 @@
 import { undatedModel } from "../pricing.js";
 import { writeSettingsFile } from "../settings.js";
+import { requireAdminRole } from "./authz.js";
 import { builder } from "./builder.js";
 import { scopedQueries, viewerPayload } from "./context.js";
 import { adminGraphQLError, mapAdminError, notFoundError } from "./errors.js";
@@ -173,10 +174,11 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: CreateWorkspaceInput, required: true }) },
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("workspaces_not_found");
+      const identity = requireAdminRole(context);
       try {
         const created = await context.persistence.workspaceAdmin.createWorkspace({
-          organizationId: context.identity().organizationId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
           body: {
             name: args.input.name,
             slug: args.input.slug ?? undefined,
@@ -218,6 +220,7 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: SettingsInput, required: true }) },
     resolve: async (_root, args, context) => {
       try {
+        const identity = requireAdminRole(context);
         const { systemPrompt, cacheTtlUpgrade, automaticCaching, toolResultCompression, costBaseline, ...fileInput } = args.input;
         if (context.persistence && costBaseline) {
           await assertBaselineModelsPriced(context, costBaseline);
@@ -229,44 +232,44 @@ builder.mutationFields((t) => ({
           settings.promptCapture.retentionDays !== undefined
         ) {
           await context.persistence.promptArtifacts.configure({
-            organizationId: context.identity().organizationId,
+            organizationId: identity.organizationId,
             promptCaptureMode: settings.promptCapture.promptCaptureMode,
             retentionDays: settings.promptCapture.retentionDays
           });
         }
         if (context.persistence && systemPrompt !== undefined) {
           await context.persistence.organizationSettings.setSystemPrompt(
-            context.identity().organizationId,
+            identity.organizationId,
             systemPrompt?.trim() ? systemPrompt.trim() : null
           );
         }
         if (context.persistence && cacheTtlUpgrade !== undefined && cacheTtlUpgrade !== null) {
           await context.persistence.organizationSettings.setCacheTtlUpgrade(
-            context.identity().organizationId,
+            identity.organizationId,
             cacheTtlUpgrade
           );
         }
         if (context.persistence && automaticCaching !== undefined && automaticCaching !== null) {
           await context.persistence.organizationSettings.setAutomaticCaching(
-            context.identity().organizationId,
+            identity.organizationId,
             automaticCaching
           );
         }
         if (context.persistence && toolResultCompression !== undefined && toolResultCompression !== null) {
           await context.persistence.organizationSettings.setToolResultCompression(
-            context.identity().organizationId,
+            identity.organizationId,
             toolResultCompression
           );
         }
         if (context.persistence && costBaseline) {
           await context.persistence.organizationSettings.setCostBaseline(
-            context.identity().organizationId,
+            identity.organizationId,
             costBaseline
           );
         }
         return await settingsResponse(
           context.config,
-          context.identity().organizationId,
+          identity.organizationId,
           settings,
           context.persistence
         );
@@ -284,9 +287,10 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("prompt_capture_settings_not_found");
+      const identity = requireAdminRole(context);
       try {
         return await context.persistence.promptArtifacts.configure({
-          organizationId: context.identity().organizationId,
+          organizationId: identity.organizationId,
           ...promptCaptureSettings({
             promptCaptureMode: args.promptCaptureMode,
             retentionDays: args.retentionDays
@@ -302,12 +306,13 @@ builder.mutationFields((t) => ({
     type: [ModelPricingEntry],
     args: { input: t.arg({ type: SetModelPricingInput, required: true }) },
     resolve: async (_root, args, context) => {
+      const identity = requireAdminRole(context);
       const queries = scopedQueries(context);
       if (!context.persistence || !queries) throw notFoundError("model_pricing_unavailable");
       try {
         await context.persistence.modelPricingAdmin.setPricing({
-          organizationId: context.identity().organizationId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
           body: {
             provider: args.input.provider,
             model: args.input.model,
@@ -332,12 +337,13 @@ builder.mutationFields((t) => ({
       model: t.arg.string({ required: true })
     },
     resolve: async (_root, args, context) => {
+      const identity = requireAdminRole(context);
       const queries = scopedQueries(context);
       if (!context.persistence || !queries) throw notFoundError("model_pricing_unavailable");
       try {
         await context.persistence.modelPricingAdmin.clearPricing({
-          organizationId: context.identity().organizationId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
           body: {
             provider: args.provider,
             model: args.model
@@ -356,11 +362,12 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: CreateRoutingConfigInput, required: true }) },
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("routing_configs_not_found");
+      const identity = requireAdminRole(context);
       try {
         const created = await context.persistence.routingConfigAdmin.createConfig({
-          organizationId: context.identity().organizationId,
-          workspaceId: context.identity().workspaceId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          workspaceId: identity.workspaceId,
+          actorUserId: identity.userId,
           body: {
             name: args.input.name,
             description: args.input.description ?? null,
@@ -385,11 +392,12 @@ builder.mutationFields((t) => ({
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("routing_config_not_found");
       const configId = String(args.configId);
+      const identity = requireAdminRole(context);
       try {
         await context.persistence.routingConfigAdmin.createVersion({
-          organizationId: context.identity().organizationId,
-          workspaceId: context.identity().workspaceId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          workspaceId: identity.workspaceId,
+          actorUserId: identity.userId,
           configId,
           body: { config: args.config }
         });
@@ -411,11 +419,12 @@ builder.mutationFields((t) => ({
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("routing_config_version_not_found");
       const configId = String(args.configId);
+      const identity = requireAdminRole(context);
       try {
         await context.persistence.routingConfigAdmin.activateVersion({
-          organizationId: context.identity().organizationId,
-          workspaceId: context.identity().workspaceId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          workspaceId: identity.workspaceId,
+          actorUserId: identity.userId,
           configId,
           versionId: String(args.versionId)
         });
@@ -434,11 +443,12 @@ builder.mutationFields((t) => ({
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("routing_config_not_found");
       const configId = String(args.configId);
+      const identity = requireAdminRole(context);
       try {
         await context.persistence.routingConfigAdmin.archiveConfig({
-          organizationId: context.identity().organizationId,
-          workspaceId: context.identity().workspaceId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          workspaceId: identity.workspaceId,
+          actorUserId: identity.userId,
           configId
         });
         const detail = await scopedQueries(context)?.routingConfigDetail(configId);
@@ -455,11 +465,12 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: CreateApiKeyInput, required: true }) },
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("api_keys_not_found");
+      const identity = requireAdminRole(context);
       try {
         const created = await context.persistence.apiKeyAdmin.createApiKey({
-          organizationId: context.identity().organizationId,
-          workspaceId: context.identity().workspaceId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          workspaceId: identity.workspaceId,
+          actorUserId: identity.userId,
           body: {
             name: args.input.name,
             scopes: args.input.scopes ?? undefined,
@@ -483,11 +494,12 @@ builder.mutationFields((t) => ({
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("api_key_not_found");
       const apiKeyId = String(args.apiKeyId);
+      const identity = requireAdminRole(context);
       try {
         await context.persistence.apiKeyAdmin.revokeApiKey({
-          organizationId: context.identity().organizationId,
-          workspaceId: context.identity().workspaceId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          workspaceId: identity.workspaceId,
+          actorUserId: identity.userId,
           apiKeyId
         });
         const detail = await scopedQueries(context)?.apiKeyDetail(apiKeyId);
@@ -508,11 +520,12 @@ builder.mutationFields((t) => ({
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("api_key_not_found");
       const apiKeyId = String(args.apiKeyId);
+      const identity = requireAdminRole(context);
       try {
         await context.persistence.routingConfigAdmin.assignApiKeyRoutingConfig({
-          organizationId: context.identity().organizationId,
-          workspaceId: context.identity().workspaceId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          workspaceId: identity.workspaceId,
+          actorUserId: identity.userId,
           apiKeyId,
           body: { routingConfigId: args.routingConfigId ? String(args.routingConfigId) : null }
         });
@@ -531,10 +544,11 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: CreateProviderCredentialInput, required: true }) },
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("provider_accounts_not_found");
+      const identity = requireAdminRole(context);
       try {
         const created = await context.persistence.providerCredentialAdmin.createCredential({
-          organizationId: context.identity().organizationId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
           body: {
             provider: args.input.provider,
             name: args.input.name,
@@ -558,10 +572,11 @@ builder.mutationFields((t) => ({
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("provider_credential_not_found");
       const providerAccountId = String(args.providerAccountId);
+      const identity = requireAdminRole(context);
       try {
         await context.persistence.providerCredentialAdmin.revokeCredential({
-          organizationId: context.identity().organizationId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
           providerAccountId
         });
         const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
@@ -582,11 +597,12 @@ builder.mutationFields((t) => ({
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("api_key_not_found");
       const apiKeyId = String(args.apiKeyId);
+      const identity = requireAdminRole(context);
       try {
         await context.persistence.providerCredentialAdmin.bindApiKeyCredential({
-          organizationId: context.identity().organizationId,
-          workspaceId: context.identity().workspaceId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          workspaceId: identity.workspaceId,
+          actorUserId: identity.userId,
           apiKeyId,
           body: {
             provider: args.provider,
@@ -606,12 +622,13 @@ builder.mutationFields((t) => ({
     type: InvitationActionResult,
     args: { input: t.arg({ type: CreateInvitationInput, required: true }) },
     resolve: async (_root, args, context) => {
+      const identity = requireAdminRole(context);
       const queries = scopedQueries(context);
       if (!context.persistence || !queries) throw notFoundError("invitations_not_found");
       try {
         const created = await context.persistence.userAdmin.createInvitation({
-          organizationId: context.identity().organizationId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
           body: {
             email: args.input.email,
             name: args.input.name ?? undefined,
@@ -622,7 +639,7 @@ builder.mutationFields((t) => ({
         const emailDelivery = await sendInvitationEmail(queries, context.config, context.emailService, {
           invitation,
           token: created.token,
-          inviterName: context.identity().name ?? context.identity().email
+          inviterName: identity.name ?? identity.email
         });
         return {
           invitation,
@@ -639,20 +656,21 @@ builder.mutationFields((t) => ({
     type: InvitationActionResult,
     args: { invitationId: t.arg.id({ required: true }) },
     resolve: async (_root, args, context) => {
+      const identity = requireAdminRole(context);
       const queries = scopedQueries(context);
       if (!context.persistence || !queries) throw notFoundError("invitation_not_found");
       const invitationId = String(args.invitationId);
       try {
         const resent = await context.persistence.userAdmin.resendInvitation({
-          organizationId: context.identity().organizationId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
           invitationId
         });
         const invitation = (await queries.invitationDetail(invitationId))?.invitation ?? null;
         const emailDelivery = await sendInvitationEmail(queries, context.config, context.emailService, {
           invitation,
           token: resent.token,
-          inviterName: context.identity().name ?? context.identity().email
+          inviterName: identity.name ?? identity.email
         });
         return {
           invitation,
@@ -672,10 +690,11 @@ builder.mutationFields((t) => ({
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("invitation_not_found");
       const invitationId = String(args.invitationId);
+      const identity = requireAdminRole(context);
       try {
         await context.persistence.userAdmin.revokeInvitation({
-          organizationId: context.identity().organizationId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
           invitationId
         });
         const detail = await scopedQueries(context)?.invitationDetail(invitationId);
@@ -694,10 +713,11 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("member_not_found");
+      const identity = requireAdminRole(context);
       try {
         return await context.persistence.userAdmin.updateMemberRole({
-          organizationId: context.identity().organizationId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
           userId: String(args.userId),
           body: { role: args.role }
         });
@@ -712,10 +732,11 @@ builder.mutationFields((t) => ({
     args: { userId: t.arg.id({ required: true }) },
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("member_not_found");
+      const identity = requireAdminRole(context);
       try {
         return await context.persistence.userAdmin.deactivateMember({
-          organizationId: context.identity().organizationId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
           userId: String(args.userId)
         });
       } catch (error) {
@@ -729,10 +750,11 @@ builder.mutationFields((t) => ({
     args: { userId: t.arg.id({ required: true }) },
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("member_not_found");
+      const identity = requireAdminRole(context);
       try {
         return await context.persistence.userAdmin.reactivateMember({
-          organizationId: context.identity().organizationId,
-          actorUserId: context.identity().userId,
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
           userId: String(args.userId)
         });
       } catch (error) {

@@ -1,6 +1,8 @@
 import { Match, Template } from "aws-cdk-lib/assertions";
-import { describe, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
+import { environments } from "../config/environments.js";
+import { runtimeEnvironment } from "./proxy-service-stack.js";
 import { createRuntimeStacks } from "./test-helpers.js";
 
 describe("PromptProxyServiceStack", () => {
@@ -54,5 +56,25 @@ describe("PromptProxyServiceStack", () => {
         ])
       });
     }
+  });
+
+  it("uses hardened runtime defaults for release deployments", () => {
+    const stagingConfig = environments.find((config) => config.envName === "staging");
+    const prodConfig = environments.find((config) => config.envName === "prod");
+    if (!stagingConfig || !prodConfig) {
+      throw new Error("missing CDK test environments");
+    }
+
+    const stagingEnvironment = runtimeEnvironment(stagingConfig);
+    const prodEnvironment = runtimeEnvironment(prodConfig);
+
+    expect(stagingEnvironment.ADMIN_DEV_LOGIN_ENABLED).toBe("true");
+    expect(stagingEnvironment.ADMIN_GRAPHIQL_ENABLED).toBe("true");
+    expect(stagingEnvironment.ADMIN_SESSION_COOKIE_SECURE).toBe("true");
+    expect(stagingEnvironment.DEBUG_ENDPOINTS_ENABLED).toBe("false");
+    expect(prodEnvironment.ADMIN_DEV_LOGIN_ENABLED).toBe("false");
+    expect(prodEnvironment.ADMIN_GRAPHIQL_ENABLED).toBe("false");
+    expect(prodEnvironment.ADMIN_SESSION_COOKIE_SECURE).toBe("true");
+    expect(prodEnvironment.DEBUG_ENDPOINTS_ENABLED).toBe("false");
   });
 });

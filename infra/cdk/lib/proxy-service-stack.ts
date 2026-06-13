@@ -111,7 +111,9 @@ export class PromptProxyServiceStack extends Stack {
 export function runtimeEnvironment(config: PromptProxyEnvironmentConfig) {
   return {
     ADMIN_CORS_ORIGIN: "",
-    ADMIN_DEV_LOGIN_ENABLED: "true",
+    ADMIN_DEV_LOGIN_ENABLED: config.envName === "prod" ? "false" : "true",
+    ADMIN_GRAPHIQL_ENABLED: config.envName === "prod" ? "false" : "true",
+    ADMIN_SESSION_COOKIE_SECURE: "true",
     ADMIN_SESSION_COOKIE_NAME: "prompt_proxy_session",
     ADMIN_SESSION_TTL_SECONDS: "28800",
     ALLOW_DEV_PROXY_TOKEN_FALLBACK: "false",
@@ -122,6 +124,7 @@ export function runtimeEnvironment(config: PromptProxyEnvironmentConfig) {
     CLASSIFIER_PROVIDER: "openai",
     CLASSIFIER_TIMEOUT_MS: "30000",
     DEFAULT_ORGANIZATION_ID: `prompt-proxy-${config.envName}`,
+    DEBUG_ENDPOINTS_ENABLED: "false",
     LOG_LEVEL: "info",
     NODE_ENV: "production",
     OPENAI_BASE_URL: "https://api.openai.com/v1",

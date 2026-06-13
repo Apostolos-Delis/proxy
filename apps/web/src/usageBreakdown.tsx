@@ -23,6 +23,7 @@ import {
 export function UsageDimensionTabs({ dimension, onDimension }: {
   dimension: UsageDimension;
   onDimension: (dimension: UsageDimension) => void;
+  canOpenDetails: boolean;
 }) {
   return (
     <div className="tabs usage-dimension-tabs" aria-label="Usage breakdown dimension">
@@ -37,7 +38,7 @@ export function UsageDimensionTabs({ dimension, onDimension }: {
           {item.label}
         </button>
       ))}
-      <Link to="/logs" className="usage-breakdown-link">Open logs<ArrowUpRight /></Link>
+      {canOpenDetails ? <Link to="/logs" className="usage-breakdown-link">Open logs<ArrowUpRight /></Link> : null}
     </div>
   );
 }
@@ -80,20 +81,21 @@ export function TopGroupsList({ dimension, rows, lookups, limit, emptyLabel }: {
   );
 }
 
-export function UsageBreakdownTable({ mode, dimension, range, rows, totals, lookups }: {
+export function UsageBreakdownTable({ mode, dimension, range, rows, totals, lookups, canOpenDetails }: {
   mode: "tokens" | "cost";
   dimension: UsageDimension;
   range: UsageRangeKey;
   rows: UsageGroup[];
   totals: UsageGroup | undefined;
   lookups: GroupLabelLookups;
+  canOpenDetails: boolean;
 }) {
   const label = dimensionLabel(dimension);
   const share = mode === "tokens" ? tokenShareOf(totals) : spendShareOf(totals);
   const columns = [
-    keyColumn(dimension, lookups),
+    keyColumn(dimension, lookups, canOpenDetails),
     shareColumn(share),
-    ...(mode === "tokens" ? tokenColumns(dimension, range) : costColumns())
+    ...(mode === "tokens" ? tokenColumns(dimension, range, canOpenDetails) : costColumns())
   ];
   return (
     <ConsoleTable
@@ -106,13 +108,13 @@ export function UsageBreakdownTable({ mode, dimension, range, rows, totals, look
   );
 }
 
-function keyColumn(dimension: UsageDimension, lookups: GroupLabelLookups): ConsoleTableColumn<UsageGroup> {
+function keyColumn(dimension: UsageDimension, lookups: GroupLabelLookups, canOpenDetails: boolean): ConsoleTableColumn<UsageGroup> {
   return {
     id: "key",
     header: dimensionLabel(dimension).replace(/s$/, ""),
     size: keyColumnSize(dimension),
     accessorFn: (row) => row.key,
-    cell: ({ row }) => <UsageKeyCell dimension={dimension} group={row.original} lookups={lookups} />
+    cell: ({ row }) => <UsageKeyCell dimension={dimension} group={row.original} lookups={lookups} canOpenDetails={canOpenDetails} />
   };
 }
 
@@ -126,7 +128,7 @@ function shareColumn(share: (row: UsageGroup) => number): ConsoleTableColumn<Usa
   };
 }
 
-function tokenColumns(dimension: UsageDimension, range: UsageRangeKey): ConsoleTableColumn<UsageGroup>[] {
+function tokenColumns(dimension: UsageDimension, range: UsageRangeKey, canOpenDetails: boolean): ConsoleTableColumn<UsageGroup>[] {
   return [
     { id: "requests", header: "Requests", size: 96, accessorFn: (row) => row.requestCount, cell: ({ row }) => <span className="mono">{formatInteger(row.original.requestCount)}</span> },
     { id: "input", header: "Input", size: 92, accessorFn: (row) => row.usage.inputTokens, cell: ({ row }) => <TokenCell value={row.original.usage.inputTokens} /> },
@@ -134,7 +136,7 @@ function tokenColumns(dimension: UsageDimension, range: UsageRangeKey): ConsoleT
     { id: "output", header: "Output", size: 92, accessorFn: (row) => row.usage.outputTokens, cell: ({ row }) => <TokenCell value={row.original.usage.outputTokens} /> },
     { id: "tokens", header: "Total", size: 96, accessorFn: (row) => row.usage.totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(row.original.usage.totalTokens)}</span> },
     { id: "p95", header: "p95", size: 84, accessorFn: (row) => row.latency.p95Ms ?? -1, cell: ({ row }) => <LatencyCell group={row.original} /> },
-    { id: "failures", header: "Failures", size: 88, accessorFn: (row) => row.failureRate, cell: ({ row }) => <FailureCell group={row.original} dimension={dimension} range={range} /> }
+    { id: "failures", header: "Failures", size: 88, accessorFn: (row) => row.failureRate, cell: ({ row }) => <FailureCell group={row.original} dimension={dimension} range={range} canOpenDetails={canOpenDetails} /> }
   ];
 }
 
@@ -153,17 +155,18 @@ function avgCostPerRequest(row: UsageGroup) {
   return row.requestCount === 0 ? 0 : row.cost.selected / row.requestCount;
 }
 
-function UsageKeyCell({ dimension, group, lookups }: {
+function UsageKeyCell({ dimension, group, lookups, canOpenDetails }: {
   dimension: UsageDimension;
   group: UsageGroup;
   lookups: GroupLabelLookups;
+  canOpenDetails: boolean;
 }) {
   if (group.key === OTHER_GROUP_KEY) return <span className="faint">Other</span>;
   if (dimension === "route") return <RouteBadge route={group.key} />;
   if (dimension === "model" || dimension === "model_effort") return <span className="row gap-8"><span className="model-dot" /><span className="mono">{group.key}</span></span>;
   if (dimension === "user") return <UserKeyCell userId={group.key} usersById={lookups.usersById} />;
   if (dimension === "api_key") return <ApiKeyCell apiKeyId={group.key} apiKeysById={lookups.apiKeysById} />;
-  if (dimension === "session") return <SessionKeyCell sessionId={group.key} />;
+  if (dimension === "session") return <SessionKeyCell sessionId={group.key} canOpenDetails={canOpenDetails} />;
   return <span className="mono">{group.key}</span>;
 }
 
@@ -193,13 +196,21 @@ function ApiKeyCell({ apiKeyId, apiKeysById }: { apiKeyId: string; apiKeysById?:
   );
 }
 
-function SessionKeyCell({ sessionId }: { sessionId: string }) {
+function SessionKeyCell({ sessionId, canOpenDetails }: { sessionId: string; canOpenDetails: boolean }) {
   if (sessionId === "unknown") return <span className="faint">No session</span>;
   const { scope, tail } = splitSessionKey(sessionId);
-  return (
-    <Link to="/sessions/$sessionId" params={{ sessionId }} className="usage-session-key" title={sessionId}>
+  const label = (
+    <>
       <span className="mono">{compactId(tail, 9)}</span>
       {scope ? <span className="usage-session-scope">{scope}</span> : null}
+    </>
+  );
+  if (!canOpenDetails) {
+    return <span className="usage-session-key" title={sessionId}>{label}</span>;
+  }
+  return (
+    <Link to="/sessions/$sessionId" params={{ sessionId }} className="usage-session-key" title={sessionId}>
+      {label}
     </Link>
   );
 }
@@ -229,11 +240,11 @@ function SavingsCell({ value }: { value: number }) {
   return <span className="mono accent-text">{formatMoney(value)}</span>;
 }
 
-function FailureCell({ group, dimension, range }: { group: UsageGroup; dimension: UsageDimension; range: UsageRangeKey }) {
+function FailureCell({ group, dimension, range, canOpenDetails }: { group: UsageGroup; dimension: UsageDimension; range: UsageRangeKey; canOpenDetails: boolean }) {
   if (group.failureRate <= 0) return <span className="mono faint">—</span>;
   const search = failuresLogsSearch(dimension, group.key, range);
   const rate = <span className="mono danger-text">{formatPercent(group.failureRate)}</span>;
-  if (!search) return rate;
+  if (!search || !canOpenDetails) return rate;
   return (
     <Link to="/logs" search={search} className="failure-link" title="View these failed requests in logs">
       {rate}

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight, Coins, Download, KeyRound, Send, Sparkles, Zap } from "lucide-react";
 import { useState } from "react";
 
+import { isAdminRole } from "./access";
 import { type AuthMe, fetchMe } from "./session";
 import { AreaChart, MiniBars, Sparkline } from "./charts";
 import { modelRowsFromUsage, periodDelta, seriesFromRequests } from "./consoleData";
@@ -82,6 +83,7 @@ export function OverviewPage() {
   const modelRows = modelRowsFromUsage(queryData.modelUsage.data);
   const quality = overview.routeQuality;
   const exportOverview = () => downloadJson("proxy-overview.json", { overview, requests, rangeDays, modelRows });
+  const isAdmin = isAdminRole(meQueryData?.user.role);
 
   return (
     <div className="page page-enter">
@@ -91,8 +93,12 @@ export function OverviewPage() {
           <div className="muted">Here's what's happening across {organizationName(meQueryData) ?? "your workspace"}.</div>
         </div>
         <div className="row gap-8">
-          <Link to="/api-keys" className="btn"><KeyRound />Get API key</Link>
-          <Link to="/settings" className="btn btn-primary"><Sparkles />Configure routing</Link>
+          {isAdmin ? (
+            <>
+              <Link to="/api-keys" className="btn"><KeyRound />Get API key</Link>
+              <Link to="/settings" className="btn btn-primary"><Sparkles />Configure routing</Link>
+            </>
+          ) : null}
           <ConsoleButton variant="ghost" onClick={exportOverview}><Download />Export</ConsoleButton>
         </div>
       </div>
@@ -106,12 +112,12 @@ export function OverviewPage() {
         <InteractiveStatCard
           metric={{ label: "Requests", value: formatInteger(overview.requestCount), icon: <Send />, delta: requestDelta }}
           chart={<MiniBars data={requestSeries.slice(-7)} valueFormatter={formatInteger} />}
-          to="/logs"
+          to={isAdmin ? "/logs" : "/usage"}
         />
         <InteractiveStatCard
           metric={{ label: "Spend", value: formatMoney(overview.cost.selected, 0), icon: <Coins />, delta: spendDelta, deltaPositiveIsGood: false }}
           chart={<Sparkline data={spendSeries.slice(-7)} valueFormatter={formatMoney} />}
-          to="/billing"
+          to={isAdmin ? "/billing" : "/cost"}
         />
       </div>
 
@@ -153,7 +159,7 @@ export function OverviewPage() {
       <GlassCard>
         <div className="card-head">
           <div className="card-title">Route quality</div>
-          <Link to="/logs" className="btn btn-sm"><ArrowUpRight />Open logs</Link>
+          {isAdmin ? <Link to="/logs" className="btn btn-sm"><ArrowUpRight />Open logs</Link> : null}
         </div>
         <div className="quality-grid">
           <QualitySignal

@@ -59,6 +59,34 @@ describe("buildPaletteGroups", () => {
     const groups = buildPaletteGroups({ query: "zzzz-nothing", hits: [], recents: [] });
     expect(groups).toEqual([]);
   });
+
+  it("filters admin pages, hits, and recents for non-admin users", () => {
+    const groups = buildPaletteGroups({
+      query: "",
+      hits: [hit({ kind: "api_key", id: "key_1", title: "prod key" })],
+      recents: [
+        { kind: "page", id: "/users", title: "Users", subtitle: "Team & access" },
+        { kind: "page", id: "/usage", title: "Usage", subtitle: "Token metering" },
+        { kind: "log", id: "artifact_1", title: "Prompt", subtitle: null }
+      ],
+      isAdmin: false
+    });
+
+    expect(groups.map((group) => group.label)).toEqual(["Recent", "Pages"]);
+    expect(groups[0].actions.map((action) => action.id)).toEqual(["/usage"]);
+    expect(groups[1].actions.map((action) => action.id)).toEqual(["/", "/usage", "/cost", "/caching"]);
+  });
+
+  it("keeps admin-only palette entries for admins", () => {
+    const groups = buildPaletteGroups({
+      query: "token",
+      hits: [hit({ kind: "api_key", id: "key_1", title: "token-ci" })],
+      recents: [],
+      isAdmin: true
+    });
+
+    expect(groups.map((group) => group.label)).toContain("API keys");
+  });
 });
 
 describe("matchSegments", () => {

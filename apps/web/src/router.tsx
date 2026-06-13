@@ -1,6 +1,6 @@
 import { createRootRouteWithContext, createRoute, createRouter } from "@tanstack/react-router";
 
-import { LoginPage, requireAuth, type RouterContext } from "./auth";
+import { LoginPage, requireAdmin, requireAuth, type RouterContext } from "./auth";
 import { BillingPage } from "./billingPage";
 import { CostPage } from "./costPage";
 import { InvitePage } from "./invitePage";
@@ -69,105 +69,105 @@ const cachingRoute = createRoute({
 const promptsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/prompts",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: PromptsPage
 });
 
 const promptDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/prompts/$artifactId",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: PromptDetailRoutePage
 });
 
 const sessionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sessions",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: SessionsPage
 });
 
 const sessionDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sessions/$sessionId",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: SessionDetailRoutePage
 });
 
 const logsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/logs",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: RequestsPage
 });
 
 const logDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/logs/$artifactId",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: LogDetailRoutePage
 });
 
 const keysRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/api-keys",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: KeysPage
 });
 
 const keysCreateRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/api-keys/new",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: CreateApiKeyPage
 });
 
 const providerKeysRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/provider-keys",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: ProvidersPage
 });
 
 const routingConfigsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/routing",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: RoutingConfigsPage
 });
 
 const routingConfigCreateRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/routing/new",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: CreateRoutingConfigPage
 });
 
 const routingConfigDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/routing/$configId",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: RoutingConfigDetailRoutePage
 });
 
 const usersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/users",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: UsersPage
 });
 
 const billingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/billing",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: BillingPage
 });
 
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
-  beforeLoad: requireAuth,
+  beforeLoad: requireAdmin,
   component: SettingsPage
 });
 
