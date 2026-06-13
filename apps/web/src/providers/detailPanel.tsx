@@ -21,14 +21,14 @@ export function ProviderKeyDetailPanel({ account, onClose }: {
   onClose: () => void;
 }) {
   const { range, setRange, metric, setMetric, requestsQuery } = useKeyTraffic();
-  const keysQuery = useQuery({ queryKey: ["api-keys"], queryFn: fetchApiKeys });
+  const { data: keysQueryData, error: keysQueryError, isLoading: keysQueryIsLoading } = useQuery({ queryKey: ["api-keys"], queryFn: fetchApiKeys });
 
-  const boundKeys = (keysQuery.data ?? []).filter((apiKey) =>
+  const boundKeys = (keysQueryData ?? []).filter((apiKey) =>
     apiKey.providerCredentials.some((credential) => credential.providerAccountId === account.id)
   );
   const allRequests = requestsQuery.data?.requests ?? [];
   const accountRequests = accountTraffic(allRequests, account, boundKeys);
-  const error = keysQuery.error ?? requestsQuery.error;
+  const error = keysQueryError ?? requestsQuery.error;
 
   return (
     <Drawer
@@ -55,7 +55,7 @@ export function ProviderKeyDetailPanel({ account, onClose }: {
         {error ? <div className="empty">{error.message}</div> : (
           <>
             <KeyUsageSection
-              loading={keysQuery.isLoading || requestsQuery.isLoading}
+              loading={keysQueryIsLoading || requestsQuery.isLoading}
               empty={boundKeys.length === 0 ? "No API keys are bound to this provider key, so no traffic flows through it." : undefined}
               requests={accountRequests}
               truncated={allRequests.length >= REQUEST_LIMIT}

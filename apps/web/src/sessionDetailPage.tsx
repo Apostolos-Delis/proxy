@@ -79,16 +79,16 @@ const SessionDetailViewDocument = graphql(`
 `);
 
 export function SessionDetailPage({ sessionId }: { sessionId: string }) {
-  const query = useQuery({
+  const { isLoading: queryIsLoading, error: queryError, data: queryData } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: async () => (await gqlFetch(SessionDetailViewDocument, { sessionId })).session
   });
 
-  if (query.isLoading) return <PageState title="Session" label="Loading session trace" />;
-  if (query.error) return <PageState title="Session" label={query.error.message} />;
-  if (!query.data) return <PageState title="Session" label="No session data" />;
+  if (queryIsLoading) return <PageState title="Session" label="Loading session trace" />;
+  if (queryError) return <PageState title="Session" label={queryError.message} />;
+  if (!queryData) return <PageState title="Session" label="No session data" />;
 
-  const detail = query.data;
+  const detail = queryData;
   const session = detail.session;
   const turns = conversationTurns(detail);
   const spans = systemSpans(turns);

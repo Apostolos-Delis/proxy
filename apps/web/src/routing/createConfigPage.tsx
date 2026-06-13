@@ -65,12 +65,12 @@ function CreateConfigForm({ sourceConfigs, apiKeys }: {
   const [draftState, setDraftState] = useState<{ versionId: string; draft: ConfigEditorDraft } | null>(null);
   const [selectedKeyIds, setSelectedKeyIds] = useState<ReadonlySet<string>>(new Set());
 
-  const sourceQuery = useQuery({
+  const { data: sourceQueryData, error: sourceQueryError } = useQuery({
     queryKey: ["routing-config", form.sourceConfigId],
     queryFn: () => fetchRoutingConfigDetail(form.sourceConfigId),
     enabled: Boolean(form.sourceConfigId)
   });
-  const sourceVersion = sourceQuery.data?.versions.find((version) => version.active);
+  const sourceVersion = sourceQueryData?.versions.find((version) => version.active);
   const draft = deriveDraft(draftState, sourceVersion);
 
   const createMutation = useMutation({
@@ -192,7 +192,7 @@ function CreateConfigForm({ sourceConfigs, apiKeys }: {
           </>
         ) : (
           <GlassCard>
-            <div className="faint">{sourceQuery.error?.message ?? "Loading source config…"}</div>
+            <div className="faint">{sourceQueryError?.message ?? "Loading source config…"}</div>
           </GlassCard>
         )}
         <GlassCard>

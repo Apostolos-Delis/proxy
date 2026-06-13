@@ -65,7 +65,7 @@ const QUERY_KEY = ["model-pricing"];
 
 export function ModelPricingCard() {
   const queryClient = useQueryClient();
-  const query = useQuery({
+  const { data: queryData, error: queryError, isLoading: queryIsLoading } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: async () => (await gqlFetch(ModelPricingDocument)).modelPricing
   });
@@ -94,7 +94,7 @@ export function ModelPricingCard() {
     }
   });
   const mutationError = setPricing.error ?? clearPricing.error;
-  const rows = query.data ?? [];
+  const rows = queryData ?? [];
 
   return (
     <GlassCard>
@@ -107,10 +107,10 @@ export function ModelPricingCard() {
           <Plus />Price a model
         </button>
       </div>
-      {query.error ? <div className="action-error">{query.error.message}</div> : null}
+      {queryError ? <div className="action-error">{queryError.message}</div> : null}
       {mutationError ? <div className="action-error">{mutationError.message}</div> : null}
-      {query.isLoading ? <div className="empty compact-empty">Loading model pricing…</div> : null}
-      {!query.isLoading && rows.length === 0 && !adding
+      {queryIsLoading ? <div className="empty compact-empty">Loading model pricing…</div> : null}
+      {!queryIsLoading && rows.length === 0 && !adding
         ? <div className="empty compact-empty">No models to price yet — defaults appear once the proxy is configured.</div>
         : null}
       {rows.length > 0 || adding ? (

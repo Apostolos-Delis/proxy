@@ -72,11 +72,11 @@ const ActiveSessionsDocument = graphql(`
 export function SettingsPage() {
   const queryClient = useQueryClient();
   const [savedNeedsRestart, setSavedNeedsRestart] = useState(false);
-  const query = useQuery({
+  const { isLoading: queryIsLoading, error: queryError, data: queryData } = useQuery({
     queryKey: ["settings"],
     queryFn: async () => (await gqlFetch(SettingsViewDocument)).settings
   });
-  const activeSessionsQuery = useQuery({
+  const { data: activeSessionsQueryData } = useQuery({
     queryKey: ["active-sessions"],
     queryFn: async () => (await gqlFetch(ActiveSessionsDocument)).activeSessionCount
   });
@@ -86,21 +86,21 @@ export function SettingsPage() {
     onSuccess: (data) => queryClient.setQueryData(["settings"], data)
   });
 
-  if (query.isLoading) return <PageState title="Settings" label="Loading organization settings" />;
-  if (query.error) return <PageState title="Settings" label={query.error.message} />;
-  if (!query.data) return <PageState title="Settings" label="No settings data" />;
+  if (queryIsLoading) return <PageState title="Settings" label="Loading organization settings" />;
+  if (queryError) return <PageState title="Settings" label={queryError.message} />;
+  if (!queryData) return <PageState title="Settings" label="No settings data" />;
 
   return (
     <div className="page page-enter">
       <SettingsForm
-        key={JSON.stringify(query.data.settings)}
-        initial={query.data.settings}
-        databaseEnabled={query.data.databaseEnabled}
-        storagePath={query.data.storage.path}
-        storageReason={query.data.storage.reason}
-        restartRequiredFor={query.data.restartRequiredFor}
-        activeSessions={activeSessionsQuery.data?.activeSessions ?? null}
-        activeWindowMs={activeSessionsQuery.data?.windowMs ?? null}
+        key={JSON.stringify(queryData.settings)}
+        initial={queryData.settings}
+        databaseEnabled={queryData.databaseEnabled}
+        storagePath={queryData.storage.path}
+        storageReason={queryData.storage.reason}
+        restartRequiredFor={queryData.restartRequiredFor}
+        activeSessions={activeSessionsQueryData?.activeSessions ?? null}
+        activeWindowMs={activeSessionsQueryData?.windowMs ?? null}
         saving={mutation.isPending}
         justSaved={mutation.isSuccess}
         justSavedRestart={savedNeedsRestart}

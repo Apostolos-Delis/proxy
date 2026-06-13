@@ -52,11 +52,12 @@ export function useKeyTraffic() {
   // Pin "now" on mount so the query key stays stable across re-renders/refetches.
   const [anchor] = useState(() => new Date());
   const window = usageRangeQuery(range, anchor);
-  const requestsQuery = useQuery({
+  const { data, error, isLoading } = useQuery({
     queryKey: ["key-traffic-requests", window.start, window.end],
     queryFn: () => gqlFetch(KeyTrafficRequestsDocument, { start: window.start, end: window.end, limit: REQUEST_LIMIT }),
     placeholderData: keepPreviousData
   });
+  const requestsQuery = { data, error, isLoading };
   return { range, setRange, metric, setMetric, requestsQuery };
 }
 

@@ -42,11 +42,11 @@ const PromptsListDocument = graphql(`
 type PromptSummary = PromptsListQuery["prompts"]["data"][number];
 
 export function PromptsPage() {
-  const query = useQuery({ queryKey: ["prompts"], queryFn: () => gqlFetch(PromptsListDocument) });
-  const data = (query.data?.prompts.data ?? []).filter(isVisiblePromptArtifact);
+  const { data: queryData, isLoading: queryIsLoading, error: queryError } = useQuery({ queryKey: ["prompts"], queryFn: () => gqlFetch(PromptsListDocument) });
+  const data = (queryData?.prompts.data ?? []).filter(isVisiblePromptArtifact);
 
-  if (query.isLoading) return <PageState title="Prompts" label="Loading prompt artifacts" />;
-  if (query.error) return <PageState title="Prompts" label={query.error.message} />;
+  if (queryIsLoading) return <PageState title="Prompts" label="Loading prompt artifacts" />;
+  if (queryError) return <PageState title="Prompts" label={queryError.message} />;
 
   return (
     <div className="page page-enter">

@@ -29,6 +29,6 @@
     "@types/react-dom": "19.2.3",
     "graphql": "^16.14.2",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.15"
+    "vitest": "^4.1.8"
   }
 }

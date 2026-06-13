@@ -34,31 +34,31 @@ export function CostPage() {
   // Individual useQuery calls, not useQueries: useQueries matches observers by query
   // hash, so a dimension/range switch spins up fresh observers and keepPreviousData
   // has no previous data to keep — the skeleton swap collapses the page scroll.
-  const dashboardQuery = useQuery({
+  const { error: dashboardQueryError, data: dashboardQueryData } = useQuery({
     queryKey: ["usage-dashboard", dimension, start, end, interval],
     queryFn: () => fetchUsageDashboard(dimension, { start, end, interval }),
     placeholderData: keepPreviousData
   });
-  const lookupsQuery = useQuery({ queryKey: ["usage-lookups"], queryFn: fetchUsageLookups });
-  const unpricedQuery = useQuery({ queryKey: ["unpriced-models"], queryFn: fetchUnpricedModels });
-  const spendTabQuery = useQuery({
+  const { data: lookupsQueryData } = useQuery({ queryKey: ["usage-lookups"], queryFn: fetchUsageLookups });
+  const { data: unpricedQueryData } = useQuery({ queryKey: ["unpriced-models"], queryFn: fetchUnpricedModels });
+  const { data: spendTabQueryData } = useQuery({
     queryKey: ["usage", spendTab, start, end],
     queryFn: () => fetchUsageReport(spendTab, { start, end }),
     placeholderData: keepPreviousData,
     enabled: spendTab !== dimension
   });
-  const error = dashboardQuery.error;
+  const error = dashboardQueryError;
 
   if (error) return <PageState title="Cost" label={error.message} />;
 
-  const usage = dashboardQuery.data?.usage;
-  const timeseries = dashboardQuery.data?.timeseries;
+  const usage = dashboardQueryData?.usage;
+  const timeseries = dashboardQueryData?.timeseries;
   if (!usage || !timeseries) return <PageSkeleton blocks={[460, 260]} />;
 
   const totals = usage.totals;
   const lookups: GroupLabelLookups = {
-    usersById: new Map((lookupsQuery.data?.members ?? []).map((user) => [user.userId, user])),
-    apiKeysById: new Map((lookupsQuery.data?.apiKeys ?? []).map((key) => [key.id, key]))
+    usersById: new Map((lookupsQueryData?.members ?? []).map((user) => [user.userId, user])),
+    apiKeysById: new Map((lookupsQueryData?.apiKeys ?? []).map((key) => [key.id, key]))
   };
   const { series, rows } = stackedUsageSeries(timeseries, dimension, "cost", lookups);
   const days = Number(range);
@@ -73,7 +73,7 @@ export function CostPage() {
 
   return (
     <div className="page page-enter">
-      <UnpricedTrafficWarning models={unpricedQuery.data ?? []} />
+      <UnpricedTrafficWarning models={unpricedQueryData ?? []} />
       <div className="usage-console-layout">
         <GlassCard className="usage-primary">
           <div className="card-head">
@@ -145,7 +145,7 @@ export function CostPage() {
             </div>
             <TopGroupsList
               dimension={spendTab}
-              rows={spendTab === dimension ? usage.data : spendTabQuery.data?.data ?? []}
+              rows={spendTab === dimension ? usage.data : spendTabQueryData?.data ?? []}
               lookups={lookups}
               limit={6}
               emptyLabel="No spend recorded yet."

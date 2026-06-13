@@ -47,60 +47,60 @@ export function CachingPage() {
   const [anchor, setAnchor] = useState(() => new Date());
   const { start, end, interval } = usageRangeQuery(range, anchor);
   const previousRange = usagePreviousRangeQuery(range, anchor);
-  const usageQuery = useQuery({
+  const { error: usageQueryError, data: usageQueryData } = useQuery({
     queryKey: ["usage", "provider", start, end],
     queryFn: () => fetchUsageReport("provider", { start, end }),
     placeholderData: keepPreviousData
   });
-  const previousQuery = useQuery({
+  const { data: previousQueryData } = useQuery({
     queryKey: ["usage", "provider", previousRange.start, previousRange.end],
     queryFn: () => fetchUsageReport("provider", previousRange),
     placeholderData: keepPreviousData
   });
-  const timeseriesQuery = useQuery({
+  const { error: timeseriesQueryError, data: timeseriesQueryData } = useQuery({
     queryKey: ["usage-timeseries", "provider", start, end, interval],
     queryFn: () => fetchUsageTimeseries("provider", { start, end, interval }),
     placeholderData: keepPreviousData
   });
-  const keyUsageQuery = useQuery({
+  const { error: keyUsageQueryError, data: keyUsageQueryData } = useQuery({
     queryKey: ["usage", "api_key", start, end],
     queryFn: () => fetchUsageReport("api_key", { start, end }),
     placeholderData: keepPreviousData
   });
-  const modelUsageQuery = useQuery({
+  const { error: modelUsageQueryError, data: modelUsageQueryData } = useQuery({
     queryKey: ["usage", "model", start, end],
     queryFn: () => fetchUsageReport("model", { start, end }),
     placeholderData: keepPreviousData
   });
-  const ratesQuery = useQuery({ queryKey: ["cache-pricing-rates"], queryFn: fetchCachePricingRates });
-  const lookupsQuery = useQuery({ queryKey: ["usage-lookups"], queryFn: fetchUsageLookups });
-  const bustsQuery = useQuery({
+  const { error: ratesQueryError, data: ratesQueryData } = useQuery({ queryKey: ["cache-pricing-rates"], queryFn: fetchCachePricingRates });
+  const { data: lookupsQueryData } = useQuery({ queryKey: ["usage-lookups"], queryFn: fetchUsageLookups });
+  const { error: bustsQueryError, data: bustsQueryData } = useQuery({
     queryKey: ["cache-busts", start, end],
     queryFn: () => fetchCacheBusts({ start, end }),
     placeholderData: keepPreviousData
   });
-  const attributionQuery = useQuery({
+  const { error: attributionQueryError, data: attributionQueryData } = useQuery({
     queryKey: ["token-attribution", start, end],
     queryFn: () => fetchTokenAttribution({ start, end }),
     placeholderData: keepPreviousData
   });
-  const idleGapsQuery = useQuery({
+  const { error: idleGapsQueryError, data: idleGapsQueryData } = useQuery({
     queryKey: ["idle-gaps", start, end],
     queryFn: () => fetchIdleGaps({ start, end }),
     placeholderData: keepPreviousData
   });
 
-  const error = usageQuery.error ?? timeseriesQuery.error ?? bustsQuery.error
-    ?? keyUsageQuery.error ?? modelUsageQuery.error ?? ratesQuery.error
-    ?? attributionQuery.error ?? idleGapsQuery.error;
+  const error = usageQueryError ?? timeseriesQueryError ?? bustsQueryError
+    ?? keyUsageQueryError ?? modelUsageQueryError ?? ratesQueryError
+    ?? attributionQueryError ?? idleGapsQueryError;
   if (error) return <PageState title="Caching" label={error.message} />;
 
-  const usage = usageQuery.data;
-  const timeseries = timeseriesQuery.data;
+  const usage = usageQueryData;
+  const timeseries = timeseriesQueryData;
   if (!usage || !timeseries) return <PageSkeleton blocks={[160, 320, 280]} />;
 
   const totals = usage.totals;
-  const previousTotals = previousQuery.data?.totals;
+  const previousTotals = previousQueryData?.totals;
   const rate = cacheHitRate(totals);
   const previousRate = cacheHitRate(previousTotals);
   const readTokens = totals.usage.cachedInputTokens;
@@ -115,12 +115,12 @@ export function CachingPage() {
     label: point.label,
     values: { reads: point.value, uncached: uncachedPoints[index]?.value ?? 0 }
   }));
-  const savings = modelUsageQuery.data && ratesQuery.data
-    ? cacheSavings(modelUsageQuery.data.data, ratesQuery.data)
+  const savings = modelUsageQueryData && ratesQueryData
+    ? cacheSavings(modelUsageQueryData.data, ratesQueryData)
     : undefined;
   const lookups = {
-    usersById: new Map((lookupsQuery.data?.members ?? []).map((user) => [user.userId, user])),
-    apiKeysById: new Map((lookupsQuery.data?.apiKeys ?? []).map((key) => [key.id, key]))
+    usersById: new Map((lookupsQueryData?.members ?? []).map((user) => [user.userId, user])),
+    apiKeysById: new Map((lookupsQueryData?.apiKeys ?? []).map((key) => [key.id, key]))
   };
 
   return (
@@ -169,14 +169,14 @@ export function CachingPage() {
       </GlassCard>
 
       <div className="caching-grid">
-        <MissTable report={bustsQuery.data} />
-        <KeyHitRates groups={keyUsageQuery.data?.data} lookups={lookups} />
+        <MissTable report={bustsQueryData} />
+        <KeyHitRates groups={keyUsageQueryData?.data} lookups={lookups} />
       </div>
 
       <div className="caching-anatomy">
-        <BucketBreakdown report={attributionQuery.data} />
-        <Offenders report={attributionQuery.data} />
-        <IdleGaps report={idleGapsQuery.data} />
+        <BucketBreakdown report={attributionQueryData} />
+        <Offenders report={attributionQueryData} />
+        <IdleGaps report={idleGapsQueryData} />
       </div>
     </div>
   );

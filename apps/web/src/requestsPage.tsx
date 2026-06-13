@@ -102,15 +102,15 @@ export function RequestsPage() {
     end: window?.end,
     limit: window ? SCOPED_LOG_LIMIT : undefined
   };
-  const query = useQuery({
+  const { isLoading: queryIsLoading, error: queryError, data: queryData } = useQuery({
     queryKey: ["requests-page", range, window?.start ?? null, window?.end ?? null],
     queryFn: () => gqlFetch(RequestsPageDocument, variables)
   });
 
-  if (query.isLoading) return <PageState title="Request logs" label="Loading prompts" />;
-  if (query.error) return <PageState title="Request logs" label={query.error.message} />;
+  if (queryIsLoading) return <PageState title="Request logs" label="Loading prompts" />;
+  if (queryError) return <PageState title="Request logs" label={queryError.message} />;
 
-  const rows = promptRows(query.data?.prompts.data ?? [], query.data?.requests ?? [], query.data?.users ?? []);
+  const rows = promptRows(queryData?.prompts.data ?? [], queryData?.requests ?? [], queryData?.users ?? []);
   return (
     <div className="page page-enter">
       <PageTitle

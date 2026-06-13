@@ -38,16 +38,16 @@ const AcceptInvitationDocument = graphql(`
 type PublicInvitation = NonNullable<PublicInvitationQuery["publicInvitation"]>;
 
 export function InvitePage({ token }: { token: string }) {
-  const query = useQuery({
+  const { isLoading: queryIsLoading, data: queryData } = useQuery({
     queryKey: ["invitation", token],
     queryFn: async () => (await gqlFetch(PublicInvitationDocument, { token })).publicInvitation,
     retry: false
   });
 
-  if (query.isLoading) {
+  if (queryIsLoading) {
     return <InviteShell heading="Invitation"><p className="invite-note">Checking invitation…</p></InviteShell>;
   }
-  const invitation = query.data;
+  const invitation = queryData;
   if (!invitation) {
     return (
       <InviteShell heading="Invitation not found">

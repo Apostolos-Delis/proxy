@@ -72,7 +72,6 @@ export function SearchSelect({
                 autoFocus
                 value={query}
                 placeholder={placeholder}
-                role="combobox"
                 aria-expanded
                 aria-label={`${ariaLabel} search`}
                 aria-activedescendant={filtered[activeIndex] ? optionDomId(ariaLabel, activeIndex) : undefined}

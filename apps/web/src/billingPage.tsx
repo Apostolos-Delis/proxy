@@ -20,12 +20,12 @@ const BillingPageDocument = graphql(`
 `);
 
 export function BillingPage() {
-  const query = useQuery({ queryKey: ["billing-page"], queryFn: () => gqlFetch(BillingPageDocument) });
+  const { isLoading: queryIsLoading, error: queryError, data: queryData } = useQuery({ queryKey: ["billing-page"], queryFn: () => gqlFetch(BillingPageDocument) });
 
-  if (query.isLoading) return <PageSkeleton blocks={[150, 280]} />;
-  if (query.error) return <PageState title="Billing" label={query.error.message} />;
+  if (queryIsLoading) return <PageSkeleton blocks={[150, 280]} />;
+  if (queryError) return <PageState title="Billing" label={queryError.message} />;
 
-  const overview = query.data?.overview;
+  const overview = queryData?.overview;
   if (!overview) return <PageState title="Billing" label="No billing data" />;
 
   const comparison = Math.max(overview.cost.baseline, overview.cost.selected);

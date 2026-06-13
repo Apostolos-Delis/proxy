@@ -9,7 +9,7 @@ import { GlassCard } from "../ui";
 export function ConfigApiKeysCard({ configId }: { configId: string }) {
   const [attachOpen, setAttachOpen] = useState(false);
   const queryClient = useQueryClient();
-  const keysQuery = useQuery({ queryKey: ["api-keys"], queryFn: fetchApiKeys });
+  const { data: keysQueryData, isLoading: keysQueryIsLoading, error: keysQueryError } = useQuery({ queryKey: ["api-keys"], queryFn: fetchApiKeys });
   const assignMutation = useMutation({
     mutationFn: (input: { apiKeyId: string; routingConfigId: string | null }) =>
       assignApiKeyRoutingConfig(input.apiKeyId, input.routingConfigId),
@@ -20,7 +20,7 @@ export function ConfigApiKeysCard({ configId }: { configId: string }) {
       queryClient.invalidateQueries({ queryKey: ["routing-config", configId] });
     }
   });
-  const keys = (keysQuery.data ?? []).filter(isUsableKey);
+  const keys = (keysQueryData ?? []).filter(isUsableKey);
   const assigned = keys.filter((key) => key.routingConfigId === configId);
   const attachable = keys.filter((key) => key.routingConfigId !== configId);
 
@@ -59,12 +59,12 @@ export function ConfigApiKeysCard({ configId }: { configId: string }) {
         </div>
       </div>
       <AssignedKeyRows
-        loading={keysQuery.isLoading}
+        loading={keysQueryIsLoading}
         assigned={assigned}
         pendingKeyId={assignMutation.isPending ? assignMutation.variables?.apiKeyId : undefined}
         onDetach={(apiKeyId) => assignMutation.mutate({ apiKeyId, routingConfigId: null })}
       />
-      {keysQuery.error ? <div className="action-error">{keysQuery.error.message}</div> : null}
+      {keysQueryError ? <div className="action-error">{keysQueryError.message}</div> : null}
       {assignMutation.error ? <div className="action-error">{assignMutation.error.message}</div> : null}
     </GlassCard>
   );

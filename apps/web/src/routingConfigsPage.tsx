@@ -9,12 +9,12 @@ import { GlassCard, PageState, PageTitle } from "./ui";
 
 export function RoutingConfigsPage() {
   const [showArchived, setShowArchived] = useState(false);
-  const query = useQuery({ queryKey: ["routing-configs"], queryFn: fetchRoutingConfigs });
+  const { isLoading: queryIsLoading, error: queryError, data: queryData } = useQuery({ queryKey: ["routing-configs"], queryFn: fetchRoutingConfigs });
 
-  if (query.isLoading) return <PageState title="Routing configs" label="Loading routing configs" />;
-  if (query.error) return <PageState title="Routing configs" label={query.error.message} />;
+  if (queryIsLoading) return <PageState title="Routing configs" label="Loading routing configs" />;
+  if (queryError) return <PageState title="Routing configs" label={queryError.message} />;
 
-  const configs = query.data ?? [];
+  const configs = queryData ?? [];
   const archived = configs.filter((config) => config.status === "archived");
   const active = configs.filter((config) => config.status !== "archived");
   const visible = showArchived ? [...active, ...archived] : active;

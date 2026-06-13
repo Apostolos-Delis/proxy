@@ -24,8 +24,8 @@ export function ProvidersPage() {
   const setOpenAccountId = (accountId: string | null) =>
     void navigate({ to: ".", search: (current) => ({ ...current, key: accountId ?? undefined }), replace: true });
   const queryClient = useQueryClient();
-  const accountsQuery = useQuery({ queryKey: ["provider-accounts"], queryFn: fetchProviderAccounts });
-  const usersQuery = useQuery({ queryKey: ["user-directory"], queryFn: fetchUserDirectory });
+  const { isLoading: accountsQueryIsLoading, error: accountsQueryError, data: accountsQueryData } = useQuery({ queryKey: ["provider-accounts"], queryFn: fetchProviderAccounts });
+  const { isLoading: usersQueryIsLoading, error: usersQueryError, data: usersQueryData } = useQuery({ queryKey: ["user-directory"], queryFn: fetchUserDirectory });
   const revokeMutation = useMutation({
     mutationFn: (providerAccountId: string) => revokeProviderCredential(providerAccountId),
     onSuccess: () => {
@@ -34,12 +34,12 @@ export function ProvidersPage() {
     }
   });
 
-  if (accountsQuery.isLoading || usersQuery.isLoading) return <PageState title="Provider keys" label="Loading provider keys" />;
-  const error = accountsQuery.error ?? usersQuery.error;
+  if (accountsQueryIsLoading || usersQueryIsLoading) return <PageState title="Provider keys" label="Loading provider keys" />;
+  const error = accountsQueryError ?? usersQueryError;
   if (error) return <PageState title="Provider keys" label={error.message} />;
 
-  const accounts = accountsQuery.data ?? [];
-  const users: UserDirectory = usersQuery.data ?? new Map();
+  const accounts = accountsQueryData ?? [];
+  const users: UserDirectory = usersQueryData ?? new Map();
   const openAccount = accounts.find((account) => account.id === openAccountId);
   return (
     <div className="page page-enter">
