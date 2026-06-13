@@ -1,10 +1,10 @@
-import { Ban, KeyRound, ShieldCheck } from "lucide-react";
+import { KeyRound, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { compactId, formatDateTime } from "../format";
 import type { ApiKeySummary } from "../routing/data";
-import { GlassCard, StatusBadge } from "../ui";
-import { OwnerCell, type UserDirectory } from "../userDirectory";
+import { Avatar, GlassCard, StatusBadge } from "../ui";
+import { ownerLabel, type UserDirectory } from "../userDirectory";
 import type { ProviderAccountSummary } from "./data";
 import { authTypeLabel, providerGroups, type ProviderGroup } from "./groupedListData";
 import { ProviderMark } from "./icons";
@@ -87,7 +87,7 @@ function ProviderGroupSection({
         <span className="provider-group-count">{groupCountLabel(group)}</span>
       </div>
       <GlassCard className="provider-key-card">
-        <ProviderDefaultRow />
+        <ProviderDefaultRow providerLabel={meta.label} />
         {group.accounts.length === 0 ? (
           <div className="empty">No {meta.label} keys yet.</div>
         ) : group.accounts.map((account) => (
@@ -113,30 +113,16 @@ function groupCountLabel(group: ProviderGroup) {
   return `${group.activeCount} of ${group.total} enabled`;
 }
 
-function ProviderDefaultRow() {
+function ProviderDefaultRow({ providerLabel }: { providerLabel: string }) {
   return (
     <div className="provider-key-row provider-default-row">
-      <div className="provider-key-main">
-        <div className="provider-key-default-title">
-          <ShieldCheck />
-          <span>Company key</span>
-        </div>
-        <div className="provider-key-secret-pill mono">platform fallback</div>
+      <div className="provider-key-default-title">
+        <ShieldCheck />
+        <span>Company key</span>
       </div>
-      <div>
-        <span className="code-pill auth-pill">
-          <KeyRound />
-          API key
-        </span>
-      </div>
-      <div className="cell-tags scope-tags">
-        <span className="code-pill provider-default-pill">default</span>
-        <span className="code-pill provider-default-pill">fallback</span>
-      </div>
-      <span className="faint">Organization</span>
-      <span className="provider-key-lastused faint">unbound traffic</span>
-      <span className="badge provider-fallback-badge">fallback</span>
-      <span />
+      <span className="provider-key-secret-pill mono">platform fallback</span>
+      <span className="badge badge-accent provider-default-pill">default · fallback</span>
+      <span className="provider-default-note mono">{providerLabel} fallback</span>
     </div>
   );
 }
@@ -170,7 +156,7 @@ function ProviderKeyRow({
       </div>
       <div><AuthPill account={account} /></div>
       <BoundKeyTags boundKeys={boundKeys} boundKeyCount={account.boundKeyCount} boundKeysAvailable={boundKeysAvailable} />
-      <OwnerCell users={users} userId={account.ownerUserId} />
+      <ProviderOwnerCell users={users} userId={account.ownerUserId} />
       <div className="provider-key-lastused">
         {account.lastUsedAt ? formatDateTime(account.lastUsedAt) : <span className="faint">never</span>}
       </div>
@@ -186,10 +172,27 @@ function AuthPill({ account }: { account: ProviderAccountSummary }) {
   const subscription = account.authType === "oauth";
   return (
     <span className={`code-pill auth-pill auth-pill-${account.provider}${subscription ? " auth-pill-subscription" : ""}`}>
-      {subscription ? <ProviderMark provider={account.provider} /> : <KeyRound />}
+      {subscription ? <Sparkles /> : <KeyRound />}
       {authTypeLabel(account)}
     </span>
   );
+}
+
+function ProviderOwnerCell({ users, userId }: { users: UserDirectory; userId: string | null | undefined }) {
+  const label = ownerLabel(users, userId);
+  if (!userId) return <span className="provider-owner-cell faint">Organization</span>;
+  return (
+    <div className="provider-owner-cell">
+      <Avatar label={label} size={22} />
+      <span className="mono">{compactOwnerLabel(label)}</span>
+    </div>
+  );
+}
+
+function compactOwnerLabel(label: string) {
+  const emailName = label.split("@")[0];
+  const firstName = emailName.split(" ")[0];
+  return (firstName || label).toLowerCase();
 }
 
 function secretLabel(account: ProviderAccountSummary) {
@@ -263,5 +266,5 @@ function RevokeCredentialAction({ account, pending, error, onRevoke }: {
 function revokeContent(pending: boolean, confirming: boolean) {
   if (pending) return "Revoking...";
   if (confirming) return "Revoke?";
-  return <Ban />;
+  return <Trash2 />;
 }
