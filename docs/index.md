@@ -11,6 +11,7 @@
 - [AWS prod-like deployment scope](scopes/aws-prod-like-deployment-v1/PLAN.md)
 - [Subscription auth scope](scopes/subscription-auth-v1/PLAN.md)
 - [Provider architecture scope](scopes/provider-architecture-v1/PLAN.md)
+- [Harness model translation scope](scopes/harness-model-translation-v1/PLAN.md)
 
 ## Execution
 
@@ -19,6 +20,7 @@
 - [AWS prod-like deployment tickets](scopes/aws-prod-like-deployment-v1/TICKETS.md)
 - [Subscription auth V1 tickets](scopes/subscription-auth-v1/TICKETS.md)
 - [Provider architecture V1 tickets](scopes/provider-architecture-v1/TICKETS.md)
+- [Harness model translation V1 tickets](scopes/harness-model-translation-v1/TICKETS.md)
 - [Routing configs runbook](runbooks/routing-configs.md)
 - [AWS deployment runbook](runbooks/aws-deployment.md)
 - [Subscription auth runbook](runbooks/subscription-auth.md)
@@ -27,6 +29,7 @@
 
 - [opencode setup](harnesses/opencode.md)
 - [Cursor BYOK setup](harnesses/cursor-byok.md)
+- [Claude Code setup](harnesses/claude-code.md)
 
 ## Future Work
 

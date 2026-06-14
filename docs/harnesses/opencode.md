@@ -72,7 +72,7 @@ This is the default path for opencode and other OpenAI-compatible clients. It ca
 }
 ```
 
-Use this path for OSS or hosted OpenAI-compatible chat providers such as vLLM, Ollama, llama.cpp, Groq, Fireworks, Together, OpenRouter, and plain OpenAI Chat Completions targets. Responses-capable targets can also serve this path through the built-in Responses to Chat translator.
+Use this path for OSS or hosted OpenAI-compatible chat providers such as vLLM, Ollama, llama.cpp, Groq, Fireworks, Together, OpenRouter, and plain OpenAI Chat Completions targets. Responses-capable and Anthropic Messages targets can also serve this path through translation.
 
 ## Path 2: OpenAI Responses
 
@@ -104,7 +104,7 @@ Use this path when your opencode setup is intentionally using an OpenAI provider
 }
 ```
 
-This path can target native Responses endpoints. It can also target chat-only providers through the Responses to Chat translator, except for stateful Responses sessions with `previous_response_id`; those remain pinned to native Responses endpoints.
+This path can target native Responses endpoints. It can also target chat-only providers and Anthropic Messages providers through translation. Codex WebSocket traffic and Responses requests with `previous_response_id` remain pinned to native Responses endpoints.
 
 ## Path 3: Anthropic Messages
 
@@ -136,7 +136,7 @@ Use this path when opencode is configured through an Anthropic provider adapter.
 }
 ```
 
-This path can target native Anthropic Messages endpoints, including custom provider rows that expose the `anthropic-messages` dialect. It does not translate to chat-only providers; cross-family Anthropic to OpenAI translation is intentionally deferred.
+This path can target native Anthropic Messages endpoints, including custom provider rows that expose the `anthropic-messages` dialect. It can also target OpenAI Chat or OpenAI Responses providers through translation.
 
 ## Verify
 
@@ -153,4 +153,4 @@ This path can target native Anthropic Messages endpoints, including custom provi
 - `401` or auth errors: the opencode provider credential must be the Prompt Proxy API key, not an upstream provider key.
 - Model not found: the model ID in opencode must exactly match one of the configured aliases.
 - Request reaches the wrong surface: check the provider package and base URL. The base URL should end at `/v1`, not `/v1/chat/completions`, `/v1/responses`, or `/v1/messages`.
-- Chat target skipped for a Responses request: stateful Responses sessions and requests with `previous_response_id` require a native Responses endpoint.
+- Translated target skipped for a Responses request: Codex WebSocket traffic and requests with `previous_response_id` require a native Responses endpoint.

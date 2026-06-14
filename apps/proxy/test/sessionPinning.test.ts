@@ -271,7 +271,7 @@ describe("session pinning", () => {
       externalSessionId: "stale-session",
       currentRoute: "hard",
       pinnedSettings: {
-        providerId: "openai",
+        providerId: "missing-openai-pin",
         model: "gpt-stale-pin",
         dialect: "openai-responses"
       },

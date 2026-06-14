@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./dist/src/index.js"
+    ".": "./dist/src/index.js",
+    "./translationCompatibility": "./dist/src/translationCompatibility.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

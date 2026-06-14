@@ -1,6 +1,13 @@
 import { ArrowDown, ArrowUp, Plus, Split, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 
+import {
+  TRANSLATION_COMPATIBILITY_DIALECTS,
+  translationCompatibilityForDialects,
+  type TranslationDialect,
+  type TranslationCompatibilityResult
+} from "@prompt-proxy/schema/translationCompatibility";
+
 import type {
   ConfigEditorDraft,
   EditorRouteName,
@@ -264,15 +271,71 @@ function targetNotes(target: RouteTargetDraft, catalog: RoutingEditorCatalog) {
     return notes;
   }
   if (!provider.enabled) notes.push("Provider is disabled.");
-  const dialects = new Set(provider.endpoints.map((endpoint) => endpoint.dialect));
-  const hasResponses = dialects.has("openai-responses");
-  const hasMessages = dialects.has("anthropic-messages");
-  if (!hasResponses && !hasMessages) notes.push("No routable Responses or Messages endpoint.");
-  if (hasResponses && !hasMessages) notes.push("Anthropic Messages requests skip to the next target.");
-  if (hasMessages && !hasResponses) notes.push("OpenAI Responses requests skip to the next target.");
+  const dialects = providerDialects(provider);
+  if (dialects.length === 0) {
+    notes.push("No compatible provider endpoint.");
+  } else {
+    notes.push(`Coverage: ${coverageSummary(dialects)}.`);
+    if (!dialects.includes("openai-responses") && translationCompatibilityForDialects({
+      from: "openai-responses",
+      targetDialects: dialects,
+      transport: "http",
+      statefulResponses: true
+    }).status === "translated") {
+      notes.push("Codex prior-response and WebSocket turns require native Responses.");
+    }
+  }
   if (!catalog.models.some((model) => model.provider === target.providerId && model.model === target.model)) {
     notes.push("Model is not in the catalog for this provider.");
   }
   if (!provider.builtin && provider.authStyle !== "none") notes.push("Requires an active provider key binding.");
   return notes;
+}
+
+const knownDialects = new Set<string>(TRANSLATION_COMPATIBILITY_DIALECTS);
+
+function providerDialects(provider: RoutingEditorCatalog["providers"][number]) {
+  return provider.endpoints
+    .map((endpoint) => endpoint.dialect)
+    .filter((dialect): dialect is TranslationDialect => knownDialects.has(dialect));
+}
+
+function coverageSummary(dialects: TranslationDialect[]) {
+  return [
+    coverageLabel("Codex HTTP", translationCompatibilityForDialects({
+      from: "openai-responses",
+      targetDialects: dialects,
+      transport: "http",
+      statefulResponses: true
+    })),
+    coverageLabel("Claude", translationCompatibilityForDialects({
+      from: "anthropic-messages",
+      targetDialects: dialects,
+      transport: "http"
+    })),
+    coverageLabel("Chat", translationCompatibilityForDialects({
+      from: "openai-chat",
+      targetDialects: dialects,
+      transport: "http"
+    }))
+  ].join("; ");
+}
+
+function coverageLabel(label: string, result: TranslationCompatibilityResult) {
+  if (result.status === "native") return `${label} native`;
+  if (result.status === "translated" && result.to) return `${label} via ${formatDialect(result.to)}`;
+  return `${label} ${reasonLabel(result.reason)}`;
+}
+
+function formatDialect(dialect: TranslationDialect) {
+  if (dialect === "openai-responses") return "Responses";
+  if (dialect === "openai-chat") return "Chat";
+  return "Messages";
+}
+
+function reasonLabel(reason: string | undefined) {
+  if (reason === "stateful_translation_unavailable") return "native-only";
+  if (reason === "previous_response_translation_unavailable") return "prior-response native-only";
+  if (reason === "websocket_native_only") return "WebSocket native-only";
+  return "unavailable";
 }

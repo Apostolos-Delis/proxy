@@ -182,6 +182,16 @@ export type OrganizationMemberRole = typeof ORGANIZATION_MEMBER_ROLES[keyof type
 export type OrganizationMemberStatus = typeof ORGANIZATION_MEMBER_STATUSES[keyof typeof ORGANIZATION_MEMBER_STATUSES];
 export type InvitationStatus = typeof INVITATION_STATUSES[keyof typeof INVITATION_STATUSES];
 
+export {
+  canTranslateDialect,
+  TRANSLATABLE_DIALECT_PAIRS,
+  TRANSLATION_COMPATIBILITY_DIALECTS,
+  translationCompatibilityForDialects,
+  type TranslationCompatibilityResult,
+  type TranslationCompatibilityStatus,
+  type TranslationDialect
+} from "./translationCompatibility.js";
+
 export type JsonValue =
   | null
   | boolean
