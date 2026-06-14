@@ -578,8 +578,22 @@ export class RoutingService {
     targets: RouteTarget[],
     guardrailActions: string[]
   ): Promise<ResolvedRouteSettings | undefined> {
+    const translatedCandidates: RouteTarget[] = [];
     for (const target of targets) {
-      const availability = await this.targetAvailability(context, target);
+      const availability = await this.targetAvailability(context, target, "native");
+      if (availability.status === "unavailable") {
+        if (availability.reason === "dialect_unavailable") {
+          translatedCandidates.push(target);
+          continue;
+        }
+        guardrailActions.push(`target_skipped_${availability.reason}:${target.providerId}`);
+        continue;
+      }
+      appendTranslationAction(guardrailActions, context.surface, availability.dialect);
+      return routeSettings({ ...target, dialect: availability.dialect });
+    }
+    for (const target of translatedCandidates) {
+      const availability = await this.targetAvailability(context, target, "translated");
       if (availability.status === "unavailable") {
         guardrailActions.push(`target_skipped_${availability.reason}:${target.providerId}`);
         continue;
@@ -606,7 +620,8 @@ export class RoutingService {
 
   private async targetAvailability(
     context: RouteContext,
-    target: Pick<RouteTarget, "providerId"> & { dialect?: Dialect }
+    target: Pick<RouteTarget, "providerId"> & { dialect?: Dialect },
+    mode: "native" | "translated" = "translated"
   ): Promise<TargetAvailability> {
     const organizationId = context.organizationId ?? this.config.defaultOrganizationId;
     let provider;
@@ -623,11 +638,13 @@ export class RoutingService {
     }
     if (!provider) return { status: "unavailable", reason: "provider_not_found" };
     if (!provider.enabled) return { status: "unavailable", reason: "provider_disabled" };
-    const endpoint = targetEndpoint(context, provider, target);
+    const endpoint = targetEndpoint(context, provider, target, mode);
     if (!endpoint) return { status: "unavailable", reason: "dialect_unavailable" };
     if (endpoint.dialect !== context.surface) {
-      if (context.statefulResponses === true) return { status: "unavailable", reason: "stateful_translation_unavailable" };
       if (context.hasPreviousResponseId) return { status: "unavailable", reason: "previous_response_translation_unavailable" };
+      if (context.statefulResponses === true && !canTranslateStatefulResponses(context, endpoint.dialect)) {
+        return { status: "unavailable", reason: "stateful_translation_unavailable" };
+      }
       if (!translators.get(context.surface, endpoint.dialect)) return { status: "unavailable", reason: "translator_unavailable" };
     }
     if (!provider.builtin && provider.authStyle !== "none") {
@@ -689,13 +706,21 @@ function appendTranslationAction(guardrailActions: string[], from: Dialect, to: 
   if (!guardrailActions.includes(tag)) guardrailActions.push(tag);
 }
 
+function canTranslateStatefulResponses(context: RouteContext, dialect: Dialect) {
+  return context.surface === "openai-responses" &&
+    context.transport !== "websocket" &&
+    dialect === "anthropic-messages";
+}
+
 function targetEndpoint(
   context: RouteContext,
   provider: ProviderRegistryEntry,
-  target: Pick<RouteTarget, "providerId"> & { dialect?: Dialect }
+  target: Pick<RouteTarget, "providerId"> & { dialect?: Dialect },
+  mode: "native" | "translated" = "translated"
 ) {
   if (context.transport === "websocket") return providerEndpointForDialect(provider, context.surface);
   if (target.dialect) return providerEndpointForDialect(provider, target.dialect);
+  if (mode === "native") return providerEndpointForDialect(provider, context.surface);
   return providerEndpointForDialect(provider, context.surface) ?? provider.endpoints.find((candidate) =>
     translators.canTranslate(context.surface, candidate.dialect)
   );

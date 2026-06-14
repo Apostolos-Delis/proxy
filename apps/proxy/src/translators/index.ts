@@ -1,4 +1,10 @@
 import type { Dialect } from "../types.js";
+import {
+  anthropicMessagesToOpenAIChat,
+  anthropicMessagesToOpenAIResponses,
+  openAIChatToAnthropicMessages,
+  openAIResponsesToAnthropicMessages
+} from "./anthropicOpenAI.js";
 import { openAIChatToResponses, openAIResponsesToChat } from "./openai.js";
 
 export type DialectTranslator = {
@@ -28,6 +34,10 @@ export const translators = new TranslatorRegistry();
 
 translators.register("openai-responses", "openai-chat", openAIResponsesToChat);
 translators.register("openai-chat", "openai-responses", openAIChatToResponses);
+translators.register("anthropic-messages", "openai-chat", anthropicMessagesToOpenAIChat);
+translators.register("openai-chat", "anthropic-messages", openAIChatToAnthropicMessages);
+translators.register("anthropic-messages", "openai-responses", anthropicMessagesToOpenAIResponses);
+translators.register("openai-responses", "anthropic-messages", openAIResponsesToAnthropicMessages);
 
 export function translationTag(from: Dialect, to: Dialect) {
   return `translated_request:${from}_to_${to}`;

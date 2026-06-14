@@ -4,7 +4,13 @@
 
 Prompt Proxy is a protocol-aware LLM gateway for coding harnesses. It supports Codex through the OpenAI Responses API, OpenAI-compatible callers through Chat Completions, and Claude Code through the Anthropic Messages API. The proxy receives the request, chooses the appropriate route target, rewrites only routing fields, and forwards the request through the provider registry.
 
-The goal is cost reduction without breaking harness behavior. Same-dialect paths preserve the provider wire shape. The only built-in translated path is the same-family OpenAI pair, Responses ↔ Chat Completions, used when a route target exposes one OpenAI dialect and the caller uses the other. Cross-family Anthropic ↔ OpenAI translation remains out of scope.
+The goal is cost reduction without breaking harness behavior. Same-dialect paths preserve the provider wire shape. Translated HTTP paths are available when a route target exposes a different compatible dialect:
+
+- OpenAI Responses ↔ OpenAI Chat Completions
+- Anthropic Messages ↔ OpenAI Chat Completions
+- Anthropic Messages ↔ OpenAI Responses for stateless HTTP turns
+
+Codex WebSocket traffic and OpenAI Responses requests with `previous_response_id` remain native Responses-only because the proxy does not emulate provider-side response state.
 
 ```text
 Codex CLI / IDE
@@ -15,12 +21,12 @@ Codex CLI / IDE
 OpenAI-compatible SDKs / opencode / Cursor BYOK
   -> POST /v1/chat/completions
   -> prompt-proxy routing service
-  -> OpenAI Chat Completions API or translated OpenAI Responses API
+  -> OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages API
 
 Claude Code
   -> POST /v1/messages
   -> prompt-proxy routing service
-  -> Anthropic Messages API
+  -> Anthropic Messages, OpenAI Chat Completions, or OpenAI Responses API
 ```
 
 Internally, the proxy should be event-driven, but not pure event sourced. Current-state tables should exist for fast reads such as route memory, budgets, and usage summaries. The append-only event log should explain what happened, feed projections, support replay/debugging, and power future prompt rewriting, memory, and eval workflows.
@@ -39,7 +45,8 @@ Internally, the proxy should be event-driven, but not pure event sourced. Curren
 
 - Prompt rewriting.
 - Memory injection.
-- Cross-family Anthropic Messages ↔ OpenAI Chat/Responses translation.
+- Provider-side response state emulation for Codex `previous_response_id` continuations.
+- Codex WebSocket translation to non-Responses providers.
 - Classifier-driven prompt rewriting.
 - Rule-based complexity scoring.
 - Rule-based route fallback when classifier calls fail.
@@ -79,7 +86,7 @@ OpenAI Chat surface      -> OpenAI-compatible provider
 Anthropic Messages surface -> Anthropic provider
 ```
 
-When a route needs to cross between OpenAI Responses and OpenAI Chat, the translator registry owns request mapping, non-streaming response mapping, and SSE transform. Translated route decisions are tagged so they can be filtered during review. Anthropic ↔ OpenAI translation is intentionally not implemented.
+When a route needs to cross dialects, the translator registry owns request mapping, non-streaming response mapping, and SSE transform. Translated route decisions are tagged so they can be filtered during review. Runtime target resolution prefers native endpoints first, then translated endpoints, so existing mixed OpenAI/Anthropic configs keep native behavior unless a route only has translated-compatible targets.
 
 The request path should stay synchronous where the harness requires a response, while decisions and state transitions are emitted as events:
 
@@ -786,7 +793,7 @@ Streaming must be pass-through on native same-dialect routes.
 
 For OpenAI Responses, the upstream emits typed server-sent events. The proxy should make the routing decision before the upstream request and then pipe the stream back without reconstructing events when the selected endpoint also speaks OpenAI Responses.
 
-For translated OpenAI Responses ↔ Chat routes, byte passthrough is intentionally abandoned for that request. The translator re-emits SSE frames in the inbound dialect, preserving text deltas, tool-call deltas, terminal status, and usage frames.
+For translated routes, byte passthrough is intentionally abandoned for that request. The translator re-emits SSE frames in the caller dialect, preserving text deltas, tool-call deltas, terminal status, and usage frames across OpenAI Responses, OpenAI Chat, and Anthropic Messages shapes.
 
 For accounting, the proxy may attach a non-mutating SSE observer. The observer tees the upstream byte stream, forwards bytes to the client unchanged, and parses only enough event structure to capture terminal usage, response IDs, error events, and completion status. Observer failure must not corrupt the client stream.
 
@@ -815,7 +822,7 @@ Preserve:
 - Function/tool definitions.
 - Tool call IDs.
 - Tool output item IDs.
-- `previous_response_id`.
+- `previous_response_id` on native Responses routes. Translated Responses routes with `previous_response_id` are rejected before provider selection.
 - Response output items.
 - Reasoning items and summaries.
 - `phase` or other state fields returned by the Responses API.

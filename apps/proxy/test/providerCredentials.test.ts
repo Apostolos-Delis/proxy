@@ -390,6 +390,10 @@ describe("BYOK provider credentials", () => {
         forwardHarnessHeaders: true,
         enabled: true
       });
+      await fixture.db
+        .update(providers)
+        .set({ enabled: false })
+        .where(eq(providers.slug, "anthropic"));
 
       const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
         method: "POST",

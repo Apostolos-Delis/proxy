@@ -64,6 +64,24 @@ The web console edits the routing rules and the per-tier models and efforts (`fa
 
 Clearing a tier's model removes that provider block from the tier; every tier must keep at least one provider model.
 
+## Target Coverage
+
+Each route target is evaluated against the caller surface before provider forwarding:
+
+- `native`: the provider exposes the same dialect as the caller.
+- `translated`: the provider exposes a compatible dialect and the proxy translates requests, JSON responses, and SSE streams back to the caller shape.
+- `unavailable`: no native or safe translated path exists, credentials are missing, the provider is disabled, or the request state requires native handling.
+
+The shipped translated HTTP matrix is:
+
+- OpenAI Responses ↔ OpenAI Chat
+- Anthropic Messages ↔ OpenAI Chat
+- Anthropic Messages ↔ OpenAI Responses for stateless HTTP requests
+
+Runtime resolution prefers native endpoints in a route tier before translated endpoints. This keeps mixed default configs stable while still allowing a tier with only Anthropic targets to serve Codex HTTP `/v1/responses`, and a tier with only OpenAI targets to serve Claude Code `/v1/messages`.
+
+Codex WebSocket traffic and Responses requests with `previous_response_id` are still native Responses-only. The console target rows use the shared compatibility helper to label Codex, Claude, and Chat coverage instead of assuming a provider is skipped because it lacks one specific endpoint.
+
 ## Assign A Config To An API Key
 
 Use the web console when possible:

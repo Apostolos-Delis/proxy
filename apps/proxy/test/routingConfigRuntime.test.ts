@@ -206,7 +206,7 @@ describe("routing config runtime resolution", () => {
       slug: "fallback-gap",
       configHash: "sha256:fallback-gap-config",
       configure: (config) => {
-        config.routes.hard.targets = config.routes.hard.targets.filter((target) => target.providerId !== "openai");
+        config.routes.hard.targets = [{ providerId: "missing-hard-provider", model: "missing-hard-model", effort: "high" }];
         return config;
       }
     });
@@ -721,7 +721,7 @@ describe("routing config runtime resolution", () => {
           ...config.routes,
           hard: {
             ...config.routes.hard,
-            targets: config.routes.hard.targets.filter((target) => target.providerId !== "openai")
+            targets: [{ providerId: "missing-hard-provider", model: "missing-hard-model", effort: "high" }]
           }
         }
       })
