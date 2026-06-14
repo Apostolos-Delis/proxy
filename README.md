@@ -36,13 +36,23 @@ To use real models, set `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` in `.env`. The 
 
 ### One-liner
 
-The proxy hosts its own setup script. It configures both Claude Code and Codex, stores the key at `~/.prompt-proxy/token`, and is idempotent:
+The proxy hosts its own setup script. By default it configures both Claude Code and Codex, stores the shared key at `~/.prompt-proxy/token`, and is idempotent:
 
 ```shell
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- <api-key>
 ```
 
-The console's API-keys screen shows the same guide with copyable snippets after you create a key.
+Use a harness-specific install when you want different API keys and routing configs per harness:
+
+```shell
+curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness codex <codex-api-key>
+curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code <claude-api-key>
+curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness opencode <opencode-api-key>
+```
+
+Codex-specific installs use `~/.prompt-proxy/codex.token`, `PROMPT_PROXY_CODEX_TOKEN`, and a `prompt_proxy_codex` Codex provider. Claude Code-specific installs use `~/.prompt-proxy/claude-code.token`. opencode installs write the chat-compatible provider to `~/.config/opencode/opencode.json` and store the credential in opencode's normal auth file.
+
+The console's API-keys screen lets you choose the harness during key creation and shows matching copyable snippets after you create a key.
 
 ### Claude Code (manual)
 

@@ -10,10 +10,20 @@ Claude Code reaches Prompt Proxy through the Anthropic Messages surface at `POST
 
 Use the Prompt Proxy API key in Claude Code. Upstream Anthropic or OpenAI keys belong in Prompt Proxy provider credentials, not in the harness, unless you intentionally want to bypass the proxy.
 
+## One-Liner Setup
+
+Use a Claude Code-specific install when you want this key to have its own routing config:
+
+```shell
+curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code <api-key>
+```
+
+It stores the key at `~/.prompt-proxy/claude-code.token` and points `~/.claude/settings.json` at Prompt Proxy. The default setup command without `--harness` still configures one shared key for both Claude Code and Codex.
+
 ## Environment
 
 ```shell
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8787/v1
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
 export ANTHROPIC_API_KEY=<prompt-proxy-api-key>
 ```
 

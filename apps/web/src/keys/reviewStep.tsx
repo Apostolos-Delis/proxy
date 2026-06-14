@@ -4,6 +4,7 @@ import type { ProviderAccountSummary } from "../providers/data";
 import type { RoutingConfigSummary } from "../routing/data";
 import { GlassCard } from "../ui";
 import { providerOptionsForAccounts } from "./providerOptions";
+import { harnessSetupLabel } from "./setupSnippets";
 import { WizardStepHead } from "./stepHead";
 import { orgDefaultConfigLabel, type CreateKeyDraft } from "./wizard";
 
@@ -34,6 +35,10 @@ export function ReviewStep({ draft, configs, defaultConfig, providerAccounts }: 
           <dd className="cell-tags">
             {draft.scopes.map((scope) => <span key={scope} className="code-pill">{scope}</span>)}
           </dd>
+        </div>
+        <div>
+          <dt>Harness setup</dt>
+          <dd>{harnessSetupLabel(draft.harness)}</dd>
         </div>
         <div>
           <dt>Routing config</dt>
