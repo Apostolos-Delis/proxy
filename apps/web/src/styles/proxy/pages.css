@@ -2950,6 +2950,119 @@ input[type="checkbox"][role="switch"]:focus-visible {
   gap: 8px;
 }
 
+.provider-key-modal {
+  width: 760px;
+}
+
+.provider-key-wizard {
+  display: grid;
+  gap: 18px;
+}
+
+.provider-credential-rail {
+  position: static;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+
+.credential-mode-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.credential-mode-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 10px;
+  align-items: center;
+  min-height: 62px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+  cursor: pointer;
+  transition: border-color .14s var(--ease), background .14s var(--ease);
+}
+
+.credential-mode-option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.credential-mode-option.disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.credential-mode-option input {
+  grid-row: 1 / span 2;
+  accent-color: var(--accent);
+}
+
+.credential-mode-option strong {
+  color: var(--fg);
+  font-size: 13px;
+}
+
+.provider-credential-note,
+.provider-credential-guide {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  color: var(--fg-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.provider-credential-guide {
+  margin-top: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+}
+
+.provider-credential-guide > svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--accent-2);
+}
+
+.provider-credential-guide > div {
+  display: grid;
+  gap: 2px;
+}
+
+.provider-credential-fixed-provider,
+.provider-credential-provider {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.provider-credential-fixed-provider {
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+  color: var(--fg);
+  font-size: 13px;
+}
+
+.provider-credential-provider .provider-icon,
+.provider-credential-fixed-provider .provider-icon {
+  flex: none;
+}
+
+.provider-credential-bind-link {
+  width: fit-content;
+  margin-top: 14px;
+}
+
 /* ---------- explicit prompt editors ---------- */
 .prompt-editors {
   display: grid;
