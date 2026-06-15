@@ -56,10 +56,15 @@ describe("withCredentialMode", () => {
 });
 
 describe("stepBlockerMessage", () => {
-  it("blocks subscription modes while subscription auth is disabled", () => {
+  it("blocks Claude subscription mode while subscription auth is disabled", () => {
     const draft = draftAt("type", { mode: "claude_subscription", provider: "anthropic" });
-    expect(stepBlockerMessage(draft, false)).toBe("Enable subscription auth before creating subscription credentials.");
+    expect(stepBlockerMessage(draft, false)).toBe("Enable subscription auth before creating Claude subscription credentials.");
     expect(stepBlockerMessage(draft, true)).toBeNull();
+  });
+
+  it("allows Codex subscription mode while subscription auth is disabled", () => {
+    const draft = draftAt("type", { mode: "codex_subscription", provider: "openai" });
+    expect(stepBlockerMessage(draft, false)).toBeNull();
   });
 
   it("validates credential fields only on the credentials step", () => {
@@ -70,6 +75,25 @@ describe("stepBlockerMessage", () => {
 });
 
 describe("credentialBlockerMessage", () => {
+  it("blocks Claude subscription credentials while subscription auth is disabled", () => {
+    const draft = draftAt("credentials", {
+      mode: "claude_subscription",
+      provider: "anthropic",
+      apiKey: "sk-ant-oat01-secret"
+    });
+    expect(credentialBlockerMessage(draft, false)).toBe("Claude subscription auth has been disabled for this proxy.");
+  });
+
+  it("allows Codex subscription credentials while subscription auth is disabled", () => {
+    const draft = draftAt("credentials", {
+      mode: "codex_subscription",
+      provider: "openai",
+      apiKey: "codex-token",
+      chatgptAccountId: "acct_1"
+    });
+    expect(credentialBlockerMessage(draft, false)).toBeNull();
+  });
+
   it("requires Claude setup-token prefixes", () => {
     const draft = draftAt("credentials", {
       mode: "claude_subscription",

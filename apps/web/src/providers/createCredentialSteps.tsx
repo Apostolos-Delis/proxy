@@ -85,14 +85,14 @@ export function CredentialTypeStep({ draft, subscriptionAuthEnabled, onChange }:
           mode="codex_subscription"
           title="Codex subscription"
           detail="Use a ChatGPT-backed Codex access token."
-          disabled={!subscriptionAuthEnabled}
+          disabled={false}
           onChange={onChange}
         />
       </div>
       {!subscriptionAuthEnabled ? (
         <div className="provider-credential-note">
-          <Badge variant="warn" dot>Subscription auth disabled</Badge>
-          <span>Set <span className="mono">SUBSCRIPTION_OAUTH_ENABLED=true</span> on the proxy to create Claude or Codex subscription credentials.</span>
+          <Badge variant="warn" dot>Claude subscription disabled</Badge>
+          <span>Set <span className="mono">SUBSCRIPTION_OAUTH_ENABLED=true</span> on the proxy to create Claude subscription credentials.</span>
         </div>
       ) : null}
     </GlassCard>

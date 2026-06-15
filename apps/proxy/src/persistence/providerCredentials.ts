@@ -5,7 +5,7 @@ import {
   providerAccounts,
   type PromptProxyDbSession
 } from "@prompt-proxy/db";
-import { PROVIDER_ACCOUNT_STATUSES } from "@prompt-proxy/schema";
+import { PROVIDER_ACCOUNT_STATUSES, PROVIDERS } from "@prompt-proxy/schema";
 import { and, eq, isNull } from "drizzle-orm";
 
 import type { Provider, UpstreamCredential } from "../types.js";
@@ -85,13 +85,18 @@ export class ProviderCredentialStore {
     // Fail closed on auth types this code predates: the column is plain text
     // and $type<> is compile-time only.
     if (account.authType !== "api_key" && account.authType !== "oauth") return undefined;
-    // Cache-miss layer of the kill switch: disabled oauth accounts fall back
-    // to the company key. headersFor re-checks the flag for cached credentials.
-    if (account.authType === "oauth" && !this.options.subscriptionOAuthEnabled) return undefined;
-    const chatgptAccountId = account.authType === "oauth" && account.provider === "openai"
+    // Cache-miss layer of the Anthropic kill switch: disabled oauth accounts
+    // fall back to the company key. headersFor re-checks the flag for cached
+    // credentials.
+    if (
+      account.authType === "oauth" &&
+      account.provider === PROVIDERS.ANTHROPIC &&
+      !this.options.subscriptionOAuthEnabled
+    ) return undefined;
+    const chatgptAccountId = account.authType === "oauth" && account.provider === PROVIDERS.OPENAI
       ? settingsString(account.settings, "chatgptAccountId")
       : undefined;
-    if (account.authType === "oauth" && account.provider === "openai" && !chatgptAccountId) return undefined;
+    if (account.authType === "oauth" && account.provider === PROVIDERS.OPENAI && !chatgptAccountId) return undefined;
     if (!this.options.encryptionKey) {
       throw new Error("provider_secret_encryption_key_missing");
     }

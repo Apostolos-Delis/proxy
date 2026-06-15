@@ -20,7 +20,7 @@ Scope of V1 is deliberately narrow:
   the proxy, not a customer-facing feature.
 - **Paste a long-lived token**, not a full in-console OAuth flow. The user runs `claude setup-token`
   locally and pastes the resulting token into the console.
-- **Behind a default-off kill switch** so it can be disabled wholesale at any time.
+- **Behind a default-off kill switch for Anthropic** so Claude subscription auth can be disabled at any time. OpenAI Codex subscription auth is always enabled.
 
 ## Context And Risk (read first)
 
@@ -34,8 +34,8 @@ deliberate, time-boxed decision, for internal use only.
   early 2026.
 - **Consequence:** any ban or throttle lands on the **individual engineer's own Claude account**, not
   a shared org account. This must be communicated to anyone who opts in.
-- **Mitigation:** the entire feature is gated behind a default-off flag (`SUBSCRIPTION_OAUTH_ENABLED`)
-  and is internal-only. We can disable it in one config change. It must never be offered to external
+- **Mitigation:** Anthropic subscription auth is gated behind a default-off flag (`SUBSCRIPTION_OAUTH_ENABLED`)
+  and is internal-only. We can disable Claude subscription auth in one config change. It must never be offered to external
   customers without revisiting this section.
 - **The ToS facts above come from secondary sources.** Before merging, someone must confirm the
   current live Anthropic Consumer/Commercial terms. This single fact governs whether the feature
@@ -172,16 +172,17 @@ it to avoid a breaking change across the GraphQL SDL, generated client types, da
 SUBSCRIPTION_OAUTH_ENABLED   booleanEnvSchema, default false  -> config.subscriptionOAuthEnabled
 ```
 
-Behavior — **two-layer check so disabling is immediate**, not subject to the 30s credential cache:
+Behavior — **two-layer Anthropic check so disabling is immediate**, not subject to the 30s credential cache:
 
 ```text
-flag ON   oauth credentials can be created, bound, resolved, and forwarded
-flag OFF  - createCredential with auth_type:"oauth" is rejected (validation error)
-          - resolveForRequest returns undefined for oauth accounts (cache-miss path)
+flag ON   Claude oauth credentials can be created, bound, resolved, and forwarded
+flag OFF  - createCredential with provider:"anthropic", auth_type:"oauth" is rejected (validation error)
+          - resolveForRequest returns undefined for Anthropic oauth accounts (cache-miss path)
           - headersFor ALSO re-checks config.subscriptionOAuthEnabled at forward time and ignores an
-            oauth credential if the flag is off  (covers cached credentials within the 30s TTL window)
+            Anthropic oauth credential if the flag is off  (covers cached credentials within the 30s TTL window)
           => Anthropic forward falls back to the company API key (existing behavior)
           - web UI hides the "Claude subscription" auth-type option
+          - OpenAI Codex oauth credentials can still be created, bound, resolved, and forwarded
 ```
 
 The forward-time re-check is required: the credential cache (`providerCredentials.ts:47-48`, keyed by
