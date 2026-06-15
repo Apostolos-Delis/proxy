@@ -35,8 +35,8 @@ export class ProxyAuthService {
         organizationId: this.config.defaultOrganizationId,
         workspaceId: defaultWorkspaceId(this.config.defaultOrganizationId),
         // Attribute local dev-token traffic to the seeded user so it lands on a
-        // real person instead of "Unknown user"; an explicit user header still
-        // overrides this (dev_proxy_token trusts harness identity).
+        // real person instead of "Unknown user"; harness identity headers stay
+        // available only as raw request context.
         userId: this.config.seedUserId,
         scopes: ["proxy"],
         routingConfigId: null,

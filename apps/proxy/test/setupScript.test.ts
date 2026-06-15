@@ -200,6 +200,27 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
     }
   });
 
+  it("removes only the Prompt Proxy identity header from mixed Claude Code custom headers", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-claude-headers-"));
+    try {
+      mkdirSync(join(home, ".claude"), { recursive: true });
+      writeFileSync(join(home, ".claude", "settings.json"), JSON.stringify({
+        env: { ANTHROPIC_CUSTOM_HEADERS: "x-trace-id: keep, x-prompt-proxy-user-id: old@example.com, x-debug: yes" }
+      }));
+
+      const result = spawnSync("bash", ["-s", "--", "--harness=claude-code", "claude-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: { ...process.env, HOME: home }
+      });
+      const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
+
+      expect(result.status).toBe(0);
+      expect(settings.env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-trace-id: keep, x-debug: yes");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("configures opencode global config and credentials", () => {
     const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-opencode-"));
     const xdgConfig = join(home, "xdg-config");

@@ -143,11 +143,16 @@ settings.env = Object.assign({}, settings.env, {
   ANTHROPIC_BASE_URL: process.argv[1],
   CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
 });
-if (
-  typeof settings.env.ANTHROPIC_CUSTOM_HEADERS === "string" &&
-  settings.env.ANTHROPIC_CUSTOM_HEADERS.toLowerCase().includes("x-prompt-proxy-user-id")
-) {
-  delete settings.env.ANTHROPIC_CUSTOM_HEADERS;
+if (typeof settings.env.ANTHROPIC_CUSTOM_HEADERS === "string") {
+  const customHeaders = settings.env.ANTHROPIC_CUSTOM_HEADERS
+    .split(",")
+    .map((header) => header.trim())
+    .filter((header) => header && !/^x-prompt-proxy-user-id\\s*:/i.test(header));
+  if (customHeaders.length > 0) {
+    settings.env.ANTHROPIC_CUSTOM_HEADERS = customHeaders.join(", ");
+  } else {
+    delete settings.env.ANTHROPIC_CUSTOM_HEADERS;
+  }
 }
 settings.apiKeyHelper = "cat " + process.argv[2];
 fs.writeFileSync(file, JSON.stringify(settings, null, 2) + "\\n");
