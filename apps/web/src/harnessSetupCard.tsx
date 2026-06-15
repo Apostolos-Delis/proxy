@@ -14,7 +14,7 @@ import {
 import { highlightSnippet } from "./keys/snippetHighlight";
 import { WizardStepHead } from "./keys/stepHead";
 
-export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
+export function HarnessSetupGuide({ secret, harness, showKeyContextSteps = true }: {
   secret: string | null;
   harness?: HarnessSetupTarget;
   showKeyContextSteps?: boolean;
