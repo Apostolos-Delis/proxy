@@ -101,6 +101,16 @@
   }
 }
 
+@media (max-width: 1360px) {
+  .tier-table-row {
+    grid-template-columns: 1fr;
+  }
+
+  .tier-table-header {
+    display: none;
+  }
+}
+
 @media (max-width: 820px) {
   .app,
   .app.collapsed {
