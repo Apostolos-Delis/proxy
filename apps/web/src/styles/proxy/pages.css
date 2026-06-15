@@ -4270,10 +4270,9 @@ a.key-bound-row:hover {
 
 .provider-registry-row {
   display: grid;
-  grid-template-columns: minmax(220px, 1.1fr) minmax(260px, 1.35fr) minmax(210px, 1fr) minmax(150px, .75fr) 92px;
+  grid-template-columns: minmax(150px, 1.05fr) minmax(170px, 1.2fr) minmax(150px, .95fr) minmax(120px, .75fr) minmax(34px, auto);
   align-items: center;
   gap: 14px;
-  min-width: 980px;
   min-height: 68px;
   padding: 14px 20px;
   transition: background .14s var(--ease);
@@ -4311,6 +4310,15 @@ a.key-bound-row:hover {
   justify-content: flex-end;
   gap: 6px;
   min-width: 0;
+}
+
+.provider-registry-row .scope-tags {
+  flex-wrap: wrap;
+  align-content: center;
+}
+
+.provider-registry-state {
+  justify-content: flex-end;
 }
 
 .provider-form {
@@ -4628,6 +4636,41 @@ a.key-bound-row:hover {
 
 .provider-key-search button:hover {
   color: var(--fg);
+}
+
+@media (max-width: 900px) {
+  .provider-registry-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "provider-main provider-state"
+      "provider-url provider-url"
+      "provider-tags provider-actions";
+    align-items: start;
+    gap: 8px 12px;
+    padding: 14px 16px;
+  }
+
+  .provider-registry-main {
+    grid-area: provider-main;
+  }
+
+  .provider-registry-url {
+    grid-area: provider-url;
+  }
+
+  .provider-registry-endpoints {
+    grid-area: provider-tags;
+  }
+
+  .provider-registry-state {
+    grid-area: provider-state;
+  }
+
+  .provider-registry-actions {
+    grid-area: provider-actions;
+    align-self: center;
+    justify-self: end;
+  }
 }
 
 @media (max-width: 760px) {

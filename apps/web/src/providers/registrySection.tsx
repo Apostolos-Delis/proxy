@@ -78,12 +78,12 @@ function ProviderRegistryRow({ provider, pendingDisableId, disableError, onEdit,
         </div>
       </div>
       <div className="provider-registry-url mono" title={provider.baseUrl}>{provider.baseUrl}</div>
-      <div className="cell-tags scope-tags">
+      <div className="cell-tags scope-tags provider-registry-endpoints">
         <span className="code-pill">{provider.authStyle}</span>
         <span className="code-pill">{endpointLabel(provider)}</span>
         {Object.keys(headerRecord(provider.defaultHeaders)).length > 0 ? <span className="code-pill">headers</span> : null}
       </div>
-      <div className="cell-tags scope-tags">
+      <div className="cell-tags scope-tags provider-registry-state">
         {provider.builtin ? <Badge>builtin</Badge> : <Badge variant="accent">custom</Badge>}
         <StatusBadge status={provider.enabled ? "active" : "disabled"} />
       </div>
