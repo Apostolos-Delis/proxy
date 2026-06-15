@@ -41,6 +41,7 @@ export type CreateProviderCredentialInput = {
 export type CreateProviderInput = {
   authStyle: string;
   baseUrl: string;
+  capabilities?: unknown;
   defaultHeaders?: unknown;
   displayName: string;
   enabled?: boolean | null | undefined;
@@ -123,6 +124,7 @@ export type SettingsInput = {
 export type UpdateProviderInput = {
   authStyle: string;
   baseUrl: string;
+  capabilities?: unknown;
   defaultHeaders?: unknown;
   displayName: string;
   enabled?: boolean | null | undefined;
@@ -287,7 +289,7 @@ export type ProviderAccountsQuery = { providerAccounts: Array<{ id: string, orga
 export type ProviderRegistryQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type ProviderRegistryQuery = { providers: Array<{ id: string, organizationId: string | null, slug: string, displayName: string, baseUrl: string, authStyle: string, defaultHeaders: unknown, forwardHarnessHeaders: boolean, enabled: boolean, builtin: boolean, endpoints: Array<{ dialect: string, path: string }> }> };
+export type ProviderRegistryQuery = { providers: Array<{ id: string, organizationId: string | null, slug: string, displayName: string, baseUrl: string, authStyle: string, defaultHeaders: unknown, capabilities: unknown, forwardHarnessHeaders: boolean, enabled: boolean, builtin: boolean, endpoints: Array<{ dialect: string, path: string }> }> };
 
 export type CreateProviderCredentialMutationVariables = Exact<{
   input: CreateProviderCredentialInput;
@@ -366,7 +368,7 @@ export type RoutingApiKeysQuery = { apiKeys: Array<{ id: string, name: string, u
 export type RoutingModelCatalogQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type RoutingModelCatalogQuery = { providers: Array<{ slug: string, displayName: string, authStyle: string, enabled: boolean, builtin: boolean, endpoints: Array<{ dialect: string, path: string }> }>, modelPricing: Array<{ provider: string | null, model: string, source: ModelPricingSource, seenInTraffic: boolean }> };
+export type RoutingModelCatalogQuery = { providers: Array<{ slug: string, displayName: string, authStyle: string, enabled: boolean, builtin: boolean, capabilities: unknown, endpoints: Array<{ dialect: string, path: string }> }>, modelPricing: Array<{ provider: string | null, model: string, source: ModelPricingSource, seenInTraffic: boolean }> };
 
 export type CreateApiKeyMutationVariables = Exact<{
   input: CreateApiKeyInput;
@@ -1223,6 +1225,7 @@ export const ProviderRegistryDocument = new TypedDocumentString(`
       path
     }
     defaultHeaders
+    capabilities
     forwardHarnessHeaders
     enabled
     builtin
@@ -1466,6 +1469,7 @@ export const RoutingModelCatalogDocument = new TypedDocumentString(`
       dialect
       path
     }
+    capabilities
   }
   modelPricing {
     provider

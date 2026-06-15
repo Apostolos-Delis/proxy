@@ -45,6 +45,7 @@ const ProviderRegistryDocument = graphql(`
         path
       }
       defaultHeaders
+      capabilities
       forwardHarnessHeaders
       enabled
       builtin
@@ -134,6 +135,7 @@ export type ProviderInput = {
   authStyle: string;
   endpoints: ProviderEndpointInput[];
   defaultHeaders?: Record<string, string>;
+  capabilities?: Record<string, unknown>;
   forwardHarnessHeaders?: boolean;
   enabled?: boolean;
 };

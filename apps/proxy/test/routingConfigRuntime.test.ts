@@ -258,7 +258,7 @@ describe("routing config runtime resolution", () => {
               ? {
                   ...target,
                   model: "gpt-config-hard",
-                  effort: "xhigh",
+                  effort: "max",
                   verbosity: "high",
                   maxOutputTokens: 1234
                 }
@@ -502,7 +502,7 @@ describe("routing config runtime resolution", () => {
                   ...target,
                   model: "claude-config-deep",
                   thinking: { type: "adaptive", display: "summarized" },
-                  effort: "max",
+                  effort: "ultracode",
                   maxOutputTokens: 4096
                 }
               : target)
@@ -534,10 +534,10 @@ describe("routing config runtime resolution", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-prompt-proxy-route")).toBe("deep");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("max");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("ultracode");
     expect(providerCall).toBeTruthy();
     expect(providerCall?.body.thinking).toEqual({ type: "adaptive", display: "summarized" });
-    expect(providerCall?.body.output_config.effort).toBe("max");
+    expect(providerCall?.body.output_config.effort).toBe("ultracode");
     expect(providerCall?.body.max_tokens).toBe(4096);
     expect(providerCall?.body.tools).toEqual([
       { name: "shell", input_schema: { type: "object", properties: {} } }

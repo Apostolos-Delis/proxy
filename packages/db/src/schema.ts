@@ -298,6 +298,7 @@ export const providers = pgTable(
     authStyle: text("auth_style").$type<"bearer" | "x-api-key" | "none">().notNull(),
     endpoints: jsonb("endpoints").$type<{ dialect: string; path: string }[]>().notNull().default([]),
     defaultHeaders: jsonb("default_headers").$type<Record<string, string>>().notNull().default({}),
+    capabilities: jsonb("capabilities").$type<Record<string, unknown>>().notNull().default({}),
     forwardHarnessHeaders: boolean("forward_harness_headers").notNull().default(false),
     enabled: boolean("enabled").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

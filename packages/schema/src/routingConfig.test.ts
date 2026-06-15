@@ -90,7 +90,7 @@ const validConfig = {
         {
           providerId: "anthropic",
           model: "claude-opus-4-5",
-          effort: "xhigh",
+          effort: "ultracode",
           thinking: { type: "adaptive", display: "omitted" },
           maxOutputTokens: 32000,
           metadata: { retained: true }
@@ -423,6 +423,9 @@ describe("providerRegistryEntrySchema", () => {
       ],
       default_headers: {
         "x-routing-pool": "primary"
+      },
+      capabilities: {
+        efforts: ["low", "medium", "high", "xhigh"]
       },
       forward_harness_headers: false,
       enabled: true

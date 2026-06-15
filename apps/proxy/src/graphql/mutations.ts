@@ -62,6 +62,7 @@ const CreateProviderInput = builder.inputType("CreateProviderInput", {
     authStyle: t.string({ required: true }),
     endpoints: t.field({ type: [ProviderEndpointInput], required: true }),
     defaultHeaders: t.field({ type: "JSON" }),
+    capabilities: t.field({ type: "JSON" }),
     forwardHarnessHeaders: t.boolean(),
     enabled: t.boolean()
   })
@@ -75,6 +76,7 @@ const UpdateProviderInput = builder.inputType("UpdateProviderInput", {
     authStyle: t.string({ required: true }),
     endpoints: t.field({ type: [ProviderEndpointInput], required: true }),
     defaultHeaders: t.field({ type: "JSON" }),
+    capabilities: t.field({ type: "JSON" }),
     forwardHarnessHeaders: t.boolean(),
     enabled: t.boolean()
   })
@@ -636,6 +638,7 @@ builder.mutationFields((t) => ({
             authStyle: args.input.authStyle,
             endpoints: args.input.endpoints,
             defaultHeaders: args.input.defaultHeaders ?? undefined,
+            capabilities: args.input.capabilities ?? undefined,
             forwardHarnessHeaders: args.input.forwardHarnessHeaders ?? undefined,
             enabled: args.input.enabled ?? undefined
           }
@@ -667,6 +670,7 @@ builder.mutationFields((t) => ({
             authStyle: args.input.authStyle,
             endpoints: args.input.endpoints,
             defaultHeaders: args.input.defaultHeaders ?? undefined,
+            capabilities: args.input.capabilities ?? undefined,
             forwardHarnessHeaders: args.input.forwardHarnessHeaders ?? undefined,
             enabled: args.input.enabled ?? undefined
           }

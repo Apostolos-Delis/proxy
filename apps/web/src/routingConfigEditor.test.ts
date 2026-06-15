@@ -5,6 +5,8 @@ import {
   draftError,
   draftFromConfig,
   effectiveEffortForTarget,
+  effortOptionsForProvider,
+  effortScaleForProvider,
   parseConfigJson,
   type RoutingConfigDocument
 } from "./routingConfigEditor";
@@ -168,9 +170,23 @@ describe("draftError", () => {
 });
 
 describe("effectiveEffortForTarget", () => {
-  it("shows Anthropic effort clamping without changing the draft", () => {
-    expect(effectiveEffortForTarget({ providerId: "anthropic", effort: "minimal" })).toBe("low");
-    expect(effectiveEffortForTarget({ providerId: "openai", effort: "minimal" })).toBe("minimal");
+  it("shows provider effort clamping without changing the draft", () => {
+    const openaiEfforts = ["low", "medium", "high", "xhigh"];
+    const anthropicEfforts = ["low", "medium", "high", "xhigh", "max", "ultracode"];
+
+    expect(effectiveEffortForTarget({ providerId: "anthropic", effort: "minimal" }, anthropicEfforts)).toBe("low");
+    expect(effectiveEffortForTarget({ providerId: "openai", effort: "max" }, openaiEfforts)).toBe("xhigh");
+    expect(effectiveEffortForTarget({ providerId: "anthropic", effort: "ultracode" }, anthropicEfforts)).toBe("ultracode");
+  });
+});
+
+describe("effortScaleForProvider", () => {
+  it("uses provider capabilities and preserves unsupported current values as menu options", () => {
+    const provider = { capabilities: { efforts: ["low", "medium", "high", "xhigh"] } };
+
+    expect(effortScaleForProvider(provider)).toEqual(["low", "medium", "high", "xhigh"]);
+    expect(effortOptionsForProvider(provider, "max")).toEqual(["max", "low", "medium", "high", "xhigh"]);
+    expect(effortScaleForProvider({ capabilities: { efforts: [] } })).toEqual([]);
   });
 });
 

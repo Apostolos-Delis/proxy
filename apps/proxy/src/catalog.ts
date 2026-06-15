@@ -1,6 +1,8 @@
 import type { ReasoningEffort, RouteName } from "./types.js";
 
 export const routeOrder: RouteName[] = ["fast", "balanced", "hard", "deep"];
+export const reasoningEffortOrder: ReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh", "max", "ultracode"];
+const knownReasoningEfforts = new Set<ReasoningEffort>(reasoningEffortOrder);
 
 export const routeAliases = new Map<string, RouteName>([
   ["router-fast", "fast"],
@@ -34,10 +36,19 @@ export function nearestReasoningEffort(
   supported: readonly ReasoningEffort[]
 ) {
   if (supported.includes(requested)) return requested;
-  const order: ReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
-  const requestedIndex = order.indexOf(requested);
+  const requestedIndex = reasoningEffortOrder.indexOf(requested);
 
   return [...supported].sort((left, right) => {
-    return Math.abs(order.indexOf(left) - requestedIndex) - Math.abs(order.indexOf(right) - requestedIndex);
+    return Math.abs(reasoningEffortOrder.indexOf(left) - requestedIndex) - Math.abs(reasoningEffortOrder.indexOf(right) - requestedIndex);
   })[0];
+}
+
+export function reasoningEffortsFromCapabilities(capabilities: Record<string, unknown> | undefined) {
+  if (!capabilities || !("efforts" in capabilities)) return undefined;
+  const efforts = capabilities.efforts;
+  if (!Array.isArray(efforts)) return undefined;
+  const values = efforts.filter((effort): effort is ReasoningEffort =>
+    typeof effort === "string" && knownReasoningEfforts.has(effort as ReasoningEffort)
+  );
+  return [...new Set(values)];
 }

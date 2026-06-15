@@ -32,6 +32,7 @@ export const ProviderRegistryEntry = builder.objectRef<ProviderRegistryEntryMode
     authStyle: t.exposeString("authStyle"),
     endpoints: t.expose("endpoints", { type: [ProviderEndpoint] }),
     defaultHeaders: t.field({ type: "JSON", resolve: (provider) => provider.defaultHeaders }),
+    capabilities: t.field({ type: "JSON", resolve: (provider) => provider.capabilities }),
     forwardHarnessHeaders: t.exposeBoolean("forwardHarnessHeaders"),
     enabled: t.exposeBoolean("enabled"),
     builtin: t.exposeBoolean("builtin")

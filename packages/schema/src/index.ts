@@ -45,7 +45,7 @@ export const PROVIDER_ACCOUNT_STATUSES = {
   DISABLED: "disabled"
 } as const;
 
-export const EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max", "ultracode"] as const;
 
 export const VERBOSITIES = ["low", "medium", "high"] as const;
 
@@ -249,6 +249,7 @@ export const providerRegistryEntrySchema = z.strictObject({
   auth_style: providerAuthStyleSchema,
   endpoints: z.array(providerRegistryEndpointSchema).min(1, "At least one endpoint is required."),
   default_headers: z.record(z.string(), routingConfigTextSchema),
+  capabilities: jsonObjectSchema.optional(),
   forward_harness_headers: z.boolean(),
   enabled: z.boolean()
 });
