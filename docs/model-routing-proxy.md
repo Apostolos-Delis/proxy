@@ -86,7 +86,7 @@ OpenAI Chat surface      -> OpenAI-compatible provider
 Anthropic Messages surface -> Anthropic provider
 ```
 
-When a route needs to cross dialects, the translator registry owns request mapping, non-streaming response mapping, and SSE transform. Translated route decisions are tagged so they can be filtered during review. Runtime target resolution prefers native endpoints first, then translated endpoints, so existing mixed OpenAI/Anthropic configs keep native behavior unless a route only has translated-compatible targets.
+When a route needs to cross dialects, the translator registry owns request mapping, non-streaming response mapping, and SSE transform. Translated route decisions are tagged so they can be filtered during review. Runtime target resolution prefers native endpoints first, then translated endpoints, so mixed OpenAI/Anthropic configs keep native behavior unless a route only has translated-compatible targets.
 
 The request path should stay synchronous where the harness requires a response, while decisions and state transitions are emitted as events:
 

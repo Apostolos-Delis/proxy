@@ -59,10 +59,10 @@ The web console edits the routing rules and the per-tier models and efforts (`fa
 
 - Routing configs → New config: clones an active config, then lets you set the routing rules and tier models before creating v1.
 - Routing config detail → Prompts & route models: edits create a new draft version; leave "Activate immediately" checked to promote it in the same step.
-- Each tier exposes a per-provider effort dropdown with provider-specific levels (OpenAI reasoning: `minimal`–`xhigh`; Anthropic output: `low`–`max`). "Default effort" omits the effort so the model default applies.
+- Each tier exposes a target effort dropdown with provider-specific levels (OpenAI reasoning: `minimal`–`xhigh`; Anthropic output: `low`–`max`). "Default effort" omits the effort so the model default applies.
 - The UI/JSON toggle on the detail editor switches to the raw config document, VSCode-style. JSON mode edits fields the form does not expose (limits, session, classifier details); both views feed the same save-new-version flow, and JSON is validated server-side against the routing config schema.
 
-Clearing a tier's model removes that provider block from the tier; every tier must keep at least one provider model.
+Every tier must keep at least one target. One target covers translated HTTP callers, but configs that serve Codex stateful continuations or WebSocket traffic also need a native OpenAI Responses target in the tier.
 
 ## Target Coverage
 
@@ -78,7 +78,7 @@ The shipped translated HTTP matrix is:
 - Anthropic Messages ↔ OpenAI Chat
 - Anthropic Messages ↔ OpenAI Responses for stateless HTTP requests
 
-Runtime resolution prefers native endpoints in a route tier before translated endpoints. This keeps mixed default configs stable while still allowing a tier with only Anthropic targets to serve Codex HTTP `/v1/responses`, and a tier with only OpenAI targets to serve Claude Code `/v1/messages`.
+Runtime resolution prefers native endpoints in a route tier before translated endpoints when a tier has multiple targets. This keeps operator-authored mixed configs stable while still allowing a tier with only Anthropic targets to serve Codex HTTP `/v1/responses`, and a tier with only OpenAI targets to serve Claude Code `/v1/messages`.
 
 Codex WebSocket traffic and Responses requests with `previous_response_id` are still native Responses-only. The console target rows use the shared compatibility helper to label Codex, Claude, and Chat coverage instead of assuming a provider is skipped because it lacks one specific endpoint.
 

@@ -187,7 +187,7 @@ function CreateConfigForm({ sourceConfigs, apiKeys, catalog }: {
               <div className="card-head">
                 <div>
                   <div className="card-title"><Layers />Route tier models</div>
-                  <div className="faint">Ordered provider/model targets for each route tier. The first compatible target wins.</div>
+                  <div className="faint">Order provider/model targets for each route tier. One target covers translated HTTP; alternates keep native-only turns available.</div>
                 </div>
               </div>
               <RouteTargetsEditor
