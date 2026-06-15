@@ -28,6 +28,8 @@ pnpm dev:local
 
 It creates `.env` from `.env.example` if needed, starts or reuses Postgres, runs migrations, and seeds an organization, a user, provider placeholders, a default routing config, and a local API key (`PROMPT_PROXY_TOKEN`, default `dev-proxy-token`).
 
+In Conductor workspaces, the checked-in Run script still uses `pnpm dev:local`, but it derives isolated ports from `CONDUCTOR_PORT`: web on `CONDUCTOR_PORT`, proxy on `CONDUCTOR_PORT + 1`, and Postgres on `CONDUCTOR_PORT + 2`.
+
 Log into the console with the dev credentials from `.env` — `ADMIN_DEV_LOGIN_EMAIL` / `ADMIN_DEV_LOGIN_PASSWORD` (defaults: `local@example.com` / `dev-password`).
 
 To use real models, set `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` in `.env`. The proxy and console can also run separately with `pnpm dev:proxy` and `pnpm dev:web`.
