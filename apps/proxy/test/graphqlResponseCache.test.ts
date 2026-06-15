@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
+import { organizationMembers, users } from "@prompt-proxy/db";
+
+import { adminGql, captureFixture, loginAdmin, type PromptTestFixture } from "./promptTestFixture.js";
 
 const viewerQuery = `query Viewer {
   viewer {
@@ -25,6 +27,21 @@ const switchWorkspaceMutation = `mutation SwitchWorkspace($workspaceId: ID!) {
   }
 }`;
 
+const usersQuery = `query UsersList {
+  users {
+    userId
+    membership { role status }
+  }
+}`;
+
+const updateUserRoleMutation = `mutation UpdateUserRole($userId: ID!, $role: MemberRole!) {
+  updateUserRole(userId: $userId, role: $role) {
+    userId
+    role
+    previousRole
+  }
+}`;
+
 let activeFixture: PromptTestFixture | undefined;
 
 describe("admin GraphQL response cache", () => {
@@ -35,7 +52,7 @@ describe("admin GraphQL response cache", () => {
 
   it("emits private ETags for scoped authenticated GET queries and honors revalidation", async () => {
     const fixture = await setup("org_graphql_response_cache");
-    const url = graphQLUrl(fixture.proxyUrl, "scope-a", "0");
+    const url = graphQLUrl(fixture.proxyUrl, viewerQuery, "scope-a", "0");
 
     const first = await fetch(url, { headers: fixture.adminHeaders });
     const etag = first.headers.get("etag");
@@ -85,7 +102,7 @@ describe("admin GraphQL response cache", () => {
       expect.objectContaining({ name: "Cache Test" })
     ]));
 
-    const epochBusted = await fetch(graphQLUrl(fixture.proxyUrl, "scope-a", "1"), {
+    const epochBusted = await fetch(graphQLUrl(fixture.proxyUrl, viewerQuery, "scope-a", "1"), {
       headers: fixture.adminHeaders
     });
 
@@ -104,6 +121,67 @@ describe("admin GraphQL response cache", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("etag")).toBeNull();
   });
+
+  it("invalidates scoped cached queries after wrapper-result mutations", async () => {
+    const fixture = await setup("org_graphql_response_cache_user_mutation");
+    const memberId = "cache_member";
+    await fixture.db.insert(users).values({
+      id: memberId,
+      email: "cache-member@example.com",
+      name: "Cache Member"
+    });
+    await fixture.db.insert(organizationMembers).values({
+      organizationId: "org_graphql_response_cache_user_mutation",
+      userId: memberId,
+      role: "member"
+    });
+    const readerHeaders = await loginAdmin(fixture.proxyUrl);
+    const url = graphQLUrl(fixture.proxyUrl, usersQuery, "scope-users", "0");
+
+    const first = await fetch(url, { headers: readerHeaders });
+    const etag = first.headers.get("etag");
+    const firstBody = await first.json();
+
+    expect(first.status).toBe(200);
+    expect(etag).toBeTruthy();
+    expect(firstBody.data.users).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        userId: memberId,
+        membership: { role: "member", status: "active" }
+      })
+    ]));
+
+    const revalidated = await fetch(url, {
+      headers: { ...readerHeaders, "if-none-match": etag ?? "" }
+    });
+    expect(revalidated.status).toBe(304);
+
+    const updated = await adminGql(fixture.proxyUrl, fixture.adminHeaders, updateUserRoleMutation, {
+      userId: memberId,
+      role: "admin"
+    });
+    expect(updated.errors).toBeUndefined();
+    expect(updated.data?.updateUserRole).toEqual({
+      userId: memberId,
+      role: "admin",
+      previousRole: "member"
+    });
+
+    const invalidated = await fetch(url, {
+      headers: { ...readerHeaders, "if-none-match": etag ?? "" }
+    });
+    const invalidatedEtag = invalidated.headers.get("etag");
+    const invalidatedBody = await invalidated.json();
+    expect(invalidated.status).toBe(200);
+    expect(invalidatedEtag).toBeTruthy();
+    expect(invalidatedEtag).not.toBe(etag);
+    expect(invalidatedBody.data.users).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        userId: memberId,
+        membership: { role: "admin", status: "active" }
+      })
+    ]));
+  });
 });
 
 async function setup(organizationId: string) {
@@ -111,9 +189,9 @@ async function setup(organizationId: string) {
   return activeFixture;
 }
 
-function graphQLUrl(proxyUrl: string, scope: string, epoch: string) {
+function graphQLUrl(proxyUrl: string, query: string, scope: string, epoch: string) {
   const params = new URLSearchParams({
-    query: viewerQuery,
+    query,
     gqlCacheScope: scope,
     gqlCacheEpoch: epoch
   });
