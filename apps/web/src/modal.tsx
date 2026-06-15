@@ -24,10 +24,11 @@ function trapTab(event: KeyboardEvent<HTMLDivElement>) {
 // Portals out of the page so fixed positioning isn't trapped while the
 // .page-enter transform animation runs, but into .app rather than body so
 // the data-theme variables still apply.
-export function Modal({ label, title, subtitle, onClose, children }: {
+export function Modal({ label, title, subtitle, className = "", onClose, children }: {
   label: string;
   title?: ReactNode;
   subtitle?: ReactNode;
+  className?: string;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -35,7 +36,7 @@ export function Modal({ label, title, subtitle, onClose, children }: {
     <>
       <div className="scrim" onClick={onClose} />
       <div
-        className="modal"
+        className={`modal ${className}`}
         role="dialog"
         aria-modal="true"
         aria-label={label}
