@@ -10,6 +10,16 @@ opencode can reach Prompt Proxy through three supported wire paths. Use the chat
 
 Use the Prompt Proxy API key in opencode. Do not put your upstream OpenAI, Anthropic, or custom-provider key directly in opencode unless you intentionally want to bypass the proxy. Upstream BYOK belongs in the Prompt Proxy console under Provider keys, then gets bound to the Prompt Proxy API key.
 
+## One-Liner Setup
+
+For the default OpenAI-compatible Chat path, the hosted setup script can configure opencode globally:
+
+```shell
+curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness opencode <api-key>
+```
+
+It stores a copy of the key at `~/.prompt-proxy/opencode.token`, writes the `prompt-proxy-chat` provider to `~/.config/opencode/opencode.json`, and stores the credential in `~/.local/share/opencode/auth.json`. Create a separate Prompt Proxy API key for opencode when you want opencode to use a different routing config than Claude Code or Codex.
+
 ## Model IDs
 
 For OpenAI-compatible paths, use:
@@ -32,7 +42,7 @@ For the Anthropic Messages path, use:
 
 ## Key Setup
 
-In opencode, run `/connect`, add a custom provider credential whose provider ID matches the `provider` key from the config you choose below, and paste the Prompt Proxy API key.
+If you do not use the setup script, run `/connect` in opencode, add a custom provider credential whose provider ID matches the `provider` key from the config you choose below, and paste the Prompt Proxy API key.
 
 The examples use these provider IDs:
 

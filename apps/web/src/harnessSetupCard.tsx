@@ -2,20 +2,31 @@ import { Check, Copy, TerminalSquare } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { apiBase } from "./graphql";
-import { buildManualSteps, buildSetupCommand, keyPlaceholder, type SnippetLanguage } from "./keys/setupSnippets";
+import {
+  buildManualSteps,
+  buildSetupCommand,
+  harnessSetupLabel,
+  keyPlaceholder,
+  tokenPathForHarness,
+  type HarnessSetupTarget,
+  type SnippetLanguage
+} from "./keys/setupSnippets";
 import { highlightSnippet } from "./keys/snippetHighlight";
 import { WizardStepHead } from "./keys/stepHead";
 
 export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
   secret: string | null;
+  harness?: HarnessSetupTarget;
   showKeyContextSteps?: boolean;
 }) {
+  const target = harness ?? "all";
+  const label = harnessSetupLabel(target);
   return (
     <>
       <WizardStepHead
         icon={<TerminalSquare />}
-        title="Route your coding agent through the proxy"
-        sub="The harness authenticates with an API key, and the proxy picks models from the routing config assigned to that key."
+        title={`Route ${label} through the proxy`}
+        sub="The harness authenticates with this API key, and the proxy picks models from the routing config assigned to that key."
       />
       <ol className="setup-steps">
         {showKeyContextSteps ? (
@@ -26,17 +37,16 @@ export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
           </li>
         ) : null}
         <li>
-          Run this on your machine — or paste it into Claude Code or Codex and let the agent run it for you:
-          <Snippet text={buildSetupCommand({ apiBase, secret })} language="shell" />
+          Run this on your machine, or paste it into an agent and let it run it for you:
+          <Snippet text={buildSetupCommand({ apiBase, secret, harness: target })} language="shell" />
           <div className="faint setup-explainer">
             It fetches the <a href={`${apiBase}/setup.sh`} target="_blank" rel="noreferrer">setup script</a> from
-            the proxy, stores the key at <span className="code-pill">~/.prompt-proxy/token</span>, and points both
-            Claude Code and Codex at the proxy. Safe to re-run.
+            the proxy, stores the key at <span className="code-pill">{tokenPathForHarness(target)}</span>, and configures
+            {target === "all" ? " Claude Code and Codex" : ` ${label}`} to use the proxy. Safe to re-run.
           </div>
         </li>
         <li>
-          Open a new terminal and run <span className="code-pill">claude</span> or <span className="code-pill">codex</span> —
-          no flags or exports needed.
+          {launchInstruction(target)}
         </li>
         {showKeyContextSteps ? (
           <li>
@@ -48,7 +58,7 @@ export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
       <details className="setup-manual">
         <summary>Prefer to set it up by hand? Follow these steps — they do exactly what the script does.</summary>
         <ol className="setup-steps">
-          {buildManualSteps({ apiBase, secret }).map((step) => (
+          {buildManualSteps({ apiBase, secret, harness: target }).map((step) => (
             <li key={step.title}>
               <span className="setup-manual-title">{step.title}.</span> {step.detail}
               <Snippet text={step.snippet} language={step.language} />
@@ -56,6 +66,23 @@ export function HarnessSetupGuide({ secret, showKeyContextSteps = true }: {
           ))}
         </ol>
       </details>
+    </>
+  );
+}
+
+function launchInstruction(harness: HarnessSetupTarget) {
+  if (harness === "claude-code") {
+    return <>Open a new terminal and run <span className="code-pill">claude</span>.</>;
+  }
+  if (harness === "codex") {
+    return <>Open a new terminal and run <span className="code-pill">codex</span>.</>;
+  }
+  if (harness === "opencode") {
+    return <>Open opencode, run <span className="code-pill">/models</span>, and select <span className="code-pill">prompt-proxy-chat/router-auto</span>.</>;
+  }
+  return (
+    <>
+      Open a new terminal and run <span className="code-pill">claude</span> or <span className="code-pill">codex</span>.
     </>
   );
 }

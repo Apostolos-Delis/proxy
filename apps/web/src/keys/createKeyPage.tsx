@@ -44,7 +44,11 @@ export function CreateApiKeyPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (input: { create: CreateApiKeyInput; bindings: [ProviderName, string][] }) => {
+    mutationFn: async (input: {
+      create: CreateApiKeyInput;
+      bindings: [ProviderName, string][];
+      harness: CreatedKeyResult["harness"];
+    }) => {
       const result = await createApiKey(input.create);
       const apiKeyId = result.apiKey?.id ?? null;
       const bindingFailures: string[] = [];
@@ -62,6 +66,7 @@ export function CreateApiKeyPage() {
       return {
         apiKeyId,
         keyName: result.apiKey?.name ?? input.create.name,
+        harness: input.harness,
         secret: result.secret,
         bindingFailures
       } satisfies CreatedKeyResult;
@@ -114,6 +119,7 @@ export function CreateApiKeyPage() {
         scopes: draft.scopes,
         routingConfigId: draft.routingConfigId
       },
+      harness: draft.harness,
       bindings: Object.entries(draft.providerBindings).filter(
         (entry): entry is [ProviderName, string] => Boolean(entry[1])
       )

@@ -24,7 +24,8 @@ function testEnv(overrides: NodeJS.ProcessEnv = {}) {
 describe("buildSetupScript", () => {
   it("reads the key from the argument or environment, never embedding a secret", () => {
     const script = buildSetupScript("https://proxy.example.com");
-    expect(script).toContain('PP_TOKEN="${1:-${PROMPT_PROXY_TOKEN:-}}"');
+    expect(script).toContain('PP_TOKEN="${PROMPT_PROXY_TOKEN:-}"');
+    expect(script).toContain('PP_HARNESS="${2:-}"');
     expect(script).toContain("read -r PP_TOKEN < /dev/tty");
   });
 
@@ -38,7 +39,7 @@ describe("buildSetupScript", () => {
     const script = buildSetupScript("https://proxy.example.com");
     expect(script).toContain("grep -Eq");
     expect(script).toContain('tmp_config="$(mktemp)"');
-    expect(script).toContain('chmod 600 "$HOME/.prompt-proxy/token"');
+    expect(script).toContain('chmod 600 "$PP_TOKEN_PATH"');
   });
 
   it("escapes bash-special characters in the base URL", () => {
@@ -57,7 +58,7 @@ describe("buildSetupScript", () => {
     const script = buildSetupScript("https://proxy.example.com");
     // Claude Code via ANTHROPIC_CUSTOM_HEADERS, only when an id was resolved.
     expect(script).toContain('settings.env.ANTHROPIC_CUSTOM_HEADERS = "x-prompt-proxy-user-id: " + process.argv[2]');
-    expect(script).toContain('" "$PP_USER_ID"');
+    expect(script).toContain('" "$PP_USER_ID" "$PP_TOKEN_PATH_DISPLAY"');
     // Codex via the provider http_headers map.
     expect(script).toContain('PP_CODEX_HEADERS="http_headers = { \\"x-prompt-proxy-user-id\\" = \\"$PP_USER_ID\\" }"');
     expect(script).toContain("$PP_CODEX_HEADERS");
@@ -106,6 +107,93 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       const zshrc = readFileSync(join(home, ".zshrc"), "utf8");
       expect(zshrc).toContain('export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"');
       expect(zshrc).not.toContain("old-token");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("configures a Codex-specific key without changing Claude Code", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-codex-"));
+    try {
+      writeFileSync(join(home, ".zshrc"), 'export PROMPT_PROXY_CODEX_TOKEN="old-token"\n');
+
+      const result = spawnSync("bash", ["-s", "--", "--harness", "codex", "codex-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: {
+          ...process.env,
+          HOME: home,
+          PROMPT_PROXY_USER_ID: "codex@example.com",
+          USER: "dev"
+        }
+      });
+
+      expect(result.status).toBe(0);
+      expect(readFileSync(join(home, ".prompt-proxy", "codex.token"), "utf8")).toBe("codex-token\n");
+      const config = readFileSync(join(home, ".codex", "config.toml"), "utf8");
+      expect(config).toContain('model_provider = "prompt_proxy_codex"');
+      expect(config).toContain("[model_providers.prompt_proxy_codex]");
+      expect(config).toContain('env_key = "PROMPT_PROXY_CODEX_TOKEN"');
+      expect(config).toContain('http_headers = { "x-prompt-proxy-user-id" = "codex@example.com" }');
+      const zshrc = readFileSync(join(home, ".zshrc"), "utf8");
+      expect(zshrc).toContain('export PROMPT_PROXY_CODEX_TOKEN="$(cat ~/.prompt-proxy/codex.token)"');
+      expect(zshrc).not.toContain("old-token");
+      expect(spawnSync("test", ["!", "-e", join(home, ".claude", "settings.json")]).status).toBe(0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("configures a Claude Code-specific key without changing Codex", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-claude-"));
+    try {
+      const result = spawnSync("bash", ["-s", "--", "--harness=claude-code", "claude-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: {
+          ...process.env,
+          HOME: home,
+          PROMPT_PROXY_USER_ID: "claude@example.com",
+          USER: "dev"
+        }
+      });
+
+      expect(result.status).toBe(0);
+      expect(readFileSync(join(home, ".prompt-proxy", "claude-code.token"), "utf8")).toBe("claude-token\n");
+      const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
+      expect(settings.apiKeyHelper).toBe("cat ~/.prompt-proxy/claude-code.token");
+      expect(settings.env.ANTHROPIC_BASE_URL).toBe("https://proxy.example.com");
+      expect(settings.env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-prompt-proxy-user-id: claude@example.com");
+      expect(spawnSync("test", ["!", "-e", join(home, ".codex", "config.toml")]).status).toBe(0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("configures opencode global config and credentials", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-opencode-"));
+    const xdgConfig = join(home, "xdg-config");
+    const xdgData = join(home, "xdg-data");
+    try {
+      const result = spawnSync("bash", ["-s", "--", "--harness", "opencode", "open-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: {
+          ...process.env,
+          HOME: home,
+          XDG_CONFIG_HOME: xdgConfig,
+          XDG_DATA_HOME: xdgData,
+          USER: "dev"
+        }
+      });
+
+      expect(result.status).toBe(0);
+      expect(readFileSync(join(home, ".prompt-proxy", "opencode.token"), "utf8")).toBe("open-token\n");
+      const config = JSON.parse(readFileSync(join(xdgConfig, "opencode", "opencode.json"), "utf8"));
+      expect(config.provider["prompt-proxy-chat"].npm).toBe("@ai-sdk/openai-compatible");
+      expect(config.provider["prompt-proxy-chat"].options.baseURL).toBe("https://proxy.example.com/v1");
+      expect(config.model).toBe("prompt-proxy-chat/router-auto");
+      const auth = JSON.parse(readFileSync(join(xdgData, "opencode", "auth.json"), "utf8"));
+      expect(auth["prompt-proxy-chat"]).toEqual({ type: "api", key: "open-token" });
+      expect(spawnSync("test", ["!", "-e", join(home, ".codex", "config.toml")]).status).toBe(0);
+      expect(spawnSync("test", ["!", "-e", join(home, ".claude", "settings.json")]).status).toBe(0);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

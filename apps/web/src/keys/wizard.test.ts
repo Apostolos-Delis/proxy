@@ -21,6 +21,7 @@ describe("initialDraft", () => {
   it("starts on configure with the default scopes and no bindings", () => {
     const draft = initialDraft();
     expect(draft.stepId).toBe("configure");
+    expect(draft.harness).toBe("all");
     expect(draft.scopes).toEqual(["proxy", "harness_identity"]);
     expect(draft.routingConfigId).toBeNull();
     expect(draft.linkProviderKeys).toBe(false);

@@ -1,5 +1,6 @@
 import type { ProviderName } from "../providers/data";
 import { PROVIDER_ORDER } from "../providers";
+import type { HarnessSetupTarget } from "./setupSnippets";
 
 export type CreateKeyStepId = "configure" | "routing" | "create" | "verify";
 
@@ -13,6 +14,7 @@ export const createKeySteps: { id: CreateKeyStepId; label: string }[] = [
 export type CreateKeyDraft = {
   stepId: CreateKeyStepId;
   name: string;
+  harness: HarnessSetupTarget;
   scopes: string[];
   routingConfigId: string | null;
   linkProviderKeys: boolean;
@@ -22,6 +24,7 @@ export type CreateKeyDraft = {
 export type CreatedKeyResult = {
   apiKeyId: string | null;
   keyName: string;
+  harness: HarnessSetupTarget;
   secret: string;
   bindingFailures: string[];
 };
@@ -30,6 +33,7 @@ export function initialDraft(): CreateKeyDraft {
   return {
     stepId: "configure",
     name: "",
+    harness: "all",
     scopes: ["proxy", "harness_identity"],
     routingConfigId: null,
     linkProviderKeys: false,

@@ -1,6 +1,7 @@
 import { KeyRound } from "lucide-react";
 
 import { GlassCard } from "../ui";
+import { harnessSetupOptions } from "./setupSnippets";
 import { apiKeyScopeOptions } from "./scopeOptions";
 import { WizardStepHead } from "./stepHead";
 import type { CreateKeyDraft } from "./wizard";
@@ -26,6 +27,21 @@ export function ConfigureStep({ draft, onChange }: {
             onChange={(event) => onChange({ ...draft, name: event.target.value })}
           />
         </label>
+        <div className="scope-options" role="radiogroup" aria-label="Harness setup">
+          <span className="scope-options-label">Harness setup</span>
+          {harnessSetupOptions.map((target) => (
+            <label key={target.value} className="scope-option">
+              <input
+                type="radio"
+                name="harness-setup"
+                checked={draft.harness === target.value}
+                onChange={() => onChange({ ...draft, harness: target.value })}
+              />
+              <span>{target.label}</span>
+              <span className="faint">{target.description}</span>
+            </label>
+          ))}
+        </div>
         <div className="scope-options">
           <span className="scope-options-label">Scopes</span>
           {apiKeyScopeOptions.map((scope) => (

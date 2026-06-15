@@ -7,16 +7,22 @@ const apiBase = "http://127.0.0.1:8787";
 describe("buildSetupCommand", () => {
   it("fetches the hosted script and passes the secret as the argument", () => {
     expect(buildSetupCommand({ apiBase, secret: "pp_abc123" })).toBe(
-      "curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- 'pp_abc123'"
+      "curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness all 'pp_abc123'"
     );
   });
 
   it("falls back to the placeholder when there is no secret", () => {
-    expect(buildSetupCommand({ apiBase, secret: null })).toContain(`-- '${keyPlaceholder}'`);
+    expect(buildSetupCommand({ apiBase, secret: null })).toContain(`--harness all '${keyPlaceholder}'`);
   });
 
   it("single-quote-escapes secrets so they cannot break out of the argument", () => {
-    expect(buildSetupCommand({ apiBase, secret: "a'b" })).toContain(`-- 'a'\\''b'`);
+    expect(buildSetupCommand({ apiBase, secret: "a'b" })).toContain(`--harness all 'a'\\''b'`);
+  });
+
+  it("passes the selected harness through to the hosted script", () => {
+    expect(buildSetupCommand({ apiBase, secret: "pp_codex", harness: "codex" })).toBe(
+      "curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness codex 'pp_codex'"
+    );
   });
 });
 
@@ -66,5 +72,44 @@ describe("buildManualSteps", () => {
   it("uses the placeholder when there is no secret", () => {
     const placeholderSteps = buildManualSteps({ apiBase, secret: null });
     expect(placeholderSteps[0].snippet).toContain(keyPlaceholder);
+  });
+
+  it("builds Codex-specific steps with a separate token and provider", () => {
+    const codexSteps = buildManualSteps({ apiBase, secret: "pp_codex", harness: "codex" });
+    expect(codexSteps.map((step) => step.title)).toEqual([
+      "Store the key",
+      "Export the key for Codex",
+      "Register the Codex provider"
+    ]);
+    expect(codexSteps[0].snippet).toContain("~/.prompt-proxy/codex.token");
+    expect(codexSteps[1].snippet).toBe(`export PROMPT_PROXY_CODEX_TOKEN="$(cat ~/.prompt-proxy/codex.token)"`);
+    expect(codexSteps[2].snippet).toContain("[model_providers.prompt_proxy_codex]");
+    expect(codexSteps[2].snippet).toContain(`env_key = "PROMPT_PROXY_CODEX_TOKEN"`);
+  });
+
+  it("builds Claude Code-specific steps with a separate token", () => {
+    const claudeSteps = buildManualSteps({ apiBase, secret: "pp_claude", harness: "claude-code" });
+    expect(claudeSteps.map((step) => step.title)).toEqual([
+      "Store the key",
+      "Point Claude Code at the proxy"
+    ]);
+    const settings = JSON.parse(claudeSteps[1].snippet);
+    expect(claudeSteps[0].snippet).toContain("~/.prompt-proxy/claude-code.token");
+    expect(settings.apiKeyHelper).toBe("cat ~/.prompt-proxy/claude-code.token");
+  });
+
+  it("builds opencode steps with a custom provider config", () => {
+    const opencodeSteps = buildManualSteps({ apiBase, secret: "pp_open", harness: "opencode" });
+    expect(opencodeSteps.map((step) => step.title)).toEqual([
+      "Store the key",
+      "Register the opencode provider",
+      "Connect opencode credentials"
+    ]);
+    const config = JSON.parse(opencodeSteps[1].snippet);
+    expect(config.provider["prompt-proxy-chat"].npm).toBe("@ai-sdk/openai-compatible");
+    expect(config.provider["prompt-proxy-chat"].options.baseURL).toBe(`${apiBase}/v1`);
+    expect(config.model).toBe("prompt-proxy-chat/router-auto");
+    expect(opencodeSteps[2].snippet).toContain("prompt-proxy-chat");
+    expect(opencodeSteps[2].snippet).toContain("pp_open");
   });
 });
