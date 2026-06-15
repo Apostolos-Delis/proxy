@@ -56,18 +56,28 @@ type TargetAvailability =
   | { status: "unavailable"; reason: string };
 
 function routeSettings(selected: SelectedRouteSettings): ResolvedRouteSettings {
-  const supportedEfforts = selected.dialect === "anthropic-messages"
-    ? ["low", "medium", "high", "xhigh", "max"]
-    : ["minimal", "low", "medium", "high", "xhigh", "max"];
-  const requestedEffort = selected.effort ?? "medium";
-  const effort = nearestReasoningEffort(requestedEffort, supportedEfforts as ProviderEffort[]) ?? requestedEffort;
+  const effort = effectiveEffort(selected);
+  const providerSettings = { ...selected };
+  if (effort) providerSettings.effort = effort;
+  else delete providerSettings.effort;
   return {
     selectedModel: selected.model,
     provider: selected.providerId,
     reasoningEffort: effort,
     verbosity: selected.dialect === "openai-responses" ? selected.verbosity : undefined,
-    providerSettings: { ...selected, effort }
+    providerSettings
   };
+}
+
+function effectiveEffort(selected: SelectedRouteSettings): ProviderEffort | undefined {
+  if (!selected.effort) return undefined;
+  if (selected.dialect === "anthropic-messages" && selected.thinking?.type !== "adaptive") {
+    return undefined;
+  }
+  const supportedEfforts = selected.dialect === "anthropic-messages"
+    ? ["low", "medium", "high", "xhigh", "max"]
+    : ["minimal", "low", "medium", "high", "xhigh", "max"];
+  return nearestReasoningEffort(selected.effort, supportedEfforts as ProviderEffort[]) ?? selected.effort;
 }
 
 export class RoutingService {

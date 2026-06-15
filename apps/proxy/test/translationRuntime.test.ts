@@ -144,7 +144,13 @@ describe("translated OpenAI routing runtime", () => {
       secret: "codex-to-anthropic-token",
       slug: "codex-to-anthropic",
       configHash: "sha256:codex-to-anthropic",
-      targets: [{ providerId: "anthropic-only", model: "claude-routed", effort: "high", maxOutputTokens: 321 }]
+      targets: [{
+        providerId: "anthropic-only",
+        model: "claude-routed",
+        effort: "high",
+        thinking: { type: "adaptive", display: "omitted" },
+        maxOutputTokens: 321
+      }]
     });
 
     const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
@@ -314,7 +320,13 @@ describe("translated OpenAI routing runtime", () => {
       secret: "chat-to-anthropic-token",
       slug: "chat-to-anthropic",
       configHash: "sha256:chat-to-anthropic",
-      targets: [{ providerId: "anthropic-chat-target", model: "claude-chat-routed", effort: "high", maxOutputTokens: 111 }]
+      targets: [{
+        providerId: "anthropic-chat-target",
+        model: "claude-chat-routed",
+        effort: "high",
+        thinking: { type: "adaptive", display: "omitted" },
+        maxOutputTokens: 111
+      }]
     });
 
     const response = await fetch(`${activeFixture.proxyUrl}/v1/chat/completions`, {
