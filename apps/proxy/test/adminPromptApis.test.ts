@@ -141,7 +141,7 @@ describe("admin prompt APIs", () => {
     await response.text();
 
     const prompts = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptListQuery, {
-      userId: "user_prompt_admin",
+      userId: "local-user",
       surface: "openai-responses",
       route: "hard",
       model: "gpt-5.5",
@@ -205,7 +205,7 @@ describe("admin prompt APIs", () => {
     expect(auditAfterListAndUsage).toHaveLength(0);
     expect(prompts.pagination).toEqual({ limit: 10, offset: 0, count: expect.any(Number) });
     expect(prompts.data.length).toBeGreaterThan(0);
-    expect(prompts.data.every((item: any) => item.userId === "user_prompt_admin")).toBe(true);
+    expect(prompts.data.every((item: any) => item.userId === "local-user")).toBe(true);
     expect(latestUser).toEqual(expect.objectContaining({
       surface: "openai-responses",
       storageMode: "raw_text",
@@ -290,7 +290,7 @@ describe("admin prompt APIs", () => {
     await response.text();
 
     const prompts = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptListQuery, {
-      userId: "claude_user",
+      userId: "local-user",
       surface: "anthropic-messages",
       route: "hard",
       model: "claude-sonnet-4-5"
@@ -393,10 +393,10 @@ describe("admin prompt APIs", () => {
     }));
   });
 
-  it("keeps harness user headers for the seeded local API key", async () => {
-    const fixture = await setup("org_seeded_harness_identity");
+  it("uses API-key ownership for the seeded local API key", async () => {
+    const fixture = await setup("org_seeded_key_identity");
     await seedDatabase(fixture.db, seedOptionsFromEnv({
-      DEFAULT_ORGANIZATION_ID: "org_seeded_harness_identity",
+      DEFAULT_ORGANIZATION_ID: "org_seeded_key_identity",
       SEED_USER_ID: "local-user",
       PROMPT_PROXY_TOKEN: "proxy-token",
       OPENAI_BASE_URL: fixture.openai.url,
@@ -414,7 +414,7 @@ describe("admin prompt APIs", () => {
       },
       body: JSON.stringify({
         model: "router-auto",
-        input: "Store this under the harness user.",
+        input: "Store this under the key owner.",
         stream: true
       })
     });
@@ -430,14 +430,16 @@ describe("admin prompt APIs", () => {
     const received = eventRows.find((event) => event.eventType === "proxy.request_received");
 
     expect(response.status).toBe(200);
-    expect(promptForHarnessUser.data).toHaveLength(1);
-    expect(promptForSeedUser.data).toHaveLength(0);
+    expect(promptForHarnessUser.data).toHaveLength(0);
+    expect(promptForSeedUser.data).toHaveLength(1);
     expect(received?.payload).toEqual(expect.objectContaining({
       authSource: "api_key",
-      apiKeyId: "org_seeded_harness_identity:api-key:default",
-      routingConfigId: "org_seeded_harness_identity:routing-config:default",
-      userId: "codex_seeded_user",
-      teamId: "codex_seeded_team"
+      apiKeyId: "org_seeded_key_identity:api-key:default",
+      routingConfigId: "org_seeded_key_identity:routing-config:default",
+      userId: "local-user",
+      teamId: null,
+      harnessUserId: "codex_seeded_user",
+      harnessTeamId: "codex_seeded_team"
     }));
   });
 
@@ -461,7 +463,7 @@ describe("admin prompt APIs", () => {
         organizationId: "org_admin_api_keys",
         userId: "local-user",
         name: "Default local API key",
-        scopes: ["proxy", "admin", "harness_identity"],
+        scopes: ["proxy", "admin"],
         routingConfigId: "org_admin_api_keys:routing-config:default",
         routingConfig: expect.objectContaining({
           id: "org_admin_api_keys:routing-config:default",

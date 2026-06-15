@@ -67,7 +67,7 @@ Important existing behavior to preserve:
 - Auto-routed traffic above `limits.maxRoute` is clamped to the configured ceiling.
 - Explicit aliases above `limits.maxRoute` are rejected before classification.
 - Routing configs choose provider/model per route tier and surface.
-- API keys can be personal or shared harness keys. Shared `harness_identity` keys may attribute traffic to per-request user headers.
+- API keys are personal credentials. Proxy traffic attributes to the key owner's user id; harness user headers are audit context only.
 
 Current gaps:
 
@@ -120,30 +120,19 @@ invitations.access_profile_id
   initial policy accepted with the invite
 
 api_keys.access_profile_id
-  optional override for shared/system keys where no real user is available
+  optional override for system keys where no real user is available
 ```
 
-For personal API keys, the member profile should be the primary source of truth. For shared harness keys, the effective profile depends on whether the request resolves to a real active member.
+For proxy API keys, the member profile should be the primary source of truth. Per-request harness identity headers must not affect effective access policy.
 
 ### Effective Policy
 
 Runtime policy should resolve to one effective access profile:
 
 ```text
-personal key with owner user
+proxy key with owner user
   -> active organization member for api_keys.user_id
   -> member.access_profile_id
-
-harness_identity key with trusted per-request user header
-  -> active organization member for harness user
-  -> member.access_profile_id
-
-harness_identity key with unknown or inactive user header
-  -> reject
-
-harness_identity key with missing user header
-  -> api_keys.access_profile_id only when the key has an explicit restricted fallback profile
-  -> otherwise reject
 
 system key with no user
   -> api_keys.access_profile_id
@@ -581,10 +570,8 @@ Runtime tests:
 - Selected model outside `allowedModels` rejects.
 - Lowering a profile invalidates an existing session pin to a newly disallowed model.
 - Routing config max route and access profile max route merge to the stricter value.
-- Personal key uses key owner's member profile.
-- `harness_identity` key uses active harness user's profile.
-- `harness_identity` key rejects unknown or inactive user headers.
-- `harness_identity` key with no user header can use only an explicitly restricted key fallback profile.
+- Proxy key uses key owner's member profile.
+- Harness user headers do not change effective policy.
 - Shared-key fallback profile assignment rejects profiles above the organization default non-engineer ceiling.
 - `/v1/models` only returns allowed aliases for a caller.
 

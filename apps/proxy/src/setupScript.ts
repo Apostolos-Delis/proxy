@@ -125,17 +125,6 @@ case "$PP_HARNESS" in
     ;;
 esac
 
-PP_USER_ID="\${PROMPT_PROXY_USER_ID:-}"
-if [ -z "$PP_USER_ID" ]; then
-  PP_USER_ID="$(git config --get user.email 2>/dev/null || true)"
-fi
-if [ -z "$PP_USER_ID" ]; then
-  PP_USER_ID="\${USER:-}"
-fi
-if [ -n "$PP_USER_ID" ]; then
-  echo "identity: requests attribute to $PP_USER_ID (override with PROMPT_PROXY_USER_ID)"
-fi
-
 mkdir -p "$HOME/.prompt-proxy"
 printf '%s\\n' "$PP_TOKEN" > "$PP_TOKEN_PATH"
 chmod 600 "$PP_TOKEN_PATH"
@@ -154,12 +143,15 @@ settings.env = Object.assign({}, settings.env, {
   ANTHROPIC_BASE_URL: process.argv[1],
   CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
 });
-if (process.argv[2]) {
-  settings.env.ANTHROPIC_CUSTOM_HEADERS = "x-prompt-proxy-user-id: " + process.argv[2];
+if (
+  typeof settings.env.ANTHROPIC_CUSTOM_HEADERS === "string" &&
+  settings.env.ANTHROPIC_CUSTOM_HEADERS.toLowerCase().includes("x-prompt-proxy-user-id")
+) {
+  delete settings.env.ANTHROPIC_CUSTOM_HEADERS;
 }
-settings.apiKeyHelper = "cat " + process.argv[3];
+settings.apiKeyHelper = "cat " + process.argv[2];
 fs.writeFileSync(file, JSON.stringify(settings, null, 2) + "\\n");
-' "$PP_BASE_URL" "$PP_USER_ID" "$PP_TOKEN_PATH_DISPLAY"
+' "$PP_BASE_URL" "$PP_TOKEN_PATH_DISPLAY"
     echo "claude: configured ~/.claude/settings.json"
   else
     echo "claude: node not found - set model/env/apiKeyHelper in ~/.claude/settings.json by hand" >&2
@@ -189,11 +181,6 @@ if [ "$PP_HARNESS" = "all" ] || [ "$PP_HARNESS" = "codex" ]; then
 
   mkdir -p "$HOME/.codex"
   codex_config="$HOME/.codex/config.toml"
-  if [ -n "$PP_USER_ID" ]; then
-    PP_CODEX_HEADERS="http_headers = { \\"x-prompt-proxy-user-id\\" = \\"$PP_USER_ID\\" }"
-  else
-    PP_CODEX_HEADERS=""
-  fi
   if [ ! -s "$codex_config" ]; then
     cat > "$codex_config" <<${heredocDelimiter}
 model = "router-auto"
@@ -205,7 +192,6 @@ base_url = "$PP_BASE_URL/v1"
 env_key = "$PP_CODEX_ENV"
 wire_api = "responses"
 supports_websockets = true
-$PP_CODEX_HEADERS
 ${heredocDelimiter}
     echo "codex: wrote ~/.codex/config.toml"
   else
@@ -232,7 +218,6 @@ base_url = "$PP_BASE_URL/v1"
 env_key = "$PP_CODEX_ENV"
 wire_api = "responses"
 supports_websockets = true
-$PP_CODEX_HEADERS
 ${heredocDelimiter}
     } > "$tmp_config"
     mv "$tmp_config" "$codex_config"

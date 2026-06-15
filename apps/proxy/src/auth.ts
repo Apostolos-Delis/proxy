@@ -53,18 +53,12 @@ export function scopedIdempotencyKey(organizationId: string, workspaceId: string
 }
 
 export function contextForIdentity(context: RouteContext, identity: RequestIdentity): RouteContext {
-  const useHarnessIdentity = identity.source === "dev_proxy_token" || identity.scopes.includes("harness_identity");
   return {
     ...context,
     organizationId: identity.organizationId,
     workspaceId: identity.workspaceId,
-    // A harness_identity key (or the dev proxy token) is shared by many people,
-    // so the per-request user header is the real attribution and wins, with the
-    // key's bound owner as the fallback when no header is sent. Any other key is
-    // personal: it attributes to its bound owner and the header is ignored so a
-    // client cannot spoof someone else's identity.
-    userId: useHarnessIdentity ? (context.userId ?? identity.userId) : identity.userId,
-    teamId: useHarnessIdentity ? context.teamId : undefined,
+    userId: identity.userId,
+    teamId: undefined,
     apiKeyId: identity.apiKeyId
   };
 }

@@ -47,21 +47,11 @@ describe("buildSetupScript", () => {
     expect(script).toContain('PP_BASE_URL="http://proxy/\\$path"');
   });
 
-  it("derives the attribution identity from git email then $USER, overridable", () => {
+  it("does not derive per-request attribution identity", () => {
     const script = buildSetupScript("https://proxy.example.com");
-    expect(script).toContain('PP_USER_ID="${PROMPT_PROXY_USER_ID:-}"');
-    expect(script).toContain('PP_USER_ID="$(git config --get user.email 2>/dev/null || true)"');
-    expect(script).toContain('PP_USER_ID="${USER:-}"');
-  });
-
-  it("stamps x-prompt-proxy-user-id into both Claude Code and Codex config", () => {
-    const script = buildSetupScript("https://proxy.example.com");
-    // Claude Code via ANTHROPIC_CUSTOM_HEADERS, only when an id was resolved.
-    expect(script).toContain('settings.env.ANTHROPIC_CUSTOM_HEADERS = "x-prompt-proxy-user-id: " + process.argv[2]');
-    expect(script).toContain('" "$PP_USER_ID" "$PP_TOKEN_PATH_DISPLAY"');
-    // Codex via the provider http_headers map.
-    expect(script).toContain('PP_CODEX_HEADERS="http_headers = { \\"x-prompt-proxy-user-id\\" = \\"$PP_USER_ID\\" }"');
-    expect(script).toContain("$PP_CODEX_HEADERS");
+    expect(script).not.toContain("PROMPT_PROXY_USER_ID");
+    expect(script).not.toContain('settings.env.ANTHROPIC_CUSTOM_HEADERS = "x-prompt-proxy-user-id: "');
+    expect(script).not.toContain("PP_CODEX_HEADERS");
   });
 
   it("selects and refreshes the Codex prompt_proxy provider for existing configs", () => {
@@ -100,7 +90,7 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       expect(config).toContain("goals = true");
       expect(config).toContain('base_url = "https://proxy.example.com/v1"');
       expect(config).toContain('env_key = "PROMPT_PROXY_TOKEN"');
-      expect(config).toContain('http_headers = { "x-prompt-proxy-user-id" = "dev@example.com" }');
+      expect(config).not.toContain("http_headers");
       expect(config).not.toContain('model = "gpt-5.5"');
       expect(config).not.toContain("http://old-proxy/v1");
       expect(config).not.toContain("OLD_PROMPT_PROXY_TOKEN");
@@ -133,7 +123,7 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       expect(config).toContain('model_provider = "prompt_proxy_codex"');
       expect(config).toContain("[model_providers.prompt_proxy_codex]");
       expect(config).toContain('env_key = "PROMPT_PROXY_CODEX_TOKEN"');
-      expect(config).toContain('http_headers = { "x-prompt-proxy-user-id" = "codex@example.com" }');
+      expect(config).not.toContain("http_headers");
       const zshrc = readFileSync(join(home, ".zshrc"), "utf8");
       expect(zshrc).toContain('export PROMPT_PROXY_CODEX_TOKEN="$(cat ~/.prompt-proxy/codex.token)"');
       expect(zshrc).not.toContain("old-token");
@@ -161,8 +151,50 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
       expect(settings.apiKeyHelper).toBe("cat ~/.prompt-proxy/claude-code.token");
       expect(settings.env.ANTHROPIC_BASE_URL).toBe("https://proxy.example.com");
-      expect(settings.env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-prompt-proxy-user-id: claude@example.com");
+      expect(settings.env.ANTHROPIC_CUSTOM_HEADERS).toBeUndefined();
       expect(spawnSync("test", ["!", "-e", join(home, ".codex", "config.toml")]).status).toBe(0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("removes only the old Prompt Proxy identity header from Claude Code settings", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-claude-headers-"));
+    try {
+      mkdirSync(join(home, ".claude"), { recursive: true });
+      writeFileSync(join(home, ".claude", "settings.json"), JSON.stringify({
+        env: { ANTHROPIC_CUSTOM_HEADERS: "x-prompt-proxy-user-id: old@example.com" }
+      }));
+
+      const result = spawnSync("bash", ["-s", "--", "--harness=claude-code", "claude-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: { ...process.env, HOME: home }
+      });
+      const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
+
+      expect(result.status).toBe(0);
+      expect(settings.env.ANTHROPIC_CUSTOM_HEADERS).toBeUndefined();
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves unrelated Claude Code custom headers", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-claude-headers-"));
+    try {
+      mkdirSync(join(home, ".claude"), { recursive: true });
+      writeFileSync(join(home, ".claude", "settings.json"), JSON.stringify({
+        env: { ANTHROPIC_CUSTOM_HEADERS: "x-trace-id: keep" }
+      }));
+
+      const result = spawnSync("bash", ["-s", "--", "--harness=claude-code", "claude-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: { ...process.env, HOME: home }
+      });
+      const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
+
+      expect(result.status).toBe(0);
+      expect(settings.env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-trace-id: keep");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

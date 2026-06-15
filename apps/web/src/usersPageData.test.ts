@@ -28,10 +28,10 @@ describe("userStatus / userRole", () => {
     expect(userRole(user())).toBe("admin");
   });
 
-  it("treats users without membership as observed with no role", () => {
-    const observed = user({ membership: null });
-    expect(userStatus(observed)).toBe("observed");
-    expect(userRole(observed)).toBe("");
+  it("treats users without membership as unknown with no role", () => {
+    const unknown = user({ membership: null });
+    expect(userStatus(unknown)).toBe("unknown");
+    expect(userRole(unknown)).toBe("");
   });
 });
 

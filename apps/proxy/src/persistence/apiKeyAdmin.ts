@@ -17,7 +17,7 @@ import {
   type RoutingConfigAssignmentTarget
 } from "./routingConfigAdmin.js";
 
-export const apiKeyScopeValues = ["proxy", "admin", "harness_identity"] as const;
+export const apiKeyScopeValues = ["proxy", "admin"] as const;
 
 const createApiKeyBodySchema = z.object({
   name: z.string().trim().min(1),
@@ -63,9 +63,6 @@ export class ApiKeyAdminService {
         id: apiKeyId,
         organizationId: input.organizationId,
         workspaceId: input.workspaceId,
-        // Bind the key to the console user who created it so every request the
-        // key authenticates attributes to a real person. Shared harness keys
-        // can still attribute per-request via the user header (see auth.ts).
         userId: input.actorUserId,
         keyHash: hashApiKey(secret),
         name: body.data.name,

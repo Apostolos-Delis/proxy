@@ -525,7 +525,7 @@ describe("postgres persistence", () => {
       apiKeyId: "org_seed_identity:api-key:default",
       organizationId: "org_seed_identity",
       userId: "seed_identity_user",
-      scopes: ["proxy", "admin", "harness_identity"],
+      scopes: ["proxy", "admin"],
       routingConfigId: "org_seed_identity:routing-config:default"
     }));
   });

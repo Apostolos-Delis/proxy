@@ -89,7 +89,6 @@ async function smokeOpenAIResponses(parentMarker: string): Promise<SmokeResult> 
       authorization: `Bearer ${apiKey}`,
       "content-type": "application/json",
       "x-codex-session-id": sessionId,
-      "x-prompt-proxy-user-id": "deployed-smoke-user",
       "x-request-id": `${sessionId}-request`,
       traceparent: traceparent()
     },
@@ -124,7 +123,6 @@ async function smokeOpenAIWebSocket(parentMarker: string): Promise<SmokeResult> 
         "content-type": "application/json",
         "openai-beta": "responses_websockets=2026-02-06",
         "x-codex-session-id": sessionId,
-        "x-prompt-proxy-user-id": "deployed-smoke-user",
         "x-request-id": `${sessionId}-request`,
         traceparent: traceparent()
       }
@@ -186,7 +184,6 @@ async function smokeAnthropicMessages(parentMarker: string): Promise<SmokeResult
       "content-type": "application/json",
       "anthropic-version": "2023-06-01",
       "x-claude-code-session-id": sessionId,
-      "x-prompt-proxy-user-id": "deployed-smoke-user",
       "x-request-id": `${sessionId}-request`,
       traceparent: traceparent()
     },

@@ -7,7 +7,6 @@ import { formatCompact, formatDateTime, formatMoney } from "./format";
 import { graphql } from "./gql";
 import { gqlFetch } from "./graphql";
 import { labelForStatusAction, userRole, userStatus, type UserSummary } from "./usersPageData";
-import { Badge } from "./ui";
 
 const DeactivateUserDocument = graphql(`
   mutation DeactivateUser($userId: ID!) {
@@ -70,7 +69,7 @@ function MemberStatusAction({ user, isSelf, pending, error, onToggle }: {
   error?: string;
   onToggle: (deactivate: boolean) => void;
 }) {
-  if (!user.membership) return <Badge>observed</Badge>;
+  if (!user.membership) return null;
 
   const deactivated = user.membership.status === "deactivated";
   const label = labelForStatusAction(deactivated, pending);

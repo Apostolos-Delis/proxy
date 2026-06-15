@@ -588,7 +588,7 @@ export class AdminQueryService {
     const requestRows = await this.requestRows();
     const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
     const sessionRows = await this.sessionRows();
-    const userRows = await this.userRowsForOrg(userIdsForRequestsAndSessions(requestSummaries, sessionRows));
+    const userRows = await this.userRowsForOrg();
     const memberRows = await this.memberRowsByUserId();
     const apiKeyCounts = await this.activeApiKeyCountsByUser();
     return {
@@ -599,16 +599,19 @@ export class AdminQueryService {
   }
 
   async userDetail(userId: string) {
+    const memberRows = await this.memberRowsByUserId();
+    const member = memberRows.get(userId);
+    if (!member) return null;
+
     const requestRows = await this.requestRowsForUser(userId);
     const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
     const sessionRows = await this.sessionRowsForUser(userId, sessionIdsForRequests(requestSummaries));
-    const userRows = await this.userRowsForOrg(userIdsForRequestsAndSessions(requestSummaries, sessionRows));
+    const userRows = await this.userRowsForOrg();
     const user = userRows.get(userId);
     if (!user) return null;
 
-    const memberRows = await this.memberRowsByUserId();
     const apiKeyCounts = await this.activeApiKeyCountsByUser();
-    const summary = userSummary(user, requestSummaries, sessionRows, memberRows.get(userId), apiKeyCounts.get(userId) ?? 0);
+    const summary = userSummary(user, requestSummaries, sessionRows, member, apiKeyCounts.get(userId) ?? 0);
     return {
       user: summary,
       usage: summary.usage,
@@ -680,7 +683,7 @@ export class AdminQueryService {
     const requestRows = await this.requestRowsForSession(sessionId);
     const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
     const requestIds = requestRows.map((request) => request.id);
-    const userRows = session.userId ? await this.userRowsForOrg([session.userId]) : new Map<string, UserRow>();
+    const userRows = session.userId ? await this.userRowsForOrg() : new Map<string, UserRow>();
     const detailRows = await this.sessionDetailRows(sessionId, requestIds);
     const promptArtifactSummaries = detailRows.prompts.map((row) => promptDetail(row));
     const routeDecisionSummaries = detailRows.routeDecisions.map(routeDecisionSummary);
@@ -870,7 +873,7 @@ export class AdminQueryService {
     );
   }
 
-  private async userRowsForOrg(candidateUserIds: string[]) {
+  private async userRowsForOrg() {
     const memberRows = await this.cached("member-user-rows", () => this.db
       .select({
         user: usersTable
@@ -878,17 +881,7 @@ export class AdminQueryService {
       .from(organizationMembers)
       .innerJoin(usersTable, eq(usersTable.id, organizationMembers.userId))
       .where(eq(organizationMembers.organizationId, this.organizationId)));
-    const usersById = new Map(memberRows.map((row) => [row.user.id, row.user]));
-    const missingUserIds = [...new Set(candidateUserIds)]
-      .filter((userId) => userId && !usersById.has(userId));
-    if (missingUserIds.length > 0) {
-      const rows = await this.db
-        .select()
-        .from(usersTable)
-        .where(inArray(usersTable.id, missingUserIds));
-      for (const row of rows) usersById.set(row.id, row);
-    }
-    return usersById;
+    return new Map(memberRows.map((row) => [row.user.id, row.user]));
   }
 
   private memberRowsByUserId() {
@@ -1964,13 +1957,6 @@ type UsageGroup = {
 };
 
 const ALL_REQUEST_ROWS_KEY = "requests:all";
-
-function userIdsForRequestsAndSessions(requests: RequestSummary[], sessions: SessionRow[]) {
-  return [
-    ...requests.flatMap((request) => request.userId ? [request.userId] : []),
-    ...sessions.flatMap((session) => session.userId ? [session.userId] : [])
-  ];
-}
 
 function sessionIdsForRequests(requests: RequestSummary[]) {
   return requests.flatMap((request) => request.sessionId ? [request.sessionId] : []);

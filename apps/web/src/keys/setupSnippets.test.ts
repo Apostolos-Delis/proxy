@@ -49,8 +49,7 @@ describe("buildManualSteps", () => {
       model: "claude-router-auto",
       env: {
         ANTHROPIC_BASE_URL: apiBase,
-        CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
-        ANTHROPIC_CUSTOM_HEADERS: "x-prompt-proxy-user-id: <your-email>"
+        CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
       },
       apiKeyHelper: "cat ~/.prompt-proxy/token"
     });
@@ -61,12 +60,11 @@ describe("buildManualSteps", () => {
     expect(steps[3].snippet).toContain("[model_providers.prompt_proxy]");
     expect(steps[3].snippet).toContain(`base_url = "${apiBase}/v1"`);
     expect(steps[3].snippet).toContain(`env_key = "PROMPT_PROXY_TOKEN"`);
-    expect(steps[3].snippet).toContain(`http_headers = { "x-prompt-proxy-user-id" = "<your-email>" }`);
   });
 
-  it("stamps the identity header so traffic is attributed, not Unknown user", () => {
-    expect(steps[1].snippet).toContain("x-prompt-proxy-user-id");
-    expect(steps[3].snippet).toContain("x-prompt-proxy-user-id");
+  it("does not stamp per-request identity headers", () => {
+    expect(steps[1].snippet).not.toContain("x-prompt-proxy-user-id");
+    expect(steps[3].snippet).not.toContain("x-prompt-proxy-user-id");
   });
 
   it("uses the placeholder when there is no secret", () => {

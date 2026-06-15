@@ -22,7 +22,7 @@ describe("initialDraft", () => {
     const draft = initialDraft();
     expect(draft.stepId).toBe("configure");
     expect(draft.harness).toBe("all");
-    expect(draft.scopes).toEqual(["proxy", "harness_identity"]);
+    expect(draft.scopes).toEqual(["proxy"]);
     expect(draft.routingConfigId).toBeNull();
     expect(draft.linkProviderKeys).toBe(false);
     expect(Object.values(draft.providerBindings)).toEqual([null, null]);

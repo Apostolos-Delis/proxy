@@ -77,7 +77,6 @@ export function UsersPage() {
   if (queryError) return <PageState title="Users" label={queryError.message} />;
 
   const users = queryData?.users ?? [];
-  const memberCount = users.filter((user) => user.membership).length;
   const activeCount = users.filter((user) => userStatus(user) === "active").length;
   const selectedUser = users.find((user) => user.userId === selectedUserId) ?? users[0];
   const currentUserId = meQueryData?.user.userId;
@@ -85,7 +84,7 @@ export function UsersPage() {
     <div className="page page-enter">
       <PageTitle
         title="Users"
-        subtitle={`${memberCount} members · ${activeCount} active · ${users.length - memberCount} observed`}
+        subtitle={`${users.length} members · ${activeCount} active`}
         actions={(
           <button className="btn btn-primary" type="button" onClick={() => setShowInvite((open) => !open)}>
             {showInvite ? <X /> : <MailPlus />}
