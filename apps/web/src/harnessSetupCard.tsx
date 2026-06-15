@@ -32,7 +32,6 @@ export function HarnessSetupGuide({ secret, harness, showKeyContextSteps = true 
         {showKeyContextSteps ? (
           <li>
             Create an API key with the <span className="code-pill">proxy</span> scope.
-            Add <span className="code-pill">harness_identity</span> so usage is attributed to the person running the agent.
             {secret ? null : <span className="faint"> Then replace {keyPlaceholder} below with the key secret.</span>}
           </li>
         ) : null}

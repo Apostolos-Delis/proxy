@@ -128,7 +128,7 @@ POST /admin/users/:userId/reactivate
 
 The routing config list summary includes the active version's `systemPrompt` so the console can surface injected prompts without per-config detail fetches.
 
-API key lifecycle is managed from the `/api-keys` console page. `POST /admin/api-keys` generates the secret server-side (`pp_` + 48 hex chars), stores only `key_hash`, and returns the secret exactly once in the create response; the console pairs it with copyable Claude Code/Codex setup snippets. `POST /admin/api-keys/:apiKeyId/revoke` sets `revoked_at`, which proxy auth already rejects. Mutations append audit events with producer `prompt-proxy.admin.api-keys`: `api_key.created`, `api_key.revoked`, plus the existing `routing_config.api_key_assignment_changed`.
+API key lifecycle is managed from the `/api-keys` console page. `POST /admin/api-keys` generates the secret server-side (`pp_` + 48 hex chars), binds the key to the creating user, stores only `key_hash`, and returns the secret exactly once in the create response; the console pairs it with copyable Claude Code/Codex setup snippets. Proxy requests always attribute to `api_keys.user_id`; harness user headers remain raw request context only. `POST /admin/api-keys/:apiKeyId/revoke` sets `revoked_at`, which proxy auth already rejects. Mutations append audit events with producer `prompt-proxy.admin.api-keys`: `api_key.created`, `api_key.revoked`, plus the existing `routing_config.api_key_assignment_changed`.
 
 Model pricing is managed from the `/billing` console page. Spend is computed locally (providers return token counts only): `usage_ledger` rows price uncached input, cache reads, cache writes (`cache_creation_input_tokens` column), and output at per-MTok rates resolved from built-in defaults, then `MODEL_COSTS_JSON`, then per-organization `model_catalog.pricing` overrides. Anthropic usage is normalized so `input_tokens` always means total input presented to the model (provider responses exclude cache reads/writes from it). The `modelPricing` GraphQL query lists effective rates with their source (`default`/`env`/`custom`/`unpriced`) and flags models seen in traffic; `setModelPricing`/`clearModelPricing` upsert the override and append audit events with producer `prompt-proxy.admin.model-pricing`: `model_pricing.updated`, `model_pricing.cleared`. Re-seeding preserves operator-set pricing.
 
@@ -136,7 +136,7 @@ Customer-supplied provider keys (BYOK) are managed from the `/provider-keys` con
 
 ## User Management
 
-Organization membership is managed from the `/users` console page:
+Organization membership is managed from the `/users` console page, which lists organization members only:
 
 - Invitations are durable `invitations` rows. Raw invite tokens are never stored; only `token_hash` plus a display `token_prefix`, matching the API key and admin session hash rule. Tokens rotate on resend.
 - Invitation emails are delivered through the Resend API (`RESEND_API_KEY`, `EMAIL_FROM`); without a key the proxy logs the message and admins copy the invite link from the console instead.

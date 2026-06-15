@@ -34,7 +34,7 @@ export function initialDraft(): CreateKeyDraft {
     stepId: "configure",
     name: "",
     harness: "all",
-    scopes: ["proxy", "harness_identity"],
+    scopes: ["proxy"],
     routingConfigId: null,
     linkProviderKeys: false,
     providerBindings: emptyProviderBindings()

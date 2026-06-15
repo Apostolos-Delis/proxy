@@ -105,7 +105,7 @@ supports_websockets = true
 
 ## How routing works
 
-1. A request arrives at `/v1/responses`, `/v1/chat/completions`, or `/v1/messages` and is authenticated by API key, which also determines its workspace.
+1. A request arrives at `/v1/responses`, `/v1/chat/completions`, or `/v1/messages` and is authenticated by API key, which determines its workspace and user attribution.
 2. The proxy resolves a **routing config** for that key. Precedence: API-key assignment → workspace default → seeded default; the config's active immutable version supplies the rules.
 3. An LLM classifier (structured output with retry, `CLASSIFIER_*` env vars) assigns a tier, unless the caller pinned one via the model alias.
 4. The tier maps to an ordered list of provider targets. The first compatible target wins; native dialect endpoints are preferred, and registered same-family translators can bridge OpenAI Responses ↔ Chat when the route is otherwise compatible.
@@ -119,7 +119,7 @@ Budget limits live in each routing config's `limits` block (`maxRoute`, `fallbac
 
 ## Workspaces
 
-Each organization contains one or more workspaces (the Anthropic Console / OpenAI Platform model): membership, invitations, provider keys, and prompt-capture settings stay organization-wide, while API keys, routing configs, sessions, requests, usage, and prompt artifacts belong to a workspace. Every organization gets a seeded `Default` workspace and migrations move pre-workspace rows into it; the proxy derives each request's workspace from its API key, so traffic is attributed without any client changes. In the console, the switcher at the top of the sidebar changes the session's active workspace (`switchWorkspace`) and can create new workspaces inline (`createWorkspace`); every traffic screen shows only the active workspace.
+Each organization contains one or more workspaces (the Anthropic Console / OpenAI Platform model): membership, invitations, provider keys, and prompt-capture settings stay organization-wide, while API keys, routing configs, sessions, requests, usage, and prompt artifacts belong to a workspace. Every organization gets a seeded `Default` workspace and migrations move pre-workspace rows into it; the proxy derives each request's workspace and user from its API key, so traffic is attributed without any client identity headers. In the console, the switcher at the top of the sidebar changes the session's active workspace (`switchWorkspace`) and can create new workspaces inline (`createWorkspace`); every traffic screen shows only the active workspace.
 
 ## The console
 

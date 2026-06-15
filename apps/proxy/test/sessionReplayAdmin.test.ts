@@ -292,12 +292,12 @@ describe("session replay admin APIs", () => {
     expect(fallbackSessionResponse.status).toBe(200);
     expect(realSession).toEqual(expect.objectContaining({
       externalSessionId: "codex-session-real",
-      userId: "codex_real_user",
+      userId: "local-user",
       metadata: expect.objectContaining({ sessionIdentity: "harness" })
     }));
     expect(fallbackSession).toEqual(expect.objectContaining({
       externalSessionId: expect.stringMatching(/^request:/),
-      userId: "fallback_user",
+      userId: "local-user",
       metadata: expect.objectContaining({ sessionIdentity: "request_fallback" })
     }));
     expect(realDetail.session).toEqual(expect.objectContaining({

@@ -2,7 +2,6 @@ export type SnippetLanguage = "shell" | "json" | "toml";
 export type HarnessSetupTarget = "all" | "claude-code" | "codex" | "opencode";
 
 export const keyPlaceholder = "<your-api-key>";
-export const userPlaceholder = "<your-email>";
 export const harnessSetupOptions: { value: HarnessSetupTarget; label: string; description: string }[] = [
   {
     value: "all",
@@ -93,14 +92,13 @@ function storeKeyStep(key: string, tokenPath: string): ManualStep {
 function claudeCodeStep(apiBase: string, tokenPath: string): ManualStep {
   return {
     title: "Point Claude Code at the proxy",
-    detail: `Merge these settings into ~/.claude/settings.json (create the file if it does not exist). Replace ${userPlaceholder} so usage is attributed to you.`,
+    detail: "Merge these settings into ~/.claude/settings.json (create the file if it does not exist).",
     snippet: JSON.stringify(
       {
         model: "claude-router-auto",
         env: {
           ANTHROPIC_BASE_URL: apiBase,
-          CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
-          ANTHROPIC_CUSTOM_HEADERS: `x-prompt-proxy-user-id: ${userPlaceholder}`
+          CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
         },
         apiKeyHelper: `cat ${tokenPath}`
       },
@@ -127,7 +125,7 @@ function codexProviderStep(apiBase: string, harness: HarnessSetupTarget): Manual
   const provider = codexProviderForHarness(harness);
   return {
     title: "Register the Codex provider",
-    detail: `Add this to ~/.codex/config.toml. If the file already has a model/model_provider, keep yours and add only the provider table. Replace ${userPlaceholder} so usage is attributed to you.`,
+    detail: "Add this to ~/.codex/config.toml. If the file already has a model/model_provider, keep yours and add only the provider table.",
     snippet: [
       `model = "router-auto"`,
       `model_provider = "${provider}"`,
@@ -137,8 +135,7 @@ function codexProviderStep(apiBase: string, harness: HarnessSetupTarget): Manual
       `base_url = "${apiBase}/v1"`,
       `env_key = "${envKey}"`,
       `wire_api = "responses"`,
-      "supports_websockets = true",
-      `http_headers = { "x-prompt-proxy-user-id" = "${userPlaceholder}" }`
+      "supports_websockets = true"
     ].join("\n"),
     language: "toml"
   };

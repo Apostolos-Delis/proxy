@@ -3,7 +3,7 @@ import type { UsersListQuery } from "./gql/graphql";
 export type UserSummary = UsersListQuery["users"][number];
 
 export function userStatus(user: UserSummary) {
-  return user.membership?.status ?? "observed";
+  return user.membership?.status ?? "unknown";
 }
 
 export function userRole(user: UserSummary) {

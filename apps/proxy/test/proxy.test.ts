@@ -1680,7 +1680,7 @@ describe("prompt proxy", () => {
     expect(events.map((event: any) => event.eventType)).toContain("session.route_memory_recorded");
   });
 
-  it("scopes session route memory by user and team", async () => {
+  it("scopes session route memory by API-key owner", async () => {
     const scopedOpenAI = await startOpenAIMock({
       classifierOutputs: [
         {
@@ -1762,10 +1762,10 @@ describe("prompt proxy", () => {
     await scopedOpenAI.close();
 
     expect(first.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(second.headers.get("x-prompt-proxy-route")).toBe("fast");
-    expect(sessions).toHaveLength(2);
+    expect(second.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(sessions).toHaveLength(1);
     const sessionEvents = events.filter((event: any) => event.eventType === "session.route_memory_recorded");
-    expect(new Set(sessionEvents.map((event: any) => event.scopeId)).size).toBe(2);
+    expect(new Set(sessionEvents.map((event: any) => event.scopeId)).size).toBe(1);
   });
 
   it("builds usage, cost, savings, and route-quality projections from events", async () => {

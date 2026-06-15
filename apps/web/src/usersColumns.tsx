@@ -99,8 +99,7 @@ export const userFilters: ConsoleTableFilter<UserSummary>[] = [
     allLabel: "All users",
     options: [
       { value: "active", label: "Active" },
-      { value: "deactivated", label: "Deactivated" },
-      { value: "observed", label: "Observed" }
+      { value: "deactivated", label: "Deactivated" }
     ],
     getValue: userStatus
   },

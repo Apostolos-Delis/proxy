@@ -164,8 +164,8 @@ describe("API key admin APIs", () => {
     const targetConfig = await createRoutingConfig(fixture, "org_api_key_admin_create", "Create config");
 
     const response = await postApiKey(fixture, {
-      name: "Harness key",
-      scopes: ["proxy", "harness_identity"],
+      name: "Proxy key",
+      scopes: ["proxy"],
       routingConfigId: targetConfig.id
     });
     const created = response.data?.createApiKey;
@@ -183,16 +183,16 @@ describe("API key admin APIs", () => {
     expect(response.errors).toBeUndefined();
     expect(created.secret).toMatch(/^pp_[0-9a-f]{48}$/);
     expect(created.apiKey).toEqual(expect.objectContaining({
-      name: "Harness key",
+      name: "Proxy key",
       userId: "local-user",
-      scopes: ["proxy", "harness_identity"],
+      scopes: ["proxy"],
       routingConfigId: targetConfig.id,
       revokedAt: null
     }));
     expect(identity).toEqual(expect.objectContaining({
       apiKeyId: created.apiKey.id,
       organizationId: "org_api_key_admin_create",
-      scopes: ["proxy", "harness_identity"],
+      scopes: ["proxy"],
       routingConfigId: targetConfig.id
     }));
     expect(JSON.stringify(list)).not.toContain(created.secret);
@@ -205,9 +205,9 @@ describe("API key admin APIs", () => {
         actorId: "local-user",
         payload: expect.objectContaining({
           apiKeyId: created.apiKey.id,
-          name: "Harness key",
+          name: "Proxy key",
           userId: "local-user",
-          scopes: ["proxy", "harness_identity"],
+          scopes: ["proxy"],
           routingConfigId: targetConfig.id,
           routingConfigVersionId: expect.any(String),
           routingConfigHash: expect.stringMatching(/^[a-f0-9]{64}$/)
