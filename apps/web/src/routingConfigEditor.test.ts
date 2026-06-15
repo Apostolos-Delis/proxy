@@ -186,7 +186,9 @@ describe("effortScaleForProvider", () => {
 
     expect(effortScaleForProvider(provider)).toEqual(["low", "medium", "high", "xhigh"]);
     expect(effortOptionsForProvider(provider, "max")).toEqual(["max", "low", "medium", "high", "xhigh"]);
+    expect(effortScaleForProvider({ capabilities: {} })).toEqual([]);
     expect(effortScaleForProvider({ capabilities: { efforts: [] } })).toEqual([]);
+    expect(effortScaleForProvider(undefined)).toEqual(["minimal", "low", "medium", "high", "xhigh", "max", "ultracode"]);
   });
 });
 

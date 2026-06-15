@@ -46,6 +46,7 @@ export const PROVIDER_ACCOUNT_STATUSES = {
 } as const;
 
 export const EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max", "ultracode"] as const;
+export const CLASSIFIER_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as const;
 
 export const VERBOSITIES = ["low", "medium", "high"] as const;
 
@@ -215,6 +216,7 @@ export const providerSchema = z.string().min(1, "Provider slug is required.").re
 export const builtinProviderSchema = z.enum(BUILTIN_PROVIDER_NAMES);
 export const providerAuthStyleSchema = z.enum(PROVIDER_AUTH_STYLES);
 export const effortSchema = z.enum(EFFORTS);
+export const classifierEffortSchema = z.enum(CLASSIFIER_EFFORTS);
 export const verbositySchema = z.enum(VERBOSITIES);
 export const routingConfigTextSchema = z.string().refine((value) => value.trim().length > 0, {
   message: "Must contain non-whitespace text."
@@ -258,7 +260,7 @@ export const routingConfigClassifierSchema = z.strictObject({
   providerId: providerSchema,
   model: routingConfigIdentifierSchema,
   rules: routingConfigTextSchema.optional(),
-  effort: effortSchema.optional(),
+  effort: classifierEffortSchema.optional(),
   timeoutMs: z.number().int().positive().max(30000),
   maxAttempts: z.number().int().positive().max(5),
   allowRedactedExcerpt: z.boolean(),

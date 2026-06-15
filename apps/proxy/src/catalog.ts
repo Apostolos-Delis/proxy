@@ -44,9 +44,10 @@ export function nearestReasoningEffort(
 }
 
 export function reasoningEffortsFromCapabilities(capabilities: Record<string, unknown> | undefined) {
-  if (!capabilities || !("efforts" in capabilities)) return undefined;
+  if (!capabilities) return undefined;
+  if (!("efforts" in capabilities)) return [];
   const efforts = capabilities.efforts;
-  if (!Array.isArray(efforts)) return undefined;
+  if (!Array.isArray(efforts)) return [];
   const values = efforts.filter((effort): effort is ReasoningEffort =>
     typeof effort === "string" && knownReasoningEfforts.has(effort as ReasoningEffort)
   );

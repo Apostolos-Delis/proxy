@@ -351,6 +351,21 @@ describe("routingConfigSchema", () => {
     expect(result.error?.issues[0]?.path).toEqual(["routes", "hard", "targets", 0, "effort"]);
   });
 
+  it("keeps provider-only efforts out of classifier config", () => {
+    for (const effort of ["max", "ultracode"]) {
+      const result = routingConfigSchema.safeParse({
+        ...validConfig,
+        classifier: {
+          ...validConfig.classifier,
+          effort
+        }
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0]?.path).toEqual(["classifier", "effort"]);
+    }
+  });
+
   it("requires each route to define at least one target", () => {
     const result = routingConfigSchema.safeParse({
       ...validConfig,

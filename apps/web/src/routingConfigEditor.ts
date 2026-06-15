@@ -231,9 +231,9 @@ function nearestEffort(value: string, supported: readonly string[]) {
 function effortValues(capabilities: unknown) {
   if (!capabilities || typeof capabilities !== "object" || Array.isArray(capabilities)) return undefined;
   const record = capabilities as Record<string, unknown>;
-  if (!("efforts" in record)) return undefined;
+  if (!("efforts" in record)) return [];
   const efforts = record.efforts;
-  if (!Array.isArray(efforts)) return undefined;
+  if (!Array.isArray(efforts)) return [];
   return efforts.filter((effort): effort is string =>
     typeof effort === "string" && EFFORT_SCALE.includes(effort as typeof EFFORT_SCALE[number])
   );
