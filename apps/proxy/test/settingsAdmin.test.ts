@@ -236,9 +236,25 @@ describe("persistent settings admin APIs", () => {
     expect(response.json().data?.settings?.subscriptionOAuthEnabled).toBe(true);
   });
 
-  it("defaults the subscription oauth flag to false on the settings query", async () => {
+  it("defaults the subscription oauth flag to true on the settings query", async () => {
     const app = buildServer(
       loadConfig({ LOG_LEVEL: "fatal" }),
+      { persistence: fakePersistence() }
+    );
+    const response = await app.inject({
+      method: "POST",
+      url: "/admin/graphql",
+      headers: adminHeaders(),
+      payload: { query: "query { settings { subscriptionOAuthEnabled } }" }
+    });
+    await app.close();
+
+    expect(response.json().data?.settings?.subscriptionOAuthEnabled).toBe(true);
+  });
+
+  it("exposes the disabled subscription oauth flag on the settings query", async () => {
+    const app = buildServer(
+      loadConfig({ SUBSCRIPTION_OAUTH_ENABLED: "false", LOG_LEVEL: "fatal" }),
       { persistence: fakePersistence() }
     );
     const response = await app.inject({

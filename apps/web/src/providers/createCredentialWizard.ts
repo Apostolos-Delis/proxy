@@ -85,8 +85,8 @@ export function stepBlockerMessage(
   draft: CreateProviderCredentialDraft,
   subscriptionAuthEnabled: boolean
 ): string | null {
-  if (draft.stepId === "type" && draft.mode !== "api_key" && !subscriptionAuthEnabled) {
-    return "Enable subscription auth before creating subscription credentials.";
+  if (draft.stepId === "type" && draft.mode === "claude_subscription" && !subscriptionAuthEnabled) {
+    return "Enable subscription auth before creating Claude subscription credentials.";
   }
   if (draft.stepId !== "credentials") return null;
   return credentialBlockerMessage(draft, subscriptionAuthEnabled);
@@ -98,8 +98,8 @@ export function credentialBlockerMessage(
 ): string | null {
   if (!draft.name.trim()) return "Enter a credential label.";
   if (!draft.apiKey.trim()) return `${secretLabelForDraft(draft)} is required.`;
-  if (draft.mode !== "api_key" && !subscriptionAuthEnabled) {
-    return "Subscription auth has been disabled for this proxy.";
+  if (draft.mode === "claude_subscription" && !subscriptionAuthEnabled) {
+    return "Claude subscription auth has been disabled for this proxy.";
   }
   if (draft.mode === "claude_subscription" && !draft.apiKey.trim().startsWith(SUBSCRIPTION_TOKEN_PREFIX)) {
     return `Claude setup tokens start with ${SUBSCRIPTION_TOKEN_PREFIX}`;

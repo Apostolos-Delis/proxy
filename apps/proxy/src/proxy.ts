@@ -463,7 +463,7 @@ export function providerRequestHeaders(input: {
     ? input.credential
     : undefined;
   const operatorToken = input.provider.builtin ? operatorTokenForProvider(input.provider.slug, input.config) : undefined;
-  const chatgptCredential = isOpenAIChatGPTCredential(input.provider, credentialForProvider, input.config)
+  const chatgptCredential = isOpenAIChatGPTCredential(input.provider, credentialForProvider)
     ? credentialForProvider
     : undefined;
   const token = chatgptCredential?.token ??
@@ -507,13 +507,11 @@ export function canAuthenticateOrgProvider(provider: ProviderRegistryEntry, cred
 
 function isOpenAIChatGPTCredential(
   provider: ProviderRegistryEntry,
-  credential: UpstreamCredential | undefined,
-  config: AppConfig
+  credential: UpstreamCredential | undefined
 ) {
   return provider.slug === "openai" &&
     credential?.provider === provider.slug &&
     credential.authType === "oauth" &&
-    config.subscriptionOAuthEnabled &&
     Boolean(credential.chatgptAccountId);
 }
 

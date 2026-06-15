@@ -57,7 +57,7 @@ export class ProviderCredentialAdminService {
     if (!encryptionKey) {
       throw new ProviderCredentialAdminError("provider_secret_encryption_key_missing", 503);
     }
-    if (body.data.authType === "oauth") {
+    if (body.data.authType === "oauth" && body.data.provider === PROVIDERS.ANTHROPIC) {
       if (!this.options.subscriptionOAuthEnabled) {
         throw new ProviderCredentialAdminError("subscription_oauth_disabled", 400);
       }
