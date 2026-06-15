@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { GraphQLError, type ASTVisitor, type ValidationContext } from "graphql";
+import { hashSHA256, useResponseCache, type BuildResponseCacheKeyFunction } from "@graphql-yoga/plugin-response-cache";
 import { createYoga, type Plugin } from "graphql-yoga";
 
 import type { AdminAuthService } from "../adminAuth.js";
@@ -14,6 +15,9 @@ import { schema } from "./schema.js";
 
 export const ADMIN_GRAPHQL_ENDPOINT = "/admin/graphql";
 const MAX_QUERY_DEPTH = 12;
+const RESPONSE_CACHE_TTL_MS = 30_000;
+const RESPONSE_CACHE_SCOPE_PARAM = "gqlCacheScope";
+const RESPONSE_CACHE_EPOCH_PARAM = "gqlCacheEpoch";
 
 function depthLimitRule(maxDepth: number) {
   return (context: ValidationContext): ASTVisitor => {
@@ -60,6 +64,24 @@ const anonymousIntrospectionGuard: Plugin<Record<string, unknown>, YogaServerCon
   }
 };
 
+const responseCacheKey: BuildResponseCacheKeyFunction = ({
+  documentString,
+  variableValues,
+  operationName,
+  sessionId,
+  request
+}) => {
+  const url = new URL(request.url);
+  return hashSHA256(JSON.stringify({
+    documentString,
+    variableValues: variableValues ?? null,
+    operationName: operationName ?? null,
+    sessionId: sessionId ?? null,
+    cacheScope: url.searchParams.get(RESPONSE_CACHE_SCOPE_PARAM),
+    cacheEpoch: url.searchParams.get(RESPONSE_CACHE_EPOCH_PARAM)
+  }));
+};
+
 type YogaServerContext = {
   req: FastifyRequest;
   reply: FastifyReply;
@@ -90,7 +112,29 @@ export function registerAdminGraphQL(app: FastifyInstance, deps: AdminGraphQLDep
       warn: (...args) => args.forEach((arg) => app.log.warn(arg)),
       error: (...args) => args.forEach((arg) => app.log.error(arg))
     },
-    plugins: [depthLimitPlugin, anonymousIntrospectionGuard],
+    plugins: [
+      useResponseCache<YogaServerContext>({
+        ttl: RESPONSE_CACHE_TTL_MS,
+        session: (_request, context) => {
+          const identity = context.sessionIdentity;
+          if (!identity) return null;
+          return [
+            identity.sessionId,
+            identity.organizationId,
+            identity.workspaceId,
+            identity.userId
+          ].join(":");
+        },
+        enabled: (request, context) => (
+          request.method === "GET" &&
+          Boolean(context.sessionIdentity) &&
+          new URL(request.url).searchParams.has(RESPONSE_CACHE_SCOPE_PARAM)
+        ),
+        buildResponseCacheKey: responseCacheKey
+      }),
+      depthLimitPlugin,
+      anonymousIntrospectionGuard
+    ],
     context: ({ sessionIdentity, req, reply }) => ({
       identity: () => {
         if (!sessionIdentity) throw unauthenticatedError();
@@ -125,6 +169,9 @@ export function registerAdminGraphQL(app: FastifyInstance, deps: AdminGraphQLDep
       response.headers.forEach((value, key) => {
         reply.header(key, value);
       });
+      if (response.headers.has("etag") && !response.headers.has("cache-control")) {
+        reply.header("cache-control", "private, max-age=0, must-revalidate");
+      }
       reply.status(response.status);
       reply.send(response.body);
       return reply;
