@@ -889,6 +889,60 @@ describe("prompt proxy", () => {
     expect(usageEvent.payload.usage.output_tokens).toBe(30);
   });
 
+  it("omits Anthropic effort for fast targets without thinking", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({
+      classifierOutput: {
+        complexity: "simple",
+        risk: [],
+        recommended_route: "fast",
+        can_use_fast_model: true,
+        needs_deep_reasoning: false,
+        reason_codes: ["simple_request"],
+        confidence: 0.86
+      }
+    });
+    const config = loadConfig({
+        ...testEnv(),
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        CLASSIFIER_PROVIDER: "openai",
+        CLASSIFIER_MODEL: "route-classifier-cheap",
+        LOG_LEVEL: "fatal"
+      });
+    const app = buildServer(config);
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "x-claude-code-session-id": "claude-fast-session"
+      },
+      body: JSON.stringify({
+        model: "claude-router-auto",
+        messages: [{ role: "user", content: "git status" }],
+        stream: true,
+        max_tokens: 16
+      })
+    });
+    await response.text();
+    await app.close();
+
+    const providerCall = anthropic.records.find((record) => record.path === "/messages");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBeNull();
+    expect(providerCall?.body.model).toBe(config.anthropicFastModel);
+    expect(providerCall?.body.thinking).toBeUndefined();
+    expect(providerCall?.body.output_config).toBeUndefined();
+  });
+
   it("rewrites Claude Code token counting aliases before forwarding upstream", async () => {
     const config = loadConfig({
         ...testEnv(),
