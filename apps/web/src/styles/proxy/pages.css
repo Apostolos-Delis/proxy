@@ -2632,7 +2632,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 /* ---------- create config page ---------- */
 .routing-create-page {
-  max-width: 1080px;
+  max-width: 1440px;
 }
 
 .routing-create-form {
@@ -3146,7 +3146,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .tier-table-header {
   display: grid;
-  grid-template-columns: minmax(190px, 0.55fr) minmax(0, 1fr);
+  grid-template-columns: minmax(180px, 250px) minmax(0, 1fr);
   gap: 16px;
   padding: 8px 14px;
   background: var(--glass-2);
@@ -3163,7 +3163,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .tier-table-row {
   display: grid;
-  grid-template-columns: minmax(190px, 0.55fr) minmax(0, 1fr);
+  grid-template-columns: minmax(180px, 250px) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
   padding: 14px;
@@ -3251,7 +3251,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .route-target-fields {
   display: grid;
-  grid-template-columns: minmax(130px, 0.45fr) minmax(170px, 1fr) minmax(150px, 0.55fr);
+  grid-template-columns: minmax(140px, 210px) minmax(240px, 1fr) minmax(124px, 160px);
   gap: 8px;
   min-width: 0;
 }
@@ -3322,6 +3322,10 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font-size: 11px;
   letter-spacing: 0;
   text-transform: none;
+}
+
+.menu-select.tier-effort > button span {
+  white-space: nowrap;
 }
 
 .menu-select.tier-effort > button:hover {
