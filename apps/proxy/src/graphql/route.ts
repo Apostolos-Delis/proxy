@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { GraphQLError, type ASTVisitor, type ValidationContext } from "graphql";
+import { getOperationAST, GraphQLError, type ASTVisitor, type ValidationContext } from "graphql";
+import { createInMemoryCache, hashSHA256, useResponseCache, type BuildResponseCacheKeyFunction, type Cache } from "@graphql-yoga/plugin-response-cache";
 import { createYoga, type Plugin } from "graphql-yoga";
 
 import type { AdminAuthService } from "../adminAuth.js";
@@ -14,6 +15,12 @@ import { schema } from "./schema.js";
 
 export const ADMIN_GRAPHQL_ENDPOINT = "/admin/graphql";
 const MAX_QUERY_DEPTH = 12;
+const RESPONSE_CACHE_TTL_MS = 30_000;
+const RESPONSE_CACHE_SCOPE_PARAM = "gqlCacheScope";
+const RESPONSE_CACHE_EPOCH_PARAM = "gqlCacheEpoch";
+const CACHEABLE_RESPONSE_KEY_PREFIX = "admin-gql-get:";
+const MUTATION_INVALIDATION_KEY_PREFIX = "admin-gql-mutate:";
+const RESPONSE_CACHE_SCOPE_ENTITY = "AdminGraphQLResponseCacheScope";
 
 function depthLimitRule(maxDepth: number) {
   return (context: ValidationContext): ASTVisitor => {
@@ -60,6 +67,108 @@ const anonymousIntrospectionGuard: Plugin<Record<string, unknown>, YogaServerCon
   }
 };
 
+function responseCacheKey(responseCache: AdminResponseCache): BuildResponseCacheKeyFunction {
+  return async ({
+    documentString,
+    variableValues,
+    operationName,
+    sessionId,
+    request,
+    context
+  }) => {
+    const url = new URL(request.url);
+    const serverScope = await responseCacheScopeKey((context as YogaServerContext).sessionIdentity);
+    const digest = await hashSHA256(JSON.stringify({
+      documentString,
+      variableValues: variableValues ?? null,
+      operationName: operationName ?? null,
+      sessionId: sessionId ?? null,
+      cacheScope: url.searchParams.get(RESPONSE_CACHE_SCOPE_PARAM),
+      cacheEpoch: url.searchParams.get(RESPONSE_CACHE_EPOCH_PARAM)
+    }));
+    const prefix = responseCacheCanStore(request)
+      ? CACHEABLE_RESPONSE_KEY_PREFIX
+      : MUTATION_INVALIDATION_KEY_PREFIX;
+    return `${prefix}${serverScope}:${responseCache.scopeVersion(serverScope)}:${digest}`;
+  };
+}
+
+function responseCacheCanStore(request: Request) {
+  return request.method === "GET" && new URL(request.url).searchParams.has(RESPONSE_CACHE_SCOPE_PARAM);
+}
+
+function responseCacheCanRun(request: Request, context: YogaServerContext) {
+  if (!context.sessionIdentity) return false;
+  if (responseCacheCanStore(request)) return true;
+  return request.method === "POST" && !request.headers.has("if-none-match");
+}
+
+type AdminResponseCache = Cache & {
+  invalidateScope: (scopeKey: string) => ReturnType<Cache["invalidate"]>;
+  scopeVersion: (scopeKey: string) => number;
+};
+
+function createAdminResponseCache(): AdminResponseCache {
+  const cache = createInMemoryCache();
+  const scopeVersions = new Map<string, number>();
+  return {
+    get: (id) => cache.get(id),
+    set: (id, data, entities, ttl) => {
+      const scopeKey = responseCacheScopeKeyFromCacheKey(id);
+      if (!scopeKey) return cache.set(id, data, entities, ttl);
+      return cache.set(id, data, [
+        ...entities,
+        { typename: RESPONSE_CACHE_SCOPE_ENTITY, id: scopeKey }
+      ], ttl);
+    },
+    invalidate: (entities) => cache.invalidate(entities),
+    invalidateScope: (scopeKey) => {
+      scopeVersions.set(scopeKey, (scopeVersions.get(scopeKey) ?? 0) + 1);
+      return cache.invalidate([
+        { typename: RESPONSE_CACHE_SCOPE_ENTITY, id: scopeKey }
+      ]);
+    },
+    scopeVersion: (scopeKey) => scopeVersions.get(scopeKey) ?? 0
+  };
+}
+
+function responseCacheScopeKeyFromCacheKey(cacheKey: string) {
+  if (!cacheKey.startsWith(CACHEABLE_RESPONSE_KEY_PREFIX)) return null;
+  const value = cacheKey.slice(CACHEABLE_RESPONSE_KEY_PREFIX.length);
+  const separator = value.indexOf(":");
+  return separator === -1 ? null : value.slice(0, separator);
+}
+
+async function responseCacheScopeKey(identity: AdminSessionIdentity | null) {
+  if (!identity) return "anonymous";
+  return hashSHA256(identity.organizationId);
+}
+
+function responseCacheMutationInvalidator(responseCache: AdminResponseCache): Plugin<GraphQLContext> {
+  return {
+    onExecute({ args }) {
+      const operation = getOperationAST(args.document, args.operationName);
+      if (operation?.operation !== "mutation") return;
+      return {
+        async onExecuteDone({ result }) {
+          if (!isExecutionResult(result)) return;
+          const identity = args.contextValue.sessionIdentity;
+          if (!identity) return;
+          await responseCache.invalidateScope(await responseCacheScopeKey(identity));
+        }
+      };
+    }
+  };
+}
+
+function isExecutionResult(result: unknown) {
+  return Boolean(
+    result &&
+    typeof result === "object" &&
+    !(Symbol.asyncIterator in result)
+  );
+}
+
 type YogaServerContext = {
   req: FastifyRequest;
   reply: FastifyReply;
@@ -76,6 +185,7 @@ export type AdminGraphQLDeps = {
 };
 
 export function registerAdminGraphQL(app: FastifyInstance, deps: AdminGraphQLDeps) {
+  const responseCache = createAdminResponseCache();
   const yoga = createYoga<YogaServerContext, GraphQLContext>({
     schema,
     graphqlEndpoint: ADMIN_GRAPHQL_ENDPOINT,
@@ -90,7 +200,30 @@ export function registerAdminGraphQL(app: FastifyInstance, deps: AdminGraphQLDep
       warn: (...args) => args.forEach((arg) => app.log.warn(arg)),
       error: (...args) => args.forEach((arg) => app.log.error(arg))
     },
-    plugins: [depthLimitPlugin, anonymousIntrospectionGuard],
+    plugins: [
+      useResponseCache<YogaServerContext>({
+        cache: responseCache,
+        ttl: RESPONSE_CACHE_TTL_MS,
+        session: (_request, context) => {
+          const identity = context.sessionIdentity;
+          if (!identity) return null;
+          return [
+            identity.sessionId,
+            identity.organizationId,
+            identity.workspaceId,
+            identity.userId
+          ].join(":");
+        },
+        enabled: responseCacheCanRun,
+        shouldCacheResult: ({ cacheKey, result }) => (
+          cacheKey.startsWith(CACHEABLE_RESPONSE_KEY_PREFIX) && !result.errors?.length
+        ),
+        buildResponseCacheKey: responseCacheKey(responseCache)
+      }),
+      responseCacheMutationInvalidator(responseCache),
+      depthLimitPlugin,
+      anonymousIntrospectionGuard
+    ],
     context: ({ sessionIdentity, req, reply }) => ({
       identity: () => {
         if (!sessionIdentity) throw unauthenticatedError();
@@ -125,6 +258,9 @@ export function registerAdminGraphQL(app: FastifyInstance, deps: AdminGraphQLDep
       response.headers.forEach((value, key) => {
         reply.header(key, value);
       });
+      if (response.headers.has("etag") && !response.headers.has("cache-control")) {
+        reply.header("cache-control", "private, max-age=0, must-revalidate");
+      }
       reply.status(response.status);
       reply.send(response.body);
       return reply;

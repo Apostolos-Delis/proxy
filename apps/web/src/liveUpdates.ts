@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-import { apiBase } from "./graphql";
+import { apiBase, bumpGraphQLCacheEpoch } from "./graphql";
 
 // Query-key prefixes refreshed when the proxy reports new traffic. Scoped
 // /logs ranges pin their end timestamp at mount so a refetch cannot surface
@@ -51,6 +51,7 @@ function connect(queryClient: QueryClient) {
   const source = new EventSource(`${apiBase}/admin/events`, { withCredentials: true });
   active = source;
   source.onmessage = () => {
+    bumpGraphQLCacheEpoch();
     for (const queryKey of LIVE_QUERY_KEYS) {
       void queryClient.invalidateQueries({ queryKey: [...queryKey] });
     }

@@ -1,6 +1,6 @@
 import { graphql } from "./gql";
 import type { ViewerQuery } from "./gql/graphql";
-import { gqlFetch } from "./graphql";
+import { gqlFetch, setGraphQLCacheScope } from "./graphql";
 
 graphql(`
   fragment ViewerFields on Viewer {
@@ -80,25 +80,35 @@ const CreateWorkspaceDocument = graphql(`
 export type AuthMe = ViewerQuery["viewer"];
 
 export async function fetchMe(): Promise<AuthMe> {
-  return (await gqlFetch(ViewerDocument)).viewer;
+  return applyGraphQLCacheScope((await gqlFetch(ViewerDocument)).viewer);
 }
 
 export async function login(email: string, password: string): Promise<AuthMe> {
-  return (await gqlFetch(LoginDocument, { email, password })).login;
+  return applyGraphQLCacheScope((await gqlFetch(LoginDocument, { email, password })).login);
 }
 
 export async function logout() {
-  return (await gqlFetch(LogoutDocument)).logout;
+  const result = (await gqlFetch(LogoutDocument)).logout;
+  setGraphQLCacheScope(null);
+  return result;
 }
 
 export async function switchOrganization(organizationId: string): Promise<AuthMe> {
-  return (await gqlFetch(SwitchOrganizationDocument, { organizationId })).switchOrganization;
+  return applyGraphQLCacheScope((await gqlFetch(SwitchOrganizationDocument, { organizationId })).switchOrganization);
 }
 
 export async function switchWorkspace(workspaceId: string): Promise<AuthMe> {
-  return (await gqlFetch(SwitchWorkspaceDocument, { workspaceId })).switchWorkspace;
+  return applyGraphQLCacheScope((await gqlFetch(SwitchWorkspaceDocument, { workspaceId })).switchWorkspace);
 }
 
 export async function createWorkspace(input: { name: string }) {
   return (await gqlFetch(CreateWorkspaceDocument, { input })).createWorkspace;
+}
+
+function applyGraphQLCacheScope(me: AuthMe) {
+  setGraphQLCacheScope([
+    me.organizationId,
+    me.workspaceId
+  ].join(":"));
+  return me;
 }
