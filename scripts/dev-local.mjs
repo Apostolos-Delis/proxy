@@ -7,8 +7,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const cwd = process.cwd();
 const env = await localEnv();
-const defaultDatabaseUrl = `postgres://prompt_proxy:prompt_proxy@localhost:${env.POSTGRES_PORT ?? "55432"}/prompt_proxy`;
 env.POSTGRES_PORT ??= "55432";
+const defaultDatabaseUrl = `postgres://prompt_proxy:prompt_proxy@localhost:${env.POSTGRES_PORT}/prompt_proxy`;
 env.DATABASE_URL ??= defaultDatabaseUrl;
 env.PROMPT_PROXY_TOKEN ??= "dev-proxy-token";
 env.ALLOW_DEV_PROXY_TOKEN_FALLBACK ??= "true";
@@ -26,9 +26,31 @@ function log(message) {
 
 async function localEnv() {
   await ensureEnvFile();
+  const conductorEnv = conductorPortEnv(process.env.CONDUCTOR_PORT);
   return {
     ...(await readEnvFile(".env")),
+    ...conductorEnv,
     ...process.env
+  };
+}
+
+function conductorPortEnv(value) {
+  if (!value) return {};
+  const basePort = Number(value);
+  if (!Number.isInteger(basePort) || basePort <= 0 || basePort + 2 > 65_535) {
+    throw new Error("CONDUCTOR_PORT must be an integer with room for three local ports.");
+  }
+  const webUrl = `http://127.0.0.1:${basePort}`;
+  const proxyUrl = `http://127.0.0.1:${basePort + 1}`;
+  const postgresPort = String(basePort + 2);
+  return {
+    PORT: String(basePort + 1),
+    POSTGRES_PORT: postgresPort,
+    DATABASE_URL: `postgres://prompt_proxy:prompt_proxy@localhost:${postgresPort}/prompt_proxy`,
+    ADMIN_CORS_ORIGIN: `${webUrl},http://localhost:${basePort}`,
+    ADMIN_CONSOLE_URL: webUrl,
+    VITE_PROMPT_PROXY_API_BASE: proxyUrl,
+    VITE_PROMPT_PROXY_WEB_URL: webUrl
   };
 }
 
