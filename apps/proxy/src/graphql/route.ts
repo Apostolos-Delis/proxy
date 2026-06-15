@@ -18,6 +18,8 @@ const MAX_QUERY_DEPTH = 12;
 const RESPONSE_CACHE_TTL_MS = 30_000;
 const RESPONSE_CACHE_SCOPE_PARAM = "gqlCacheScope";
 const RESPONSE_CACHE_EPOCH_PARAM = "gqlCacheEpoch";
+const CACHEABLE_RESPONSE_KEY_PREFIX = "admin-gql-get:";
+const MUTATION_INVALIDATION_KEY_PREFIX = "admin-gql-mutate:";
 
 function depthLimitRule(maxDepth: number) {
   return (context: ValidationContext): ASTVisitor => {
@@ -64,7 +66,7 @@ const anonymousIntrospectionGuard: Plugin<Record<string, unknown>, YogaServerCon
   }
 };
 
-const responseCacheKey: BuildResponseCacheKeyFunction = ({
+const responseCacheKey: BuildResponseCacheKeyFunction = async ({
   documentString,
   variableValues,
   operationName,
@@ -72,7 +74,7 @@ const responseCacheKey: BuildResponseCacheKeyFunction = ({
   request
 }) => {
   const url = new URL(request.url);
-  return hashSHA256(JSON.stringify({
+  const digest = await hashSHA256(JSON.stringify({
     documentString,
     variableValues: variableValues ?? null,
     operationName: operationName ?? null,
@@ -80,7 +82,18 @@ const responseCacheKey: BuildResponseCacheKeyFunction = ({
     cacheScope: url.searchParams.get(RESPONSE_CACHE_SCOPE_PARAM),
     cacheEpoch: url.searchParams.get(RESPONSE_CACHE_EPOCH_PARAM)
   }));
+  return `${responseCacheCanStore(request) ? CACHEABLE_RESPONSE_KEY_PREFIX : MUTATION_INVALIDATION_KEY_PREFIX}${digest}`;
 };
+
+function responseCacheCanStore(request: Request) {
+  return request.method === "GET" && new URL(request.url).searchParams.has(RESPONSE_CACHE_SCOPE_PARAM);
+}
+
+function responseCacheCanRun(request: Request, context: YogaServerContext) {
+  if (!context.sessionIdentity) return false;
+  if (responseCacheCanStore(request)) return true;
+  return request.method === "POST" && !request.headers.has("if-none-match");
+}
 
 type YogaServerContext = {
   req: FastifyRequest;
@@ -125,10 +138,9 @@ export function registerAdminGraphQL(app: FastifyInstance, deps: AdminGraphQLDep
             identity.userId
           ].join(":");
         },
-        enabled: (request, context) => (
-          request.method === "GET" &&
-          Boolean(context.sessionIdentity) &&
-          new URL(request.url).searchParams.has(RESPONSE_CACHE_SCOPE_PARAM)
+        enabled: responseCacheCanRun,
+        shouldCacheResult: ({ cacheKey, result }) => (
+          cacheKey.startsWith(CACHEABLE_RESPONSE_KEY_PREFIX) && !result.errors?.length
         ),
         buildResponseCacheKey: responseCacheKey
       }),

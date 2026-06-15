@@ -48,7 +48,8 @@ describe("gqlFetch", () => {
 
     expect(init.method).toBe("GET");
     expect(parsed.searchParams.get("variables")).toBe(JSON.stringify({ id: "one" }));
-    expect(parsed.searchParams.get("gqlCacheScope")).toBe("session:org:workspace");
+    expect(parsed.searchParams.get("gqlCacheScope")).toBeTruthy();
+    expect(parsed.searchParams.get("gqlCacheScope")).not.toBe("session:org:workspace");
     expect(parsed.searchParams.get("gqlCacheEpoch")).toMatch(/^\d+$/);
   });
 

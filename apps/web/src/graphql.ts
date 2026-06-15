@@ -8,6 +8,7 @@ const MAX_GRAPHQL_GET_URL_LENGTH = 7_500;
 type GraphQLOperationType = "query" | "mutation" | "subscription" | "unknown";
 
 let graphQLCacheScope: string | null = null;
+let graphQLCacheScopeIdentity: string | null = null;
 let graphQLCacheEpoch = readStoredCacheEpoch();
 
 type GraphQLErrorPayload = {
@@ -44,7 +45,15 @@ export async function gqlFetch<TResult, TVariables>(
 }
 
 export function setGraphQLCacheScope(value: string | null) {
-  graphQLCacheScope = value;
+  if (value === null) {
+    graphQLCacheScopeIdentity = null;
+    graphQLCacheScope = null;
+    return;
+  }
+  if (value !== graphQLCacheScopeIdentity || !graphQLCacheScope) {
+    graphQLCacheScopeIdentity = value;
+    graphQLCacheScope = randomGraphQLCacheScope();
+  }
 }
 
 export function bumpGraphQLCacheEpoch() {
@@ -106,6 +115,10 @@ function currentGraphQLCacheEpoch() {
   const stored = readStoredCacheEpoch();
   if (stored > graphQLCacheEpoch) graphQLCacheEpoch = stored;
   return graphQLCacheEpoch;
+}
+
+function randomGraphQLCacheScope() {
+  return globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
 }
 
 function readStoredCacheEpoch() {

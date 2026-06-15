@@ -107,7 +107,6 @@ export async function createWorkspace(input: { name: string }) {
 
 function applyGraphQLCacheScope(me: AuthMe) {
   setGraphQLCacheScope([
-    me.user.sessionId,
     me.organizationId,
     me.workspaceId
   ].join(":"));
