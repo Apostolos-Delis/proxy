@@ -53,26 +53,40 @@ function RouteMatrixSection({ routes, dim }: { routes: RoutingConfigRoute[]; dim
   return (
     <div className="config-card-matrix">
       <div className="config-card-matrix-row config-card-matrix-header">
-        <span />
-        <span>PRIMARY</span>
-        <span>FALLBACK</span>
+        <span>ROUTE</span>
+        <span>MODEL</span>
       </div>
       {routes.map((route) => (
         <div key={route.route} className="config-card-matrix-row" title={route.description ?? undefined}>
           <TierGauge route={route.route} dim={dim} />
-          <ModelCell target={route.targets[0]} dim={dim} />
-          <ModelCell target={route.targets[1]} dim={dim} />
+          <ModelCells targets={route.targets} dim={dim} />
         </div>
       ))}
     </div>
   );
 }
 
-function ModelCell({ target, dim }: { target: RoutingConfigRoute["targets"][number] | undefined; dim: boolean }) {
-  if (!target) return <span className="mono faint">—</span>;
+function ModelCells({ targets, dim }: {
+  targets: RoutingConfigRoute["targets"];
+  dim: boolean;
+}) {
+  if (targets.length === 0) return <span className="mono faint">—</span>;
+  return (
+    <span className="config-card-models">
+      {targets.map((target, index) => <ModelCell key={`${target.providerId}:${target.model}:${index}`} target={target} index={index} dim={dim} />)}
+    </span>
+  );
+}
+
+function ModelCell({ target, index, dim }: {
+  target: RoutingConfigRoute["targets"][number];
+  index: number;
+  dim: boolean;
+}) {
   const effort = target.effectiveEffort ?? target.effort;
   return (
     <span className="config-card-model">
+      <span className="config-card-model-rank">#{index + 1}</span>
       <span className="mono">{target.providerId} / {target.model}</span>
       <EffortMeter effort={effort} dim={dim} />
     </span>

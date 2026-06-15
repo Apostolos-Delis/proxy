@@ -136,7 +136,7 @@ export function RouteTargetsEditor({ draft, baseConfig, catalog, onChange }: {
               />
             ))}
             <button className="btn btn-sm route-target-add" type="button" onClick={() => addTarget(route)}>
-              <Plus />Add target
+              <Plus />{draft.routes[route].targets.length === 0 ? "Add target" : "Add alternate"}
             </button>
           </div>
         </div>
@@ -282,7 +282,7 @@ function targetNotes(target: RouteTargetDraft, catalog: RoutingEditorCatalog) {
       transport: "http",
       statefulResponses: true
     }).status === "translated") {
-      notes.push("Codex prior-response and WebSocket turns require native Responses.");
+      notes.push("Codex prior-response and WebSocket turns require a native Responses alternate.");
     }
   }
   if (!catalog.models.some((model) => model.provider === target.providerId && model.model === target.model)) {

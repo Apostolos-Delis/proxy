@@ -2444,7 +2444,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .config-card-matrix-row {
   display: grid;
-  grid-template-columns: 104px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 104px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
@@ -2467,10 +2467,24 @@ input[type="checkbox"][role="switch"]:focus-visible {
   letter-spacing: 0.08em;
 }
 
+.config-card-models {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
 .config-card-model {
   display: grid;
-  gap: 4px;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
+}
+
+.config-card-model-rank {
+  color: var(--fg-faint);
+  font-family: var(--mono);
+  font-size: 11px;
 }
 
 .config-card-model > .mono {

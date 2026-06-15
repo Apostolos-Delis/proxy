@@ -224,7 +224,7 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
         {view === "form" ? (
           <>
             <RoutingRulesEditor draft={draft} onChange={setDraft} />
-            <div className="editor-subhead"><Layers />Route tier targets</div>
+            <div className="editor-subhead"><Layers />Route tier models</div>
             <RouteTargetsEditor
               draft={draft}
               baseConfig={baseConfig}
