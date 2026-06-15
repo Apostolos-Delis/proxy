@@ -117,7 +117,7 @@ describe("database migrations", () => {
       select column_name
       from information_schema.columns
       where table_name = 'providers'
-        and column_name in ('id', 'organization_id', 'slug', 'display_name', 'base_url', 'auth_style', 'endpoints', 'default_headers', 'forward_harness_headers', 'enabled')
+        and column_name in ('id', 'organization_id', 'slug', 'display_name', 'base_url', 'auth_style', 'endpoints', 'default_headers', 'capabilities', 'forward_harness_headers', 'enabled')
       order by column_name
     `);
     const retiredPolicyTable = ["route", "policies"].join("_");
@@ -237,6 +237,7 @@ describe("database migrations", () => {
     expect(providerRegistryColumns.rows.map((row) => row.column_name)).toEqual([
       "auth_style",
       "base_url",
+      "capabilities",
       "default_headers",
       "display_name",
       "enabled",

@@ -283,7 +283,7 @@ Scope:
 
 - `routingConfigRouteSchema`: `{openai?, anthropic?}` → `{targets: RouteTarget[]}` with the canonical target shape including `thinking` and `metadata` (v2 is not lossy).
 - `sessionPinnedSettingsSchema`: provider discriminated union → `SessionPin` (target superset + resolved `dialect`).
-- Single `EFFORTS` ladder (`minimal | low | medium | high | xhigh | max`) replaces `OPENAI_REASONING_EFFORTS` + `ANTHROPIC_EFFORTS`.
+- Single `EFFORTS` ladder (`minimal | low | medium | high | xhigh | max | ultracode`) replaces `OPENAI_REASONING_EFFORTS` + `ANTHROPIC_EFFORTS`.
 - `routingConfigClassifierSchema.provider` → `providerId: string` (pure schema change — the publish-time check that it resolves to a responses-dialect provider needs a registry lookup, which a Zod schema cannot do; that check is implemented once, in PA-017).
 - `schemaVersion: 2`; reject v1 documents at parse time (hard cutover).
 

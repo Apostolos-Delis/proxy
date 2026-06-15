@@ -439,6 +439,7 @@ async function upsertBuiltinProviders(db: PromptProxyDbSession, options: SeedOpt
         { dialect: "openai-chat", path: "/chat/completions" }
       ],
       defaultHeaders: {},
+      capabilities: { efforts: ["low", "medium", "high", "xhigh"] },
       forwardHarnessHeaders: true,
       enabled: true
     },
@@ -453,6 +454,7 @@ async function upsertBuiltinProviders(db: PromptProxyDbSession, options: SeedOpt
         { dialect: "anthropic-messages", path: "/messages" }
       ],
       defaultHeaders: {},
+      capabilities: { efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"] },
       forwardHarnessHeaders: true,
       enabled: true
     }
@@ -470,6 +472,7 @@ async function upsertBuiltinProviders(db: PromptProxyDbSession, options: SeedOpt
           authStyle: row.authStyle,
           endpoints: row.endpoints,
           defaultHeaders: row.defaultHeaders,
+          capabilities: row.capabilities,
           forwardHarnessHeaders: row.forwardHarnessHeaders,
           enabled: row.enabled,
           updatedAt: now

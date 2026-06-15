@@ -21,6 +21,7 @@ export type ProviderRegistryEntry = {
   authStyle: "bearer" | "x-api-key" | "none";
   endpoints: ProviderRegistryEndpoint[];
   defaultHeaders: Record<string, string>;
+  capabilities: Record<string, unknown>;
   forwardHarnessHeaders: boolean;
   enabled: boolean;
   builtin: boolean;
@@ -105,6 +106,7 @@ export class ConfigProviderRegistry implements ProviderRegistryResolver {
           { dialect: "openai-chat" as const, path: "/chat/completions" }
         ],
         defaultHeaders: {},
+        capabilities: { efforts: ["low", "medium", "high", "xhigh"] },
         forwardHarnessHeaders: true,
         enabled: true,
         builtin: true
@@ -121,6 +123,7 @@ export class ConfigProviderRegistry implements ProviderRegistryResolver {
           { dialect: "anthropic-messages" as const, path: "/messages" }
         ],
         defaultHeaders: {},
+        capabilities: { efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"] },
         forwardHarnessHeaders: true,
         enabled: true,
         builtin: true
@@ -139,6 +142,7 @@ function providerEntry(row: typeof providers.$inferSelect): ProviderRegistryEntr
     authStyle: row.authStyle,
     endpoints: row.endpoints.filter(isProviderEndpoint),
     defaultHeaders: row.defaultHeaders,
+    capabilities: row.capabilities,
     forwardHarnessHeaders: row.forwardHarnessHeaders,
     enabled: row.enabled,
     builtin: row.organizationId === null

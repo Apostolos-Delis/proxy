@@ -105,6 +105,7 @@ const RoutingModelCatalogDocument = graphql(`
         dialect
         path
       }
+      capabilities
     }
     modelPricing {
       provider

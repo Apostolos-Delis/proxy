@@ -258,7 +258,7 @@ describe("routing config runtime resolution", () => {
               ? {
                   ...target,
                   model: "gpt-config-hard",
-                  effort: "xhigh",
+                  effort: "max",
                   verbosity: "high",
                   maxOutputTokens: 1234
                 }
@@ -307,6 +307,74 @@ describe("routing config runtime resolution", () => {
     const eventRows = await activeFixture.db.select().from(events);
     const decision = eventRows.find((event) => event.eventType === "routing.decision_recorded");
     expect(decision?.payload).not.toHaveProperty("providerSettings");
+  });
+
+  it("omits effort for custom providers without effort capabilities", async () => {
+    const organizationId = "org_config_custom_no_effort_capability";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: { ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8" },
+      openAIOptions: {
+        classifierOutput: {
+          complexity: "hard",
+          risk: ["debugging"],
+          recommended_route: "hard",
+          can_use_fast_model: false,
+          needs_deep_reasoning: false,
+          reason_codes: ["custom_provider_no_effort_capability"],
+          confidence: 0.91
+        }
+      }
+    });
+    await activeFixture.db.insert(providers).values({
+      id: "00000000-0000-0000-0000-00000000e017",
+      organizationId,
+      slug: "acme-no-effort",
+      displayName: "Acme no effort",
+      baseUrl: activeFixture.openai.url,
+      authStyle: "none",
+      endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "custom-no-effort-token",
+      slug: "custom-no-effort",
+      configHash: "sha256:custom-no-effort-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            targets: [{ providerId: "acme-no-effort", model: "acme-hard", effort: "high" }]
+          }
+        }
+      })
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer custom-no-effort-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this failing test",
+        stream: false
+      })
+    });
+    await response.text();
+
+    const providerCall = activeFixture.openai.records.find((record) =>
+      record.body.model === "acme-hard"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBeNull();
+    expect(providerCall).toBeTruthy();
+    expect(providerCall?.body.reasoning).toBeUndefined();
   });
 
   it("routes WebSocket requests to custom responses providers", async () => {
@@ -502,7 +570,7 @@ describe("routing config runtime resolution", () => {
                   ...target,
                   model: "claude-config-deep",
                   thinking: { type: "adaptive", display: "summarized" },
-                  effort: "max",
+                  effort: "ultracode",
                   maxOutputTokens: 4096
                 }
               : target)
@@ -534,10 +602,10 @@ describe("routing config runtime resolution", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-prompt-proxy-route")).toBe("deep");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("max");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("ultracode");
     expect(providerCall).toBeTruthy();
     expect(providerCall?.body.thinking).toEqual({ type: "adaptive", display: "summarized" });
-    expect(providerCall?.body.output_config.effort).toBe("max");
+    expect(providerCall?.body.output_config.effort).toBe("ultracode");
     expect(providerCall?.body.max_tokens).toBe(4096);
     expect(providerCall?.body.tools).toEqual([
       { name: "shell", input_schema: { type: "object", properties: {} } }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { providers, type PromptProxyTransaction, type PromptProxyTransactionalDatabase } from "@prompt-proxy/db";
-import { DIALECT_NAMES, PROVIDER_AUTH_STYLES } from "@prompt-proxy/schema";
+import { DIALECT_NAMES, EFFORTS, PROVIDER_AUTH_STYLES } from "@prompt-proxy/schema";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -22,6 +22,10 @@ const endpointBodySchema = z.object({
   })
 }).strict();
 
+const capabilitiesBodySchema = z.object({
+  efforts: z.array(z.enum(EFFORTS)).optional()
+}).passthrough().default({});
+
 const providerBodySchema = z.object({
   slug: z.string().trim().min(1),
   displayName: z.string().trim().min(1),
@@ -29,6 +33,7 @@ const providerBodySchema = z.object({
   authStyle: z.enum(PROVIDER_AUTH_STYLES),
   endpoints: z.array(endpointBodySchema).min(1),
   defaultHeaders: z.record(z.string().trim().min(1), z.string().trim().min(1)).default({}),
+  capabilities: capabilitiesBodySchema,
   forwardHarnessHeaders: z.boolean().default(false),
   enabled: z.boolean().default(true)
 }).strict();
@@ -69,6 +74,7 @@ export class ProviderRegistryAdminService {
         authStyle: body.data.authStyle,
         endpoints: body.data.endpoints,
         defaultHeaders: body.data.defaultHeaders,
+        capabilities: body.data.capabilities,
         forwardHarnessHeaders: body.data.forwardHarnessHeaders,
         enabled: body.data.enabled,
         createdAt: now,
@@ -111,6 +117,7 @@ export class ProviderRegistryAdminService {
           authStyle: body.data.authStyle,
           endpoints: body.data.endpoints,
           defaultHeaders: body.data.defaultHeaders,
+          capabilities: body.data.capabilities,
           forwardHarnessHeaders: body.data.forwardHarnessHeaders,
           enabled: body.data.enabled,
           updatedAt: now
@@ -233,6 +240,7 @@ function providerPayload(providerId: string, body: ProviderBody) {
     authStyle: body.authStyle,
     endpoints: body.endpoints,
     defaultHeaders: body.defaultHeaders,
+    capabilities: body.capabilities,
     forwardHarnessHeaders: body.forwardHarnessHeaders,
     enabled: body.enabled
   };

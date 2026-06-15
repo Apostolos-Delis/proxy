@@ -19,6 +19,7 @@ type FormState = {
   authStyle: string;
   endpointsJson: string;
   defaultHeadersJson: string;
+  capabilitiesJson: string;
   forwardHarnessHeaders: boolean;
   enabled: boolean;
 };
@@ -40,6 +41,7 @@ const emptyForm: FormState = {
   authStyle: "bearer",
   endpointsJson: JSON.stringify([{ dialect: "openai-chat", path: "/chat/completions" }], null, 2),
   defaultHeadersJson: "{}",
+  capabilitiesJson: "{}",
   forwardHarnessHeaders: false,
   enabled: true
 };
@@ -99,6 +101,7 @@ export function ProviderFormModal({ mode, onClose, onSaved }: {
         </div>
         <JsonField label="Endpoints" value={form.endpointsJson} onChange={(endpointsJson) => setForm((current) => ({ ...current, endpointsJson }))} />
         <JsonField label="Default headers" value={form.defaultHeadersJson} onChange={(defaultHeadersJson) => setForm((current) => ({ ...current, defaultHeadersJson }))} />
+        <JsonField label="Capabilities" value={form.capabilitiesJson} onChange={(capabilitiesJson) => setForm((current) => ({ ...current, capabilitiesJson }))} />
         <div className="provider-form-switches">
           <label className="setting-toggle">
             <span>Forward harness headers</span>
@@ -136,6 +139,8 @@ function parseForm(form: FormState, mode: ProviderFormMode): { input: ProviderIn
   if (typeof endpoints === "string") return { input: emptyProviderInput(slug), error: endpoints };
   const defaultHeaders = parseHeaders(form.defaultHeadersJson);
   if (typeof defaultHeaders === "string") return { input: emptyProviderInput(slug), error: defaultHeaders };
+  const capabilities = parseCapabilities(form.capabilitiesJson);
+  if (typeof capabilities === "string") return { input: emptyProviderInput(slug), error: capabilities };
   return {
     input: {
       slug,
@@ -144,6 +149,7 @@ function parseForm(form: FormState, mode: ProviderFormMode): { input: ProviderIn
       authStyle: form.authStyle,
       endpoints,
       defaultHeaders,
+      capabilities,
       forwardHarnessHeaders: form.forwardHarnessHeaders,
       enabled: form.enabled
     },
@@ -170,6 +176,13 @@ function parseHeaders(text: string) {
   );
 }
 
+function parseCapabilities(text: string) {
+  const value = parseJson(text, "Capabilities");
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "Capabilities must be a JSON object.";
+  return value as Record<string, unknown>;
+}
+
 function parseJson(text: string, label: string) {
   try {
     return JSON.parse(text);
@@ -192,6 +205,7 @@ function formFromProvider(provider: ProviderRegistrySummary): FormState {
     authStyle: provider.authStyle,
     endpointsJson: JSON.stringify(provider.endpoints, null, 2),
     defaultHeadersJson: JSON.stringify(headerRecord(provider.defaultHeaders), null, 2),
+    capabilitiesJson: JSON.stringify(capabilityRecord(provider.capabilities), null, 2),
     forwardHarnessHeaders: provider.forwardHarnessHeaders,
     enabled: provider.enabled
   };
@@ -210,7 +224,13 @@ function emptyProviderInput(slug: string): ProviderInput {
     authStyle: "bearer",
     endpoints: [],
     defaultHeaders: {},
+    capabilities: {},
     forwardHarnessHeaders: false,
     enabled: true
   };
+}
+
+function capabilityRecord(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
 }

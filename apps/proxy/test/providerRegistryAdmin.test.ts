@@ -11,6 +11,7 @@ const PROVIDER_FIELDS = `
   authStyle
   endpoints { dialect path }
   defaultHeaders
+  capabilities
   forwardHarnessHeaders
   enabled
   builtin
@@ -48,6 +49,7 @@ describe("provider registry admin GraphQL", () => {
         authStyle: "bearer",
         endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
         defaultHeaders: { "x-acme-region": "iad" },
+        capabilities: { efforts: ["low", "medium", "high"] },
         forwardHarnessHeaders: true,
         enabled: true
       }
@@ -61,6 +63,7 @@ describe("provider registry admin GraphQL", () => {
       baseUrl: fixture.openai.url,
       authStyle: "bearer",
       defaultHeaders: { "x-acme-region": "iad" },
+      capabilities: { efforts: ["low", "medium", "high"] },
       forwardHarnessHeaders: true,
       enabled: true,
       builtin: false
@@ -74,6 +77,7 @@ describe("provider registry admin GraphQL", () => {
         authStyle: "none",
         endpoints: [{ dialect: "openai-responses", path: "/responses" }],
         defaultHeaders: {},
+        capabilities: { efforts: ["low", "medium", "high", "xhigh"] },
         forwardHarnessHeaders: false,
         enabled: true
       }
@@ -85,6 +89,7 @@ describe("provider registry admin GraphQL", () => {
       displayName: "Acme OpenAI Gateway",
       authStyle: "none",
       endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+      capabilities: { efforts: ["low", "medium", "high", "xhigh"] },
       forwardHarnessHeaders: false,
       enabled: true
     });

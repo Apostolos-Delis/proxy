@@ -158,6 +158,7 @@ input CreateProviderCredentialInput {
 input CreateProviderInput {
   authStyle: String!
   baseUrl: String!
+  capabilities: JSON
   defaultHeaders: JSON
   displayName: String!
   enabled: Boolean
@@ -521,6 +522,7 @@ type ProviderRegistryEntry {
   authStyle: String!
   baseUrl: String!
   builtin: Boolean!
+  capabilities: JSON!
   defaultHeaders: JSON!
   displayName: String!
   enabled: Boolean!
@@ -908,6 +910,7 @@ type TokenTotals {
 input UpdateProviderInput {
   authStyle: String!
   baseUrl: String!
+  capabilities: JSON
   defaultHeaders: JSON
   displayName: String!
   enabled: Boolean

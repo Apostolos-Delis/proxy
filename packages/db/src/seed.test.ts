@@ -136,6 +136,7 @@ describe("database seed", () => {
           { dialect: "openai-responses", path: "/responses" },
           { dialect: "openai-chat", path: "/chat/completions" }
         ],
+        capabilities: { efforts: ["low", "medium", "high", "xhigh"] },
         forwardHarnessHeaders: true,
         enabled: true
       }),
@@ -147,6 +148,7 @@ describe("database seed", () => {
         endpoints: [
           { dialect: "anthropic-messages", path: "/messages" }
         ],
+        capabilities: { efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"] },
         forwardHarnessHeaders: true,
         enabled: true
       })

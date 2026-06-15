@@ -12,7 +12,8 @@ const TIER_ALIASES: Record<string, string> = {
   auto: "balanced",
   high: "hard",
   xhigh: "deep",
-  max: "deep"
+  max: "deep",
+  ultracode: "deep"
 };
 
 // Unknown values rank 0: every segment stays unlit while the label still

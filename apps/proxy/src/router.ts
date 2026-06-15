@@ -1,5 +1,6 @@
 import {
   nearestReasoningEffort,
+  reasoningEffortsFromCapabilities,
   routeOrder
 } from "./catalog.js";
 import { ClassifierError, defaultClassifierSettings } from "./classifier.js";
@@ -52,11 +53,11 @@ type ProviderCredentialResolver = {
 };
 
 type TargetAvailability =
-  | { status: "available"; dialect: Dialect }
+  | { status: "available"; dialect: Dialect; supportedEfforts?: ProviderEffort[] }
   | { status: "unavailable"; reason: string };
 
-function routeSettings(selected: SelectedRouteSettings): ResolvedRouteSettings {
-  const effort = effectiveEffort(selected);
+function routeSettings(selected: SelectedRouteSettings, supportedEfforts?: ProviderEffort[]): ResolvedRouteSettings {
+  const effort = effectiveEffort(selected, supportedEfforts);
   const providerSettings = { ...selected };
   if (effort) providerSettings.effort = effort;
   else delete providerSettings.effort;
@@ -69,15 +70,22 @@ function routeSettings(selected: SelectedRouteSettings): ResolvedRouteSettings {
   };
 }
 
-function effectiveEffort(selected: SelectedRouteSettings): ProviderEffort | undefined {
+function effectiveEffort(selected: SelectedRouteSettings, supportedEfforts?: ProviderEffort[]): ProviderEffort | undefined {
   if (!selected.effort) return undefined;
   if (selected.dialect === "anthropic-messages" && selected.thinking?.type !== "adaptive") {
     return undefined;
   }
-  const supportedEfforts = selected.dialect === "anthropic-messages"
-    ? ["low", "medium", "high", "xhigh", "max"]
-    : ["minimal", "low", "medium", "high", "xhigh", "max"];
-  return nearestReasoningEffort(selected.effort, supportedEfforts as ProviderEffort[]) ?? selected.effort;
+  if (supportedEfforts !== undefined) {
+    if (supportedEfforts.length === 0) return undefined;
+    return nearestReasoningEffort(selected.effort, supportedEfforts) ?? selected.effort;
+  }
+  const efforts = defaultSupportedEfforts(selected.dialect);
+  return nearestReasoningEffort(selected.effort, efforts) ?? selected.effort;
+}
+
+function defaultSupportedEfforts(dialect: Dialect): ProviderEffort[] {
+  if (dialect === "anthropic-messages") return ["low", "medium", "high", "xhigh", "max", "ultracode"];
+  return ["minimal", "low", "medium", "high", "xhigh", "max", "ultracode"];
 }
 
 export class RoutingService {
@@ -600,7 +608,7 @@ export class RoutingService {
         continue;
       }
       appendTranslationAction(guardrailActions, context.surface, availability.dialect);
-      return routeSettings({ ...target, dialect: availability.dialect });
+      return routeSettings({ ...target, dialect: availability.dialect }, availability.supportedEfforts);
     }
     for (const target of translatedCandidates) {
       const availability = await this.targetAvailability(context, target, "translated");
@@ -609,7 +617,7 @@ export class RoutingService {
         continue;
       }
       appendTranslationAction(guardrailActions, context.surface, availability.dialect);
-      return routeSettings({ ...target, dialect: availability.dialect });
+      return routeSettings({ ...target, dialect: availability.dialect }, availability.supportedEfforts);
     }
     return undefined;
   }
@@ -625,7 +633,7 @@ export class RoutingService {
       return undefined;
     }
     appendTranslationAction(guardrailActions, context.surface, availability.dialect);
-    return routeSettings(settings);
+    return routeSettings(settings, availability.supportedEfforts);
   }
 
   private async targetAvailability(
@@ -665,7 +673,11 @@ export class RoutingService {
       });
       if (!credential) return { status: "unavailable", reason: "provider_credential_unresolved" };
     }
-    return { status: "available", dialect: endpoint.dialect };
+    return {
+      status: "available",
+      dialect: endpoint.dialect,
+      supportedEfforts: reasoningEffortsFromCapabilities(provider.capabilities)
+    };
   }
 
   private async recordDecision(

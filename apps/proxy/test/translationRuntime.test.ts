@@ -431,9 +431,15 @@ async function insertOrgProvider(
     authStyle: "none",
     endpoints: [{ dialect: input.dialect, path }],
     defaultHeaders: {},
+    capabilities: { efforts: providerEfforts(input.dialect) },
     forwardHarnessHeaders: false,
     enabled: true
   });
+}
+
+function providerEfforts(dialect: Dialect) {
+  if (dialect === "anthropic-messages") return ["low", "medium", "high", "xhigh", "max", "ultracode"];
+  return ["low", "medium", "high", "xhigh"];
 }
 
 async function assignRouteConfig(

@@ -245,10 +245,10 @@ A pin is a **superset of every input the dialect-edge rewrite consumes** — tha
 **One effort ladder** — replace the two enums with a single normalized scale:
 
 ```ts
-const EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+const EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max", "ultracode"] as const;
 ```
 
-Clamping to what a given model accepts is **catalog-driven, one mechanism**: each catalog row carries `capabilities.efforts` (the subset of the ladder the model accepts, e.g. fable-5 rejects `thinking: disabled`, haiku rejects `effort`, dotted gpt-5.x rejects `minimal`). The dialect edge maps the clamped value onto the wire field (`reasoning.effort` / `output_config.effort` + `thinking` / `reasoning_effort`) but holds **no clamp tables of its own** — there is no second mechanism to disagree with the first. The effective clamp is exposed over GraphQL (`effectiveEffort(target)`) so the web editor can show "max → xhigh on this model" instead of clamping silently.
+Clamping to what a provider/model accepts is **capability-driven, one mechanism**: provider registry rows carry default `capabilities.efforts`, and catalog rows can carry model-specific `capabilities.efforts` when discovery has that data. The dialect edge maps the clamped value onto the wire field (`reasoning.effort` / `output_config.effort` + `thinking` / `reasoning_effort`) but holds **no clamp tables of its own** — there is no second mechanism to disagree with the first. The effective clamp is exposed over GraphQL (`effectiveEffort(target)`) so the web editor can show "max → xhigh on this provider" instead of clamping silently.
 
 **Model catalog from models.dev** — the `model_catalog` table (today populated but read only as the org pricing-override store, `persistence/modelPricing.ts`) becomes the real catalog: rows keyed `(provider_id, model)` with `capabilities` (efforts, modalities, context/output limits) and `pricing` jsonb. **Stage 1 seeds it from a vendored models.dev snapshot checked into the repo** (hermetic tests, no runtime dependency); Stage 4 adds the periodic refresh job. Org rows override (custom pricing, self-hosted models the dataset doesn't know). `defaultModelPricing`, `providerFromModelName`, and the hardcoded `contextWindow: 400000` all retire — **but only once the snapshot seed is in place**; ledger pricing keys off the *attempt's* `(providerId, model)`, never name-prefix inference (pain point 10).
 
@@ -309,7 +309,7 @@ Stage 1 splits into two deploys: **1a is additive** (no config-format or behavio
 
 - `routingConfigRouteSchema`: `{openai?, anthropic?}` → `{targets: RouteTarget[]}` (canonical shape above, **including `thinking` and `metadata`** — v2 is not lossy).
 - `sessionPinnedSettingsSchema`: discriminated-union-on-provider → `SessionPin` (target superset + resolved `dialect`).
-- Single `EFFORTS` ladder replaces `OPENAI_REASONING_EFFORTS` + `ANTHROPIC_EFFORTS`; clamps come from catalog capability data (one mechanism — see Core concepts).
+- Single `EFFORTS` ladder replaces `OPENAI_REASONING_EFFORTS` + `ANTHROPIC_EFFORTS`; clamps come from provider/model capability data (one mechanism — see Core concepts).
 - `routingConfigClassifierSchema.provider` → `providerId: string`, **validated at publish time to resolve to a provider with a responses-dialect endpoint** until Stage 2 ships the chat classifier client (today's `z.literal("openai")` guard moves from code to validation, it does not silently disappear).
 - `schemaVersion: 2`.
 
@@ -402,7 +402,7 @@ Scope if built:
 | Translated-path fidelity (tool-call edge cases, usage frames) | Golden-transcript fixtures per translator (pattern from Stage 0); translated requests tagged in `route_decisions` so regressions are filterable in the console |
 | OSS hosts report usage inconsistently (or not at all on stream) | Stage 0 chat usage normalization + `stream_options.include_usage` injection; ledger rows with no usage already exist as a handled case |
 | OSS traffic books $0 cost | Vendored models.dev snapshot seeds the catalog in **1a**, before the static pricing table retires in 1b; `repriceZeroCostUsage` remains the backstop |
-| Effort clamping surprises (fable-5 rejects `thinking: disabled`, haiku rejects `effort`, dotted gpt-5.x rejects `minimal`) | Single mechanism: catalog `capabilities.efforts` drives the clamp; unknown models get the conservative mapping (omit the knob); `effectiveEffort` exposed to the editor so clamping is visible |
+| Effort clamping surprises (fable-5 rejects `thinking: disabled`, haiku rejects `effort`, dotted gpt-5.x rejects `minimal`) | Single mechanism: provider/model `capabilities.efforts` drives the clamp; unknown models get the conservative mapping (omit the knob); `effectiveEffort` exposed to the editor so clamping is visible |
 | SSRF via org-defined base URLs | Scheme allowlist; link-local/metadata ranges blocked unconditionally; private (RFC-1918) ranges blocked **unless covered by the operator-level `ALLOWED_PRIVATE_UPSTREAM_CIDRS`** (the self-hosted-vLLM escape hatch — see Network invariant; operator config, never org config, so the control doesn't contradict Goal 2); **`redirect: "manual"`** on org-row upstream fetches (today's `fetch` at `proxy.ts:68` follows redirects — a 302 to `169.254.169.254` would bypass a resolve-time check); connect-time IP pinning to the resolved address to defeat DNS rebinding |
 | Classifier pointed at a provider that can't serve it | Publish-time validation: classifier `providerId` must resolve to a responses-dialect endpoint until Stage 2; existing `timeoutMs` + fallback-route behavior unchanged (gpt-5-nano ~4s floor documented) |
 

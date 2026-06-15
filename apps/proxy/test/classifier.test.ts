@@ -43,6 +43,7 @@ const classifierTarget: ClassifierTarget = {
     authStyle: "bearer",
     endpoints: [{ dialect: "openai-responses", path: "/responses" }],
     defaultHeaders: {},
+    capabilities: { efforts: ["low", "medium", "high", "xhigh"] },
     forwardHarnessHeaders: true,
     enabled: true,
     builtin: true

@@ -18,7 +18,8 @@ import type {
 import {
   editorRouteOrder,
   effectiveEffortForTarget,
-  EFFORT_SCALE,
+  effortScaleForProvider,
+  effortOptionsForProvider,
   emptyRouteTarget
 } from "../routingConfigEditor";
 import { MenuSelect } from "../table/MenuSelect";
@@ -157,8 +158,11 @@ function RouteTargetEditor({ route, index, target, targetCount, catalog, onChang
 }) {
   const provider = catalog.providers.find((candidate) => candidate.slug === target.providerId);
   const providerLabel = provider?.displayName ?? target.providerId;
-  const effectiveEffort = effectiveEffortForTarget(target);
-  const effortChanged = target.effort.trim() && effectiveEffort && target.effort.trim() !== effectiveEffort;
+  const supportedEfforts = effortScaleForProvider(provider);
+  const effortOptions = effortOptionsForProvider(provider, target.effort);
+  const effectiveEffort = effectiveEffortForTarget(target, supportedEfforts);
+  const configuredEffort = target.effort.trim();
+  const effortChanged = Boolean(configuredEffort) && configuredEffort !== effectiveEffort;
   return (
     <div className="route-target" data-provider={target.providerId || "target"}>
       <div className="route-target-rank">#{index + 1}</div>
@@ -184,7 +188,7 @@ function RouteTargetEditor({ route, index, target, targetCount, catalog, onChang
             ariaLabel={`${route} target ${index + 1} effort`}
             options={[
               { value: "", label: "default effort" },
-              ...EFFORT_SCALE.map((option) => ({ value: option, label: `effort ${option}` }))
+              ...effortOptions.map((option) => ({ value: option, label: `effort ${option}` }))
             ]}
             onChange={(effort) => onChange({ ...target, effort })}
           />
@@ -213,7 +217,7 @@ function TargetNotes({ target, catalog, effortChanged, effectiveEffort }: {
   effectiveEffort: string;
 }) {
   const notes = targetNotes(target, catalog);
-  if (effortChanged) notes.unshift(`Effort ${target.effort.trim()} resolves as ${effectiveEffort}.`);
+  if (effortChanged) notes.unshift(`Effort ${target.effort.trim()} resolves as ${effectiveEffort || "provider default"}.`);
   if (notes.length === 0) return null;
   return (
     <div className="route-target-notes">

@@ -7,8 +7,8 @@ import {
 } from "@prompt-proxy/db";
 import { ROUTE_NAMES, type RouteTarget, type RoutingConfig } from "@prompt-proxy/schema";
 
-import { nearestReasoningEffort } from "../catalog.js";
-import type { JsonObject } from "../types.js";
+import { nearestReasoningEffort, reasoningEffortsFromCapabilities } from "../catalog.js";
+import type { JsonObject, ProviderEffort } from "../types.js";
 import { effectiveInvitationStatus } from "./userAdmin.js";
 
 type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
@@ -82,23 +82,29 @@ export function routingConfigSummary(row: {
   };
 }
 
-export function routingConfigRoutesSummary(config: RoutingConfig) {
+export function routingConfigRoutesSummary(
+  config: RoutingConfig,
+  providerCapabilities = new Map<string, Record<string, unknown>>()
+) {
   return ROUTE_NAMES.map((route) => {
     const routeConfig = config.routes[route];
     return {
       route,
       description: routeConfig.description ?? null,
-      targets: routeConfig.targets.map(routeTargetSummary)
+      targets: routeConfig.targets.map((target) => routeTargetSummary(target, providerCapabilities))
     };
   });
 }
 
-function routeTargetSummary(target: RouteTarget) {
+function routeTargetSummary(target: RouteTarget, providerCapabilities: Map<string, Record<string, unknown>>) {
   return {
     providerId: target.providerId,
     model: target.model,
     effort: target.effort ?? null,
-    effectiveEffort: effectiveEffort(target),
+    effectiveEffort: effectiveEffort(
+      target,
+      reasoningEffortsFromCapabilities(providerCapabilities.get(target.providerId))
+    ),
     thinking: target.thinking ?? null,
     maxOutputTokens: target.maxOutputTokens ?? null,
     verbosity: target.verbosity ?? null,
@@ -106,10 +112,14 @@ function routeTargetSummary(target: RouteTarget) {
   };
 }
 
-function effectiveEffort(target: RouteTarget) {
+function effectiveEffort(target: RouteTarget, supportedEfforts?: ProviderEffort[]) {
   if (!target.effort) return null;
+  if (supportedEfforts !== undefined) {
+    if (supportedEfforts.length === 0) return null;
+    return nearestReasoningEffort(target.effort, supportedEfforts) ?? target.effort;
+  }
   if (target.providerId !== "anthropic") return target.effort;
-  return nearestReasoningEffort(target.effort, ["low", "medium", "high", "xhigh", "max"]) ?? target.effort;
+  return nearestReasoningEffort(target.effort, ["low", "medium", "high", "xhigh", "max", "ultracode"]) ?? target.effort;
 }
 
 export function providerAttemptSummary(row: ProviderAttemptRow) {

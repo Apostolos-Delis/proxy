@@ -44,6 +44,7 @@ export type RoutingCatalogProvider = {
   enabled: boolean;
   builtin: boolean;
   endpoints: { dialect: string; path: string }[];
+  capabilities: unknown;
 };
 
 export type RoutingCatalogModel = {
@@ -62,7 +63,7 @@ export const editorRouteOrder = ["fast", "balanced", "hard", "deep"] as const;
 
 export type EditorRouteName = typeof editorRouteOrder[number];
 
-export const EFFORT_SCALE = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const EFFORT_SCALE = ["minimal", "low", "medium", "high", "xhigh", "max", "ultracode"] as const;
 
 export type RouteTargetDraft = {
   providerId: string;
@@ -168,11 +169,33 @@ export function emptyRouteTarget(providerId = "", model = ""): RouteTargetDraft 
   };
 }
 
-export function effectiveEffortForTarget(target: Pick<RouteTargetDraft, "providerId" | "effort">) {
+export function effectiveEffortForTarget(
+  target: Pick<RouteTargetDraft, "providerId" | "effort">,
+  supportedEfforts?: readonly string[]
+) {
   const effort = target.effort.trim();
   if (!effort) return "";
+  if (supportedEfforts !== undefined) {
+    if (supportedEfforts.length === 0) return "";
+    return nearestEffort(effort, supportedEfforts) ?? effort;
+  }
   if (target.providerId.trim() !== "anthropic") return effort;
-  return nearestEffort(effort, ["low", "medium", "high", "xhigh", "max"]) ?? effort;
+  return nearestEffort(effort, ["low", "medium", "high", "xhigh", "max", "ultracode"]) ?? effort;
+}
+
+export function effortScaleForProvider(provider?: Pick<RoutingCatalogProvider, "capabilities">) {
+  const efforts = effortValues(provider?.capabilities);
+  return efforts ?? [...EFFORT_SCALE];
+}
+
+export function effortOptionsForProvider(
+  provider: Pick<RoutingCatalogProvider, "capabilities"> | undefined,
+  currentEffort: string
+) {
+  const values = effortScaleForProvider(provider);
+  const current = currentEffort.trim();
+  if (current && !values.includes(current)) return [current, ...values];
+  return values;
 }
 
 function routeTargetFromDraft(target: RouteTargetDraft) {
@@ -203,4 +226,15 @@ function nearestEffort(value: string, supported: readonly string[]) {
     }
   }
   return closest;
+}
+
+function effortValues(capabilities: unknown) {
+  if (!capabilities || typeof capabilities !== "object" || Array.isArray(capabilities)) return undefined;
+  const record = capabilities as Record<string, unknown>;
+  if (!("efforts" in record)) return [];
+  const efforts = record.efforts;
+  if (!Array.isArray(efforts)) return [];
+  return efforts.filter((effort): effort is string =>
+    typeof effort === "string" && EFFORT_SCALE.includes(effort as typeof EFFORT_SCALE[number])
+  );
 }
