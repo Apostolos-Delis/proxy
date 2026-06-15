@@ -597,7 +597,7 @@ describe("subscription oauth credentials", () => {
   });
 
   it("rejects Anthropic oauth credentials when the flag is off", async () => {
-    const fixture = await setup("org_oauth_disabled");
+    const fixture = await setup("org_oauth_disabled", { SUBSCRIPTION_OAUTH_ENABLED: "false" });
 
     const created = await gql(fixture, CREATE, {
       input: { provider: "anthropic", name: "My Max sub", authType: "oauth", apiKey: OAUTH_TOKEN }
@@ -606,7 +606,7 @@ describe("subscription oauth credentials", () => {
   });
 
   it("stores an OpenAI oauth credential when the flag is off", async () => {
-    const fixture = await setup("org_oauth_openai_create_flag_off");
+    const fixture = await setup("org_oauth_openai_create_flag_off", { SUBSCRIPTION_OAUTH_ENABLED: "false" });
 
     const created = await gql(fixture, CREATE, {
       input: {
@@ -831,7 +831,7 @@ describe("subscription oauth credentials", () => {
   });
 
   it("resolves Anthropic oauth accounts to undefined when the flag is off", async () => {
-    const fixture = await setup("org_oauth_resolve_off");
+    const fixture = await setup("org_oauth_resolve_off", { SUBSCRIPTION_OAUTH_ENABLED: "false" });
     await insertBoundOauthAccount(fixture, "org_oauth_resolve_off", encryptSecret(OAUTH_TOKEN, ENCRYPTION_KEY));
 
     const credential = await fixture.persistence.providerCredentials.resolveForRequest({
@@ -843,7 +843,7 @@ describe("subscription oauth credentials", () => {
   });
 
   it("resolves OpenAI oauth credentials when the flag is off", async () => {
-    const fixture = await setup("org_oauth_openai_resolve_off");
+    const fixture = await setup("org_oauth_openai_resolve_off", { SUBSCRIPTION_OAUTH_ENABLED: "false" });
     const accountId = await createBoundOpenAIOauthCredential(fixture, "org_oauth_openai_resolve_off");
 
     const credential = await fixture.persistence.providerCredentials.resolveForRequest({

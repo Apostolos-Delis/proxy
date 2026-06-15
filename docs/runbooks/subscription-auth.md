@@ -2,8 +2,8 @@
 
 Subscription credentials let an internal engineer route their own Claude Code or Codex traffic through
 the proxy on a personal/workspace subscription credential instead of the company API key. OpenAI Codex
-subscription credentials are always enabled. Claude subscription credentials are internal-only and
-**off by default** behind `SUBSCRIPTION_OAUTH_ENABLED`.
+subscription credentials are always enabled. Claude subscription credentials are internal-only,
+enabled by default, and disabled with `SUBSCRIPTION_OAUTH_ENABLED=false`.
 
 > **Provider boundary (read first).** For Anthropic, using subscription OAuth tokens outside Claude
 > Code/Claude.ai is against the letter of Anthropic's terms; enforcement (bans, throttles) lands on
@@ -15,14 +15,14 @@ subscription credentials are always enabled. Claude subscription credentials are
 
 ## Enable
 
-1. Set `SUBSCRIPTION_OAUTH_ENABLED=true` on the proxy and restart to enable Claude subscription credentials. `PROVIDER_SECRET_ENCRYPTION_KEY`
-   must also be set (tokens are encrypted at rest like any BYOK secret), and verify a real company
+1. Leave `SUBSCRIPTION_OAUTH_ENABLED=true` on the proxy, or unset it to use the default-on behavior. `PROVIDER_SECRET_ENCRYPTION_KEY`
+   must be set (tokens are encrypted at rest like any BYOK secret), and verify a real company
    `ANTHROPIC_API_KEY` is configured so the disable path degrades gracefully (see below).
 2. The Provider keys console now shows an **Auth type** select on "Add provider key".
 
 ## Disable (kill switch)
 
-Unset the flag (or set `SUBSCRIPTION_OAUTH_ENABLED=false`) and restart to disable Claude subscription credentials. The Anthropic check is two-layer —
+Set `SUBSCRIPTION_OAUTH_ENABLED=false` and restart to disable Claude subscription credentials. The Anthropic check is two-layer —
 credential resolution refuses Claude oauth accounts and the forward path re-checks the flag — so new
 Claude forwards fall back to the company key at once, even for credentials sitting in the 30s in-memory
 cache; only requests already on the wire complete with the bearer token. OpenAI Codex subscription credentials remain enabled. Stored tokens stay

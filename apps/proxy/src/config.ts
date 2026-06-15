@@ -19,6 +19,7 @@ function normalizeBooleanEnv(value: unknown) {
 }
 
 const booleanEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().default(false));
+const subscriptionOAuthEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().default(true));
 const optionalBooleanEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().optional());
 
 const modelCostsSchema = z.preprocess((value) => {
@@ -77,7 +78,7 @@ const configSchema = z.object({
   // Operator-level kill switch for subscription-token auth. Env-only by
   // design (never settings-file editable) and internal-only — must not be
   // surfaced to external customers. See docs/scopes/subscription-auth-v1/PLAN.md.
-  SUBSCRIPTION_OAUTH_ENABLED: booleanEnvSchema,
+  SUBSCRIPTION_OAUTH_ENABLED: subscriptionOAuthEnvSchema,
   ALLOWED_PRIVATE_UPSTREAM_CIDRS: z.string().default(""),
   ALLOW_DEV_PROXY_TOKEN_FALLBACK: booleanEnvSchema,
   DEBUG_ENDPOINTS_ENABLED: booleanEnvSchema,
