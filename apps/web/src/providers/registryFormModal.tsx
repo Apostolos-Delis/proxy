@@ -9,10 +9,11 @@ import {
   createProvider,
   updateProvider,
   type ProviderInput,
-  type ProviderRegistrySummary
+  type ProviderRegistrySummary,
+  type ProviderUpdateInput
 } from "./data";
 
-type FormState = {
+export type ProviderFormState = {
   slug: string;
   displayName: string;
   baseUrl: string;
@@ -34,7 +35,7 @@ const AUTH_STYLE_OPTIONS = [
   { value: "none", label: "None" }
 ];
 
-const emptyForm: FormState = {
+const emptyForm: ProviderFormState = {
   slug: "",
   displayName: "",
   baseUrl: "",
@@ -51,12 +52,12 @@ export function ProviderFormModal({ mode, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [form, setForm] = useState<FormState>(() => mode.kind === "edit" ? formFromProvider(mode.provider) : emptyForm);
+  const [form, setForm] = useState<ProviderFormState>(() => mode.kind === "edit" ? providerFormStateFromProvider(mode.provider) : emptyForm);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: async (input: ProviderInput) => {
       if (mode.kind === "create") return createProvider(input);
-      return updateProvider({ ...input, providerId: mode.provider.id });
+      return updateProvider(providerUpdateInput(input, mode.provider.id));
     },
     onSuccess: onSaved
   });
@@ -133,7 +134,7 @@ function JsonField({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-function parseForm(form: FormState, mode: ProviderFormMode): { input: ProviderInput; error: null } | { input: ProviderInput; error: string } {
+function parseForm(form: ProviderFormState, mode: ProviderFormMode): { input: ProviderInput; error: null } | { input: ProviderInput; error: string } {
   const slug = mode.kind === "create" ? form.slug.trim() : mode.provider.slug;
   const endpoints = parseEndpoints(form.endpointsJson);
   if (typeof endpoints === "string") return { input: emptyProviderInput(slug), error: endpoints };
@@ -197,7 +198,7 @@ function recordString(value: unknown, key: string) {
   return typeof field === "string" ? field : "";
 }
 
-function formFromProvider(provider: ProviderRegistrySummary): FormState {
+export function providerFormStateFromProvider(provider: ProviderRegistrySummary): ProviderFormState {
   return {
     slug: provider.slug,
     displayName: provider.displayName,
@@ -207,7 +208,21 @@ function formFromProvider(provider: ProviderRegistrySummary): FormState {
     defaultHeadersJson: JSON.stringify(headerRecord(provider.defaultHeaders), null, 2),
     capabilitiesJson: JSON.stringify(capabilityRecord(provider.capabilities), null, 2),
     forwardHarnessHeaders: provider.forwardHarnessHeaders,
-    enabled: provider.enabled
+    enabled: true
+  };
+}
+
+export function providerUpdateInput(input: ProviderInput, providerId: string): ProviderUpdateInput {
+  return {
+    providerId,
+    displayName: input.displayName,
+    baseUrl: input.baseUrl,
+    authStyle: input.authStyle,
+    endpoints: input.endpoints,
+    defaultHeaders: input.defaultHeaders,
+    capabilities: input.capabilities,
+    forwardHarnessHeaders: input.forwardHarnessHeaders,
+    enabled: input.enabled
   };
 }
 
