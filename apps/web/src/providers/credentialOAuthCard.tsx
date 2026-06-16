@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { CreateProviderCredentialDraft } from "./createCredentialWizard";
 
 export type CredentialOAuthState = {
-  start: { verificationUrl: string; userCode: string } | null;
+  start: { verificationUrl: string; userCode?: string | null } | null;
   status: { status: string; error?: string | null } | null;
   pending: boolean;
   checking: boolean;
@@ -13,19 +13,21 @@ export type CredentialOAuthState = {
   onStart: () => void;
 };
 
-export function CodexOAuthDeviceCard({ draft, oauth }: {
+export function CredentialOAuthCard({ draft, oauth }: {
   draft: CreateProviderCredentialDraft;
   oauth?: CredentialOAuthState;
 }) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   if (!oauth) return null;
+  const providerLabel = draft.mode === "claude_subscription" ? "Claude" : "OpenAI";
   const status = oauth.status?.status ?? (oauth.start ? "pending" : "idle");
   const codeCopied = copiedCode === oauth.start?.userCode;
+  const userCode = oauth.start?.userCode;
   return (
     <div className="provider-credential-oauth">
       <div>
-        <strong>OpenAI sign-in</strong>
-        <span className="faint">{oauthStatusText(status, oauth.checking)}</span>
+        <strong>{providerLabel} sign-in</strong>
+        <span className="faint">{oauthStatusText(status, oauth.checking, providerLabel)}</span>
       </div>
       <button
         className="btn btn-primary"
@@ -35,40 +37,53 @@ export function CodexOAuthDeviceCard({ draft, oauth }: {
       >
         {oauthButtonLabel(oauth)}
       </button>
-      {oauth.start ? (
+      {oauth.start && userCode ? (
         <div className="provider-credential-oauth-code">
           <div className="provider-credential-oauth-code-main">
             <span className="provider-credential-oauth-code-label">Copy this code into OpenAI</span>
-            <span className="provider-credential-oauth-user-code">{oauth.start.userCode}</span>
+            <span className="provider-credential-oauth-user-code">{userCode}</span>
           </div>
           <div className="provider-credential-oauth-code-actions">
             <button
               className="btn btn-sm"
               type="button"
               onClick={() => {
-                void navigator.clipboard.writeText(oauth.start?.userCode ?? "");
-                setCopiedCode(oauth.start?.userCode ?? null);
+                void navigator.clipboard.writeText(userCode);
+                setCopiedCode(userCode);
               }}
             >
               {codeCopied ? <Check /> : <Copy />}
               {codeCopied ? "Copied" : "Copy code"}
             </button>
             <a href={oauth.start.verificationUrl} target="_blank" rel="noreferrer" className="btn btn-sm provider-credential-oauth-link">
-              Open OpenAI <ExternalLink />
+              Open {providerLabel} <ExternalLink />
+            </a>
+          </div>
+        </div>
+      ) : null}
+      {oauth.start && !userCode ? (
+        <div className="provider-credential-oauth-code">
+          <div className="provider-credential-oauth-code-main">
+            <span className="provider-credential-oauth-code-label">Browser sign-in opened</span>
+            <span className="faint">Finish the {providerLabel} login to save this credential.</span>
+          </div>
+          <div className="provider-credential-oauth-code-actions">
+            <a href={oauth.start.verificationUrl} target="_blank" rel="noreferrer" className="btn btn-sm provider-credential-oauth-link">
+              Open {providerLabel} <ExternalLink />
             </a>
           </div>
         </div>
       ) : null}
       {oauth.error ? <span className="action-error">{oauth.error}</span> : null}
-      {oauth.status?.status === "failed" ? <span className="action-error">{oauth.status.error || "OpenAI sign-in failed."}</span> : null}
+      {oauth.status?.status === "failed" ? <span className="action-error">{oauth.status.error || `${providerLabel} sign-in failed.`}</span> : null}
     </div>
   );
 }
 
-function oauthStatusText(status: string, checking: boolean) {
+function oauthStatusText(status: string, checking: boolean, providerLabel: string) {
   if (status === "completed") return "Credential saved.";
   if (status === "failed") return "Sign-in failed.";
-  if (status === "pending") return checking ? "Checking OpenAI confirmation." : "Waiting for OpenAI confirmation.";
+  if (status === "pending") return checking ? `Checking ${providerLabel} confirmation.` : `Waiting for ${providerLabel} confirmation.`;
   return "No sign-in started.";
 }
 

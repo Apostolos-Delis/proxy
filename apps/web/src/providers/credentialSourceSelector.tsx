@@ -43,10 +43,10 @@ function sourceOptions(draft: CreateProviderCredentialDraft): SourceOption[] {
   if (draft.mode === "claude_subscription") {
     return [
       {
-        source: "local_auth",
-        title: "Import from Claude Code",
-        detail: "Read CLAUDE_CODE_OAUTH_TOKEN from the proxy environment.",
-        icon: <FileKey />
+        source: "claude_oauth",
+        title: "Sign in with Claude",
+        detail: "Open browser login and save a Claude Code OAuth token.",
+        icon: <Link2 />
       },
       {
         source: "manual",

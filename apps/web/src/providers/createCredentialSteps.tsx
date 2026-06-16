@@ -4,7 +4,7 @@ import { WizardStepHead } from "../keys/stepHead";
 import { MenuSelect } from "../table/MenuSelect";
 import { Badge, GlassCard } from "../ui";
 import type { ProviderName } from "./data";
-import { CodexOAuthDeviceCard, type CredentialOAuthState } from "./credentialOAuthCard";
+import { CredentialOAuthCard, type CredentialOAuthState } from "./credentialOAuthCard";
 import { CredentialSourceSelector } from "./credentialSourceSelector";
 import { ProviderMark } from "./icons";
 import { ClaudeSetupGuide, CodexSetupGuide } from "./subscriptionCredentialGuides";
@@ -80,7 +80,7 @@ export function CredentialTypeStep({ draft, subscriptionAuthEnabled, onChange }:
           draft={draft}
           mode="claude_subscription"
           title="Claude subscription"
-          detail="Use a Claude setup-token for Claude Code traffic."
+          detail="Sign in with Claude for Claude Code traffic."
           disabled={!subscriptionAuthEnabled}
           onChange={onChange}
         />
@@ -110,10 +110,12 @@ export function CredentialDetailsStep({ draft, providerOptions, oauth, onChange 
   onChange: (draft: CreateProviderCredentialDraft) => void;
 }) {
   const fixedProvider = draft.mode !== "api_key";
-  const managedSubscription = fixedProvider && (draft.source === "local_auth" || draft.source === "openai_oauth");
-  const showBaseUrl = !(draft.mode === "codex_subscription" && draft.source === "openai_oauth");
+  const browserOAuth = draft.source === "claude_oauth" || draft.source === "openai_oauth";
+  const managedSubscription = fixedProvider && (draft.source === "local_auth" || browserOAuth);
+  const showBaseUrl = !browserOAuth;
   let stepSub = "Paste the provider secret here; it is encrypted at rest and never shown again.";
   if (managedSubscription) stepSub = "Import provider auth already minted on the proxy host.";
+  if (draft.source === "claude_oauth") stepSub = "Sign into Claude and let Prompt Proxy save the Claude Code credential.";
   if (draft.source === "openai_oauth") stepSub = "Sign into OpenAI and let Prompt Proxy save the Codex credential.";
   return (
     <GlassCard>
@@ -175,8 +177,8 @@ export function CredentialDetailsStep({ draft, providerOptions, oauth, onChange 
             </label>
           ) : null}
         </div>
-        {draft.mode === "codex_subscription" && draft.source === "openai_oauth" ? (
-          <CodexOAuthDeviceCard draft={draft} oauth={oauth} />
+        {browserOAuth ? (
+          <CredentialOAuthCard draft={draft} oauth={oauth} />
         ) : null}
         {managedSubscription ? null : (
           <label className="routing-create-field">
@@ -229,7 +231,7 @@ export function CredentialReviewStep({ draft }: { draft: CreateProviderCredentia
         {draft.mode === "codex_subscription" ? (
           <div><dt>ChatGPT account</dt><dd>{chatgptAccountReviewValue(draft)}</dd></div>
         ) : null}
-        {draft.mode === "codex_subscription" && draft.source === "openai_oauth" ? null : (
+        {draft.source === "claude_oauth" || draft.source === "openai_oauth" ? null : (
           <div><dt>Base URL</dt><dd>{draft.baseUrl.trim() || "Provider default"}</dd></div>
         )}
       </dl>

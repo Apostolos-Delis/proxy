@@ -1,3 +1,7 @@
+import { createHash, randomBytes } from "node:crypto";
+import { createServer, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
+
 import { PROVIDERS } from "@prompt-proxy/schema";
 
 import {
@@ -11,6 +15,13 @@ import type { ProviderCredentialAdminService } from "./providerCredentialAdmin.j
 
 const DEVICE_CODE_TIMEOUT_MS = 15 * 60 * 1000;
 const OAUTH_STATUS_RETENTION_MS = 15 * 60 * 1000;
+const ANTHROPIC_OAUTH_AUTHORIZE_URL = "https://claude.com/cai/oauth/authorize";
+const ANTHROPIC_OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
+const ANTHROPIC_OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+const ANTHROPIC_OAUTH_SUCCESS_URL = "https://platform.claude.com/oauth/code/success?app=claude-code";
+const ANTHROPIC_OAUTH_ERROR_URL = "https://platform.claude.com/oauth/code/success?app=claude-code&error=prompt-proxy";
+const ANTHROPIC_OAUTH_SCOPE = "user:inference";
+const CLAUDE_CODE_SETUP_TOKEN_EXPIRES_IN_SECONDS = 365 * 24 * 60 * 60;
 
 type PendingOAuth = {
   loginId: string;
@@ -20,6 +31,13 @@ type PendingOAuth = {
   providerAccountId?: string;
   error?: string;
   expiresAt: number;
+  cancel?: () => void;
+  cancelMessage: string;
+};
+
+type AnthropicOAuthCallbackResult = {
+  authorizationCode: string;
+  complete: (success: boolean) => void;
 };
 
 type OAuthStatusScope = {
@@ -53,7 +71,8 @@ export class ProviderCredentialOAuthService {
       organizationId: input.organizationId,
       actorUserId: input.actorUserId,
       status: "pending",
-      expiresAt: Date.now() + DEVICE_CODE_TIMEOUT_MS
+      expiresAt: Date.now() + DEVICE_CODE_TIMEOUT_MS,
+      cancelMessage: "OpenAI sign-in cancelled."
     };
     this.pending.set(loginId, pending);
 
@@ -69,6 +88,49 @@ export class ProviderCredentialOAuthService {
       loginId,
       verificationUrl: `${OPENAI_AUTH_ISSUER}/codex/device`,
       userCode: deviceCode.userCode
+    };
+  }
+
+  async startAnthropicClaudeCodeAuth(input: {
+    organizationId: string;
+    actorUserId: string;
+    name: string;
+  }) {
+    this.pruneExpired();
+    const codeVerifier = oauthSecret();
+    const codeChallenge = oauthCodeChallenge(codeVerifier);
+    const state = oauthSecret();
+    const callback = await startAnthropicOAuthCallback(state);
+    const loginId = createId("provider_oauth");
+    const pending: PendingOAuth = {
+      loginId,
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      status: "pending",
+      expiresAt: Date.now() + DEVICE_CODE_TIMEOUT_MS,
+      cancel: callback.close,
+      cancelMessage: "Claude sign-in cancelled."
+    };
+    this.pending.set(loginId, pending);
+
+    void this.completeAnthropicClaudeCodeAuth({
+      ...input,
+      loginId,
+      codeVerifier,
+      state,
+      port: callback.port,
+      callbackResult: callback.result,
+      closeCallback: callback.close
+    });
+
+    return {
+      loginId,
+      verificationUrl: anthropicAuthUrl({
+        codeChallenge,
+        state,
+        port: callback.port
+      }),
+      userCode: null
     };
   }
 
@@ -101,10 +163,11 @@ export class ProviderCredentialOAuthService {
       return null;
     }
     if (pending.status === "pending") {
+      pending.cancel?.();
       this.pending.set(loginId, {
         ...pending,
         status: "failed",
-        error: "OpenAI sign-in cancelled."
+        error: pending.cancelMessage
       });
     }
     return this.status(loginId, scope);
@@ -231,6 +294,85 @@ export class ProviderCredentialOAuthService {
     return tokens;
   }
 
+  private async completeAnthropicClaudeCodeAuth(input: {
+    organizationId: string;
+    actorUserId: string;
+    name: string;
+    loginId: string;
+    codeVerifier: string;
+    state: string;
+    port: number;
+    callbackResult: Promise<AnthropicOAuthCallbackResult>;
+    closeCallback: () => void;
+  }) {
+    let callback: AnthropicOAuthCallbackResult | undefined;
+    try {
+      callback = await withTimeout(
+        input.callbackResult,
+        DEVICE_CODE_TIMEOUT_MS,
+        "anthropic_claude_code_login_timeout"
+      );
+      if (!this.isPending(input.loginId)) {
+        callback.complete(false);
+        return;
+      }
+      const tokens = await this.exchangeAnthropicCode({
+        authorizationCode: callback.authorizationCode,
+        codeVerifier: input.codeVerifier,
+        state: input.state,
+        port: input.port
+      });
+      if (!this.isPending(input.loginId)) {
+        callback.complete(false);
+        return;
+      }
+      const created = await this.providerCredentialAdmin.createCredential({
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        body: {
+          provider: PROVIDERS.ANTHROPIC,
+          name: input.name,
+          authType: "oauth",
+          apiKey: tokens.accessToken,
+          oauthSource: "claude-browser-oauth"
+        }
+      });
+      callback.complete(true);
+      this.complete(input.loginId, created.providerAccountId);
+    } catch (error) {
+      callback?.complete(false);
+      this.fail(input.loginId, error);
+    } finally {
+      input.closeCallback();
+    }
+  }
+
+  private async exchangeAnthropicCode(input: {
+    authorizationCode: string;
+    codeVerifier: string;
+    state: string;
+    port: number;
+  }) {
+    const response = await this.fetcher(ANTHROPIC_OAUTH_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        grant_type: "authorization_code",
+        code: input.authorizationCode,
+        redirect_uri: `http://localhost:${input.port}/callback`,
+        client_id: ANTHROPIC_OAUTH_CLIENT_ID,
+        code_verifier: input.codeVerifier,
+        state: input.state,
+        expires_in: CLAUDE_CODE_SETUP_TOKEN_EXPIRES_IN_SECONDS
+      })
+    });
+    if (!response.ok) throw new Error(`anthropic_claude_code_token_exchange_failed:${response.status}`);
+    const body = await response.json() as { access_token?: string };
+    const accessToken = body.access_token?.trim();
+    if (!accessToken) throw new Error("anthropic_claude_code_token_exchange_missing_access_token");
+    return { accessToken };
+  }
+
   private complete(loginId: string, providerAccountId: string) {
     const pending = this.pending.get(loginId);
     if (!pending || pending.status !== "pending") return;
@@ -255,6 +397,7 @@ export class ProviderCredentialOAuthService {
   private pruneExpired(now = Date.now()) {
     for (const [loginId, pending] of this.pending) {
       if (pending.expiresAt + OAUTH_STATUS_RETENTION_MS < now) {
+        pending.cancel?.();
         this.pending.delete(loginId);
       }
     }
@@ -267,4 +410,116 @@ export class ProviderCredentialOAuthService {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function oauthSecret() {
+  return randomBytes(32).toString("base64url");
+}
+
+function oauthCodeChallenge(verifier: string) {
+  return createHash("sha256").update(verifier).digest("base64url");
+}
+
+function anthropicAuthUrl(input: { codeChallenge: string; state: string; port: number }) {
+  const url = new URL(ANTHROPIC_OAUTH_AUTHORIZE_URL);
+  url.searchParams.set("code", "true");
+  url.searchParams.set("client_id", ANTHROPIC_OAUTH_CLIENT_ID);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("redirect_uri", `http://localhost:${input.port}/callback`);
+  url.searchParams.set("scope", ANTHROPIC_OAUTH_SCOPE);
+  url.searchParams.set("code_challenge", input.codeChallenge);
+  url.searchParams.set("code_challenge_method", "S256");
+  url.searchParams.set("state", input.state);
+  return url.toString();
+}
+
+async function startAnthropicOAuthCallback(expectedState: string) {
+  let settled = false;
+  let closed = false;
+  let pendingResponse: ServerResponse | null = null;
+  let resolveResult: (result: AnthropicOAuthCallbackResult) => void = () => {};
+  let rejectResult: (error: Error) => void = () => {};
+  const result = new Promise<AnthropicOAuthCallbackResult>((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
+  });
+  const rejectOnce = (error: Error) => {
+    if (settled) return;
+    settled = true;
+    rejectResult(error);
+  };
+  const server = createServer((request, response) => {
+    const parsedUrl = new URL(request.url ?? "", `http://${request.headers.host ?? "localhost"}`);
+    if (parsedUrl.pathname !== "/callback") {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
+    const authorizationCode = parsedUrl.searchParams.get("code")?.trim();
+    const state = parsedUrl.searchParams.get("state")?.trim();
+    if (!authorizationCode) {
+      response.writeHead(400);
+      response.end("Authorization code not found");
+      rejectOnce(new Error("anthropic_claude_code_login_missing_code"));
+      return;
+    }
+    if (state !== expectedState) {
+      response.writeHead(400);
+      response.end("Invalid state parameter");
+      rejectOnce(new Error("anthropic_claude_code_login_invalid_state"));
+      return;
+    }
+    if (settled) {
+      response.writeHead(409);
+      response.end("OAuth callback already received");
+      return;
+    }
+    pendingResponse = response;
+    settled = true;
+    resolveResult({
+      authorizationCode,
+      complete: (success) => {
+        if (!pendingResponse) return;
+        pendingResponse.writeHead(302, { Location: success ? ANTHROPIC_OAUTH_SUCCESS_URL : ANTHROPIC_OAUTH_ERROR_URL });
+        pendingResponse.end();
+        pendingResponse = null;
+      }
+    });
+  });
+
+  server.on("error", (error) => rejectOnce(error));
+  const port = await new Promise<number>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "localhost", () => {
+      server.off("error", reject);
+      resolve((server.address() as AddressInfo).port);
+    });
+  });
+
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    if (pendingResponse) {
+      pendingResponse.writeHead(302, { Location: ANTHROPIC_OAUTH_ERROR_URL });
+      pendingResponse.end();
+      pendingResponse = null;
+    }
+    server.close();
+    rejectOnce(new Error("anthropic_claude_code_login_cancelled"));
+  };
+
+  return { port, result, close };
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string) {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([
+    promise.finally(() => {
+      if (timeout) clearTimeout(timeout);
+    }),
+    timeoutPromise
+  ]);
 }

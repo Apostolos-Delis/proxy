@@ -666,10 +666,20 @@ builder.mutationFields((t) => ({
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("provider_accounts_not_found");
       const identity = requireAdminRole(context);
-      if (args.input.provider !== "openai") {
+      if (args.input.provider === "anthropic" && !context.config.subscriptionOAuthEnabled) {
+        throw adminGraphQLError("subscription_oauth_disabled", 400);
+      }
+      if (args.input.provider !== "openai" && args.input.provider !== "anthropic") {
         throw adminGraphQLError("provider_oauth_unsupported_provider", 400);
       }
       try {
+        if (args.input.provider === "anthropic") {
+          return await context.persistence.providerCredentialOAuth.startAnthropicClaudeCodeAuth({
+            organizationId: identity.organizationId,
+            actorUserId: identity.userId,
+            name: args.input.name
+          });
+        }
         return await context.persistence.providerCredentialOAuth.startOpenAICodexDeviceAuth({
           organizationId: identity.organizationId,
           actorUserId: identity.userId,

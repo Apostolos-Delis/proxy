@@ -6,13 +6,14 @@ subscription credentials are always enabled. Claude subscription credentials are
 and disabled with `SUBSCRIPTION_OAUTH_ENABLED=false`.
 
 > **Provider boundary (read first).** Use provider-owned auth flows for accounts the engineer owns:
-> `codex login` / Codex access tokens for OpenAI, and `claude setup-token` /
-> `CLAUDE_CODE_OAUTH_TOKEN` for Anthropic. Prompt Proxy stores provider secrets encrypted at rest;
+> console/browser OAuth, `codex login`, or Codex access tokens for OpenAI, and Claude browser OAuth
+> or `claude setup-token` for Anthropic. Prompt Proxy stores provider secrets encrypted at rest;
 > OpenAI console sign-in and Codex auth JSON imports store refresh tokens only inside the encrypted
-> provider secret bundle. This feature is still an
+> provider secret bundle. Claude browser OAuth stores the same long-lived setup-token form that
+> Claude Code uses for `CLAUDE_CODE_OAUTH_TOKEN`. This feature is still an
 > internal operator workflow, not an external customer-facing pooling product. On shared proxy hosts,
-> local import reads the proxy process user's auth material, so prefer manual paste until hosted
-> per-user OAuth exists. Scope details live in [the local auth import plan](../scopes/subscription-local-auth-v1/PLAN.md).
+> Claude browser OAuth requires the browser and proxy callback listener to be on the same host.
+> Scope details live in [the local auth import plan](../scopes/subscription-local-auth-v1/PLAN.md).
 
 ## Enable
 
@@ -36,14 +37,15 @@ on a running instance — the flag is the Claude hard stop, revoke is the per-cr
 into 401s rather than a graceful fallback — keep a valid company key configured, or accept that flag-off
 stops affected Anthropic traffic.
 
-## Anthropic: Local Import
+## Anthropic: Browser Sign-In
 
-1. Run `claude setup-token` while signed into the Claude account that should pay for this traffic.
-   Claude Code prints a long-lived `sk-ant-oat01-...` setup token.
-2. Set `CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...` where the proxy runs, then restart the proxy.
-3. Console → **Provider keys** → **Add provider key** → **Claude subscription** → source
-   **Import from Claude Code** → save. The server reads `CLAUDE_CODE_OAUTH_TOKEN`, validates the
-   `sk-ant-oat01-` prefix, encrypts the token, and never returns it.
+1. Console → **Provider keys** → **Add provider key** → **Claude subscription** → source
+   **Sign in with Claude**.
+2. Start sign-in and finish the Claude browser login for the account that should pay for this
+   traffic. The proxy runs a temporary `localhost` callback listener, exchanges the returned code,
+   validates the resulting `sk-ant-oat01-` token, encrypts it, and never returns it.
+3. Browser sign-in must run on the same machine as the proxy callback listener. If that is not true,
+   use the manual fallback below.
 4. Bind the credential to a prompt-proxy API key **you own** on the **API keys** page. Binding is
    hard-rejected (`provider_credential_owner_mismatch`) when the key belongs to someone else or has
    no owner.
@@ -110,9 +112,10 @@ stops affected Anthropic traffic.
   the company key path.
 - **Model coverage:** the token only covers models the plan grants. Routing configs that select
   models outside the plan will fail upstream for that traffic.
-- **Token lifetime:** `setup-token` tokens last about a year and are not auto-rotated; revoke and
-  re-paste to rotate. Upstream 401s on a subscription credential usually mean the token was revoked
-  or the account was actioned — revoke the credential and fall back to API keys.
+- **Token lifetime:** Claude browser OAuth and `setup-token` credentials last about a year and are
+  not auto-rotated; revoke and re-create to rotate. Upstream 401s on a subscription credential
+  usually mean the token was revoked or the account was actioned — revoke the credential and fall
+  back to API keys.
 - **Prefix drift:** the `sk-ant-oat01-` prefix check (server: `CLAUDE_SUBSCRIPTION_TOKEN_PREFIX` in
   `packages/schema`) will reject future token formats if Anthropic rotates prefixes; update the
   constant if that happens.

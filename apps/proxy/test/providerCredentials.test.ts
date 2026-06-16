@@ -45,6 +45,12 @@ const CREATE = `mutation Create($input: CreateProviderCredentialInput!) {
 const CREATE_LOCAL = `mutation CreateLocal($input: CreateProviderCredentialFromLocalAuthInput!) {
   createProviderCredentialFromLocalAuth(input: $input) { id providerId provider baseUrl name status authType secretHint ownerUserId }
 }`;
+const START_OAUTH = `mutation StartOAuth($input: StartProviderCredentialOAuthInput!) {
+  startProviderCredentialOAuth(input: $input) { loginId verificationUrl userCode }
+}`;
+const CANCEL_OAUTH = `mutation CancelOAuth($loginId: ID!) {
+  cancelProviderCredentialOAuth(loginId: $loginId) { loginId status error }
+}`;
 const REVOKE = `mutation Revoke($id: ID!) { revokeProviderCredential(providerAccountId: $id) { id status } }`;
 const BIND = `mutation Bind($apiKeyId: ID!, $provider: String!, $providerAccountId: ID) {
   assignApiKeyProviderAccount(apiKeyId: $apiKeyId, provider: $provider, providerAccountId: $providerAccountId) {
@@ -858,6 +864,96 @@ describe("subscription oauth credentials", () => {
       tokenStorage: "token_bundle",
       chatgptAccountId: CHATGPT_ACCOUNT_ID
     });
+  });
+
+  it("creates an Anthropic subscription credential through browser OAuth", async () => {
+    const fixture = await setup("org_oauth_anthropic_browser", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://platform.claude.com/v1/oauth/token") {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        expect(body.grant_type).toBe("authorization_code");
+        expect(body.code).toBe("anthropic-code-1");
+        expect(body.client_id).toBe("9d1c250a-e61b-44d9-88ed-5944d1962f5e");
+        expect(body.redirect_uri).toMatch(/^http:\/\/localhost:\d+\/callback$/);
+        expect(body.code_verifier).toEqual(expect.any(String));
+        expect(body.state).toEqual(expect.any(String));
+        expect(body.expires_in).toBe(365 * 24 * 60 * 60);
+        return jsonResponse({
+          access_token: OAUTH_TOKEN,
+          expires_in: 365 * 24 * 60 * 60,
+          scope: "user:inference"
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    const oauth = new ProviderCredentialOAuthService(
+      fixture.persistence.providerCredentialAdmin,
+      fetchMock as unknown as typeof fetch
+    );
+
+    const started = await oauth.startAnthropicClaudeCodeAuth({
+      organizationId: "org_oauth_anthropic_browser",
+      actorUserId: "local-user",
+      name: "Browser Claude auth"
+    });
+    const verificationUrl = new URL(started.verificationUrl);
+    expect(`${verificationUrl.origin}${verificationUrl.pathname}`).toBe("https://claude.com/cai/oauth/authorize");
+    expect(verificationUrl.searchParams.get("scope")).toBe("user:inference");
+    expect(verificationUrl.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(started.userCode).toBeNull();
+
+    const redirectUri = verificationUrl.searchParams.get("redirect_uri");
+    const state = verificationUrl.searchParams.get("state");
+    if (!redirectUri || !state) throw new Error("Anthropic OAuth URL missing callback parameters");
+    const browserRedirect = fetch(`${redirectUri}?code=anthropic-code-1&state=${state}`, { redirect: "manual" });
+    const status = await waitForOAuthCompletion(oauth, started.loginId, {
+      organizationId: "org_oauth_anthropic_browser",
+      actorUserId: "local-user"
+    });
+    const browserResponse = await browserRedirect;
+
+    expect(browserResponse.status).toBe(302);
+    expect(browserResponse.headers.get("location")).toBe("https://platform.claude.com/oauth/code/success?app=claude-code");
+    expect(status.status).toBe("completed");
+    expect(status.providerAccountId).toBeTruthy();
+
+    const [row] = await fixture.db
+      .select({
+        secretCiphertext: providerAccounts.secretCiphertext,
+        settings: providerAccounts.settings
+      })
+      .from(providerAccounts)
+      .where(eq(providerAccounts.id, status.providerAccountId));
+    expect(decryptSecret(row!.secretCiphertext ?? "", ENCRYPTION_KEY)).toBe(OAUTH_TOKEN);
+    expect(row!.settings).toEqual({ tokenKind: "claude_oauth", source: "claude-browser-oauth" });
+  });
+
+  it("starts and cancels Anthropic browser OAuth through GraphQL", async () => {
+    const fixture = await setup("org_oauth_anthropic_graphql", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
+
+    const started = await gql(fixture, START_OAUTH, {
+      input: { provider: "anthropic", name: "GraphQL Claude auth" }
+    });
+    expect(started.errors).toBeUndefined();
+    expect(started.data?.startProviderCredentialOAuth.userCode).toBeNull();
+    expect(started.data?.startProviderCredentialOAuth.verificationUrl).toContain("https://claude.com/cai/oauth/authorize");
+
+    const cancelled = await gql(fixture, CANCEL_OAUTH, {
+      loginId: started.data?.startProviderCredentialOAuth.loginId
+    });
+    expect(cancelled.errors).toBeUndefined();
+    expect(cancelled.data?.cancelProviderCredentialOAuth.status).toBe("failed");
+    expect(cancelled.data?.cancelProviderCredentialOAuth.error).toBe("Claude sign-in cancelled.");
+  });
+
+  it("rejects Anthropic browser OAuth when subscription auth is disabled", async () => {
+    const fixture = await setup("org_oauth_anthropic_graphql_disabled", { SUBSCRIPTION_OAUTH_ENABLED: "false" });
+
+    const started = await gql(fixture, START_OAUTH, {
+      input: { provider: "anthropic", name: "Disabled Claude auth" }
+    });
+    expect(started.errors?.[0]?.message).toBe("subscription_oauth_disabled");
   });
 
   it("cancels pending OpenAI device-code auth without creating a credential", async () => {
