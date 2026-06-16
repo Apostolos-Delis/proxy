@@ -6,7 +6,7 @@ export function ClaudeSetupGuide() {
       <KeyRound />
       <div>
         <strong>Use a Claude setup token</strong>
-        <span>Prompt Proxy does not run an OAuth redirect here; paste a token minted by Claude Code.</span>
+        <span>This setup currently uses a manual token flow; paste a token minted by Claude Code.</span>
         <ol className="provider-credential-steps">
           <li>Run <span className="mono">claude setup-token</span> while signed into the Claude subscription account that should pay for this traffic.</li>
           <li>Paste the printed <span className="mono">sk-ant-oat01-...</span> value into <span className="mono">Claude setup token</span>.</li>
@@ -23,7 +23,7 @@ export function CodexSetupGuide() {
       <Link2 />
       <div>
         <strong>Use an existing Codex identity</strong>
-        <span>Prompt Proxy does not open a ChatGPT sign-in popup here; paste an existing Codex token or auth JSON.</span>
+        <span>This setup currently uses a manual token flow; paste an existing Codex token or auth JSON.</span>
         <ol className="provider-credential-steps">
           <li>Create a Codex access token from the ChatGPT workspace Access tokens page, or run <span className="mono">codex login</span> and use <span className="mono">~/.codex/auth.json</span> when present.</li>
           <li>Paste the full auth JSON, or paste the raw access token and fill <span className="mono">ChatGPT account ID</span> separately.</li>
