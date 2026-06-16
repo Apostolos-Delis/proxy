@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import {
   createProviderCredential,
+  createProviderCredentialFromLocalAuth,
   fetchProviderRegistry,
   fetchSubscriptionOAuthEnabled,
   type CreateProviderCredentialInput,
@@ -37,6 +38,11 @@ type CreatedProviderCredential = {
   mode: CreateProviderCredentialMode;
 };
 
+type CreateProviderCredentialRequest = {
+  mode: CreateProviderCredentialMode;
+  source: CreateProviderCredentialDraft["source"];
+} & CreateProviderCredentialInput;
+
 export function CreateProviderKeyModal({ onClose, onCreated }: {
   onClose: () => void;
   onCreated?: (account: { id: string; provider: ProviderName }) => void;
@@ -58,9 +64,15 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
   const subscriptionAuthEnabled = subscriptionAuthQueryData === true;
 
   const createMutation = useMutation({
-    mutationFn: async (input: CreateProviderCredentialInput & { mode: CreateProviderCredentialMode }) => {
-      const { mode, ...credentialInput } = input;
-      const account = await createProviderCredential(credentialInput);
+    mutationFn: async (input: CreateProviderCredentialRequest) => {
+      const { mode, source, ...credentialInput } = input;
+      const account = source === "local_auth" && mode !== "api_key"
+        ? await createProviderCredentialFromLocalAuth({
+          provider: credentialInput.provider,
+          name: credentialInput.name,
+          baseUrl: credentialInput.baseUrl
+        })
+        : await createProviderCredential(credentialInput);
       if (!account) throw new Error("The server did not confirm the new key — check the provider keys list before retrying.");
       return {
         id: account.id,
@@ -108,7 +120,8 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
       apiKey: draft.apiKey.trim(),
       baseUrl: draft.baseUrl.trim() || undefined,
       chatgptAccountId: draft.chatgptAccountId.trim() || undefined,
-      mode: draft.mode
+      mode: draft.mode,
+      source: draft.source
     });
   };
 

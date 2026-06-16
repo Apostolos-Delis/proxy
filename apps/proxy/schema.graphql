@@ -146,6 +146,12 @@ input CreateInvitationInput {
   role: MemberRole!
 }
 
+input CreateProviderCredentialFromLocalAuthInput {
+  baseUrl: String
+  name: String!
+  provider: String!
+}
+
 input CreateProviderCredentialInput {
   apiKey: String!
   authType: ProviderAccountAuthType
@@ -301,6 +307,7 @@ type Mutation {
   createInvitation(input: CreateInvitationInput!): InvitationActionResult!
   createProvider(input: CreateProviderInput!): ProviderRegistryEntry
   createProviderCredential(input: CreateProviderCredentialInput!): ProviderAccount
+  createProviderCredentialFromLocalAuth(input: CreateProviderCredentialFromLocalAuthInput!): ProviderAccount
   createRoutingConfig(input: CreateRoutingConfigInput!): RoutingConfigDetail!
   createRoutingConfigVersion(config: JSON!, configId: ID!): RoutingConfigDetail!
   createWorkspace(input: CreateWorkspaceInput!): WorkspaceSummary!

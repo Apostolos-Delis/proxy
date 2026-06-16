@@ -47,6 +47,14 @@ const CreateProviderCredentialInput = builder.inputType("CreateProviderCredentia
   })
 });
 
+const CreateProviderCredentialFromLocalAuthInput = builder.inputType("CreateProviderCredentialFromLocalAuthInput", {
+  fields: (t) => ({
+    provider: t.string({ required: true }),
+    name: t.string({ required: true }),
+    baseUrl: t.string()
+  })
+});
+
 const ProviderEndpointInput = builder.inputType("ProviderEndpointInput", {
   fields: (t) => ({
     dialect: t.string({ required: true }),
@@ -610,6 +618,31 @@ builder.mutationFields((t) => ({
             baseUrl: args.input.baseUrl ?? undefined,
             apiKey: args.input.apiKey,
             chatgptAccountId: args.input.chatgptAccountId ?? undefined
+          }
+        });
+        const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
+        return accounts.find((account) => account.id === created.providerAccountId) ?? null;
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  createProviderCredentialFromLocalAuth: t.field({
+    type: ProviderAccount,
+    nullable: true,
+    args: { input: t.arg({ type: CreateProviderCredentialFromLocalAuthInput, required: true }) },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("provider_accounts_not_found");
+      const identity = requireAdminRole(context);
+      try {
+        const created = await context.persistence.providerCredentialAdmin.createCredentialFromLocalAuth({
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
+          body: {
+            provider: args.input.provider,
+            name: args.input.name,
+            baseUrl: args.input.baseUrl ?? undefined
           }
         });
         const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];

@@ -62,6 +62,15 @@ const CreateProviderCredentialDocument = graphql(`
   }
 `);
 
+const CreateProviderCredentialFromLocalAuthDocument = graphql(`
+  mutation CreateProviderCredentialFromLocalAuth($input: CreateProviderCredentialFromLocalAuthInput!) {
+    createProviderCredentialFromLocalAuth(input: $input) {
+      id
+      name
+    }
+  }
+`);
+
 const CreateProviderDocument = graphql(`
   mutation CreateProvider($input: CreateProviderInput!) {
     createProvider(input: $input) {
@@ -151,6 +160,11 @@ export type CreateProviderCredentialInput = {
   baseUrl?: string;
   chatgptAccountId?: string;
 };
+export type CreateProviderCredentialFromLocalAuthInput = {
+  provider: ProviderName;
+  name: string;
+  baseUrl?: string;
+};
 
 export async function fetchProviderAccounts() {
   return (await gqlFetch(ProviderAccountsDocument)).providerAccounts;
@@ -166,6 +180,10 @@ export async function fetchSubscriptionOAuthEnabled() {
 
 export async function createProviderCredential(input: CreateProviderCredentialInput) {
   return (await gqlFetch(CreateProviderCredentialDocument, { input })).createProviderCredential;
+}
+
+export async function createProviderCredentialFromLocalAuth(input: CreateProviderCredentialFromLocalAuthInput) {
+  return (await gqlFetch(CreateProviderCredentialFromLocalAuthDocument, { input })).createProviderCredentialFromLocalAuth;
 }
 
 export async function createProvider(input: ProviderInput) {

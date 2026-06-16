@@ -10,6 +10,7 @@
 - [Model access profiles scope](scopes/model-access-profiles-v1/PLAN.md)
 - [AWS prod-like deployment scope](scopes/aws-prod-like-deployment-v1/PLAN.md)
 - [Subscription auth scope](scopes/subscription-auth-v1/PLAN.md)
+- [Subscription local auth import scope](scopes/subscription-local-auth-v1/PLAN.md)
 - [Provider architecture scope](scopes/provider-architecture-v1/PLAN.md)
 - [Harness model translation scope](scopes/harness-model-translation-v1/PLAN.md)
 

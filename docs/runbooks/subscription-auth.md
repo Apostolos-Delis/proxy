@@ -2,23 +2,24 @@
 
 Subscription credentials let an internal engineer route their own Claude Code or Codex traffic through
 the proxy on a personal/workspace subscription credential instead of the company API key. OpenAI Codex
-subscription credentials are always enabled. Claude subscription credentials are internal-only,
-enabled by default, and disabled with `SUBSCRIPTION_OAUTH_ENABLED=false`.
+subscription credentials are always enabled. Claude subscription credentials are enabled by default
+and disabled with `SUBSCRIPTION_OAUTH_ENABLED=false`.
 
-> **Provider boundary (read first).** For Anthropic, using subscription OAuth tokens outside Claude
-> Code/Claude.ai is against the letter of Anthropic's terms; enforcement (bans, throttles) lands on
-> the **individual engineer's own Claude account**, not a shared org account. For OpenAI, prefer
-> official Codex access tokens where available; short-lived ChatGPT login access tokens must be
-> rotated manually when they expire. This feature exists as a deliberate, internal-only convenience
-> and must never be offered to external customers. Risk context and the original sign-off gate live in
-> [the scope](../scopes/subscription-auth-v1/PLAN.md).
+> **Provider boundary (read first).** Use provider-owned auth flows for accounts the engineer owns:
+> `codex login` / Codex access tokens for OpenAI, and `claude setup-token` /
+> `CLAUDE_CODE_OAUTH_TOKEN` for Anthropic. Prompt Proxy stores only the encrypted access/setup token
+> plus non-secret account metadata; it does not store OpenAI refresh tokens. This feature is still an
+> internal operator workflow, not an external customer-facing pooling product. On shared proxy hosts,
+> local import reads the proxy process user's auth material, so prefer manual paste until hosted
+> per-user OAuth exists. Scope details live in [the local auth import plan](../scopes/subscription-local-auth-v1/PLAN.md).
 
 ## Enable
 
 1. Leave `SUBSCRIPTION_OAUTH_ENABLED=true` on the proxy, or unset it to use the default-on behavior. `PROVIDER_SECRET_ENCRYPTION_KEY`
    must be set (tokens are encrypted at rest like any BYOK secret), and verify a real company
    `ANTHROPIC_API_KEY` is configured so the disable path degrades gracefully (see below).
-2. The Provider keys console now shows an **Auth type** select on "Add provider key".
+2. The Provider keys console shows **Claude subscription** and **Codex subscription** connection
+   types on "Add provider key".
 
 ## Disable (kill switch)
 
@@ -34,49 +35,71 @@ on a running instance — the flag is the Claude hard stop, revoke is the per-cr
 into 401s rather than a graceful fallback — keep a valid company key configured, or accept that flag-off
 stops affected Anthropic traffic.
 
-## Anthropic: Mint, Paste, Bind, Use
+## Anthropic: Local Import
 
-1. Run `claude setup-token` locally on a Claude Pro/Max account and copy the printed
-   `sk-ant-oat01-…` token (inference-scoped, ~1-year lifetime — no refresh subsystem needed).
-2. Console → **Provider keys** → **Add provider key** → provider **anthropic** → auth type
-   **Subscription** → paste the token. The server rejects wrong prefixes and creation while the flag is
-   off.
+1. Run `claude setup-token` while signed into the Claude account that should pay for this traffic.
+   Claude Code prints a long-lived `sk-ant-oat01-...` setup token.
+2. Set `CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...` where the proxy runs, then restart the proxy.
+3. Console → **Provider keys** → **Add provider key** → **Claude subscription** → source
+   **Import from Claude Code** → save. The server reads `CLAUDE_CODE_OAUTH_TOKEN`, validates the
+   `sk-ant-oat01-` prefix, encrypts the token, and never returns it.
+4. Bind the credential to a prompt-proxy API key **you own** on the **API keys** page. Binding is
+   hard-rejected (`provider_credential_owner_mismatch`) when the key belongs to someone else or has
+   no owner.
+5. Point Claude Code at the proxy with that API key. Requests forward with
+   `Authorization: Bearer <token>` (never `x-api-key`); `anthropic-version`, `anthropic-beta`, and
+   the `x-claude-code-*` identity headers (session, agent, and parent-agent ids) pass through
+   unchanged. This covers `/v1/messages` and `/v1/messages/count_tokens`.
+
+## Anthropic: Manual Fallback
+
+1. Run `claude setup-token` while signed into the Claude account that should pay for this traffic.
+2. Console → **Provider keys** → **Add provider key** → **Claude subscription** → source
+   **Paste setup token** → paste the printed `sk-ant-oat01-...` value.
 3. Bind the credential to a prompt-proxy API key **you own** on the **API keys** page. Binding is
    hard-rejected (`provider_credential_owner_mismatch`) when the key belongs to someone else or has
-   no owner — one engineer's subscription must never serve another's traffic (pooling is the
-   pattern Anthropic bans for).
+   no owner.
 4. Point Claude Code at the proxy with that API key. Requests forward with
    `Authorization: Bearer <token>` (never `x-api-key`); `anthropic-version`, `anthropic-beta`, and
    the `x-claude-code-*` identity headers (session, agent, and parent-agent ids) pass through
    unchanged. This covers `/v1/messages` and `/v1/messages/count_tokens`.
 
-## OpenAI: Mint, Paste, Bind, Use
+## OpenAI: Local Import
 
-1. Create or obtain a Codex access token for ChatGPT-backed Codex usage. For Business/Enterprise,
-   prefer the ChatGPT workspace **Access tokens** page. For a local ChatGPT login, `codex login`
-   stores a short-lived access token in `~/.codex/auth.json` or the OS credential store; Codex refreshes
-   it during normal Codex use, but the proxy does not call OpenAI's refresh endpoint.
-2. Get the ChatGPT account ID for the same Codex identity. Codex sends this upstream as the
-   `ChatGPT-Account-Id` header.
-3. Console → **Provider keys** → **Add provider key** → provider **openai** → auth type
-   **Subscription** → paste the Codex access token and ChatGPT account ID. This option is always enabled; it is not gated by `SUBSCRIPTION_OAUTH_ENABLED`. The server stores only the
-   access token encrypted at rest and stores the account ID as credential metadata.
+1. Run `codex login` on the proxy host as the same OS user that runs Prompt Proxy. If browser login
+   cannot complete there, run `codex login --device-auth`.
+2. Confirm the auth cache exists at `~/.codex/auth.json`. If it lives somewhere else, set
+   `PROMPT_PROXY_CODEX_AUTH_FILE=/path/to/auth.json` where the proxy runs, then restart the proxy.
+3. Console → **Provider keys** → **Add provider key** → **Codex subscription** → source
+   **Import from Codex** → save. The server reads the auth JSON, extracts `access_token` or
+   `tokens.access_token`, extracts `chatgpt_account_id`, `account_id`, or `tokens.account_id`, and
+   stores only the access token encrypted at rest plus the ChatGPT account ID as metadata. It does
+   not store `refresh_token`.
 4. Bind the credential to a prompt-proxy API key **you own** on the **API keys** page. The same
    `provider_credential_owner_mismatch` guardrail applies to OpenAI subscription credentials.
 5. Point Codex at the proxy with that API key. Requests forward to `OPENAI_CHATGPT_BASE_URL`
    (default `https://chatgpt.com/backend-api/codex`) with `Authorization: Bearer <token>` and
    `ChatGPT-Account-Id: <account-id>`. API-key OpenAI traffic continues to use `OPENAI_BASE_URL`.
 
+## OpenAI: Manual Fallback
+
+1. Create or obtain a Codex access token for ChatGPT-backed Codex usage. For Business/Enterprise,
+   prefer the ChatGPT workspace **Access tokens** page.
+2. Get the ChatGPT account ID for the same Codex identity. Codex sends this upstream as the
+   `ChatGPT-Account-Id` header.
+3. Console → **Provider keys** → **Add provider key** → **Codex subscription** → source
+   **Paste token or JSON** → paste the Codex access token and ChatGPT account ID, or paste the full
+   Codex auth JSON. This option is always enabled; it is not gated by
+   `SUBSCRIPTION_OAUTH_ENABLED`.
+4. Bind and use it the same way as the local import path.
+
 ## Caveats
 
-- **OpenAI refresh:** the proxy does not store or refresh OpenAI refresh tokens. Use official Codex
-  access tokens where available, or rotate short-lived ChatGPT login access tokens manually.
+- **OpenAI refresh:** the proxy does not store or refresh OpenAI refresh tokens. If a Codex login
+  access token expires, let Codex refresh `auth.json` and re-import the credential, or rotate a
+  manually pasted token.
 - **OpenAI coverage:** this path is for HTTP `/v1/responses`; the OpenAI realtime WebSocket remains on
   the company key path.
-- **Agent SDK credit bucket:** since June 15, 2026, Anthropic meters Agent SDK / non-interactive
-  usage on subscription plans from a separate monthly credit, distinct from interactive limits.
-  Proxied traffic likely draws from that bucket, so a subscription buys less through the proxy than
-  in the Claude Code TUI.
 - **Model coverage:** the token only covers models the plan grants. Routing configs that select
   models outside the plan will fail upstream for that traffic.
 - **Token lifetime:** `setup-token` tokens last about a year and are not auto-rotated; revoke and

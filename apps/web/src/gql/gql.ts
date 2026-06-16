@@ -38,6 +38,7 @@ type Documents = {
     "\n  query ProviderAccounts {\n    providerAccounts {\n      id\n      organizationId\n      provider\n      name\n      authType\n      status\n      baseUrl\n      secretHint\n      ownerUserId\n      boundKeyCount\n      createdAt\n      lastUsedAt\n    }\n  }\n": typeof types.ProviderAccountsDocument,
     "\n  query ProviderRegistry {\n    providers {\n      id\n      organizationId\n      slug\n      displayName\n      baseUrl\n      authStyle\n      endpoints {\n        dialect\n        path\n      }\n      defaultHeaders\n      capabilities\n      forwardHarnessHeaders\n      enabled\n      builtin\n    }\n  }\n": typeof types.ProviderRegistryDocument,
     "\n  mutation CreateProviderCredential($input: CreateProviderCredentialInput!) {\n    createProviderCredential(input: $input) {\n      id\n      name\n    }\n  }\n": typeof types.CreateProviderCredentialDocument,
+    "\n  mutation CreateProviderCredentialFromLocalAuth($input: CreateProviderCredentialFromLocalAuthInput!) {\n    createProviderCredentialFromLocalAuth(input: $input) {\n      id\n      name\n    }\n  }\n": typeof types.CreateProviderCredentialFromLocalAuthDocument,
     "\n  mutation CreateProvider($input: CreateProviderInput!) {\n    createProvider(input: $input) {\n      id\n      slug\n      displayName\n      baseUrl\n      authStyle\n      enabled\n      builtin\n    }\n  }\n": typeof types.CreateProviderDocument,
     "\n  mutation UpdateProvider($input: UpdateProviderInput!) {\n    updateProvider(input: $input) {\n      id\n      slug\n      displayName\n      baseUrl\n      authStyle\n      enabled\n      builtin\n    }\n  }\n": typeof types.UpdateProviderDocument,
     "\n  mutation DisableProvider($providerId: ID!) {\n    disableProvider(providerId: $providerId) {\n      id\n      enabled\n    }\n  }\n": typeof types.DisableProviderDocument,
@@ -108,6 +109,7 @@ const documents: Documents = {
     "\n  query ProviderAccounts {\n    providerAccounts {\n      id\n      organizationId\n      provider\n      name\n      authType\n      status\n      baseUrl\n      secretHint\n      ownerUserId\n      boundKeyCount\n      createdAt\n      lastUsedAt\n    }\n  }\n": types.ProviderAccountsDocument,
     "\n  query ProviderRegistry {\n    providers {\n      id\n      organizationId\n      slug\n      displayName\n      baseUrl\n      authStyle\n      endpoints {\n        dialect\n        path\n      }\n      defaultHeaders\n      capabilities\n      forwardHarnessHeaders\n      enabled\n      builtin\n    }\n  }\n": types.ProviderRegistryDocument,
     "\n  mutation CreateProviderCredential($input: CreateProviderCredentialInput!) {\n    createProviderCredential(input: $input) {\n      id\n      name\n    }\n  }\n": types.CreateProviderCredentialDocument,
+    "\n  mutation CreateProviderCredentialFromLocalAuth($input: CreateProviderCredentialFromLocalAuthInput!) {\n    createProviderCredentialFromLocalAuth(input: $input) {\n      id\n      name\n    }\n  }\n": types.CreateProviderCredentialFromLocalAuthDocument,
     "\n  mutation CreateProvider($input: CreateProviderInput!) {\n    createProvider(input: $input) {\n      id\n      slug\n      displayName\n      baseUrl\n      authStyle\n      enabled\n      builtin\n    }\n  }\n": types.CreateProviderDocument,
     "\n  mutation UpdateProvider($input: UpdateProviderInput!) {\n    updateProvider(input: $input) {\n      id\n      slug\n      displayName\n      baseUrl\n      authStyle\n      enabled\n      builtin\n    }\n  }\n": types.UpdateProviderDocument,
     "\n  mutation DisableProvider($providerId: ID!) {\n    disableProvider(providerId: $providerId) {\n      id\n      enabled\n    }\n  }\n": types.DisableProviderDocument,
@@ -247,6 +249,10 @@ export function graphql(source: "\n  query ProviderRegistry {\n    providers {\n
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  mutation CreateProviderCredential($input: CreateProviderCredentialInput!) {\n    createProviderCredential(input: $input) {\n      id\n      name\n    }\n  }\n"): typeof import('./graphql').CreateProviderCredentialDocument;
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  mutation CreateProviderCredentialFromLocalAuth($input: CreateProviderCredentialFromLocalAuthInput!) {\n    createProviderCredentialFromLocalAuth(input: $input) {\n      id\n      name\n    }\n  }\n"): typeof import('./graphql').CreateProviderCredentialFromLocalAuthDocument;
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

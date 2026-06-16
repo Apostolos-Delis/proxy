@@ -4,6 +4,7 @@ import { WizardStepHead } from "../keys/stepHead";
 import { MenuSelect } from "../table/MenuSelect";
 import { Badge, GlassCard } from "../ui";
 import type { ProviderName } from "./data";
+import { CredentialSourceSelector } from "./credentialSourceSelector";
 import { ProviderMark } from "./icons";
 import { ClaudeSetupGuide, CodexSetupGuide } from "./subscriptionCredentialGuides";
 import {
@@ -13,6 +14,7 @@ import {
   namePlaceholderForDraft,
   secretLabelForDraft,
   secretPlaceholderForDraft,
+  sourceLabelForDraft,
   stepRailState,
   withCredentialMode,
   type CreateProviderCredentialDraft,
@@ -106,16 +108,21 @@ export function CredentialDetailsStep({ draft, providerOptions, onChange }: {
   onChange: (draft: CreateProviderCredentialDraft) => void;
 }) {
   const fixedProvider = draft.mode !== "api_key";
+  const localSubscription = fixedProvider && draft.source === "local_auth";
+  const stepSub = localSubscription
+    ? "Import provider auth already minted on the proxy host."
+    : "Paste the provider secret here; it is encrypted at rest and never shown again.";
   return (
     <GlassCard>
       <WizardStepHead
         icon={<Terminal />}
         title="Credential details"
-        sub="Paste the provider secret here; it is encrypted at rest and never shown again."
+        sub={stepSub}
       />
       <div className="wizard-step-body">
-        {draft.mode === "claude_subscription" ? <ClaudeSetupGuide /> : null}
-        {draft.mode === "codex_subscription" ? <CodexSetupGuide /> : null}
+        {fixedProvider ? <CredentialSourceSelector draft={draft} onChange={onChange} /> : null}
+        {draft.mode === "claude_subscription" ? <ClaudeSetupGuide source={draft.source} /> : null}
+        {draft.mode === "codex_subscription" ? <CodexSetupGuide source={draft.source} /> : null}
         <div className="routing-create-grid key-create-grid">
           {fixedProvider ? <FixedProviderField provider={draft.provider} /> : (
             <div className="routing-create-field">
@@ -137,7 +144,7 @@ export function CredentialDetailsStep({ draft, providerOptions, onChange }: {
               autoComplete="off"
             />
           </label>
-          {draft.mode === "codex_subscription" ? (
+          {draft.mode === "codex_subscription" && draft.source === "manual" ? (
             <label className="routing-create-field">
               <span>ChatGPT account ID</span>
               <input
@@ -160,27 +167,29 @@ export function CredentialDetailsStep({ draft, providerOptions, onChange }: {
             />
           </label>
         </div>
-        <label className="routing-create-field">
-          <span>{secretLabelForDraft(draft)}</span>
-          {draft.mode === "codex_subscription" ? (
-            <textarea
-              value={draft.apiKey}
-              onChange={(event) => onChange({ ...draft, apiKey: event.target.value })}
-              placeholder={secretPlaceholderForDraft(draft)}
-              autoComplete="off"
-              spellCheck={false}
-              rows={4}
-            />
-          ) : (
-            <input
-              value={draft.apiKey}
-              onChange={(event) => onChange({ ...draft, apiKey: event.target.value })}
-              placeholder={secretPlaceholderForDraft(draft)}
-              autoComplete="off"
-              spellCheck={false}
-            />
-          )}
-        </label>
+        {localSubscription ? null : (
+          <label className="routing-create-field">
+            <span>{secretLabelForDraft(draft)}</span>
+            {draft.mode === "codex_subscription" ? (
+              <textarea
+                value={draft.apiKey}
+                onChange={(event) => onChange({ ...draft, apiKey: event.target.value })}
+                placeholder={secretPlaceholderForDraft(draft)}
+                autoComplete="off"
+                spellCheck={false}
+                rows={4}
+              />
+            ) : (
+              <input
+                value={draft.apiKey}
+                onChange={(event) => onChange({ ...draft, apiKey: event.target.value })}
+                placeholder={secretPlaceholderForDraft(draft)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            )}
+          </label>
+        )}
       </div>
     </GlassCard>
   );
@@ -196,11 +205,12 @@ export function CredentialReviewStep({ draft }: { draft: CreateProviderCredentia
       />
       <dl className="wizard-review">
         <div><dt>Type</dt><dd>{credentialModeLabel(draft.mode)}</dd></div>
+        {draft.mode !== "api_key" ? <div><dt>Source</dt><dd>{sourceLabelForDraft(draft)}</dd></div> : null}
         <div><dt>Provider</dt><dd className="provider-credential-provider"><ProviderMark provider={draft.provider} />{draft.provider}</dd></div>
         <div><dt>Label</dt><dd>{draft.name.trim()}</dd></div>
         <div><dt>Secret</dt><dd>{secretLabelForDraft(draft)} encrypted at rest</dd></div>
         {draft.mode === "codex_subscription" ? (
-          <div><dt>ChatGPT account</dt><dd>{draft.chatgptAccountId.trim() || "from auth JSON"}</dd></div>
+          <div><dt>ChatGPT account</dt><dd>{draft.source === "local_auth" ? "from Codex auth JSON" : draft.chatgptAccountId.trim() || "from auth JSON"}</dd></div>
         ) : null}
         <div><dt>Base URL</dt><dd>{draft.baseUrl.trim() || "Provider default"}</dd></div>
       </dl>

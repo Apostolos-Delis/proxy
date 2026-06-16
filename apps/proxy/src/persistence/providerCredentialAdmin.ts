@@ -1,3 +1,7 @@
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 
@@ -31,6 +35,12 @@ const createCredentialBodySchema = z.object({
   apiKey: z.string().trim().min(1),
   baseUrl: z.string().trim().min(1).optional(),
   chatgptAccountId: z.string().trim().min(1).optional()
+}).strict();
+
+const createLocalAuthCredentialBodySchema = z.object({
+  provider: z.enum([PROVIDERS.OPENAI, PROVIDERS.ANTHROPIC]),
+  name: z.string().trim().min(1),
+  baseUrl: z.string().trim().min(1).optional()
 }).strict();
 
 const bindApiKeyCredentialBodySchema = z.object({
@@ -127,6 +137,31 @@ export class ProviderCredentialAdminService {
       });
 
       return { providerAccountId };
+    });
+  }
+
+  async createCredentialFromLocalAuth(input: {
+    organizationId: string;
+    actorUserId: string;
+    body: unknown;
+  }) {
+    const body = createLocalAuthCredentialBodySchema.safeParse(input.body);
+    if (!body.success) throw validationError("invalid_provider_credential_local_auth_request", body.error);
+    if (body.data.provider === PROVIDERS.ANTHROPIC && !this.options.subscriptionOAuthEnabled) {
+      throw new ProviderCredentialAdminError("subscription_oauth_disabled", 400);
+    }
+    const localAuth = await readLocalOAuthCredential(body.data.provider);
+    return this.createCredential({
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      body: {
+        provider: body.data.provider,
+        name: body.data.name,
+        authType: "oauth",
+        apiKey: localAuth.apiKey,
+        baseUrl: body.data.baseUrl,
+        chatgptAccountId: localAuth.chatgptAccountId
+      }
     });
   }
 
@@ -289,6 +324,7 @@ async function byokAccount(tx: PromptProxyTransaction, organizationId: string, p
 }
 
 type CreateCredentialBody = z.infer<typeof createCredentialBodySchema>;
+type LocalOAuthProvider = typeof PROVIDERS.OPENAI | typeof PROVIDERS.ANTHROPIC;
 
 function parseOAuthCredential(data: CreateCredentialBody) {
   if (data.provider === PROVIDERS.ANTHROPIC) {
@@ -336,6 +372,52 @@ function parseOAuthCredential(data: CreateCredentialBody) {
   };
 }
 
+async function readLocalOAuthCredential(provider: LocalOAuthProvider) {
+  if (provider === PROVIDERS.ANTHROPIC) {
+    const token = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
+    if (!token) {
+      throw new ProviderCredentialAdminError("local_claude_oauth_token_missing", 400, [
+        {
+          path: "provider",
+          message: "Run `claude setup-token`, set CLAUDE_CODE_OAUTH_TOKEN in the proxy environment, then restart the proxy."
+        }
+      ]);
+    }
+    return { apiKey: token, chatgptAccountId: undefined };
+  }
+
+  const path = localCodexAuthPath();
+  let authJson: string;
+  try {
+    authJson = await readFile(path, "utf8");
+  } catch {
+    throw new ProviderCredentialAdminError("local_codex_auth_not_found", 400, [
+      {
+        path: "provider",
+        message: `Run \`codex login\` on the proxy host, or set PROMPT_PROXY_CODEX_AUTH_FILE to the Codex auth JSON path. Checked ${path}.`
+      }
+    ]);
+  }
+
+  const parsed = parseOpenAISecretInput(authJson);
+  if (!parsed.accessToken || !parsed.chatgptAccountId) {
+    throw new ProviderCredentialAdminError("local_codex_auth_incomplete", 400, [
+      {
+        path: "provider",
+        message: `Codex auth JSON at ${path} must include an access token and ChatGPT account ID.`
+      }
+    ]);
+  }
+  return { apiKey: authJson, chatgptAccountId: undefined };
+}
+
+function localCodexAuthPath() {
+  const explicitPath = process.env.PROMPT_PROXY_CODEX_AUTH_FILE?.trim();
+  if (explicitPath) return explicitPath;
+  const codexHome = process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
+  return join(codexHome, "auth.json");
+}
+
 function parseOpenAISecretInput(input: string) {
   const trimmed = input.trim();
   if (!trimmed.startsWith("{")) {
@@ -361,7 +443,8 @@ function parseOpenAISecretInput(input: string) {
     accessToken: stringValue(parsed.access_token) ?? stringValue(parsed.accessToken) ??
       stringValue(tokens?.access_token) ?? stringValue(tokens?.accessToken),
     chatgptAccountId: stringValue(parsed.chatgpt_account_id) ?? stringValue(parsed.chatgptAccountId) ??
-      stringValue(parsed.account_id) ?? stringValue(parsed.accountId),
+      stringValue(parsed.account_id) ?? stringValue(parsed.accountId) ??
+      stringValue(tokens?.account_id) ?? stringValue(tokens?.accountId),
     source: "codex-auth-json"
   };
 }
