@@ -180,6 +180,26 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
     }
   });
 
+  it("writes Codex config under CODEX_HOME when set", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-codex-home-"));
+    const codexHome = join(home, "custom-codex");
+    try {
+      const result = spawnSync("bash", ["-s", "--", "--harness", "codex", "codex-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: { ...process.env, HOME: home, CODEX_HOME: codexHome }
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout.toString()).toContain(`codex: wrote ${codexHome}/config.toml`);
+      const config = readFileSync(join(codexHome, "config.toml"), "utf8");
+      expect(config).toContain('model_provider = "prompt_proxy_codex"');
+      expect(config).toContain('env_key = "PROMPT_PROXY_CODEX_TOKEN"');
+      expect(spawnSync("test", ["!", "-e", join(home, ".codex", "config.toml")]).status).toBe(0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("configures a Claude Code-specific key without changing Codex", () => {
     const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-claude-"));
     try {
@@ -326,6 +346,8 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       expect(zshrc).toContain('export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"');
       const opencodeAuth = JSON.parse(readFileSync(join(xdgData, "opencode", "auth.json"), "utf8"));
       expect(opencodeAuth["prompt-proxy-chat"]).toEqual({ type: "api", key: "multi-token" });
+      expect(result.stdout.toString()).toContain("Done. Open a new terminal and run one of: claude, codex");
+      expect(result.stdout.toString()).not.toContain("run: claude codex");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

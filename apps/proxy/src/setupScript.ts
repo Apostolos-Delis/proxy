@@ -224,8 +224,14 @@ if [ "$PP_SETUP_CODEX" -eq 1 ]; then
     fi
   done
 
-  mkdir -p "$HOME/.codex"
-  codex_config="$HOME/.codex/config.toml"
+  PP_CODEX_HOME="\${CODEX_HOME:-$HOME/.codex}"
+  if [ "$PP_CODEX_HOME" = "$HOME/.codex" ]; then
+    PP_CODEX_CONFIG_DISPLAY="~/.codex/config.toml"
+  else
+    PP_CODEX_CONFIG_DISPLAY="$PP_CODEX_HOME/config.toml"
+  fi
+  mkdir -p "$PP_CODEX_HOME"
+  codex_config="$PP_CODEX_HOME/config.toml"
   if [ ! -s "$codex_config" ]; then
     cat > "$codex_config" <<${heredocDelimiter}
 model = "router-auto"
@@ -238,7 +244,7 @@ env_key = "$PP_CODEX_ENV"
 wire_api = "responses"
 supports_websockets = true
 ${heredocDelimiter}
-    echo "codex: wrote ~/.codex/config.toml"
+    echo "codex: wrote $PP_CODEX_CONFIG_DISPLAY"
   else
     tmp_config="$(mktemp)"
     {
@@ -326,10 +332,19 @@ elif [ "$PP_HARNESS_COUNT" -eq 1 ] && [ "$PP_SETUP_OPENCODE" -eq 1 ]; then
   echo "Done. Open opencode and select prompt-proxy-chat/router-auto from /models"
 else
   PP_LAUNCH=""
-  [ "$PP_SETUP_CLAUDE" -eq 1 ] && PP_LAUNCH="$PP_LAUNCH claude"
-  [ "$PP_SETUP_CODEX" -eq 1 ] && PP_LAUNCH="$PP_LAUNCH codex"
+  [ "$PP_SETUP_CLAUDE" -eq 1 ] && PP_LAUNCH="claude"
+  if [ "$PP_SETUP_CODEX" -eq 1 ]; then
+    if [ -n "$PP_LAUNCH" ]; then
+      PP_LAUNCH="$PP_LAUNCH, codex"
+    else
+      PP_LAUNCH="codex"
+    fi
+  fi
   if [ -n "$PP_LAUNCH" ]; then
-    echo "Done. Open a new terminal and run:$PP_LAUNCH"
+    case "$PP_LAUNCH" in
+      *,*) echo "Done. Open a new terminal and run one of: $PP_LAUNCH" ;;
+      *) echo "Done. Open a new terminal and run: $PP_LAUNCH" ;;
+    esac
   fi
   if [ "$PP_SETUP_OPENCODE" -eq 1 ]; then
     echo "Open opencode and select prompt-proxy-chat/router-auto from /models"
