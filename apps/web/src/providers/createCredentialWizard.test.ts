@@ -99,10 +99,12 @@ describe("withCredentialSource", () => {
       mode: "codex_subscription",
       source: "manual",
       apiKey: "codex-token",
-      chatgptAccountId: "acct_1"
+      chatgptAccountId: "acct_1",
+      baseUrl: "https://proxy.example/v1"
     }), "openai_oauth");
     expect(next.apiKey).toBe("");
     expect(next.chatgptAccountId).toBe("");
+    expect(next.baseUrl).toBe("");
   });
 });
 

@@ -44,7 +44,6 @@ export class ProviderCredentialOAuthService {
     organizationId: string;
     actorUserId: string;
     name: string;
-    baseUrl?: string;
   }) {
     this.pruneExpired();
     const deviceCode = await this.requestDeviceCode();
@@ -91,6 +90,26 @@ export class ProviderCredentialOAuthService {
     };
   }
 
+  cancel(loginId: string, scope: OAuthStatusScope): ProviderCredentialOAuthStatus | null {
+    this.pruneExpired();
+    const pending = this.pending.get(loginId);
+    if (!pending) return null;
+    if (
+      pending.organizationId !== scope.organizationId ||
+      pending.actorUserId !== scope.actorUserId
+    ) {
+      return null;
+    }
+    if (pending.status === "pending") {
+      this.pending.set(loginId, {
+        ...pending,
+        status: "failed",
+        error: "OpenAI sign-in cancelled."
+      });
+    }
+    return this.status(loginId, scope);
+  }
+
   private async requestDeviceCode() {
     const response = await this.fetcher(`${OPENAI_AUTH_ISSUER}/api/accounts/deviceauth/usercode`, {
       method: "POST",
@@ -115,7 +134,6 @@ export class ProviderCredentialOAuthService {
     organizationId: string;
     actorUserId: string;
     name: string;
-    baseUrl?: string;
     loginId: string;
     deviceAuthId: string;
     userCode: string;
@@ -123,12 +141,15 @@ export class ProviderCredentialOAuthService {
   }) {
     try {
       const code = await this.pollDeviceCode(input);
+      if (!this.isPending(input.loginId)) return;
       const tokens = await this.exchangeCode(code.authorizationCode, code.codeVerifier);
+      if (!this.isPending(input.loginId)) return;
       const chatgptAccountId =
         extractChatGPTAccountIdFromJwt(tokens.id_token) ??
         extractChatGPTAccountIdFromJwt(tokens.access_token);
       if (!tokens.refresh_token) throw new Error("openai_codex_login_missing_refresh_token");
       if (!chatgptAccountId) throw new Error("openai_codex_login_missing_chatgpt_account_id");
+      if (!this.isPending(input.loginId)) return;
       const created = await this.providerCredentialAdmin.createCredential({
         organizationId: input.organizationId,
         actorUserId: input.actorUserId,
@@ -144,7 +165,6 @@ export class ProviderCredentialOAuthService {
             id_token: tokens.id_token,
             chatgpt_account_id: chatgptAccountId
           }),
-          baseUrl: input.baseUrl,
           chatgptAccountId
         }
       });
@@ -162,6 +182,7 @@ export class ProviderCredentialOAuthService {
   }) {
     const startedAt = Date.now();
     while (Date.now() - startedAt < DEVICE_CODE_TIMEOUT_MS) {
+      if (!this.isPending(input.loginId)) throw new Error("openai_codex_device_code_cancelled");
       const response = await this.fetcher(`${OPENAI_AUTH_ISSUER}/api/accounts/deviceauth/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -170,6 +191,7 @@ export class ProviderCredentialOAuthService {
           user_code: input.userCode
         })
       });
+      if (!this.isPending(input.loginId)) throw new Error("openai_codex_device_code_cancelled");
 
       if (response.ok) {
         const body = await response.json() as {
@@ -211,7 +233,7 @@ export class ProviderCredentialOAuthService {
 
   private complete(loginId: string, providerAccountId: string) {
     const pending = this.pending.get(loginId);
-    if (!pending) return;
+    if (!pending || pending.status !== "pending") return;
     this.pending.set(loginId, {
       ...pending,
       status: "completed",
@@ -222,7 +244,7 @@ export class ProviderCredentialOAuthService {
 
   private fail(loginId: string, error: unknown) {
     const pending = this.pending.get(loginId);
-    if (!pending) return;
+    if (!pending || pending.status !== "pending") return;
     this.pending.set(loginId, {
       ...pending,
       status: "failed",
@@ -236,6 +258,10 @@ export class ProviderCredentialOAuthService {
         this.pending.delete(loginId);
       }
     }
+  }
+
+  private isPending(loginId: string) {
+    return this.pending.get(loginId)?.status === "pending";
   }
 }
 

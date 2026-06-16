@@ -860,6 +860,73 @@ describe("subscription oauth credentials", () => {
     });
   });
 
+  it("cancels pending OpenAI device-code auth without creating a credential", async () => {
+    const fixture = await setup("org_oauth_openai_device_cancel", { SUBSCRIPTION_OAUTH_ENABLED: "false" });
+    let resolveTokenPoll: (response: Response) => void = () => {};
+    const tokenPoll = new Promise<Response>((resolve) => {
+      resolveTokenPoll = resolve;
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/accounts/deviceauth/usercode")) {
+        return jsonResponse({
+          device_auth_id: "device-auth-cancel",
+          user_code: "CANCEL-1",
+          interval: "1"
+        });
+      }
+      if (url.endsWith("/api/accounts/deviceauth/token")) return tokenPoll;
+      if (url.endsWith("/oauth/token")) {
+        return jsonResponse({
+          access_token: OPENAI_OAUTH_TOKEN,
+          refresh_token: "openai-refresh-token",
+          expires_in: 3600,
+          id_token: fakeJwt({
+            "https://api.openai.com/auth": {
+              chatgpt_account_id: CHATGPT_ACCOUNT_ID
+            }
+          })
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    const oauth = new ProviderCredentialOAuthService(
+      fixture.persistence.providerCredentialAdmin,
+      fetchMock as unknown as typeof fetch
+    );
+    const scope = {
+      organizationId: "org_oauth_openai_device_cancel",
+      actorUserId: "local-user"
+    };
+
+    const started = await oauth.startOpenAICodexDeviceAuth({
+      ...scope,
+      name: "Cancelled Codex auth"
+    });
+    const cancelled = oauth.cancel(started.loginId, scope);
+    resolveTokenPoll(jsonResponse({
+      authorization_code: "authorization-code-cancel",
+      code_verifier: "code-verifier-cancel"
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(cancelled).toMatchObject({
+      loginId: started.loginId,
+      status: "failed",
+      error: "OpenAI sign-in cancelled."
+    });
+    expect(oauth.status(started.loginId, scope)).toMatchObject({
+      status: "failed",
+      error: "OpenAI sign-in cancelled."
+    });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/oauth/token"))).toBe(false);
+    const rows = await fixture.db
+      .select({ name: providerAccounts.name })
+      .from(providerAccounts)
+      .where(eq(providerAccounts.organizationId, "org_oauth_openai_device_cancel"));
+    expect(rows.some((row) => row.name === "Cancelled Codex auth")).toBe(false);
+  });
+
   it("rejects OpenAI oauth credentials without a ChatGPT account ID", async () => {
     const fixture = await setup("org_oauth_openai_account", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
 

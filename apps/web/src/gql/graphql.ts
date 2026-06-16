@@ -128,7 +128,6 @@ export type SettingsInput = {
 };
 
 export type StartProviderCredentialOAuthInput = {
-  baseUrl?: string | null | undefined;
   name: string;
   provider: string;
 };
@@ -323,6 +322,13 @@ export type StartProviderCredentialOAuthMutationVariables = Exact<{
 
 
 export type StartProviderCredentialOAuthMutation = { startProviderCredentialOAuth: { loginId: string, verificationUrl: string, userCode: string } };
+
+export type CancelProviderCredentialOAuthMutationVariables = Exact<{
+  loginId: string | number;
+}>;
+
+
+export type CancelProviderCredentialOAuthMutation = { cancelProviderCredentialOAuth: { loginId: string, status: string, providerAccountId: string | null, error: string | null } | null };
 
 export type ProviderCredentialOAuthStatusQueryVariables = Exact<{
   loginId: string | number;
@@ -1290,6 +1296,16 @@ export const StartProviderCredentialOAuthDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<StartProviderCredentialOAuthMutation, StartProviderCredentialOAuthMutationVariables>;
+export const CancelProviderCredentialOAuthDocument = new TypedDocumentString(`
+    mutation CancelProviderCredentialOAuth($loginId: ID!) {
+  cancelProviderCredentialOAuth(loginId: $loginId) {
+    loginId
+    status
+    providerAccountId
+    error
+  }
+}
+    `) as unknown as TypedDocumentString<CancelProviderCredentialOAuthMutation, CancelProviderCredentialOAuthMutationVariables>;
 export const ProviderCredentialOAuthStatusDocument = new TypedDocumentString(`
     query ProviderCredentialOAuthStatus($loginId: ID!) {
   providerCredentialOAuthStatus(loginId: $loginId) {

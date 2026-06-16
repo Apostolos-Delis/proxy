@@ -49,6 +49,7 @@ export function withCredentialMode(
     mode,
     provider: providerForMode(mode, draft.provider),
     apiKey: modeChanged ? "" : draft.apiKey,
+    baseUrl: mode === "codex_subscription" && source === "openai_oauth" ? "" : draft.baseUrl,
     chatgptAccountId: mode === "codex_subscription" && source === "manual" && !modeChanged ? draft.chatgptAccountId : "",
     source
   };
@@ -62,6 +63,7 @@ export function withCredentialSource(
     ...draft,
     source,
     apiKey: source === "manual" ? draft.apiKey : "",
+    baseUrl: draft.mode === "codex_subscription" && source === "openai_oauth" ? "" : draft.baseUrl,
     chatgptAccountId: source === "manual" ? draft.chatgptAccountId : ""
   };
 }

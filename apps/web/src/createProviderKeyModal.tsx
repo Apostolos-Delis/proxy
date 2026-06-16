@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
 import {
+  cancelProviderCredentialOAuth,
   createProviderCredential,
   createProviderCredentialFromLocalAuth,
   fetchProviderCredentialOAuthStatus,
@@ -126,15 +127,32 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
       return status;
     }
   });
-
-  const requestClose = () => {
-    if (!createMutation.isPending && !oauthStartMutation.isPending) onClose();
-  };
   const oauthWaiting = Boolean(
     oauthStartMutation.data?.loginId &&
     oauthStatusQuery.data?.status !== "completed" &&
     oauthStatusQuery.data?.status !== "failed"
   );
+  const oauthCancelMutation = useMutation({
+    mutationFn: cancelProviderCredentialOAuth,
+    onSuccess: (status) => {
+      if (status) {
+        queryClient.setQueryData(
+          ["provider-credential-oauth-status", status.loginId],
+          status
+        );
+      }
+      onClose();
+    }
+  });
+  const requestClose = () => {
+    if (createMutation.isPending || oauthStartMutation.isPending || oauthCancelMutation.isPending) return;
+    const loginId = oauthStartMutation.data?.loginId;
+    if (oauthWaiting && loginId) {
+      oauthCancelMutation.mutate(loginId);
+      return;
+    }
+    onClose();
+  };
   const oauthCreated = oauthStatusQuery.data?.status === "completed" && oauthStatusQuery.data.providerAccountId
     ? {
       id: oauthStatusQuery.data.providerAccountId,
@@ -181,8 +199,7 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
     if (nextError) return;
     oauthStartMutation.mutate({
       provider: draft.provider,
-      name: draft.name.trim(),
-      baseUrl: draft.baseUrl.trim() || undefined
+      name: draft.name.trim()
     });
   };
   const submit = () => {
@@ -250,10 +267,10 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
           <WizardActions
             draft={visibleDraft}
             created={Boolean(created)}
-            pending={createMutation.isPending || oauthStartMutation.isPending || oauthWaiting}
+            pending={createMutation.isPending || oauthStartMutation.isPending || oauthCancelMutation.isPending || oauthWaiting}
             blocker={blocker}
             fieldError={fieldError}
-            mutationError={createMutation.error?.message}
+            mutationError={createMutation.error?.message ?? oauthCancelMutation.error?.message}
             onBack={goBack}
             onNext={goNext}
             onCreate={submit}

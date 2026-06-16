@@ -81,6 +81,17 @@ const StartProviderCredentialOAuthDocument = graphql(`
   }
 `);
 
+const CancelProviderCredentialOAuthDocument = graphql(`
+  mutation CancelProviderCredentialOAuth($loginId: ID!) {
+    cancelProviderCredentialOAuth(loginId: $loginId) {
+      loginId
+      status
+      providerAccountId
+      error
+    }
+  }
+`);
+
 const ProviderCredentialOAuthStatusDocument = graphql(`
   query ProviderCredentialOAuthStatus($loginId: ID!) {
     providerCredentialOAuthStatus(loginId: $loginId) {
@@ -189,7 +200,6 @@ export type CreateProviderCredentialFromLocalAuthInput = {
 export type StartProviderCredentialOAuthInput = {
   provider: ProviderName;
   name: string;
-  baseUrl?: string;
 };
 
 export async function fetchProviderAccounts() {
@@ -214,6 +224,10 @@ export async function createProviderCredentialFromLocalAuth(input: CreateProvide
 
 export async function startProviderCredentialOAuth(input: StartProviderCredentialOAuthInput) {
   return (await gqlFetch(StartProviderCredentialOAuthDocument, { input })).startProviderCredentialOAuth;
+}
+
+export async function cancelProviderCredentialOAuth(loginId: string) {
+  return (await gqlFetch(CancelProviderCredentialOAuthDocument, { loginId })).cancelProviderCredentialOAuth;
 }
 
 export async function fetchProviderCredentialOAuthStatus(loginId: string) {

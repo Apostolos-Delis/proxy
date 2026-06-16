@@ -301,6 +301,7 @@ type Mutation {
   archiveRoutingConfig(configId: ID!): RoutingConfigDetail!
   assignApiKeyProviderAccount(apiKeyId: ID!, provider: String!, providerAccountId: ID): ApiKey!
   assignApiKeyRoutingConfig(apiKeyId: ID!, routingConfigId: ID): ApiKey!
+  cancelProviderCredentialOAuth(loginId: ID!): ProviderCredentialOAuthStatus
   clearModelPricing(model: String!, provider: String!): [ModelPricingEntry!]!
   configurePromptCapture(promptCaptureMode: String!, retentionDays: Int!): PromptCaptureConfig!
   createApiKey(input: CreateApiKeyInput!): CreateApiKeyResult!
@@ -882,7 +883,6 @@ input SettingsInput {
 }
 
 input StartProviderCredentialOAuthInput {
-  baseUrl: String
   name: String!
   provider: String!
 }
