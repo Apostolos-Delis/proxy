@@ -2,6 +2,7 @@ import type { ProviderAccountAuthType } from "../gql/graphql";
 import type { ProviderName } from "./data";
 
 export type CreateProviderCredentialMode = "api_key" | "claude_subscription" | "codex_subscription";
+export type CreateProviderCredentialSource = "local_auth" | "manual";
 export type CreateProviderCredentialStepId = "type" | "credentials" | "review" | "bind";
 
 export type CreateProviderCredentialDraft = {
@@ -12,6 +13,7 @@ export type CreateProviderCredentialDraft = {
   apiKey: string;
   baseUrl: string;
   chatgptAccountId: string;
+  source: CreateProviderCredentialSource;
 };
 
 export const SUBSCRIPTION_TOKEN_PREFIX = "sk-ant-oat01-";
@@ -31,7 +33,8 @@ export function initialProviderCredentialDraft(): CreateProviderCredentialDraft 
     name: "",
     apiKey: "",
     baseUrl: "",
-    chatgptAccountId: ""
+    chatgptAccountId: "",
+    source: "manual"
   };
 }
 
@@ -39,11 +42,27 @@ export function withCredentialMode(
   draft: CreateProviderCredentialDraft,
   mode: CreateProviderCredentialMode
 ): CreateProviderCredentialDraft {
+  const source = mode === "api_key" ? "manual" : subscriptionSourceForModeChange(draft, mode);
+  const modeChanged = draft.mode !== mode;
   return {
     ...draft,
     mode,
     provider: providerForMode(mode, draft.provider),
-    chatgptAccountId: mode === "codex_subscription" ? draft.chatgptAccountId : ""
+    apiKey: modeChanged ? "" : draft.apiKey,
+    chatgptAccountId: mode === "codex_subscription" && source === "manual" && !modeChanged ? draft.chatgptAccountId : "",
+    source
+  };
+}
+
+export function withCredentialSource(
+  draft: CreateProviderCredentialDraft,
+  source: CreateProviderCredentialSource
+): CreateProviderCredentialDraft {
+  return {
+    ...draft,
+    source,
+    apiKey: source === "local_auth" ? "" : draft.apiKey,
+    chatgptAccountId: source === "local_auth" ? "" : draft.chatgptAccountId
   };
 }
 
@@ -64,9 +83,17 @@ export function credentialModeLabel(mode: CreateProviderCredentialMode) {
 }
 
 export function secretLabelForDraft(draft: CreateProviderCredentialDraft) {
+  if (draft.source === "local_auth" && draft.mode === "claude_subscription") return "Imported Claude setup token";
+  if (draft.source === "local_auth" && draft.mode === "codex_subscription") return "Imported Codex auth";
   if (draft.mode === "claude_subscription") return "Claude setup token";
   if (draft.mode === "codex_subscription") return "Codex access token or auth JSON";
   return "API key";
+}
+
+export function sourceLabelForDraft(draft: CreateProviderCredentialDraft) {
+  if (draft.source === "local_auth" && draft.mode === "claude_subscription") return "Local Claude setup-token import";
+  if (draft.source === "local_auth" && draft.mode === "codex_subscription") return "Local Codex auth import";
+  return "Manual paste";
 }
 
 export function secretPlaceholderForDraft(draft: CreateProviderCredentialDraft) {
@@ -97,10 +124,11 @@ export function credentialBlockerMessage(
   subscriptionAuthEnabled: boolean
 ): string | null {
   if (!draft.name.trim()) return "Enter a credential label.";
-  if (!draft.apiKey.trim()) return `${secretLabelForDraft(draft)} is required.`;
   if (draft.mode === "claude_subscription" && !subscriptionAuthEnabled) {
     return "Claude subscription auth has been disabled for this proxy.";
   }
+  if (draft.source === "local_auth" && draft.mode !== "api_key") return null;
+  if (!draft.apiKey.trim()) return `${secretLabelForDraft(draft)} is required.`;
   if (draft.mode === "claude_subscription" && !draft.apiKey.trim().startsWith(SUBSCRIPTION_TOKEN_PREFIX)) {
     return `Claude setup tokens start with ${SUBSCRIPTION_TOKEN_PREFIX}`;
   }
@@ -168,13 +196,27 @@ function codexAuthJsonHasAccountId(input: string) {
   }
   if (!isRecord(parsed)) return false;
   const record = parsed;
-  return Boolean(stringValue(record.chatgpt_account_id) ?? stringValue(record.chatgptAccountId) ?? stringValue(record.account_id) ?? stringValue(record.accountId));
+  const tokens = isRecord(record.tokens) ? record.tokens : undefined;
+  return Boolean(
+    stringValue(record.chatgpt_account_id) ?? stringValue(record.chatgptAccountId) ??
+      stringValue(record.account_id) ?? stringValue(record.accountId) ??
+      stringValue(tokens?.account_id) ?? stringValue(tokens?.accountId)
+  );
 }
 
 function codexAuthJsonAccessToken(parsed: Record<string, unknown>) {
   const tokens = isRecord(parsed.tokens) ? parsed.tokens : undefined;
   return stringValue(parsed.access_token) ?? stringValue(parsed.accessToken) ??
     stringValue(tokens?.access_token) ?? stringValue(tokens?.accessToken);
+}
+
+function subscriptionSourceForModeChange(
+  draft: CreateProviderCredentialDraft,
+  mode: CreateProviderCredentialMode
+) {
+  if (mode === "api_key") return "manual";
+  if (draft.mode === "api_key") return "local_auth";
+  return draft.source;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

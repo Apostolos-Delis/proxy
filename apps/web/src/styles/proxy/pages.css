@@ -3004,6 +3004,51 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font-size: 13px;
 }
 
+.credential-source-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.credential-source-option {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 3px 9px;
+  align-items: center;
+  min-height: 68px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+  cursor: pointer;
+  transition: border-color .14s var(--ease), background .14s var(--ease);
+}
+
+.credential-source-option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.credential-source-option input {
+  grid-row: 1 / span 2;
+  accent-color: var(--accent);
+}
+
+.credential-source-icon {
+  grid-row: 1 / span 2;
+  color: var(--accent-2);
+}
+
+.credential-source-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.credential-source-option strong {
+  color: var(--fg);
+  font-size: 13px;
+}
+
 .provider-credential-note,
 .provider-credential-guide {
   display: flex;

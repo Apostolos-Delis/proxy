@@ -10,6 +10,7 @@ import {
   stepBlockerMessage,
   stepRailState,
   withCredentialMode,
+  withCredentialSource,
   type CreateProviderCredentialDraft
 } from "./createCredentialWizard";
 
@@ -40,17 +41,56 @@ describe("withCredentialMode", () => {
   it("pins Claude subscription credentials to Anthropic", () => {
     const next = withCredentialMode(draftAt("type", { provider: "openai" }), "claude_subscription");
     expect(next.provider).toBe("anthropic");
+    expect(next.source).toBe("local_auth");
     expect(authTypeForMode(next.mode)).toBe("oauth");
   });
 
   it("pins Codex subscription credentials to OpenAI", () => {
     const next = withCredentialMode(draftAt("type"), "codex_subscription");
     expect(next.provider).toBe("openai");
+    expect(next.source).toBe("local_auth");
     expect(authTypeForMode(next.mode)).toBe("oauth");
   });
 
-  it("clears ChatGPT account IDs when returning to API keys", () => {
-    const next = withCredentialMode(draftAt("type", { chatgptAccountId: "acct_1" }), "api_key");
+  it("clears subscription-only state when returning to API keys", () => {
+    const next = withCredentialMode(draftAt("type", {
+      mode: "codex_subscription",
+      source: "local_auth",
+      apiKey: "codex-token",
+      chatgptAccountId: "acct_1"
+    }), "api_key");
+    expect(next.apiKey).toBe("");
+    expect(next.chatgptAccountId).toBe("");
+    expect(next.source).toBe("manual");
+  });
+
+  it("preserves source when switching between subscription modes", () => {
+    const next = withCredentialMode(draftAt("type", {
+      mode: "codex_subscription",
+      source: "manual"
+    }), "claude_subscription");
+    expect(next.source).toBe("manual");
+  });
+
+  it("clears stale secrets when switching credential modes", () => {
+    const next = withCredentialMode(draftAt("type", {
+      mode: "api_key",
+      apiKey: "sk-ant-api03-secret"
+    }), "codex_subscription");
+    expect(next.apiKey).toBe("");
+    expect(next.chatgptAccountId).toBe("");
+  });
+});
+
+describe("withCredentialSource", () => {
+  it("clears pasted subscription secrets when switching to local auth", () => {
+    const next = withCredentialSource(draftAt("credentials", {
+      mode: "codex_subscription",
+      source: "manual",
+      apiKey: "codex-token",
+      chatgptAccountId: "acct_1"
+    }), "local_auth");
+    expect(next.apiKey).toBe("");
     expect(next.chatgptAccountId).toBe("");
   });
 });
@@ -88,16 +128,29 @@ describe("credentialBlockerMessage", () => {
     const draft = draftAt("credentials", {
       mode: "codex_subscription",
       provider: "openai",
+      source: "manual",
       apiKey: "codex-token",
       chatgptAccountId: "acct_1"
     });
     expect(credentialBlockerMessage(draft, false)).toBeNull();
   });
 
+  it("does not require pasted tokens for local auth subscriptions", () => {
+    const draft = draftAt("credentials", {
+      mode: "codex_subscription",
+      provider: "openai",
+      source: "local_auth",
+      apiKey: "",
+      chatgptAccountId: ""
+    });
+    expect(credentialBlockerMessage(draft, true)).toBeNull();
+  });
+
   it("requires Claude setup-token prefixes", () => {
     const draft = draftAt("credentials", {
       mode: "claude_subscription",
       provider: "anthropic",
+      source: "manual",
       apiKey: "sk-ant-api03-not-a-subscription"
     });
     expect(credentialBlockerMessage(draft, true)).toBe("Claude setup tokens start with sk-ant-oat01-");
@@ -107,7 +160,19 @@ describe("credentialBlockerMessage", () => {
     const draft = draftAt("credentials", {
       mode: "codex_subscription",
       provider: "openai",
+      source: "manual",
       apiKey: JSON.stringify({ access_token: "token", chatgpt_account_id: "acct_1" }),
+      chatgptAccountId: ""
+    });
+    expect(credentialBlockerMessage(draft, true)).toBeNull();
+  });
+
+  it("allows Codex auth JSON to carry the ChatGPT account ID under tokens", () => {
+    const draft = draftAt("credentials", {
+      mode: "codex_subscription",
+      provider: "openai",
+      source: "manual",
+      apiKey: JSON.stringify({ tokens: { access_token: "token", account_id: "acct_1" } }),
       chatgptAccountId: ""
     });
     expect(credentialBlockerMessage(draft, true)).toBeNull();
@@ -117,6 +182,7 @@ describe("credentialBlockerMessage", () => {
     const draft = draftAt("credentials", {
       mode: "codex_subscription",
       provider: "openai",
+      source: "manual",
       apiKey: "codex-token",
       chatgptAccountId: ""
     });
@@ -127,6 +193,7 @@ describe("credentialBlockerMessage", () => {
     const draft = draftAt("credentials", {
       mode: "codex_subscription",
       provider: "openai",
+      source: "manual",
       apiKey: "{",
       chatgptAccountId: "acct_1"
     });
@@ -137,6 +204,7 @@ describe("credentialBlockerMessage", () => {
     const draft = draftAt("credentials", {
       mode: "codex_subscription",
       provider: "openai",
+      source: "manual",
       apiKey: JSON.stringify({ chatgpt_account_id: "acct_1" }),
       chatgptAccountId: ""
     });

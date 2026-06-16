@@ -1,3 +1,7 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import { eq } from "drizzle-orm";
@@ -29,6 +33,9 @@ const CUSTOM_ANTHROPIC_PROVIDER_ID = "10000000-0000-0000-0000-000000000005";
 
 const CREATE = `mutation Create($input: CreateProviderCredentialInput!) {
   createProviderCredential(input: $input) { id providerId provider baseUrl name status authType secretHint ownerUserId }
+}`;
+const CREATE_LOCAL = `mutation CreateLocal($input: CreateProviderCredentialFromLocalAuthInput!) {
+  createProviderCredentialFromLocalAuth(input: $input) { id providerId provider baseUrl name status authType secretHint ownerUserId }
 }`;
 const REVOKE = `mutation Revoke($id: ID!) { revokeProviderCredential(providerAccountId: $id) { id status } }`;
 const BIND = `mutation Bind($apiKeyId: ID!, $provider: String!, $providerAccountId: ID) {
@@ -571,8 +578,16 @@ describe("subscription oauth credentials", () => {
   const CHATGPT_ACCOUNT_ID = "chatgpt-account-test";
 
   let activeFixture: PromptTestFixture | undefined;
+  const savedEnv = {
+    CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+    PROMPT_PROXY_CODEX_AUTH_FILE: process.env.PROMPT_PROXY_CODEX_AUTH_FILE,
+    CODEX_HOME: process.env.CODEX_HOME
+  };
 
   afterEach(async () => {
+    restoreEnv("CLAUDE_CODE_OAUTH_TOKEN", savedEnv.CLAUDE_CODE_OAUTH_TOKEN);
+    restoreEnv("PROMPT_PROXY_CODEX_AUTH_FILE", savedEnv.PROMPT_PROXY_CODEX_AUTH_FILE);
+    restoreEnv("CODEX_HOME", savedEnv.CODEX_HOME);
     await activeFixture?.close();
     activeFixture = undefined;
   });
@@ -678,6 +693,82 @@ describe("subscription oauth credentials", () => {
     expect(row).toBeTruthy();
     expect(decryptSecret(row!.secretCiphertext ?? "", ENCRYPTION_KEY)).toBe(OPENAI_OAUTH_TOKEN);
     expect(JSON.stringify(row!.settings)).not.toContain("refresh");
+  });
+
+  it("imports a Claude subscription token from the proxy environment", async () => {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = OAUTH_TOKEN;
+    const fixture = await setup("org_oauth_local_claude", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
+
+    const created = await gql(fixture, CREATE_LOCAL, {
+      input: { provider: "anthropic", name: "Local Claude sub" }
+    });
+    expect(created.errors).toBeUndefined();
+    expect(created.data?.createProviderCredentialFromLocalAuth.authType).toBe("oauth");
+    expect(JSON.stringify(created)).not.toContain(OAUTH_TOKEN);
+
+    const [row] = await fixture.db
+      .select({
+        secretCiphertext: providerAccounts.secretCiphertext,
+        settings: providerAccounts.settings
+      })
+      .from(providerAccounts)
+      .where(eq(providerAccounts.id, created.data?.createProviderCredentialFromLocalAuth.id));
+    expect(row).toBeTruthy();
+    expect(decryptSecret(row!.secretCiphertext ?? "", ENCRYPTION_KEY)).toBe(OAUTH_TOKEN);
+    expect(row!.settings).toEqual({ tokenKind: "claude_oauth", source: "setup-token" });
+  });
+
+  it("rejects Claude local auth import when subscription auth is disabled", async () => {
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    const fixture = await setup("org_oauth_local_claude_disabled", { SUBSCRIPTION_OAUTH_ENABLED: "false" });
+
+    const created = await gql(fixture, CREATE_LOCAL, {
+      input: { provider: "anthropic", name: "Local Claude sub" }
+    });
+    expect(created.errors?.[0]?.message).toBe("subscription_oauth_disabled");
+  });
+
+  it("imports Codex auth JSON from the proxy host without storing refresh tokens", async () => {
+    const authDir = await mkdtemp(join(tmpdir(), "prompt-proxy-codex-auth-"));
+    const authPath = join(authDir, "auth.json");
+    await writeFile(authPath, JSON.stringify({
+      auth_mode: "chatgpt",
+      tokens: {
+        access_token: OPENAI_OAUTH_TOKEN,
+        refresh_token: "openai-refresh-token",
+        account_id: CHATGPT_ACCOUNT_ID
+      }
+    }));
+    process.env.PROMPT_PROXY_CODEX_AUTH_FILE = authPath;
+    const fixture = await setup("org_oauth_local_openai", { SUBSCRIPTION_OAUTH_ENABLED: "false" });
+
+    try {
+      const created = await gql(fixture, CREATE_LOCAL, {
+        input: { provider: "openai", name: "Local Codex auth" }
+      });
+      expect(created.errors).toBeUndefined();
+      expect(created.data?.createProviderCredentialFromLocalAuth.authType).toBe("oauth");
+      expect(JSON.stringify(created)).not.toContain(OPENAI_OAUTH_TOKEN);
+      expect(JSON.stringify(created)).not.toContain("openai-refresh-token");
+
+      const [row] = await fixture.db
+        .select({
+          secretCiphertext: providerAccounts.secretCiphertext,
+          settings: providerAccounts.settings
+        })
+        .from(providerAccounts)
+        .where(eq(providerAccounts.id, created.data?.createProviderCredentialFromLocalAuth.id));
+      expect(row).toBeTruthy();
+      expect(decryptSecret(row!.secretCiphertext ?? "", ENCRYPTION_KEY)).toBe(OPENAI_OAUTH_TOKEN);
+      expect(row!.settings).toEqual({
+        tokenKind: "openai_chatgpt",
+        source: "codex-auth-json",
+        chatgptAccountId: CHATGPT_ACCOUNT_ID
+      });
+      expect(JSON.stringify(row!.settings)).not.toContain("refresh");
+    } finally {
+      await rm(authDir, { recursive: true, force: true });
+    }
   });
 
   it("rejects OpenAI oauth credentials without a ChatGPT account ID", async () => {
@@ -1149,6 +1240,14 @@ describe("subscription oauth credentials", () => {
     });
   }
 });
+
+function restoreEnv(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
 
 function gql(fixture: PromptTestFixture, query: string, variables?: Record<string, unknown>) {
   return adminGql(fixture.proxyUrl, fixture.adminHeaders, query, variables);

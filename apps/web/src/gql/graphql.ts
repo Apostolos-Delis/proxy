@@ -29,6 +29,12 @@ export type CreateInvitationInput = {
   role: MemberRole;
 };
 
+export type CreateProviderCredentialFromLocalAuthInput = {
+  baseUrl?: string | null | undefined;
+  name: string;
+  provider: string;
+};
+
 export type CreateProviderCredentialInput = {
   apiKey: string;
   authType?: ProviderAccountAuthType | null | undefined;
@@ -297,6 +303,13 @@ export type CreateProviderCredentialMutationVariables = Exact<{
 
 
 export type CreateProviderCredentialMutation = { createProviderCredential: { id: string, name: string } | null };
+
+export type CreateProviderCredentialFromLocalAuthMutationVariables = Exact<{
+  input: CreateProviderCredentialFromLocalAuthInput;
+}>;
+
+
+export type CreateProviderCredentialFromLocalAuthMutation = { createProviderCredentialFromLocalAuth: { id: string, name: string } | null };
 
 export type CreateProviderMutationVariables = Exact<{
   input: CreateProviderInput;
@@ -1240,6 +1253,14 @@ export const CreateProviderCredentialDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CreateProviderCredentialMutation, CreateProviderCredentialMutationVariables>;
+export const CreateProviderCredentialFromLocalAuthDocument = new TypedDocumentString(`
+    mutation CreateProviderCredentialFromLocalAuth($input: CreateProviderCredentialFromLocalAuthInput!) {
+  createProviderCredentialFromLocalAuth(input: $input) {
+    id
+    name
+  }
+}
+    `) as unknown as TypedDocumentString<CreateProviderCredentialFromLocalAuthMutation, CreateProviderCredentialFromLocalAuthMutationVariables>;
 export const CreateProviderDocument = new TypedDocumentString(`
     mutation CreateProvider($input: CreateProviderInput!) {
   createProvider(input: $input) {

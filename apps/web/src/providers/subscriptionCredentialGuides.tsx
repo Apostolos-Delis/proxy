@@ -1,12 +1,31 @@
 import { KeyRound, Link2 } from "lucide-react";
 
-export function ClaudeSetupGuide() {
+import type { CreateProviderCredentialSource } from "./createCredentialWizard";
+
+export function ClaudeSetupGuide({ source }: { source: CreateProviderCredentialSource }) {
+  if (source === "local_auth") {
+    return (
+      <div className="provider-credential-guide">
+        <KeyRound />
+        <div>
+          <strong>Import a Claude Code token</strong>
+          <span>Prompt Proxy reads the token from the proxy process environment and stores it as an encrypted provider credential.</span>
+          <ol className="provider-credential-steps">
+            <li>Run <span className="mono">claude setup-token</span> while signed into the Claude account that should pay for this traffic.</li>
+            <li>Set <span className="mono">CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...</span> where the proxy runs, then restart the proxy.</li>
+            <li>Save the credential, then bind it to a Prompt Proxy API key you own before using that key with Claude Code.</li>
+          </ol>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="provider-credential-guide">
       <KeyRound />
       <div>
-        <strong>Use a Claude setup token</strong>
-        <span>Prompt Proxy does not run an OAuth redirect here; paste a token minted by Claude Code.</span>
+        <strong>Paste a Claude setup token</strong>
+        <span>Claude Code can mint a long-lived setup token for environments where browser login is not available.</span>
         <ol className="provider-credential-steps">
           <li>Run <span className="mono">claude setup-token</span> while signed into the Claude subscription account that should pay for this traffic.</li>
           <li>Paste the printed <span className="mono">sk-ant-oat01-...</span> value into <span className="mono">Claude setup token</span>.</li>
@@ -17,17 +36,34 @@ export function ClaudeSetupGuide() {
   );
 }
 
-export function CodexSetupGuide() {
+export function CodexSetupGuide({ source }: { source: CreateProviderCredentialSource }) {
+  if (source === "local_auth") {
+    return (
+      <div className="provider-credential-guide">
+        <Link2 />
+        <div>
+          <strong>Import a Codex identity</strong>
+          <span>Prompt Proxy reads Codex auth JSON from the proxy host and stores only the access token plus ChatGPT account ID.</span>
+          <ol className="provider-credential-steps">
+            <li>Run <span className="mono">codex login</span> on the proxy host, or use <span className="mono">codex login --device-auth</span> for a device-code flow.</li>
+            <li>Leave the auth cache at <span className="mono">~/.codex/auth.json</span>, or set <span className="mono">PROMPT_PROXY_CODEX_AUTH_FILE</span> to another auth JSON path.</li>
+            <li>Save the credential, then bind it to a Prompt Proxy API key you own before using that key with Codex.</li>
+          </ol>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="provider-credential-guide">
       <Link2 />
       <div>
-        <strong>Use an existing Codex identity</strong>
-        <span>Prompt Proxy does not open a ChatGPT sign-in popup here; paste an existing Codex token or auth JSON.</span>
+        <strong>Paste a Codex identity</strong>
+        <span>Use this fallback when Prompt Proxy cannot read the proxy host's Codex auth cache directly.</span>
         <ol className="provider-credential-steps">
           <li>Create a Codex access token from the ChatGPT workspace Access tokens page, or run <span className="mono">codex login</span> and use <span className="mono">~/.codex/auth.json</span> when present.</li>
           <li>Paste the full auth JSON, or paste the raw access token and fill <span className="mono">ChatGPT account ID</span> separately.</li>
-          <li>Accepted JSON fields include <span className="mono">access_token</span> or <span className="mono">tokens.access_token</span>, plus <span className="mono">chatgpt_account_id</span> or <span className="mono">account_id</span>; camelCase variants work too.</li>
+          <li>Accepted JSON fields include <span className="mono">access_token</span> or <span className="mono">tokens.access_token</span>, plus <span className="mono">chatgpt_account_id</span>, <span className="mono">account_id</span>, or <span className="mono">tokens.account_id</span>; camelCase variants work too.</li>
           <li>Save the credential, then bind it to a Prompt Proxy API key you own before using that key with Codex.</li>
         </ol>
       </div>
