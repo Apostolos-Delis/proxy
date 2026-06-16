@@ -3228,18 +3228,47 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .provider-credential-oauth-code {
   grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: stretch;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-soft) 30%, var(--glass) 70%);
+}
+
+.provider-credential-oauth-code-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.provider-credential-oauth-code-label {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.provider-credential-oauth-user-code {
+  width: fit-content;
+  max-width: 100%;
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.provider-credential-oauth-code-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
   align-items: center;
+  gap: 8px;
 }
 
 .provider-credential-oauth-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   color: var(--accent-2);
-  font-size: 12.5px;
   text-decoration: none;
 }
 
