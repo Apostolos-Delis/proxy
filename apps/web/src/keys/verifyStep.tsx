@@ -12,8 +12,8 @@ export function VerifyStep({ created }: { created: CreatedKeyResult }) {
   return (
     <>
       <GlassCard>
-        <div className="invite-result">
-          <div className="row gap-8">
+        <div className="key-secret-result">
+          <div className="key-secret-head">
             <Badge variant="success" dot>{created.keyName} created</Badge>
             <span className="faint">Copy the secret now — it is never shown again.</span>
           </div>
