@@ -24,6 +24,8 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
   const providerOptions = providerOptionsForAccounts(activeAccounts, draft.providerBindings, routingProviders);
   const routedProviderOptions = providerOptions.filter((provider) => routingProviders.includes(provider.value));
   const boundRoutingProviderCount = routingProviders.filter((provider) => draft.providerBindings[provider]).length;
+  const hasProviderBindings = Object.values(draft.providerBindings).some(Boolean);
+  const showProviderKeyControls = activeAccounts.length > 0 || draft.linkProviderKeys || hasProviderBindings;
   return (
     <>
       <GlassCard>
@@ -60,7 +62,7 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
           title="Provider keys"
           sub="Bill this key's upstream traffic to your own provider credentials instead of the platform key."
         />
-        {activeAccounts.length === 0 ? (
+        {!showProviderKeyControls ? (
           <div className="wizard-step-body">
             <ProviderCoverageSummary providers={routedProviderOptions} />
             <div className="wizard-provider-note">
@@ -188,7 +190,7 @@ function ProviderBindingField({ provider, accounts, value, onChange }: {
         placeholder="Search provider keys…"
         onChange={(providerAccountId) => onChange(providerAccountId || null)}
       />
-      {accounts.length === 0 ? <span className="faint">No {provider.value} credentials added — the platform key is used.</span> : null}
+      {accounts.length === 0 && !value ? <span className="faint">No {provider.value} credentials added — the platform key is used.</span> : null}
     </div>
   );
 }
