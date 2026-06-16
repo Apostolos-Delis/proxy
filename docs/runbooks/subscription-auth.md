@@ -7,8 +7,9 @@ and disabled with `SUBSCRIPTION_OAUTH_ENABLED=false`.
 
 > **Provider boundary (read first).** Use provider-owned auth flows for accounts the engineer owns:
 > `codex login` / Codex access tokens for OpenAI, and `claude setup-token` /
-> `CLAUDE_CODE_OAUTH_TOKEN` for Anthropic. Prompt Proxy stores only the encrypted access/setup token
-> plus non-secret account metadata; it does not store OpenAI refresh tokens. This feature is still an
+> `CLAUDE_CODE_OAUTH_TOKEN` for Anthropic. Prompt Proxy stores provider secrets encrypted at rest;
+> OpenAI console sign-in and Codex auth JSON imports store refresh tokens only inside the encrypted
+> provider secret bundle. This feature is still an
 > internal operator workflow, not an external customer-facing pooling product. On shared proxy hosts,
 > local import reads the proxy process user's auth material, so prefer manual paste until hosted
 > per-user OAuth exists. Scope details live in [the local auth import plan](../scopes/subscription-local-auth-v1/PLAN.md).
@@ -64,6 +65,20 @@ stops affected Anthropic traffic.
    the `x-claude-code-*` identity headers (session, agent, and parent-agent ids) pass through
    unchanged. This covers `/v1/messages` and `/v1/messages/count_tokens`.
 
+## OpenAI: Console Sign-In
+
+1. Console → **Provider keys** → **Add provider key** → **Codex subscription** → source
+   **Sign in with OpenAI**.
+2. Start sign-in, open the OpenAI device-code link, and enter the one-time code shown in the wizard.
+3. After OpenAI confirms the login, Prompt Proxy exchanges the code for Codex OAuth tokens and stores
+   the access and refresh tokens inside the encrypted provider secret bundle. The ChatGPT account ID
+   is stored as provider metadata for the upstream `ChatGPT-Account-Id` header.
+4. Bind the credential to a prompt-proxy API key **you own** on the **API keys** page. The same
+   `provider_credential_owner_mismatch` guardrail applies to OpenAI subscription credentials.
+5. Point Codex at the proxy with that API key. Requests forward to `OPENAI_CHATGPT_BASE_URL`
+   (default `https://chatgpt.com/backend-api/codex`) with `Authorization: Bearer <token>` and
+   `ChatGPT-Account-Id: <account-id>`. API-key OpenAI traffic continues to use `OPENAI_BASE_URL`.
+
 ## OpenAI: Local Import
 
 1. Run `codex login` on the proxy host as the same OS user that runs Prompt Proxy. If browser login
@@ -71,15 +86,9 @@ stops affected Anthropic traffic.
 2. Confirm the auth cache exists at `~/.codex/auth.json`. If it lives somewhere else, set
    `PROMPT_PROXY_CODEX_AUTH_FILE=/path/to/auth.json` where the proxy runs, then restart the proxy.
 3. Console → **Provider keys** → **Add provider key** → **Codex subscription** → source
-   **Import from Codex** → save. The server reads the auth JSON, extracts `access_token` or
-   `tokens.access_token`, extracts `chatgpt_account_id`, `account_id`, or `tokens.account_id`, and
-   stores only the access token encrypted at rest plus the ChatGPT account ID as metadata. It does
-   not store `refresh_token`.
-4. Bind the credential to a prompt-proxy API key **you own** on the **API keys** page. The same
-   `provider_credential_owner_mismatch` guardrail applies to OpenAI subscription credentials.
-5. Point Codex at the proxy with that API key. Requests forward to `OPENAI_CHATGPT_BASE_URL`
-   (default `https://chatgpt.com/backend-api/codex`) with `Authorization: Bearer <token>` and
-   `ChatGPT-Account-Id: <account-id>`. API-key OpenAI traffic continues to use `OPENAI_BASE_URL`.
+   **Import from Codex** → save. The server reads the auth JSON and stores the same encrypted token
+   bundle used by the console sign-in flow when a refresh token is present.
+4. Bind and use it the same way as the console sign-in path.
 
 ## OpenAI: Manual Fallback
 
@@ -95,9 +104,8 @@ stops affected Anthropic traffic.
 
 ## Caveats
 
-- **OpenAI refresh:** the proxy does not store or refresh OpenAI refresh tokens. If a Codex login
-  access token expires, let Codex refresh `auth.json` and re-import the credential, or rotate a
-  manually pasted token.
+- **OpenAI refresh:** console sign-in and Codex auth JSON imports store refresh tokens encrypted and
+  refresh access tokens on demand. Manually pasted raw access tokens cannot be refreshed.
 - **OpenAI coverage:** this path is for HTTP `/v1/responses`; the OpenAI realtime WebSocket remains on
   the company key path.
 - **Model coverage:** the token only covers models the plan grants. Routing configs that select

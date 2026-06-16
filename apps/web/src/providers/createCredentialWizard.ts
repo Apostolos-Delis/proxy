@@ -2,7 +2,7 @@ import type { ProviderAccountAuthType } from "../gql/graphql";
 import type { ProviderName } from "./data";
 
 export type CreateProviderCredentialMode = "api_key" | "claude_subscription" | "codex_subscription";
-export type CreateProviderCredentialSource = "local_auth" | "manual";
+export type CreateProviderCredentialSource = "openai_oauth" | "local_auth" | "manual";
 export type CreateProviderCredentialStepId = "type" | "credentials" | "review" | "bind";
 
 export type CreateProviderCredentialDraft = {
@@ -61,8 +61,8 @@ export function withCredentialSource(
   return {
     ...draft,
     source,
-    apiKey: source === "local_auth" ? "" : draft.apiKey,
-    chatgptAccountId: source === "local_auth" ? "" : draft.chatgptAccountId
+    apiKey: source === "manual" ? draft.apiKey : "",
+    chatgptAccountId: source === "manual" ? draft.chatgptAccountId : ""
   };
 }
 
@@ -83,6 +83,7 @@ export function credentialModeLabel(mode: CreateProviderCredentialMode) {
 }
 
 export function secretLabelForDraft(draft: CreateProviderCredentialDraft) {
+  if (draft.source === "openai_oauth" && draft.mode === "codex_subscription") return "OpenAI sign-in";
   if (draft.source === "local_auth" && draft.mode === "claude_subscription") return "Imported Claude setup token";
   if (draft.source === "local_auth" && draft.mode === "codex_subscription") return "Imported Codex auth";
   if (draft.mode === "claude_subscription") return "Claude setup token";
@@ -91,6 +92,7 @@ export function secretLabelForDraft(draft: CreateProviderCredentialDraft) {
 }
 
 export function sourceLabelForDraft(draft: CreateProviderCredentialDraft) {
+  if (draft.source === "openai_oauth" && draft.mode === "codex_subscription") return "OpenAI device sign-in";
   if (draft.source === "local_auth" && draft.mode === "claude_subscription") return "Local Claude setup-token import";
   if (draft.source === "local_auth" && draft.mode === "codex_subscription") return "Local Codex auth import";
   return "Manual paste";
@@ -127,6 +129,7 @@ export function credentialBlockerMessage(
   if (draft.mode === "claude_subscription" && !subscriptionAuthEnabled) {
     return "Claude subscription auth has been disabled for this proxy.";
   }
+  if (draft.source === "openai_oauth" && draft.mode === "codex_subscription") return null;
   if (draft.source === "local_auth" && draft.mode !== "api_key") return null;
   if (!draft.apiKey.trim()) return `${secretLabelForDraft(draft)} is required.`;
   if (draft.mode === "claude_subscription" && !draft.apiKey.trim().startsWith(SUBSCRIPTION_TOKEN_PREFIX)) {
@@ -197,10 +200,15 @@ function codexAuthJsonHasAccountId(input: string) {
   if (!isRecord(parsed)) return false;
   const record = parsed;
   const tokens = isRecord(record.tokens) ? record.tokens : undefined;
+  const idToken = stringValue(record.id_token) ?? stringValue(record.idToken) ??
+    stringValue(tokens?.id_token) ?? stringValue(tokens?.idToken);
+  const accessToken = codexAuthJsonAccessToken(record);
   return Boolean(
     stringValue(record.chatgpt_account_id) ?? stringValue(record.chatgptAccountId) ??
       stringValue(record.account_id) ?? stringValue(record.accountId) ??
-      stringValue(tokens?.account_id) ?? stringValue(tokens?.accountId)
+      stringValue(tokens?.account_id) ?? stringValue(tokens?.accountId) ??
+      chatgptAccountIdFromJwt(idToken) ??
+      chatgptAccountIdFromJwt(accessToken)
   );
 }
 
@@ -210,11 +218,46 @@ function codexAuthJsonAccessToken(parsed: Record<string, unknown>) {
     stringValue(tokens?.access_token) ?? stringValue(tokens?.accessToken);
 }
 
+function chatgptAccountIdFromJwt(jwt: string | undefined) {
+  const claims = jwtPayload(jwt);
+  if (!claims) return undefined;
+  return stringValue(claims.chatgpt_account_id) ??
+    stringValue(claims.chatgptAccountId) ??
+    stringValue(claims.account_id) ??
+    stringValue(claims.accountId) ??
+    nestedAuthClaim(claims, "chatgpt_account_id") ??
+    nestedAuthClaim(claims, "chatgptAccountId") ??
+    nestedAuthClaim(claims, "account_id") ??
+    nestedAuthClaim(claims, "accountId");
+}
+
+function jwtPayload(jwt: string | undefined) {
+  if (!jwt) return undefined;
+  const parts = jwt.split(".");
+  if (parts.length !== 3 || !parts[1]) return undefined;
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const parsed = JSON.parse(atob(padded));
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function nestedAuthClaim(claims: Record<string, unknown>, key: string) {
+  const auth = claims["https://api.openai.com/auth"];
+  if (!isRecord(auth)) return undefined;
+  return stringValue(auth[key]);
+}
+
 function subscriptionSourceForModeChange(
   draft: CreateProviderCredentialDraft,
   mode: CreateProviderCredentialMode
 ) {
   if (mode === "api_key") return "manual";
+  if (mode === "codex_subscription" && draft.mode === "api_key") return "openai_oauth";
+  if (mode === "claude_subscription" && draft.source === "openai_oauth") return "local_auth";
   if (draft.mode === "api_key") return "local_auth";
   return draft.source;
 }

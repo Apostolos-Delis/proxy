@@ -15,6 +15,7 @@ import { ApiKeyIdentityStore } from "./identity.js";
 import { ModelPricingAdminService } from "./modelPricingAdmin.js";
 import { OrganizationSettingsStore } from "./organizationSettings.js";
 import { ProviderCredentialAdminService } from "./providerCredentialAdmin.js";
+import { ProviderCredentialOAuthService } from "./providerCredentialOAuth.js";
 import { ProviderCredentialStore, type ProviderCredentialOptions } from "./providerCredentials.js";
 import { ProviderRegistryAdminService } from "./providerRegistryAdmin.js";
 import { ProviderRegistryStore } from "./providers.js";
@@ -56,12 +57,14 @@ export function createDatabasePersistence(
       return config.subscriptionOAuthEnabled;
     }
   };
+  const providerCredentialAdmin = new ProviderCredentialAdminService(transactional, credentialOptions);
   return {
     apiKeyAdmin: new ApiKeyAdminService(transactional),
     apiKeys: new ApiKeyIdentityStore(db),
     adminSessions: new AdminSessionStore(db),
     providerCredentials: new ProviderCredentialStore(db, credentialOptions),
-    providerCredentialAdmin: new ProviderCredentialAdminService(transactional, credentialOptions),
+    providerCredentialAdmin,
+    providerCredentialOAuth: new ProviderCredentialOAuthService(providerCredentialAdmin),
     providerRegistryAdmin: new ProviderRegistryAdminService(transactional, config),
     providerRegistry: new ProviderRegistryStore(db, config),
     eventSink: new DatabaseEventSink(transactional, useAdvisoryLocks),

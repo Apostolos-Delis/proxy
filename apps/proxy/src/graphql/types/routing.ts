@@ -193,6 +193,40 @@ export const ProviderAccount = builder.objectRef<ProviderAccountModel>("Provider
   })
 });
 
+export type ProviderCredentialOAuthStartModel = {
+  loginId: string;
+  verificationUrl: string;
+  userCode: string;
+};
+
+export const ProviderCredentialOAuthStart = builder
+  .objectRef<ProviderCredentialOAuthStartModel>("ProviderCredentialOAuthStart")
+  .implement({
+    fields: (t) => ({
+      loginId: t.exposeString("loginId"),
+      verificationUrl: t.exposeString("verificationUrl"),
+      userCode: t.exposeString("userCode")
+    })
+  });
+
+export type ProviderCredentialOAuthStatusModel = {
+  loginId: string;
+  status: string;
+  providerAccountId?: string;
+  error?: string;
+};
+
+export const ProviderCredentialOAuthStatus = builder
+  .objectRef<ProviderCredentialOAuthStatusModel>("ProviderCredentialOAuthStatus")
+  .implement({
+    fields: (t) => ({
+      loginId: t.exposeString("loginId"),
+      status: t.exposeString("status"),
+      providerAccountId: t.exposeString("providerAccountId", { nullable: true }),
+      error: t.exposeString("error", { nullable: true })
+    })
+  });
+
 export type CreateApiKeyResultModel = {
   apiKey: ApiKeyModel | null;
   secret: string;

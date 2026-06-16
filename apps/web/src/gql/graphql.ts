@@ -127,6 +127,12 @@ export type SettingsInput = {
   toolResultCompression?: boolean | null | undefined;
 };
 
+export type StartProviderCredentialOAuthInput = {
+  baseUrl?: string | null | undefined;
+  name: string;
+  provider: string;
+};
+
 export type UpdateProviderInput = {
   authStyle: string;
   baseUrl: string;
@@ -310,6 +316,20 @@ export type CreateProviderCredentialFromLocalAuthMutationVariables = Exact<{
 
 
 export type CreateProviderCredentialFromLocalAuthMutation = { createProviderCredentialFromLocalAuth: { id: string, name: string } | null };
+
+export type StartProviderCredentialOAuthMutationVariables = Exact<{
+  input: StartProviderCredentialOAuthInput;
+}>;
+
+
+export type StartProviderCredentialOAuthMutation = { startProviderCredentialOAuth: { loginId: string, verificationUrl: string, userCode: string } };
+
+export type ProviderCredentialOAuthStatusQueryVariables = Exact<{
+  loginId: string | number;
+}>;
+
+
+export type ProviderCredentialOAuthStatusQuery = { providerCredentialOAuthStatus: { loginId: string, status: string, providerAccountId: string | null, error: string | null } | null };
 
 export type CreateProviderMutationVariables = Exact<{
   input: CreateProviderInput;
@@ -1261,6 +1281,25 @@ export const CreateProviderCredentialFromLocalAuthDocument = new TypedDocumentSt
   }
 }
     `) as unknown as TypedDocumentString<CreateProviderCredentialFromLocalAuthMutation, CreateProviderCredentialFromLocalAuthMutationVariables>;
+export const StartProviderCredentialOAuthDocument = new TypedDocumentString(`
+    mutation StartProviderCredentialOAuth($input: StartProviderCredentialOAuthInput!) {
+  startProviderCredentialOAuth(input: $input) {
+    loginId
+    verificationUrl
+    userCode
+  }
+}
+    `) as unknown as TypedDocumentString<StartProviderCredentialOAuthMutation, StartProviderCredentialOAuthMutationVariables>;
+export const ProviderCredentialOAuthStatusDocument = new TypedDocumentString(`
+    query ProviderCredentialOAuthStatus($loginId: ID!) {
+  providerCredentialOAuthStatus(loginId: $loginId) {
+    loginId
+    status
+    providerAccountId
+    error
+  }
+}
+    `) as unknown as TypedDocumentString<ProviderCredentialOAuthStatusQuery, ProviderCredentialOAuthStatusQueryVariables>;
 export const CreateProviderDocument = new TypedDocumentString(`
     mutation CreateProvider($input: CreateProviderInput!) {
   createProvider(input: $input) {

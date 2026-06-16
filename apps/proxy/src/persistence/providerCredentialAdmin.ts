@@ -22,6 +22,11 @@ import {
   PROVIDERS
 } from "@prompt-proxy/schema";
 
+import {
+  extractChatGPTAccountIdFromJwt,
+  openAIChatGPTTokenBundle,
+  stringifyOpenAIChatGPTTokenBundle
+} from "../openAIChatGPTAuth.js";
 import { createId } from "../util.js";
 import { AdminMutationError } from "./adminErrors.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
@@ -82,7 +87,7 @@ export class ProviderCredentialAdminService {
     const providerAccountId = createId("provider_account");
     const secret = oauthCredential?.secret ?? body.data.apiKey;
     const ciphertext = encryptSecret(secret, encryptionKey);
-    const hint = secretHint(secret);
+    const hint = oauthCredential?.secretHint ?? secretHint(secret);
     const settings = oauthCredential?.settings;
     const now = new Date();
 
@@ -362,11 +367,21 @@ function parseOAuthCredential(data: CreateCredentialBody) {
     ]);
   }
 
+  const secret = parsed.refreshToken
+    ? stringifyOpenAIChatGPTTokenBundle(openAIChatGPTTokenBundle({
+      accessToken,
+      refreshToken: parsed.refreshToken,
+      expiresAt: parsed.expiresAt
+    }))
+    : accessToken;
+
   return {
-    secret: accessToken,
+    secret,
+    secretHint: secretHint(accessToken),
     settings: {
       tokenKind: "openai_chatgpt",
       source: parsed.source,
+      tokenStorage: parsed.refreshToken ? "token_bundle" : "access_token",
       chatgptAccountId
     }
   };
@@ -439,18 +454,31 @@ function parseOpenAISecretInput(input: string) {
   }
 
   const tokens = isRecord(parsed.tokens) ? parsed.tokens : undefined;
+  const accessToken = stringValue(parsed.access_token) ?? stringValue(parsed.accessToken) ??
+    stringValue(tokens?.access_token) ?? stringValue(tokens?.accessToken);
+  const idToken = stringValue(parsed.id_token) ?? stringValue(parsed.idToken) ??
+    stringValue(tokens?.id_token) ?? stringValue(tokens?.idToken);
   return {
-    accessToken: stringValue(parsed.access_token) ?? stringValue(parsed.accessToken) ??
-      stringValue(tokens?.access_token) ?? stringValue(tokens?.accessToken),
+    accessToken,
+    refreshToken: stringValue(parsed.refresh_token) ?? stringValue(parsed.refreshToken) ??
+      stringValue(tokens?.refresh_token) ?? stringValue(tokens?.refreshToken),
+    expiresAt: numberValue(parsed.expires_at) ?? numberValue(parsed.expiresAt) ??
+      numberValue(tokens?.expires_at) ?? numberValue(tokens?.expiresAt),
     chatgptAccountId: stringValue(parsed.chatgpt_account_id) ?? stringValue(parsed.chatgptAccountId) ??
       stringValue(parsed.account_id) ?? stringValue(parsed.accountId) ??
-      stringValue(tokens?.account_id) ?? stringValue(tokens?.accountId),
-    source: "codex-auth-json"
+      stringValue(tokens?.account_id) ?? stringValue(tokens?.accountId) ??
+      extractChatGPTAccountIdFromJwt(idToken) ??
+      extractChatGPTAccountIdFromJwt(accessToken),
+    source: stringValue(parsed.source) === "codex-device-auth" ? "codex-device-auth" : "codex-auth-json"
   };
 }
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

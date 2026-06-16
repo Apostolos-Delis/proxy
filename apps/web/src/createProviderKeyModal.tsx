@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
   createProviderCredential,
   createProviderCredentialFromLocalAuth,
+  fetchProviderCredentialOAuthStatus,
   fetchProviderRegistry,
   fetchSubscriptionOAuthEnabled,
+  startProviderCredentialOAuth,
   type CreateProviderCredentialInput,
   type ProviderName
 } from "./providers/data";
@@ -21,7 +22,6 @@ import {
 import {
   authTypeForMode,
   credentialBlockerMessage,
-  credentialModeLabel,
   initialProviderCredentialDraft,
   nextStepId,
   prevStepId,
@@ -29,14 +29,12 @@ import {
   type CreateProviderCredentialDraft,
   type CreateProviderCredentialMode
 } from "./providers/createCredentialWizard";
-import { Badge, GlassCard } from "./ui";
-
-type CreatedProviderCredential = {
-  id: string;
-  provider: ProviderName;
-  name: string;
-  mode: CreateProviderCredentialMode;
-};
+import {
+  CreatedCredentialStep,
+  oauthBlockerMessage,
+  WizardActions,
+  type CreatedProviderCredential
+} from "./providers/createCredentialWizardFooter";
 
 type CreateProviderCredentialRequest = {
   mode: CreateProviderCredentialMode;
@@ -49,6 +47,7 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
 }) {
   const [draft, setDraft] = useState<CreateProviderCredentialDraft>(initialProviderCredentialDraft);
   const [fieldError, setFieldError] = useState<string | null>(null);
+  const oauthCompletionNotified = useRef<string | null>(null);
   const queryClient = useQueryClient();
   const { data: subscriptionAuthQueryData } = useQuery({
     queryKey: ["subscription-oauth-enabled"],
@@ -89,12 +88,65 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
       setFieldError(null);
     }
   });
+  const oauthStartMutation = useMutation({
+    mutationFn: startProviderCredentialOAuth,
+    onSuccess: (result) => {
+      window.open(result.verificationUrl, "_blank", "noopener,noreferrer");
+    }
+  });
+  const oauthStatusQuery = useQuery({
+    queryKey: ["provider-credential-oauth-status", oauthStartMutation.data?.loginId],
+    enabled: Boolean(oauthStartMutation.data?.loginId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "completed" || status === "failed" ? false : 1500;
+    },
+    queryFn: async () => {
+      const loginId = oauthStartMutation.data?.loginId;
+      if (!loginId) return null;
+      const status = await fetchProviderCredentialOAuthStatus(loginId);
+      if (!status) {
+        return {
+          loginId,
+          status: "failed",
+          providerAccountId: null,
+          error: "OpenAI sign-in session expired. Start again."
+        };
+      }
+      if (
+        status?.status === "completed" &&
+        status.providerAccountId &&
+        oauthCompletionNotified.current !== loginId
+      ) {
+        oauthCompletionNotified.current = loginId;
+        queryClient.invalidateQueries({ queryKey: ["provider-accounts"] });
+        queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+        onCreated?.({ id: status.providerAccountId, provider: "openai" });
+      }
+      return status;
+    }
+  });
 
   const requestClose = () => {
-    if (!createMutation.isPending) onClose();
+    if (!createMutation.isPending && !oauthStartMutation.isPending) onClose();
   };
-  const created = createMutation.data ?? null;
-  const blocker = created ? null : stepBlockerMessage(draft, subscriptionAuthEnabled);
+  const oauthWaiting = Boolean(
+    oauthStartMutation.data?.loginId &&
+    oauthStatusQuery.data?.status !== "completed" &&
+    oauthStatusQuery.data?.status !== "failed"
+  );
+  const oauthCreated = oauthStatusQuery.data?.status === "completed" && oauthStatusQuery.data.providerAccountId
+    ? {
+      id: oauthStatusQuery.data.providerAccountId,
+      provider: "openai",
+      name: draft.name.trim(),
+      mode: draft.mode
+    } satisfies CreatedProviderCredential
+    : null;
+  const created = createMutation.data ?? oauthCreated;
+  const visibleDraft = created ? { ...draft, stepId: "bind" as const } : draft;
+  const blocker = created ? null : oauthBlockerMessage(draft, oauthStartMutation, oauthStatusQuery) ??
+    stepBlockerMessage(draft, subscriptionAuthEnabled);
   const goNext = () => {
     const next = nextStepId(draft.stepId);
     if (next) {
@@ -108,6 +160,30 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
       setFieldError(null);
       setDraft((current) => ({ ...current, stepId: previous }));
     }
+  };
+  const updateDraft = (next: CreateProviderCredentialDraft) => {
+    if (oauthWaiting) return;
+    if (
+      next.mode !== draft.mode ||
+      next.source !== draft.source ||
+      next.name !== draft.name ||
+      next.baseUrl !== draft.baseUrl
+    ) {
+      oauthStartMutation.reset();
+      oauthCompletionNotified.current = null;
+    }
+    setDraft(next);
+  };
+  const startOAuth = () => {
+    if (oauthWaiting) return;
+    const nextError = credentialBlockerMessage(draft, subscriptionAuthEnabled);
+    setFieldError(nextError);
+    if (nextError) return;
+    oauthStartMutation.mutate({
+      provider: draft.provider,
+      name: draft.name.trim(),
+      baseUrl: draft.baseUrl.trim() || undefined
+    });
   };
   const submit = () => {
     const nextError = credentialBlockerMessage(draft, subscriptionAuthEnabled);
@@ -135,36 +211,46 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
     >
       <div className="provider-key-wizard">
         <ProviderCredentialStepRail
-          draft={draft}
+          draft={visibleDraft}
           created={Boolean(created)}
           onVisit={(stepId) => {
+            if (oauthWaiting) return;
             setFieldError(null);
             setDraft((current) => ({ ...current, stepId }));
           }}
         />
         <div className="wizard-panels">
-          {draft.stepId === "type" ? (
+          {visibleDraft.stepId === "type" ? (
             <CredentialTypeStep
               draft={draft}
               subscriptionAuthEnabled={subscriptionAuthEnabled}
-              onChange={setDraft}
+              onChange={updateDraft}
             />
           ) : null}
-          {draft.stepId === "credentials" ? (
+          {visibleDraft.stepId === "credentials" ? (
             <CredentialDetailsStep
               draft={draft}
               providerOptions={providerOptions}
-              onChange={setDraft}
+              oauth={{
+                start: oauthStartMutation.data ?? null,
+                status: oauthStatusQuery.data ?? null,
+                pending: oauthStartMutation.isPending,
+                checking: oauthStatusQuery.isFetching,
+                error: oauthStartMutation.error?.message,
+                locked: oauthWaiting,
+                onStart: startOAuth
+              }}
+              onChange={updateDraft}
             />
           ) : null}
-          {draft.stepId === "review" ? <CredentialReviewStep draft={draft} /> : null}
-          {draft.stepId === "bind" && created ? (
+          {visibleDraft.stepId === "review" ? <CredentialReviewStep draft={draft} /> : null}
+          {visibleDraft.stepId === "bind" && created ? (
             <CreatedCredentialStep created={created} embedded={Boolean(onCreated)} onClose={requestClose} />
           ) : null}
           <WizardActions
-            draft={draft}
+            draft={visibleDraft}
             created={Boolean(created)}
-            pending={createMutation.isPending}
+            pending={createMutation.isPending || oauthStartMutation.isPending || oauthWaiting}
             blocker={blocker}
             fieldError={fieldError}
             mutationError={createMutation.error?.message}
@@ -176,90 +262,5 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
         </div>
       </div>
     </Modal>
-  );
-}
-
-function CreatedCredentialStep({ created, embedded, onClose }: {
-  created: CreatedProviderCredential;
-  embedded: boolean;
-  onClose: () => void;
-}) {
-  return (
-    <GlassCard>
-      <div className="invite-result">
-        <div className="row gap-8">
-          <Badge variant="success" dot>{created.name} saved</Badge>
-          <span className="faint">{credentialModeLabel(created.mode)} credential created for <span className="mono">{created.provider}</span>.</span>
-        </div>
-      </div>
-      {embedded ? (
-        <div className="provider-credential-note">
-          <Badge variant="success" dot>Selected</Badge>
-          <span>This provider key is selected for the API key you are creating.</span>
-        </div>
-      ) : (
-        <div className="provider-credential-note">
-          <Badge variant="warn" dot>Bind next</Badge>
-          <span>Bind it to a Prompt Proxy API key you own before traffic can use it.</span>
-        </div>
-      )}
-      {embedded ? null : (
-        <Link to="/api-keys" className="btn btn-primary provider-credential-bind-link" onClick={onClose}>
-          Bind on API keys
-        </Link>
-      )}
-    </GlassCard>
-  );
-}
-
-function WizardActions({ draft, created, pending, blocker, fieldError, mutationError, onBack, onNext, onCreate, onDone }: {
-  draft: CreateProviderCredentialDraft;
-  created: boolean;
-  pending: boolean;
-  blocker: string | null;
-  fieldError: string | null;
-  mutationError?: string;
-  onBack: () => void;
-  onNext: () => void;
-  onCreate: () => void;
-  onDone: () => void;
-}) {
-  const showBack = draft.stepId !== "type" && !created;
-  return (
-    <div className="wizard-actions">
-      <div className="wizard-actions-status">
-        {blocker ? <span className="wizard-blocker">{blocker}</span> : null}
-        {fieldError ? <span className="action-error">{fieldError}</span> : null}
-        {mutationError ? <span className="action-error">{mutationError}</span> : null}
-      </div>
-      {showBack ? <button className="btn" type="button" disabled={pending} onClick={onBack}>Back</button> : null}
-      {primaryAction(draft, created, pending, blocker, onNext, onCreate, onDone)}
-    </div>
-  );
-}
-
-function primaryAction(
-  draft: CreateProviderCredentialDraft,
-  created: boolean,
-  pending: boolean,
-  blocker: string | null,
-  onNext: () => void,
-  onCreate: () => void,
-  onDone: () => void
-) {
-  if (draft.stepId === "bind" && created) {
-    return <button className="btn btn-primary" type="button" onClick={onDone}>Done</button>;
-  }
-  if (draft.stepId === "review") {
-    return (
-      <button className="btn btn-primary" type="button" disabled={pending} onClick={onCreate}>
-        {pending ? "Saving…" : "Save credential"}
-      </button>
-    );
-  }
-  return (
-    <button className="btn btn-primary" type="button" disabled={Boolean(blocker)} onClick={onNext}>
-      Next
-    </button>
   );
 }

@@ -1,6 +1,7 @@
 import {
   apiKeyProviderAccounts,
   decryptSecret,
+  encryptSecret,
   providers,
   providerAccounts,
   type PromptProxyDbSession
@@ -9,6 +10,11 @@ import { PROVIDER_ACCOUNT_STATUSES, PROVIDERS } from "@prompt-proxy/schema";
 import { and, eq, isNull } from "drizzle-orm";
 
 import type { Provider, UpstreamCredential } from "../types.js";
+import {
+  parseOpenAIChatGPTSecret,
+  refreshOpenAIChatGPTTokenBundle,
+  stringifyOpenAIChatGPTTokenBundle
+} from "../openAIChatGPTAuth.js";
 import {
   validateProviderBaseUrl,
   type ProviderNetworkPolicy
@@ -20,6 +26,7 @@ type CacheEntry = {
 };
 
 const CACHE_TTL_MS = 30_000;
+const OAUTH_REFRESH_SKEW_MS = 60_000;
 
 export type ResolveCredentialInput = {
   organizationId: string;
@@ -31,6 +38,7 @@ export type ProviderCredentialOptions = {
   encryptionKey: string | undefined;
   subscriptionOAuthEnabled: boolean;
   allowedPrivateUpstreamCidrs: ProviderNetworkPolicy["allowedPrivateUpstreamCidrs"];
+  fetcher?: typeof fetch;
 };
 
 export class ProviderCredentialStore {
@@ -101,7 +109,15 @@ export class ProviderCredentialStore {
       throw new Error("provider_secret_encryption_key_missing");
     }
 
-    const token = decryptSecret(account.secretCiphertext, this.options.encryptionKey);
+    let token = decryptSecret(account.secretCiphertext, this.options.encryptionKey);
+    if (account.authType === "oauth" && account.provider === PROVIDERS.OPENAI) {
+      token = await this.openAIChatGPTAccessToken({
+        providerAccountId: account.id,
+        encryptedSecret: account.secretCiphertext,
+        decryptedSecret: token,
+        now
+      });
+    }
     const baseUrl = account.baseUrl ? trimTrailingSlash(account.baseUrl) : undefined;
     const pinnedAddress = baseUrl
       ? await validateProviderBaseUrl(baseUrl, this.options)
@@ -123,6 +139,40 @@ export class ProviderCredentialStore {
       .where(eq(providerAccounts.id, account.id));
 
     return credential;
+  }
+
+  private async openAIChatGPTAccessToken(input: {
+    providerAccountId: string;
+    encryptedSecret: string;
+    decryptedSecret: string;
+    now: number;
+  }) {
+    const parsed = parseOpenAIChatGPTSecret(input.decryptedSecret);
+    if (parsed.kind === "access_token") return parsed.accessToken;
+    if (parsed.bundle.expiresAt > input.now + OAUTH_REFRESH_SKEW_MS) {
+      return parsed.bundle.accessToken;
+    }
+
+    let refreshed;
+    try {
+      refreshed = await refreshOpenAIChatGPTTokenBundle({
+        bundle: parsed.bundle,
+        now: input.now,
+        fetcher: this.options.fetcher
+      });
+    } catch (error) {
+      if (parsed.bundle.expiresAt > input.now) return parsed.bundle.accessToken;
+      throw error;
+    }
+    const ciphertext = encryptSecret(stringifyOpenAIChatGPTTokenBundle(refreshed), this.options.encryptionKey!);
+    await this.db
+      .update(providerAccounts)
+      .set({ secretCiphertext: ciphertext, updatedAt: new Date(input.now) })
+      .where(and(
+        eq(providerAccounts.id, input.providerAccountId),
+        eq(providerAccounts.secretCiphertext, input.encryptedSecret)
+      ));
+    return refreshed.accessToken;
   }
 }
 

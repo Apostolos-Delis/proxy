@@ -15,7 +15,7 @@ import {
   UserStatusResult
 } from "./types/invitations.js";
 import { ModelPricingEntry } from "./types/pricing.js";
-import { ApiKey, CreateApiKeyResult, ProviderAccount, ProviderRegistryEntry, RoutingConfigDetail } from "./types/routing.js";
+import { ApiKey, CreateApiKeyResult, ProviderAccount, ProviderCredentialOAuthStart, ProviderRegistryEntry, RoutingConfigDetail } from "./types/routing.js";
 import { PromptCaptureConfig, Settings, SettingsInput } from "./types/settings.js";
 import { Viewer, WorkspaceSummary } from "./types/viewer.js";
 
@@ -48,6 +48,14 @@ const CreateProviderCredentialInput = builder.inputType("CreateProviderCredentia
 });
 
 const CreateProviderCredentialFromLocalAuthInput = builder.inputType("CreateProviderCredentialFromLocalAuthInput", {
+  fields: (t) => ({
+    provider: t.string({ required: true }),
+    name: t.string({ required: true }),
+    baseUrl: t.string()
+  })
+});
+
+const StartProviderCredentialOAuthInput = builder.inputType("StartProviderCredentialOAuthInput", {
   fields: (t) => ({
     provider: t.string({ required: true }),
     name: t.string({ required: true }),
@@ -647,6 +655,28 @@ builder.mutationFields((t) => ({
         });
         const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
         return accounts.find((account) => account.id === created.providerAccountId) ?? null;
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  startProviderCredentialOAuth: t.field({
+    type: ProviderCredentialOAuthStart,
+    args: { input: t.arg({ type: StartProviderCredentialOAuthInput, required: true }) },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("provider_accounts_not_found");
+      const identity = requireAdminRole(context);
+      if (args.input.provider !== "openai") {
+        throw adminGraphQLError("provider_oauth_unsupported_provider", 400);
+      }
+      try {
+        return await context.persistence.providerCredentialOAuth.startOpenAICodexDeviceAuth({
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
+          name: args.input.name,
+          baseUrl: args.input.baseUrl ?? undefined
+        });
       } catch (error) {
         mapAdminError(error);
       }

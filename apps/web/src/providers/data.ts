@@ -71,6 +71,27 @@ const CreateProviderCredentialFromLocalAuthDocument = graphql(`
   }
 `);
 
+const StartProviderCredentialOAuthDocument = graphql(`
+  mutation StartProviderCredentialOAuth($input: StartProviderCredentialOAuthInput!) {
+    startProviderCredentialOAuth(input: $input) {
+      loginId
+      verificationUrl
+      userCode
+    }
+  }
+`);
+
+const ProviderCredentialOAuthStatusDocument = graphql(`
+  query ProviderCredentialOAuthStatus($loginId: ID!) {
+    providerCredentialOAuthStatus(loginId: $loginId) {
+      loginId
+      status
+      providerAccountId
+      error
+    }
+  }
+`);
+
 const CreateProviderDocument = graphql(`
   mutation CreateProvider($input: CreateProviderInput!) {
     createProvider(input: $input) {
@@ -165,6 +186,11 @@ export type CreateProviderCredentialFromLocalAuthInput = {
   name: string;
   baseUrl?: string;
 };
+export type StartProviderCredentialOAuthInput = {
+  provider: ProviderName;
+  name: string;
+  baseUrl?: string;
+};
 
 export async function fetchProviderAccounts() {
   return (await gqlFetch(ProviderAccountsDocument)).providerAccounts;
@@ -184,6 +210,14 @@ export async function createProviderCredential(input: CreateProviderCredentialIn
 
 export async function createProviderCredentialFromLocalAuth(input: CreateProviderCredentialFromLocalAuthInput) {
   return (await gqlFetch(CreateProviderCredentialFromLocalAuthDocument, { input })).createProviderCredentialFromLocalAuth;
+}
+
+export async function startProviderCredentialOAuth(input: StartProviderCredentialOAuthInput) {
+  return (await gqlFetch(StartProviderCredentialOAuthDocument, { input })).startProviderCredentialOAuth;
+}
+
+export async function fetchProviderCredentialOAuthStatus(loginId: string) {
+  return (await gqlFetch(ProviderCredentialOAuthStatusDocument, { loginId })).providerCredentialOAuthStatus;
 }
 
 export async function createProvider(input: ProviderInput) {

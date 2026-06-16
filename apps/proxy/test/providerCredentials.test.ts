@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { eq } from "drizzle-orm";
 
@@ -21,9 +21,17 @@ import {
 
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 import { startAnthropicMock, startOpenAIMock } from "./helpers.js";
+import {
+  openAIChatGPTTokenBundle,
+  parseOpenAIChatGPTSecret,
+  stringifyOpenAIChatGPTTokenBundle
+} from "../src/openAIChatGPTAuth.js";
+import { ProviderCredentialOAuthService } from "../src/persistence/providerCredentialOAuth.js";
+import { ProviderCredentialStore } from "../src/persistence/providerCredentials.js";
 
 const ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 const CUSTOMER_KEY = "sk-ant-customer-zzz";
+const OPENAI_PROVIDER_ID = "00000000-0000-0000-0000-000000000001";
 const ANTHROPIC_PROVIDER_ID = "00000000-0000-0000-0000-000000000002";
 const CUSTOM_PROVIDER_ID = "10000000-0000-0000-0000-000000000001";
 const SHADOW_OPENAI_PROVIDER_ID = "10000000-0000-0000-0000-000000000002";
@@ -72,6 +80,7 @@ describe("BYOK provider credentials", () => {
   let activeFixture: PromptTestFixture | undefined;
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     await activeFixture?.close();
     activeFixture = undefined;
   });
@@ -663,7 +672,7 @@ describe("subscription oauth credentials", () => {
     expect(JSON.stringify(created)).not.toContain(OPENAI_OAUTH_TOKEN);
   });
 
-  it("extracts OpenAI access tokens from auth JSON without storing refresh tokens", async () => {
+  it("stores OpenAI auth JSON refresh tokens inside the encrypted token bundle", async () => {
     const fixture = await setup("org_oauth_openai_auth_json", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
 
     const created = await gql(fixture, CREATE, {
@@ -691,7 +700,10 @@ describe("subscription oauth credentials", () => {
       .from(providerAccounts)
       .where(eq(providerAccounts.id, created.data?.createProviderCredential.id));
     expect(row).toBeTruthy();
-    expect(decryptSecret(row!.secretCiphertext ?? "", ENCRYPTION_KEY)).toBe(OPENAI_OAUTH_TOKEN);
+    const secret = parseOpenAIChatGPTSecret(decryptSecret(row!.secretCiphertext ?? "", ENCRYPTION_KEY));
+    expect(secret.kind).toBe("token_bundle");
+    expect(secret.kind === "token_bundle" ? secret.bundle.accessToken : null).toBe(OPENAI_OAUTH_TOKEN);
+    expect(secret.kind === "token_bundle" ? secret.bundle.refreshToken : null).toBe("openai-refresh-token");
     expect(JSON.stringify(row!.settings)).not.toContain("refresh");
   });
 
@@ -728,7 +740,7 @@ describe("subscription oauth credentials", () => {
     expect(created.errors?.[0]?.message).toBe("subscription_oauth_disabled");
   });
 
-  it("imports Codex auth JSON from the proxy host without storing refresh tokens", async () => {
+  it("imports Codex auth JSON from the proxy host with encrypted refresh tokens", async () => {
     const authDir = await mkdtemp(join(tmpdir(), "prompt-proxy-codex-auth-"));
     const authPath = join(authDir, "auth.json");
     await writeFile(authPath, JSON.stringify({
@@ -759,16 +771,93 @@ describe("subscription oauth credentials", () => {
         .from(providerAccounts)
         .where(eq(providerAccounts.id, created.data?.createProviderCredentialFromLocalAuth.id));
       expect(row).toBeTruthy();
-      expect(decryptSecret(row!.secretCiphertext ?? "", ENCRYPTION_KEY)).toBe(OPENAI_OAUTH_TOKEN);
+      const secret = parseOpenAIChatGPTSecret(decryptSecret(row!.secretCiphertext ?? "", ENCRYPTION_KEY));
+      expect(secret.kind).toBe("token_bundle");
+      expect(secret.kind === "token_bundle" ? secret.bundle.accessToken : null).toBe(OPENAI_OAUTH_TOKEN);
+      expect(secret.kind === "token_bundle" ? secret.bundle.refreshToken : null).toBe("openai-refresh-token");
       expect(row!.settings).toEqual({
         tokenKind: "openai_chatgpt",
         source: "codex-auth-json",
+        tokenStorage: "token_bundle",
         chatgptAccountId: CHATGPT_ACCOUNT_ID
       });
       expect(JSON.stringify(row!.settings)).not.toContain("refresh");
     } finally {
       await rm(authDir, { recursive: true, force: true });
     }
+  });
+
+  it("creates an OpenAI subscription credential through device-code auth", async () => {
+    const fixture = await setup("org_oauth_openai_device", { SUBSCRIPTION_OAUTH_ENABLED: "false" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/accounts/deviceauth/usercode")) {
+        return jsonResponse({
+          device_auth_id: "device-auth-1",
+          user_code: "ABCD-1234",
+          interval: "1"
+        });
+      }
+      if (url.endsWith("/api/accounts/deviceauth/token")) {
+        return jsonResponse({
+          authorization_code: "authorization-code-1",
+          code_verifier: "code-verifier-1"
+        });
+      }
+      if (url.endsWith("/oauth/token")) {
+        return jsonResponse({
+          access_token: OPENAI_OAUTH_TOKEN,
+          refresh_token: "openai-refresh-token",
+          expires_in: 3600,
+          id_token: fakeJwt({
+            "https://api.openai.com/auth": {
+              chatgpt_account_id: CHATGPT_ACCOUNT_ID
+            }
+          })
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    const oauth = new ProviderCredentialOAuthService(
+      fixture.persistence.providerCredentialAdmin,
+      fetchMock as unknown as typeof fetch
+    );
+
+    const started = await oauth.startOpenAICodexDeviceAuth({
+      organizationId: "org_oauth_openai_device",
+      actorUserId: "local-user",
+      name: "Device Codex auth"
+    });
+    expect(started.verificationUrl).toBe("https://auth.openai.com/codex/device");
+    expect(started.userCode).toBe("ABCD-1234");
+    expect(oauth.status(started.loginId, {
+      organizationId: "other-org",
+      actorUserId: "local-user"
+    })).toBeNull();
+
+    const status = await waitForOAuthCompletion(oauth, started.loginId, {
+      organizationId: "org_oauth_openai_device",
+      actorUserId: "local-user"
+    });
+    expect(status.status).toBe("completed");
+    expect(status.providerAccountId).toBeTruthy();
+
+    const [row] = await fixture.db
+      .select({
+        secretCiphertext: providerAccounts.secretCiphertext,
+        settings: providerAccounts.settings
+      })
+      .from(providerAccounts)
+      .where(eq(providerAccounts.id, status.providerAccountId));
+    const secret = parseOpenAIChatGPTSecret(decryptSecret(row!.secretCiphertext ?? "", ENCRYPTION_KEY));
+    expect(secret.kind).toBe("token_bundle");
+    expect(secret.kind === "token_bundle" ? secret.bundle.refreshToken : null).toBe("openai-refresh-token");
+    expect(row!.settings).toEqual({
+      tokenKind: "openai_chatgpt",
+      source: "codex-device-auth",
+      tokenStorage: "token_bundle",
+      chatgptAccountId: CHATGPT_ACCOUNT_ID
+    });
   });
 
   it("rejects OpenAI oauth credentials without a ChatGPT account ID", async () => {
@@ -919,6 +1008,126 @@ describe("subscription oauth credentials", () => {
       providerAccountId: accountId,
       chatgptAccountId: CHATGPT_ACCOUNT_ID
     });
+  });
+
+  it("refreshes encrypted OpenAI oauth token bundles when resolving credentials", async () => {
+    const fixture = await setup("org_oauth_openai_refresh", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
+    const accountId = "org_oauth_openai_refresh:oauth-account";
+    await fixture.db.insert(providerAccounts).values({
+      id: accountId,
+      organizationId: "org_oauth_openai_refresh",
+      providerId: OPENAI_PROVIDER_ID,
+      name: "My ChatGPT sub",
+      authType: "oauth",
+      secretCiphertext: encryptSecret(stringifyOpenAIChatGPTTokenBundle(openAIChatGPTTokenBundle({
+        accessToken: "expired-openai-token",
+        refreshToken: "openai-refresh-token",
+        expiresAt: 1
+      })), ENCRYPTION_KEY),
+      secretHint: "••••oken",
+      createdByUserId: "local-user",
+      status: "active",
+      settings: {
+        tokenKind: "openai_chatgpt",
+        source: "codex-auth-json",
+        tokenStorage: "token_bundle",
+        chatgptAccountId: CHATGPT_ACCOUNT_ID
+      }
+    });
+    await fixture.db.insert(apiKeyProviderAccounts).values({
+      organizationId: "org_oauth_openai_refresh",
+      workspaceId: defaultWorkspaceId("org_oauth_openai_refresh"),
+      apiKeyId: "org_oauth_openai_refresh:api-key:default",
+      providerId: OPENAI_PROVIDER_ID,
+      providerAccountId: accountId,
+      createdByUserId: "local-user"
+    });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      access_token: "refreshed-openai-token",
+      refresh_token: "openai-refresh-token-2",
+      expires_in: 3600
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    }));
+    const credentialStore = new ProviderCredentialStore(fixture.db, {
+      encryptionKey: ENCRYPTION_KEY,
+      subscriptionOAuthEnabled: true,
+      allowedPrivateUpstreamCidrs: [],
+      fetcher: fetchMock as unknown as typeof fetch
+    });
+
+    const credential = await credentialStore.resolveForRequest({
+      organizationId: "org_oauth_openai_refresh",
+      apiKeyId: "org_oauth_openai_refresh:api-key:default",
+      provider: "openai"
+    });
+    expect(credential).toMatchObject({
+      provider: "openai",
+      authType: "oauth",
+      token: "refreshed-openai-token",
+      providerAccountId: accountId,
+      chatgptAccountId: CHATGPT_ACCOUNT_ID
+    });
+
+    const [row] = await fixture.db
+      .select({ secretCiphertext: providerAccounts.secretCiphertext })
+      .from(providerAccounts)
+      .where(eq(providerAccounts.id, accountId));
+    const secret = parseOpenAIChatGPTSecret(decryptSecret(row!.secretCiphertext ?? "", ENCRYPTION_KEY));
+    expect(secret.kind).toBe("token_bundle");
+    expect(secret.kind === "token_bundle" ? secret.bundle.accessToken : null).toBe("refreshed-openai-token");
+    expect(secret.kind === "token_bundle" ? secret.bundle.refreshToken : null).toBe("openai-refresh-token-2");
+  });
+
+  it("uses an unexpired OpenAI oauth token when proactive refresh fails", async () => {
+    const fixture = await setup("org_oauth_openai_refresh_soft_fail", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
+    const now = Date.now();
+    const accountId = "org_oauth_openai_refresh_soft_fail:oauth-account";
+    await fixture.db.insert(providerAccounts).values({
+      id: accountId,
+      organizationId: "org_oauth_openai_refresh_soft_fail",
+      providerId: OPENAI_PROVIDER_ID,
+      name: "My ChatGPT sub",
+      authType: "oauth",
+      secretCiphertext: encryptSecret(stringifyOpenAIChatGPTTokenBundle(openAIChatGPTTokenBundle({
+        accessToken: "still-valid-openai-token",
+        refreshToken: "openai-refresh-token",
+        expiresAt: now + 30_000
+      })), ENCRYPTION_KEY),
+      secretHint: "••••oken",
+      createdByUserId: "local-user",
+      status: "active",
+      settings: {
+        tokenKind: "openai_chatgpt",
+        source: "codex-auth-json",
+        tokenStorage: "token_bundle",
+        chatgptAccountId: CHATGPT_ACCOUNT_ID
+      }
+    });
+    await fixture.db.insert(apiKeyProviderAccounts).values({
+      organizationId: "org_oauth_openai_refresh_soft_fail",
+      workspaceId: defaultWorkspaceId("org_oauth_openai_refresh_soft_fail"),
+      apiKeyId: "org_oauth_openai_refresh_soft_fail:api-key:default",
+      providerId: OPENAI_PROVIDER_ID,
+      providerAccountId: accountId,
+      createdByUserId: "local-user"
+    });
+    const fetchMock = vi.fn(async () => new Response("unavailable", { status: 503 }));
+    const credentialStore = new ProviderCredentialStore(fixture.db, {
+      encryptionKey: ENCRYPTION_KEY,
+      subscriptionOAuthEnabled: true,
+      allowedPrivateUpstreamCidrs: [],
+      fetcher: fetchMock as unknown as typeof fetch
+    });
+
+    const credential = await credentialStore.resolveForRequest({
+      organizationId: "org_oauth_openai_refresh_soft_fail",
+      apiKeyId: "org_oauth_openai_refresh_soft_fail:api-key:default",
+      provider: "openai"
+    }, now);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(credential?.token).toBe("still-valid-openai-token");
   });
 
   it("resolves Anthropic oauth accounts to undefined when the flag is off", async () => {
@@ -1251,6 +1460,33 @@ function restoreEnv(name: string, value: string | undefined) {
 
 function gql(fixture: PromptTestFixture, query: string, variables?: Record<string, unknown>) {
   return adminGql(fixture.proxyUrl, fixture.adminHeaders, query, variables);
+}
+
+async function waitForOAuthCompletion(
+  service: ProviderCredentialOAuthService,
+  loginId: string | undefined,
+  scope?: { organizationId: string; actorUserId: string }
+) {
+  expect(loginId).toBeTruthy();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const status = service.status(loginId ?? "", scope);
+    if (status && status.status !== "pending") return status;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("OAuth flow did not finish");
+}
+
+function jsonResponse(body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" }
+  });
+}
+
+function fakeJwt(payload: Record<string, unknown>) {
+  const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url");
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `${header}.${body}.signature`;
 }
 
 async function sendMessage(fixture: PromptTestFixture) {
