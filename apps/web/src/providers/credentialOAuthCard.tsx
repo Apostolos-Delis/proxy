@@ -1,4 +1,5 @@
-import { ExternalLink } from "lucide-react";
+import { Check, Copy, ExternalLink } from "lucide-react";
+import { useState } from "react";
 
 import type { CreateProviderCredentialDraft } from "./createCredentialWizard";
 
@@ -16,8 +17,10 @@ export function CodexOAuthDeviceCard({ draft, oauth }: {
   draft: CreateProviderCredentialDraft;
   oauth?: CredentialOAuthState;
 }) {
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
   if (!oauth) return null;
   const status = oauth.status?.status ?? (oauth.start ? "pending" : "idle");
+  const codeCopied = copiedCode === oauth.start?.userCode;
   return (
     <div className="provider-credential-oauth">
       <div>
@@ -34,10 +37,26 @@ export function CodexOAuthDeviceCard({ draft, oauth }: {
       </button>
       {oauth.start ? (
         <div className="provider-credential-oauth-code">
-          <a href={oauth.start.verificationUrl} target="_blank" rel="noreferrer" className="provider-credential-oauth-link">
-            Open OpenAI sign-in <ExternalLink />
-          </a>
-          <span className="mono">{oauth.start.userCode}</span>
+          <div className="provider-credential-oauth-code-main">
+            <span className="provider-credential-oauth-code-label">Copy this code into OpenAI</span>
+            <span className="provider-credential-oauth-user-code">{oauth.start.userCode}</span>
+          </div>
+          <div className="provider-credential-oauth-code-actions">
+            <button
+              className="btn btn-sm"
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(oauth.start?.userCode ?? "");
+                setCopiedCode(oauth.start?.userCode ?? null);
+              }}
+            >
+              {codeCopied ? <Check /> : <Copy />}
+              {codeCopied ? "Copied" : "Copy code"}
+            </button>
+            <a href={oauth.start.verificationUrl} target="_blank" rel="noreferrer" className="btn btn-sm provider-credential-oauth-link">
+              Open OpenAI <ExternalLink />
+            </a>
+          </div>
         </div>
       ) : null}
       {oauth.error ? <span className="action-error">{oauth.error}</span> : null}
