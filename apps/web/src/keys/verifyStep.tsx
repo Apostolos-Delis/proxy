@@ -27,7 +27,7 @@ export function VerifyStep({ created }: { created: CreatedKeyResult }) {
         ) : null}
       </GlassCard>
       <GlassCard>
-        <HarnessSetupGuide secret={created.secret} harness={created.harness} showKeyContextSteps={false} />
+        <HarnessSetupGuide secret={created.secret} harnesses={created.harnesses} showKeyContextSteps={false} />
       </GlassCard>
       {created.apiKeyId ? <VerificationCard apiKeyId={created.apiKeyId} /> : null}
     </>

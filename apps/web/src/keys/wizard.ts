@@ -1,6 +1,6 @@
 import type { ProviderName } from "../providers/data";
 import { PROVIDER_ORDER } from "../providers";
-import type { HarnessSetupTarget } from "./setupSnippets";
+import { defaultHarnessSetupSelection, type HarnessSetupSelection } from "./setupSnippets";
 
 export type CreateKeyStepId = "configure" | "routing" | "create" | "verify";
 
@@ -14,7 +14,7 @@ export const createKeySteps: { id: CreateKeyStepId; label: string }[] = [
 export type CreateKeyDraft = {
   stepId: CreateKeyStepId;
   name: string;
-  harness: HarnessSetupTarget;
+  harnesses: HarnessSetupSelection;
   scopes: string[];
   routingConfigId: string | null;
   linkProviderKeys: boolean;
@@ -24,7 +24,7 @@ export type CreateKeyDraft = {
 export type CreatedKeyResult = {
   apiKeyId: string | null;
   keyName: string;
-  harness: HarnessSetupTarget;
+  harnesses: HarnessSetupSelection;
   secret: string;
   bindingFailures: string[];
 };
@@ -33,7 +33,7 @@ export function initialDraft(): CreateKeyDraft {
   return {
     stepId: "configure",
     name: "",
-    harness: "all",
+    harnesses: [...defaultHarnessSetupSelection],
     scopes: ["proxy"],
     routingConfigId: null,
     linkProviderKeys: false,
@@ -74,6 +74,7 @@ export function orgDefaultConfigLabel(defaultConfig: { name: string } | null): s
 export function stepBlockerMessage(draft: CreateKeyDraft): string | null {
   if (draft.stepId !== "configure") return null;
   if (!draft.name.trim()) return "Enter a key name.";
+  if (draft.harnesses.length === 0) return "Pick at least one harness.";
   if (draft.scopes.length === 0) return "Pick at least one scope.";
   return null;
 }

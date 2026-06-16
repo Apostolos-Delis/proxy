@@ -21,7 +21,7 @@ describe("initialDraft", () => {
   it("starts on configure with the default scopes and no bindings", () => {
     const draft = initialDraft();
     expect(draft.stepId).toBe("configure");
-    expect(draft.harness).toBe("all");
+    expect(draft.harnesses).toEqual(["claude-code", "codex"]);
     expect(draft.scopes).toEqual(["proxy"]);
     expect(draft.routingConfigId).toBeNull();
     expect(draft.linkProviderKeys).toBe(false);
@@ -82,6 +82,10 @@ describe("stepBlockerMessage", () => {
 
   it("requires at least one scope on configure", () => {
     expect(stepBlockerMessage(draftAt("configure", { scopes: [] }))).toBe("Pick at least one scope.");
+  });
+
+  it("requires at least one harness on configure", () => {
+    expect(stepBlockerMessage(draftAt("configure", { harnesses: [] }))).toBe("Pick at least one harness.");
   });
 
   it("passes a valid configure step and never blocks later steps", () => {

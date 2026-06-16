@@ -14,35 +14,36 @@ export function buildSetupScript(baseUrl: string) {
 #
 # Usage:
 #   curl -fsSL ${baseUrl}/setup.sh | bash -s -- <api-key>
-#   curl -fsSL ${baseUrl}/setup.sh | bash -s -- --harness codex <api-key>
-#   curl -fsSL ${baseUrl}/setup.sh | bash -s -- --harness claude-code <api-key>
-#   curl -fsSL ${baseUrl}/setup.sh | bash -s -- --harness opencode <api-key>
+#   curl -fsSL ${baseUrl}/setup.sh | bash -s -- --harness claude-code --harness codex <api-key>
 set -euo pipefail
 
 PP_BASE_URL="${base}"
-PP_HARNESS="all"
+PP_HARNESSES=""
+PP_HARNESS_ARG_COUNT=0
 PP_TOKEN=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --harness)
       if [ "$#" -lt 2 ]; then
-        echo "--harness requires one of: all, codex, claude-code, opencode" >&2
+        echo "--harness requires one of: codex, claude-code, opencode" >&2
         exit 1
       fi
-      PP_HARNESS="\${2:-}"
+      PP_HARNESSES="$PP_HARNESSES \${2:-}"
+      PP_HARNESS_ARG_COUNT=$((PP_HARNESS_ARG_COUNT + 1))
       shift 2
       ;;
     --harness=*)
-      PP_HARNESS="\${1#--harness=}"
+      PP_HARNESSES="$PP_HARNESSES \${1#--harness=}"
+      PP_HARNESS_ARG_COUNT=$((PP_HARNESS_ARG_COUNT + 1))
       shift
       ;;
     -h|--help)
       cat <<'PP_HELP_EOF'
-Usage: setup.sh [--harness all|codex|claude-code|opencode] <api-key>
+Usage: setup.sh [--harness codex] [--harness claude-code] [--harness opencode] <api-key>
 
 Without --harness, setup.sh configures Claude Code and Codex with one shared key.
-Use a harness-specific mode when you want different API keys or routing configs per harness.
+Pass --harness more than once to configure multiple harnesses with one shared key.
 PP_HELP_EOF
       exit 0
       ;;
@@ -72,19 +73,29 @@ while [ "$#" -gt 0 ]; do
   fi
 done
 
-case "$PP_HARNESS" in
-  both|multi|multiple) PP_HARNESS="all" ;;
-  claude) PP_HARNESS="claude-code" ;;
-  open-code) PP_HARNESS="opencode" ;;
-esac
+if [ "$PP_HARNESS_ARG_COUNT" -eq 0 ]; then
+  PP_HARNESSES="claude-code codex"
+fi
 
-case "$PP_HARNESS" in
-  all|codex|claude-code|opencode) ;;
-  *)
-    echo "Unknown harness: $PP_HARNESS. Use one of: all, codex, claude-code, opencode." >&2
-    exit 1
-    ;;
-esac
+PP_SETUP_CLAUDE=0
+PP_SETUP_CODEX=0
+PP_SETUP_OPENCODE=0
+for PP_HARNESS in $PP_HARNESSES; do
+  case "$PP_HARNESS" in
+    claude-code) PP_SETUP_CLAUDE=1 ;;
+    codex) PP_SETUP_CODEX=1 ;;
+    opencode) PP_SETUP_OPENCODE=1 ;;
+    *)
+      echo "Unknown harness: $PP_HARNESS. Use one or more of: codex, claude-code, opencode." >&2
+      exit 1
+      ;;
+  esac
+done
+PP_HARNESS_COUNT=$((PP_SETUP_CLAUDE + PP_SETUP_CODEX + PP_SETUP_OPENCODE))
+if [ "$PP_HARNESS_COUNT" -eq 0 ]; then
+  echo "Pick at least one harness: codex, claude-code, opencode." >&2
+  exit 1
+fi
 
 if [ -z "$PP_TOKEN" ]; then
   PP_TOKEN="\${PROMPT_PROXY_TOKEN:-}"
@@ -94,43 +105,42 @@ if [ -z "$PP_TOKEN" ] && ( : < /dev/tty ) 2>/dev/null; then
   IFS= read -r PP_TOKEN < /dev/tty
 fi
 if [ -z "$PP_TOKEN" ]; then
-  echo "No API key provided. Re-run as: curl -fsSL $PP_BASE_URL/setup.sh | bash -s -- --harness $PP_HARNESS <api-key>" >&2
+  PP_HARNESS_FLAGS=""
+  [ "$PP_SETUP_CLAUDE" -eq 1 ] && PP_HARNESS_FLAGS="$PP_HARNESS_FLAGS --harness claude-code"
+  [ "$PP_SETUP_CODEX" -eq 1 ] && PP_HARNESS_FLAGS="$PP_HARNESS_FLAGS --harness codex"
+  [ "$PP_SETUP_OPENCODE" -eq 1 ] && PP_HARNESS_FLAGS="$PP_HARNESS_FLAGS --harness opencode"
+  echo "No API key provided. Re-run as: curl -fsSL $PP_BASE_URL/setup.sh | bash -s --$PP_HARNESS_FLAGS <api-key>" >&2
   exit 1
 fi
 
-case "$PP_HARNESS" in
-  codex)
-    PP_TOKEN_PATH="$HOME/.prompt-proxy/codex.token"
-    PP_TOKEN_PATH_DISPLAY="~/.prompt-proxy/codex.token"
-    PP_CODEX_ENV="PROMPT_PROXY_CODEX_TOKEN"
-    PP_CODEX_PROVIDER="prompt_proxy_codex"
-    ;;
-  claude-code)
-    PP_TOKEN_PATH="$HOME/.prompt-proxy/claude-code.token"
-    PP_TOKEN_PATH_DISPLAY="~/.prompt-proxy/claude-code.token"
-    PP_CODEX_ENV=""
-    PP_CODEX_PROVIDER=""
-    ;;
-  opencode)
-    PP_TOKEN_PATH="$HOME/.prompt-proxy/opencode.token"
-    PP_TOKEN_PATH_DISPLAY="~/.prompt-proxy/opencode.token"
-    PP_CODEX_ENV=""
-    PP_CODEX_PROVIDER=""
-    ;;
-  *)
-    PP_TOKEN_PATH="$HOME/.prompt-proxy/token"
-    PP_TOKEN_PATH_DISPLAY="~/.prompt-proxy/token"
-    PP_CODEX_ENV="PROMPT_PROXY_TOKEN"
-    PP_CODEX_PROVIDER="prompt_proxy"
-    ;;
-esac
+if [ "$PP_HARNESS_COUNT" -gt 1 ]; then
+  PP_TOKEN_PATH="$HOME/.prompt-proxy/token"
+  PP_TOKEN_PATH_DISPLAY="~/.prompt-proxy/token"
+elif [ "$PP_SETUP_CODEX" -eq 1 ]; then
+  PP_TOKEN_PATH="$HOME/.prompt-proxy/codex.token"
+  PP_TOKEN_PATH_DISPLAY="~/.prompt-proxy/codex.token"
+elif [ "$PP_SETUP_CLAUDE" -eq 1 ]; then
+  PP_TOKEN_PATH="$HOME/.prompt-proxy/claude-code.token"
+  PP_TOKEN_PATH_DISPLAY="~/.prompt-proxy/claude-code.token"
+else
+  PP_TOKEN_PATH="$HOME/.prompt-proxy/opencode.token"
+  PP_TOKEN_PATH_DISPLAY="~/.prompt-proxy/opencode.token"
+fi
+
+if [ "$PP_SETUP_CODEX" -eq 1 ] && [ "$PP_HARNESS_COUNT" -eq 1 ]; then
+  PP_CODEX_ENV="PROMPT_PROXY_CODEX_TOKEN"
+  PP_CODEX_PROVIDER="prompt_proxy_codex"
+else
+  PP_CODEX_ENV="PROMPT_PROXY_TOKEN"
+  PP_CODEX_PROVIDER="prompt_proxy"
+fi
 
 mkdir -p "$HOME/.prompt-proxy"
 printf '%s\\n' "$PP_TOKEN" > "$PP_TOKEN_PATH"
 chmod 600 "$PP_TOKEN_PATH"
 echo "key: stored at $PP_TOKEN_PATH_DISPLAY"
 
-if [ "$PP_HARNESS" = "all" ] || [ "$PP_HARNESS" = "claude-code" ]; then
+if [ "$PP_SETUP_CLAUDE" -eq 1 ]; then
   if command -v node >/dev/null 2>&1; then
     mkdir -p "$HOME/.claude"
     node -e '
@@ -163,7 +173,7 @@ fs.writeFileSync(file, JSON.stringify(settings, null, 2) + "\\n");
   fi
 fi
 
-if [ "$PP_HARNESS" = "all" ] || [ "$PP_HARNESS" = "codex" ]; then
+if [ "$PP_SETUP_CODEX" -eq 1 ]; then
   [ -f "$HOME/.zshrc" ] || [ -f "$HOME/.bashrc" ] || touch "$HOME/.zshrc"
   PP_TOKEN_EXPORT="export \${PP_CODEX_ENV}=\\"\\$(cat \${PP_TOKEN_PATH_DISPLAY})\\""
   for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
@@ -230,7 +240,7 @@ ${heredocDelimiter}
   fi
 fi
 
-if [ "$PP_HARNESS" = "opencode" ]; then
+if [ "$PP_SETUP_OPENCODE" -eq 1 ]; then
   if command -v node >/dev/null 2>&1; then
     PP_OPENCODE_CONFIG_DIR="\${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
     PP_OPENCODE_DATA_DIR="\${XDG_DATA_HOME:-$HOME/.local/share}/opencode"
@@ -278,11 +288,22 @@ fs.chmodSync(authFile, 0o600);
   fi
 fi
 
-case "$PP_HARNESS" in
-  codex) echo "Done. Open a new terminal and run: codex" ;;
-  claude-code) echo "Done. Open a new terminal and run: claude" ;;
-  opencode) echo "Done. Open opencode and select prompt-proxy-chat/router-auto from /models" ;;
-  *) echo "Done. Open a new terminal and run: claude  (or codex)" ;;
-esac
+if [ "$PP_HARNESS_COUNT" -eq 1 ] && [ "$PP_SETUP_CODEX" -eq 1 ]; then
+  echo "Done. Open a new terminal and run: codex"
+elif [ "$PP_HARNESS_COUNT" -eq 1 ] && [ "$PP_SETUP_CLAUDE" -eq 1 ]; then
+  echo "Done. Open a new terminal and run: claude"
+elif [ "$PP_HARNESS_COUNT" -eq 1 ] && [ "$PP_SETUP_OPENCODE" -eq 1 ]; then
+  echo "Done. Open opencode and select prompt-proxy-chat/router-auto from /models"
+else
+  PP_LAUNCH=""
+  [ "$PP_SETUP_CLAUDE" -eq 1 ] && PP_LAUNCH="$PP_LAUNCH claude"
+  [ "$PP_SETUP_CODEX" -eq 1 ] && PP_LAUNCH="$PP_LAUNCH codex"
+  if [ -n "$PP_LAUNCH" ]; then
+    echo "Done. Open a new terminal and run:$PP_LAUNCH"
+  fi
+  if [ "$PP_SETUP_OPENCODE" -eq 1 ]; then
+    echo "Open opencode and select prompt-proxy-chat/router-auto from /models"
+  fi
+fi
 `;
 }

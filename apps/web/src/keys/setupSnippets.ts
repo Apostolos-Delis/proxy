@@ -1,48 +1,52 @@
 export type SnippetLanguage = "shell" | "json" | "toml";
-export type HarnessSetupTarget = "all" | "claude-code" | "codex" | "opencode";
+export type HarnessSetupTarget = "claude-code" | "codex" | "opencode";
+export type HarnessSetupSelection = HarnessSetupTarget[];
 
 export const keyPlaceholder = "<your-api-key>";
+export const defaultHarnessSetupSelection: HarnessSetupSelection = ["claude-code", "codex"];
 export const harnessSetupOptions: { value: HarnessSetupTarget; label: string; description: string }[] = [
   {
-    value: "all",
-    label: "Claude Code + Codex",
-    description: "Use one shared key for both local harnesses."
+    value: "claude-code",
+    label: "Claude Code",
+    description: "Add Claude Code settings for Anthropic Messages traffic."
   },
   {
     value: "codex",
     label: "Codex",
-    description: "Use a Codex-specific key and routing config."
-  },
-  {
-    value: "claude-code",
-    label: "Claude Code",
-    description: "Use a Claude Code-specific key and routing config."
+    description: "Add a Codex provider and shell export for Responses traffic."
   },
   {
     value: "opencode",
     label: "opencode",
-    description: "Use an opencode-specific key and routing config."
+    description: "Add the opencode chat provider and auth entry."
   }
 ];
 
-export function harnessSetupLabel(target: HarnessSetupTarget) {
-  return harnessSetupOptions.find((option) => option.value === target)?.label ?? target;
+export function harnessSetupLabel(harnesses: HarnessSetupSelection = defaultHarnessSetupSelection) {
+  return selectedHarnesses(harnesses)
+    .map((target) => harnessSetupOptions.find((option) => option.value === target)?.label ?? target)
+    .join(" + ");
 }
 
 function singleQuote(value: string) {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+function selectedHarnesses(harnesses: HarnessSetupSelection | undefined) {
+  return harnesses && harnesses.length > 0 ? harnesses : defaultHarnessSetupSelection;
+}
+
 export function buildSetupCommand({
   apiBase,
   secret,
-  harness = "all"
+  harnesses = defaultHarnessSetupSelection
 }: {
   apiBase: string;
   secret: string | null;
-  harness?: HarnessSetupTarget;
+  harnesses?: HarnessSetupSelection;
 }) {
-  return `curl -fsSL ${apiBase}/setup.sh | bash -s -- --harness ${harness} ${singleQuote(secret ?? keyPlaceholder)}`;
+  const flags = selectedHarnesses(harnesses).map((harness) => `--harness ${harness}`).join(" ");
+  return `curl -fsSL ${apiBase}/setup.sh | bash -s -- ${flags} ${singleQuote(secret ?? keyPlaceholder)}`;
 }
 
 export type ManualStep = {
@@ -55,22 +59,23 @@ export type ManualStep = {
 export function buildManualSteps({
   apiBase,
   secret,
-  harness = "all"
+  harnesses = defaultHarnessSetupSelection
 }: {
   apiBase: string;
   secret: string | null;
-  harness?: HarnessSetupTarget;
+  harnesses?: HarnessSetupSelection;
 }): ManualStep[] {
   const key = secret ?? keyPlaceholder;
-  const tokenPath = tokenPathForHarness(harness);
+  const selected = selectedHarnesses(harnesses);
+  const tokenPath = tokenPathForHarnesses(selected);
   const steps: ManualStep[] = [storeKeyStep(key, tokenPath)];
-  if (harness === "all" || harness === "claude-code") {
+  if (selected.includes("claude-code")) {
     steps.push(claudeCodeStep(apiBase, tokenPath));
   }
-  if (harness === "all" || harness === "codex") {
-    steps.push(codexExportStep(harness), codexProviderStep(apiBase, harness));
+  if (selected.includes("codex")) {
+    steps.push(codexExportStep(selected), codexProviderStep(apiBase, selected));
   }
-  if (harness === "opencode") {
+  if (selected.includes("opencode")) {
     steps.push(opencodeConfigStep(apiBase), opencodeAuthStep(key));
   }
   return steps;
@@ -109,9 +114,9 @@ function claudeCodeStep(apiBase: string, tokenPath: string): ManualStep {
   };
 }
 
-function codexExportStep(harness: HarnessSetupTarget): ManualStep {
-  const envKey = codexEnvForHarness(harness);
-  const tokenPath = tokenPathForHarness(harness);
+function codexExportStep(harnesses: HarnessSetupSelection): ManualStep {
+  const envKey = codexEnvForHarnesses(harnesses);
+  const tokenPath = tokenPathForHarnesses(harnesses);
   return {
     title: "Export the key for Codex",
     detail: `Add this line to ~/.zshrc (or ~/.bashrc) so Codex can read ${envKey}.`,
@@ -120,9 +125,9 @@ function codexExportStep(harness: HarnessSetupTarget): ManualStep {
   };
 }
 
-function codexProviderStep(apiBase: string, harness: HarnessSetupTarget): ManualStep {
-  const envKey = codexEnvForHarness(harness);
-  const provider = codexProviderForHarness(harness);
+function codexProviderStep(apiBase: string, harnesses: HarnessSetupSelection): ManualStep {
+  const envKey = codexEnvForHarnesses(harnesses);
+  const provider = codexProviderForHarnesses(harnesses);
   return {
     title: "Register the Codex provider",
     detail: "Add this to ~/.codex/config.toml. If the file already has a model/model_provider, keep yours and add only the provider table.",
@@ -188,17 +193,20 @@ function opencodeAuthStep(key: string): ManualStep {
   };
 }
 
-export function tokenPathForHarness(harness: HarnessSetupTarget) {
+export function tokenPathForHarnesses(harnesses: HarnessSetupSelection = defaultHarnessSetupSelection) {
+  const selected = selectedHarnesses(harnesses);
+  if (selected.length !== 1) return "~/.prompt-proxy/token";
+  const [harness] = selected;
   if (harness === "codex") return "~/.prompt-proxy/codex.token";
   if (harness === "claude-code") return "~/.prompt-proxy/claude-code.token";
   if (harness === "opencode") return "~/.prompt-proxy/opencode.token";
   return "~/.prompt-proxy/token";
 }
 
-function codexEnvForHarness(harness: HarnessSetupTarget) {
-  return harness === "codex" ? "PROMPT_PROXY_CODEX_TOKEN" : "PROMPT_PROXY_TOKEN";
+function codexEnvForHarnesses(harnesses: HarnessSetupSelection) {
+  return harnesses.length === 1 && harnesses[0] === "codex" ? "PROMPT_PROXY_CODEX_TOKEN" : "PROMPT_PROXY_TOKEN";
 }
 
-function codexProviderForHarness(harness: HarnessSetupTarget) {
-  return harness === "codex" ? "prompt_proxy_codex" : "prompt_proxy";
+function codexProviderForHarnesses(harnesses: HarnessSetupSelection) {
+  return harnesses.length === 1 && harnesses[0] === "codex" ? "prompt_proxy_codex" : "prompt_proxy";
 }
