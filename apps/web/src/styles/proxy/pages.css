@@ -4283,14 +4283,42 @@ a.key-bound-row:hover {
   overflow-x: auto;
 }
 
+.provider-registry-header,
 .provider-registry-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1.05fr) minmax(170px, 1.2fr) minmax(150px, .95fr) minmax(120px, .75fr) minmax(34px, auto);
+  grid-template-columns: minmax(190px, 1fr) minmax(250px, 1.12fr) minmax(190px, .85fr) minmax(174px, max-content) 76px;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
+  min-width: 920px;
+}
+
+.provider-registry-header {
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--glass-2) 68%, transparent);
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.provider-registry-header span {
+  min-width: 0;
+}
+
+.provider-registry-header span:nth-child(4),
+.provider-registry-header span:nth-child(5) {
+  text-align: right;
+}
+
+.provider-registry-row {
   min-height: 68px;
   padding: 14px 20px;
   transition: background .14s var(--ease);
+}
+
+.provider-registry-row > * {
+  min-width: 0;
 }
 
 .provider-registry-row:hover {
@@ -4324,15 +4352,20 @@ a.key-bound-row:hover {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
-  min-width: 0;
+  min-width: 52px;
 }
 
 .provider-registry-row .scope-tags {
-  flex-wrap: wrap;
   align-content: center;
+  overflow: hidden;
+}
+
+.provider-registry-endpoints {
+  flex-wrap: wrap;
 }
 
 .provider-registry-state {
+  flex-wrap: nowrap;
   justify-content: flex-end;
 }
 
@@ -4654,6 +4687,10 @@ a.key-bound-row:hover {
 }
 
 @media (max-width: 900px) {
+  .provider-registry-header {
+    display: none;
+  }
+
   .provider-registry-row {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
@@ -4662,6 +4699,7 @@ a.key-bound-row:hover {
       "provider-tags provider-actions";
     align-items: start;
     gap: 8px 12px;
+    min-width: 0;
     padding: 14px 16px;
   }
 
@@ -4675,6 +4713,7 @@ a.key-bound-row:hover {
 
   .provider-registry-endpoints {
     grid-area: provider-tags;
+    flex-wrap: wrap;
   }
 
   .provider-registry-state {
@@ -4685,6 +4724,7 @@ a.key-bound-row:hover {
     grid-area: provider-actions;
     align-self: center;
     justify-self: end;
+    min-width: 0;
   }
 }
 
