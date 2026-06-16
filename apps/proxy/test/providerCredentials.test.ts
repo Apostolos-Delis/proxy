@@ -1443,6 +1443,7 @@ describe("subscription oauth credentials", () => {
     expect(providerCall?.headers.authorization).toBe(`Bearer ${OPENAI_OAUTH_TOKEN}`);
     expect(providerCall?.headers["chatgpt-account-id"]).toBe(CHATGPT_ACCOUNT_ID);
     expect(providerCall?.headers["x-codex-turn-state"]).toBe("turn-state");
+    expect(providerCall?.body.prompt_cache_retention).toBeUndefined();
   });
 
   it("keeps forwarding a cached OpenAI oauth credential when the flag is off", async () => {

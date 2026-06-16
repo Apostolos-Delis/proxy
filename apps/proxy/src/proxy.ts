@@ -27,6 +27,7 @@ import {
   providerRequestRedirect,
   providerRequestUrl
 } from "./upstream.js";
+import { isRecord } from "./util.js";
 
 export class ProviderProxy implements ProviderAdapter {
   constructor(
@@ -384,6 +385,11 @@ export class ProviderProxy implements ProviderAdapter {
     const maxAttempts = this.config.providerRateLimitMaxAttempts;
 
     for (let upstreamAttempt = 1; upstreamAttempt <= maxAttempts; upstreamAttempt += 1) {
+      const body = providerRequestBody({
+        provider,
+        body: input.body,
+        credential: input.credential
+      });
       const upstream = await fetchWithPinnedAddress(providerRequestUrl({
         provider,
         endpoint,
@@ -397,11 +403,11 @@ export class ProviderProxy implements ProviderAdapter {
           provider,
           endpoint,
           surface: input.surface,
-          body: input.body,
+          body,
           incoming: input.headers,
           credential: input.credential
         }),
-        body: JSON.stringify(input.body),
+        body: JSON.stringify(body),
         redirect: providerRequestRedirect({ provider, credential: input.credential }),
         signal
       }, providerRequestPinnedAddress({ provider, config: this.config, credential: input.credential }));
@@ -444,6 +450,21 @@ export class ProviderProxy implements ProviderAdapter {
 
     throw new Error("Provider rate-limit retry loop exhausted.");
   }
+}
+
+function providerRequestBody(input: {
+  provider: ProviderRegistryEntry;
+  body: unknown;
+  credential?: UpstreamCredential;
+}) {
+  const credentialForProvider = input.credential && input.credential.provider === input.provider.slug
+    ? input.credential
+    : undefined;
+  if (!isOpenAIChatGPTCredential(input.provider, credentialForProvider)) return input.body;
+  if (!isRecord(input.body) || input.body.prompt_cache_retention === undefined) return input.body;
+  const body = { ...input.body };
+  delete body.prompt_cache_retention;
+  return body;
 }
 
 export function providerRequestHeaders(input: {
