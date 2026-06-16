@@ -3248,11 +3248,16 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 .tier-model-effort {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-left: 2px;
+  gap: 10px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
 }
 
 .tier-model input {
@@ -3282,8 +3287,11 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .route-target {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: 42px minmax(0, 1fr) max-content;
+  grid-template-areas:
+    "rank fields actions"
+    ". notes notes";
+  gap: 8px 12px;
   align-items: start;
   min-width: 0;
   padding: 10px;
@@ -3293,6 +3301,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 .route-target-rank {
+  grid-area: rank;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3306,15 +3315,20 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 .route-target-fields {
+  grid-area: fields;
   display: grid;
-  grid-template-columns: minmax(140px, 210px) minmax(240px, 1fr) minmax(124px, 160px);
+  grid-template-columns: minmax(150px, 220px) minmax(220px, 1fr) minmax(176px, 220px);
   gap: 8px;
   min-width: 0;
 }
 
 .route-target-actions {
+  grid-area: actions;
   display: flex;
-  gap: 2px;
+  align-items: center;
+  gap: 4px;
+  padding-left: 2px;
+  flex: none;
 }
 
 .route-target-actions .btn-icon {
@@ -3324,7 +3338,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 .route-target-notes {
-  grid-column: 2 / 4;
+  grid-area: notes;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -3365,11 +3379,13 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 .menu-select.tier-effort {
-  max-width: 170px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
 }
 
 .menu-select.tier-effort > button {
-  height: auto;
+  height: 30px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -3381,6 +3397,8 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 .menu-select.tier-effort > button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -3391,6 +3409,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
 .menu-select.tier-effort > button:focus-visible {
   border-radius: 4px;
   box-shadow: 0 0 0 2px var(--accent-soft);
+  outline: none;
 }
 
 .menu-select.tier-effort svg {
@@ -3404,6 +3423,34 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font-size: 12px;
   letter-spacing: 0;
   text-transform: none;
+}
+
+@media (max-width: 1120px) {
+  .tier-table-header,
+  .tier-table-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tier-table-header span:last-child {
+    display: none;
+  }
+
+  .route-target {
+    grid-template-columns: 42px minmax(0, 1fr);
+    grid-template-areas:
+      "rank fields"
+      ". actions"
+      ". notes";
+  }
+
+  .route-target-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .route-target-actions {
+    justify-self: start;
+    padding-left: 0;
+  }
 }
 
 /* ---------- tier model dropdown ---------- */
