@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -95,6 +95,53 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       expect(config).not.toContain("http://old-proxy/v1");
       expect(config).not.toContain("OLD_PROMPT_PROXY_TOKEN");
       const zshrc = readFileSync(join(home, ".zshrc"), "utf8");
+      expect(zshrc).toContain('export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"');
+      expect(zshrc).not.toContain("old-token");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves symlinked Codex config and shell rc files", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-symlink-"));
+    try {
+      const managedDir = join(home, "dotfiles");
+      const codexDir = join(home, ".codex");
+      mkdirSync(managedDir, { recursive: true });
+      mkdirSync(codexDir, { recursive: true });
+      const managedCodexConfig = join(managedDir, "codex-config.toml");
+      const managedZshrc = join(managedDir, "zshrc");
+      writeFileSync(managedCodexConfig, `# Managed Codex config
+model = "gpt-5.5"
+
+[features]
+goals = true
+
+[model_providers.prompt_proxy]
+name = "Old Proxy"
+base_url = "http://old-proxy/v1"
+env_key = "OLD_PROMPT_PROXY_TOKEN"
+`);
+      writeFileSync(managedZshrc, 'export PROMPT_PROXY_TOKEN="old-token"\n');
+      symlinkSync(managedCodexConfig, join(codexDir, "config.toml"));
+      symlinkSync(managedZshrc, join(home, ".zshrc"));
+
+      const result = spawnSync("bash", ["-s", "--", "proxy-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: { ...process.env, HOME: home, USER: "dev" }
+      });
+
+      expect(result.status).toBe(0);
+      expect(lstatSync(join(codexDir, "config.toml")).isSymbolicLink()).toBe(true);
+      expect(lstatSync(join(home, ".zshrc")).isSymbolicLink()).toBe(true);
+      const config = readFileSync(managedCodexConfig, "utf8");
+      expect(config).toContain('model = "router-auto"');
+      expect(config).toContain('model_provider = "prompt_proxy"');
+      expect(config).toContain("[features]");
+      expect(config).toContain("goals = true");
+      expect(config).toContain('base_url = "https://proxy.example.com/v1"');
+      expect(config).not.toContain("http://old-proxy/v1");
+      const zshrc = readFileSync(managedZshrc, "utf8");
       expect(zshrc).toContain('export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"');
       expect(zshrc).not.toContain("old-token");
     } finally {

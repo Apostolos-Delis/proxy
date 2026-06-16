@@ -44,6 +44,8 @@ The proxy hosts its own setup script. By default it configures both Claude Code 
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- <api-key>
 ```
 
+If `~/.codex/config.toml` or shell rc files are symlinked from a dotfiles repo, the setup script updates the symlink targets instead of replacing the links.
+
 Use a harness-specific install when you want different API keys and routing configs per harness:
 
 ```shell

@@ -135,6 +135,36 @@ else
   PP_CODEX_PROVIDER="prompt_proxy"
 fi
 
+pp_resolved_write_path() {
+  local path="$1"
+  local target=""
+
+  if [ -L "$path" ]; then
+    if command -v realpath >/dev/null 2>&1; then
+      target="$(realpath "$path" 2>/dev/null || true)"
+    fi
+    if [ -z "$target" ]; then
+      target="$(readlink "$path")"
+      case "$target" in
+        /*) ;;
+        *) target="$(cd "$(dirname "$path")" && pwd -P)/$target" ;;
+      esac
+    fi
+    printf '%s\\n' "$target"
+    return
+  fi
+
+  printf '%s\\n' "$path"
+}
+
+pp_replace_file() {
+  local tmp_file="$1"
+  local dest_file="$2"
+  local write_path
+  write_path="$(pp_resolved_write_path "$dest_file")"
+  mv "$tmp_file" "$write_path"
+}
+
 mkdir -p "$HOME/.prompt-proxy"
 printf '%s\\n' "$PP_TOKEN" > "$PP_TOKEN_PATH"
 chmod 600 "$PP_TOKEN_PATH"
@@ -188,7 +218,7 @@ if [ "$PP_SETUP_CODEX" -eq 1 ]; then
         }
         { print }
       ' "$rc" > "$tmp_rc"
-      mv "$tmp_rc" "$rc"
+      pp_replace_file "$tmp_rc" "$rc"
     else
       printf '\\n%s\\n' "$PP_TOKEN_EXPORT" >> "$rc"
     fi
@@ -235,7 +265,7 @@ wire_api = "responses"
 supports_websockets = true
 ${heredocDelimiter}
     } > "$tmp_config"
-    mv "$tmp_config" "$codex_config"
+    pp_replace_file "$tmp_config" "$codex_config"
     echo "codex: configured $PP_CODEX_PROVIDER as the default provider"
   fi
 fi
