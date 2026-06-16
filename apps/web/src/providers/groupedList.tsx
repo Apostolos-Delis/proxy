@@ -132,8 +132,8 @@ function ProviderDefaultRow({ provider }: { provider?: ProviderRegistrySummary }
         <span className="provider-key-secret-pill mono">{labels.secret}</span>
       </div>
       <div className="provider-default-meta">
-        <span className="code-pill provider-default-pill">{labels.auth} / {labels.state}</span>
-        <span className="provider-default-note mono">{builtin ? "unbound traffic" : "targeted traffic"}</span>
+        <span className="code-pill provider-default-pill">{labels.status}</span>
+        <span className="provider-default-note mono">{labels.note}</span>
       </div>
     </div>
   );
@@ -143,24 +143,24 @@ function providerDefaultLabels(provider: ProviderRegistrySummary | undefined, bu
   if (builtin) {
     return {
       title: "Company key",
-      secret: "platform fallback",
-      auth: "default",
-      state: "fallback"
+      secret: "proxy host credential",
+      status: "used by default",
+      note: "when no provider key is bound"
     };
   }
   if (provider?.authStyle === "none") {
     return {
       title: "No credential required",
       secret: "no auth",
-      auth: provider.authStyle,
-      state: provider.enabled ? "enabled" : "disabled"
+      status: provider.enabled ? "enabled" : "disabled",
+      note: "targeted traffic"
     };
   }
   return {
-    title: "No platform fallback",
-    secret: "credential required",
-    auth: provider?.authStyle ?? "custom",
-    state: provider?.enabled ? "enabled" : "disabled"
+    title: "Provider key required",
+    secret: "BYOK only",
+    status: provider?.enabled ? "credential required" : "disabled",
+    note: "targeted traffic"
   };
 }
 
