@@ -2839,6 +2839,10 @@ input[type="checkbox"][role="switch"]:focus-visible {
   min-width: 0;
 }
 
+.wizard-panels > .glass {
+  min-width: 0;
+}
+
 .wizard-step-body {
   display: grid;
   gap: 16px;
@@ -2950,6 +2954,45 @@ input[type="checkbox"][role="switch"]:focus-visible {
   margin-top: 8px;
   font-size: 12px;
   line-height: 1.55;
+  min-width: 0;
+}
+
+.key-secret-result {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+}
+
+.key-secret-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  min-width: 0;
+}
+
+.key-secret-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.key-secret-value {
+  display: block;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  color: var(--fg);
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
 .wizard-actions {
@@ -4086,12 +4129,14 @@ input[type="checkbox"][role="switch"]:focus-visible {
   gap: 16px;
   margin: 0;
   padding-left: 20px;
+  min-width: 0;
 }
 
 .setup-steps li {
   color: var(--fg-muted);
   font-size: 13px;
   line-height: 1.6;
+  min-width: 0;
 }
 
 .setup-steps li::marker {
@@ -4102,11 +4147,16 @@ input[type="checkbox"][role="switch"]:focus-visible {
 .setup-snippet {
   position: relative;
   margin-top: 8px;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .setup-snippet pre {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   margin: 0;
-  padding: 12px 14px;
+  padding: 12px 88px 12px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--code-bg);
@@ -4115,6 +4165,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font-size: 12.5px;
   line-height: 1.6;
   overflow-x: auto;
+  white-space: pre;
 }
 
 .setup-snippet .snippet-copy {

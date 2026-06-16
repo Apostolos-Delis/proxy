@@ -4,8 +4,8 @@ import { useState } from "react";
 export function CopySecret({ secret }: { secret: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="row gap-8 invite-link-row">
-      <span className="mono invite-link">{secret}</span>
+    <div className="key-secret-copy">
+      <span className="mono key-secret-value">{secret}</span>
       <button
         className="btn btn-sm"
         type="button"
