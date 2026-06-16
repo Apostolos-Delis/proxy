@@ -36,6 +36,13 @@ export function ProviderRegistrySection({ providers }: { providers: ProviderRegi
         </button>
       </div>
       <GlassCard className="provider-registry-card">
+        <div className="provider-registry-header">
+          <span>Provider</span>
+          <span>Base URL</span>
+          <span>Protocol</span>
+          <span>State</span>
+          <span>Actions</span>
+        </div>
         {providers.map((provider) => (
           <ProviderRegistryRow
             key={provider.id}
