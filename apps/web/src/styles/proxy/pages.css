@@ -2877,6 +2877,18 @@ input[type="checkbox"][role="switch"]:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.wizard-provider-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+  font-size: 12px;
+}
+
 .wizard-provider-note {
   display: flex;
   align-items: center;

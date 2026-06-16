@@ -6,7 +6,7 @@ import type { ProviderAccountSummary, ProviderName } from "../providers/data";
 import type { RoutingConfigSummary } from "../routing/data";
 import { SearchSelect } from "../table/SearchSelect";
 import { GlassCard } from "../ui";
-import { providerOptionsForAccounts } from "./providerOptions";
+import { providerCredentialHint, providerIdsForRoutingConfig, providerOptionsForAccounts } from "./providerOptions";
 import { WizardStepHead } from "./stepHead";
 import { orgDefaultConfigLabel, withCreatedProviderKey, withProviderKeyMode, type CreateKeyDraft } from "./wizard";
 
@@ -19,7 +19,11 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
 }) {
   const [showAddKey, setShowAddKey] = useState(false);
   const activeAccounts = providerAccounts.filter((account) => account.status === "active");
-  const providerOptions = providerOptionsForAccounts(activeAccounts, draft.providerBindings);
+  const selectedConfig = selectedRoutingConfig(draft.routingConfigId, configs, defaultConfig);
+  const routingProviders = providerIdsForRoutingConfig(selectedConfig);
+  const providerOptions = providerOptionsForAccounts(activeAccounts, draft.providerBindings, routingProviders);
+  const routedProviderOptions = providerOptions.filter((provider) => routingProviders.includes(provider.value));
+  const boundRoutingProviderCount = routingProviders.filter((provider) => draft.providerBindings[provider]).length;
   return (
     <>
       <GlassCard>
@@ -57,14 +61,21 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
           sub="Bill this key's upstream traffic to your own provider credentials instead of the platform key."
         />
         {activeAccounts.length === 0 ? (
-          <div className="wizard-provider-note">
-            <span className="faint">No provider keys linked yet — this key's upstream traffic uses the platform keys.</span>
-            <button type="button" className="btn btn-sm" onClick={() => setShowAddKey(true)}>
-              <Plus />Add provider key
-            </button>
+          <div className="wizard-step-body">
+            <ProviderCoverageSummary providers={routedProviderOptions} />
+            <div className="wizard-provider-note">
+              <span className="faint">No provider credentials linked yet — this key's upstream traffic uses the platform keys.</span>
+              <button type="button" className="btn btn-sm" onClick={() => setShowAddKey(true)}>
+                <Plus />Add provider key
+              </button>
+            </div>
           </div>
         ) : (
           <div className="wizard-step-body">
+            <ProviderCoverageSummary
+              providers={routedProviderOptions}
+              boundCount={draft.linkProviderKeys ? boundRoutingProviderCount : undefined}
+            />
             <div className="scope-options" role="radiogroup" aria-label="Provider key mode">
               <label className="scope-option">
                 <input
@@ -74,7 +85,7 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
                   onChange={() => onChange(withProviderKeyMode(draft, false))}
                 />
                 <span>Company default</span>
-                <span className="faint">Upstream traffic is billed to the platform's provider keys.</span>
+                <span className="faint">Upstream traffic is billed to the platform provider credentials.</span>
               </label>
               <label className="scope-option">
                 <input
@@ -83,8 +94,8 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
                   checked={draft.linkProviderKeys}
                   onChange={() => onChange(withProviderKeyMode(draft, true))}
                 />
-                <span>Use my own keys</span>
-                <span className="faint">Bill this key's upstream traffic to provider accounts linked to the organization.</span>
+                <span>Use my own credentials</span>
+                <span className="faint">Bill routed providers to credentials linked to the organization.</span>
               </label>
             </div>
             {draft.linkProviderKeys ? (
@@ -123,12 +134,46 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
   );
 }
 
+function selectedRoutingConfig(
+  routingConfigId: string | null,
+  configs: RoutingConfigSummary[],
+  defaultConfig: RoutingConfigSummary | null
+) {
+  if (!routingConfigId) return defaultConfig;
+  return configs.find((config) => config.id === routingConfigId) ?? null;
+}
+
+function ProviderCoverageSummary({ providers, boundCount }: {
+  providers: { value: ProviderName; label: string }[];
+  boundCount?: number;
+}) {
+  if (providers.length === 0) return null;
+  return (
+    <div className="wizard-provider-summary">
+      <span className="faint">Selected routing config can use</span>
+      <div className="cell-tags">
+        {providers.map((provider) => (
+          <span key={provider.value} className="code-pill" title={provider.value}>{provider.label}</span>
+        ))}
+      </div>
+      {boundCount === undefined ? null : (
+        <span className="faint">{boundCount} of {providers.length} routed providers bound to your credentials.</span>
+      )}
+    </div>
+  );
+}
+
 function ProviderBindingField({ provider, accounts, value, onChange }: {
   provider: { value: ProviderName; label: string };
   accounts: ProviderAccountSummary[];
   value: string | null;
   onChange: (providerAccountId: string | null) => void;
 }) {
+  const accountOptions = accounts.map((account) => ({
+    value: account.id,
+    label: account.name,
+    hint: providerCredentialHint(account)
+  }));
   return (
     <div className="routing-create-field">
       <span>{provider.label}</span>
@@ -136,17 +181,19 @@ function ProviderBindingField({ provider, accounts, value, onChange }: {
         value={value ?? ""}
         options={[
           { value: "", label: "Company default" },
-          ...accounts.map((account) => ({
-            value: account.id,
-            label: account.name,
-            hint: account.secretHint ?? "customer key"
-          }))
+          ...accountOptions,
+          ...pendingSelectedOption(value, accountOptions)
         ]}
         ariaLabel={`${provider.label} provider key`}
         placeholder="Search provider keys…"
         onChange={(providerAccountId) => onChange(providerAccountId || null)}
       />
-      {accounts.length === 0 ? <span className="faint">No {provider.value} keys added — the platform key is used.</span> : null}
+      {accounts.length === 0 ? <span className="faint">No {provider.value} credentials added — the platform key is used.</span> : null}
     </div>
   );
+}
+
+function pendingSelectedOption(value: string | null, options: { value: string }[]) {
+  if (!value || options.some((option) => option.value === value)) return [];
+  return [{ value, label: "Selected provider credential", hint: "refreshing" }];
 }
