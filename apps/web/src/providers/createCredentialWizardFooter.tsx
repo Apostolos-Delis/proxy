@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
+import { CheckCircle2 } from "lucide-react";
 
-import { Badge, GlassCard } from "../ui";
+import { GlassCard } from "../ui";
 import {
   credentialModeLabel,
   type CreateProviderCredentialDraft,
@@ -41,23 +42,18 @@ export function CreatedCredentialStep({ created, embedded, onClose }: {
 }) {
   return (
     <GlassCard>
-      <div className="invite-result">
-        <div className="row gap-8">
-          <Badge variant="success" dot>{created.name} saved</Badge>
-          <span className="faint">{credentialModeLabel(created.mode)} credential created for <span className="mono">{created.provider}</span>.</span>
+      <div className="provider-credential-created">
+        <CheckCircle2 />
+        <div>
+          <strong>{created.name}</strong>
+          <span>{credentialModeLabel(created.mode)} credential created for <span className="mono">{created.provider}</span>.</span>
         </div>
       </div>
-      {embedded ? (
-        <div className="provider-credential-note">
-          <Badge variant="success" dot>Selected</Badge>
-          <span>This provider key is selected for the API key you are creating.</span>
-        </div>
-      ) : (
-        <div className="provider-credential-note">
-          <Badge variant="warn" dot>Bind next</Badge>
-          <span>Bind it to a Prompt Proxy API key you own before traffic can use it.</span>
-        </div>
-      )}
+      <p className="provider-credential-next">
+        {embedded
+          ? "Selected for the API key you are creating."
+          : "Bind it to a Prompt Proxy API key you own before traffic can use it."}
+      </p>
       {embedded ? null : (
         <Link to="/api-keys" className="btn btn-primary provider-credential-bind-link" onClick={onClose}>
           Bind on API keys

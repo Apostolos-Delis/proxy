@@ -78,7 +78,7 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
               providers={routedProviderOptions}
               boundCount={draft.linkProviderKeys ? boundRoutingProviderCount : undefined}
             />
-            <div className="scope-options" role="radiogroup" aria-label="Provider key mode">
+            <div className="scope-options provider-key-mode-options" role="radiogroup" aria-label="Provider key mode">
               <label className="scope-option">
                 <input
                   type="radio"
@@ -86,8 +86,10 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
                   checked={!draft.linkProviderKeys}
                   onChange={() => onChange(withProviderKeyMode(draft, false))}
                 />
-                <span>Company default</span>
-                <span className="faint">Upstream traffic is billed to the platform provider credentials.</span>
+                <span className="provider-key-mode-copy">
+                  <span>Company default</span>
+                  <span className="faint">Use the platform provider credentials.</span>
+                </span>
               </label>
               <label className="scope-option">
                 <input
@@ -96,8 +98,10 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
                   checked={draft.linkProviderKeys}
                   onChange={() => onChange(withProviderKeyMode(draft, true))}
                 />
-                <span>Use my own credentials</span>
-                <span className="faint">Bill routed providers to credentials linked to the organization.</span>
+                <span className="provider-key-mode-copy">
+                  <span>Use my own credentials</span>
+                  <span className="faint">Bind each routed provider to a saved credential.</span>
+                </span>
               </label>
             </div>
             {draft.linkProviderKeys ? (
@@ -152,17 +156,18 @@ function ProviderCoverageSummary({ providers, boundCount }: {
   if (providers.length === 0) return null;
   return (
     <div className="wizard-provider-summary">
-      <span className="faint">Selected routing config can use</span>
-      <div className="cell-tags">
-        {providers.map((provider) => (
-          <span key={provider.value} className="code-pill" title={provider.value}>{provider.label}</span>
-        ))}
-      </div>
+      <span>Routing config can use <strong>{providerListLabel(providers)}</strong>.</span>
       {boundCount === undefined ? null : (
-        <span className="faint">{boundCount} of {providers.length} routed providers bound to your credentials.</span>
+        <span className="faint">{boundCount} of {providers.length} provider credentials selected.</span>
       )}
     </div>
   );
+}
+
+function providerListLabel(providers: { label: string }[]) {
+  const labels = providers.map((provider) => provider.label);
+  if (labels.length <= 2) return labels.join(" and ");
+  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
 }
 
 function ProviderBindingField({ provider, accounts, value, onChange }: {
@@ -190,7 +195,7 @@ function ProviderBindingField({ provider, accounts, value, onChange }: {
         placeholder="Search provider keys…"
         onChange={(providerAccountId) => onChange(providerAccountId || null)}
       />
-      {accounts.length === 0 && !value ? <span className="faint">No {provider.value} credentials added — the platform key is used.</span> : null}
+      {accounts.length === 0 && !value ? <p className="routing-field-note">No {provider.label} credentials added. This provider will use the platform key.</p> : null}
     </div>
   );
 }
