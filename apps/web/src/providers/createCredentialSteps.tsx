@@ -4,6 +4,7 @@ import { WizardStepHead } from "../keys/stepHead";
 import { MenuSelect } from "../table/MenuSelect";
 import { Badge, GlassCard } from "../ui";
 import type { ProviderName } from "./data";
+import { CodexOAuthDeviceCard, type CredentialOAuthState } from "./credentialOAuthCard";
 import { CredentialSourceSelector } from "./credentialSourceSelector";
 import { ProviderMark } from "./icons";
 import { ClaudeSetupGuide, CodexSetupGuide } from "./subscriptionCredentialGuides";
@@ -102,16 +103,18 @@ export function CredentialTypeStep({ draft, subscriptionAuthEnabled, onChange }:
   );
 }
 
-export function CredentialDetailsStep({ draft, providerOptions, onChange }: {
+export function CredentialDetailsStep({ draft, providerOptions, oauth, onChange }: {
   draft: CreateProviderCredentialDraft;
   providerOptions: ProviderOption[];
+  oauth?: CredentialOAuthState;
   onChange: (draft: CreateProviderCredentialDraft) => void;
 }) {
   const fixedProvider = draft.mode !== "api_key";
-  const localSubscription = fixedProvider && draft.source === "local_auth";
-  const stepSub = localSubscription
-    ? "Import provider auth already minted on the proxy host."
-    : "Paste the provider secret here; it is encrypted at rest and never shown again.";
+  const managedSubscription = fixedProvider && (draft.source === "local_auth" || draft.source === "openai_oauth");
+  const showBaseUrl = !(draft.mode === "codex_subscription" && draft.source === "openai_oauth");
+  let stepSub = "Paste the provider secret here; it is encrypted at rest and never shown again.";
+  if (managedSubscription) stepSub = "Import provider auth already minted on the proxy host.";
+  if (draft.source === "openai_oauth") stepSub = "Sign into OpenAI and let Prompt Proxy save the Codex credential.";
   return (
     <GlassCard>
       <WizardStepHead
@@ -120,7 +123,7 @@ export function CredentialDetailsStep({ draft, providerOptions, onChange }: {
         sub={stepSub}
       />
       <div className="wizard-step-body">
-        {fixedProvider ? <CredentialSourceSelector draft={draft} onChange={onChange} /> : null}
+        {fixedProvider ? <CredentialSourceSelector draft={draft} disabled={oauth?.locked ?? false} onChange={onChange} /> : null}
         {draft.mode === "claude_subscription" ? <ClaudeSetupGuide source={draft.source} /> : null}
         {draft.mode === "codex_subscription" ? <CodexSetupGuide source={draft.source} /> : null}
         <div className="routing-create-grid key-create-grid">
@@ -139,6 +142,7 @@ export function CredentialDetailsStep({ draft, providerOptions, onChange }: {
             <span>Label</span>
             <input
               value={draft.name}
+              disabled={oauth?.locked ?? false}
               onChange={(event) => onChange({ ...draft, name: event.target.value })}
               placeholder={namePlaceholderForDraft(draft)}
               autoComplete="off"
@@ -149,6 +153,7 @@ export function CredentialDetailsStep({ draft, providerOptions, onChange }: {
               <span>ChatGPT account ID</span>
               <input
                 value={draft.chatgptAccountId}
+                disabled={oauth?.locked ?? false}
                 onChange={(event) => onChange({ ...draft, chatgptAccountId: event.target.value })}
                 placeholder="acct_..."
                 autoComplete="off"
@@ -156,18 +161,24 @@ export function CredentialDetailsStep({ draft, providerOptions, onChange }: {
               />
             </label>
           ) : null}
-          <label className="routing-create-field">
-            <span>Base URL override</span>
-            <input
-              value={draft.baseUrl}
-              onChange={(event) => onChange({ ...draft, baseUrl: event.target.value })}
-              placeholder="https://provider.example/v1"
-              autoComplete="off"
-              spellCheck={false}
-            />
-          </label>
+          {showBaseUrl ? (
+            <label className="routing-create-field">
+              <span>Base URL override</span>
+              <input
+                value={draft.baseUrl}
+                disabled={oauth?.locked ?? false}
+                onChange={(event) => onChange({ ...draft, baseUrl: event.target.value })}
+                placeholder="https://provider.example/v1"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+          ) : null}
         </div>
-        {localSubscription ? null : (
+        {draft.mode === "codex_subscription" && draft.source === "openai_oauth" ? (
+          <CodexOAuthDeviceCard draft={draft} oauth={oauth} />
+        ) : null}
+        {managedSubscription ? null : (
           <label className="routing-create-field">
             <span>{secretLabelForDraft(draft)}</span>
             {draft.mode === "codex_subscription" ? (
@@ -195,6 +206,12 @@ export function CredentialDetailsStep({ draft, providerOptions, onChange }: {
   );
 }
 
+function chatgptAccountReviewValue(draft: CreateProviderCredentialDraft) {
+  if (draft.source === "openai_oauth") return "from OpenAI sign-in";
+  if (draft.source === "local_auth") return "from Codex auth JSON";
+  return draft.chatgptAccountId.trim() || "from auth JSON";
+}
+
 export function CredentialReviewStep({ draft }: { draft: CreateProviderCredentialDraft }) {
   return (
     <GlassCard>
@@ -210,9 +227,11 @@ export function CredentialReviewStep({ draft }: { draft: CreateProviderCredentia
         <div><dt>Label</dt><dd>{draft.name.trim()}</dd></div>
         <div><dt>Secret</dt><dd>{secretLabelForDraft(draft)} encrypted at rest</dd></div>
         {draft.mode === "codex_subscription" ? (
-          <div><dt>ChatGPT account</dt><dd>{draft.source === "local_auth" ? "from Codex auth JSON" : draft.chatgptAccountId.trim() || "from auth JSON"}</dd></div>
+          <div><dt>ChatGPT account</dt><dd>{chatgptAccountReviewValue(draft)}</dd></div>
         ) : null}
-        <div><dt>Base URL</dt><dd>{draft.baseUrl.trim() || "Provider default"}</dd></div>
+        {draft.mode === "codex_subscription" && draft.source === "openai_oauth" ? null : (
+          <div><dt>Base URL</dt><dd>{draft.baseUrl.trim() || "Provider default"}</dd></div>
+        )}
       </dl>
       {draft.mode !== "api_key" ? (
         <div className="provider-credential-note">

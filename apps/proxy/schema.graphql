@@ -301,6 +301,7 @@ type Mutation {
   archiveRoutingConfig(configId: ID!): RoutingConfigDetail!
   assignApiKeyProviderAccount(apiKeyId: ID!, provider: String!, providerAccountId: ID): ApiKey!
   assignApiKeyRoutingConfig(apiKeyId: ID!, routingConfigId: ID): ApiKey!
+  cancelProviderCredentialOAuth(loginId: ID!): ProviderCredentialOAuthStatus
   clearModelPricing(model: String!, provider: String!): [ModelPricingEntry!]!
   configurePromptCapture(promptCaptureMode: String!, retentionDays: Int!): PromptCaptureConfig!
   createApiKey(input: CreateApiKeyInput!): CreateApiKeyResult!
@@ -321,6 +322,7 @@ type Mutation {
   revokeInvitation(invitationId: ID!): Invitation
   revokeProviderCredential(providerAccountId: ID!): ProviderAccount
   setModelPricing(input: SetModelPricingInput!): [ModelPricingEntry!]!
+  startProviderCredentialOAuth(input: StartProviderCredentialOAuthInput!): ProviderCredentialOAuthStart!
   switchOrganization(organizationId: ID!): Viewer!
   switchWorkspace(workspaceId: ID!): Viewer!
   updateProvider(input: UpdateProviderInput!): ProviderRegistryEntry
@@ -515,6 +517,19 @@ type ProviderAttempt {
   usage: JSON!
 }
 
+type ProviderCredentialOAuthStart {
+  loginId: String!
+  userCode: String!
+  verificationUrl: String!
+}
+
+type ProviderCredentialOAuthStatus {
+  error: String
+  loginId: String!
+  providerAccountId: String
+  status: String!
+}
+
 type ProviderEndpoint {
   dialect: String!
   path: String!
@@ -580,6 +595,7 @@ type Query {
   promptAccessAudit: [PromptAccessAuditEntry!]!
   prompts(end: String, limit: Int, model: String, offset: Int, route: String, start: String, surface: String, userId: String): PromptPage!
   providerAccounts: [ProviderAccount!]!
+  providerCredentialOAuthStatus(loginId: ID!): ProviderCredentialOAuthStatus
   providers: [ProviderRegistryEntry!]!
   publicInvitation(token: String!): PublicInvitation
   request(requestId: ID!): RequestDetail!
@@ -864,6 +880,11 @@ input SettingsInput {
   schemaVersion: Int
   systemPrompt: String
   toolResultCompression: Boolean
+}
+
+input StartProviderCredentialOAuthInput {
+  name: String!
+  provider: String!
 }
 
 type StorageInfo {

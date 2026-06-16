@@ -1,4 +1,4 @@
-import { FileKey, Keyboard } from "lucide-react";
+import { FileKey, Keyboard, Link2 } from "lucide-react";
 import type { ReactNode } from "react";
 
 import {
@@ -14,18 +14,20 @@ type SourceOption = {
   icon: ReactNode;
 };
 
-export function CredentialSourceSelector({ draft, onChange }: {
+export function CredentialSourceSelector({ draft, disabled = false, onChange }: {
   draft: CreateProviderCredentialDraft;
+  disabled?: boolean;
   onChange: (draft: CreateProviderCredentialDraft) => void;
 }) {
   return (
     <div className="credential-source-grid">
       {sourceOptions(draft).map((option) => (
-        <label className="credential-source-option" key={option.source}>
+        <label className={`credential-source-option${disabled ? " disabled" : ""}`} key={option.source}>
           <input
             type="radio"
             name="provider-credential-source"
             checked={draft.source === option.source}
+            disabled={disabled}
             onChange={() => onChange(withCredentialSource(draft, option.source))}
           />
           <span className="credential-source-icon">{option.icon}</span>
@@ -56,6 +58,12 @@ function sourceOptions(draft: CreateProviderCredentialDraft): SourceOption[] {
   }
 
   return [
+    {
+      source: "openai_oauth",
+      title: "Sign in with OpenAI",
+      detail: "Open the Codex device sign-in link and store refreshed tokens.",
+      icon: <Link2 />
+    },
     {
       source: "local_auth",
       title: "Import from Codex",

@@ -29,6 +29,7 @@ import { RequestDetail, RequestSummary } from "./types/requests.js";
 import {
   ApiKey,
   ProviderAccount,
+  ProviderCredentialOAuthStatus,
   ProviderRegistryEntry,
   RoutingConfigDetail,
   RoutingConfigSummary
@@ -459,6 +460,19 @@ builder.queryFields((t) => ({
       requireAdminRole(context);
       const queries = scopedQueries(context);
       return queries ? (await queries.providerAccounts()).data : [];
+    }
+  }),
+
+  providerCredentialOAuthStatus: t.field({
+    type: ProviderCredentialOAuthStatus,
+    nullable: true,
+    args: { loginId: t.arg.id({ required: true }) },
+    resolve: async (_root, args, context) => {
+      const identity = requireAdminRole(context);
+      return context.persistence?.providerCredentialOAuth.status(String(args.loginId), {
+        organizationId: identity.organizationId,
+        actorUserId: identity.userId
+      }) ?? null;
     }
   }),
 

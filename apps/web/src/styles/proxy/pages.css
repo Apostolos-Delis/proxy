@@ -3041,6 +3041,11 @@ input[type="checkbox"][role="switch"]:focus-visible {
   background: var(--accent-soft);
 }
 
+.credential-source-option.disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
 .credential-source-option input {
   grid-row: 1 / span 2;
   accent-color: var(--accent);
@@ -3101,6 +3106,49 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .provider-credential-steps li {
   padding-left: 2px;
+}
+
+.provider-credential-oauth {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+}
+
+.provider-credential-oauth > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.provider-credential-oauth strong {
+  color: var(--fg);
+  font-size: 13px;
+}
+
+.provider-credential-oauth-code {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.provider-credential-oauth-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-2);
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+.provider-credential-oauth-link svg {
+  width: 14px;
+  height: 14px;
 }
 
 .provider-credential-fixed-provider,

@@ -15,7 +15,7 @@ import {
   UserStatusResult
 } from "./types/invitations.js";
 import { ModelPricingEntry } from "./types/pricing.js";
-import { ApiKey, CreateApiKeyResult, ProviderAccount, ProviderRegistryEntry, RoutingConfigDetail } from "./types/routing.js";
+import { ApiKey, CreateApiKeyResult, ProviderAccount, ProviderCredentialOAuthStart, ProviderCredentialOAuthStatus, ProviderRegistryEntry, RoutingConfigDetail } from "./types/routing.js";
 import { PromptCaptureConfig, Settings, SettingsInput } from "./types/settings.js";
 import { Viewer, WorkspaceSummary } from "./types/viewer.js";
 
@@ -52,6 +52,13 @@ const CreateProviderCredentialFromLocalAuthInput = builder.inputType("CreateProv
     provider: t.string({ required: true }),
     name: t.string({ required: true }),
     baseUrl: t.string()
+  })
+});
+
+const StartProviderCredentialOAuthInput = builder.inputType("StartProviderCredentialOAuthInput", {
+  fields: (t) => ({
+    provider: t.string({ required: true }),
+    name: t.string({ required: true })
   })
 });
 
@@ -650,6 +657,41 @@ builder.mutationFields((t) => ({
       } catch (error) {
         mapAdminError(error);
       }
+    }
+  }),
+
+  startProviderCredentialOAuth: t.field({
+    type: ProviderCredentialOAuthStart,
+    args: { input: t.arg({ type: StartProviderCredentialOAuthInput, required: true }) },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("provider_accounts_not_found");
+      const identity = requireAdminRole(context);
+      if (args.input.provider !== "openai") {
+        throw adminGraphQLError("provider_oauth_unsupported_provider", 400);
+      }
+      try {
+        return await context.persistence.providerCredentialOAuth.startOpenAICodexDeviceAuth({
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
+          name: args.input.name
+        });
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  cancelProviderCredentialOAuth: t.field({
+    type: ProviderCredentialOAuthStatus,
+    nullable: true,
+    args: { loginId: t.arg.id({ required: true }) },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("provider_accounts_not_found");
+      const identity = requireAdminRole(context);
+      return context.persistence.providerCredentialOAuth.cancel(String(args.loginId), {
+        organizationId: identity.organizationId,
+        actorUserId: identity.userId
+      });
     }
   }),
 

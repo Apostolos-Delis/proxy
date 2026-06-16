@@ -37,13 +37,30 @@ export function ClaudeSetupGuide({ source }: { source: CreateProviderCredentialS
 }
 
 export function CodexSetupGuide({ source }: { source: CreateProviderCredentialSource }) {
+  if (source === "openai_oauth") {
+    return (
+      <div className="provider-credential-guide">
+        <Link2 />
+        <div>
+          <strong>Sign in with OpenAI</strong>
+          <span>Prompt Proxy starts the Codex device-code flow, then stores the resulting access and refresh tokens as an encrypted provider credential.</span>
+          <ol className="provider-credential-steps">
+            <li>Start sign-in, open the OpenAI link, and enter the one-time code shown here.</li>
+            <li>After OpenAI confirms the login, Prompt Proxy saves the credential automatically.</li>
+            <li>Bind the saved credential to a Prompt Proxy API key before using that key with Codex.</li>
+          </ol>
+        </div>
+      </div>
+    );
+  }
+
   if (source === "local_auth") {
     return (
       <div className="provider-credential-guide">
         <Link2 />
         <div>
           <strong>Import a Codex identity</strong>
-          <span>Prompt Proxy reads Codex auth JSON from the proxy host and stores only the access token plus ChatGPT account ID.</span>
+          <span>Prompt Proxy reads Codex auth JSON from the proxy host and stores refresh-capable auth as an encrypted provider credential.</span>
           <ol className="provider-credential-steps">
             <li>Run <span className="mono">codex login</span> on the proxy host, or use <span className="mono">codex login --device-auth</span> for a device-code flow.</li>
             <li>Leave the auth cache at <span className="mono">~/.codex/auth.json</span>, or set <span className="mono">PROMPT_PROXY_CODEX_AUTH_FILE</span> to another auth JSON path.</li>
