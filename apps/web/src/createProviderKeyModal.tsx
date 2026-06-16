@@ -107,11 +107,12 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
       if (!loginId) return null;
       const status = await fetchProviderCredentialOAuthStatus(loginId);
       if (!status) {
+        const providerLabel = draft.provider === "anthropic" ? "Claude" : "OpenAI";
         return {
           loginId,
           status: "failed",
           providerAccountId: null,
-          error: "OpenAI sign-in session expired. Start again."
+          error: `${providerLabel} sign-in session expired. Start again.`
         };
       }
       if (
@@ -122,7 +123,7 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
         oauthCompletionNotified.current = loginId;
         queryClient.invalidateQueries({ queryKey: ["provider-accounts"] });
         queryClient.invalidateQueries({ queryKey: ["api-keys"] });
-        onCreated?.({ id: status.providerAccountId, provider: "openai" });
+        onCreated?.({ id: status.providerAccountId, provider: draft.provider });
       }
       return status;
     }
@@ -156,15 +157,15 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
   const oauthCreated = oauthStatusQuery.data?.status === "completed" && oauthStatusQuery.data.providerAccountId
     ? {
       id: oauthStatusQuery.data.providerAccountId,
-      provider: "openai",
+      provider: draft.provider,
       name: draft.name.trim(),
       mode: draft.mode
     } satisfies CreatedProviderCredential
     : null;
   const created = createMutation.data ?? oauthCreated;
   const visibleDraft = created ? { ...draft, stepId: "bind" as const } : draft;
-  const blocker = created ? null : oauthBlockerMessage(draft, oauthStartMutation, oauthStatusQuery) ??
-    stepBlockerMessage(draft, subscriptionAuthEnabled);
+  const blocker = created ? null : stepBlockerMessage(draft, subscriptionAuthEnabled) ??
+    oauthBlockerMessage(draft, oauthStartMutation, oauthStatusQuery);
   const goNext = () => {
     const next = nextStepId(draft.stepId);
     if (next) {

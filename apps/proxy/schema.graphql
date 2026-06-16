@@ -519,7 +519,7 @@ type ProviderAttempt {
 
 type ProviderCredentialOAuthStart {
   loginId: String!
-  userCode: String!
+  userCode: String
   verificationUrl: String!
 }
 

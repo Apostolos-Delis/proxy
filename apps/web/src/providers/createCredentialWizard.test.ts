@@ -41,7 +41,7 @@ describe("withCredentialMode", () => {
   it("pins Claude subscription credentials to Anthropic", () => {
     const next = withCredentialMode(draftAt("type", { provider: "openai" }), "claude_subscription");
     expect(next.provider).toBe("anthropic");
-    expect(next.source).toBe("local_auth");
+    expect(next.source).toBe("claude_oauth");
     expect(authTypeForMode(next.mode)).toBe("oauth");
   });
 
@@ -166,6 +166,16 @@ describe("credentialBlockerMessage", () => {
       source: "openai_oauth",
       apiKey: "",
       chatgptAccountId: ""
+    });
+    expect(credentialBlockerMessage(draft, true)).toBeNull();
+  });
+
+  it("does not require pasted tokens for Claude sign-in", () => {
+    const draft = draftAt("credentials", {
+      mode: "claude_subscription",
+      provider: "anthropic",
+      source: "claude_oauth",
+      apiKey: ""
     });
     expect(credentialBlockerMessage(draft, true)).toBeNull();
   });

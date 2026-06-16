@@ -2,7 +2,7 @@ import type { ProviderAccountAuthType } from "../gql/graphql";
 import type { ProviderName } from "./data";
 
 export type CreateProviderCredentialMode = "api_key" | "claude_subscription" | "codex_subscription";
-export type CreateProviderCredentialSource = "openai_oauth" | "local_auth" | "manual";
+export type CreateProviderCredentialSource = "claude_oauth" | "openai_oauth" | "local_auth" | "manual";
 export type CreateProviderCredentialStepId = "type" | "credentials" | "review" | "bind";
 
 export type CreateProviderCredentialDraft = {
@@ -44,12 +44,13 @@ export function withCredentialMode(
 ): CreateProviderCredentialDraft {
   const source = mode === "api_key" ? "manual" : subscriptionSourceForModeChange(draft, mode);
   const modeChanged = draft.mode !== mode;
+  const browserOAuth = source === "claude_oauth" || source === "openai_oauth";
   return {
     ...draft,
     mode,
     provider: providerForMode(mode, draft.provider),
     apiKey: modeChanged ? "" : draft.apiKey,
-    baseUrl: mode === "codex_subscription" && source === "openai_oauth" ? "" : draft.baseUrl,
+    baseUrl: browserOAuth ? "" : draft.baseUrl,
     chatgptAccountId: mode === "codex_subscription" && source === "manual" && !modeChanged ? draft.chatgptAccountId : "",
     source
   };
@@ -63,7 +64,7 @@ export function withCredentialSource(
     ...draft,
     source,
     apiKey: source === "manual" ? draft.apiKey : "",
-    baseUrl: draft.mode === "codex_subscription" && source === "openai_oauth" ? "" : draft.baseUrl,
+    baseUrl: source === "claude_oauth" || source === "openai_oauth" ? "" : draft.baseUrl,
     chatgptAccountId: source === "manual" ? draft.chatgptAccountId : ""
   };
 }
@@ -85,6 +86,7 @@ export function credentialModeLabel(mode: CreateProviderCredentialMode) {
 }
 
 export function secretLabelForDraft(draft: CreateProviderCredentialDraft) {
+  if (draft.source === "claude_oauth" && draft.mode === "claude_subscription") return "Claude sign-in token";
   if (draft.source === "openai_oauth" && draft.mode === "codex_subscription") return "OpenAI sign-in";
   if (draft.source === "local_auth" && draft.mode === "claude_subscription") return "Imported Claude setup token";
   if (draft.source === "local_auth" && draft.mode === "codex_subscription") return "Imported Codex auth";
@@ -94,6 +96,7 @@ export function secretLabelForDraft(draft: CreateProviderCredentialDraft) {
 }
 
 export function sourceLabelForDraft(draft: CreateProviderCredentialDraft) {
+  if (draft.source === "claude_oauth" && draft.mode === "claude_subscription") return "Claude browser sign-in";
   if (draft.source === "openai_oauth" && draft.mode === "codex_subscription") return "OpenAI device sign-in";
   if (draft.source === "local_auth" && draft.mode === "claude_subscription") return "Local Claude setup-token import";
   if (draft.source === "local_auth" && draft.mode === "codex_subscription") return "Local Codex auth import";
@@ -132,6 +135,7 @@ export function credentialBlockerMessage(
     return "Claude subscription auth has been disabled for this proxy.";
   }
   if (draft.source === "openai_oauth" && draft.mode === "codex_subscription") return null;
+  if (draft.source === "claude_oauth" && draft.mode === "claude_subscription") return null;
   if (draft.source === "local_auth" && draft.mode !== "api_key") return null;
   if (!draft.apiKey.trim()) return `${secretLabelForDraft(draft)} is required.`;
   if (draft.mode === "claude_subscription" && !draft.apiKey.trim().startsWith(SUBSCRIPTION_TOKEN_PREFIX)) {
@@ -259,8 +263,9 @@ function subscriptionSourceForModeChange(
 ) {
   if (mode === "api_key") return "manual";
   if (mode === "codex_subscription" && draft.mode === "api_key") return "openai_oauth";
-  if (mode === "claude_subscription" && draft.source === "openai_oauth") return "local_auth";
-  if (draft.mode === "api_key") return "local_auth";
+  if (mode === "claude_subscription" && draft.mode === "api_key") return "claude_oauth";
+  if (mode === "codex_subscription" && draft.source === "claude_oauth") return "openai_oauth";
+  if (mode === "claude_subscription" && draft.source === "openai_oauth") return "claude_oauth";
   return draft.source;
 }
 

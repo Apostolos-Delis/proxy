@@ -39,7 +39,8 @@ const createCredentialBodySchema = z.object({
   authType: z.enum(PROVIDER_ACCOUNT_AUTH_TYPES).default("api_key"),
   apiKey: z.string().trim().min(1),
   baseUrl: z.string().trim().min(1).optional(),
-  chatgptAccountId: z.string().trim().min(1).optional()
+  chatgptAccountId: z.string().trim().min(1).optional(),
+  oauthSource: z.enum(["setup-token", "claude-browser-oauth"]).optional()
 }).strict();
 
 const createLocalAuthCredentialBodySchema = z.object({
@@ -343,7 +344,7 @@ function parseOAuthCredential(data: CreateCredentialBody) {
     }
     return {
       secret: data.apiKey,
-      settings: { tokenKind: "claude_oauth", source: "setup-token" }
+      settings: { tokenKind: "claude_oauth", source: data.oauthSource ?? "setup-token" }
     };
   }
 

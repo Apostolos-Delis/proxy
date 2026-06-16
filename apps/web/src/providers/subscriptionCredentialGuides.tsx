@@ -3,6 +3,23 @@ import { KeyRound, Link2 } from "lucide-react";
 import type { CreateProviderCredentialSource } from "./createCredentialWizard";
 
 export function ClaudeSetupGuide({ source }: { source: CreateProviderCredentialSource }) {
+  if (source === "claude_oauth") {
+    return (
+      <div className="provider-credential-guide">
+        <Link2 />
+        <div>
+          <strong>Sign in with Claude</strong>
+          <span>Prompt Proxy opens Claude login in your browser and stores the resulting Claude Code OAuth token as an encrypted provider credential.</span>
+          <ol className="provider-credential-steps">
+            <li>Start sign-in while using the Claude account that should pay for this traffic.</li>
+            <li>Finish the Claude browser login; Prompt Proxy saves the credential automatically.</li>
+            <li>Bind the saved credential to a Prompt Proxy API key before using that key with Claude Code.</li>
+          </ol>
+        </div>
+      </div>
+    );
+  }
+
   if (source === "local_auth") {
     return (
       <div className="provider-credential-guide">

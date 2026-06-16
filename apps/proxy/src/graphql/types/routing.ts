@@ -196,7 +196,7 @@ export const ProviderAccount = builder.objectRef<ProviderAccountModel>("Provider
 export type ProviderCredentialOAuthStartModel = {
   loginId: string;
   verificationUrl: string;
-  userCode: string;
+  userCode?: string | null;
 };
 
 export const ProviderCredentialOAuthStart = builder
@@ -205,7 +205,7 @@ export const ProviderCredentialOAuthStart = builder
     fields: (t) => ({
       loginId: t.exposeString("loginId"),
       verificationUrl: t.exposeString("verificationUrl"),
-      userCode: t.exposeString("userCode")
+      userCode: t.exposeString("userCode", { nullable: true })
     })
   });
 

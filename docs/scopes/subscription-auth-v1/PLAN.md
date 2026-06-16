@@ -1,11 +1,10 @@
 # Subscription Auth V1
 
-> Current implementation note (2026-06-12): this original scope shipped the Anthropic-only V1. A later
-> follow-up now also supports OpenAI HTTP Responses subscription credentials by storing a Codex access
-> token encrypted at rest, storing `chatgptAccountId` as provider metadata, forwarding to
-> `OPENAI_CHATGPT_BASE_URL`, and sending `ChatGPT-Account-Id`. The proxy does not store or refresh
-> OpenAI refresh tokens; use official Codex access tokens where available or rotate short-lived ChatGPT
-> login tokens manually.
+> Current implementation note (2026-06-16): this original scope shipped the Anthropic-only pasted-token
+> V1. Later follow-ups now support Claude browser sign-in with a temporary localhost callback, plus
+> OpenAI HTTP Responses subscription credentials through Codex device auth, local Codex auth JSON, or
+> manual token/auth JSON paste. OpenAI refresh tokens are stored only inside the encrypted provider
+> secret bundle and refreshed by the proxy.
 
 ## Goal
 

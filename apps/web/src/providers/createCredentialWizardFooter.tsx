@@ -21,18 +21,21 @@ export function oauthBlockerMessage(
   oauthStartMutation: { data?: { loginId: string } | null; isPending: boolean; error: Error | null },
   oauthStatusQuery: { data?: { status: string; error?: string | null } | null }
 ) {
-  if (draft.mode !== "codex_subscription" || draft.source !== "openai_oauth" || draft.stepId !== "credentials") {
+  const browserOAuth = (draft.mode === "codex_subscription" && draft.source === "openai_oauth") ||
+    (draft.mode === "claude_subscription" && draft.source === "claude_oauth");
+  if (!browserOAuth || draft.stepId !== "credentials") {
     return null;
   }
+  const providerLabel = draft.mode === "claude_subscription" ? "Claude" : "OpenAI";
   if (!draft.name.trim()) return "Enter a credential label.";
-  if (oauthStartMutation.isPending) return "Starting OpenAI sign-in.";
+  if (oauthStartMutation.isPending) return `Starting ${providerLabel} sign-in.`;
   if (oauthStartMutation.error) return oauthStartMutation.error.message;
   if (oauthStatusQuery.data?.status === "failed") {
-    return oauthStatusQuery.data.error || "OpenAI sign-in failed.";
+    return oauthStatusQuery.data.error || `${providerLabel} sign-in failed.`;
   }
   if (oauthStatusQuery.data?.status === "completed") return null;
-  if (oauthStartMutation.data?.loginId) return "Complete the OpenAI sign-in in your browser.";
-  return "Start OpenAI sign-in to create this credential.";
+  if (oauthStartMutation.data?.loginId) return `Complete the ${providerLabel} sign-in in your browser.`;
+  return `Start ${providerLabel} sign-in to create this credential.`;
 }
 
 export function CreatedCredentialStep({ created, embedded, onClose }: {

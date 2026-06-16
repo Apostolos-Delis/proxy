@@ -7,9 +7,9 @@ Make subscription credentials usable without asking users to reverse-engineer to
 ## V1 Behavior
 
 - Add a provider credential source selector for subscription credentials:
+  - **Sign in with Claude** starts Claude Code's browser OAuth flow, captures the localhost callback, and stores the resulting long-lived Claude Code OAuth token.
   - **Sign in with OpenAI** starts the Codex device-code flow and stores the resulting ChatGPT subscription tokens.
   - **Import from Codex** reads Codex auth JSON from `PROMPT_PROXY_CODEX_AUTH_FILE`, `CODEX_HOME/auth.json`, or `~/.codex/auth.json`.
-  - **Import from Claude Code** reads `CLAUDE_CODE_OAUTH_TOKEN` from the proxy process environment.
   - Manual paste remains as a fallback for both providers.
 - Store subscription credentials through the existing provider credential storage path:
   - Secrets are encrypted with `PROVIDER_SECRET_ENCRYPTION_KEY`.
@@ -18,7 +18,7 @@ Make subscription credentials usable without asking users to reverse-engineer to
   - Manual OpenAI token paste remains access-token-only and cannot refresh itself.
 - Keep owner-only binding for subscription credentials so a personal subscription credential cannot be bound to another user's API key.
 - Keep the Anthropic kill switch: `SUBSCRIPTION_OAUTH_ENABLED=false` blocks Claude subscription credential creation and forwarding, but does not block OpenAI Codex credentials.
-- Treat local import as a same-user/local-host workflow. On shared proxy hosts, local import reads the proxy process user's auth material; operators should use manual paste until hosted per-user OAuth exists.
+- Treat Claude browser OAuth as a same-user/local-host workflow. The browser must be able to reach the temporary callback listener on the proxy host.
 
 ## Operator Setup
 
@@ -32,14 +32,14 @@ Make subscription credentials usable without asking users to reverse-engineer to
 
 ### Claude Code
 
-1. Run `claude setup-token` while signed into the Claude account that should pay for traffic.
-2. Set `CLAUDE_CODE_OAUTH_TOKEN` where the proxy runs and restart the proxy.
-3. In the console, choose **Claude subscription** and **Import from Claude Code**.
+1. In the console, choose **Claude subscription** and **Sign in with Claude**.
+2. Finish Claude browser login on the same machine as the proxy callback listener.
+3. Prompt Proxy stores the encrypted Claude Code OAuth token and advances the API key wizard to provider binding.
+4. If browser login cannot run on the proxy host, use **Paste setup token** with `claude setup-token`.
 
 ## Explicit Non-Goals
 
-- No hosted Claude.ai popup inside Prompt Proxy in V1.
-- No generic OAuth provider framework; OpenAI support follows Codex's provider-specific device-code flow.
+- No generic OAuth provider framework; OpenAI and Claude support stay provider-specific.
 - No per-user server-side credential vault.
 - No support for pooling one user's subscription credential across other users' keys.
 

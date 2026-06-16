@@ -321,7 +321,7 @@ export type StartProviderCredentialOAuthMutationVariables = Exact<{
 }>;
 
 
-export type StartProviderCredentialOAuthMutation = { startProviderCredentialOAuth: { loginId: string, verificationUrl: string, userCode: string } };
+export type StartProviderCredentialOAuthMutation = { startProviderCredentialOAuth: { loginId: string, verificationUrl: string, userCode: string | null } };
 
 export type CancelProviderCredentialOAuthMutationVariables = Exact<{
   loginId: string | number;
