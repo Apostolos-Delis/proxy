@@ -1,7 +1,7 @@
 import { Check, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
-import { PopoverShell } from "../table/PopoverShell";
+import { AnchoredPopover } from "../table/PopoverShell";
 
 export type ModelOption = {
   id: string;
@@ -15,6 +15,7 @@ export function ModelSelect({ value, providerLabel, options, onChange }: {
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const isCatalogModel = options.some((option) => option.id === value);
   return (
     <div
@@ -26,6 +27,7 @@ export function ModelSelect({ value, providerLabel, options, onChange }: {
       }}
     >
       <button
+        ref={triggerRef}
         type="button"
         className="model-select-trigger"
         aria-label={`${providerLabel} model`}
@@ -36,7 +38,7 @@ export function ModelSelect({ value, providerLabel, options, onChange }: {
         <ChevronDown />
       </button>
       {open ? (
-        <PopoverShell onDismiss={() => setOpen(false)}>
+        <AnchoredPopover anchorRef={triggerRef} onDismiss={() => setOpen(false)}>
           <div className="model-select-popover">
             {value && !isCatalogModel ? (
               <ModelRow
@@ -58,7 +60,7 @@ export function ModelSelect({ value, providerLabel, options, onChange }: {
               />
             ))}
           </div>
-        </PopoverShell>
+        </AnchoredPopover>
       ) : null}
     </div>
   );
