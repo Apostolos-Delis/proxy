@@ -1,10 +1,11 @@
-import { Check, ClipboardCheck, KeyRound, KeySquare, Link2, Terminal } from "lucide-react";
+import { Check, ClipboardCheck, KeySquare, Terminal } from "lucide-react";
 
 import { WizardStepHead } from "../keys/stepHead";
 import { MenuSelect } from "../table/MenuSelect";
 import { Badge, GlassCard } from "../ui";
 import type { ProviderName } from "./data";
 import { ProviderMark } from "./icons";
+import { ClaudeSetupGuide, CodexSetupGuide } from "./subscriptionCredentialGuides";
 import {
   canVisitStep,
   credentialModeLabel,
@@ -243,30 +244,6 @@ function FixedProviderField({ provider }: { provider: ProviderName }) {
       <div className="provider-credential-fixed-provider">
         <ProviderMark provider={provider} />
         <span>{provider === "anthropic" ? "Anthropic (Claude)" : "OpenAI"}</span>
-      </div>
-    </div>
-  );
-}
-
-function ClaudeSetupGuide() {
-  return (
-    <div className="provider-credential-guide">
-      <KeyRound />
-      <div>
-        <strong>Mint the token locally</strong>
-        <span>Run <span className="mono">claude setup-token</span> while signed into the Claude Pro or Max account that should pay for traffic.</span>
-      </div>
-    </div>
-  );
-}
-
-function CodexSetupGuide() {
-  return (
-    <div className="provider-credential-guide">
-      <Link2 />
-      <div>
-        <strong>Use the Codex identity</strong>
-        <span>Paste a Codex access token plus ChatGPT account ID, or paste Codex auth JSON that includes both values.</span>
       </div>
     </div>
   );

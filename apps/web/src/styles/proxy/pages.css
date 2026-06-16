@@ -3032,7 +3032,18 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .provider-credential-guide > div {
   display: grid;
-  gap: 2px;
+  gap: 8px;
+}
+
+.provider-credential-steps {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.provider-credential-steps li {
+  padding-left: 2px;
 }
 
 .provider-credential-fixed-provider,
