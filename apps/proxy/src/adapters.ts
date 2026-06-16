@@ -285,13 +285,7 @@ function rewriteOpenAIResponsesRequest(
 ) {
   const request = structuredClone(isRecord(body) ? body : {});
   request.model = settings.model;
-  // Extended cache retention is priced identically to the default in-memory
-  // retention (no write fee, same cached-token discount), so this is a pure
-  // hit-rate win for sessions idle past a few minutes — and newer models
-  // (gpt-5.5+) reject in_memory outright. A client-set value passes through.
-  if (request.prompt_cache_retention === undefined) {
-    request.prompt_cache_retention = "24h";
-  }
+  delete request.prompt_cache_retention;
   if (systemPrompt) {
     request.instructions = typeof request.instructions === "string" && request.instructions.trim()
       ? `${systemPrompt}\n\n${request.instructions}`
@@ -332,6 +326,7 @@ function rewriteOpenAIChatRequest(
 ) {
   const request = structuredClone(isRecord(body) ? body : {});
   request.model = settings.model;
+  delete request.prompt_cache_retention;
   if (systemPrompt) {
     request.messages = prependOpenAIChatSystemPrompt(request.messages, systemPrompt);
   }

@@ -59,6 +59,18 @@ describe("openai-chat rewrite", () => {
     expect(result.stream_options).toBeUndefined();
   });
 
+  it("drops prompt_cache_retention", () => {
+    const body = {
+      model: "anthropic-router-hard",
+      prompt_cache_retention: "24h",
+      messages: [{ role: "user", content: "hi" }]
+    };
+
+    const result = rewriteSurfaceRequest(body, openAIChatDecision()) as any;
+
+    expect(result.prompt_cache_retention).toBeUndefined();
+  });
+
   it("prepends the proxy system prompt", () => {
     const body = {
       model: "anthropic-router-hard",

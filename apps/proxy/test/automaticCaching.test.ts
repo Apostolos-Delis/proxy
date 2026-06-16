@@ -163,18 +163,18 @@ describe("injectAutomaticCacheControl transform", () => {
 });
 
 describe("prompt_cache_retention on OpenAI rewrites", () => {
-  it("defaults prompt_cache_retention to 24h", () => {
+  it("does not add prompt_cache_retention", () => {
     const body = { model: "router-hard", input: "hi" };
 
     const result = rewriteSurfaceRequest(body, openaiDecision(), undefined, {}) as any;
-    expect(result.prompt_cache_retention).toBe("24h");
+    expect(result.prompt_cache_retention).toBeUndefined();
   });
 
-  it("preserves a client-set prompt_cache_retention", () => {
+  it("drops a client-set prompt_cache_retention", () => {
     const body = { model: "router-hard", input: "hi", prompt_cache_retention: "in_memory" };
 
     const result = rewriteSurfaceRequest(body, openaiDecision(), undefined, {}) as any;
-    expect(result.prompt_cache_retention).toBe("in_memory");
+    expect(result.prompt_cache_retention).toBeUndefined();
   });
 });
 
@@ -208,18 +208,18 @@ describe("automatic caching end to end (DB-backed)", () => {
     expect(providerCall?.body.cache_control).toEqual({ type: "ephemeral" });
   });
 
-  it("forwards OpenAI requests with 24h prompt_cache_retention", async () => {
+  it("forwards OpenAI requests without prompt_cache_retention", async () => {
     fixture = await captureFixture("org_pcr");
 
     const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
-      body: JSON.stringify({ model: "router-hard", input: "hello", stream: true })
+      body: JSON.stringify({ model: "router-hard", input: "hello", stream: true, prompt_cache_retention: "24h" })
     });
     await response.text();
 
     const providerCall = fixture.openai.records.find((rec) => rec.path === "/responses");
-    expect(providerCall?.body.prompt_cache_retention).toBe("24h");
+    expect(providerCall?.body.prompt_cache_retention).toBeUndefined();
   });
 
   it("setAutomaticCaching merges into settings without clobbering other keys", async () => {
