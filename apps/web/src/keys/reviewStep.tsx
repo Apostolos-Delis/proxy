@@ -3,7 +3,7 @@ import { ClipboardCheck } from "lucide-react";
 import type { ProviderAccountSummary } from "../providers/data";
 import type { RoutingConfigSummary } from "../routing/data";
 import { GlassCard } from "../ui";
-import { providerOptionsForAccounts } from "./providerOptions";
+import { providerCredentialHint, providerIdsForRoutingConfig, providerOptionsForAccounts } from "./providerOptions";
 import { harnessSetupLabel } from "./setupSnippets";
 import { WizardStepHead } from "./stepHead";
 import { orgDefaultConfigLabel, type CreateKeyDraft } from "./wizard";
@@ -17,7 +17,14 @@ export function ReviewStep({ draft, configs, defaultConfig, providerAccounts }: 
   const routingConfigName = draft.routingConfigId
     ? configs.find((config) => config.id === draft.routingConfigId)?.name ?? draft.routingConfigId
     : orgDefaultConfigLabel(defaultConfig);
-  const providerOptions = providerOptionsForAccounts(providerAccounts, draft.providerBindings);
+  const selectedConfig = draft.routingConfigId
+    ? configs.find((config) => config.id === draft.routingConfigId) ?? null
+    : defaultConfig;
+  const providerOptions = providerOptionsForAccounts(
+    providerAccounts,
+    draft.providerBindings,
+    providerIdsForRoutingConfig(selectedConfig)
+  );
   return (
     <GlassCard>
       <WizardStepHead
@@ -65,5 +72,5 @@ export function ReviewStep({ draft, configs, defaultConfig, providerAccounts }: 
 function bindingLabel(providerAccountId: string | null, providerAccounts: ProviderAccountSummary[]) {
   if (!providerAccountId) return "Company default";
   const account = providerAccounts.find((candidate) => candidate.id === providerAccountId);
-  return account ? `${account.name} (${account.secretHint ?? "customer key"})` : providerAccountId;
+  return account ? `${account.name} (${providerCredentialHint(account)})` : providerAccountId;
 }
