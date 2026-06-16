@@ -7,20 +7,26 @@ const apiBase = "http://127.0.0.1:8787";
 describe("buildSetupCommand", () => {
   it("fetches the hosted script and passes the secret as the argument", () => {
     expect(buildSetupCommand({ apiBase, secret: "pp_abc123" })).toBe(
-      "curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness all 'pp_abc123'"
+      "curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code --harness codex 'pp_abc123'"
     );
   });
 
   it("falls back to the placeholder when there is no secret", () => {
-    expect(buildSetupCommand({ apiBase, secret: null })).toContain(`--harness all '${keyPlaceholder}'`);
+    expect(buildSetupCommand({ apiBase, secret: null })).toContain(`--harness claude-code --harness codex '${keyPlaceholder}'`);
   });
 
   it("single-quote-escapes secrets so they cannot break out of the argument", () => {
-    expect(buildSetupCommand({ apiBase, secret: "a'b" })).toContain(`--harness all 'a'\\''b'`);
+    expect(buildSetupCommand({ apiBase, secret: "a'b" })).toContain(`--harness claude-code --harness codex 'a'\\''b'`);
   });
 
-  it("passes the selected harness through to the hosted script", () => {
-    expect(buildSetupCommand({ apiBase, secret: "pp_codex", harness: "codex" })).toBe(
+  it("passes selected harnesses through to the hosted script", () => {
+    expect(buildSetupCommand({ apiBase, secret: "pp_codex", harnesses: ["codex", "opencode"] })).toBe(
+      "curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness codex --harness opencode 'pp_codex'"
+    );
+  });
+
+  it("passes a single selected harness through to the hosted script", () => {
+    expect(buildSetupCommand({ apiBase, secret: "pp_codex", harnesses: ["codex"] })).toBe(
       "curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness codex 'pp_codex'"
     );
   });
@@ -73,7 +79,7 @@ describe("buildManualSteps", () => {
   });
 
   it("builds Codex-specific steps with a separate token and provider", () => {
-    const codexSteps = buildManualSteps({ apiBase, secret: "pp_codex", harness: "codex" });
+    const codexSteps = buildManualSteps({ apiBase, secret: "pp_codex", harnesses: ["codex"] });
     expect(codexSteps.map((step) => step.title)).toEqual([
       "Store the key",
       "Export the key for Codex",
@@ -86,7 +92,7 @@ describe("buildManualSteps", () => {
   });
 
   it("builds Claude Code-specific steps with a separate token", () => {
-    const claudeSteps = buildManualSteps({ apiBase, secret: "pp_claude", harness: "claude-code" });
+    const claudeSteps = buildManualSteps({ apiBase, secret: "pp_claude", harnesses: ["claude-code"] });
     expect(claudeSteps.map((step) => step.title)).toEqual([
       "Store the key",
       "Point Claude Code at the proxy"
@@ -97,7 +103,7 @@ describe("buildManualSteps", () => {
   });
 
   it("builds opencode steps with a custom provider config", () => {
-    const opencodeSteps = buildManualSteps({ apiBase, secret: "pp_open", harness: "opencode" });
+    const opencodeSteps = buildManualSteps({ apiBase, secret: "pp_open", harnesses: ["opencode"] });
     expect(opencodeSteps.map((step) => step.title)).toEqual([
       "Store the key",
       "Register the opencode provider",
@@ -109,5 +115,13 @@ describe("buildManualSteps", () => {
     expect(config.model).toBe("prompt-proxy-chat/router-auto");
     expect(opencodeSteps[2].snippet).toContain("prompt-proxy-chat");
     expect(opencodeSteps[2].snippet).toContain("pp_open");
+  });
+
+  it("uses the shared token path when multiple harnesses are selected", () => {
+    const multiSteps = buildManualSteps({ apiBase, secret: "pp_multi", harnesses: ["codex", "opencode"] });
+    expect(multiSteps[0].snippet).toContain("~/.prompt-proxy/token");
+    expect(multiSteps[1].snippet).toBe(`export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"`);
+    expect(multiSteps[2].snippet).toContain("[model_providers.prompt_proxy]");
+    expect(multiSteps[2].snippet).toContain(`env_key = "PROMPT_PROXY_TOKEN"`);
   });
 });

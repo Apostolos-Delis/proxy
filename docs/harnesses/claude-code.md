@@ -19,6 +19,7 @@ curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code <ap
 ```
 
 It stores the key at `~/.prompt-proxy/claude-code.token` and points `~/.claude/settings.json` at Prompt Proxy. The default setup command without `--harness` still configures one shared key for both Claude Code and Codex.
+Pass `--harness` more than once when Claude Code should share the same Prompt Proxy API key with another local harness.
 
 ## Environment
 

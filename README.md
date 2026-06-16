@@ -52,9 +52,15 @@ curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code <cl
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness opencode <opencode-api-key>
 ```
 
+Pass `--harness` more than once to configure a selected set with one shared key:
+
+```shell
+curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code --harness codex --harness opencode <api-key>
+```
+
 Codex-specific installs use `~/.prompt-proxy/codex.token`, `PROMPT_PROXY_CODEX_TOKEN`, and a `prompt_proxy_codex` Codex provider. Claude Code-specific installs use `~/.prompt-proxy/claude-code.token`. opencode installs write the chat-compatible provider to `~/.config/opencode/opencode.json` and store the credential in opencode's normal auth file.
 
-The console's API-keys screen lets you choose the harness during key creation and shows matching copyable snippets after you create a key.
+The console's API-keys screen lets you choose one or more harnesses during key creation and shows matching copyable snippets after you create a key.
 
 ### Claude Code (manual)
 

@@ -27,15 +27,19 @@ export function ConfigureStep({ draft, onChange }: {
             onChange={(event) => onChange({ ...draft, name: event.target.value })}
           />
         </label>
-        <div className="scope-options" role="radiogroup" aria-label="Harness setup">
+        <div className="scope-options" role="group" aria-label="Harness setup">
           <span className="scope-options-label">Harness setup</span>
           {harnessSetupOptions.map((target) => (
             <label key={target.value} className="scope-option">
               <input
-                type="radio"
-                name="harness-setup"
-                checked={draft.harness === target.value}
-                onChange={() => onChange({ ...draft, harness: target.value })}
+                type="checkbox"
+                checked={draft.harnesses.includes(target.value)}
+                onChange={(event) => onChange({
+                  ...draft,
+                  harnesses: harnessSetupOptions
+                    .map((option) => option.value)
+                    .filter((value) => value === target.value ? event.target.checked : draft.harnesses.includes(value))
+                })}
               />
               <span>{target.label}</span>
               <span className="faint">{target.description}</span>

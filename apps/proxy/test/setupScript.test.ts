@@ -25,7 +25,7 @@ describe("buildSetupScript", () => {
   it("reads the key from the argument or environment, never embedding a secret", () => {
     const script = buildSetupScript("https://proxy.example.com");
     expect(script).toContain('PP_TOKEN="${PROMPT_PROXY_TOKEN:-}"');
-    expect(script).toContain('PP_HARNESS="${2:-}"');
+    expect(script).toContain('PP_HARNESSES="$PP_HARNESSES ${2:-}"');
     expect(script).toContain("read -r PP_TOKEN < /dev/tty");
   });
 
@@ -247,6 +247,55 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       expect(auth["prompt-proxy-chat"]).toEqual({ type: "api", key: "open-token" });
       expect(spawnSync("test", ["!", "-e", join(home, ".codex", "config.toml")]).status).toBe(0);
       expect(spawnSync("test", ["!", "-e", join(home, ".claude", "settings.json")]).status).toBe(0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("configures multiple selected harnesses with one shared key", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-multi-"));
+    const xdgConfig = join(home, "xdg-config");
+    const xdgData = join(home, "xdg-data");
+    try {
+      const result = spawnSync("bash", ["-s", "--", "--harness", "claude-code", "--harness", "codex", "--harness", "opencode", "multi-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: {
+          ...process.env,
+          HOME: home,
+          XDG_CONFIG_HOME: xdgConfig,
+          XDG_DATA_HOME: xdgData,
+          USER: "dev"
+        }
+      });
+
+      expect(result.status).toBe(0);
+      expect(readFileSync(join(home, ".prompt-proxy", "token"), "utf8")).toBe("multi-token\n");
+      const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
+      expect(settings.apiKeyHelper).toBe("cat ~/.prompt-proxy/token");
+      const codexConfig = readFileSync(join(home, ".codex", "config.toml"), "utf8");
+      expect(codexConfig).toContain('model_provider = "prompt_proxy"');
+      expect(codexConfig).toContain('env_key = "PROMPT_PROXY_TOKEN"');
+      const zshrc = readFileSync(join(home, ".zshrc"), "utf8");
+      expect(zshrc).toContain('export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"');
+      const opencodeAuth = JSON.parse(readFileSync(join(xdgData, "opencode", "auth.json"), "utf8"));
+      expect(opencodeAuth["prompt-proxy-chat"]).toEqual({ type: "api", key: "multi-token" });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an empty explicit harness instead of falling back to defaults", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-empty-harness-"));
+    try {
+      const result = spawnSync("bash", ["-s", "--", "--harness=", "token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: { ...process.env, HOME: home }
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr.toString()).toContain("Pick at least one harness");
+      expect(spawnSync("test", ["!", "-e", join(home, ".claude", "settings.json")]).status).toBe(0);
+      expect(spawnSync("test", ["!", "-e", join(home, ".codex", "config.toml")]).status).toBe(0);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

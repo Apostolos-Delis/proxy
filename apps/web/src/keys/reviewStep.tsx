@@ -38,7 +38,7 @@ export function ReviewStep({ draft, configs, defaultConfig, providerAccounts }: 
         </div>
         <div>
           <dt>Harness setup</dt>
-          <dd>{harnessSetupLabel(draft.harness)}</dd>
+          <dd>{harnessSetupLabel(draft.harnesses)}</dd>
         </div>
         <div>
           <dt>Routing config</dt>

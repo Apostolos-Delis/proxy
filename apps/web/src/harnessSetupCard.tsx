@@ -1,26 +1,27 @@
 import { Check, Copy, TerminalSquare } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import { apiBase } from "./graphql";
 import {
   buildManualSteps,
   buildSetupCommand,
+  defaultHarnessSetupSelection,
   harnessSetupLabel,
   keyPlaceholder,
-  tokenPathForHarness,
-  type HarnessSetupTarget,
+  tokenPathForHarnesses,
+  type HarnessSetupSelection,
   type SnippetLanguage
 } from "./keys/setupSnippets";
 import { highlightSnippet } from "./keys/snippetHighlight";
 import { WizardStepHead } from "./keys/stepHead";
 
-export function HarnessSetupGuide({ secret, harness, showKeyContextSteps = true }: {
+export function HarnessSetupGuide({ secret, harnesses, showKeyContextSteps = true }: {
   secret: string | null;
-  harness?: HarnessSetupTarget;
+  harnesses?: HarnessSetupSelection;
   showKeyContextSteps?: boolean;
 }) {
-  const target = harness ?? "all";
-  const label = harnessSetupLabel(target);
+  const selected = harnesses && harnesses.length > 0 ? harnesses : defaultHarnessSetupSelection;
+  const label = harnessSetupLabel(selected);
   return (
     <>
       <WizardStepHead
@@ -37,15 +38,15 @@ export function HarnessSetupGuide({ secret, harness, showKeyContextSteps = true 
         ) : null}
         <li>
           Run this on your machine, or paste it into an agent and let it run it for you:
-          <Snippet text={buildSetupCommand({ apiBase, secret, harness: target })} language="shell" />
+          <Snippet text={buildSetupCommand({ apiBase, secret, harnesses: selected })} language="shell" />
           <div className="faint setup-explainer">
             It fetches the <a href={`${apiBase}/setup.sh`} target="_blank" rel="noreferrer">setup script</a> from
-            the proxy, stores the key at <span className="code-pill">{tokenPathForHarness(target)}</span>, and configures
-            {target === "all" ? " Claude Code and Codex" : ` ${label}`} to use the proxy. Safe to re-run.
+            the proxy, stores the key at <span className="code-pill">{tokenPathForHarnesses(selected)}</span>, and configures
+            {" "}{label} to use the proxy. Safe to re-run.
           </div>
         </li>
         <li>
-          {launchInstruction(target)}
+          {launchInstruction(selected)}
         </li>
         {showKeyContextSteps ? (
           <li>
@@ -57,7 +58,7 @@ export function HarnessSetupGuide({ secret, harness, showKeyContextSteps = true 
       <details className="setup-manual">
         <summary>Prefer to set it up by hand? Follow these steps — they do exactly what the script does.</summary>
         <ol className="setup-steps">
-          {buildManualSteps({ apiBase, secret, harness: target }).map((step) => (
+          {buildManualSteps({ apiBase, secret, harnesses: selected }).map((step) => (
             <li key={step.title}>
               <span className="setup-manual-title">{step.title}.</span> {step.detail}
               <Snippet text={step.snippet} language={step.language} />
@@ -69,19 +70,36 @@ export function HarnessSetupGuide({ secret, harness, showKeyContextSteps = true 
   );
 }
 
-function launchInstruction(harness: HarnessSetupTarget) {
-  if (harness === "claude-code") {
+function launchInstruction(harnesses: HarnessSetupSelection) {
+  if (harnesses.length === 1 && harnesses[0] === "claude-code") {
     return <>Open a new terminal and run <span className="code-pill">claude</span>.</>;
   }
-  if (harness === "codex") {
+  if (harnesses.length === 1 && harnesses[0] === "codex") {
     return <>Open a new terminal and run <span className="code-pill">codex</span>.</>;
   }
-  if (harness === "opencode") {
+  if (harnesses.length === 1 && harnesses[0] === "opencode") {
     return <>Open opencode, run <span className="code-pill">/models</span>, and select <span className="code-pill">prompt-proxy-chat/router-auto</span>.</>;
   }
+  const terminalCommands: string[] = [];
+  if (harnesses.includes("claude-code")) terminalCommands.push("claude");
+  if (harnesses.includes("codex")) terminalCommands.push("codex");
   return (
     <>
-      Open a new terminal and run <span className="code-pill">claude</span> or <span className="code-pill">codex</span>.
+      {terminalCommands.length > 0 ? (
+        <>
+          Open a new terminal and run{" "}
+          {terminalCommands.map((command, index) => (
+            <Fragment key={command}>
+              {index > 0 ? " or " : null}
+              <span className="code-pill">{command}</span>
+            </Fragment>
+          ))}
+          .
+        </>
+      ) : null}
+      {harnesses.includes("opencode") ? (
+        <> Open opencode, run <span className="code-pill">/models</span>, and select <span className="code-pill">prompt-proxy-chat/router-auto</span>.</>
+      ) : null}
     </>
   );
 }
