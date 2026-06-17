@@ -302,6 +302,7 @@ describe("translated OpenAI routing runtime", () => {
     ]);
     expect(providerCall?.body.reasoning.effort).toBe("high");
     expect(providerCall?.body.max_output_tokens).toBe(333);
+    expect(providerCall?.body.store).toBe(false);
     expect(decision?.guardrailActions).toContain("translated_request:anthropic-messages_to_openai-responses");
   });
 

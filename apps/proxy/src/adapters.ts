@@ -285,6 +285,7 @@ function rewriteOpenAIResponsesRequest(
 ) {
   const request = structuredClone(isRecord(body) ? body : {});
   request.model = settings.model;
+  request.store = false;
   delete request.prompt_cache_retention;
   if (systemPrompt) {
     request.instructions = typeof request.instructions === "string" && request.instructions.trim()
