@@ -15,38 +15,40 @@ import { BarListRow, ConsoleButton, GlassCard, PageSkeleton, PageState, Progress
 
 const OverviewPageDocument = graphql(`
   query OverviewPage {
-    overview {
-      requestCount
-      totals {
-        totalTokens
-      }
-      cost {
-        selected
-        baseline
-        savings
-      }
-      routeQuality {
-        lowConfidenceCount
-        cheaperLikelyWouldWorkCount
-        cheapCausedRetriesOrRepairsCount
-      }
-    }
-    requests {
-      createdAt
-      selectedCost
-      baselineCost
-      usage {
-        totalTokens
-      }
-    }
-    modelUsage: usage(groupBy: model) {
-      data {
-        key
-        usage {
+    overviewDashboard {
+      overview {
+        requestCount
+        totals {
           totalTokens
         }
         cost {
           selected
+          baseline
+          savings
+        }
+        routeQuality {
+          lowConfidenceCount
+          cheaperLikelyWouldWorkCount
+          cheapCausedRetriesOrRepairsCount
+        }
+      }
+      requests {
+        createdAt
+        selectedCost
+        baselineCost
+        usage {
+          totalTokens
+        }
+      }
+      modelUsage {
+        data {
+          key
+          usage {
+            totalTokens
+          }
+          cost {
+            selected
+          }
         }
       }
     }
@@ -69,8 +71,8 @@ export function OverviewPage() {
   if (queryError) return <PageState title="Overview" label={queryError.message} />;
   if (!queryData) return <PageState title="Overview" label="No overview data" />;
 
-  const overview = queryData.overview;
-  const requests = queryData.requests;
+  const overview = queryData.overviewDashboard.overview;
+  const requests = queryData.overviewDashboard.requests;
   const days = Number(rangeDays);
   const spendSeries = seriesFromRequests(requests, "cost", days);
   const tokenSeries = seriesFromRequests(requests, "tokens", days);
@@ -80,7 +82,7 @@ export function OverviewPage() {
   const tokenDelta = periodDelta(seriesFromRequests(requests, "tokens", 14));
   const requestDelta = periodDelta(seriesFromRequests(requests, "requests", 14));
   const spendDelta = periodDelta(seriesFromRequests(requests, "cost", 14));
-  const modelRows = modelRowsFromUsage(queryData.modelUsage.data);
+  const modelRows = modelRowsFromUsage(queryData.overviewDashboard.modelUsage.data);
   const quality = overview.routeQuality;
   const exportOverview = () => downloadJson("proxy-overview.json", { overview, requests, rangeDays, modelRows });
   const isAdmin = isAdminRole(meQueryData?.user.role);

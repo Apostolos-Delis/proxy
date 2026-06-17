@@ -273,7 +273,7 @@ export type ClearModelPricingMutation = { clearModelPricing: Array<{ model: stri
 export type OverviewPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type OverviewPageQuery = { overview: { requestCount: number, totals: { totalTokens: number }, cost: { selected: number, baseline: number, savings: number }, routeQuality: { lowConfidenceCount: number, cheaperLikelyWouldWorkCount: number, cheapCausedRetriesOrRepairsCount: number } }, requests: Array<{ createdAt: string | null, selectedCost: number, baselineCost: number, usage: { totalTokens: number } }>, modelUsage: { data: Array<{ key: string, usage: { totalTokens: number }, cost: { selected: number } }> } };
+export type OverviewPageQuery = { overviewDashboard: { overview: { requestCount: number, totals: { totalTokens: number }, cost: { selected: number, baseline: number, savings: number }, routeQuality: { lowConfidenceCount: number, cheaperLikelyWouldWorkCount: number, cheapCausedRetriesOrRepairsCount: number } }, requests: Array<{ createdAt: string | null, selectedCost: number, baselineCost: number, usage: { totalTokens: number } }>, modelUsage: { data: Array<{ key: string, usage: { totalTokens: number }, cost: { selected: number } }> } } };
 
 export type PromptDetailViewQueryVariables = Exact<{
   artifactId: string | number;
@@ -573,7 +573,7 @@ export type UsageDashboardViewQueryVariables = Exact<{
 }>;
 
 
-export type UsageDashboardViewQuery = { usage: { groupBy: UsageGroupBy, data: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } }, usageTimeseries: { groupBy: UsageGroupBy, interval: UsageInterval, start: string, end: string, groups: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, points: Array<{ ts: string, groups: unknown, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } }> } };
+export type UsageDashboardViewQuery = { usageDashboard: { usage: { groupBy: UsageGroupBy, data: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } }, timeseries: { groupBy: UsageGroupBy, interval: UsageInterval, start: string, end: string, groups: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, points: Array<{ ts: string, groups: unknown, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } }> } } };
 
 export type UsageLookupsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -1057,38 +1057,40 @@ export const ClearModelPricingDocument = new TypedDocumentString(`
     `) as unknown as TypedDocumentString<ClearModelPricingMutation, ClearModelPricingMutationVariables>;
 export const OverviewPageDocument = new TypedDocumentString(`
     query OverviewPage {
-  overview {
-    requestCount
-    totals {
-      totalTokens
-    }
-    cost {
-      selected
-      baseline
-      savings
-    }
-    routeQuality {
-      lowConfidenceCount
-      cheaperLikelyWouldWorkCount
-      cheapCausedRetriesOrRepairsCount
-    }
-  }
-  requests {
-    createdAt
-    selectedCost
-    baselineCost
-    usage {
-      totalTokens
-    }
-  }
-  modelUsage: usage(groupBy: model) {
-    data {
-      key
-      usage {
+  overviewDashboard {
+    overview {
+      requestCount
+      totals {
         totalTokens
       }
       cost {
         selected
+        baseline
+        savings
+      }
+      routeQuality {
+        lowConfidenceCount
+        cheaperLikelyWouldWorkCount
+        cheapCausedRetriesOrRepairsCount
+      }
+    }
+    requests {
+      createdAt
+      selectedCost
+      baselineCost
+      usage {
+        totalTokens
+      }
+    }
+    modelUsage {
+      data {
+        key
+        usage {
+          totalTokens
+        }
+        cost {
+          selected
+        }
       }
     }
   }
@@ -2181,35 +2183,37 @@ export const UsageTimeseriesViewDocument = new TypedDocumentString(`
 }`) as unknown as TypedDocumentString<UsageTimeseriesViewQuery, UsageTimeseriesViewQueryVariables>;
 export const UsageDashboardViewDocument = new TypedDocumentString(`
     query UsageDashboardView($groupBy: UsageGroupBy!, $interval: UsageInterval, $start: String, $end: String, $limit: Int) {
-  usage(groupBy: $groupBy, start: $start, end: $end) {
-    groupBy
-    data {
-      ...UsageGroupFields
-    }
-    totals {
-      ...UsageGroupFields
-    }
-  }
-  usageTimeseries(
+  usageDashboard(
     groupBy: $groupBy
     interval: $interval
     start: $start
     end: $end
     limit: $limit
   ) {
-    groupBy
-    interval
-    start
-    end
-    groups {
-      ...UsageGroupFields
-    }
-    points {
-      ts
+    usage {
+      groupBy
+      data {
+        ...UsageGroupFields
+      }
       totals {
         ...UsageGroupFields
       }
-      groups
+    }
+    timeseries {
+      groupBy
+      interval
+      start
+      end
+      groups {
+        ...UsageGroupFields
+      }
+      points {
+        ts
+        totals {
+          ...UsageGroupFields
+        }
+        groups
+      }
     }
   }
 }

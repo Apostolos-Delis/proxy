@@ -150,6 +150,16 @@ describe("usage analytics admin APIs", () => {
       fixture.adminHeaders,
       `query { usage(groupBy: model, start: "2026-06-08T00:00:00.000Z", end: "2026-06-09T00:00:00.000Z") ${usageFields} }`
     )).data?.usage;
+    const allTimeModelUsage = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { usage(groupBy: model) ${usageFields} }`
+    )).data?.usage;
+    const overviewDashboard = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { overviewDashboard { modelUsage ${usageFields} } }`
+    )).data?.overviewDashboard;
     const supportedGroups = await Promise.all(
       ["user", "provider", "model", "route", "surface", "session"].map(async (groupBy) =>
         (await adminGql(
@@ -171,6 +181,10 @@ describe("usage analytics admin APIs", () => {
     expect(modelUsage.totals.retryRate).toBe(0.5);
     expect(modelUsage.data.map((item: any) => item.key)).not.toContain("gpt-old");
     expect(modelUsage.data.map((item: any) => item.key)).not.toContain("gpt-other-org");
+    expect(overviewDashboard.modelUsage.totals).toEqual(allTimeModelUsage.totals);
+    expect(overviewDashboard.modelUsage.data.map((item: any) => item.key)).toEqual(
+      allTimeModelUsage.data.map((item: any) => item.key)
+    );
     expect(hardGroup).toEqual(expect.objectContaining({
       key: "claude-hard",
       requestCount: 1,
@@ -437,6 +451,13 @@ describe("usage analytics admin APIs", () => {
           groups { key requestCount }
           points { ts totals { requestCount } }
         }
+        usageDashboard(groupBy: route, interval: day) {
+          usage { totals { requestCount usage { totalTokens } } }
+          timeseries {
+            groups { key requestCount }
+            points { ts totals { requestCount } }
+          }
+        }
       }`
     );
 
@@ -445,14 +466,21 @@ describe("usage analytics admin APIs", () => {
     expect(result.data?.requests).toHaveLength(4);
     expect(result.data?.usage.totals.requestCount).toBe(4);
     expect(result.data?.usage.totals.usage.totalTokens).toBe(result.data?.overview.totals.totalTokens);
+    expect(result.data?.usageDashboard.usage.totals).toEqual(result.data?.usage.totals);
     expect(result.data?.usageTimeseries.groups).toEqual([
       expect.objectContaining({ key: "fast", requestCount: 4 })
     ]);
+    expect(result.data?.usageDashboard.timeseries.groups).toEqual(result.data?.usageTimeseries.groups);
     const pointTotal = result.data?.usageTimeseries.points.reduce(
       (sum: number, point: { totals: { requestCount: number } }) => sum + point.totals.requestCount,
       0
     );
+    const dashboardPointTotal = result.data?.usageDashboard.timeseries.points.reduce(
+      (sum: number, point: { totals: { requestCount: number } }) => sum + point.totals.requestCount,
+      0
+    );
     expect(pointTotal).toBe(4);
+    expect(dashboardPointTotal).toBe(pointTotal);
   });
 
   it("folds classifier spend into selected cost and savings without inflating tokens or counts", async () => {

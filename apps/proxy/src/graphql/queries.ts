@@ -15,8 +15,10 @@ import {
   CompressionSavingsReport,
   IdleGapReport,
   Overview,
+  OverviewDashboard,
   RouteOutputReport,
   TokenAttributionReport,
+  UsageDashboard,
   UsageGroupBy,
   UsageInterval,
   UsageReport,
@@ -92,6 +94,35 @@ builder.queryFields((t) => ({
           cheaperLikelyWouldWorkCount: routeQuality.cheaperLikelyWouldWork.length,
           cheapCausedRetriesOrRepairsCount: routeQuality.cheapCausedRetriesOrRepairs.length
         }
+      };
+    }
+  }),
+
+  overviewDashboard: t.field({
+    type: OverviewDashboard,
+    resolve: async (_root, _args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) return queries.overviewDashboard();
+      const allEvents = context.events.listEvents();
+      const usage = context.projections.usage(allEvents);
+      const routeQuality = context.projections.routeQuality(allEvents);
+      const modelUsage = emptyUsageReport();
+      modelUsage.groupBy = "model";
+      return {
+        overview: {
+          organizationId: context.config.defaultOrganizationId,
+          eventCount: allEvents.length,
+          requestCount: usage.requests.length,
+          totals: usage.totals,
+          cost: usage.cost,
+          routeQuality: {
+            lowConfidenceCount: routeQuality.lowConfidence.length,
+            cheaperLikelyWouldWorkCount: routeQuality.cheaperLikelyWouldWork.length,
+            cheapCausedRetriesOrRepairsCount: routeQuality.cheapCausedRetriesOrRepairs.length
+          }
+        },
+        requests: [...usage.requests].reverse(),
+        modelUsage
       };
     }
   }),
@@ -184,6 +215,40 @@ builder.queryFields((t) => ({
         points: []
       };
       return empty;
+    }
+  }),
+
+  usageDashboard: t.field({
+    type: UsageDashboard,
+    args: {
+      groupBy: t.arg({ type: UsageGroupBy }),
+      interval: t.arg({ type: UsageInterval }),
+      start: t.arg.string(),
+      end: t.arg.string(),
+      limit: t.arg.int()
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) {
+        return queries.usageDashboard({
+          groupBy: args.groupBy ?? undefined,
+          interval: args.interval ?? undefined,
+          start: args.start ?? undefined,
+          end: args.end ?? undefined,
+          limit: args.limit ?? undefined
+        });
+      }
+      return {
+        usage: emptyUsageReport(),
+        timeseries: {
+          groupBy: args.groupBy ?? "route",
+          interval: args.interval ?? "day",
+          start: args.start ?? new Date().toISOString(),
+          end: args.end ?? new Date().toISOString(),
+          groups: [],
+          points: []
+        }
+      };
     }
   }),
 
