@@ -208,7 +208,13 @@ describe("Anthropic Messages to OpenAI translators", () => {
       ],
       tools: [{ name: "shell", description: "Run shell", input_schema: { type: "object" } }],
       tool_choice: { type: "tool", name: "shell" },
-      max_tokens: 123
+      thinking: { type: "adaptive" },
+      output_config: { effort: "low" },
+      metadata: { user_id: "user_1" },
+      context_management: { edits: [{ type: "clear_tool_uses_20250919" }] },
+      mcp_servers: [{ type: "url", url: "https://mcp.example" }],
+      top_k: 10,
+      max_output_tokens: 123
     }) as any;
 
     expect(request.messages).toEqual([
@@ -230,6 +236,13 @@ describe("Anthropic Messages to OpenAI translators", () => {
     ]);
     expect(request.tool_choice).toEqual({ type: "function", function: { name: "shell" } });
     expect(request.max_completion_tokens).toBe(123);
+    expect(request.max_output_tokens).toBeUndefined();
+    expect(request.thinking).toBeUndefined();
+    expect(request.output_config).toBeUndefined();
+    expect(request.metadata).toBeUndefined();
+    expect(request.context_management).toBeUndefined();
+    expect(request.mcp_servers).toBeUndefined();
+    expect(request.top_k).toBeUndefined();
   });
 
   it("maps Messages tool choice to OpenAI Responses", () => {
@@ -239,6 +252,12 @@ describe("Anthropic Messages to OpenAI translators", () => {
       tools: [{ name: "shell", input_schema: { type: "object" } }],
       tool_choice: { type: "tool", name: "shell" },
       stop_sequences: ["DONE"],
+      thinking: { type: "adaptive" },
+      output_config: { effort: "low" },
+      metadata: { user_id: "user_1" },
+      context_management: { edits: [{ type: "clear_tool_uses_20250919" }] },
+      mcp_servers: [{ type: "url", url: "https://mcp.example" }],
+      top_k: 10,
       max_tokens: 123
     }) as any;
 
@@ -248,7 +267,14 @@ describe("Anthropic Messages to OpenAI translators", () => {
     expect(request.tool_choice).toEqual({ type: "function", name: "shell" });
     expect(request.stop).toEqual(["DONE"]);
     expect(request.stop_sequences).toBeUndefined();
+    expect(request.stream).toBe(true);
     expect(request.max_output_tokens).toBe(123);
+    expect(request.thinking).toBeUndefined();
+    expect(request.output_config).toBeUndefined();
+    expect(request.metadata).toBeUndefined();
+    expect(request.context_management).toBeUndefined();
+    expect(request.mcp_servers).toBeUndefined();
+    expect(request.top_k).toBeUndefined();
   });
 
   it("transforms Anthropic SSE to Responses SSE", async () => {

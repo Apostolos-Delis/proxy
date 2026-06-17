@@ -1,6 +1,7 @@
 import type { FastifyReply } from "fastify";
 
 import type { ProviderAdapter, ProviderForwardInput } from "./adapters.js";
+import { bufferedStreamResponse, collectStreamResponse } from "./bufferedStreamResponse.js";
 import type { AppConfig } from "./config.js";
 import {
   jsonPayload,
@@ -152,8 +153,13 @@ export class ProviderProxy implements ProviderAdapter {
       throw error;
     }
 
+    const providerStream = isRecord(input.body) && input.body.stream === true;
+    const responseStream = input.responseStream ?? providerStream;
     const contentType = upstream.headers.get("content-type") ?? "";
-    const isSse = contentType.includes("text/event-stream");
+    const isSse = contentType.includes("text/event-stream") || (
+      upstream.ok &&
+      providerStream
+    );
 
     copyResponseHeaders(upstream, input.reply);
     input.reply.code(upstream.status);
@@ -207,16 +213,92 @@ export class ProviderProxy implements ProviderAdapter {
       }
     });
 
+    const observer = sseObserverForDialect(input.surface);
+    let completed = false;
+
+    if (!responseStream) {
+      try {
+        const responseBody = responseTranslator
+          ? responseTranslator.sseTransform(upstream.body)
+          : upstream.body;
+        const collected = await collectStreamResponse(responseBody, observer, input.surface);
+        completed = true;
+        const observation = collected.observation;
+        const status = observation.status === "failed" ? "failed" : "completed";
+        streamCompleted = true;
+        input.reply.raw.off("close", abortUpstream);
+
+        await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, withoutOutputText(observation));
+        this.attempts.update(attempt.id, {
+          terminalStatus: status,
+          usage: observation.usage,
+          upstreamRequestId: observation.upstreamResponseId,
+          error: observation.error
+        });
+        await this.requestStates.finish(input.idempotencyKey, status, {
+          providerAttemptId: attempt.id,
+          usage: observation.usage,
+          upstreamRequestId: observation.upstreamResponseId,
+          error: observation.error
+        });
+        if (status === "completed" && collected.outputText && input.onAssistantText) {
+          await input.onAssistantText(collected.outputText, false);
+        }
+        input.reply.header("content-type", "application/json; charset=utf-8");
+        input.reply.send(bufferedStreamResponse(input.surface, selectedModel, status, observation, collected.outputText, collected.content));
+      } catch (error) {
+        const observation = observer.finish("cancelled");
+        const message = error instanceof Error ? error.message : "Stream failed.";
+        const aborted = abortController.signal.aborted;
+        await this.appendTerminal(
+          input,
+          attempt.id,
+          aborted ? "cancelled" : "failed",
+          observation.usage,
+          upstream.status,
+          {
+            ...withoutOutputText(observation),
+            error: message
+          }
+        );
+        this.attempts.update(attempt.id, {
+          terminalStatus: aborted ? "cancelled" : "failed",
+          usage: observation.usage,
+          error: message
+        });
+        await this.requestStates.finish(input.idempotencyKey, aborted ? "cancelled" : "failed", {
+          providerAttemptId: attempt.id,
+          usage: observation.usage,
+          error: message
+        });
+        throw error;
+      } finally {
+        input.reply.raw.off("close", abortUpstream);
+        if (!completed && !abortController.signal.aborted) {
+          await this.events.append({
+            scopeType: "request",
+            scopeId: input.requestId,
+            correlationId: input.requestId,
+            idempotencyKey: input.idempotencyKey,
+            producer: "prompt-proxy.provider",
+            eventType: "provider.terminal_reconcile_scheduled",
+            payload: {
+              providerAttemptId: attempt.id
+            }
+          });
+        }
+      }
+      return;
+    }
+
     input.reply.hijack();
     input.reply.raw.statusCode = upstream.status;
+    input.reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
     input.reply.raw.setHeader("x-prompt-proxy-model", selectedModel);
     input.reply.raw.setHeader("x-prompt-proxy-route", input.decision.finalRoute ?? "");
     if (input.decision.reasoningEffort) {
       input.reply.raw.setHeader("x-prompt-proxy-reasoning-effort", input.decision.reasoningEffort);
     }
-    const observer = sseObserverForDialect(input.surface);
-    let completed = false;
-
     try {
       let observation: StreamObservation;
       let status: "completed" | "failed";
@@ -461,9 +543,10 @@ function providerRequestBody(input: {
     ? input.credential
     : undefined;
   if (!isOpenAIChatGPTCredential(input.provider, credentialForProvider)) return input.body;
-  if (!isRecord(input.body) || input.body.prompt_cache_retention === undefined) return input.body;
+  if (!isRecord(input.body)) return input.body;
   const body = { ...input.body };
-  delete body.prompt_cache_retention;
+  if (body.prompt_cache_retention !== undefined) delete body.prompt_cache_retention;
+  if (body.max_output_tokens !== undefined) delete body.max_output_tokens;
   return body;
 }
 

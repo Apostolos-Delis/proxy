@@ -222,6 +222,9 @@ describe("translated OpenAI routing runtime", () => {
         metadata: { user_id: "user_abc_account_def_session_12345678-abcd-1234-abcd-123456789abc" },
         messages: [{ role: "user", content: [{ type: "text", text: "list files" }] }],
         tools: [{ name: "shell", input_schema: { type: "object" } }],
+        output_config: { effort: "low" },
+        context_management: { edits: [{ type: "clear_tool_uses_20250919" }] },
+        max_output_tokens: 100,
         stream: true,
         max_tokens: 100
       })
@@ -245,6 +248,9 @@ describe("translated OpenAI routing runtime", () => {
     ]);
     expect(providerCall?.body.reasoning_effort).toBe("high");
     expect(providerCall?.body.max_completion_tokens).toBe(222);
+    expect(providerCall?.body.max_output_tokens).toBeUndefined();
+    expect(providerCall?.body.output_config).toBeUndefined();
+    expect(providerCall?.body.context_management).toBeUndefined();
     expect(providerCall?.body.stream_options).toEqual({ include_usage: true });
     expect(providerCall?.body.metadata).toBeUndefined();
     expect(decision?.guardrailActions).toContain("translated_request:anthropic-messages_to_openai-chat");
@@ -254,7 +260,7 @@ describe("translated OpenAI routing runtime", () => {
     const organizationId = "org_translate_claude_to_responses";
     activeFixture = await captureFixture(organizationId, "raw_text", false, {
       envOverrides: { ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8" },
-      openAIOptions: { outputText: "openai responses translated" }
+      openAIOptions: { outputText: "openai responses translated", streamContentType: "text/plain; charset=utf-8" }
     });
     await insertOrgProvider(activeFixture, organizationId, {
       id: "20000000-0000-0000-0000-000000000106",
@@ -282,6 +288,8 @@ describe("translated OpenAI routing runtime", () => {
         metadata: { user_id: "user_abc_account_def_session_12345678-abcd-1234-abcd-123456789abc" },
         messages: [{ role: "user", content: [{ type: "text", text: "list files" }] }],
         tools: [{ name: "shell", input_schema: { type: "object" } }],
+        output_config: { effort: "low" },
+        context_management: { edits: [{ type: "clear_tool_uses_20250919" }] },
         stream: true,
         max_tokens: 100
       })
@@ -293,6 +301,8 @@ describe("translated OpenAI routing runtime", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(body).toMatch(/^event: message_start/);
     expect(body).toContain("content_block_delta");
     expect(body).toContain("message_stop");
     expect(body).toContain("openai responses translated");
@@ -306,8 +316,61 @@ describe("translated OpenAI routing runtime", () => {
     expect(providerCall?.body.reasoning.effort).toBe("high");
     expect(providerCall?.body.max_output_tokens).toBe(333);
     expect(providerCall?.body.store).toBe(false);
+    expect(providerCall?.body.output_config).toBeUndefined();
+    expect(providerCall?.body.context_management).toBeUndefined();
     expect(providerCall?.body.metadata).toBeUndefined();
     expect(decision?.guardrailActions).toContain("translated_request:anthropic-messages_to_openai-responses");
+  });
+
+  it("buffers streamed OpenAI Responses for non-stream Claude Messages callers", async () => {
+    const organizationId = "org_translate_claude_to_responses_nonstream";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: { ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8" },
+      openAIOptions: { outputText: "openai responses buffered", streamContentType: "text/plain; charset=utf-8" }
+    });
+    await insertOrgProvider(activeFixture, organizationId, {
+      id: "20000000-0000-0000-0000-000000000108",
+      slug: "openai-responses-buffered",
+      dialect: "openai-responses"
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "claude-to-responses-buffered-token",
+      slug: "claude-to-responses-buffered",
+      configHash: "sha256:claude-to-responses-buffered",
+      targets: [{ providerId: "openai-responses-buffered", model: "gpt-responses-buffered", effort: "high" }]
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer claude-to-responses-buffered-token",
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+        "x-claude-code-session-id": "claude-session"
+      },
+      body: JSON.stringify({
+        model: "claude-router-hard",
+        system: "Use tools carefully.",
+        messages: [{ role: "user", content: [{ type: "text", text: "list files" }] }],
+        max_tokens: 100
+      })
+    });
+    const body = await response.json() as any;
+    const providerCall = activeFixture.openai.records.find((record) =>
+      record.path === "/responses" && record.body.model === "gpt-responses-buffered"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(body).toMatchObject({
+      type: "message",
+      role: "assistant",
+      model: "gpt-responses-buffered",
+      content: [{ type: "text", text: "openai responses buffered" }],
+      stop_reason: "end_turn"
+    });
+    expect(providerCall?.body.stream).toBe(true);
+    expect(providerCall?.body.max_output_tokens).toBe(100);
   });
 
   it("routes OpenAI Chat traffic through an Anthropic target", async () => {
