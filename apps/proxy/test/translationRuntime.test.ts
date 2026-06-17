@@ -219,6 +219,7 @@ describe("translated OpenAI routing runtime", () => {
       body: JSON.stringify({
         model: "claude-router-hard",
         system: "Use tools carefully.",
+        metadata: { user_id: "user_abc_account_def_session_12345678-abcd-1234-abcd-123456789abc" },
         messages: [{ role: "user", content: [{ type: "text", text: "list files" }] }],
         tools: [{ name: "shell", input_schema: { type: "object" } }],
         stream: true,
@@ -245,6 +246,7 @@ describe("translated OpenAI routing runtime", () => {
     expect(providerCall?.body.reasoning_effort).toBe("high");
     expect(providerCall?.body.max_completion_tokens).toBe(222);
     expect(providerCall?.body.stream_options).toEqual({ include_usage: true });
+    expect(providerCall?.body.metadata).toBeUndefined();
     expect(decision?.guardrailActions).toContain("translated_request:anthropic-messages_to_openai-chat");
   });
 
@@ -277,6 +279,7 @@ describe("translated OpenAI routing runtime", () => {
       body: JSON.stringify({
         model: "claude-router-hard",
         system: "Use tools carefully.",
+        metadata: { user_id: "user_abc_account_def_session_12345678-abcd-1234-abcd-123456789abc" },
         messages: [{ role: "user", content: [{ type: "text", text: "list files" }] }],
         tools: [{ name: "shell", input_schema: { type: "object" } }],
         stream: true,
@@ -303,6 +306,7 @@ describe("translated OpenAI routing runtime", () => {
     expect(providerCall?.body.reasoning.effort).toBe("high");
     expect(providerCall?.body.max_output_tokens).toBe(333);
     expect(providerCall?.body.store).toBe(false);
+    expect(providerCall?.body.metadata).toBeUndefined();
     expect(decision?.guardrailActions).toContain("translated_request:anthropic-messages_to_openai-responses");
   });
 
