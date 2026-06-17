@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { isAdminRole } from "./access";
 import { startLiveUpdates, stopLiveUpdates } from "./liveUpdates";
-import { fetchMe, login, logout, type AuthMe } from "./session";
+import { applyGraphQLCacheScope, fetchMe, login, logout, type AuthMe } from "./session";
 import { ConsoleButton } from "./ui";
 
 export type RouterContext = {
@@ -24,6 +24,7 @@ export async function requireAuth({ context }: { context: RouterContext }) {
   } catch {
     throw redirect({ to: "/login" });
   }
+  applyGraphQLCacheScope(me);
   startLiveUpdates(context.queryClient);
   return me;
 }

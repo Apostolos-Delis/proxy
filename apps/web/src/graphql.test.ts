@@ -1,7 +1,11 @@
+import { QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requireAuth } from "./auth";
 import { TypedDocumentString } from "./gql/graphql";
 import { bumpGraphQLCacheEpoch, gqlFetch, setGraphQLCacheScope } from "./graphql";
+import { stopLiveUpdates } from "./liveUpdates";
+import type { AuthMe } from "./session";
 
 const QueryDocument = new TypedDocumentString<{ ok: boolean }, { id: string }>(`
   query TestQuery($id: ID!) {
@@ -15,6 +19,21 @@ const MutationDocument = new TypedDocumentString<{ ok: boolean }, { id: string }
   }
 `);
 
+class FakeEventSource {
+  readyState = 1;
+  onmessage: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  url: string;
+
+  constructor(url: string) {
+    this.url = url;
+  }
+
+  close() {
+    this.readyState = 2;
+  }
+}
+
 describe("gqlFetch", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -27,6 +46,7 @@ describe("gqlFetch", () => {
   });
 
   afterEach(() => {
+    stopLiveUpdates();
     setGraphQLCacheScope(null);
     vi.unstubAllGlobals();
   });
@@ -84,4 +104,37 @@ describe("gqlFetch", () => {
     const epoch = new URL(String(fetchMock.mock.calls[0][0])).searchParams.get("gqlCacheEpoch");
     expect(epoch).toBe("42");
   });
+
+  it("restores scoped GETs when route auth uses cached viewer data", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["me"], cachedViewer());
+    vi.stubGlobal("EventSource", FakeEventSource);
+
+    await requireAuth({ context: { queryClient } });
+    await gqlFetch(QueryDocument, { id: "one" });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    const parsed = new URL(String(url));
+
+    expect(init.method).toBe("GET");
+    expect(parsed.searchParams.get("gqlCacheScope")).toBeTruthy();
+  });
 });
+
+function cachedViewer(): AuthMe {
+  return {
+    organizationId: "org_1",
+    workspaceId: "workspace_1",
+    user: {
+      sessionId: "session_1",
+      organizationId: "org_1",
+      workspaceId: "workspace_1",
+      userId: "user_1",
+      email: "local@example.com",
+      name: "Local User",
+      role: "owner"
+    },
+    organizations: [{ id: "org_1", slug: "local", name: "Local", role: "owner" }],
+    workspaces: [{ id: "workspace_1", slug: "default", name: "Default" }]
+  };
+}

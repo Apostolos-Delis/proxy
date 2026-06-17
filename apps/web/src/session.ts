@@ -105,7 +105,7 @@ export async function createWorkspace(input: { name: string }) {
   return (await gqlFetch(CreateWorkspaceDocument, { input })).createWorkspace;
 }
 
-function applyGraphQLCacheScope(me: AuthMe) {
+export function applyGraphQLCacheScope(me: AuthMe) {
   setGraphQLCacheScope([
     me.organizationId,
     me.workspaceId
