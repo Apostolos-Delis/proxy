@@ -35,6 +35,7 @@ export async function startOpenAIMock(
     failProviderOnce?: boolean;
     rateLimitProviderOnce?: RateLimitMock;
     slowProvider?: boolean;
+    streamContentType?: string;
     wsTerminalEvent?: "response.completed" | "response.incomplete";
     wsUpgradeHeaders?: Record<string, string>;
     outputText?: string;
@@ -151,7 +152,7 @@ export async function startOpenAIMock(
         });
         return;
       }
-      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.writeHead(200, { "content-type": options.streamContentType ?? "text/event-stream" });
       response.on("close", () => resolveProviderClosed?.());
       response.write(
         `data: ${JSON.stringify({
@@ -182,7 +183,7 @@ export async function startOpenAIMock(
       return;
     }
 
-    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.writeHead(200, { "content-type": options.streamContentType ?? "text/event-stream" });
     response.on("close", () => resolveProviderClosed?.());
     response.write(
       `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_mock" } })}\n\n`

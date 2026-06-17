@@ -39,7 +39,7 @@ import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
 import { buildSetupScript } from "./setupScript.js";
 import type { Provider, RouteDecision, Surface } from "./types.js";
-import { createId, headerValue, idempotencyFrom, lowerHeaders } from "./util.js";
+import { createId, headerValue, idempotencyFrom, isRecord, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
 
 type AppPersistence = ReturnType<typeof createPostgresPersistence>;
@@ -274,6 +274,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         surface: openAIResponsesSurface.surface,
         provider: routedProvider(decision),
         body: rewriteSurfaceRequest(compressedBody, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
+        responseStream: requestWantsStream(request.body),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
@@ -384,6 +385,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         surface: openAIChatSurface.surface,
         provider: routedProvider(decision),
         body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
+        responseStream: requestWantsStream(request.body),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
@@ -503,6 +505,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         surface: anthropicMessagesSurface.surface,
         provider: routedProvider(decision),
         body: rewriteSurfaceRequest(compressedBody, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
+        responseStream: requestWantsStream(request.body),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
@@ -607,6 +610,10 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
 function routedProvider(decision: { provider?: Provider }) {
   if (!decision.provider) throw new Error("Missing routed provider.");
   return decision.provider;
+}
+
+function requestWantsStream(body: unknown) {
+  return isRecord(body) && body.stream === true;
 }
 
 function resolveUpstreamCredential(

@@ -50,6 +50,18 @@ const openAIResponsesFieldsUnsupportedByAnthropic = [
   "truncation"
 ];
 
+const anthropicMessagesFieldsUnsupportedByOpenAI = [
+  "cache_control",
+  "container",
+  "context_management",
+  "metadata",
+  "mcp_servers",
+  "output_config",
+  "service_tier",
+  "thinking",
+  "top_k"
+];
+
 export const anthropicMessagesToOpenAIChat: DialectTranslator = {
   request: anthropicRequestToChat,
   response: anthropicResponseToChat,
@@ -80,14 +92,14 @@ function anthropicRequestToChat(body: unknown) {
   request.messages = anthropicMessagesToChatMessages(source);
   if (Array.isArray(source.tools)) request.tools = source.tools.map(anthropicToolToChat);
   if (source.max_tokens !== undefined) request.max_completion_tokens = source.max_tokens;
+  else if (source.max_output_tokens !== undefined) request.max_completion_tokens = source.max_output_tokens;
   if (source.stop_sequences !== undefined) request.stop = source.stop_sequences;
   request.tool_choice = anthropicToolChoiceToChat(source.tool_choice);
   delete request.system;
   delete request.max_tokens;
+  delete request.max_output_tokens;
   delete request.stop_sequences;
-  delete request.thinking;
-  delete request.cache_control;
-  delete request.metadata;
+  deleteFields(request, anthropicMessagesFieldsUnsupportedByOpenAI);
   return request;
 }
 
@@ -98,17 +110,17 @@ function anthropicRequestToResponses(body: unknown) {
   const { instructions, input } = chatMessagesToResponsesInput(messages);
   if (instructions) request.instructions = instructions;
   request.input = input;
+  request.stream = true;
   if (Array.isArray(source.tools)) request.tools = source.tools.map(anthropicToolToResponses);
   if (source.max_tokens !== undefined) request.max_output_tokens = source.max_tokens;
+  else if (source.max_output_tokens !== undefined) request.max_output_tokens = source.max_output_tokens;
   if (source.stop_sequences !== undefined) request.stop = source.stop_sequences;
   request.tool_choice = anthropicToolChoiceToResponses(source.tool_choice);
   delete request.system;
   delete request.messages;
   delete request.max_tokens;
   delete request.stop_sequences;
-  delete request.thinking;
-  delete request.cache_control;
-  delete request.metadata;
+  deleteFields(request, anthropicMessagesFieldsUnsupportedByOpenAI);
   return request;
 }
 

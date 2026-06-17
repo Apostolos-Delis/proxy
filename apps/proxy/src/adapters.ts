@@ -21,6 +21,7 @@ export type ProviderForwardInput = {
   surface: Surface;
   provider: Provider;
   body: unknown;
+  responseStream?: boolean;
   headers: Record<string, string | undefined>;
   decision: RouteDecision;
   reply: FastifyReply;
