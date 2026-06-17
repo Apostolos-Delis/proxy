@@ -5,7 +5,13 @@ import type { AdminSessionStore } from "../persistence/adminSessions.js";
 type Q = AdminQueryService;
 
 export type OverviewModel = Awaited<ReturnType<Q["overview"]>>;
-export type OverviewDashboardModel = Awaited<ReturnType<Q["overviewDashboard"]>>;
+// requests/modelUsage are widened to the shapes the in-memory projection
+// fallback (no DATABASE_URL) produces, so both it and the database-backed
+// resolver satisfy this model — same reason RequestSummaryShape exists.
+export type OverviewDashboardModel = Omit<Awaited<ReturnType<Q["overviewDashboard"]>>, "requests" | "modelUsage"> & {
+  requests: RequestSummaryShape[];
+  modelUsage: UsageReportModel;
+};
 export type RouteQualityModel = OverviewModel["routeQuality"];
 export type TokenTotalsModel = OverviewModel["totals"];
 export type CostTotalsModel = OverviewModel["cost"];

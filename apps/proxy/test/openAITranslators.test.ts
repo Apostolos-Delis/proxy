@@ -375,6 +375,135 @@ describe("OpenAI to Anthropic Messages translators", () => {
     expect(request.store).toBeUndefined();
   });
 
+  it("flattens Codex namespace tools and drops provider-hosted tools", () => {
+    const translator = translators.get("openai-responses", "anthropic-messages");
+    const request = translator?.request({
+      input: [],
+      tools: [
+        { type: "function", name: "exec_command", description: "run", parameters: { type: "object" } },
+        {
+          type: "namespace",
+          name: "multi_agent_v1",
+          description: "agents",
+          tools: [
+            { type: "function", name: "spawn_agent", description: "spawn", parameters: { type: "object" } }
+          ]
+        },
+        {
+          type: "namespace",
+          name: "mcp__codex_apps__github",
+          description: "github",
+          tools: [
+            { type: "function", name: "_add_comment_to_issue", description: "comment", parameters: { type: "object" } }
+          ]
+        },
+        { type: "web_search", external_web_access: true },
+        { type: "image_generation", output_format: "png" }
+      ]
+    }) as any;
+
+    expect(request.tools).toEqual([
+      { name: "exec_command", description: "run", input_schema: { type: "object" } },
+      { name: "ns_14_multi_agent_v1spawn_agent", description: "spawn", input_schema: { type: "object" } },
+      { name: "ns_23_mcp__codex_apps__github_add_comment_to_issue", description: "comment", input_schema: { type: "object" } }
+    ]);
+    for (const tool of request.tools) {
+      expect(tool.name).toMatch(/^[a-zA-Z0-9_-]{1,128}$/);
+    }
+  });
+
+  it("re-encodes namespaced function_call history into matching tool_use names", () => {
+    const translator = translators.get("openai-responses", "anthropic-messages");
+    const request = translator?.request({
+      input: [
+        { type: "function_call", call_id: "c1", name: "spawn_agent", namespace: "multi_agent_v1", arguments: "{}" },
+        { type: "function_call", call_id: "c2", name: "exec_command", arguments: "{}" }
+      ]
+    }) as any;
+
+    expect(request.messages).toEqual([
+      {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "c1", name: "ns_14_multi_agent_v1spawn_agent", input: {} }]
+      },
+      {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "c2", name: "exec_command", input: {} }]
+      }
+    ]);
+  });
+
+  it("decodes flattened namespace tool calls back to name + namespace (non-stream)", () => {
+    const translator = translators.get("anthropic-messages", "openai-responses");
+    const response = translator?.response({
+      id: "msg_1",
+      content: [
+        { type: "tool_use", id: "toolu_1", name: "ns_23_mcp__codex_apps__github_add_comment_to_issue", input: { body: "hi" } },
+        { type: "tool_use", id: "toolu_2", name: "exec_command", input: { cmd: "ls" } }
+      ]
+    }) as any;
+
+    const calls = response.output.filter((o: any) => o.type === "function_call");
+    expect(calls[0]).toMatchObject({ name: "_add_comment_to_issue", namespace: "mcp__codex_apps__github", call_id: "toolu_1" });
+    expect(calls[1]).toMatchObject({ name: "exec_command", call_id: "toolu_2" });
+    expect(calls[1].namespace).toBeUndefined();
+  });
+
+  it("decodes flattened namespace tool calls in the streamed response", async () => {
+    const translator = translators.get("anthropic-messages", "openai-responses")!;
+    const sse = [
+      "event: message_start",
+      'data: {"type":"message_start","message":{"id":"msg_1","model":"claude","usage":{}}}',
+      "",
+      "event: content_block_start",
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"ns_14_multi_agent_v1spawn_agent"}}',
+      "",
+      "event: message_stop",
+      'data: {"type":"message_stop"}',
+      ""
+    ].join("\n");
+    const out = await transform(translator, sse);
+    expect(out).toContain('"name":"spawn_agent"');
+    expect(out).toContain('"namespace":"multi_agent_v1"');
+  });
+
+  it("drops namespaced sub-tools whose encoded name exceeds Anthropic's 128-char cap", () => {
+    const translator = translators.get("openai-responses", "anthropic-messages");
+    const longName = "x".repeat(130);
+    const request = translator?.request({
+      input: [],
+      tools: [{
+        type: "namespace",
+        name: "mcp__svc",
+        description: "svc",
+        tools: [
+          { type: "function", name: "ok_tool", description: "ok", parameters: { type: "object" } },
+          { type: "function", name: longName, description: "too long", parameters: { type: "object" } }
+        ]
+      }]
+    }) as any;
+
+    expect(request.tools).toEqual([
+      { name: "ns_8_mcp__svcok_tool", description: "ok", input_schema: { type: "object" } }
+    ]);
+    for (const tool of request.tools) {
+      expect(tool.name.length).toBeLessThanOrEqual(128);
+    }
+  });
+
+  it("falls back to the plain name when a function_call history item has no namespace", () => {
+    const translator = translators.get("openai-responses", "anthropic-messages");
+    const request = translator?.request({
+      input: [
+        { type: "function_call", call_id: "c1", name: "exec_command", namespace: "", arguments: "{}" }
+      ]
+    }) as any;
+
+    expect(request.messages).toEqual([
+      { role: "assistant", content: [{ type: "tool_use", id: "c1", name: "exec_command", input: {} }] }
+    ]);
+  });
+
   it("maps Responses string image URLs to Anthropic image blocks", () => {
     const translator = translators.get("openai-responses", "anthropic-messages");
     const request = translator?.request({

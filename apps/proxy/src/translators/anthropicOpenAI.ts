@@ -148,7 +148,7 @@ function responsesRequestToAnthropic(body: unknown) {
   const { system, messages } = responsesInputToAnthropic(source.input, source.instructions);
   if (system.length > 0) request.system = system;
   request.messages = messages;
-  if (Array.isArray(source.tools)) request.tools = source.tools.map(responsesToolToAnthropic);
+  if (Array.isArray(source.tools)) request.tools = source.tools.flatMap(responsesToolToAnthropic);
   request.tool_choice = responsesToolChoiceToAnthropic(source.tool_choice);
   if (source.max_output_tokens !== undefined) request.max_tokens = source.max_output_tokens;
   const stop = source.stop ?? source.stop_sequences;
@@ -356,6 +356,7 @@ async function* anthropicSseToResponses(chunks: AsyncIterable<Uint8Array>) {
 
     if (type === "message_start") return ensureResponseCreated();
     if (type === "content_block_start" && isRecord(event.content_block) && event.content_block.type === "tool_use") {
+      const decoded = decodeNamespacedToolName(stringValue(event.content_block.name));
       return [
         ...ensureResponseCreated(),
         responsesFrame("response.output_item.added", {
@@ -365,7 +366,8 @@ async function* anthropicSseToResponses(chunks: AsyncIterable<Uint8Array>) {
             id: stringValue(event.content_block.id),
             type: "function_call",
             call_id: stringValue(event.content_block.id),
-            name: stringValue(event.content_block.name),
+            name: decoded.name,
+            ...(decoded.namespace !== undefined ? { namespace: decoded.namespace } : {}),
             arguments: "",
             status: "in_progress"
           }
@@ -726,15 +728,8 @@ function responsesInputToAnthropic(input: unknown, instructions: unknown) {
   for (const item of input) {
     if (!isRecord(item)) continue;
     if (item.type === "function_call") {
-      messages.push({
-        role: "assistant",
-        content: [{
-          type: "tool_use",
-          id: stringValue(item.call_id) ?? stringValue(item.id),
-          name: stringValue(item.name),
-          input: parseMaybeJson(item.arguments)
-        }]
-      });
+      const block = responsesFunctionCallToAnthropic(item);
+      if (block) messages.push({ role: "assistant", content: [block] });
       continue;
     }
     if (item.type === "function_call_output") {
@@ -904,13 +899,49 @@ function chatToolToAnthropic(tool: unknown) {
   };
 }
 
-function responsesToolToAnthropic(tool: unknown) {
-  if (!isRecord(tool) || tool.type !== "function") return tool;
-  return {
-    name: tool.name,
-    description: tool.description,
-    input_schema: tool.parameters
-  };
+// Codex groups tools under `type: "namespace"` containers and routes calls back
+// using a separate `namespace` field on each function_call. Anthropic tools are
+// flat, so we flatten namespaced sub-tools into individual tools whose names
+// encode the namespace, then split the namespace back out when translating the
+// response. The encoding is length-prefixed so the split is unambiguous even
+// though both the namespace and tool name can contain `_`/`-`.
+const NAMESPACED_TOOL_PREFIX = "ns_";
+const MAX_ANTHROPIC_TOOL_NAME_LENGTH = 128;
+
+function encodeNamespacedToolName(namespace: string, name: string) {
+  return `${NAMESPACED_TOOL_PREFIX}${namespace.length}_${namespace}${name}`;
+}
+
+function decodeNamespacedToolName(encoded: string | undefined): { namespace?: string; name: string | undefined } {
+  if (typeof encoded !== "string") return { name: encoded };
+  const match = /^ns_(\d+)_([\s\S]+)$/.exec(encoded);
+  if (!match) return { name: encoded };
+  const length = Number(match[1]);
+  const rest = match[2];
+  if (!Number.isInteger(length) || length <= 0 || length >= rest.length) return { name: encoded };
+  return { namespace: rest.slice(0, length), name: rest.slice(length) };
+}
+
+function responsesToolToAnthropic(tool: unknown): Record<string, unknown>[] {
+  if (!isRecord(tool)) return [];
+  if (tool.type === "function") {
+    return [{ name: tool.name, description: tool.description, input_schema: tool.parameters }];
+  }
+  if (tool.type === "namespace" && typeof tool.name === "string" && Array.isArray(tool.tools)) {
+    const namespace = tool.name;
+    return tool.tools.flatMap((sub) => {
+      if (!isRecord(sub) || sub.type !== "function" || typeof sub.name !== "string") return [];
+      const name = encodeNamespacedToolName(namespace, sub.name);
+      // Anthropic caps tool names at 128 chars; drop rather than let the whole
+      // request fail if a long namespace + sub-tool name overflows the cap.
+      if (name.length > MAX_ANTHROPIC_TOOL_NAME_LENGTH) return [];
+      return [{ name, description: sub.description, input_schema: sub.parameters }];
+    });
+  }
+  // Provider-hosted/special Codex tools that Anthropic cannot execute
+  // (web_search, image_generation, local_shell, tool_search, custom/freeform).
+  // Drop them so the request stays valid; the model simply won't call them.
+  return [];
 }
 
 function anthropicToolChoiceToChat(choice: unknown) {
@@ -979,21 +1010,25 @@ function chatToolCallToResponses(toolCall: unknown) {
 
 function responsesFunctionCallToAnthropic(item: unknown) {
   if (!isRecord(item) || item.type !== "function_call") return undefined;
+  const namespace = stringValue(item.namespace);
+  const name = stringValue(item.name);
   return {
     type: "tool_use",
     id: stringValue(item.call_id) ?? stringValue(item.id),
-    name: stringValue(item.name),
+    name: namespace && name ? encodeNamespacedToolName(namespace, name) : name,
     input: parseMaybeJson(item.arguments)
   };
 }
 
 function anthropicToolUseToResponses(block: unknown) {
   if (!isRecord(block) || block.type !== "tool_use") return undefined;
+  const decoded = decodeNamespacedToolName(stringValue(block.name));
   return {
     id: stringValue(block.id),
     type: "function_call",
     call_id: stringValue(block.id),
-    name: stringValue(block.name),
+    name: decoded.name,
+    ...(decoded.namespace !== undefined ? { namespace: decoded.namespace } : {}),
     arguments: jsonArguments(block.input)
   };
 }
