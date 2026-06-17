@@ -51,6 +51,7 @@ describe("liveUpdates", () => {
     startLiveUpdates(queryClient);
     startLiveUpdates(queryClient);
     expect(FakeEventSource.instances).toHaveLength(1);
+    expect(FakeEventSource.instances[0].url).toBe("/admin/events");
 
     FakeEventSource.instances[0].emitMessage();
     expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
