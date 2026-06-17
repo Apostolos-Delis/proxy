@@ -704,6 +704,7 @@ export class RoutingService {
     budgetChecks: RouteDecision["budgetChecks"] = [],
     errorStatus = 400
   ): RouteDecision {
+    const rejectedCheck = budgetChecks.find((check) => check.status === "reject" && check.reason === error);
     return {
       outcome: "reject",
       surface: context.surface,
@@ -713,9 +714,33 @@ export class RoutingService {
       budgetChecks,
       policyVersion: "2026-06-08",
       error,
+      errorMessage: rejectionMessage(error, rejectedCheck),
+      errorDetails: rejectedCheck ? {
+        reasonCode: error,
+        scope: rejectedCheck.scope,
+        current: rejectedCheck.current,
+        limit: rejectedCheck.limit
+      } : undefined,
       errorStatus
     };
   }
+}
+
+function rejectionMessage(error: string, check: NonNullable<RouteDecision["budgetChecks"]>[number] | undefined) {
+  if (error === "request_estimated_input_limit" && check) {
+    return `Prompt Proxy rejected this request before routing because the full request is estimated at ${formatCount(check.current)} input tokens, above the active routing config limit of ${formatCount(check.limit)}. This estimate includes the full session envelope and history, not just the latest user message. Start a compacted or new session, or disable/raise limits.maxEstimatedInputTokens in the routing config.`;
+  }
+  if (error === "route_estimated_input_limit" && check) {
+    return `Prompt Proxy rejected this request because the selected route's input limit is ${formatCount(check.limit)} estimated tokens and the full request is estimated at ${formatCount(check.current)}. Adjust limits.routeEstimatedInputLimits for this route or use a smaller session.`;
+  }
+  if (error === "route_limit" && check) {
+    return `Prompt Proxy rejected this request because route ${String(check.current)} exceeds the active routing config maxRoute ${String(check.limit)}.`;
+  }
+  return error;
+}
+
+function formatCount(value: string | number) {
+  return typeof value === "number" ? value.toLocaleString("en-US") : value;
 }
 
 function atOrAbove(route: RouteName | undefined, ceiling: RouteName) {

@@ -59,6 +59,8 @@ describe("draftFromConfig", () => {
     const draft = draftFromConfig(baseConfig);
 
     expect(draft.classifierRules).toBe("Keep auth/ on hard.");
+    expect(draft.maxEstimatedInputTokensEnabled).toBe(false);
+    expect(draft.maxEstimatedInputTokens).toBe("");
     expect(draft.routes.fast.targets).toEqual([
       { providerId: "anthropic", model: "claude-fast", effort: "minimal", thinking: { type: "disabled" } },
       { providerId: "openai", model: "gpt-fast", effort: "low", verbosity: "low" }
@@ -79,6 +81,16 @@ describe("draftFromConfig", () => {
     const draft = draftFromConfig(config);
 
     expect(draft.routes.fast.targets).toEqual([]);
+  });
+
+  it("extracts enabled request input caps", () => {
+    const draft = draftFromConfig({
+      ...baseConfig,
+      limits: { ...baseConfig.limits, maxEstimatedInputTokens: 250000 }
+    });
+
+    expect(draft.maxEstimatedInputTokensEnabled).toBe(true);
+    expect(draft.maxEstimatedInputTokens).toBe("250000");
   });
 });
 
@@ -128,6 +140,28 @@ describe("applyDraft", () => {
     expect(next.classifier.model).toBe("route-classifier");
   });
 
+  it("writes an enabled request input cap", () => {
+    const draft = draftFromConfig(baseConfig);
+    draft.maxEstimatedInputTokensEnabled = true;
+    draft.maxEstimatedInputTokens = "250000";
+    const next = applyDraft(baseConfig, draft);
+
+    expect(next.limits.maxEstimatedInputTokens).toBe(250000);
+  });
+
+  it("removes a disabled request input cap", () => {
+    const cappedConfig = {
+      ...baseConfig,
+      limits: { ...baseConfig.limits, maxEstimatedInputTokens: 200000 }
+    };
+    const draft = draftFromConfig(cappedConfig);
+    draft.maxEstimatedInputTokensEnabled = false;
+    const next = applyDraft(cappedConfig, draft);
+
+    expect(next.limits.maxEstimatedInputTokens).toBeUndefined();
+    expect("maxEstimatedInputTokens" in next.limits).toBe(false);
+  });
+
   it("does not mutate the base config", () => {
     const snapshot = structuredClone(baseConfig);
     const draft = draftFromConfig(baseConfig);
@@ -164,6 +198,22 @@ describe("draftError", () => {
   it("accepts blank routing rules", () => {
     const draft = draftFromConfig(baseConfig);
     draft.classifierRules = "   ";
+
+    expect(draftError(draft)).toBeUndefined();
+  });
+
+  it("rejects invalid request input caps when enabled", () => {
+    const draft = draftFromConfig(baseConfig);
+    draft.maxEstimatedInputTokensEnabled = true;
+    draft.maxEstimatedInputTokens = "0";
+
+    expect(draftError(draft)).toBe("Request input cap must be a positive whole number.");
+  });
+
+  it("ignores request input cap text when disabled", () => {
+    const draft = draftFromConfig(baseConfig);
+    draft.maxEstimatedInputTokensEnabled = false;
+    draft.maxEstimatedInputTokens = "not-a-number";
 
     expect(draftError(draft)).toBeUndefined();
   });

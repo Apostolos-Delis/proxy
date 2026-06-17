@@ -57,8 +57,7 @@ function defaultRoutingConfig(config: AppConfig): RoutingConfig {
     },
     limits: {
       maxRoute: "deep",
-      fallbackRoute: "hard",
-      maxEstimatedInputTokens: 200000
+      fallbackRoute: "hard"
     },
     session: {
       pinInitialRoute: true,
