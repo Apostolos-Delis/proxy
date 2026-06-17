@@ -1,3 +1,5 @@
+import { anthropicEffortForModel, type Effort } from "@prompt-proxy/schema";
+
 export type RoutingConfigThinking = {
   type?: string;
   display?: string;
@@ -193,17 +195,23 @@ export function emptyRouteTarget(providerId = "", model = ""): RouteTargetDraft 
 }
 
 export function effectiveEffortForTarget(
-  target: Pick<RouteTargetDraft, "providerId" | "effort">,
-  supportedEfforts?: readonly string[]
+  target: Pick<RouteTargetDraft, "providerId" | "model" | "effort" | "thinking">,
+  supportedEfforts?: readonly string[],
+  targetDialects?: readonly string[]
 ) {
   const effort = target.effort.trim();
   if (!effort) return "";
+  if (target.providerId.trim() === "anthropic" || targetDialects?.includes("anthropic-messages")) {
+    if (target.thinking?.type !== "adaptive") return "";
+    const knownEffort = effortAsKnownEffort(effort);
+    if (!knownEffort) return "";
+    return anthropicEffortForModel(target.model.trim(), knownEffort) ?? "";
+  }
   if (supportedEfforts !== undefined) {
     if (supportedEfforts.length === 0) return "";
     return nearestEffort(effort, supportedEfforts) ?? effort;
   }
-  if (target.providerId.trim() !== "anthropic") return effort;
-  return nearestEffort(effort, ["low", "medium", "high", "xhigh", "max", "ultracode"]) ?? effort;
+  return effort;
 }
 
 export function effortScaleForProvider(provider?: Pick<RoutingCatalogProvider, "capabilities">) {
@@ -249,6 +257,11 @@ function nearestEffort(value: string, supported: readonly string[]) {
     }
   }
   return closest;
+}
+
+function effortAsKnownEffort(value: string): Effort | undefined {
+  if (EFFORT_SCALE.includes(value as typeof EFFORT_SCALE[number])) return value as Effort;
+  return undefined;
 }
 
 function effortValues(capabilities: unknown) {

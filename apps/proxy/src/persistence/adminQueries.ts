@@ -321,9 +321,15 @@ export class AdminQueryService {
     return counts;
   }
 
-  private async providerCapabilitiesBySlug() {
+  private async providerSummariesBySlug() {
     const { data } = await this.providers();
-    return new Map(data.map((provider) => [provider.slug, provider.capabilities]));
+    return new Map(data.map((provider) => [
+      provider.slug,
+      {
+        capabilities: provider.capabilities,
+        endpoints: provider.endpoints
+      }
+    ]));
   }
 
   async routingConfigs() {
@@ -335,7 +341,7 @@ export class AdminQueryService {
     const activeVersions = await this.activeRoutingConfigVersions(configRows);
     const assignedKeyCounts = await this.routingConfigApiKeyCounts(configRows.map((row) => row.id));
     const trafficShares = await this.routingConfigTrafficShares();
-    const providerCapabilities = await this.providerCapabilitiesBySlug();
+    const providersBySlug = await this.providerSummariesBySlug();
 
     return {
       data: configRows.map((row) =>
@@ -344,7 +350,7 @@ export class AdminQueryService {
           activeVersions.get(row.activeVersionId ?? ""),
           assignedKeyCounts.get(row.id) ?? 0,
           trafficShares.get(row.id) ?? 0,
-          providerCapabilities
+          providersBySlug
         )
       )
     };
@@ -372,7 +378,7 @@ export class AdminQueryService {
     const activeVersion = versions.find((version) => version.id === config.activeVersionId);
     const assignedKeyCounts = await this.routingConfigApiKeyCounts([config.id]);
     const trafficShares = await this.routingConfigTrafficShares();
-    const providerCapabilities = await this.providerCapabilitiesBySlug();
+    const providersBySlug = await this.providerSummariesBySlug();
 
     return {
       config: routingConfigListSummary(
@@ -380,7 +386,7 @@ export class AdminQueryService {
         activeVersion,
         assignedKeyCounts.get(config.id) ?? 0,
         trafficShares.get(config.id) ?? 0,
-        providerCapabilities
+        providersBySlug
       ),
       versions: versions.map((version) => routingConfigVersionDetail(version, version.id === config.activeVersionId))
     };
@@ -1669,13 +1675,17 @@ type ProviderRegistryRow = {
   forwardHarnessHeaders: boolean;
   enabled: boolean;
 };
+type RoutingConfigProviderSummary = {
+  capabilities: Record<string, unknown>;
+  endpoints: { dialect: string }[];
+};
 
 function routingConfigListSummary(
   row: RoutingConfigRow,
   activeVersion: RoutingConfigVersionRow | undefined,
   assignedApiKeyCount: number,
   trafficShare: number,
-  providerCapabilities: Map<string, Record<string, unknown>>
+  providersBySlug: Map<string, RoutingConfigProviderSummary>
 ) {
   return {
     id: row.id,
@@ -1686,7 +1696,7 @@ function routingConfigListSummary(
     status: row.status,
     activeVersionId: row.activeVersionId ?? null,
     activeVersion: activeVersion ? routingConfigVersionSummary(activeVersion, true) : null,
-    routes: activeVersion ? routingConfigRoutesSummary(activeVersion.config, providerCapabilities) : [],
+    routes: activeVersion ? routingConfigRoutesSummary(activeVersion.config, providersBySlug) : [],
     assignedApiKeyCount,
     trafficShare,
     createdAt: row.createdAt.toISOString(),

@@ -7,12 +7,16 @@ import {
 } from "@prompt-proxy/db";
 import { ROUTE_NAMES, type RouteTarget, type RoutingConfig } from "@prompt-proxy/schema";
 
-import { nearestReasoningEffort, reasoningEffortsFromCapabilities } from "../catalog.js";
-import type { JsonObject, ProviderEffort } from "../types.js";
+import { anthropicEffortForModel, nearestReasoningEffort, reasoningEffortsFromCapabilities } from "../catalog.js";
+import type { JsonObject } from "../types.js";
 import { effectiveInvitationStatus } from "./userAdmin.js";
 
 type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
 type UsageLedgerRow = typeof usageLedger.$inferSelect;
+type RoutingConfigProviderSummary = {
+  capabilities: Record<string, unknown>;
+  endpoints?: readonly { dialect: string }[];
+};
 
 export function invitationSummary(
   row: typeof invitations.$inferSelect,
@@ -84,27 +88,25 @@ export function routingConfigSummary(row: {
 
 export function routingConfigRoutesSummary(
   config: RoutingConfig,
-  providerCapabilities = new Map<string, Record<string, unknown>>()
+  providersBySlug = new Map<string, RoutingConfigProviderSummary>()
 ) {
   return ROUTE_NAMES.map((route) => {
     const routeConfig = config.routes[route];
     return {
       route,
       description: routeConfig.description ?? null,
-      targets: routeConfig.targets.map((target) => routeTargetSummary(target, providerCapabilities))
+      targets: routeConfig.targets.map((target) => routeTargetSummary(target, providersBySlug))
     };
   });
 }
 
-function routeTargetSummary(target: RouteTarget, providerCapabilities: Map<string, Record<string, unknown>>) {
+function routeTargetSummary(target: RouteTarget, providersBySlug: Map<string, RoutingConfigProviderSummary>) {
+  const provider = providersBySlug.get(target.providerId);
   return {
     providerId: target.providerId,
     model: target.model,
     effort: target.effort ?? null,
-    effectiveEffort: effectiveEffort(
-      target,
-      reasoningEffortsFromCapabilities(providerCapabilities.get(target.providerId))
-    ),
+    effectiveEffort: effectiveEffort(target, provider),
     thinking: target.thinking ?? null,
     maxOutputTokens: target.maxOutputTokens ?? null,
     verbosity: target.verbosity ?? null,
@@ -112,14 +114,21 @@ function routeTargetSummary(target: RouteTarget, providerCapabilities: Map<strin
   };
 }
 
-function effectiveEffort(target: RouteTarget, supportedEfforts?: ProviderEffort[]) {
+function effectiveEffort(target: RouteTarget, provider?: RoutingConfigProviderSummary) {
   if (!target.effort) return null;
+  if (
+    target.providerId === "anthropic" ||
+    provider?.endpoints?.some((endpoint) => endpoint.dialect === "anthropic-messages")
+  ) {
+    if (target.thinking?.type !== "adaptive") return null;
+    return anthropicEffortForModel(target.model, target.effort) ?? null;
+  }
+  const supportedEfforts = reasoningEffortsFromCapabilities(provider?.capabilities);
   if (supportedEfforts !== undefined) {
     if (supportedEfforts.length === 0) return null;
     return nearestReasoningEffort(target.effort, supportedEfforts) ?? target.effort;
   }
-  if (target.providerId !== "anthropic") return target.effort;
-  return nearestReasoningEffort(target.effort, ["low", "medium", "high", "xhigh", "max", "ultracode"]) ?? target.effort;
+  return target.effort;
 }
 
 export function providerAttemptSummary(row: ProviderAttemptRow) {

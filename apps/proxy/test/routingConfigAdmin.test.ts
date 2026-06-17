@@ -163,7 +163,7 @@ describe("routing config admin APIs", () => {
               providerId: "anthropic",
               model: "claude-haiku-4-5",
               effort: "low",
-              effectiveEffort: "low"
+              effectiveEffort: null
             })
           ])
         }),
@@ -171,7 +171,7 @@ describe("routing config admin APIs", () => {
           route: "deep",
           targets: expect.arrayContaining([
             expect.objectContaining({ providerId: "openai", effectiveEffort: "xhigh" }),
-            expect.objectContaining({ providerId: "anthropic", effectiveEffort: "xhigh" })
+            expect.objectContaining({ providerId: "anthropic", effectiveEffort: "high" })
           ])
         })
       ])
@@ -185,6 +185,63 @@ describe("routing config admin APIs", () => {
     expect(serialized).not.toContain("openai-upstream-key");
     expect(serialized).not.toContain("anthropic-upstream-key");
     expect(serialized).not.toContain("keyHash");
+  });
+
+  it("summarizes custom Anthropic-compatible target efforts by selected model", async () => {
+    const fixture = await setup("org_routing_config_custom_anthropic_summary");
+    const organizationId = "org_routing_config_custom_anthropic_summary";
+    const baseConfig = await activeConfig(fixture, `${organizationId}:routing-config:default`);
+    await fixture.db.insert(providers).values({
+      id: "00000000-0000-0000-0000-00000000c020",
+      organizationId,
+      slug: "custom-anthropic",
+      displayName: "Custom Anthropic",
+      baseUrl: "https://custom-anthropic.example/v1",
+      authStyle: "none",
+      endpoints: [{ dialect: "anthropic-messages", path: "/v1/messages" }],
+      defaultHeaders: {},
+      capabilities: { efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"] },
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+
+    const created = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createMutation, {
+      input: {
+        name: "Custom Anthropic summary",
+        config: {
+          ...baseConfig,
+          displayName: "Custom Anthropic summary",
+          routes: {
+            ...baseConfig.routes,
+            hard: {
+              ...baseConfig.routes.hard,
+              targets: [{
+                providerId: "custom-anthropic",
+                model: "claude-opus-4-8",
+                effort: "high"
+              }]
+            },
+            deep: {
+              ...baseConfig.routes.deep,
+              targets: [{
+                providerId: "custom-anthropic",
+                model: "claude-opus-4-8",
+                effort: "ultracode",
+                thinking: { type: "adaptive" }
+              }]
+            }
+          }
+        }
+      }
+    });
+
+    expect(created.errors).toBeUndefined();
+    const routes = created.data?.createRoutingConfig.config.routes;
+    const hardTarget = routes.find((route: any) => route.route === "hard").targets[0];
+    const deepTarget = routes.find((route: any) => route.route === "deep").targets[0];
+
+    expect(hardTarget).toEqual(expect.objectContaining({ effectiveEffort: null }));
+    expect(deepTarget).toEqual(expect.objectContaining({ effectiveEffort: "xhigh" }));
   });
 
   it("serves routing config detail with version history", async () => {

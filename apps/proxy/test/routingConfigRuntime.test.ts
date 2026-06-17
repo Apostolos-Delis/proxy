@@ -568,7 +568,7 @@ describe("routing config runtime resolution", () => {
             targets: config.routes.deep.targets.map((target) => target.providerId === "anthropic"
               ? {
                   ...target,
-                  model: "claude-config-deep",
+                  model: "claude-opus-4-8",
                   thinking: { type: "adaptive", display: "summarized" },
                   effort: "ultracode",
                   maxOutputTokens: 4096
@@ -597,15 +597,15 @@ describe("routing config runtime resolution", () => {
     await response.text();
 
     const providerCall = activeFixture.anthropic.records.find((record) =>
-      record.body.model === "claude-config-deep"
+      record.body.model === "claude-opus-4-8"
     );
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-prompt-proxy-route")).toBe("deep");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("ultracode");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("xhigh");
     expect(providerCall).toBeTruthy();
     expect(providerCall?.body.thinking).toEqual({ type: "adaptive", display: "summarized" });
-    expect(providerCall?.body.output_config.effort).toBe("ultracode");
+    expect(providerCall?.body.output_config.effort).toBe("xhigh");
     expect(providerCall?.body.max_tokens).toBe(4096);
     expect(providerCall?.body.tools).toEqual([
       { name: "shell", input_schema: { type: "object", properties: {} } }

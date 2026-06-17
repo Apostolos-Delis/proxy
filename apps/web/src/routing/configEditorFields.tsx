@@ -212,10 +212,12 @@ function RouteTargetEditor({ route, index, target, targetCount, catalog, onChang
   const provider = catalog.providers.find((candidate) => candidate.slug === target.providerId);
   const providerLabel = provider?.displayName ?? target.providerId;
   const supportedEfforts = effortScaleForProvider(provider);
+  const targetDialects = provider ? providerDialects(provider) : [];
   const effortOptions = effortOptionsForProvider(provider, target.effort);
-  const effectiveEffort = effectiveEffortForTarget(target, supportedEfforts);
+  const effectiveEffort = effectiveEffortForTarget(target, supportedEfforts, targetDialects);
   const configuredEffort = target.effort.trim();
   const effortChanged = Boolean(configuredEffort) && configuredEffort !== effectiveEffort;
+  const effortMeterValue = effortChanged ? effectiveEffort : target.effort;
   return (
     <div className="route-target" data-provider={target.providerId || "target"}>
       <div className="route-target-rank">#{index + 1}</div>
@@ -234,7 +236,7 @@ function RouteTargetEditor({ route, index, target, targetCount, catalog, onChang
           onChange={(model) => onChange({ ...target, model })}
         />
         <div className="tier-model-effort">
-          <EffortMeter effort={effectiveEffort || target.effort} label={false} />
+          <EffortMeter effort={effortMeterValue} label={false} />
           <MenuSelect
             className="tier-effort"
             value={target.effort}

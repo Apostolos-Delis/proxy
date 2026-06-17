@@ -1,4 +1,5 @@
 import {
+  anthropicEffortForModel,
   nearestReasoningEffort,
   reasoningEffortsFromCapabilities,
   routeOrder
@@ -74,6 +75,9 @@ function effectiveEffort(selected: SelectedRouteSettings, supportedEfforts?: Pro
   if (!selected.effort) return undefined;
   if (selected.dialect === "anthropic-messages" && selected.thinking?.type !== "adaptive") {
     return undefined;
+  }
+  if (selected.dialect === "anthropic-messages") {
+    return anthropicEffortForModel(selected.model, selected.effort);
   }
   if (supportedEfforts !== undefined) {
     if (supportedEfforts.length === 0) return undefined;

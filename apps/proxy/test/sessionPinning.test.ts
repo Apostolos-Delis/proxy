@@ -55,7 +55,7 @@ describe("session pinning", () => {
       slug: "session-pin",
       configHash: "sha256:session-pin-v1",
       configure: (config) => withHardAnthropic(config, {
-        model: "claude-pin-v1",
+        model: "claude-opus-4-8",
         thinking: { type: "adaptive" },
         effort: "high"
       })
@@ -63,13 +63,13 @@ describe("session pinning", () => {
 
     const first = await sendMessages(activeFixture, "session-pin-token", "pin-session");
     expect(first.status).toBe(200);
-    expect(lastAnthropicModel(activeFixture)).toBe("claude-pin-v1");
+    expect(lastAnthropicModel(activeFixture)).toBe("claude-opus-4-8");
 
     await publishVersion(activeFixture, organizationId, assigned.configId, {
       version: 2,
       configHash: "sha256:session-pin-v2",
       configure: (config) => withHardAnthropic(config, {
-        model: "claude-pin-v2",
+        model: "claude-opus-4-7",
         thinking: { type: "adaptive" },
         effort: "max"
       })
@@ -78,7 +78,7 @@ describe("session pinning", () => {
     const second = await sendMessages(activeFixture, "session-pin-token", "pin-session");
     expect(second.status).toBe(200);
     const pinnedCall = activeFixture.anthropic.records.at(-1);
-    expect(pinnedCall?.body.model).toBe("claude-pin-v1");
+    expect(pinnedCall?.body.model).toBe("claude-opus-4-8");
     expect(pinnedCall?.body.output_config.effort).toBe("high");
 
     const keptDecision = await lastDecisionPayload(activeFixture);
@@ -88,7 +88,7 @@ describe("session pinning", () => {
     const third = await sendMessages(activeFixture, "session-pin-token", "fresh-session");
     expect(third.status).toBe(200);
     const freshCall = activeFixture.anthropic.records.at(-1);
-    expect(freshCall?.body.model).toBe("claude-pin-v2");
+    expect(freshCall?.body.model).toBe("claude-opus-4-7");
     expect(freshCall?.body.output_config.effort).toBe("max");
   });
 

@@ -1,5 +1,11 @@
 import type { ReasoningEffort, RouteName } from "./types.js";
 
+export {
+  anthropicEffortForModel,
+  anthropicReasoningEffortsForModel,
+  supportsAnthropicAdaptiveThinking
+} from "@prompt-proxy/schema";
+
 export const routeOrder: RouteName[] = ["fast", "balanced", "hard", "deep"];
 export const reasoningEffortOrder: ReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh", "max", "ultracode"];
 const knownReasoningEfforts = new Set<ReasoningEffort>(reasoningEffortOrder);
