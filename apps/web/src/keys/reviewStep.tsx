@@ -54,13 +54,13 @@ export function ReviewStep({ draft, configs, defaultConfig, providerAccounts }: 
         {draft.linkProviderKeys ? (
           providerOptions.map((provider) => (
             <div key={provider.value}>
-              <dt>{provider.label} key</dt>
+              <dt>{provider.label} credential</dt>
               <dd>{bindingLabel(draft.providerBindings[provider.value], providerAccounts)}</dd>
             </div>
           ))
         ) : (
           <div>
-            <dt>Provider keys</dt>
+            <dt>Provider credentials</dt>
             <dd>Company default (platform keys)</dd>
           </div>
         )}

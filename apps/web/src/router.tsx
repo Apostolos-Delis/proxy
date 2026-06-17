@@ -122,9 +122,9 @@ const keysCreateRoute = createRoute({
   component: CreateApiKeyPage
 });
 
-const providerKeysRoute = createRoute({
+const providersRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/provider-keys",
+  path: "/providers",
   beforeLoad: requireAdmin,
   component: ProvidersPage
 });
@@ -186,7 +186,7 @@ const routeTree = rootRoute.addChildren([
   logDetailRoute,
   keysRoute,
   keysCreateRoute,
-  providerKeysRoute,
+  providersRoute,
   routingConfigsRoute,
   routingConfigCreateRoute,
   routingConfigDetailRoute,

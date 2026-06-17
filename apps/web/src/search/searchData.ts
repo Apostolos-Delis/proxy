@@ -10,6 +10,7 @@ import {
   Logs,
   MessagesSquare,
   ScrollText,
+  ServerCog,
   Settings,
   Users
 } from "lucide-react";
@@ -40,6 +41,7 @@ export type PalettePagePath =
   | "/prompts"
   | "/routing"
   | "/api-keys"
+  | "/providers"
   | "/users"
   | "/billing"
   | "/settings";
@@ -94,6 +96,7 @@ export const palettePages: PalettePage[] = [
   { path: "/prompts", title: "Prompts", subtitle: "Captured prompt artifacts", keywords: ["artifacts", "raw text", "capture"], icon: ScrollText },
   { path: "/routing", title: "Routing", subtitle: "Config versions", keywords: ["routes", "configs", "classifier", "models", "versions"], icon: GitBranch },
   { path: "/api-keys", title: "API keys", subtitle: "Manage secrets", keywords: ["secrets", "tokens", "credentials", "keys"], icon: KeyRound },
+  { path: "/providers", title: "Model providers", subtitle: "Registry and credentials", keywords: ["provider", "providers", "models", "credentials", "byok"], icon: ServerCog },
   { path: "/users", title: "Users", subtitle: "Team & access", keywords: ["team", "members", "access", "roles"], icon: Users },
   { path: "/billing", title: "Billing", subtitle: "Spend & invoices", keywords: ["invoices", "payment", "plan"], icon: CreditCard },
   { path: "/settings", title: "Settings", subtitle: "Runtime configuration", keywords: ["configuration", "capture", "retention"], icon: Settings }

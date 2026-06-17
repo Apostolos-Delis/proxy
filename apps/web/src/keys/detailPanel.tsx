@@ -78,15 +78,15 @@ export function ApiKeyDetailPanel({ apiKey, onClose }: {
 function ProviderKeysSection({ apiKey }: { apiKey: ApiKeySummary }) {
   return (
     <section>
-      <div className="card-title">Provider keys</div>
+      <div className="card-title">Provider credentials</div>
       {apiKey.providerCredentials.length === 0 ? (
-        <div className="empty">No provider key bound — traffic uses the organization's default credentials.</div>
+        <div className="empty">No provider credential bound — traffic uses the organization's default credentials.</div>
       ) : (
         <div className="key-bound-list">
           {apiKey.providerCredentials.map((binding) => (
             <Link
               key={`${binding.provider}:${binding.providerAccountId}`}
-              to="/provider-keys"
+              to="/providers"
               search={{ key: binding.providerAccountId }}
               className="key-bound-row"
             >

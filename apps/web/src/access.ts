@@ -7,7 +7,7 @@ const adminOnlyPathPrefixes = [
   "/billing",
   "/logs",
   "/prompts",
-  "/provider-keys",
+  "/providers",
   "/routing",
   "/sessions",
   "/settings",

@@ -20,8 +20,8 @@ and disabled with `SUBSCRIPTION_OAUTH_ENABLED=false`.
 1. Leave `SUBSCRIPTION_OAUTH_ENABLED=true` on the proxy, or unset it to use the default-on behavior. `PROVIDER_SECRET_ENCRYPTION_KEY`
    must be set (tokens are encrypted at rest like any BYOK secret), and verify a real company
    `ANTHROPIC_API_KEY` is configured so the disable path degrades gracefully (see below).
-2. The Provider keys console shows **Claude subscription** and **Codex subscription** connection
-   types on "Add provider key".
+2. The Model providers console shows **Claude subscription** and **Codex subscription** connection
+   types on "Add credential".
 
 ## Disable (kill switch)
 
@@ -39,7 +39,7 @@ stops affected Anthropic traffic.
 
 ## Anthropic: Browser Sign-In
 
-1. Console → **Provider keys** → **Add provider key** → **Claude subscription** → source
+1. Console → **Model providers** → **Add credential** → **Claude subscription** → source
    **Sign in with Claude**.
 2. Start sign-in and finish the Claude browser login for the account that should pay for this
    traffic. The proxy runs a temporary `localhost` callback listener, exchanges the returned code,
@@ -57,7 +57,7 @@ stops affected Anthropic traffic.
 ## Anthropic: Manual Fallback
 
 1. Run `claude setup-token` while signed into the Claude account that should pay for this traffic.
-2. Console → **Provider keys** → **Add provider key** → **Claude subscription** → source
+2. Console → **Model providers** → **Add credential** → **Claude subscription** → source
    **Paste setup token** → paste the printed `sk-ant-oat01-...` value.
 3. Bind the credential to a prompt-proxy API key **you own** on the **API keys** page. Binding is
    hard-rejected (`provider_credential_owner_mismatch`) when the key belongs to someone else or has
@@ -69,7 +69,7 @@ stops affected Anthropic traffic.
 
 ## OpenAI: Console Sign-In
 
-1. Console → **Provider keys** → **Add provider key** → **Codex subscription** → source
+1. Console → **Model providers** → **Add credential** → **Codex subscription** → source
    **Sign in with OpenAI**.
 2. Start sign-in, open the OpenAI device-code link, and enter the one-time code shown in the wizard.
 3. After OpenAI confirms the login, Prompt Proxy exchanges the code for Codex OAuth tokens and stores
@@ -87,7 +87,7 @@ stops affected Anthropic traffic.
    cannot complete there, run `codex login --device-auth`.
 2. Confirm the auth cache exists at `~/.codex/auth.json`. If it lives somewhere else, set
    `PROMPT_PROXY_CODEX_AUTH_FILE=/path/to/auth.json` where the proxy runs, then restart the proxy.
-3. Console → **Provider keys** → **Add provider key** → **Codex subscription** → source
+3. Console → **Model providers** → **Add credential** → **Codex subscription** → source
    **Import from Codex** → save. The server reads the auth JSON and stores the same encrypted token
    bundle used by the console sign-in flow when a refresh token is present.
 4. Bind and use it the same way as the console sign-in path.
@@ -98,7 +98,7 @@ stops affected Anthropic traffic.
    prefer the ChatGPT workspace **Access tokens** page.
 2. Get the ChatGPT account ID for the same Codex identity. Codex sends this upstream as the
    `ChatGPT-Account-Id` header.
-3. Console → **Provider keys** → **Add provider key** → **Codex subscription** → source
+3. Console → **Model providers** → **Add credential** → **Codex subscription** → source
    **Paste token or JSON** → paste the Codex access token and ChatGPT account ID, or paste the full
    Codex auth JSON. This option is always enabled; it is not gated by
    `SUBSCRIPTION_OAUTH_ENABLED`.

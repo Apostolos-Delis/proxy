@@ -42,7 +42,7 @@ export function ProviderGroupsList({
   if (groups.length === 0) {
     return (
       <GlassCard className="provider-key-card">
-        <div className="empty">No provider keys match &ldquo;{searchValue.trim()}&rdquo;.</div>
+        <div className="empty">No credentials match &ldquo;{searchValue.trim()}&rdquo;.</div>
       </GlassCard>
     );
   }

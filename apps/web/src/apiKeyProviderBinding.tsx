@@ -52,9 +52,9 @@ export function ApiKeyProviderBinding({ apiKey, providerAccounts }: {
           <div className="assignment-popover">
             {activeAccounts.length === 0 ? (
               <div className="assignment-blank">
-                <strong>No provider keys</strong>
+                <strong>No provider credentials</strong>
                 <span>Upstream traffic uses the platform keys.</span>
-                <Link to="/provider-keys" className="btn btn-sm" onClick={() => setOpen(false)}>Add provider keys</Link>
+                <Link to="/providers" className="btn btn-sm" onClick={() => setOpen(false)}>Add credentials</Link>
               </div>
             ) : (
               orderedProviders(activeAccounts, apiKey).map((provider) => (

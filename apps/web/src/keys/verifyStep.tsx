@@ -21,7 +21,7 @@ export function VerifyStep({ created }: { created: CreatedKeyResult }) {
         </div>
         {created.bindingFailures.length > 0 ? (
           <div className="action-error">
-            The key was created, but binding provider keys failed: {created.bindingFailures.join("; ")}.
+            The key was created, but binding provider credentials failed: {created.bindingFailures.join("; ")}.
             Bind them from the API keys table.
           </div>
         ) : null}

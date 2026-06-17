@@ -73,7 +73,7 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
           baseUrl: credentialInput.baseUrl
         })
         : await createProviderCredential(credentialInput);
-      if (!account) throw new Error("The server did not confirm the new key — check the provider keys list before retrying.");
+      if (!account) throw new Error("The server did not confirm the new credential — check the model providers page before retrying.");
       return {
         id: account.id,
         provider: credentialInput.provider,
@@ -222,8 +222,8 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
   return (
     <Modal
       className="provider-key-modal"
-      label="Add provider key"
-      title="Add provider key"
+      label="Add provider credential"
+      title="Add provider credential"
       subtitle="Create the upstream credential first, then bind it to a Prompt Proxy API key that should use it."
       onClose={requestClose}
     >

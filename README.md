@@ -142,8 +142,8 @@ The web app at `:5173` is an org-scoped operations console (with a ⌘K global s
 | Sessions | Harness sessions with a replay timeline per session |
 | Logs | Request log with full route evidence per request |
 | Prompts | Captured prompt artifacts with syntax-highlighted JSON |
-| API keys | Create (multi-step wizard), revoke, assign routing configs and provider keys, harness setup guide |
-| Provider keys | BYOK credential management |
+| API keys | Create (multi-step wizard), revoke, assign routing configs and provider credentials, harness setup guide |
+| Model providers | Provider registry, BYOK keys, and subscription credentials |
 | Routing configs | Edit rules, tier models, and effort; versioned activation |
 | Users | Invitations, roles, deactivation |
 | Settings | Runtime settings, prompt capture, org system prompt |
@@ -155,9 +155,9 @@ The web app at `:5173` is an org-scoped operations console (with a ⌘K global s
 - **Deactivate** instead of delete: blocks console sessions but keeps the user row, API keys, and usage history. The last active owner can't be demoted or deactivated; admins can't deactivate themselves.
 - Every mutation appends a `user.*` audit event to the event log.
 
-### Provider keys (BYOK)
+### Provider credentials (BYOK)
 
-By default the proxy forwards builtin upstream calls with the company keys from env (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`). A customer can instead add their own key on the **Provider keys** screen and bind it to one of their prompt-proxy API keys (at most one credential per provider per key). Requests authenticated with that key then forward using the customer's credential. Organization-defined provider rows require an attached credential unless they are explicitly configured with `auth_style: "none"`.
+By default the proxy forwards builtin upstream calls with the company keys from env (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`). A customer can instead add their own key on the **Model providers** screen and bind it to one of their prompt-proxy API keys (at most one credential per provider per key). Requests authenticated with that key then forward using the customer's credential. Organization-defined provider rows require an attached credential unless they are explicitly configured with `auth_style: "none"`.
 
 Customer secrets are encrypted at rest with AES-256-GCM using `PROVIDER_SECRET_ENCRYPTION_KEY` (base64, 32 bytes — `openssl rand -base64 32`) and are never returned by the admin API, only a masked hint. BYOK applies to the HTTP forward surfaces; the OpenAI realtime WebSocket always uses the company key for now.
 
