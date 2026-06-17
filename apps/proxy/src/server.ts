@@ -38,7 +38,7 @@ import { compressForForward, compressOrFallback } from "./toolResultCompression.
 import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
 import { buildSetupScript } from "./setupScript.js";
-import type { Provider, Surface } from "./types.js";
+import type { Provider, RouteDecision, Surface } from "./types.js";
 import { createId, headerValue, idempotencyFrom, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
 
@@ -248,7 +248,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
-        reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
+        sendRejectedDecision(decision, reply);
         return;
       }
       await pinSystemPrompt(persistence, identity, openAIResponsesSurface.surface, requestId, context.sessionId, systemPrompt);
@@ -359,7 +359,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
-        reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
+        sendRejectedDecision(decision, reply);
         return;
       }
 
@@ -477,7 +477,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
-        reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
+        sendRejectedDecision(decision, reply);
         return;
       }
       await pinSystemPrompt(persistence, identity, anthropicMessagesSurface.surface, requestId, context.sessionId, systemPrompt);
@@ -561,7 +561,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       const decision = await routing.tokenCountDecision(context, resolved.routingConfig);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
-        reply.code(decision.errorStatus ?? 400).send({ error: decision.error });
+        sendRejectedDecision(decision, reply);
         return;
       }
 
@@ -700,6 +700,14 @@ function sendDuplicateRequest(
     status: gate.state.status
   });
   return true;
+}
+
+function sendRejectedDecision(decision: RouteDecision, reply: FastifyReply) {
+  reply.code(decision.errorStatus ?? 400).send({
+    error: decision.error,
+    message: decision.errorMessage ?? decision.error,
+    details: decision.errorDetails ?? undefined
+  });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

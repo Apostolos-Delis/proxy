@@ -841,13 +841,24 @@ describe("routing config runtime resolution", () => {
         stream: true
       })
     });
-    await response.text();
+    const body = await response.json() as {
+      error?: string;
+      message?: string;
+      details?: { reasonCode?: string; current?: number; limit?: number };
+    };
 
     const eventRows = await activeFixture.db.select().from(events);
     const decision = eventRows.find((event) => event.eventType === "routing.decision_recorded");
     const payload = (decision?.payload ?? {}) as { budgetChecks?: Array<{ status: string }> };
 
     expect(response.status).toBe(429);
+    expect(body.error).toBe("request_estimated_input_limit");
+    expect(body.message).toContain("full request is estimated");
+    expect(body.message).toContain("full session envelope and history");
+    expect(body.details).toEqual(expect.objectContaining({
+      reasonCode: "request_estimated_input_limit",
+      limit: 1
+    }));
     expect(activeFixture.openai.records).toHaveLength(0);
     expect(payload.budgetChecks?.[0]?.status).toBe("reject");
   });

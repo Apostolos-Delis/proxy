@@ -217,6 +217,7 @@ describe("database seed", () => {
     }));
     const seededConfig = routingConfigVersionRows[0]?.config as RoutingConfig;
     expect(seededConfig.classifier.rules).toBeUndefined();
+    expect(seededConfig.limits.maxEstimatedInputTokens).toBeUndefined();
     expect(seededConfig.routes.fast.targets.find((target) => target.providerId === "anthropic")?.thinking).toBeUndefined();
     expect(keyRows).toHaveLength(1);
     expect(keyRows[0]?.workspaceId).toBe(defaultWorkspaceId("org_seed"));

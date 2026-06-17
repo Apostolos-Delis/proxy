@@ -81,6 +81,8 @@ export type RouteTierDraft = {
 
 export type ConfigEditorDraft = {
   classifierRules: string;
+  maxEstimatedInputTokensEnabled: boolean;
+  maxEstimatedInputTokens: string;
   routes: Record<EditorRouteName, RouteTierDraft>;
 };
 
@@ -100,8 +102,11 @@ export function draftFromConfig(config: RoutingConfigDocument): ConfigEditorDraf
       }))
     };
   }
+  const maxEstimatedInputTokens = numberLimit(config.limits.maxEstimatedInputTokens);
   return {
     classifierRules: config.classifier.rules ?? "",
+    maxEstimatedInputTokensEnabled: maxEstimatedInputTokens !== undefined,
+    maxEstimatedInputTokens: maxEstimatedInputTokens?.toString() ?? "",
     routes
   };
 }
@@ -119,12 +124,18 @@ export function applyDraft(base: RoutingConfigDocument, draft: ConfigEditorDraft
   }
   const next = {
     ...base,
+    limits: { ...base.limits },
     routes,
     classifier: { ...base.classifier }
   };
   const rules = draft.classifierRules.trim();
   if (rules) next.classifier.rules = rules;
   else delete next.classifier.rules;
+  if (draft.maxEstimatedInputTokensEnabled) {
+    next.limits.maxEstimatedInputTokens = Number(draft.maxEstimatedInputTokens);
+  } else {
+    delete next.limits.maxEstimatedInputTokens;
+  }
   return next;
 }
 
@@ -132,6 +143,10 @@ export function draftError(draft: ConfigEditorDraft): string | undefined {
   const emptyRoutes = editorRouteOrder.filter((route) => draft.routes[route].targets.length === 0);
   if (emptyRoutes.length > 0) {
     return `Each tier needs at least one target. Missing: ${emptyRoutes.join(", ")}.`;
+  }
+
+  if (draft.maxEstimatedInputTokensEnabled && !isPositiveInteger(draft.maxEstimatedInputTokens)) {
+    return "Request input cap must be a positive whole number.";
   }
 
   for (const route of editorRouteOrder) {
@@ -143,6 +158,14 @@ export function draftError(draft: ConfigEditorDraft): string | undefined {
     }
   }
   return undefined;
+}
+
+function numberLimit(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function isPositiveInteger(value: string) {
+  return /^[1-9]\d*$/.test(value.trim());
 }
 
 export function draftsEqual(left: ConfigEditorDraft, right: ConfigEditorDraft) {

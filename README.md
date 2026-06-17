@@ -125,7 +125,7 @@ Provider HTTP forwarding retries upstream `429` rate limits before sending respo
 
 Routing configs are edited in the console: saving creates a new immutable version, which can be activated in the same step. Environment variables like `OPENAI_FAST_MODEL` and `ANTHROPIC_HARD_MODEL` only seed local defaults — persisted runtime requests resolve from the database. See the [routing configs runbook](docs/runbooks/routing-configs.md) for assignment commands and troubleshooting.
 
-Budget limits live in each routing config's `limits` block (`maxRoute`, `fallbackRoute`, `maxEstimatedInputTokens`, `routeEstimatedInputLimits`), edited on the Routing page; requests over a limit are rejected before provider spend. `MODEL_COSTS_JSON` remains an env-level pricing override.
+Budget limits live in each routing config's `limits` block (`maxRoute`, `fallbackRoute`, optional `maxEstimatedInputTokens`, `routeEstimatedInputLimits`), edited on the Routing page; requests over an enabled limit are rejected before provider spend. The global request input cap is off by default so long-lived coding sessions can route normally. `MODEL_COSTS_JSON` remains an env-level pricing override.
 
 ## Workspaces
 

@@ -15,7 +15,7 @@ import {
 import type { RoutingConfigDocument } from "./routingConfigEditor";
 import { compactId, formatDateTime, formatInteger } from "./format";
 import { ConfigApiKeysCard } from "./routing/keyAssignment";
-import { RoutingRulesEditor, RouteTargetsEditor } from "./routing/configEditorFields";
+import { RequestBudgetEditor, RoutingRulesEditor, RouteTargetsEditor } from "./routing/configEditorFields";
 import { ArchivePanel, VersionHistory } from "./routing/versionHistory";
 import { applyDraft, draftError, draftFromConfig, parseConfigJson } from "./routingConfigEditor";
 import { JsonEditor } from "./jsonView";
@@ -224,6 +224,7 @@ function ConfigEditorCard({ configId, version }: { configId: string; version: Ro
         {view === "form" ? (
           <>
             <RoutingRulesEditor draft={draft} onChange={setDraft} />
+            <RequestBudgetEditor draft={draft} onChange={setDraft} />
             <div className="editor-subhead"><Layers />Route tier models</div>
             <RouteTargetsEditor
               draft={draft}

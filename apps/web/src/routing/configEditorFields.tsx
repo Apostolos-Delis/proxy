@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Plus, Split, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Gauge, Plus, Split, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 
 import {
@@ -46,6 +46,59 @@ export function RoutingRulesEditor({ draft, onChange }: {
         onChange={(classifierRules) => onChange({ ...draft, classifierRules })}
       />
     </div>
+  );
+}
+
+export function RequestBudgetEditor({ draft, onChange }: {
+  draft: ConfigEditorDraft;
+  onChange: (draft: ConfigEditorDraft) => void;
+}) {
+  const enabled = draft.maxEstimatedInputTokensEnabled;
+  return (
+    <section className="request-budget-editor">
+      <div className="prompt-editor-title">
+        <Gauge />
+        <strong>Request budget</strong>
+        <span className="code-pill">{enabled ? "cap enabled" : "uncapped"}</span>
+      </div>
+      <p className="prompt-editor-helper">
+        Optional guardrail on the full request envelope. Leave it off for long-lived coding sessions; enable it only when a key should reject oversized history before provider spend.
+      </p>
+      <div className="request-budget-controls">
+        <label className="request-budget-toggle">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={enabled}
+            aria-checked={enabled}
+            onChange={(event) => onChange({
+              ...draft,
+              maxEstimatedInputTokensEnabled: event.target.checked,
+              maxEstimatedInputTokens: event.target.checked && !draft.maxEstimatedInputTokens
+                ? "200000"
+                : draft.maxEstimatedInputTokens
+            })}
+          />
+          <span>
+            <strong>Reject requests above a token cap</strong>
+            <small>{enabled ? "Requests over this estimate return 429 before routing." : "Large sessions are allowed through normal model routing."}</small>
+          </span>
+        </label>
+        <label className="routing-create-field request-budget-limit">
+          <span>Estimated input token limit</span>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            inputMode="numeric"
+            disabled={!enabled}
+            value={draft.maxEstimatedInputTokens}
+            placeholder="200000"
+            onChange={(event) => onChange({ ...draft, maxEstimatedInputTokens: event.target.value })}
+          />
+        </label>
+      </div>
+    </section>
   );
 }
 

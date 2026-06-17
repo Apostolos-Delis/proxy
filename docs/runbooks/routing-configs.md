@@ -60,7 +60,8 @@ The web console edits the routing rules and the per-tier models and efforts (`fa
 - Routing configs → New config: clones an active config, then lets you set the routing rules and tier models before creating v1.
 - Routing config detail → Prompts & route models: edits create a new draft version; leave "Activate immediately" checked to promote it in the same step.
 - Each tier exposes a target effort dropdown with provider-specific levels (OpenAI reasoning: `minimal`–`xhigh`; Anthropic output: `low`–`max`). "Default effort" omits the effort so the model default applies.
-- The UI/JSON toggle on the detail editor switches to the raw config document, VSCode-style. JSON mode edits fields the form does not expose (limits, session, classifier details); both views feed the same save-new-version flow, and JSON is validated server-side against the routing config schema.
+- Request budget toggles `limits.maxEstimatedInputTokens`. Leave it off for long-lived coding sessions; turn it on only for keys that should reject oversized full request envelopes before provider spend.
+- The UI/JSON toggle on the detail editor switches to the raw config document, VSCode-style. JSON mode edits fields the form does not expose (session and classifier details); both views feed the same save-new-version flow, and JSON is validated server-side against the routing config schema.
 
 Every tier must keep at least one target. One target covers translated HTTP callers, but configs that serve Codex stateful continuations or WebSocket traffic also need a native OpenAI Responses target in the tier.
 

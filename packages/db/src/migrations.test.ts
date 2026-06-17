@@ -990,6 +990,178 @@ describe("database migrations", () => {
       await client.close();
     }
   });
+
+  it("removes the old default request input cap from stored routing configs", async () => {
+    const client = new PGlite();
+    const migrationsDir = fileURLToPath(new URL("../migrations", import.meta.url));
+    const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
+    const beforeCutover = files.filter((file) => file < "0017_remove_default_request_input_cap.sql");
+    const cappedConfig = {
+      schemaVersion: 2,
+      displayName: "Capped coding router",
+      classifier: {
+        providerId: "openai",
+        model: "route-classifier-cheap",
+        timeoutMs: 1500,
+        maxAttempts: 2,
+        allowRedactedExcerpt: true
+      },
+      routes: {
+        fast: { targets: [{ providerId: "openai", model: "gpt-fast" }] },
+        balanced: { targets: [{ providerId: "openai", model: "gpt-balanced" }] },
+        hard: { targets: [{ providerId: "openai", model: "gpt-hard" }] },
+        deep: { targets: [{ providerId: "openai", model: "gpt-deep" }] }
+      },
+      limits: {
+        maxRoute: "deep",
+        fallbackRoute: "hard",
+        maxEstimatedInputTokens: 200000
+      },
+      session: {
+        pinInitialRoute: true,
+        allowUpgrade: true,
+        allowDowngrade: false
+      }
+    };
+    const customCapConfig = {
+      ...cappedConfig,
+      displayName: "Custom capped coding router",
+      limits: {
+        ...cappedConfig.limits,
+        maxEstimatedInputTokens: 500000
+      }
+    };
+    const collisionCappedConfig = {
+      ...cappedConfig,
+      displayName: "Collision capped coding router"
+    };
+    const collisionUncappedConfig = {
+      ...collisionCappedConfig,
+      limits: {
+        maxRoute: "deep",
+        fallbackRoute: "hard"
+      }
+    };
+
+    try {
+      for (const file of beforeCutover) {
+        await client.exec(await readFile(join(migrationsDir, file), "utf8"));
+      }
+
+      await client.exec(`
+        insert into organizations (id, slug, name) values ('org_input_cap_cutover', 'org-input-cap-cutover', 'Org Input Cap Cutover');
+        insert into workspaces (id, organization_id, slug, name) values
+          ('org_input_cap_cutover:workspace:default', 'org_input_cap_cutover', 'default', 'Default');
+        insert into routing_configs (id, organization_id, workspace_id, name, slug) values
+          ('config_old_default_cap', 'org_input_cap_cutover', 'org_input_cap_cutover:workspace:default', 'Old Default Cap', 'old-default-cap'),
+          ('config_custom_cap', 'org_input_cap_cutover', 'org_input_cap_cutover:workspace:default', 'Custom Cap', 'custom-cap'),
+          ('config_collision_cap', 'org_input_cap_cutover', 'org_input_cap_cutover:workspace:default', 'Collision Cap', 'collision-cap');
+        insert into routing_config_versions (
+          id,
+          organization_id,
+          workspace_id,
+          routing_config_id,
+          version,
+          config_hash,
+          config
+        ) values
+          (
+            'version_old_default_cap',
+            'org_input_cap_cutover',
+            'org_input_cap_cutover:workspace:default',
+            'config_old_default_cap',
+            1,
+            'old_default_cap_hash',
+            $config$${JSON.stringify(cappedConfig)}$config$::jsonb
+          ),
+          (
+            'version_custom_cap',
+            'org_input_cap_cutover',
+            'org_input_cap_cutover:workspace:default',
+            'config_custom_cap',
+            1,
+            'custom_cap_hash',
+            $config$${JSON.stringify(customCapConfig)}$config$::jsonb
+          ),
+          (
+            'version_collision_capped',
+            'org_input_cap_cutover',
+            'org_input_cap_cutover:workspace:default',
+            'config_collision_cap',
+            1,
+            'collision_capped_hash',
+            $config$${JSON.stringify(collisionCappedConfig)}$config$::jsonb
+          ),
+          (
+            'version_collision_uncapped',
+            'org_input_cap_cutover',
+            'org_input_cap_cutover:workspace:default',
+            'config_collision_cap',
+            2,
+            encode(sha256(convert_to($config$${JSON.stringify(collisionUncappedConfig)}$config$::jsonb::text, 'UTF8')), 'hex'),
+            $config$${JSON.stringify(collisionUncappedConfig)}$config$::jsonb
+          );
+        update routing_configs
+        set active_version_id = 'version_collision_capped'
+        where id = 'config_collision_cap';
+      `);
+
+      await client.exec(await readFile(join(migrationsDir, "0017_remove_default_request_input_cap.sql"), "utf8"));
+
+      const versions = await client.query<{
+        id: string;
+        cap: string | null;
+        config_hash: string;
+        database_hash: string;
+      }>(`
+        select
+          id,
+          config#>>'{limits,maxEstimatedInputTokens}' as cap,
+          config_hash,
+          encode(sha256(convert_to(config::text, 'UTF8')), 'hex') as database_hash
+        from routing_config_versions
+        where organization_id = 'org_input_cap_cutover'
+        order by id
+      `);
+
+      expect(versions.rows).toEqual([
+        {
+          id: "version_collision_capped",
+          cap: "200000",
+          config_hash: "collision_capped_hash",
+          database_hash: expect.any(String)
+        },
+        {
+          id: "version_collision_uncapped",
+          cap: null,
+          config_hash: expect.any(String),
+          database_hash: expect.any(String)
+        },
+        {
+          id: "version_custom_cap",
+          cap: "500000",
+          config_hash: "custom_cap_hash",
+          database_hash: expect.any(String)
+        },
+        {
+          id: "version_old_default_cap",
+          cap: null,
+          config_hash: expect.any(String),
+          database_hash: expect.any(String)
+        }
+      ]);
+      expect(versions.rows[3]?.config_hash).toBe(versions.rows[3]?.database_hash);
+      expect(versions.rows[1]?.config_hash).toBe(versions.rows[1]?.database_hash);
+      const activeConfigs = await client.query<{ active_version_id: string | null }>(`
+        select active_version_id
+        from routing_configs
+        where id = 'config_collision_cap'
+      `);
+      expect(activeConfigs.rows).toEqual([{ active_version_id: "version_collision_uncapped" }]);
+    } finally {
+      await client.close();
+    }
+  });
 });
 
 function legacyRoutingConfig() {

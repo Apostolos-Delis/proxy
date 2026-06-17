@@ -140,6 +140,8 @@ export type RouteDecision = {
   routingConfig?: RoutingConfigSnapshot;
   policyVersion: string;
   error?: string;
+  errorMessage?: string;
+  errorDetails?: JsonObject;
   errorStatus?: number;
 };
 

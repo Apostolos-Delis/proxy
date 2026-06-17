@@ -3363,6 +3363,60 @@ input[type="checkbox"][role="switch"]:focus-visible {
   color: var(--fg-faint);
 }
 
+.request-budget-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.request-budget-controls {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(220px, 280px);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.request-budget-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+}
+
+.request-budget-toggle span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.request-budget-toggle strong {
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.request-budget-toggle small {
+  color: var(--fg-faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.request-budget-limit {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+}
+
+.request-budget-limit > input:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
 .editor-subhead {
   display: flex;
   align-items: center;
