@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, KeySquare, Layers, Logs, MessagesSquare, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
+import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, Layers, Logs, MessagesSquare, Moon, PanelLeft, PanelLeftClose, Search, ServerCog, Settings, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -22,7 +22,7 @@ type NavPath =
   | "/routing"
   | "/settings"
   | "/api-keys"
-  | "/provider-keys"
+  | "/providers"
   | "/users"
   | "/billing";
 
@@ -44,7 +44,7 @@ const operationsNav = [
 
 const manageNav = [
   { to: "/api-keys", label: "API keys", icon: KeyRound },
-  { to: "/provider-keys", label: "Provider keys", icon: KeySquare },
+  { to: "/providers", label: "Model providers", icon: ServerCog },
   { to: "/users", label: "Users", icon: Users },
   { to: "/billing", label: "Billing", icon: CreditCard }
 ] as const;
@@ -57,7 +57,7 @@ const titles: Record<string, [string, string | null]> = {
   "/logs": ["Logs", "Request stream"],
   "/api-keys": ["API keys", "Manage secrets"],
   "/api-keys/new": ["API keys", "Create key"],
-  "/provider-keys": ["Provider keys", "Bring-your-own provider credentials"],
+  "/providers": ["Model providers", "Registry and credentials"],
   "/users": ["Users", "Team & access"],
   "/billing": ["Billing", "Spend & pricing"],
   "/settings": ["Settings", "Runtime configuration"],

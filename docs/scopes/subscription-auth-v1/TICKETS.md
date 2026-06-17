@@ -7,7 +7,7 @@
 These tickets break the subscription-auth scope ([PLAN.md](PLAN.md)) into PR-sized units.
 
 The intended delivery shape: let an engineer paste a Claude `setup-token` (`sk-ant-oat01-…`) into the
-Provider keys console, bind it to an API key they own, and have the proxy forward it as a bearer token —
+Model providers console, bind it to an API key they own, and have the proxy forward it as a bearer token —
 all behind a default-off kill switch, Anthropic-only, internal use only. No PKCE, no callback routes, no
 refresh subsystem, no schema migration.
 
@@ -226,7 +226,7 @@ Likely files:
 
 ## Phase 5: Console UI
 
-### SA-007: Add Subscription Auth To The Provider Keys Console
+### SA-007: Add Subscription Auth To The Model Providers Console
 
 Goal: Let an operator add a subscription token from the console and distinguish it from API keys.
 
@@ -237,7 +237,7 @@ Scope:
 - For the subscription option: helper text to run `claude setup-token` and paste the `sk-ant-oat01-…`
   value into the existing token field, client-side prefix validation, and a short ToS/risk callout
   (personal subscription; bans hit your own account).
-- Show an `auth_type` tag (API key vs Subscription) on the provider keys list (the `authType` field is
+- Show an `auth_type` tag (API key vs Subscription) on the provider credentials list (the `authType` field is
   already on the `ProviderAccount` output type — no schema change needed for the list).
 
 Acceptance criteria:

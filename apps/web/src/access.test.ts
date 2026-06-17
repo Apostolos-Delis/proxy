@@ -13,6 +13,7 @@ describe("access helpers", () => {
   it("marks admin-only route prefixes", () => {
     expect(isAdminPath("/api-keys")).toBe(true);
     expect(isAdminPath("/api-keys/new")).toBe(true);
+    expect(isAdminPath("/providers")).toBe(true);
     expect(isAdminPath("/sessions/session_1")).toBe(true);
     expect(isAdminPath("/usage")).toBe(false);
   });

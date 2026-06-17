@@ -1,4 +1,4 @@
-import { GitBranch, KeySquare, Plus } from "lucide-react";
+import { GitBranch, KeyRound, Plus } from "lucide-react";
 import { useState } from "react";
 
 import { CreateProviderKeyModal } from "../createProviderKeyModal";
@@ -58,8 +58,8 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
       </GlassCard>
       <GlassCard>
         <WizardStepHead
-          icon={<KeySquare />}
-          title="Provider keys"
+          icon={<KeyRound />}
+          title="Provider credentials"
           sub="Bill this key's upstream traffic to your own provider credentials instead of the platform key."
         />
         {!showProviderKeyControls ? (
@@ -68,7 +68,7 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
             <div className="wizard-provider-note">
               <span className="faint">No provider credentials linked yet — this key's upstream traffic uses the platform keys.</span>
               <button type="button" className="btn btn-sm" onClick={() => setShowAddKey(true)}>
-                <Plus />Add provider key
+                <Plus />Add credential
               </button>
             </div>
           </div>
@@ -78,7 +78,7 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
               providers={routedProviderOptions}
               boundCount={draft.linkProviderKeys ? boundRoutingProviderCount : undefined}
             />
-            <div className="scope-options provider-key-mode-options" role="radiogroup" aria-label="Provider key mode">
+            <div className="scope-options provider-key-mode-options" role="radiogroup" aria-label="Provider credential mode">
               <label className="scope-option">
                 <input
                   type="radio"
@@ -122,7 +122,7 @@ export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, o
                 </div>
                 <div>
                   <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowAddKey(true)}>
-                    <Plus />Add provider key
+                    <Plus />Add credential
                   </button>
                 </div>
               </>
@@ -191,8 +191,8 @@ function ProviderBindingField({ provider, accounts, value, onChange }: {
           ...accountOptions,
           ...pendingSelectedOption(value, accountOptions)
         ]}
-        ariaLabel={`${provider.label} provider key`}
-        placeholder="Search provider keys…"
+        ariaLabel={`${provider.label} provider credential`}
+        placeholder="Search credentials…"
         onChange={(providerAccountId) => onChange(providerAccountId || null)}
       />
       {accounts.length === 0 && !value ? <p className="routing-field-note">No {provider.label} credentials added. This provider will use the platform key.</p> : null}

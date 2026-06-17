@@ -8,7 +8,7 @@ opencode can reach Prompt Proxy through three supported wire paths. Use the chat
 - You have a Prompt Proxy API key from the console's API keys page.
 - The routing config assigned to that API key has targets compatible with the path you choose.
 
-Use the Prompt Proxy API key in opencode. Do not put your upstream OpenAI, Anthropic, or custom-provider key directly in opencode unless you intentionally want to bypass the proxy. Upstream BYOK belongs in the Prompt Proxy console under Provider keys, then gets bound to the Prompt Proxy API key.
+Use the Prompt Proxy API key in opencode. Do not put your upstream OpenAI, Anthropic, or custom-provider key directly in opencode unless you intentionally want to bypass the proxy. Upstream BYOK belongs in the Prompt Proxy console under Model providers, then gets bound to the Prompt Proxy API key.
 
 ## One-Liner Setup
 

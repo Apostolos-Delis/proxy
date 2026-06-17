@@ -4515,36 +4515,46 @@ a.key-bound-row:hover {
   margin-left: auto;
 }
 
-.provider-keys-page {
+.providers-page {
   width: min(1080px, 100%);
   max-width: none;
 }
 
-.provider-keys-title-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 430px);
-  align-items: flex-start;
-  gap: 18px;
+.provider-group {
   margin-bottom: 26px;
 }
 
-.provider-keys-title-row > div:first-child {
+.provider-registry {
+  margin-bottom: 30px;
+}
+
+.provider-credentials {
+  margin-bottom: 10px;
+}
+
+.provider-credentials-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 11px;
+  padding: 0 2px;
+}
+
+.provider-credentials-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   min-width: 0;
 }
 
-.provider-keys-title-row h2 {
-  margin: 0;
-  font-size: 22px;
-  line-height: 1.1;
-  font-weight: 600;
+.provider-credentials-title svg {
+  width: 16px;
+  height: 16px;
+  color: var(--accent-2);
 }
 
-.provider-keys-title-row .muted {
-  margin-top: 4px;
-  font-size: 13px;
-}
-
-.provider-keys-actions {
+.provider-credentials-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -4554,19 +4564,11 @@ a.key-bound-row:hover {
   max-width: 100%;
 }
 
-.provider-keys-actions .btn-primary {
+.provider-credentials-actions .btn-primary {
   flex: none;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.provider-group {
-  margin-bottom: 26px;
-}
-
-.provider-registry {
-  margin-bottom: 30px;
 }
 
 .provider-registry-head {
@@ -4599,10 +4601,10 @@ a.key-bound-row:hover {
 .provider-registry-header,
 .provider-registry-row {
   display: grid;
-  grid-template-columns: minmax(190px, 1fr) minmax(250px, 1.12fr) minmax(190px, .85fr) minmax(174px, max-content) 76px;
+  grid-template-columns: minmax(180px, 1fr) minmax(230px, 1.05fr) minmax(260px, .9fr) minmax(164px, max-content) 70px;
   align-items: center;
   gap: 16px;
-  min-width: 920px;
+  min-width: 1000px;
 }
 
 .provider-registry-header {
@@ -4674,7 +4676,7 @@ a.key-bound-row:hover {
 }
 
 .provider-registry-endpoints {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .provider-registry-state {
@@ -5042,12 +5044,14 @@ a.key-bound-row:hover {
 }
 
 @media (max-width: 760px) {
-  .provider-keys-title-row {
-    grid-template-columns: 1fr;
+  .provider-credentials-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
-  .provider-keys-actions {
+  .provider-credentials-actions {
     justify-content: flex-start;
+    width: 100%;
   }
 
   .provider-key-search {

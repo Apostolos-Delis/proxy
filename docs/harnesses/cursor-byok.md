@@ -8,7 +8,7 @@ Cursor can use Prompt Proxy through its OpenAI-compatible BYOK path. Cursor send
 - You have a Prompt Proxy API key from the console's API keys page.
 - The API key is assigned to a routing config with at least one `openai-chat` target, or an `openai-responses` target that can be served through the Chat to Responses translator.
 
-Cursor BYOK means Cursor uses your Prompt Proxy API key. It does not mean Cursor receives upstream provider keys. If you want requests authenticated with a customer-owned OpenAI or custom-provider key, add that key in Prompt Proxy's Provider keys screen and bind it to the same Prompt Proxy API key.
+Cursor BYOK means Cursor uses your Prompt Proxy API key. It does not mean Cursor receives upstream provider keys. If you want requests authenticated with a customer-owned OpenAI or custom-provider key, add that key in Prompt Proxy's Model providers screen and bind it to the same Prompt Proxy API key.
 
 ## Configure Cursor
 
