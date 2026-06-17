@@ -437,6 +437,13 @@ describe("usage analytics admin APIs", () => {
           groups { key requestCount }
           points { ts totals { requestCount } }
         }
+        usageDashboard(groupBy: route, interval: day) {
+          usage { totals { requestCount usage { totalTokens } } }
+          timeseries {
+            groups { key requestCount }
+            points { ts totals { requestCount } }
+          }
+        }
       }`
     );
 
@@ -445,14 +452,21 @@ describe("usage analytics admin APIs", () => {
     expect(result.data?.requests).toHaveLength(4);
     expect(result.data?.usage.totals.requestCount).toBe(4);
     expect(result.data?.usage.totals.usage.totalTokens).toBe(result.data?.overview.totals.totalTokens);
+    expect(result.data?.usageDashboard.usage.totals).toEqual(result.data?.usage.totals);
     expect(result.data?.usageTimeseries.groups).toEqual([
       expect.objectContaining({ key: "fast", requestCount: 4 })
     ]);
+    expect(result.data?.usageDashboard.timeseries.groups).toEqual(result.data?.usageTimeseries.groups);
     const pointTotal = result.data?.usageTimeseries.points.reduce(
       (sum: number, point: { totals: { requestCount: number } }) => sum + point.totals.requestCount,
       0
     );
+    const dashboardPointTotal = result.data?.usageDashboard.timeseries.points.reduce(
+      (sum: number, point: { totals: { requestCount: number } }) => sum + point.totals.requestCount,
+      0
+    );
     expect(pointTotal).toBe(4);
+    expect(dashboardPointTotal).toBe(pointTotal);
   });
 
   it("folds classifier spend into selected cost and savings without inflating tokens or counts", async () => {

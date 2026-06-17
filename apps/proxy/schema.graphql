@@ -353,6 +353,12 @@ type Overview {
   totals: TokenTotals!
 }
 
+type OverviewDashboard {
+  modelUsage: UsageReport!
+  overview: Overview!
+  requests: [RequestSummary!]!
+}
+
 type PromptAccessAuditEntry {
   accessPath: String!
   adminSessionId: String
@@ -591,6 +597,7 @@ type Query {
   members: [OrgMember!]!
   modelPricing: [ModelPricingEntry!]!
   overview: Overview!
+  overviewDashboard: OverviewDashboard!
   prompt(artifactId: ID!): PromptDetail
   promptAccessAudit: [PromptAccessAuditEntry!]!
   prompts(end: String, limit: Int, model: String, offset: Int, route: String, start: String, surface: String, userId: String): PromptPage!
@@ -609,6 +616,7 @@ type Query {
   settings: Settings!
   tokenAttribution(end: String, start: String): TokenAttributionReport!
   usage(end: String, groupBy: UsageGroupBy, start: String): UsageReport!
+  usageDashboard(end: String, groupBy: UsageGroupBy, interval: UsageInterval, limit: Int, start: String): UsageDashboard!
   usageTimeseries(end: String, groupBy: UsageGroupBy, interval: UsageInterval, limit: Int, start: String): UsageTimeseries!
   user(userId: ID!): UserDetail
   users: [UserSummary!]!
@@ -951,6 +959,11 @@ type UpdateUserRoleResult {
   previousRole: String!
   role: String!
   userId: String!
+}
+
+type UsageDashboard {
+  timeseries: UsageTimeseries!
+  usage: UsageReport!
 }
 
 type UsageGroup {

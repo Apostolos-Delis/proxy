@@ -143,15 +143,39 @@ export class AdminQueryService {
   }
 
   async overview() {
-    const requestRows = await this.requestRows();
+    const [requestRows, eventCount, lowConfidenceCount] = await Promise.all([
+      this.requestRows(),
+      this.eventCount(),
+      this.lowConfidenceDecisionCount()
+    ]);
     const requestSummaries = await this.summarizeRequests(requestRows);
-    const eventCount = await this.eventCount();
-    const lowConfidenceCount = await this.lowConfidenceDecisionCount();
+    return this.overviewFromSummaries(requestRows.length, requestSummaries, eventCount, lowConfidenceCount);
+  }
 
+  async overviewDashboard() {
+    const [requestRows, eventCount, lowConfidenceCount] = await Promise.all([
+      this.requestRows(),
+      this.eventCount(),
+      this.lowConfidenceDecisionCount()
+    ]);
+    const requestSummaries = await this.summarizeRequests(requestRows);
+    return {
+      overview: this.overviewFromSummaries(requestRows.length, requestSummaries, eventCount, lowConfidenceCount),
+      requests: requestSummaries.slice(0, requestListLimit(undefined)),
+      modelUsage: modelUsageReportFromRequests(requestSummaries)
+    };
+  }
+
+  private overviewFromSummaries(
+    requestCount: number,
+    requestSummaries: RequestSummary[],
+    eventCount: number,
+    lowConfidenceCount: number
+  ) {
     return {
       organizationId: this.organizationId,
       eventCount,
-      requestCount: requestRows.length,
+      requestCount,
       totals: requestSummaries.reduce((acc, request) => {
         addUsageTotals(acc, request.usage);
         return acc;
@@ -452,42 +476,72 @@ export class AdminQueryService {
     };
   }
 
-  async usageTimeseries(filters: UsageTimeseriesFilters = {}) {
+  async usageDashboard(filters: UsageTimeseriesFilters = {}) {
     const groupBy = usageGroupBy(filters.groupBy);
     const interval = usageInterval(filters.interval);
     const limit = timeseriesGroupLimit(filters.limit);
     const scope = this.usageRollupScope(filters);
-    const [pricing, costBaseline, report] = await Promise.all([
+    const step = intervalMs(interval);
+    const [pricing, costBaseline, bucketReport] = await Promise.all([
       this.effectivePricing(),
       this.effectiveCostBaseline(),
-      this.usageRollupReport(scope, groupBy)
+      this.usageBucketRollupReport(scope, groupBy, step, null)
     ]);
-    const { rollups } = report;
+    return this.usageDashboardFromBucket(
+      filters,
+      groupBy,
+      interval,
+      limit,
+      step,
+      scope,
+      bucketReport,
+      pricing,
+      costBaseline
+    );
+  }
+
+  async usageTimeseries(filters: UsageTimeseriesFilters = {}) {
+    return (await this.usageDashboard(filters)).timeseries;
+  }
+
+  private async usageDashboardFromBucket(
+    filters: UsageTimeseriesFilters,
+    groupBy: UsageGroupBy,
+    interval: UsageInterval,
+    limit: number,
+    step: number,
+    scope: UsageRollupScope,
+    bucketReport: UsageBucketRollupReport,
+    pricing: ModelPricingTable,
+    costBaseline: CostBaseline
+  ) {
+    const { rollups } = bucketReport;
 
     const earliestMs = rollups.length > 0
       ? Math.min(...rollups.map((row) => row.earliestCreatedAtMs))
       : undefined;
     const window = timeseriesWindow(earliestMs, filters, interval);
-    const step = intervalMs(interval);
 
     const groupTotals = new Map<string, UsageGroup>();
+    const totals = emptyUsageGroup("total");
     for (const row of rollups) {
       const group = groupTotals.get(row.groupKey) ?? emptyUsageGroup(row.groupKey);
       this.addUsageRollup(group, row, pricing, costBaseline);
+      this.addUsageRollup(totals, row, pricing, costBaseline);
       groupTotals.set(row.groupKey, group);
     }
     const ranked = [...groupTotals.values()].sort(compareUsageGroups);
     const keptKeys = new Set(ranked.slice(0, limit).map((group) => group.key));
     const collapseOthers = ranked.length > limit;
-    const kept = collapseOthers ? [...keptKeys] : null;
-
-    const bucketReport = await this.usageBucketRollupReport(scope, groupBy, step, kept);
+    const pointReport = collapseOthers
+      ? await this.usageBucketRollupReport(scope, groupBy, step, [...keptKeys])
+      : bucketReport;
 
     const points = new Map<number, { totals: UsageGroup; groups: Map<string, UsageGroup> }>();
     for (let ts = window.start; ts <= window.end; ts += step) {
       points.set(ts, { totals: emptyUsageGroup("total"), groups: new Map() });
     }
-    for (const row of bucketReport.rollups) {
+    for (const row of pointReport.rollups) {
       const point = points.get(row.bucketTs);
       if (!point) continue;
       const group = point.groups.get(row.groupKey) ?? emptyUsageGroup(row.groupKey);
@@ -496,14 +550,24 @@ export class AdminQueryService {
       point.groups.set(row.groupKey, group);
     }
 
-    const groupLatency = new Map<string, UsageLatencyRow>();
+    const usageGroupLatency = new Map<string, UsageLatencyRow>();
+    let totalsLatency: UsageLatencyRow | undefined;
+    for (const row of bucketReport.latencies) {
+      if (row.groupKey === null) {
+        if (row.bucketTs === null) totalsLatency = row;
+      } else if (row.bucketTs === null) {
+        usageGroupLatency.set(row.groupKey, row);
+      }
+    }
+
+    const timeseriesGroupLatency = new Map<string, UsageLatencyRow>();
     const bucketLatency = new Map<number, UsageLatencyRow>();
     const bucketGroupLatency = new Map<string, UsageLatencyRow>();
-    for (const row of bucketReport.latencies) {
+    for (const row of pointReport.latencies) {
       if (row.groupKey === null) {
         if (row.bucketTs !== null) bucketLatency.set(row.bucketTs, row);
       } else if (row.bucketTs === null) {
-        groupLatency.set(row.groupKey, row);
+        timeseriesGroupLatency.set(row.groupKey, row);
       } else {
         bucketGroupLatency.set(`${row.bucketTs}:${row.groupKey}`, row);
       }
@@ -516,24 +580,32 @@ export class AdminQueryService {
       groups.push(other);
     }
     return {
-      groupBy,
-      interval,
-      start: new Date(window.start).toISOString(),
-      end: new Date(window.end).toISOString(),
-      groups: groups.map((group) =>
-        finalizeUsageGroup(group, latencySummaryFromRow(groupLatency.get(group.key)))),
-      points: [...points.entries()]
-        .sort(([left], [right]) => left - right)
-        .map(([ts, point]) => ({
-          ts: new Date(ts).toISOString(),
-          totals: finalizeUsageGroup(point.totals, latencySummaryFromRow(bucketLatency.get(ts))),
-          groups: Object.fromEntries(
-            [...point.groups.entries()].map(([key, group]) => [
-              key,
-              finalizeUsageGroup(group, latencySummaryFromRow(bucketGroupLatency.get(`${ts}:${key}`)))
-            ])
-          )
-        }))
+      usage: {
+        groupBy,
+        data: ranked.map((group) =>
+          finalizeUsageGroup(group, latencySummaryFromRow(usageGroupLatency.get(group.key)))),
+        totals: finalizeUsageGroup(totals, latencySummaryFromRow(totalsLatency))
+      },
+      timeseries: {
+        groupBy,
+        interval,
+        start: new Date(window.start).toISOString(),
+        end: new Date(window.end).toISOString(),
+        groups: groups.map((group) =>
+          finalizeUsageGroup(group, latencySummaryFromRow(timeseriesGroupLatency.get(group.key)))),
+        points: [...points.entries()]
+          .sort(([left], [right]) => left - right)
+          .map(([ts, point]) => ({
+            ts: new Date(ts).toISOString(),
+            totals: finalizeUsageGroup(point.totals, latencySummaryFromRow(bucketLatency.get(ts))),
+            groups: Object.fromEntries(
+              [...point.groups.entries()].map(([key, group]) => [
+                key,
+                finalizeUsageGroup(group, latencySummaryFromRow(bucketGroupLatency.get(`${ts}:${key}`)))
+              ])
+            )
+          }))
+      }
     };
   }
 
@@ -2158,6 +2230,36 @@ function mergeUsageGroup(target: UsageGroup, source: UsageGroup) {
   target.cost.baseline += source.cost.baseline;
   target.cost.savings += source.cost.savings;
   target.cost.classifier += source.cost.classifier;
+}
+
+function modelUsageReportFromRequests(requests: RequestSummary[]) {
+  const totals = emptyUsageGroup("total");
+  const groups = new Map<string, UsageGroup>();
+  for (const request of requests) {
+    const key = request.selectedModel ?? "unknown";
+    const group = groups.get(key) ?? emptyUsageGroup(key);
+    addRequestToUsageGroup(group, request);
+    addRequestToUsageGroup(totals, request);
+    groups.set(key, group);
+  }
+  return {
+    groupBy: "model" as const,
+    data: [...groups.values()]
+      .sort(compareUsageGroups)
+      .map((group) => finalizeUsageGroup(group, { averageMs: null, p95Ms: null })),
+    totals: finalizeUsageGroup(totals, { averageMs: null, p95Ms: null })
+  };
+}
+
+function addRequestToUsageGroup(group: UsageGroup, request: RequestSummary) {
+  group.requestCount += 1;
+  if (request.terminalStatus === "failed") group.failedRequests += 1;
+  if ((request.attemptCount ?? 0) > 1) group.retriedRequests += 1;
+  addUsageTotals(group.usage, request.usage);
+  group.cost.selected += request.selectedCost;
+  group.cost.baseline += request.baselineCost;
+  group.cost.savings += request.savings;
+  group.cost.classifier += request.classifierCost;
 }
 
 function finalizeUsageGroup(group: UsageGroup, latency: ReturnType<typeof latencySummaryFromRow>) {

@@ -74,29 +74,31 @@ const UsageTimeseriesViewDocument = graphql(`
 
 const UsageDashboardViewDocument = graphql(`
   query UsageDashboardView($groupBy: UsageGroupBy!, $interval: UsageInterval, $start: String, $end: String, $limit: Int) {
-    usage(groupBy: $groupBy, start: $start, end: $end) {
-      groupBy
-      data {
-        ...UsageGroupFields
-      }
-      totals {
-        ...UsageGroupFields
-      }
-    }
-    usageTimeseries(groupBy: $groupBy, interval: $interval, start: $start, end: $end, limit: $limit) {
-      groupBy
-      interval
-      start
-      end
-      groups {
-        ...UsageGroupFields
-      }
-      points {
-        ts
+    usageDashboard(groupBy: $groupBy, interval: $interval, start: $start, end: $end, limit: $limit) {
+      usage {
+        groupBy
+        data {
+          ...UsageGroupFields
+        }
         totals {
           ...UsageGroupFields
         }
-        groups
+      }
+      timeseries {
+        groupBy
+        interval
+        start
+        end
+        groups {
+          ...UsageGroupFields
+        }
+        points {
+          ts
+          totals {
+            ...UsageGroupFields
+          }
+          groups
+        }
       }
     }
   }
@@ -222,10 +224,10 @@ export async function fetchUsageDashboard(
   groupBy: UsageDimensionKey,
   filters: UsageRangeFilters & { interval?: "hour" | "day"; limit?: number } = {}
 ): Promise<UsageDashboard> {
-  const raw = await gqlFetch(UsageDashboardViewDocument, { groupBy, ...filters });
+  const raw = (await gqlFetch(UsageDashboardViewDocument, { groupBy, ...filters })).usageDashboard;
   return {
     usage: raw.usage,
-    timeseries: normalizeTimeseries(raw.usageTimeseries)
+    timeseries: normalizeTimeseries(raw.timeseries)
   };
 }
 

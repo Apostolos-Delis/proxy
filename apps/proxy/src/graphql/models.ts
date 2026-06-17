@@ -5,6 +5,7 @@ import type { AdminSessionStore } from "../persistence/adminSessions.js";
 type Q = AdminQueryService;
 
 export type OverviewModel = Awaited<ReturnType<Q["overview"]>>;
+export type OverviewDashboardModel = Awaited<ReturnType<Q["overviewDashboard"]>>;
 export type RouteQualityModel = OverviewModel["routeQuality"];
 export type TokenTotalsModel = OverviewModel["totals"];
 export type CostTotalsModel = OverviewModel["cost"];
@@ -90,6 +91,7 @@ export type TokenAttributionSchemaChurnModel = TokenAttributionReportModel["sche
 export type UsageReportModel = Awaited<ReturnType<Q["usage"]>>;
 export type UsageGroupModel = UsageReportModel["totals"];
 export type LatencySummaryModel = UsageGroupModel["latency"];
+export type UsageDashboardModel = Awaited<ReturnType<Q["usageDashboard"]>>;
 export type UsageTimeseriesModel = Awaited<ReturnType<Q["usageTimeseries"]>>;
 export type UsageTimeseriesPointModel = UsageTimeseriesModel["points"][number];
 

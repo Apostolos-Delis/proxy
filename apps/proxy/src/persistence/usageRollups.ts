@@ -248,7 +248,7 @@ function reportSelect(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: SQL | n
       (percentile_disc(0.95) within group (order by latency_ms) filter (where latency_ms >= 0))::double precision as p95_ms
     from request_metrics
     group by grouping sets ${bucketed
-      ? sql.raw("((group_key), (bucket_ts, group_key), (bucket_ts))")
+      ? sql.raw("((group_key), (bucket_ts, group_key), (bucket_ts), ())")
       : sql.raw("((group_key), ())")}
   `;
 }

@@ -8,6 +8,7 @@ import type {
   IdleGapBucketModel,
   IdleGapReportModel,
   LatencySummaryModel,
+  OverviewDashboardModel,
   RouteOutputGroupRowModel,
   RouteOutputReportModel,
   RouteOutputRowModel,
@@ -17,12 +18,14 @@ import type {
   TokenAttributionOffenderModel,
   TokenAttributionReportModel,
   TokenAttributionSchemaChurnModel,
+  UsageDashboardModel,
   UsageGroupModel,
   UsageReportModel,
   UsageTimeseriesModel,
   UsageTimeseriesPointModel
 } from "../models.js";
 import { CostTotals, TokenTotals } from "./core.js";
+import { RequestSummary } from "./requests.js";
 
 export const UsageGroupBy = builder.enumType("UsageGroupBy", {
   values: ["user", "api_key", "provider", "model", "model_effort", "route", "surface", "session"] as const
@@ -100,6 +103,21 @@ export const UsageReport = builder.objectRef<UsageReportModel>("UsageReport").im
     groupBy: t.field({ type: UsageGroupBy, resolve: (report) => report.groupBy }),
     data: t.expose("data", { type: [UsageGroup] }),
     totals: t.expose("totals", { type: UsageGroup })
+  })
+});
+
+export const OverviewDashboard = builder.objectRef<OverviewDashboardModel>("OverviewDashboard").implement({
+  fields: (t) => ({
+    overview: t.expose("overview", { type: Overview }),
+    requests: t.expose("requests", { type: [RequestSummary] }),
+    modelUsage: t.expose("modelUsage", { type: UsageReport })
+  })
+});
+
+export const UsageDashboard = builder.objectRef<UsageDashboardModel>("UsageDashboard").implement({
+  fields: (t) => ({
+    usage: t.expose("usage", { type: UsageReport }),
+    timeseries: t.expose("timeseries", { type: UsageTimeseries })
   })
 });
 

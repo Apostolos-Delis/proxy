@@ -40,7 +40,7 @@ import {
   type GroupLabelLookups,
   type UsageRangeKey
 } from "./usageAnalytics";
-import { fetchUsageLookups, fetchUsageReport, fetchUsageTimeseries, type UsageGroup } from "./usageData";
+import { fetchUsageDashboard, fetchUsageLookups, fetchUsageReport, type UsageGroup } from "./usageData";
 import { fetchMe } from "./session";
 
 const flowSeries: LayeredAreaSeries[] = [
@@ -55,19 +55,14 @@ export function CachingPage() {
   const previousRange = usagePreviousRangeQuery(range, anchor);
   const { data: meQueryData } = useQuery({ queryKey: ["me"], queryFn: fetchMe });
   const isAdmin = isAdminRole(meQueryData?.user.role);
-  const { error: usageQueryError, data: usageQueryData } = useQuery({
-    queryKey: ["usage", "provider", start, end],
-    queryFn: () => fetchUsageReport("provider", { start, end }),
+  const { error: dashboardQueryError, data: dashboardQueryData } = useQuery({
+    queryKey: ["usage-dashboard", "provider", start, end, interval],
+    queryFn: () => fetchUsageDashboard("provider", { start, end, interval }),
     placeholderData: keepPreviousData
   });
   const { data: previousQueryData } = useQuery({
     queryKey: ["usage", "provider", previousRange.start, previousRange.end],
     queryFn: () => fetchUsageReport("provider", previousRange),
-    placeholderData: keepPreviousData
-  });
-  const { error: timeseriesQueryError, data: timeseriesQueryData } = useQuery({
-    queryKey: ["usage-timeseries", "provider", start, end, interval],
-    queryFn: () => fetchUsageTimeseries("provider", { start, end, interval }),
     placeholderData: keepPreviousData
   });
   const { error: keyUsageQueryError, data: keyUsageQueryData } = useQuery({
@@ -107,13 +102,13 @@ export function CachingPage() {
     placeholderData: keepPreviousData
   });
 
-  const error = usageQueryError ?? timeseriesQueryError ?? bustsQueryError
+  const error = dashboardQueryError ?? bustsQueryError
     ?? keyUsageQueryError ?? modelUsageQueryError ?? ratesQueryError
     ?? compressionSavingsQueryError ?? attributionQueryError ?? idleGapsQueryError;
   if (error) return <PageState title="Caching" label={error.message} />;
 
-  const usage = usageQueryData;
-  const timeseries = timeseriesQueryData;
+  const usage = dashboardQueryData?.usage;
+  const timeseries = dashboardQueryData?.timeseries;
   if (!usage || !timeseries) return <PageSkeleton blocks={[160, 320, 280]} />;
 
   const totals = usage.totals;
