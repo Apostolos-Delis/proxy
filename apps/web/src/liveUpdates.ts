@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-import { apiBase, bumpGraphQLCacheEpoch } from "./graphql";
+import { adminApiBase, bumpGraphQLCacheEpoch } from "./graphql";
 
 // Query-key prefixes refreshed when the proxy reports new traffic. Scoped
 // /logs ranges pin their end timestamp at mount so a refetch cannot surface
@@ -56,7 +56,7 @@ function connect(queryClient: QueryClient) {
     clearTimeout(state.retryTimer);
     state.retryTimer = undefined;
   }
-  const source = new EventSource(`${apiBase}/admin/events`, { withCredentials: true });
+  const source = new EventSource(`${adminApiBase}/admin/events`, { withCredentials: true });
   state.active = source;
   source.onmessage = () => {
     bumpGraphQLCacheEpoch();

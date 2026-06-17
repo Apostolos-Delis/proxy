@@ -64,9 +64,10 @@ describe("gqlFetch", () => {
 
     await gqlFetch(QueryDocument, { id: "one" });
     const [url, init] = fetchMock.mock.calls[0];
-    const parsed = new URL(String(url));
+    const parsed = new URL(String(url), "http://localhost");
 
     expect(init.method).toBe("GET");
+    expect(parsed.pathname).toBe("/admin/graphql");
     expect(parsed.searchParams.get("variables")).toBe(JSON.stringify({ id: "one" }));
     expect(parsed.searchParams.get("gqlCacheScope")).toBeTruthy();
     expect(parsed.searchParams.get("gqlCacheScope")).not.toBe("session:org:workspace");
@@ -77,12 +78,12 @@ describe("gqlFetch", () => {
     setGraphQLCacheScope("session:org:workspace");
 
     await gqlFetch(QueryDocument, { id: "one" });
-    const firstEpoch = new URL(String(fetchMock.mock.calls[0][0])).searchParams.get("gqlCacheEpoch");
+    const firstEpoch = new URL(String(fetchMock.mock.calls[0][0]), "http://localhost").searchParams.get("gqlCacheEpoch");
     await gqlFetch(MutationDocument, { id: "one" });
     await gqlFetch(QueryDocument, { id: "one" });
 
     const [, mutationInit] = fetchMock.mock.calls[1];
-    const nextEpoch = new URL(String(fetchMock.mock.calls[2][0])).searchParams.get("gqlCacheEpoch");
+    const nextEpoch = new URL(String(fetchMock.mock.calls[2][0]), "http://localhost").searchParams.get("gqlCacheEpoch");
 
     expect(mutationInit.method).toBe("POST");
     expect(Number(nextEpoch)).toBeGreaterThan(Number(firstEpoch));
@@ -101,7 +102,7 @@ describe("gqlFetch", () => {
     bumpGraphQLCacheEpoch();
     await gqlFetch(QueryDocument, { id: "one" });
 
-    const epoch = new URL(String(fetchMock.mock.calls[0][0])).searchParams.get("gqlCacheEpoch");
+    const epoch = new URL(String(fetchMock.mock.calls[0][0]), "http://localhost").searchParams.get("gqlCacheEpoch");
     expect(epoch).toBe("42");
   });
 
@@ -114,9 +115,11 @@ describe("gqlFetch", () => {
     await gqlFetch(QueryDocument, { id: "one" });
 
     const [url, init] = fetchMock.mock.calls[0];
-    const parsed = new URL(String(url));
+    const parsed = new URL(String(url), "http://localhost");
 
     expect(init.method).toBe("GET");
+    expect(parsed.origin).toBe("http://localhost");
+    expect(parsed.pathname).toBe("/admin/graphql");
     expect(parsed.searchParams.get("gqlCacheScope")).toBeTruthy();
   });
 });
