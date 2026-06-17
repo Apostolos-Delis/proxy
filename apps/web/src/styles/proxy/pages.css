@@ -4684,6 +4684,63 @@ a.key-bound-row:hover {
   justify-content: flex-end;
 }
 
+.provider-table-provider-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.provider-table-provider-cell > div {
+  min-width: 0;
+}
+
+.provider-table-provider-cell strong,
+.provider-registry-main strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-registry-table .console-table-scroll,
+.provider-credentials-table .console-table-scroll {
+  max-height: none;
+}
+
+.provider-registry-table .console-table-search,
+.provider-credentials-table .console-table-search {
+  flex-basis: 320px;
+  min-width: min(100%, 230px);
+}
+
+.provider-registry-table .code-pill,
+.provider-registry-table .badge,
+.provider-credentials-table .code-pill,
+.provider-credentials-table .badge {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.provider-registry-table .scope-tags,
+.provider-credentials-table .scope-tags {
+  overflow: hidden;
+}
+
+.provider-registry-table-row.inactive td:not(:last-child),
+.provider-credential-table-row.inactive td:not(:last-child) {
+  opacity: .58;
+}
+
+.provider-default-table-row td {
+  background: color-mix(in srgb, var(--glass-2) 58%, transparent);
+}
+
+.provider-default-table-row:hover td {
+  background: color-mix(in srgb, var(--glass-hover) 70%, transparent);
+}
+
 .provider-form {
   gap: 16px;
 }
