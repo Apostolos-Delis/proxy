@@ -87,6 +87,7 @@ function anthropicRequestToChat(body: unknown) {
   delete request.stop_sequences;
   delete request.thinking;
   delete request.cache_control;
+  delete request.metadata;
   return request;
 }
 
@@ -107,6 +108,7 @@ function anthropicRequestToResponses(body: unknown) {
   delete request.stop_sequences;
   delete request.thinking;
   delete request.cache_control;
+  delete request.metadata;
   return request;
 }
 
