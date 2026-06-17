@@ -159,10 +159,11 @@ export class AdminQueryService {
       this.lowConfidenceDecisionCount()
     ]);
     const requestSummaries = await this.summarizeRequests(requestRows);
+    const aggregateRequestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
     return {
       overview: this.overviewFromSummaries(requestRows.length, requestSummaries, eventCount, lowConfidenceCount),
       requests: requestSummaries.slice(0, requestListLimit(undefined)),
-      modelUsage: modelUsageReportFromRequests(requestSummaries)
+      modelUsage: modelUsageReportFromRequests(aggregateRequestSummaries)
     };
   }
 

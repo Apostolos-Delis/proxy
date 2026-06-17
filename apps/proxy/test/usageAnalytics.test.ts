@@ -150,6 +150,16 @@ describe("usage analytics admin APIs", () => {
       fixture.adminHeaders,
       `query { usage(groupBy: model, start: "2026-06-08T00:00:00.000Z", end: "2026-06-09T00:00:00.000Z") ${usageFields} }`
     )).data?.usage;
+    const allTimeModelUsage = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { usage(groupBy: model) ${usageFields} }`
+    )).data?.usage;
+    const overviewDashboard = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { overviewDashboard { modelUsage ${usageFields} } }`
+    )).data?.overviewDashboard;
     const supportedGroups = await Promise.all(
       ["user", "provider", "model", "route", "surface", "session"].map(async (groupBy) =>
         (await adminGql(
@@ -171,6 +181,10 @@ describe("usage analytics admin APIs", () => {
     expect(modelUsage.totals.retryRate).toBe(0.5);
     expect(modelUsage.data.map((item: any) => item.key)).not.toContain("gpt-old");
     expect(modelUsage.data.map((item: any) => item.key)).not.toContain("gpt-other-org");
+    expect(overviewDashboard.modelUsage.totals).toEqual(allTimeModelUsage.totals);
+    expect(overviewDashboard.modelUsage.data.map((item: any) => item.key)).toEqual(
+      allTimeModelUsage.data.map((item: any) => item.key)
+    );
     expect(hardGroup).toEqual(expect.objectContaining({
       key: "claude-hard",
       requestCount: 1,
