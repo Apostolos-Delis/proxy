@@ -12,8 +12,16 @@ const LIVE_QUERY_KEYS = [
 ] as const;
 const RECONNECT_DELAY_MS = 15_000;
 
-let active: EventSource | undefined;
-let retryTimer: ReturnType<typeof setTimeout> | undefined;
+type LiveUpdatesState = {
+  active?: EventSource;
+  retryTimer?: ReturnType<typeof setTimeout>;
+};
+
+type LiveUpdatesGlobal = typeof globalThis & {
+  __promptProxyLiveUpdates?: LiveUpdatesState;
+};
+
+const state = ((globalThis as LiveUpdatesGlobal).__promptProxyLiveUpdates ??= {});
 
 /**
  * Holds one SSE connection to the proxy that emits coalesced invalidation
@@ -21,17 +29,17 @@ let retryTimer: ReturnType<typeof setTimeout> | undefined;
  * mounted queries only; everything else is just marked stale.
  */
 export function startLiveUpdates(queryClient: QueryClient) {
-  if (active) return;
+  if (state.active) return;
   connect(queryClient);
 }
 
 export function stopLiveUpdates() {
-  if (retryTimer !== undefined) {
-    clearTimeout(retryTimer);
-    retryTimer = undefined;
+  if (state.retryTimer !== undefined) {
+    clearTimeout(state.retryTimer);
+    state.retryTimer = undefined;
   }
-  active?.close();
-  active = undefined;
+  state.active?.close();
+  state.active = undefined;
 }
 
 // The SSE connection is scoped to the org/workspace it authenticated as, so
@@ -44,12 +52,12 @@ export function restartLiveUpdates(queryClient: QueryClient) {
 function connect(queryClient: QueryClient) {
   // At most one of {active, retryTimer} may exist, or an orphaned timer
   // could resurrect a connection after stopLiveUpdates.
-  if (retryTimer !== undefined) {
-    clearTimeout(retryTimer);
-    retryTimer = undefined;
+  if (state.retryTimer !== undefined) {
+    clearTimeout(state.retryTimer);
+    state.retryTimer = undefined;
   }
   const source = new EventSource(`${apiBase}/admin/events`, { withCredentials: true });
-  active = source;
+  state.active = source;
   source.onmessage = () => {
     bumpGraphQLCacheEpoch();
     for (const queryKey of LIVE_QUERY_KEYS) {
@@ -61,12 +69,16 @@ function connect(queryClient: QueryClient) {
     // (e.g. the session expired) and needs our own slow retry.
     if (source.readyState !== EventSource.CLOSED) return;
     source.close();
-    if (active !== source) return;
-    active = undefined;
+    if (state.active !== source) return;
+    state.active = undefined;
     if (!queryClient.getQueryData(["me"])) return;
-    retryTimer = setTimeout(() => {
-      retryTimer = undefined;
-      if (!active) connect(queryClient);
+    state.retryTimer = setTimeout(() => {
+      state.retryTimer = undefined;
+      if (!state.active) connect(queryClient);
     }, RECONNECT_DELAY_MS);
   };
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(stopLiveUpdates);
 }

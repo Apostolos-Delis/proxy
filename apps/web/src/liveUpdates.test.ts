@@ -60,6 +60,21 @@ describe("liveUpdates", () => {
     ]);
   });
 
+  it("reuses the active connection after a module reload", async () => {
+    const queryClient = new QueryClient();
+
+    startLiveUpdates(queryClient);
+    expect(FakeEventSource.instances).toHaveLength(1);
+
+    vi.resetModules();
+    const reloaded = await import("./liveUpdates");
+    reloaded.startLiveUpdates(queryClient);
+
+    expect(FakeEventSource.instances).toHaveLength(1);
+    reloaded.stopLiveUpdates();
+    expect(FakeEventSource.instances[0].readyState).toBe(FakeEventSource.CLOSED);
+  });
+
   it("retries a fatal close while signed in and stops retrying once stopped", () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["me"], { organizationId: "org_a" });
