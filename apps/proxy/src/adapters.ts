@@ -1,6 +1,7 @@
 import type { FastifyReply } from "fastify";
 
 import { buildAnthropicContext, buildOpenAIChatContext, buildOpenAIContext } from "./features.js";
+import { anthropicEffortForModel, supportsAnthropicAdaptiveThinking } from "./catalog.js";
 import { translators } from "./translators/index.js";
 import type { Dialect, RouteContext, RouteDecision, Surface, Provider, SelectedRouteSettings, UpstreamCredential } from "./types.js";
 import { isRecord, roughTokenEstimate, stableJson } from "./util.js";
@@ -364,21 +365,24 @@ function rewriteAnthropicMessagesRequest(
   if (systemPrompt) {
     request.system = prependAnthropicSystemPrompt(request.system, systemPrompt);
   }
-  if (settings.thinking) {
+  if (settings.thinking && (settings.thinking.type !== "adaptive" || supportsAnthropicAdaptiveThinking(settings.model))) {
     request.thinking = settings.thinking;
   } else {
     delete request.thinking;
   }
-  if (settings.effort) {
+  const effort = settings.effort ? anthropicEffortForModel(settings.model, settings.effort) : undefined;
+  if (effort) {
     request.output_config = {
       ...(isRecord(request.output_config) ? request.output_config : {}),
-      effort: settings.effort === "minimal" ? "low" : settings.effort
+      effort
     };
-  } else if (isRecord(request.output_config)) {
+  } else if (isRecord(request.output_config) && anthropicEffortForModel(settings.model, "high")) {
     const outputConfig = { ...request.output_config };
     delete outputConfig.effort;
     if (Object.keys(outputConfig).length > 0) request.output_config = outputConfig;
     else delete request.output_config;
+  } else {
+    delete request.output_config;
   }
   if (settings.maxOutputTokens !== undefined) {
     request.max_tokens = settings.maxOutputTokens;

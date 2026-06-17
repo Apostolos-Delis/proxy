@@ -146,7 +146,7 @@ describe("translated OpenAI routing runtime", () => {
       configHash: "sha256:codex-to-anthropic",
       targets: [{
         providerId: "anthropic-only",
-        model: "claude-routed",
+        model: "claude-sonnet-4-6",
         effort: "high",
         thinking: { type: "adaptive", display: "omitted" },
         maxOutputTokens: 321
@@ -170,7 +170,7 @@ describe("translated OpenAI routing runtime", () => {
     });
     const body = await response.text();
     const providerCall = activeFixture.anthropic.records.find((record) =>
-      record.path === "/messages" && record.body.model === "claude-routed"
+      record.path === "/messages" && record.body.model === "claude-sonnet-4-6"
     );
     const decision = await lastDecisionPayload(activeFixture);
 
@@ -327,7 +327,7 @@ describe("translated OpenAI routing runtime", () => {
       configHash: "sha256:chat-to-anthropic",
       targets: [{
         providerId: "anthropic-chat-target",
-        model: "claude-chat-routed",
+        model: "claude-sonnet-4-6",
         effort: "high",
         thinking: { type: "adaptive", display: "omitted" },
         maxOutputTokens: 111
@@ -353,7 +353,7 @@ describe("translated OpenAI routing runtime", () => {
     });
     const body = await response.text();
     const providerCall = activeFixture.anthropic.records.find((record) =>
-      record.path === "/messages" && record.body.model === "claude-chat-routed"
+      record.path === "/messages" && record.body.model === "claude-sonnet-4-6"
     );
     const decision = await lastDecisionPayload(activeFixture);
 

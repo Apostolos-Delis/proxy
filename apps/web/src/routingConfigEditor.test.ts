@@ -224,9 +224,21 @@ describe("effectiveEffortForTarget", () => {
     const openaiEfforts = ["low", "medium", "high", "xhigh"];
     const anthropicEfforts = ["low", "medium", "high", "xhigh", "max", "ultracode"];
 
-    expect(effectiveEffortForTarget({ providerId: "anthropic", effort: "minimal" }, anthropicEfforts)).toBe("low");
-    expect(effectiveEffortForTarget({ providerId: "openai", effort: "max" }, openaiEfforts)).toBe("xhigh");
-    expect(effectiveEffortForTarget({ providerId: "anthropic", effort: "ultracode" }, anthropicEfforts)).toBe("ultracode");
+    expect(effectiveEffortForTarget({ providerId: "anthropic", model: "claude-opus-4-5", effort: "minimal", thinking: { type: "adaptive" } }, anthropicEfforts)).toBe("low");
+    expect(effectiveEffortForTarget({ providerId: "openai", model: "gpt-hard", effort: "max" }, openaiEfforts)).toBe("xhigh");
+    expect(effectiveEffortForTarget({ providerId: "anthropic", model: "claude-opus-4-5", effort: "ultracode", thinking: { type: "adaptive" } }, anthropicEfforts)).toBe("high");
+    expect(effectiveEffortForTarget({ providerId: "anthropic", model: "claude-opus-4-8", effort: "high" }, anthropicEfforts)).toBe("");
+    expect(effectiveEffortForTarget({ providerId: "anthropic", model: "claude-sonnet-4-5", effort: "high", thinking: { type: "adaptive" } }, anthropicEfforts)).toBe("");
+  });
+
+  it("uses Anthropic model effort support for Anthropic-compatible custom providers", () => {
+    const efforts = ["low", "medium", "high", "xhigh", "max", "ultracode"];
+
+    expect(effectiveEffortForTarget(
+      { providerId: "custom-anthropic", model: "claude-opus-4-8", effort: "ultracode", thinking: { type: "adaptive" } },
+      efforts,
+      ["anthropic-messages"]
+    )).toBe("xhigh");
   });
 });
 

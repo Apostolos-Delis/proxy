@@ -183,6 +183,59 @@ export type OrganizationMemberRole = typeof ORGANIZATION_MEMBER_ROLES[keyof type
 export type OrganizationMemberStatus = typeof ORGANIZATION_MEMBER_STATUSES[keyof typeof ORGANIZATION_MEMBER_STATUSES];
 export type InvitationStatus = typeof INVITATION_STATUSES[keyof typeof INVITATION_STATUSES];
 
+export function anthropicReasoningEffortsForModel(model: string): Effort[] {
+  const id = model.toLowerCase();
+  if (
+    id.startsWith("claude-fable-5") ||
+    id.startsWith("claude-mythos-5") ||
+    id.startsWith("claude-mythos-preview") ||
+    id.startsWith("claude-opus-4-8") ||
+    id.startsWith("claude-opus-4-7")
+  ) {
+    return ["low", "medium", "high", "xhigh", "max"];
+  }
+  if (id.startsWith("claude-opus-4-6") || id.startsWith("claude-sonnet-4-6")) {
+    return ["low", "medium", "high", "max"];
+  }
+  if (id.startsWith("claude-opus-4-5")) return ["low", "medium", "high"];
+  return [];
+}
+
+export function anthropicEffortForModel(model: string, requested: Effort) {
+  const supported = anthropicReasoningEffortsForModel(model);
+  if (supported.length === 0) return undefined;
+  if (requested === "ultracode" && supported.includes("xhigh")) return "xhigh";
+  return nearestAnthropicEffort(requested, supported);
+}
+
+export function supportsAnthropicAdaptiveThinking(model: string) {
+  const id = model.toLowerCase();
+  return (
+    id.startsWith("claude-fable-5") ||
+    id.startsWith("claude-mythos-5") ||
+    id.startsWith("claude-mythos-preview") ||
+    id.startsWith("claude-opus-4-8") ||
+    id.startsWith("claude-opus-4-7") ||
+    id.startsWith("claude-opus-4-6") ||
+    id.startsWith("claude-sonnet-4-6")
+  );
+}
+
+function nearestAnthropicEffort(requested: Effort, supported: readonly Effort[]) {
+  if (supported.includes(requested)) return requested;
+  const requestedIndex = EFFORTS.indexOf(requested);
+  let closest: Effort | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const effort of supported) {
+    const distance = Math.abs(EFFORTS.indexOf(effort) - requestedIndex);
+    if (distance < bestDistance) {
+      closest = effort;
+      bestDistance = distance;
+    }
+  }
+  return closest;
+}
+
 export {
   canTranslateDialect,
   TRANSLATABLE_DIALECT_PAIRS,

@@ -864,7 +864,7 @@ describe("prompt proxy", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBeNull();
     expect(body).toContain("message_stop");
 
     const providerCall = anthropic.records.find((record) => record.path === "/messages");
@@ -874,8 +874,8 @@ describe("prompt proxy", () => {
     expect(providerCall?.headers["x-claude-code-agent-id"]).toBe("claude-agent-1");
     expect(providerCall?.headers["x-claude-code-parent-agent-id"]).toBe("claude-parent-1");
     expect(providerCall?.body.model).toBe(config.anthropicHardModel);
-    expect(providerCall?.body.output_config.effort).toBe("high");
-    expect(providerCall?.body.thinking.type).toBe("adaptive");
+    expect(providerCall?.body.output_config).toBeUndefined();
+    expect(providerCall?.body.thinking).toBeUndefined();
     expect(providerCall?.body.max_tokens).toBe(4096);
     expect(providerCall?.body.tools).toHaveLength(1);
 

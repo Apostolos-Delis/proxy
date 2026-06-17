@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  anthropicEffortForModel,
+  anthropicReasoningEffortsForModel,
   composeClassifierInstructions,
   providerRegistryEntrySchema,
   ROUTING_CLASSIFIER_BASE_INSTRUCTIONS,
   routingConfigSchema,
+  supportsAnthropicAdaptiveThinking,
   type RoutingConfig
 } from "./index.js";
 
@@ -471,6 +474,17 @@ describe("providerRegistryEntrySchema", () => {
       ["endpoints", 0, "path"],
       ["default_headers", "x-empty"]
     ]));
+  });
+});
+
+describe("Anthropic model effort support", () => {
+  it("maps route efforts to the supported Anthropic model scale", () => {
+    expect(anthropicReasoningEffortsForModel("claude-sonnet-4-5")).toEqual([]);
+    expect(anthropicEffortForModel("claude-sonnet-4-5", "high")).toBeUndefined();
+    expect(anthropicEffortForModel("claude-opus-4-5", "ultracode")).toBe("high");
+    expect(anthropicEffortForModel("claude-opus-4-8", "ultracode")).toBe("xhigh");
+    expect(supportsAnthropicAdaptiveThinking("claude-opus-4-5")).toBe(false);
+    expect(supportsAnthropicAdaptiveThinking("claude-opus-4-8")).toBe(true);
   });
 });
 
