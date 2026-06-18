@@ -98,7 +98,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }) {
   return (
     <div className="page page-enter session-detail">
       <div className="session-crumbs">
-        <Link to="/sessions" className="btn btn-sm"><ChevronLeft />Sessions</Link>
+        <Link to="/logs" className="btn btn-sm"><ChevronLeft />Logs</Link>
         <span className="crumb-sep" aria-hidden>/</span>
         <span className="code-pill id-pill">
           {compactId(session.externalSessionId ?? session.sessionId, 12)}

@@ -61,6 +61,10 @@
   flex: none;
 }
 
+.logs-tabs {
+  margin-bottom: 14px;
+}
+
 .quality-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

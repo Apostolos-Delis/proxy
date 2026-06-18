@@ -14,7 +14,7 @@ import { promptDetailQueryOptions } from "./promptDetailPage";
 import { RoutingConfigMicro } from "./routingSnapshot";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { usageRangeOptions, usageRangeQuery, type UsageRangeKey } from "./usageAnalytics";
-import { PageState, Segmented, StatusBadge, UserCell } from "./ui";
+import { GlassCard, Segmented, StatusBadge, UserCell } from "./ui";
 
 const RequestsPageDocument = graphql(`
   query RequestsPage($start: String, $end: String, $limit: Int) {
@@ -91,7 +91,7 @@ type PromptLogRow = {
   userEmail?: string | null;
 };
 
-export function RequestsPage() {
+export function RequestLogsTable() {
   const search = useSearch({ strict: false }) as { range?: unknown };
   const range: LogsRange = isLogsRange(search.range) ? search.range : LOGS_RANGE_ALL;
   // Pin "now" on mount so the query key stays stable across re-renders/refetches.
@@ -107,31 +107,38 @@ export function RequestsPage() {
     queryFn: () => gqlFetch(RequestsPageDocument, variables)
   });
 
-  if (queryIsLoading) return <PageState title="Request logs" label="Loading prompts" />;
-  if (queryError) return <PageState title="Request logs" label={queryError.message} />;
+  if (queryIsLoading) return <RequestLogsState label="Loading prompts" />;
+  if (queryError) return <RequestLogsState label={queryError.message} />;
 
   const rows = promptRows(queryData?.prompts.data ?? [], queryData?.requests ?? [], queryData?.users ?? []);
   return (
-    <div className="page page-enter">
-      <ConsoleTable
-        className="logs-table-card"
-        urlState
-        data={rows}
-        columns={requestColumns}
-        search={{ placeholder: "Search prompts, users, request IDs...", getValue: requestSearchValue }}
-        filters={requestFilters(rows)}
-        advancedFields={requestAdvancedFields}
-        emptyLabel="No requests match these filters."
-        actions={({ visibleData }) => (
-          <>
-            <LogsRangeControl range={range} />
-            <button className="btn" type="button" onClick={() => downloadJson("proxy-request-logs.json", visibleData)}>
-              <Download />Export
-            </button>
-          </>
-        )}
-      />
-    </div>
+    <ConsoleTable
+      className="logs-table-card"
+      urlState
+      data={rows}
+      columns={requestColumns}
+      search={{ placeholder: "Search prompts, users, request IDs...", getValue: requestSearchValue }}
+      filters={requestFilters(rows)}
+      advancedFields={requestAdvancedFields}
+      emptyLabel="No requests match these filters."
+      actions={({ visibleData }) => (
+        <>
+          <LogsRangeControl range={range} />
+          <button className="btn" type="button" onClick={() => downloadJson("proxy-request-logs.json", visibleData)}>
+            <Download />Export
+          </button>
+        </>
+      )}
+    />
+  );
+}
+
+function RequestLogsState({ label }: { label: string }) {
+  return (
+    <GlassCard className="empty-state">
+      <strong>{label}</strong>
+      <span>Run traffic through the proxy and this surface will populate automatically.</span>
+    </GlassCard>
   );
 }
 

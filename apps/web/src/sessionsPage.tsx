@@ -21,7 +21,7 @@ import {
 } from "./sessionsPageData";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { TierGauge } from "./routing/tierViz";
-import { PageState, StatusBadge, UserCell } from "./ui";
+import { GlassCard, StatusBadge, UserCell } from "./ui";
 
 const SessionsPageDocument = graphql(`
   query SessionsPage {
@@ -53,45 +53,52 @@ const SessionsPageDocument = graphql(`
   }
 `);
 
-export function SessionsPage() {
+export function SessionLogsTable() {
   const navigate = useNavigate();
   const { isLoading: queryIsLoading, error: queryError, data: queryData } = useQuery({ queryKey: ["sessions-page"], queryFn: () => gqlFetch(SessionsPageDocument) });
 
-  if (queryIsLoading) return <PageState title="Sessions" label="Loading sessions" />;
-  if (queryError) return <PageState title="Sessions" label={queryError.message} />;
+  if (queryIsLoading) return <SessionLogsState label="Loading sessions" />;
+  if (queryError) return <SessionLogsState label={queryError.message} />;
 
   const rows = sessionRows(queryData?.sessions ?? [], queryData?.users ?? []);
   const openSession = (row: SessionLogRow) =>
     void navigate({ to: "/sessions/$sessionId", params: { sessionId: row.session.sessionId } });
   return (
-    <div className="page page-enter">
-      <ConsoleTable
-        className="logs-table-card"
-        urlState
-        data={rows}
-        columns={sessionColumns}
-        search={{ placeholder: "Search sessions, users, models...", getValue: sessionSearchValue }}
-        filters={sessionFilters(rows)}
-        advancedFields={sessionAdvancedFields}
-        emptyLabel="No sessions match these filters."
-        actions={({ visibleData }) => (
-          <button className="btn" type="button" onClick={() => downloadJson("proxy-sessions.json", visibleData)}>
-            <Download />Export
-          </button>
-        )}
-        getRowProps={(row) => ({
-          className: "selectable-row",
-          tabIndex: 0,
-          role: "link",
-          onClick: () => openSession(row),
-          onKeyDown: (event) => {
-            if (event.key !== "Enter" && event.key !== " ") return;
-            event.preventDefault();
-            openSession(row);
-          }
-        })}
-      />
-    </div>
+    <ConsoleTable
+      className="logs-table-card"
+      urlState
+      data={rows}
+      columns={sessionColumns}
+      search={{ placeholder: "Search sessions, users, models...", getValue: sessionSearchValue }}
+      filters={sessionFilters(rows)}
+      advancedFields={sessionAdvancedFields}
+      emptyLabel="No sessions match these filters."
+      actions={({ visibleData }) => (
+        <button className="btn" type="button" onClick={() => downloadJson("proxy-sessions.json", visibleData)}>
+          <Download />Export
+        </button>
+      )}
+      getRowProps={(row) => ({
+        className: "selectable-row",
+        tabIndex: 0,
+        role: "link",
+        onClick: () => openSession(row),
+        onKeyDown: (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          openSession(row);
+        }
+      })}
+    />
+  );
+}
+
+function SessionLogsState({ label }: { label: string }) {
+  return (
+    <GlassCard className="empty-state">
+      <strong>{label}</strong>
+      <span>Run traffic through the proxy and this surface will populate automatically.</span>
+    </GlassCard>
   );
 }
 

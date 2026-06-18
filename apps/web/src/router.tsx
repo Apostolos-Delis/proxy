@@ -6,16 +6,15 @@ import { CostPage } from "./costPage";
 import { InvitePage } from "./invitePage";
 import { CreateApiKeyPage } from "./keys/createKeyPage";
 import { KeysPage } from "./keysPage";
+import { LogsPage } from "./logsPage";
 import { OverviewPage } from "./overviewPage";
 import { ProvidersPage } from "./providersPage";
 import { PromptDetailPage } from "./promptDetailPage";
 import { PromptsPage } from "./promptsPage";
-import { RequestsPage } from "./requestsPage";
 import { CreateRoutingConfigPage } from "./routing/createConfigPage";
 import { RoutingConfigDetailPage } from "./routingConfigDetailPage";
 import { RoutingConfigsPage } from "./routingConfigsPage";
 import { SessionDetailPage } from "./sessionDetailPage";
-import { SessionsPage } from "./sessionsPage";
 import { SettingsPage } from "./settingsPage";
 import { AppShell } from "./shell";
 import { CachingPage } from "./cachingPage";
@@ -80,13 +79,6 @@ const promptDetailRoute = createRoute({
   component: PromptDetailRoutePage
 });
 
-const sessionsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/sessions",
-  beforeLoad: requireAdmin,
-  component: SessionsPage
-});
-
 const sessionDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sessions/$sessionId",
@@ -98,7 +90,7 @@ const logsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/logs",
   beforeLoad: requireAdmin,
-  component: RequestsPage
+  component: LogsPage
 });
 
 const logDetailRoute = createRoute({
@@ -180,7 +172,6 @@ const routeTree = rootRoute.addChildren([
   cachingRoute,
   promptsRoute,
   promptDetailRoute,
-  sessionsRoute,
   sessionDetailRoute,
   logsRoute,
   logDetailRoute,
