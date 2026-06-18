@@ -234,7 +234,7 @@ function RouteOutputPanel({ report }: { report: RouteOutputReport | undefined })
   const rows = report ? [...report.routes].sort(compareRouteOutputRows) : [];
   const maxAvg = Math.max(1, ...rows.map((row) => row.avgOutputTokens));
   return (
-    <GlassCard>
+    <GlassCard className="usage-route-output">
       <div className="card-head">
         <div>
           <div className="card-title">Output by route</div>
