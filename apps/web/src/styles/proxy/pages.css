@@ -201,6 +201,10 @@
   padding-top: 18px;
 }
 
+.usage-route-output {
+  margin-top: 22px;
+}
+
 .info-hint {
   position: relative;
   display: inline-flex;
