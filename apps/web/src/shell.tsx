@@ -1,6 +1,6 @@
-import { Link, Outlet, useLocation } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, Layers, Logs, MessagesSquare, Moon, PanelLeft, PanelLeftClose, Search, ServerCog, Settings, Sun, Users } from "lucide-react";
+import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, Layers, Logs, Moon, PanelLeft, PanelLeftClose, Search, ServerCog, Settings, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -18,7 +18,6 @@ type NavPath =
   | "/cost"
   | "/caching"
   | "/logs"
-  | "/sessions"
   | "/routing"
   | "/settings"
   | "/api-keys"
@@ -33,8 +32,7 @@ const workspaceNav = [
   { to: "/usage", label: "Usage", icon: BarChart3 },
   { to: "/cost", label: "Cost", icon: CircleDollarSign },
   { to: "/caching", label: "Caching", icon: Layers },
-  { to: "/logs", label: "Logs", icon: Logs },
-  { to: "/sessions", label: "Sessions", icon: MessagesSquare }
+  { to: "/logs", label: "Logs", icon: Logs }
 ] as const;
 
 const operationsNav = [
@@ -54,7 +52,6 @@ const titles: Record<string, [string, string | null]> = {
   "/usage": ["Usage", "Token metering by dimension"],
   "/cost": ["Cost", "Spend, savings & attribution"],
   "/caching": ["Caching", "Prompt-cache performance"],
-  "/logs": ["Logs", "Request stream"],
   "/api-keys": ["API keys", "Manage secrets"],
   "/api-keys/new": ["API keys", "Create key"],
   "/providers": ["Model providers", "Registry and credentials"],
@@ -63,12 +60,12 @@ const titles: Record<string, [string, string | null]> = {
   "/settings": ["Settings", "Runtime configuration"],
   "/routing": ["Routing", "Config versions"],
   "/routing/new": ["Routing", "New config"],
-  "/prompts": ["Prompts", "Captured prompt artifacts"],
-  "/sessions": ["Sessions", "Agent session replay"]
+  "/prompts": ["Prompts", "Captured prompt artifacts"]
 };
 
 export function AppShell() {
   const location = useLocation();
+  const search = useSearch({ strict: false }) as { view?: unknown };
   const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -89,15 +86,15 @@ export function AppShell() {
     );
   }
 
-  const [title, subtitle] = titleForPath(location.pathname);
+  const [title, subtitle] = titleForPath(location.pathname, search);
   return (
     <div className={`app${collapsed ? " collapsed" : ""}`} data-theme={theme}>
       <aside className="sidebar">
         <Brand collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
         <WorkspaceSwitcher />
-        <NavGroup title="Workspace" items={visibleNavItems(workspaceNav, isAdmin)} collapsed={collapsed} />
-        <NavGroup title="Operations" items={visibleNavItems(operationsNav, isAdmin)} collapsed={collapsed} />
-        <NavGroup title="Manage" items={visibleNavItems(manageNav, isAdmin)} collapsed={collapsed} />
+        <NavGroup title="Workspace" items={visibleNavItems(workspaceNav, isAdmin)} collapsed={collapsed} activePathname={location.pathname} />
+        <NavGroup title="Operations" items={visibleNavItems(operationsNav, isAdmin)} collapsed={collapsed} activePathname={location.pathname} />
+        <NavGroup title="Manage" items={visibleNavItems(manageNav, isAdmin)} collapsed={collapsed} activePathname={location.pathname} />
         <div className="sidebar-foot">
           <OrgSwitcher />
           <LogoutButton />
@@ -156,7 +153,7 @@ function Brand({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => vo
   );
 }
 
-function NavGroup({ title, items, collapsed }: { title: string; items: readonly NavItem[]; collapsed: boolean }) {
+function NavGroup({ title, items, collapsed, activePathname }: { title: string; items: readonly NavItem[]; collapsed: boolean; activePathname: string }) {
   if (items.length === 0) return null;
   return (
     <>
@@ -164,8 +161,9 @@ function NavGroup({ title, items, collapsed }: { title: string; items: readonly 
       <nav className="nav-group" aria-label={title} data-collapsed={collapsed ? "true" : "false"}>
         {items.map((item) => {
           const Icon = item.icon;
+          const active = navItemActive(item.to, activePathname);
           return (
-            <Link key={item.to} to={item.to} className="nav-item" title={collapsed ? item.label : undefined} activeProps={{ className: "nav-item active" }}>
+            <Link key={item.to} to={item.to} className={`nav-item${active ? " active" : ""}`} title={collapsed ? item.label : undefined}>
               <Icon />
               <span>{item.label}</span>
             </Link>
@@ -180,12 +178,19 @@ function visibleNavItems(items: readonly NavItem[], isAdmin: boolean) {
   return items.filter((item) => canAccessPath(item.to, isAdmin));
 }
 
-function titleForPath(pathname: string) {
+function navItemActive(path: NavPath, pathname: string) {
+  if (path === "/") return pathname === "/";
+  if (path === "/logs" && pathname.startsWith("/sessions/")) return true;
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
+
+function titleForPath(pathname: string, search: { view?: unknown }) {
+  if (pathname === "/logs") return ["Logs", search.view === "requests" ? "Request stream" : "Agent session replay"] as const;
   const direct = titles[pathname];
   if (direct) return direct;
   if (pathname.startsWith("/logs/")) return ["Logs", "Prompt detail"] as const;
   if (pathname.startsWith("/prompts/")) return ["Prompts", "Prompt detail"] as const;
-  if (pathname.startsWith("/sessions/")) return ["Sessions", "Session replay"] as const;
+  if (pathname.startsWith("/sessions/")) return ["Logs", "Session replay"] as const;
   if (pathname.startsWith("/routing/")) return ["Routing", "Config detail"] as const;
   return ["Proxy", "LLM cost console"] as const;
 }

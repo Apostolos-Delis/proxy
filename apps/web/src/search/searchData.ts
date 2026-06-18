@@ -37,7 +37,6 @@ export type PalettePagePath =
   | "/cost"
   | "/caching"
   | "/logs"
-  | "/sessions"
   | "/prompts"
   | "/routing"
   | "/api-keys"
@@ -91,8 +90,7 @@ export const palettePages: PalettePage[] = [
   { path: "/usage", title: "Usage", subtitle: "Token metering & spend", keywords: ["tokens", "cost", "spend", "metering", "analytics"], icon: BarChart3 },
   { path: "/cost", title: "Cost", subtitle: "Spend, savings & attribution", keywords: ["spend", "savings", "attribution", "models"], icon: CircleDollarSign },
   { path: "/caching", title: "Caching", subtitle: "Prompt-cache performance", keywords: ["cache", "hit rate", "savings", "prefix", "ttl", "tokens"], icon: Layers },
-  { path: "/logs", title: "Logs", subtitle: "Request stream", keywords: ["requests", "traffic", "prompts", "stream"], icon: Logs },
-  { path: "/sessions", title: "Sessions", subtitle: "Agent session replay", keywords: ["replay", "conversations", "agents", "turns"], icon: MessagesSquare },
+  { path: "/logs", title: "Logs", subtitle: "Sessions & request stream", keywords: ["sessions", "replay", "conversations", "agents", "turns", "requests", "traffic", "prompts", "stream"], icon: Logs },
   { path: "/prompts", title: "Prompts", subtitle: "Captured prompt artifacts", keywords: ["artifacts", "raw text", "capture"], icon: ScrollText },
   { path: "/routing", title: "Routing", subtitle: "Config versions", keywords: ["routes", "configs", "classifier", "models", "versions"], icon: GitBranch },
   { path: "/api-keys", title: "API keys", subtitle: "Manage secrets", keywords: ["secrets", "tokens", "credentials", "keys"], icon: KeyRound },
@@ -252,7 +250,7 @@ function withoutEmptyGroups(groups: PaletteGroup[]) {
 
 function recentAllowed(entry: RecentSearchEntry, isAdmin: boolean) {
   if (entry.kind !== "page") return isAdmin;
-  return canAccessPath(entry.id, isAdmin);
+  return palettePages.some((page) => page.path === entry.id) && canAccessPath(entry.id, isAdmin);
 }
 
 function isRecentEntry(value: unknown): value is RecentSearchEntry {
