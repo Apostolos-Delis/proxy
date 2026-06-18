@@ -287,7 +287,6 @@ Use the existing `api_keys` table as the V1 identity primitive:
 ```text
 api_keys.organization_id -> request organization
 api_keys.user_id         -> request user when present
-api_keys.scopes          -> allowed proxy/admin operations
 api_keys.last_used_at    -> updated on successful auth
 ```
 

@@ -160,7 +160,6 @@ export const ApiKey = builder.objectRef<ApiKeyModel>("ApiKey").implement({
     organizationId: t.exposeString("organizationId"),
     userId: t.exposeString("userId", { nullable: true }),
     name: t.exposeString("name"),
-    scopes: t.exposeStringList("scopes"),
     routingConfigId: t.exposeString("routingConfigId", { nullable: true }),
     routingConfig: t.field({
       type: ApiKeyRoutingConfigRef,

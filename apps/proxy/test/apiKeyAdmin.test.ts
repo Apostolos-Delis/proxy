@@ -14,7 +14,7 @@ import type { RoutingConfig } from "@prompt-proxy/schema";
 
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
-const apiKeyFields = "{ id name scopes userId routingConfigId routingConfig { id name status } createdAt expiresAt revokedAt lastUsedAt }";
+const apiKeyFields = "{ id name userId routingConfigId routingConfig { id name status } createdAt expiresAt revokedAt lastUsedAt }";
 
 describe("API key admin APIs", () => {
   let activeFixture: PromptTestFixture | undefined;
@@ -31,8 +31,7 @@ describe("API key admin APIs", () => {
       organizationId: "org_api_key_admin_list",
       workspaceId: defaultWorkspaceId("org_api_key_admin_list"),
       keyHash: hashApiKey("unassigned-token"),
-      name: "Unassigned key",
-      scopes: ["proxy"]
+      name: "Unassigned key"
     });
 
     const listResult = await adminGql(
@@ -86,8 +85,7 @@ describe("API key admin APIs", () => {
       organizationId: "org_api_key_admin_assign",
       workspaceId: defaultWorkspaceId("org_api_key_admin_assign"),
       keyHash: hashApiKey("assignment-token"),
-      name: "Assignable key",
-      scopes: ["proxy"]
+      name: "Assignable key"
     });
     const targetConfig = await createRoutingConfig(fixture, "org_api_key_admin_assign", "Assigned config");
 
@@ -165,7 +163,6 @@ describe("API key admin APIs", () => {
 
     const response = await postApiKey(fixture, {
       name: "Proxy key",
-      scopes: ["proxy"],
       routingConfigId: targetConfig.id
     });
     const created = response.data?.createApiKey;
@@ -185,14 +182,12 @@ describe("API key admin APIs", () => {
     expect(created.apiKey).toEqual(expect.objectContaining({
       name: "Proxy key",
       userId: "local-user",
-      scopes: ["proxy"],
       routingConfigId: targetConfig.id,
       revokedAt: null
     }));
     expect(identity).toEqual(expect.objectContaining({
       apiKeyId: created.apiKey.id,
       organizationId: "org_api_key_admin_create",
-      scopes: ["proxy"],
       routingConfigId: targetConfig.id
     }));
     expect(JSON.stringify(list)).not.toContain(created.secret);
@@ -207,7 +202,6 @@ describe("API key admin APIs", () => {
           apiKeyId: created.apiKey.id,
           name: "Proxy key",
           userId: "local-user",
-          scopes: ["proxy"],
           routingConfigId: targetConfig.id,
           routingConfigVersionId: expect.any(String),
           routingConfigHash: expect.stringMatching(/^[a-f0-9]{64}$/)
@@ -228,7 +222,6 @@ describe("API key admin APIs", () => {
     });
 
     const missingName = await postApiKey(fixture, { name: "" });
-    const unknownScope = await postApiKey(fixture, { name: "Bad scope key", scopes: ["root"] });
     const archivedConfig = await postApiKey(fixture, {
       name: "Archived target key",
       routingConfigId: "org_api_key_admin_create_invalid:routing-config:archived"
@@ -240,8 +233,6 @@ describe("API key admin APIs", () => {
 
     expect(missingName.errors?.[0]?.message).toBe("invalid_api_key_request");
     expect(missingName.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
-    expect(unknownScope.errors?.[0]?.message).toBe("invalid_api_key_request");
-    expect(unknownScope.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
     expect(archivedConfig.errors?.[0]?.message).toBe("routing_config_archived");
     expect(archivedConfig.errors?.[0]?.extensions?.code).toBe("CONFLICT");
     expect(keyRows.map((row) => row.id)).toEqual(["org_api_key_admin_create_invalid:api-key:default"]);
@@ -334,8 +325,7 @@ describe("API key admin APIs", () => {
       organizationId: "org_api_key_admin_other",
       workspaceId: defaultWorkspaceId("org_api_key_admin_other"),
       keyHash: hashApiKey("other-org-token"),
-      name: "Other org key",
-      scopes: ["proxy"]
+      name: "Other org key"
     });
 
     const archived = await assignRoutingConfig(
@@ -430,7 +420,7 @@ describe("API key admin APIs", () => {
       fixture.adminHeaders,
       `mutation CreateKey($input: CreateApiKeyInput!) {
         createApiKey(input: $input) {
-          apiKey { id name userId scopes routingConfigId revokedAt }
+          apiKey { id name userId routingConfigId revokedAt }
           secret
         }
       }`,

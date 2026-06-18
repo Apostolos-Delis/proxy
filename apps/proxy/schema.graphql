@@ -22,7 +22,6 @@ type ApiKey {
   revokedAt: String
   routingConfig: ApiKeyRoutingConfigRef
   routingConfigId: String
-  scopes: [String!]!
   userId: String
 }
 
@@ -132,7 +131,6 @@ type CostTotals {
 input CreateApiKeyInput {
   name: String!
   routingConfigId: ID
-  scopes: [String!]
 }
 
 type CreateApiKeyResult {

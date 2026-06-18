@@ -112,7 +112,7 @@ export function KeysPage() {
           revokeErrorMessage: revokeMutation.error?.message,
           onRevoke: (apiKeyId) => revokeMutation.mutate(apiKeyId)
         })}
-        search={{ placeholder: "Search keys, scopes, owners...", getValue: (apiKey) => [...apiKeySearchValue(apiKey), ownerLabel(users, apiKey.userId)] }}
+        search={{ placeholder: "Search keys, owners, routing...", getValue: (apiKey) => [...apiKeySearchValue(apiKey), ownerLabel(users, apiKey.userId)] }}
         filters={apiKeyFilters(keys)}
         advancedFields={apiKeyAdvancedFields(users)}
         emptyLabel="No API keys found."
@@ -127,8 +127,7 @@ function apiKeyAdvancedFields(users: UserDirectory): ConsoleTableAdvancedField<A
     { id: "keyId", label: "Key ID", getValue: (apiKey) => apiKey.id },
     { id: "status", label: "Status", getValue: apiKeyStatus },
     { id: "routingConfig", label: "Routing", getValue: routingConfigLabel },
-    { id: "owner", label: "Owner", getValue: (apiKey) => ownerLabel(users, apiKey.userId) },
-    { id: "scopes", label: "Scopes", getValue: (apiKey) => apiKey.scopes }
+    { id: "owner", label: "Owner", getValue: (apiKey) => ownerLabel(users, apiKey.userId) }
   ];
 }
 

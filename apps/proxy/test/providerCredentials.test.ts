@@ -1608,8 +1608,7 @@ describe("subscription oauth credentials", () => {
       workspaceId: defaultWorkspaceId(organizationId),
       userId,
       keyHash: `hash-${apiKeyId}`,
-      name: apiKeyId,
-      scopes: ["proxy"]
+      name: apiKeyId
     });
   }
 });

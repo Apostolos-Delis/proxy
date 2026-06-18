@@ -376,7 +376,6 @@ API keys page should show:
 
 - key name
 - owner
-- scopes
 - status
 - last used
 - assigned routing config

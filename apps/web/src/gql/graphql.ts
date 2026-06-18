@@ -20,7 +20,6 @@ export type CostBaselineSettingsInput = {
 export type CreateApiKeyInput = {
   name: string;
   routingConfigId?: string | number | null | undefined;
-  scopes?: Array<string> | null | undefined;
 };
 
 export type CreateInvitationInput = {
@@ -402,7 +401,7 @@ export type RoutingConfigDetailViewQuery = { routingConfig: { config: { id: stri
 export type RoutingApiKeysQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type RoutingApiKeysQuery = { apiKeys: Array<{ id: string, name: string, userId: string | null, scopes: Array<string>, routingConfigId: string | null, createdAt: string, expiresAt: string | null, revokedAt: string | null, lastUsedAt: string | null, routingConfig: { id: string, name: string | null, status: string | null } | null, providerCredentials: Array<{ provider: string, providerAccountId: string, name: string | null, status: string | null }> }> };
+export type RoutingApiKeysQuery = { apiKeys: Array<{ id: string, name: string, userId: string | null, routingConfigId: string | null, createdAt: string, expiresAt: string | null, revokedAt: string | null, lastUsedAt: string | null, routingConfig: { id: string, name: string | null, status: string | null } | null, providerCredentials: Array<{ provider: string, providerAccountId: string, name: string | null, status: string | null }> }> };
 
 export type RoutingModelCatalogQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -1515,7 +1514,6 @@ export const RoutingApiKeysDocument = new TypedDocumentString(`
     id
     name
     userId
-    scopes
     routingConfigId
     createdAt
     expiresAt

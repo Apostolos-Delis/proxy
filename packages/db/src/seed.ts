@@ -373,8 +373,7 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
       userId: options.userId,
       keyHash: proxyTokenHash,
       name: "Default local API key",
-      routingConfigId,
-      scopes: ["proxy", "admin"]
+      routingConfigId
     })
     .onConflictDoUpdate({
       target: apiKeys.id,
@@ -382,8 +381,7 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
         userId: options.userId,
         keyHash: proxyTokenHash,
         name: "Default local API key",
-        routingConfigId,
-        scopes: ["proxy", "admin"]
+        routingConfigId
       }
     });
 

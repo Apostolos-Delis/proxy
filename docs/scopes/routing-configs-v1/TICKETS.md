@@ -144,7 +144,7 @@ Goal: Let authenticated requests carry the API key's routing config binding.
 Scope:
 
 - Extend API key lookup to include `routing_config_id`.
-- Ensure identity DTOs carry organization, user, scopes, API key id, and routing config id.
+- Ensure identity DTOs carry organization, user, API key id, and routing config id.
 - Keep raw API keys hashed only.
 - Update last-used behavior without adding extra queries where possible.
 

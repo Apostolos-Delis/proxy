@@ -15,7 +15,6 @@ export type CreateKeyDraft = {
   stepId: CreateKeyStepId;
   name: string;
   harnesses: HarnessSetupSelection;
-  scopes: string[];
   routingConfigId: string | null;
   linkProviderKeys: boolean;
   providerBindings: Record<ProviderName, string | null>;
@@ -34,7 +33,6 @@ export function initialDraft(): CreateKeyDraft {
     stepId: "configure",
     name: "",
     harnesses: [...defaultHarnessSetupSelection],
-    scopes: ["proxy"],
     routingConfigId: null,
     linkProviderKeys: false,
     providerBindings: emptyProviderBindings()
@@ -75,7 +73,6 @@ export function stepBlockerMessage(draft: CreateKeyDraft): string | null {
   if (draft.stepId !== "configure") return null;
   if (!draft.name.trim()) return "Enter a key name.";
   if (draft.harnesses.length === 0) return "Pick at least one harness.";
-  if (draft.scopes.length === 0) return "Pick at least one scope.";
   return null;
 }
 

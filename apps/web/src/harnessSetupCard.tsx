@@ -32,7 +32,7 @@ export function HarnessSetupGuide({ secret, harnesses, showKeyContextSteps = tru
       <ol className="setup-steps">
         {showKeyContextSteps ? (
           <li>
-            Create an API key with the <span className="code-pill">proxy</span> scope.
+            Create an API key.
             {secret ? null : <span className="faint"> Then replace {keyPlaceholder} below with the key secret.</span>}
           </li>
         ) : null}

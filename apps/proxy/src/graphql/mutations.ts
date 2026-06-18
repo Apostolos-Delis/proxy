@@ -30,7 +30,6 @@ const CreateRoutingConfigInput = builder.inputType("CreateRoutingConfigInput", {
 const CreateApiKeyInput = builder.inputType("CreateApiKeyInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
-    scopes: t.stringList(),
     routingConfigId: t.id()
   })
 });
@@ -542,7 +541,6 @@ builder.mutationFields((t) => ({
           actorUserId: identity.userId,
           body: {
             name: args.input.name,
-            scopes: args.input.scopes ?? undefined,
             routingConfigId: args.input.routingConfigId ? String(args.input.routingConfigId) : null
           }
         });

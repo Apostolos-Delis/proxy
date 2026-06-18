@@ -8,7 +8,6 @@ function apiKey(overrides: Partial<ApiKeySummary> = {}): ApiKeySummary {
     id: "key_1",
     name: "Test key",
     userId: null,
-    scopes: ["proxy"],
     routingConfigId: null,
     routingConfig: null,
     providerCredentials: [],

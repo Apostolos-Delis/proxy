@@ -116,7 +116,6 @@ export function CreateApiKeyPage() {
     createMutation.mutate({
       create: {
         name: draft.name.trim(),
-        scopes: draft.scopes,
         routingConfigId: draft.routingConfigId
       },
       harnesses: draft.harnesses,

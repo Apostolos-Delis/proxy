@@ -560,8 +560,7 @@ async function assignRouteConfig(
     workspaceId: defaultWorkspaceId(organizationId),
     keyHash: hashApiKey(input.secret),
     name: "Translated route key",
-    routingConfigId: configId,
-    scopes: ["proxy"]
+    routingConfigId: configId
   });
 }
 
