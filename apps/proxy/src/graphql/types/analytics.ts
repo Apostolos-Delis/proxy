@@ -8,7 +8,7 @@ import type {
   IdleGapBucketModel,
   IdleGapReportModel,
   LatencySummaryModel,
-  OverviewDashboardModel,
+  OverviewDashboardShape,
   RouteOutputGroupRowModel,
   RouteOutputReportModel,
   RouteOutputRowModel,
@@ -106,7 +106,7 @@ export const UsageReport = builder.objectRef<UsageReportModel>("UsageReport").im
   })
 });
 
-export const OverviewDashboard = builder.objectRef<OverviewDashboardModel>("OverviewDashboard").implement({
+export const OverviewDashboard = builder.objectRef<OverviewDashboardShape>("OverviewDashboard").implement({
   fields: (t) => ({
     overview: t.expose("overview", { type: Overview }),
     requests: t.expose("requests", { type: [RequestSummary] }),

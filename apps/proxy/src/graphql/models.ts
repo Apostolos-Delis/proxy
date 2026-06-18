@@ -46,6 +46,11 @@ export type RequestSummaryShape = Omit<Partial<RequestSummaryModel>, "terminalSt
     terminalStatus: string;
   };
 
+export type OverviewDashboardShape = Omit<OverviewDashboardModel, "requests" | "modelUsage"> & {
+  requests: RequestSummaryShape[];
+  modelUsage: UsageReportModel;
+};
+
 export type RequestDetailShape = {
   request: RequestSummaryShape | null;
   events: ProxyEventShape[];
