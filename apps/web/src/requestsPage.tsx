@@ -14,7 +14,7 @@ import { promptDetailQueryOptions } from "./promptDetailPage";
 import { RoutingConfigMicro } from "./routingSnapshot";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { usageRangeOptions, usageRangeQuery, type UsageRangeKey } from "./usageAnalytics";
-import { PageState, PageTitle, Segmented, StatusBadge, UserCell } from "./ui";
+import { PageState, Segmented, StatusBadge, UserCell } from "./ui";
 
 const RequestsPageDocument = graphql(`
   query RequestsPage($start: String, $end: String, $limit: Int) {
@@ -113,11 +113,6 @@ export function RequestsPage() {
   const rows = promptRows(queryData?.prompts.data ?? [], queryData?.requests ?? [], queryData?.users ?? []);
   return (
     <div className="page page-enter">
-      <PageTitle
-        title="Request logs"
-        subtitle={range === LOGS_RANGE_ALL ? "Recent prompts and requests across all time." : `Prompts and requests from the ${rangeLabel(range)}.`}
-        actions={<LogsRangeControl range={range} />}
-      />
       <ConsoleTable
         className="logs-table-card"
         urlState
@@ -128,9 +123,12 @@ export function RequestsPage() {
         advancedFields={requestAdvancedFields}
         emptyLabel="No requests match these filters."
         actions={({ visibleData }) => (
-          <button className="btn" type="button" onClick={() => downloadJson("proxy-request-logs.json", visibleData)}>
-            <Download />Export
-          </button>
+          <>
+            <LogsRangeControl range={range} />
+            <button className="btn" type="button" onClick={() => downloadJson("proxy-request-logs.json", visibleData)}>
+              <Download />Export
+            </button>
+          </>
         )}
       />
     </div>
@@ -148,10 +146,6 @@ function LogsRangeControl({ range }: { range: LogsRange }) {
       }
     />
   );
-}
-
-function rangeLabel(range: UsageRangeKey) {
-  return `last ${usageRangeOptions.find((option) => option.value === range)?.label ?? range}`;
 }
 
 const requestColumns: ConsoleTableColumn<PromptLogRow>[] = [
