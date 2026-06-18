@@ -1417,6 +1417,7 @@ describe("subscription oauth credentials", () => {
     const providerCall = fixture.anthropic.records.find((record) => record.path === "/messages/count_tokens");
     expect(providerCall?.headers.authorization).toBe(`Bearer ${OAUTH_TOKEN}`);
     expect(providerCall?.headers["x-api-key"]).toBeUndefined();
+    expect(providerCall?.headers["anthropic-beta"]).toBe("oauth-2025-04-20");
   });
 
   it("forwards OpenAI oauth credentials to the Codex backend with a ChatGPT account header", async () => {
