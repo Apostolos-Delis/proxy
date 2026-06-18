@@ -452,8 +452,7 @@ describe("postgres persistence", () => {
       organizationId: "org_api_key",
       workspaceId: defaultWorkspaceId("org_api_key"),
       keyHash: hashApiKey("secret-token"),
-      name: "Local Proxy Key",
-      scopes: ["proxy"]
+      name: "Local Proxy Key"
     });
 
     const identity = await fixture.persistence.apiKeys.resolve("secret-token", new Date("2026-06-08T00:00:00.000Z"));
@@ -464,7 +463,6 @@ describe("postgres persistence", () => {
       organizationId: "org_api_key",
       workspaceId: defaultWorkspaceId("org_api_key"),
       userId: undefined,
-      scopes: ["proxy"],
       routingConfigId: null
     });
     expect(rows[0]?.lastUsedAt?.toISOString()).toBe("2026-06-08T00:00:00.000Z");
@@ -498,8 +496,7 @@ describe("postgres persistence", () => {
       workspaceId: defaultWorkspaceId("org_assigned_api_key"),
       keyHash: hashApiKey("assigned-token"),
       name: "Assigned Proxy Key",
-      routingConfigId: "routing_config_assigned",
-      scopes: ["proxy"]
+      routingConfigId: "routing_config_assigned"
     });
 
     const identity = await fixture.persistence.apiKeys.resolve("assigned-token");
@@ -525,7 +522,6 @@ describe("postgres persistence", () => {
       apiKeyId: "org_seed_identity:api-key:default",
       organizationId: "org_seed_identity",
       userId: "seed_identity_user",
-      scopes: ["proxy", "admin"],
       routingConfigId: "org_seed_identity:routing-config:default"
     }));
   });

@@ -41,7 +41,7 @@ The repo already has most of the runtime routing foundation:
 ```text
 organization_members       org membership role and status
 invitations                invite carries initial role
-api_keys                   traffic identity, owner, scopes, routing config binding
+api_keys                   traffic identity, owner, routing config binding
 routing_configs            workspace-scoped routing config identity
 routing_config_versions    immutable routing config JSON snapshots
 workspaces                 default routing config per workspace

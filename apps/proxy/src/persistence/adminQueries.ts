@@ -846,7 +846,6 @@ export class AdminQueryService {
         organizationId: apiKeys.organizationId,
         userId: apiKeys.userId,
         name: apiKeys.name,
-        scopes: apiKeys.scopes,
         routingConfigId: apiKeys.routingConfigId,
         createdAt: apiKeys.createdAt,
         expiresAt: apiKeys.expiresAt,
@@ -1702,7 +1701,6 @@ type ApiKeySummaryRow = {
   organizationId: string;
   userId: string | null;
   name: string;
-  scopes: string[];
   routingConfigId: string | null;
   createdAt: Date;
   expiresAt: Date | null;
@@ -1830,7 +1828,6 @@ function apiKeySummary(row: ApiKeySummaryRow, providerBindings: ProviderBindingS
     organizationId: row.organizationId,
     userId: row.userId ?? null,
     name: row.name,
-    scopes: row.scopes,
     routingConfigId: row.routingConfigId ?? null,
     routingConfig: row.routingConfigId
       ? {

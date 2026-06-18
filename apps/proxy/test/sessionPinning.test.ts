@@ -627,8 +627,7 @@ async function assignRouteConfig(
     workspaceId: defaultWorkspaceId(organizationId),
     keyHash: hashApiKey(input.secret),
     name: "Session pin key",
-    routingConfigId: configId,
-    scopes: ["proxy"]
+    routingConfigId: configId
   });
 
   return { configId, versionId };

@@ -72,7 +72,6 @@ const RoutingApiKeysDocument = graphql(`
       id
       name
       userId
-      scopes
       routingConfigId
       createdAt
       expiresAt
@@ -265,7 +264,6 @@ export async function assignApiKeyRoutingConfig(apiKeyId: string, routingConfigI
 
 export type CreateApiKeyInput = {
   name: string;
-  scopes: string[];
   routingConfigId: string | null;
 };
 

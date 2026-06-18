@@ -235,7 +235,6 @@ export const apiKeys = pgTable(
     keyHash: text("key_hash").notNull(),
     name: text("name").notNull(),
     routingConfigId: text("routing_config_id"),
-    scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),

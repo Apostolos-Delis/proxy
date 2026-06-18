@@ -357,8 +357,7 @@ describe("cacheBusts admin query", () => {
       organizationId: "org_route_output",
       workspaceId: defaultWorkspaceId("org_route_output"),
       keyHash: hashApiKey("ro-secret"),
-      name: "Route output key",
-      scopes: ["proxy"]
+      name: "Route output key"
     });
     await fixture.db.insert(agentSessions).values([
       { id: "ro_session", organizationId: "org_route_output", workspaceId: defaultWorkspaceId("org_route_output"), userId: "user_ro", surface: "anthropic-messages", externalSessionId: "ro", startedAt: at, updatedAt: at }

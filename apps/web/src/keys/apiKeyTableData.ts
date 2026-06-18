@@ -1,5 +1,4 @@
 import type { ApiKeySummary } from "../routing/data";
-import { apiKeyScopeOptions } from "./scopeOptions";
 
 export function apiKeyStatus(apiKey: ApiKeySummary) {
   if (apiKey.revokedAt) return "revoked";
@@ -29,12 +28,6 @@ export function apiKeySearchValue(apiKey: ApiKeySummary) {
     apiKey.userId,
     apiKey.routingConfig?.name,
     apiKey.routingConfig?.status,
-    apiKey.scopes.join(" "),
     providerBindingValue(apiKey)
   ].filter((value): value is string => Boolean(value));
-}
-
-export function scopeTitle(scope: string) {
-  const description = apiKeyScopeOptions.find((option) => option.value === scope)?.description;
-  return description ? `${scope} — ${description}` : scope;
 }

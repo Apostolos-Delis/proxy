@@ -17,11 +17,8 @@ import {
   type RoutingConfigAssignmentTarget
 } from "./routingConfigAdmin.js";
 
-export const apiKeyScopeValues = ["proxy", "admin"] as const;
-
 const createApiKeyBodySchema = z.object({
   name: z.string().trim().min(1),
-  scopes: z.array(z.enum(apiKeyScopeValues)).min(1).optional(),
   routingConfigId: z.string().trim().min(1).nullable().optional()
 }).strict();
 
@@ -38,7 +35,6 @@ export class ApiKeyAdminService {
   }) {
     const body = createApiKeyBodySchema.safeParse(input.body);
     if (!body.success) throw validationError("invalid_api_key_request", body.error);
-    const scopes = [...new Set(body.data.scopes ?? ["proxy"])];
     const routingConfigId = body.data.routingConfigId ?? null;
     const secret = `pp_${randomBytes(24).toString("hex")}`;
     const apiKeyId = createId("api_key");
@@ -67,7 +63,6 @@ export class ApiKeyAdminService {
         keyHash: hashApiKey(secret),
         name: body.data.name,
         routingConfigId,
-        scopes,
         createdAt: now
       });
       await appendAdminAuditEvent(tx, {
@@ -83,7 +78,6 @@ export class ApiKeyAdminService {
           apiKeyId,
           name: body.data.name,
           userId: input.actorUserId,
-          scopes,
           routingConfigId,
           routingConfigVersionId: targetConfig?.activeVersionId ?? null,
           routingConfigHash: targetConfig?.activeVersionHash ?? null

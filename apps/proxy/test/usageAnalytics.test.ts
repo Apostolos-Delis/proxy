@@ -213,16 +213,14 @@ describe("usage analytics admin APIs", () => {
         organizationId: "org_usage_keys",
         workspaceId: defaultWorkspaceId("org_usage_keys"),
         keyHash: hashApiKey("alpha-secret"),
-        name: "Alpha key",
-        scopes: ["proxy"]
+        name: "Alpha key"
       },
       {
         id: "key_beta",
         organizationId: "org_usage_keys",
         workspaceId: defaultWorkspaceId("org_usage_keys"),
         keyHash: hashApiKey("beta-secret"),
-        name: "Beta key",
-        scopes: ["proxy"]
+        name: "Beta key"
       }
     ]);
     await fixture.db.insert(agentSessions).values([
@@ -314,8 +312,7 @@ describe("usage analytics admin APIs", () => {
       organizationId: "org_usage_key_capture",
       workspaceId: defaultWorkspaceId("org_usage_key_capture"),
       keyHash: hashApiKey("capture-secret"),
-      name: "Capture key",
-      scopes: ["proxy"]
+      name: "Capture key"
     });
 
     const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {

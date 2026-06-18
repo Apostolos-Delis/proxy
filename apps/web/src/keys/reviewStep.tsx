@@ -38,12 +38,6 @@ export function ReviewStep({ draft, configs, defaultConfig, providerAccounts }: 
           <dd>{draft.name.trim()}</dd>
         </div>
         <div>
-          <dt>Scopes</dt>
-          <dd className="cell-tags">
-            {draft.scopes.map((scope) => <span key={scope} className="code-pill">{scope}</span>)}
-          </dd>
-        </div>
-        <div>
           <dt>Harness setup</dt>
           <dd>{harnessSetupLabel(draft.harnesses)}</dd>
         </div>

@@ -21,7 +21,6 @@ export type ResolvedApiKeyIdentity = {
   organizationId: string;
   workspaceId: string;
   userId?: string;
-  scopes: string[];
   routingConfigId: string | null;
 };
 
@@ -49,7 +48,6 @@ export class ApiKeyIdentityStore {
       organizationId: row.organizationId,
       workspaceId: row.workspaceId,
       userId: row.userId ?? undefined,
-      scopes: row.scopes,
       routingConfigId: row.routingConfigId ?? null
     };
   }

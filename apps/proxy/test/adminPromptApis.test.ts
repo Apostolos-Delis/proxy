@@ -64,7 +64,6 @@ const apiKeysQuery = `query {
     organizationId
     userId
     name
-    scopes
     routingConfigId
     routingConfig { id name status }
   }
@@ -337,8 +336,7 @@ describe("admin prompt APIs", () => {
       workspaceId: defaultWorkspaceId("org_api_key_identity"),
       userId: "api_owner",
       keyHash: hashApiKey("owned-proxy-token"),
-      name: "Owned Proxy Token",
-      scopes: ["proxy"]
+      name: "Owned Proxy Token"
     });
 
     const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
@@ -463,7 +461,6 @@ describe("admin prompt APIs", () => {
         organizationId: "org_admin_api_keys",
         userId: "local-user",
         name: "Default local API key",
-        scopes: ["proxy", "admin"],
         routingConfigId: "org_admin_api_keys:routing-config:default",
         routingConfig: expect.objectContaining({
           id: "org_admin_api_keys:routing-config:default",
@@ -483,8 +480,7 @@ describe("admin prompt APIs", () => {
       organizationId: "org_unassigned_admin_api_keys",
       workspaceId: defaultWorkspaceId("org_unassigned_admin_api_keys"),
       keyHash: hashApiKey("unassigned-token"),
-      name: "Unassigned key",
-      scopes: ["proxy"]
+      name: "Unassigned key"
     });
 
     const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, apiKeysQuery);

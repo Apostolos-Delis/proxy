@@ -1115,8 +1115,7 @@ async function assignClassifierConfig(
     workspaceId: defaultWorkspaceId(organizationId),
     keyHash: hashApiKey(input.secret),
     name: "Assigned classifier key",
-    routingConfigId: configId,
-    scopes: ["proxy"]
+    routingConfigId: configId
   });
 
   return {
@@ -1172,8 +1171,7 @@ async function assignRouteConfig(
     workspaceId: defaultWorkspaceId(organizationId),
     keyHash: hashApiKey(input.secret),
     name: "Assigned route key",
-    routingConfigId: configId,
-    scopes: ["proxy"]
+    routingConfigId: configId
   });
 
   return {

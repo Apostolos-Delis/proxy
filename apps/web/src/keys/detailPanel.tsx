@@ -11,7 +11,7 @@ import {
 } from "../keyTraffic";
 import type { ApiKeySummary } from "../routing/data";
 import { StatusBadge } from "../ui";
-import { apiKeyStatus, scopeTitle } from "./apiKeyTableData";
+import { apiKeyStatus } from "./apiKeyTableData";
 
 export function ApiKeyDetailPanel({ apiKey, onClose }: {
   apiKey: ApiKeySummary;
@@ -27,9 +27,6 @@ export function ApiKeyDetailPanel({ apiKey, onClose }: {
       title={apiKey.name}
       subtitle={(
         <span className="row gap-8">
-          {apiKey.scopes.map((scope) => (
-            <span key={scope} className="code-pill" title={scopeTitle(scope)}>{scope}</span>
-          ))}
           <StatusBadge status={apiKeyStatus(apiKey)} />
         </span>
       )}

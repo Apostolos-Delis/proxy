@@ -9,7 +9,7 @@ import type { ConsoleTableColumn } from "../table";
 import { AnchoredPopover } from "../table/PopoverShell";
 import { StatusBadge } from "../ui";
 import { OwnerCell, ownerLabel, type UserDirectory } from "../userDirectory";
-import { apiKeyStatus, providerBindingValue, routingConfigLabel, scopeTitle } from "./apiKeyTableData";
+import { apiKeyStatus, providerBindingValue, routingConfigLabel } from "./apiKeyTableData";
 
 export type ApiKeyColumnConfig = {
   configs: RoutingConfigSummary[];
@@ -68,7 +68,6 @@ export function apiKeyColumns({
       )
     ) },
     { id: "providerKey", header: "Provider key", size: 220, enableSorting: false, accessorFn: providerBindingValue, cell: ({ row }) => <ApiKeyProviderBinding apiKey={row.original} providerAccounts={providerAccounts} /> },
-    { id: "scopes", header: "Scopes", size: 215, accessorFn: (apiKey) => apiKey.scopes.join(" "), cell: ({ row }) => <ScopesCell scopes={row.original.scopes} /> },
     { id: "created", header: "Created", size: 105, accessorFn: (apiKey) => apiKey.createdAt, cell: ({ row }) => (
       <span className="nowrap" title={formatDateTime(row.original.createdAt)}>{formatDate(row.original.createdAt)}</span>
     ) },
@@ -86,18 +85,6 @@ export function apiKeyColumns({
       />
     ) }
   ];
-}
-
-const visibleScopeCount = 2;
-
-function ScopesCell({ scopes }: { scopes: string[] }) {
-  const hiddenCount = scopes.length - visibleScopeCount;
-  return (
-    <div className="cell-tags scope-tags" title={scopes.map(scopeTitle).join("\n")}>
-      {scopes.slice(0, visibleScopeCount).map((scope) => <span key={scope} className="code-pill">{scope}</span>)}
-      {hiddenCount > 0 ? <span className="code-pill scope-more">+{hiddenCount}</span> : null}
-    </div>
-  );
 }
 
 function RevokeKeyAction({ apiKey, pending, error, onRevoke }: {
