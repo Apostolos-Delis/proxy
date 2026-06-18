@@ -1,4 +1,5 @@
-import { Check, ClipboardCheck, KeySquare, Terminal } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ClipboardCheck, KeySquare, Terminal } from "lucide-react";
+import { useState } from "react";
 
 import { WizardStepHead } from "../keys/stepHead";
 import { MenuSelect } from "../table/MenuSelect";
@@ -18,8 +19,10 @@ import {
   sourceLabelForDraft,
   stepRailState,
   withCredentialMode,
+  withCredentialSource,
   type CreateProviderCredentialDraft,
   type CreateProviderCredentialMode,
+  type CreateProviderCredentialSource,
   type CreateProviderCredentialStepId
 } from "./createCredentialWizard";
 
@@ -113,21 +116,42 @@ export function CredentialDetailsStep({ draft, providerOptions, oauth, onChange 
   const browserOAuth = draft.source === "claude_oauth" || draft.source === "openai_oauth";
   const managedSubscription = fixedProvider && (draft.source === "local_auth" || browserOAuth);
   const showBaseUrl = !browserOAuth;
-  let stepSub = "Paste the provider secret here; it is encrypted at rest and never shown again.";
-  if (managedSubscription) stepSub = "Import provider auth already minted on the proxy host.";
-  if (draft.source === "claude_oauth") stepSub = "Sign into Claude and let Prompt Proxy save the Claude Code credential.";
-  if (draft.source === "openai_oauth") stepSub = "Sign into OpenAI and let Prompt Proxy save the Codex credential.";
+  const [advancedOpen, setAdvancedOpen] = useState(fixedProvider && !browserOAuth);
+  const head = detailsHeadCopy(draft, browserOAuth);
+  const toggleAdvanced = () => {
+    const oauthSource = subscriptionOAuthSource(draft.mode);
+    if (advancedOpen && !browserOAuth && oauthSource) {
+      onChange(withCredentialSource(draft, oauthSource));
+    }
+    setAdvancedOpen((open) => !open);
+  };
   return (
     <GlassCard>
       <WizardStepHead
         icon={<Terminal />}
-        title="Credential details"
-        sub={stepSub}
+        title={head.title}
+        sub={head.sub}
       />
       <div className="wizard-step-body">
-        {fixedProvider ? <CredentialSourceSelector draft={draft} disabled={oauth?.locked ?? false} onChange={onChange} /> : null}
-        {draft.mode === "claude_subscription" ? <ClaudeSetupGuide source={draft.source} /> : null}
-        {draft.mode === "codex_subscription" ? <CodexSetupGuide source={draft.source} /> : null}
+        {fixedProvider ? (
+          <div className="credential-advanced">
+            <button
+              type="button"
+              className="credential-advanced-toggle"
+              aria-expanded={advancedOpen}
+              disabled={oauth?.locked ?? false}
+              onClick={toggleAdvanced}
+            >
+              {advancedOpen ? <ChevronDown /> : <ChevronRight />}
+              <span>Other ways to connect</span>
+            </button>
+            {advancedOpen ? (
+              <CredentialSourceSelector draft={draft} disabled={oauth?.locked ?? false} onChange={onChange} />
+            ) : null}
+          </div>
+        ) : null}
+        {fixedProvider && !browserOAuth && draft.mode === "claude_subscription" ? <ClaudeSetupGuide source={draft.source} /> : null}
+        {fixedProvider && !browserOAuth && draft.mode === "codex_subscription" ? <CodexSetupGuide source={draft.source} /> : null}
         <div className="routing-create-grid key-create-grid">
           {fixedProvider ? <FixedProviderField provider={draft.provider} /> : (
             <div className="routing-create-field">
@@ -206,6 +230,35 @@ export function CredentialDetailsStep({ draft, providerOptions, oauth, onChange 
       </div>
     </GlassCard>
   );
+}
+
+function subscriptionOAuthSource(mode: CreateProviderCredentialMode): CreateProviderCredentialSource | null {
+  if (mode === "claude_subscription") return "claude_oauth";
+  if (mode === "codex_subscription") return "openai_oauth";
+  return null;
+}
+
+function detailsHeadCopy(draft: CreateProviderCredentialDraft, browserOAuth: boolean) {
+  if (draft.mode === "claude_subscription") {
+    return {
+      title: "Sign in with Claude",
+      sub: browserOAuth
+        ? "Sign into Claude in your browser. Prompt Proxy saves the credential, then you bind it to an API key."
+        : "Connect your Claude subscription so Prompt Proxy can use it for Claude Code traffic."
+    };
+  }
+  if (draft.mode === "codex_subscription") {
+    return {
+      title: "Sign in with OpenAI",
+      sub: browserOAuth
+        ? "Authorize Codex access with OpenAI. Prompt Proxy saves the credential, then you bind it to an API key."
+        : "Connect your ChatGPT (Codex) subscription so Prompt Proxy can use it for Codex traffic."
+    };
+  }
+  return {
+    title: "Credential details",
+    sub: "Paste the provider secret here; it is encrypted at rest and never shown again."
+  };
 }
 
 function chatgptAccountReviewValue(draft: CreateProviderCredentialDraft) {
