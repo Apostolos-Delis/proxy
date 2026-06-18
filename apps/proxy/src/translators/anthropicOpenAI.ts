@@ -54,6 +54,7 @@ const anthropicMessagesFieldsUnsupportedByOpenAI = [
   "cache_control",
   "container",
   "context_management",
+  "diagnostics",
   "metadata",
   "mcp_servers",
   "output_config",

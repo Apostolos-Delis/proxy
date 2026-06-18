@@ -220,6 +220,7 @@ describe("translated OpenAI routing runtime", () => {
         model: "claude-router-hard",
         system: "Use tools carefully.",
         metadata: { user_id: "user_abc_account_def_session_12345678-abcd-1234-abcd-123456789abc" },
+        diagnostics: { enabled: true },
         messages: [{ role: "user", content: [{ type: "text", text: "list files" }] }],
         tools: [{ name: "shell", input_schema: { type: "object" } }],
         output_config: { effort: "low" },
@@ -251,6 +252,7 @@ describe("translated OpenAI routing runtime", () => {
     expect(providerCall?.body.max_output_tokens).toBeUndefined();
     expect(providerCall?.body.output_config).toBeUndefined();
     expect(providerCall?.body.context_management).toBeUndefined();
+    expect(providerCall?.body.diagnostics).toBeUndefined();
     expect(providerCall?.body.stream_options).toEqual({ include_usage: true });
     expect(providerCall?.body.metadata).toBeUndefined();
     expect(decision?.guardrailActions).toContain("translated_request:anthropic-messages_to_openai-chat");
@@ -286,6 +288,7 @@ describe("translated OpenAI routing runtime", () => {
         model: "claude-router-hard",
         system: "Use tools carefully.",
         metadata: { user_id: "user_abc_account_def_session_12345678-abcd-1234-abcd-123456789abc" },
+        diagnostics: { enabled: true },
         messages: [{ role: "user", content: [{ type: "text", text: "list files" }] }],
         tools: [{ name: "shell", input_schema: { type: "object" } }],
         output_config: { effort: "low" },
@@ -318,6 +321,7 @@ describe("translated OpenAI routing runtime", () => {
     expect(providerCall?.body.store).toBe(false);
     expect(providerCall?.body.output_config).toBeUndefined();
     expect(providerCall?.body.context_management).toBeUndefined();
+    expect(providerCall?.body.diagnostics).toBeUndefined();
     expect(providerCall?.body.metadata).toBeUndefined();
     expect(decision?.guardrailActions).toContain("translated_request:anthropic-messages_to_openai-responses");
   });
