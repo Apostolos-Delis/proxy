@@ -18,6 +18,26 @@ function openAIChatDecision(model = "gpt-5.5", settings: Record<string, unknown>
   };
 }
 
+function anthropicDecision(
+  surface: "anthropic-messages" | "openai-responses" = "anthropic-messages",
+  model = "claude-sonnet-4-5",
+  settings: Record<string, unknown> = {}
+) {
+  return {
+    outcome: "route" as const,
+    finalRoute: "fast" as const,
+    selectedModel: model,
+    surface,
+    provider: "anthropic" as const,
+    providerSettings: {
+      providerId: "anthropic" as const,
+      model,
+      dialect: "anthropic-messages" as const,
+      ...settings
+    }
+  };
+}
+
 describe("openai-chat rewrite", () => {
   it("injects include_usage for streaming chat requests when absent", () => {
     const body = {
@@ -99,5 +119,65 @@ describe("openai-chat rewrite", () => {
 
     expect(result.reasoning_effort).toBe("xhigh");
     expect(result.max_completion_tokens).toBe(1234);
+  });
+});
+
+describe("anthropic-messages rewrite", () => {
+  it("fills required max tokens when translating Responses without an output limit", () => {
+    const body = {
+      model: "router-fast",
+      input: "hi"
+    };
+
+    const result = rewriteSurfaceRequest(body, anthropicDecision("openai-responses")) as any;
+
+    expect(result.messages).toEqual([{ role: "user", content: [{ type: "text", text: "hi" }] }]);
+    expect(result.max_tokens).toBe(4096);
+  });
+
+  it("removes clear-thinking context management when thinking is not forwarded", () => {
+    const body = {
+      model: "claude-router-fast",
+      messages: [{ role: "user", content: "hi" }],
+      thinking: { type: "adaptive" },
+      context_management: {
+        edits: [
+          { type: "clear_thinking_20251015", keep: "all" },
+          { type: "clear_tool_uses_20250919" }
+        ]
+      },
+      max_tokens: 16
+    };
+
+    const result = rewriteSurfaceRequest(body, anthropicDecision("anthropic-messages", "claude-sonnet-4-5")) as any;
+
+    expect(result.thinking).toBeUndefined();
+    expect(result.context_management).toEqual({
+      edits: [{ type: "clear_tool_uses_20250919" }]
+    });
+    expect(result.max_tokens).toBe(16);
+  });
+
+  it("keeps clear-thinking context management when adaptive thinking is forwarded", () => {
+    const body = {
+      model: "claude-router-hard",
+      messages: [{ role: "user", content: "hi" }],
+      context_management: {
+        edits: [{ type: "clear_thinking_20251015", keep: "all" }]
+      },
+      max_tokens: 16
+    };
+
+    const result = rewriteSurfaceRequest(
+      body,
+      anthropicDecision("anthropic-messages", "claude-sonnet-4-6", {
+        thinking: { type: "adaptive", display: "omitted" }
+      })
+    ) as any;
+
+    expect(result.thinking).toEqual({ type: "adaptive", display: "omitted" });
+    expect(result.context_management).toEqual({
+      edits: [{ type: "clear_thinking_20251015", keep: "all" }]
+    });
   });
 });

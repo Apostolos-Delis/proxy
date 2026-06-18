@@ -62,6 +62,7 @@ export type RewriteOptions = {
 };
 
 const MIN_TTL_UPGRADE_CACHEABLE_TOKENS = 2048;
+const DEFAULT_ANTHROPIC_MAX_TOKENS = 4096;
 
 export function rewriteSurfaceRequest(
   body: unknown,
@@ -366,11 +367,13 @@ function rewriteAnthropicMessagesRequest(
   if (systemPrompt) {
     request.system = prependAnthropicSystemPrompt(request.system, systemPrompt);
   }
-  if (settings.thinking && (settings.thinking.type !== "adaptive" || supportsAnthropicAdaptiveThinking(settings.model))) {
-    request.thinking = settings.thinking;
+  const thinking = anthropicThinkingForSettings(settings);
+  if (thinking) {
+    request.thinking = thinking;
   } else {
     delete request.thinking;
   }
+  if (!isAnthropicThinkingEnabled(request.thinking)) removeClearThinkingContextManagement(request);
   const effort = settings.effort ? anthropicEffortForModel(settings.model, settings.effort) : undefined;
   if (effort) {
     request.output_config = {
@@ -387,8 +390,38 @@ function rewriteAnthropicMessagesRequest(
   }
   if (settings.maxOutputTokens !== undefined) {
     request.max_tokens = settings.maxOutputTokens;
+  } else if (request.max_tokens === undefined) {
+    request.max_tokens = DEFAULT_ANTHROPIC_MAX_TOKENS;
   }
   return request;
+}
+
+function anthropicThinkingForSettings(settings: SelectedRouteSettings) {
+  if (settings.thinking) {
+    if (settings.thinking.type !== "adaptive" || supportsAnthropicAdaptiveThinking(settings.model)) return settings.thinking;
+    return undefined;
+  }
+  return undefined;
+}
+
+function isAnthropicThinkingEnabled(thinking: unknown) {
+  return isRecord(thinking) && (thinking.type === "adaptive" || thinking.type === "enabled");
+}
+
+function removeClearThinkingContextManagement(request: Record<string, unknown>) {
+  if (!isRecord(request.context_management)) return;
+  const edits = request.context_management.edits;
+  if (!Array.isArray(edits)) return;
+  const filtered = edits.filter((edit) => !isRecord(edit) || edit.type !== "clear_thinking_20251015");
+  if (filtered.length === edits.length) return;
+  if (filtered.length > 0) {
+    request.context_management = { ...request.context_management, edits: filtered };
+    return;
+  }
+  const contextManagement = { ...request.context_management };
+  delete contextManagement.edits;
+  if (Object.keys(contextManagement).length > 0) request.context_management = contextManagement;
+  else delete request.context_management;
 }
 
 function prependAnthropicSystemPrompt(system: unknown, systemPrompt: string) {
