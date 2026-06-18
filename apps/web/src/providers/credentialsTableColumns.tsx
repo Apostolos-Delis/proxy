@@ -95,16 +95,21 @@ export function providerCredentialColumns({
       enableSorting: false,
       enableHiding: false,
       size: 118,
-      cell: ({ row }) => row.original.kind === "account" ? (
-        <div className="provider-key-actions">
-          <RevokeCredentialAction
-            account={row.original.account}
-            pending={revokePendingId === row.original.account.id}
-            error={revokeErrorId === row.original.account.id ? revokeErrorMessage : undefined}
-            onRevoke={() => onRevoke(row.original.account.id)}
-          />
-        </div>
-      ) : null
+      cell: ({ row }) => {
+        const original = row.original;
+        if (original.kind !== "account") return null;
+        const account = original.account;
+        return (
+          <div className="provider-key-actions">
+            <RevokeCredentialAction
+              account={account}
+              pending={revokePendingId === account.id}
+              error={revokeErrorId === account.id ? revokeErrorMessage : undefined}
+              onRevoke={() => onRevoke(account.id)}
+            />
+          </div>
+        );
+      }
     }
   ];
 }

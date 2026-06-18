@@ -202,7 +202,7 @@ export type UsageTimeseries = Omit<RawTimeseries, "points"> & {
   points: UsageTimeseriesPoint[];
 };
 export type UsageDashboard = {
-  usage: UsageDashboardViewQuery["usage"];
+  usage: UsageDashboardViewQuery["usageDashboard"]["usage"];
   timeseries: UsageTimeseries;
 };
 
