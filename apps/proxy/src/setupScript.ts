@@ -234,7 +234,7 @@ if [ "$PP_SETUP_CODEX" -eq 1 ]; then
   codex_config="$PP_CODEX_HOME/config.toml"
   if [ ! -s "$codex_config" ]; then
     cat > "$codex_config" <<${heredocDelimiter}
-model = "router-auto"
+model = "gpt-5.5"
 model_provider = "$PP_CODEX_PROVIDER"
 
 [model_providers.$PP_CODEX_PROVIDER]
@@ -242,13 +242,13 @@ name = "Prompt Proxy"
 base_url = "$PP_BASE_URL/v1"
 env_key = "$PP_CODEX_ENV"
 wire_api = "responses"
-supports_websockets = true
+supports_websockets = false
 ${heredocDelimiter}
     echo "codex: wrote $PP_CODEX_CONFIG_DISPLAY"
   else
     tmp_config="$(mktemp)"
     {
-      printf '%s\\n' 'model = "router-auto"'
+      printf '%s\\n' 'model = "gpt-5.5"'
       printf 'model_provider = "%s"\\n\\n' "$PP_CODEX_PROVIDER"
       awk -v table="[model_providers.$PP_CODEX_PROVIDER]" '
         $0 == table { skipping = 1; seen_table = 1; next }
@@ -268,7 +268,7 @@ name = "Prompt Proxy"
 base_url = "$PP_BASE_URL/v1"
 env_key = "$PP_CODEX_ENV"
 wire_api = "responses"
-supports_websockets = true
+supports_websockets = false
 ${heredocDelimiter}
     } > "$tmp_config"
     pp_replace_file "$tmp_config" "$codex_config"
