@@ -1310,7 +1310,13 @@ input[type="checkbox"][role="switch"]:focus-visible {
   gap: 4px;
 }
 
+.session-crumbs .id-pill {
+  max-width: none;
+  overflow: visible;
+}
+
 .id-pill .copy-button {
+  flex: none;
   padding: 2px 3px;
 }
 
