@@ -486,7 +486,7 @@ For streaming chat requests, the proxy injects `stream_options.include_usage: tr
 Codex can point at a proxy with either `openai_base_url` or a custom model provider. For company usage, prefer a custom provider so developers use a proxy token while the service owns the real upstream API key.
 
 ```toml
-model = "router-auto"
+model = "gpt-5.5"
 model_provider = "prompt-proxy"
 model_context_window = 400000
 model_reasoning_effort = "medium"
@@ -497,18 +497,18 @@ name = "Prompt Proxy"
 base_url = "http://127.0.0.1:8787/v1"
 env_key = "PROMPT_PROXY_TOKEN"
 wire_api = "responses"
-supports_websockets = true
+supports_websockets = false
 ```
 
 For a local prototype using the built-in OpenAI provider:
 
 ```toml
-model = "router-auto"
+model = "gpt-5.5"
 openai_base_url = "http://127.0.0.1:8787/v1"
 ```
 
 The proxy accepts Codex's request as-is, authenticates the caller, resolves a provider target from the active routing config, and forwards with the selected provider credential. Builtin OpenAI targets use the operator key unless the Prompt Proxy API key is bound to a BYOK credential.
-For Codex efficiency, the custom provider should opt into Responses WebSockets. Without that, Codex falls back to HTTP replay and large sessions repeatedly send the full context, which defeats RTK's local token-saving guidance.
+Use an OpenAI model id such as `gpt-5.5` for Codex metadata; Prompt Proxy still treats non-alias model names like `router-auto` for routing. Keep Responses WebSockets disabled for mixed or Anthropic-only routing configs because those requests cannot be translated statefully. OpenAI-only deployments can opt back into WebSockets for lower replay overhead.
 
 Codex-specific compatibility requirements:
 

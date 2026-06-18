@@ -176,7 +176,7 @@ This verifies `/healthz`, `/v1/models`, OpenAI Responses SSE, OpenAI Responses W
 Use the CloudFront domain as the OpenAI-compatible base URL.
 
 ```toml
-model = "router-auto"
+model = "gpt-5.5"
 model_provider = "prompt_proxy_aws"
 model_reasoning_effort = "high"
 
@@ -185,7 +185,7 @@ name = "Prompt Proxy AWS"
 base_url = "https://REPLACE_WITH_CLOUDFRONT_DOMAIN/v1"
 env_key = "PROMPT_PROXY_DEPLOYED_API_KEY"
 wire_api = "responses"
-supports_websockets = true
+supports_websockets = false
 ```
 
 Then run a small command from Codex and check the admin console or `pnpm smoke:deployed` output for the selected route/model.

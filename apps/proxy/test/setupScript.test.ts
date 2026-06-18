@@ -84,14 +84,14 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
 
       expect(result.status).toBe(0);
       const config = readFileSync(join(codexDir, "config.toml"), "utf8");
-      expect(config).toContain('model = "router-auto"');
+      expect(config).toContain('model = "gpt-5.5"');
       expect(config).toContain('model_provider = "prompt_proxy"');
       expect(config).toContain("[features]");
       expect(config).toContain("goals = true");
       expect(config).toContain('base_url = "https://proxy.example.com/v1"');
       expect(config).toContain('env_key = "PROMPT_PROXY_TOKEN"');
+      expect(config).toContain("supports_websockets = false");
       expect(config).not.toContain("http_headers");
-      expect(config).not.toContain('model = "gpt-5.5"');
       expect(config).not.toContain("http://old-proxy/v1");
       expect(config).not.toContain("OLD_PROMPT_PROXY_TOKEN");
       const zshrc = readFileSync(join(home, ".zshrc"), "utf8");
@@ -135,11 +135,12 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       expect(lstatSync(join(codexDir, "config.toml")).isSymbolicLink()).toBe(true);
       expect(lstatSync(join(home, ".zshrc")).isSymbolicLink()).toBe(true);
       const config = readFileSync(managedCodexConfig, "utf8");
-      expect(config).toContain('model = "router-auto"');
+      expect(config).toContain('model = "gpt-5.5"');
       expect(config).toContain('model_provider = "prompt_proxy"');
       expect(config).toContain("[features]");
       expect(config).toContain("goals = true");
       expect(config).toContain('base_url = "https://proxy.example.com/v1"');
+      expect(config).toContain("supports_websockets = false");
       expect(config).not.toContain("http://old-proxy/v1");
       const zshrc = readFileSync(managedZshrc, "utf8");
       expect(zshrc).toContain('export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"');
@@ -167,9 +168,11 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       expect(result.status).toBe(0);
       expect(readFileSync(join(home, ".prompt-proxy", "codex.token"), "utf8")).toBe("codex-token\n");
       const config = readFileSync(join(home, ".codex", "config.toml"), "utf8");
+      expect(config).toContain('model = "gpt-5.5"');
       expect(config).toContain('model_provider = "prompt_proxy_codex"');
       expect(config).toContain("[model_providers.prompt_proxy_codex]");
       expect(config).toContain('env_key = "PROMPT_PROXY_CODEX_TOKEN"');
+      expect(config).toContain("supports_websockets = false");
       expect(config).not.toContain("http_headers");
       const zshrc = readFileSync(join(home, ".zshrc"), "utf8");
       expect(zshrc).toContain('export PROMPT_PROXY_CODEX_TOKEN="$(cat ~/.prompt-proxy/codex.token)"');
@@ -192,8 +195,10 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       expect(result.status).toBe(0);
       expect(result.stdout.toString()).toContain(`codex: wrote ${codexHome}/config.toml`);
       const config = readFileSync(join(codexHome, "config.toml"), "utf8");
+      expect(config).toContain('model = "gpt-5.5"');
       expect(config).toContain('model_provider = "prompt_proxy_codex"');
       expect(config).toContain('env_key = "PROMPT_PROXY_CODEX_TOKEN"');
+      expect(config).toContain("supports_websockets = false");
       expect(spawnSync("test", ["!", "-e", join(home, ".codex", "config.toml")]).status).toBe(0);
     } finally {
       rmSync(home, { recursive: true, force: true });
