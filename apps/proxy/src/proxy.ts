@@ -550,6 +550,17 @@ function providerRequestBody(input: {
   return body;
 }
 
+// Claude Code sends this beta flag natively, but translated harnesses (Codex, etc.) do
+// not — and Anthropic rejects OAuth /v1/messages requests without it — so inject it
+// wherever the proxy forwards an Anthropic subscription OAuth bearer.
+const ANTHROPIC_OAUTH_BETA = "oauth-2025-04-20";
+
+function mergeBetaTokens(existing: string | undefined, value: string) {
+  const tokens = (existing ?? "").split(",").map((token) => token.trim()).filter(Boolean);
+  if (!tokens.includes(value)) tokens.push(value);
+  return tokens.join(",");
+}
+
 export function providerRequestHeaders(input: {
   config: AppConfig;
   provider: ProviderRegistryEntry;
@@ -572,23 +583,25 @@ export function providerRequestHeaders(input: {
     : undefined;
   const token = chatgptCredential?.token ??
     (credentialForProvider?.authType === "api_key" ? credentialForProvider.token : operatorToken);
+  let usesAnthropicOAuthBearer = false;
 
-  if (input.provider.authStyle === "bearer" && token) {
+  if (
+    input.provider.slug === "anthropic" &&
+    credentialForProvider?.authType === "oauth" &&
+    input.config.subscriptionOAuthEnabled
+  ) {
+    // Subscription OAuth authenticates with the credential's own bearer token, so it
+    // works without an operator API key configured for the provider. (When the flag is
+    // off, `token` falls back to the operator key and is sent as x-api-key below.)
+    headers.authorization = `Bearer ${credentialForProvider.token}`;
+    usesAnthropicOAuthBearer = true;
+  } else if (input.provider.authStyle === "bearer" && token) {
     headers.authorization = `Bearer ${token}`;
     if (chatgptCredential?.chatgptAccountId) {
       headers["ChatGPT-Account-Id"] = chatgptCredential.chatgptAccountId;
     }
-  }
-  if (input.provider.authStyle === "x-api-key" && token) {
-    if (input.provider.slug === "anthropic" && credentialForProvider?.authType === "oauth") {
-      if (input.config.subscriptionOAuthEnabled) {
-        headers.authorization = `Bearer ${credentialForProvider.token}`;
-      } else if (operatorToken) {
-        headers["x-api-key"] = operatorToken;
-      }
-    } else {
-      headers["x-api-key"] = token;
-    }
+  } else if (input.provider.authStyle === "x-api-key" && token) {
+    headers["x-api-key"] = token;
   }
 
   const profile = detectHarness({ surface: input.surface, body: input.body, headers: input.incoming });
@@ -596,6 +609,9 @@ export function providerRequestHeaders(input: {
 
   if (input.endpoint.dialect === "anthropic-messages") {
     headers["anthropic-version"] = headers["anthropic-version"] ?? "2023-06-01";
+  }
+  if (usesAnthropicOAuthBearer) {
+    headers["anthropic-beta"] = mergeBetaTokens(headers["anthropic-beta"], ANTHROPIC_OAUTH_BETA);
   }
   if (input.provider.builtin || input.provider.forwardHarnessHeaders) {
     copySelectedHeaders(input.incoming, headers, identityHeadersFor(profile));
