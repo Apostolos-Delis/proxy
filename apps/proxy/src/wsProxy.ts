@@ -6,7 +6,13 @@ import WebSocket, { WebSocketServer, type RawData } from "ws";
 
 import { openAIResponsesSurface, rewriteSurfaceRequest } from "./adapters.js";
 import { appendTokensAttributed } from "./tokenAttribution.js";
-import { compressForForward } from "./toolResultCompression.js";
+import {
+  appendCompressionEvidence,
+  compressionForwardTelemetry,
+  compressForForwardWithResult,
+  providerCompressionTerminalTelemetry,
+  requestBodyHash
+} from "./toolResultCompression.js";
 import {
   actorForIdentity,
   contextForIdentity,
@@ -46,6 +52,8 @@ type ActiveRequest = {
   decision: RouteDecision;
   identity: RequestIdentity;
   sessionId?: string;
+  compressionTelemetry?: JsonObject;
+  providerRequestForwarded?: boolean;
 };
 
 // Structural subset of the Fastify/pino logger, so the proxy can warn without
@@ -174,6 +182,8 @@ export class WebSocketRoutingProxy {
             upstreamTarget = route.upstreamTarget;
             attachUpstreamHandlers(upstream);
           }
+          await this.appendProviderRequestForwarded(route.activeRequest, route.body);
+          route.activeRequest.providerRequestForwarded = true;
           upstream.send(JSON.stringify(route.body));
         })
         .catch(async (error) => {
@@ -297,22 +307,81 @@ export class WebSocketRoutingProxy {
     if (!attempt) throw new Error("duplicate_websocket_request");
 
     await this.requestStates.markProviderPending(idempotencyKey, attempt.id);
-    await this.events.append({
-      scopeType: "request",
-      scopeId: requestId,
-      sessionId: context.sessionId,
-      correlationId: requestId,
+
+    const activeRequest: ActiveRequest = {
+      requestId,
       idempotencyKey,
-      producer: "prompt-proxy.provider",
-      eventType: "provider.request_started",
-      payload: {
+      providerAttemptId: attempt.id,
+      provider,
+      decision,
+      identity,
+      sessionId: context.sessionId
+    };
+
+    let forwardedBody: unknown;
+    let upstreamTarget: WebSocketUpstreamTarget;
+    try {
+      const compression = await compressForForwardWithResult({
+        events: this.events,
+        tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
         surface: openAIResponsesSurface.surface,
-        provider,
-        transport: "websocket",
-        model: decision.selectedModel ?? "unknown",
-        providerAttemptId: attempt.id
-      }
-    });
+        body: routeBody,
+        policy: resolved.toolResultCompressionPolicy,
+        deduplicateToolResults: resolved.duplicateToolResultReferences,
+        artifactStore: this.promptArtifacts,
+        warn: (err, message) => this.log?.warn({ err, requestId }, message)
+      });
+      activeRequest.compressionTelemetry = compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy);
+      forwardedBody = rewriteSurfaceRequest(compression.body, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching });
+      await appendCompressionEvidence({
+        events: this.events,
+        tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: openAIResponsesSurface.surface,
+        policy: resolved.toolResultCompressionPolicy,
+        originalBody: routeBody,
+        compressedBody: compression.body,
+        forwardedBody,
+        result: compression,
+        warn: (err, message) => this.log?.warn({ err, requestId }, message)
+      });
+      await this.events.append({
+        scopeType: "request",
+        scopeId: requestId,
+        sessionId: context.sessionId,
+        correlationId: requestId,
+        idempotencyKey,
+        producer: "prompt-proxy.provider",
+        eventType: "provider.request_started",
+        payload: {
+          surface: openAIResponsesSurface.surface,
+          provider,
+            transport: "websocket",
+            model: decision.selectedModel ?? "unknown",
+            providerAttemptId: attempt.id,
+            preparedRequestHash: requestBodyHash(forwardedBody)
+          }
+        });
+      upstreamTarget = await this.resolveWebSocketUpstream(
+        identity,
+        headers,
+        forwardedBody,
+        decision,
+        await this.resolveUpstreamCredential(identity, provider)
+      );
+    } catch (error) {
+      await this.finishActiveRequest(activeRequest, "failed", undefined, {
+        error: error instanceof Error ? error.message : "websocket_request_failed"
+      });
+      throw error;
+    }
     await this.events.append({
       scopeType: "request",
       scopeId: requestId,
@@ -328,53 +397,34 @@ export class WebSocketRoutingProxy {
         providerAttemptId: attempt.id
       }
     });
-
-    const activeRequest = {
-      requestId,
-      idempotencyKey,
-      providerAttemptId: attempt.id,
-      provider,
-      decision,
-      identity,
-      sessionId: context.sessionId
-    };
-
-    let forwardedBody: unknown;
-    let upstreamTarget: WebSocketUpstreamTarget;
-    try {
-      const compressedBody = await compressForForward({
-        events: this.events,
-        tenantId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: openAIResponsesSurface.surface,
-        body: routeBody,
-        enabled: resolved.toolResultCompression,
-        deduplicateToolResults: resolved.duplicateToolResultReferences,
-        warn: (err, message) => this.log?.warn({ err, requestId }, message)
-      });
-      forwardedBody = rewriteSurfaceRequest(compressedBody, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching });
-      upstreamTarget = await this.resolveWebSocketUpstream(
-        identity,
-        headers,
-        forwardedBody,
-        decision,
-        await this.resolveUpstreamCredential(identity, provider)
-      );
-    } catch (error) {
-      await this.finishActiveRequest(activeRequest, "failed", undefined, {
-        error: error instanceof Error ? error.message : "websocket_request_failed"
-      });
-      throw error;
-    }
     return {
       body: forwardedBody,
       decision,
       activeRequest,
       upstreamTarget
     };
+  }
+
+  private async appendProviderRequestForwarded(activeRequest: ActiveRequest, body: unknown) {
+    await this.events.append({
+      scopeType: "request",
+      scopeId: activeRequest.requestId,
+      sessionId: activeRequest.sessionId,
+      correlationId: activeRequest.requestId,
+      idempotencyKey: `${activeRequest.idempotencyKey}:provider-forwarded`,
+      producer: "prompt-proxy.provider",
+      eventType: "provider.request_forwarded",
+      payload: {
+        surface: openAIResponsesSurface.surface,
+        provider: activeRequest.provider,
+        transport: "websocket",
+        model: activeRequest.decision.selectedModel ?? "unknown",
+        providerAttemptId: activeRequest.providerAttemptId,
+        preparedRequestHash: requestBodyHash(body),
+        forwardedRequestHash: requestBodyHash(body),
+        ...activeRequest.compressionTelemetry
+      }
+    });
   }
 
   private async observeUpstreamMessage(text: string, activeRequest: ActiveRequest | undefined) {
@@ -447,6 +497,13 @@ export class WebSocketRoutingProxy {
       upstreamStatus: status === "completed" ? 200 : 0,
       usage: usage === undefined ? null : jsonPayload(usage)
     };
+    Object.assign(
+      payload,
+      providerCompressionTerminalTelemetry(
+        activeRequest.compressionTelemetry,
+        activeRequest.providerRequestForwarded === true
+      )
+    );
     if (error) payload.error = error;
 
     await this.events.append({

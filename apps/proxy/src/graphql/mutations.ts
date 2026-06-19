@@ -279,7 +279,7 @@ builder.mutationFields((t) => ({
           systemPrompt,
           cacheTtlUpgrade,
           automaticCaching,
-          toolResultCompression,
+          toolResultCompressionPolicy,
           duplicateToolResultReferences,
           costBaseline,
           ...fileInput
@@ -317,10 +317,10 @@ builder.mutationFields((t) => ({
             automaticCaching
           );
         }
-        if (context.persistence && toolResultCompression !== undefined && toolResultCompression !== null) {
-          await context.persistence.organizationSettings.setToolResultCompression(
+        if (context.persistence && toolResultCompressionPolicy !== undefined && toolResultCompressionPolicy !== null) {
+          await context.persistence.organizationSettings.setToolResultCompressionPolicy(
             identity.organizationId,
-            toolResultCompression
+            toolResultCompressionPolicy
           );
         }
         if (context.persistence && duplicateToolResultReferences !== undefined && duplicateToolResultReferences !== null) {

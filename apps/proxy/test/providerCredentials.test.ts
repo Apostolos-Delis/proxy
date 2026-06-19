@@ -28,6 +28,7 @@ import {
 } from "../src/openAIChatGPTAuth.js";
 import { ProviderCredentialOAuthService } from "../src/persistence/providerCredentialOAuth.js";
 import { ProviderCredentialStore } from "../src/persistence/providerCredentials.js";
+import { requestBodyHash } from "../src/toolResultCompression.js";
 
 const ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 const CUSTOMER_KEY = "sk-ant-customer-zzz";
@@ -1445,6 +1446,9 @@ describe("subscription oauth credentials", () => {
     expect(providerCall?.headers["chatgpt-account-id"]).toBe(CHATGPT_ACCOUNT_ID);
     expect(providerCall?.headers["x-codex-turn-state"]).toBe("turn-state");
     expect(providerCall?.body.prompt_cache_retention).toBeUndefined();
+    const forwarded = (await fixture.db.select().from(events))
+      .find((event) => event.eventType === "provider.request_forwarded");
+    expect(forwarded?.payload.forwardedRequestHash).toBe(requestBodyHash(providerCall?.body));
   });
 
   it("keeps forwarding a cached OpenAI oauth credential when the flag is off", async () => {

@@ -11,6 +11,13 @@ export type ClassifierSettingsInput = {
   timeoutMs?: number | null | undefined;
 };
 
+export type CompressionPreviewInput = {
+  body?: unknown;
+  policy?: ToolResultCompressionPolicyInput | null | undefined;
+  requestId?: string | number | null | undefined;
+  surface?: string | null | undefined;
+};
+
 export type CostBaselineSettingsInput = {
   anthropicMessagesModel: string;
   openaiChatModel: string;
@@ -123,12 +130,21 @@ export type SettingsInput = {
   routeQuality?: RouteQualitySettingsInput | null | undefined;
   schemaVersion?: number | null | undefined;
   systemPrompt?: string | null | undefined;
-  toolResultCompression?: boolean | null | undefined;
+  toolResultCompressionPolicy?: ToolResultCompressionPolicyInput | null | undefined;
 };
 
 export type StartProviderCredentialOAuthInput = {
   name: string;
   provider: string;
+};
+
+export type ToolResultCompressionPolicyInput = {
+  enabledRules?: Array<string> | null | undefined;
+  minOriginalBytes?: number | null | undefined;
+  minSavingsTokens?: number | null | undefined;
+  mode?: string | null | undefined;
+  storeCompressedArtifact?: boolean | null | undefined;
+  storeOriginalArtifact?: boolean | null | undefined;
 };
 
 export type UpdateProviderInput = {
@@ -198,6 +214,13 @@ export type CachePricingRatesQueryVariables = Exact<{ [key: string]: never; }>;
 
 
 export type CachePricingRatesQuery = { modelPricing: Array<{ model: string, inputCostPerMtok: number | null, cacheReadCostPerMtok: number | null, cacheWriteCostPerMtok: number | null }> };
+
+export type CompressionPreviewPanelQueryVariables = Exact<{
+  input: CompressionPreviewInput;
+}>;
+
+
+export type CompressionPreviewPanelQuery = { compressionPreview: { contentAvailable: boolean, contentRedactionReason: string | null, blocks: number, savedBytes: number, savedTokens: number, previewBlocks: Array<{ blockPath: string, toolName: string, ruleId: string, status: string, skipReason: string | null, originalBytes: number, compressedBytes: number, savedTokens: number, diffSegments: Array<{ side: string, text: string }> }> } };
 
 export type InvitationsListQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -279,7 +302,7 @@ export type PromptDetailViewQueryVariables = Exact<{
 }>;
 
 
-export type PromptDetailViewQuery = { prompt: { artifact: { artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }, requestArtifacts: Array<{ artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }>, request: { requestId: string, terminalStatus: string, finalRoute: string | null, requestedModel: string | null, selectedModel: string | null, provider: string | null, latencyMs: number | null, timeToFirstByteMs: number | null, selectedCost: number, classifier: unknown, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null } | null, events: Array<{ eventId: string, eventType: string, producer: string, payload: unknown, createdAt: string }> } | null };
+export type PromptDetailViewQuery = { prompt: { artifact: { artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }, requestArtifacts: Array<{ artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }>, request: { requestId: string, terminalStatus: string, finalRoute: string | null, requestedModel: string | null, selectedModel: string | null, provider: string | null, latencyMs: number | null, timeToFirstByteMs: number | null, selectedCost: number, classifier: unknown, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null } | null, compressionReceipts: Array<{ id: string, mode: string, surface: string, blockPath: string, toolName: string, command: string | null, commandClass: string | null, ruleId: string, ruleVersion: number, status: string, skipReason: string | null, originalBytes: number, compressedBytes: number, savedBytes: number, originalTokenEstimate: number, compressedTokenEstimate: number, savedTokens: number, estimateSource: string, originalSha256: string, compressedSha256: string }>, events: Array<{ eventId: string, eventType: string, producer: string, payload: unknown, createdAt: string }> } | null };
 
 export type PromptsListQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -527,19 +550,19 @@ export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, requestCount: number, startedAt: string, endedAt: string | null, recentActivity: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
-export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, duplicateToolResultReferences: boolean, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
+export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, duplicateToolResultReferences: boolean, toolResultCompressionPolicy: { mode: string, minOriginalBytes: number | null, minSavingsTokens: number | null, enabledRules: Array<string>, storeOriginalArtifact: boolean | null, storeCompressedArtifact: boolean | null }, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
 
 export type SettingsViewQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, duplicateToolResultReferences: boolean, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, duplicateToolResultReferences: boolean, toolResultCompressionPolicy: { mode: string, minOriginalBytes: number | null, minSavingsTokens: number | null, enabledRules: Array<string>, storeOriginalArtifact: boolean | null, storeCompressedArtifact: boolean | null }, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type UpdateSettingsMutationVariables = Exact<{
   input: SettingsInput;
 }>;
 
 
-export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, toolResultCompression: boolean, duplicateToolResultReferences: boolean, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, duplicateToolResultReferences: boolean, toolResultCompressionPolicy: { mode: string, minOriginalBytes: number | null, minSavingsTokens: number | null, enabledRules: Array<string>, storeOriginalArtifact: boolean | null, storeCompressedArtifact: boolean | null }, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } };
 
@@ -751,7 +774,14 @@ export const SettingsViewFieldsFragmentDoc = new TypedDocumentString(`
     systemPrompt
     cacheTtlUpgrade
     automaticCaching
-    toolResultCompression
+    toolResultCompressionPolicy {
+      mode
+      minOriginalBytes
+      minSavingsTokens
+      enabledRules
+      storeOriginalArtifact
+      storeCompressedArtifact
+    }
     duplicateToolResultReferences
     costBaseline {
       anthropicMessagesModel
@@ -918,6 +948,31 @@ export const CachePricingRatesDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CachePricingRatesQuery, CachePricingRatesQueryVariables>;
+export const CompressionPreviewPanelDocument = new TypedDocumentString(`
+    query CompressionPreviewPanel($input: CompressionPreviewInput!) {
+  compressionPreview(input: $input) {
+    contentAvailable
+    contentRedactionReason
+    blocks
+    savedBytes
+    savedTokens
+    previewBlocks {
+      blockPath
+      toolName
+      ruleId
+      status
+      skipReason
+      originalBytes
+      compressedBytes
+      savedTokens
+      diffSegments {
+        side
+        text
+      }
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<CompressionPreviewPanelQuery, CompressionPreviewPanelQueryVariables>;
 export const InvitationsListDocument = new TypedDocumentString(`
     query InvitationsList {
   invitations {
@@ -1189,6 +1244,28 @@ export const PromptDetailViewDocument = new TypedDocumentString(`
         version
         configHash
       }
+    }
+    compressionReceipts {
+      id
+      mode
+      surface
+      blockPath
+      toolName
+      command
+      commandClass
+      ruleId
+      ruleVersion
+      status
+      skipReason
+      originalBytes
+      compressedBytes
+      savedBytes
+      originalTokenEstimate
+      compressedTokenEstimate
+      savedTokens
+      estimateSource
+      originalSha256
+      compressedSha256
     }
     events {
       eventId
@@ -2026,7 +2103,14 @@ export const SettingsViewDocument = new TypedDocumentString(`
     systemPrompt
     cacheTtlUpgrade
     automaticCaching
-    toolResultCompression
+    toolResultCompressionPolicy {
+      mode
+      minOriginalBytes
+      minSavingsTokens
+      enabledRules
+      storeOriginalArtifact
+      storeCompressedArtifact
+    }
     duplicateToolResultReferences
     costBaseline {
       anthropicMessagesModel
@@ -2068,7 +2152,14 @@ export const UpdateSettingsDocument = new TypedDocumentString(`
     systemPrompt
     cacheTtlUpgrade
     automaticCaching
-    toolResultCompression
+    toolResultCompressionPolicy {
+      mode
+      minOriginalBytes
+      minSavingsTokens
+      enabledRules
+      storeOriginalArtifact
+      storeCompressedArtifact
+    }
     duplicateToolResultReferences
     costBaseline {
       anthropicMessagesModel

@@ -1,6 +1,7 @@
 import type {
   Dialect as SchemaDialect,
   Effort,
+  CompressionPolicy,
   Provider as SchemaProvider,
   ProviderAccountAuthType,
   RoutingConfig,
@@ -138,6 +139,7 @@ export type RouteDecision = {
     routingConfigHash?: string;
   };
   routingConfig?: RoutingConfigSnapshot;
+  compressionPolicy?: CompressionPolicy;
   policyVersion: string;
   error?: string;
   errorMessage?: string;
@@ -158,6 +160,7 @@ export type RoutingConfigSnapshot = {
 export type RoutingConfigSelection = {
   snapshot: RoutingConfigSnapshot;
   config: RoutingConfig;
+  compressionPolicy: CompressionPolicy;
 };
 
 export type ProviderAttempt = {

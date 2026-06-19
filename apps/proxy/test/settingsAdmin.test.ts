@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { defaultCompressionPolicy, type CompressionPolicy, type PromptCaptureMode } from "@prompt-proxy/schema";
+
 import { loadConfig } from "../src/config.js";
 import { buildServer } from "../src/server.js";
-import type { PromptCaptureMode } from "@prompt-proxy/schema";
 
 describe("persistent settings admin APIs", () => {
   let tempDir: string | undefined;
@@ -316,7 +317,7 @@ function fakePersistence(
       cacheTtlUpgrade: async () => false,
       setCacheTtlUpgrade: async (_organizationId: string, enabled: boolean) => enabled,
       setAutomaticCaching: async (_organizationId: string, enabled: boolean) => enabled,
-      setToolResultCompression: async (_organizationId: string, enabled: boolean) => enabled,
+      setToolResultCompressionPolicy: async (_organizationId: string, policy: CompressionPolicy) => policy,
       setDuplicateToolResultReferences: async (_organizationId: string, enabled: boolean) => enabled,
       setCostBaseline: async (_organizationId: string, baseline: {
         anthropicMessagesModel: string | null;
@@ -332,7 +333,7 @@ function fakePersistence(
         systemPrompt: orgSystemPrompt.value,
         cacheTtlUpgrade: false,
         automaticCaching: false,
-        toolResultCompression: false,
+        toolResultCompressionPolicy: defaultCompressionPolicy(),
         duplicateToolResultReferences: false,
         costBaseline: { ...orgCostBaseline }
       })

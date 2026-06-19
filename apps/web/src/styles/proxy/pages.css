@@ -1071,6 +1071,82 @@ button.table-link {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+.settings-preview-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+}
+
+.settings-preview-head,
+.settings-preview-actions,
+.settings-preview-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settings-preview-head {
+  justify-content: space-between;
+}
+
+.settings-preview-head strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.settings-preview-head svg {
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+}
+
+.settings-preview-panel .json-editor {
+  min-height: 240px;
+}
+
+.settings-preview-result {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-preview-summary span {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+  font-size: 11.5px;
+}
+
+.settings-preview-result .tbl {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.settings-preview-result th,
+.settings-preview-result td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-preview-result th:nth-child(1),
+.settings-preview-result td:nth-child(1) {
+  width: 105px;
+}
+
+.settings-preview-result th:nth-child(4),
+.settings-preview-result td:nth-child(4),
+.settings-preview-result th:nth-child(5),
+.settings-preview-result td:nth-child(5) {
+  width: 110px;
+}
+
 .settings-savebar {
   position: sticky;
   bottom: 18px;
@@ -2217,6 +2293,35 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .event-payload {
   padding: 2px 0 10px 31px;
+}
+
+.compression-receipts-card .tbl {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.compression-receipts-card th,
+.compression-receipts-card td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compression-receipts-card th:nth-child(1),
+.compression-receipts-card td:nth-child(1) {
+  width: 110px;
+}
+
+.compression-receipts-card th:nth-child(4),
+.compression-receipts-card td:nth-child(4),
+.compression-receipts-card th:nth-child(5),
+.compression-receipts-card td:nth-child(5) {
+  width: 105px;
+}
+
+.compression-receipts-card th:nth-child(6),
+.compression-receipts-card td:nth-child(6) {
+  width: 145px;
 }
 
 /* raw json card */

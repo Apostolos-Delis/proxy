@@ -34,7 +34,12 @@ import { modelDiscoveryResponse } from "./modelDiscovery.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
 import { appendTokensAttributed } from "./tokenAttribution.js";
-import { compressForForward, compressOrFallback } from "./toolResultCompression.js";
+import {
+  appendCompressionEvidence,
+  compressionForwardTelemetry,
+  compressForForwardWithResult,
+  compressOrFallback
+} from "./toolResultCompression.js";
 import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
 import { buildSetupScript } from "./setupScript.js";
@@ -253,7 +258,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       }
       await pinSystemPrompt(persistence, identity, openAIResponsesSurface.surface, requestId, context.sessionId, systemPrompt);
 
-      const compressedBody = await compressForForward({
+      const compression = await compressForForwardWithResult({
         events,
         tenantId: identity.organizationId,
         workspaceId: identity.workspaceId,
@@ -262,9 +267,26 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         sessionId: context.sessionId,
         surface: openAIResponsesSurface.surface,
         body: request.body,
-        enabled: resolved.toolResultCompression,
+        policy: resolved.toolResultCompressionPolicy,
         deduplicateToolResults: resolved.duplicateToolResultReferences,
         profile: harnessProfileByName(context.harness),
+        artifactStore: persistence?.promptArtifacts,
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
+      const forwardedBody = rewriteSurfaceRequest(compression.body, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching });
+      await appendCompressionEvidence({
+        events,
+        tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: openAIResponsesSurface.surface,
+        policy: resolved.toolResultCompressionPolicy,
+        originalBody: request.body,
+        compressedBody: compression.body,
+        forwardedBody,
+        result: compression,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       await proxy.forward({
@@ -273,12 +295,13 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         organizationId: identity.organizationId,
         surface: openAIResponsesSurface.surface,
         provider: routedProvider(decision),
-        body: rewriteSurfaceRequest(compressedBody, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
+        body: forwardedBody,
         responseStream: requestWantsStream(request.body),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
         credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
+        compressionTelemetry: compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy),
         onAssistantText: assistantResponseCapture({
           identity,
           requestId,
@@ -364,7 +387,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         return;
       }
 
-      const compressedBody = await compressForForward({
+      const compression = await compressForForwardWithResult({
         events,
         tenantId: identity.organizationId,
         workspaceId: identity.workspaceId,
@@ -373,9 +396,26 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         sessionId: context.sessionId,
         surface: openAIChatSurface.surface,
         body: request.body,
-        enabled: resolved.toolResultCompression,
+        policy: resolved.toolResultCompressionPolicy,
         deduplicateToolResults: resolved.duplicateToolResultReferences,
         profile: harnessProfileByName(context.harness),
+        artifactStore: persistence?.promptArtifacts,
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
+      const forwardedBody = rewriteSurfaceRequest(compression.body, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching });
+      await appendCompressionEvidence({
+        events,
+        tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: openAIChatSurface.surface,
+        policy: resolved.toolResultCompressionPolicy,
+        originalBody: request.body,
+        compressedBody: compression.body,
+        forwardedBody,
+        result: compression,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       await proxy.forward({
@@ -384,12 +424,13 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         organizationId: identity.organizationId,
         surface: openAIChatSurface.surface,
         provider: routedProvider(decision),
-        body: rewriteSurfaceRequest(compressedBody, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
+        body: forwardedBody,
         responseStream: requestWantsStream(request.body),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
         credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
+        compressionTelemetry: compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy),
         onAssistantText: assistantResponseCapture({
           identity,
           requestId,
@@ -484,7 +525,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       }
       await pinSystemPrompt(persistence, identity, anthropicMessagesSurface.surface, requestId, context.sessionId, systemPrompt);
 
-      const compressedBody = await compressForForward({
+      const compression = await compressForForwardWithResult({
         events,
         tenantId: identity.organizationId,
         workspaceId: identity.workspaceId,
@@ -493,9 +534,26 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         sessionId: context.sessionId,
         surface: anthropicMessagesSurface.surface,
         body: request.body,
-        enabled: resolved.toolResultCompression,
+        policy: resolved.toolResultCompressionPolicy,
         deduplicateToolResults: resolved.duplicateToolResultReferences,
         profile: harnessProfileByName(context.harness),
+        artifactStore: persistence?.promptArtifacts,
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
+      const forwardedBody = rewriteSurfaceRequest(compression.body, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching });
+      await appendCompressionEvidence({
+        events,
+        tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: anthropicMessagesSurface.surface,
+        policy: resolved.toolResultCompressionPolicy,
+        originalBody: request.body,
+        compressedBody: compression.body,
+        forwardedBody,
+        result: compression,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       await proxy.forward({
@@ -504,12 +562,13 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         organizationId: identity.organizationId,
         surface: anthropicMessagesSurface.surface,
         provider: routedProvider(decision),
-        body: rewriteSurfaceRequest(compressedBody, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }),
+        body: forwardedBody,
         responseStream: requestWantsStream(request.body),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
         credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
+        compressionTelemetry: compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy),
         onAssistantText: assistantResponseCapture({
           identity,
           requestId,
@@ -573,28 +632,59 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       // path as /v1/messages so a throwing filter degrades identically — but
       // does not emit a compression.recorded event (that would double-count
       // against the paired /v1/messages call).
-      const { body: countBody } = compressOrFallback(
+      let compressionFailed = false;
+      const countCompression = compressOrFallback(
         anthropicMessagesSurface.surface,
         request.body,
-        resolved.toolResultCompression,
-        (err, message) => app.log.warn({ err, requestId }, message),
+        resolved.toolResultCompressionPolicy,
+        (err, message) => {
+          if (message === "tool result compression failed") compressionFailed = true;
+          app.log.warn({ err, requestId }, message);
+        },
         {
           deduplicateToolResults: resolved.duplicateToolResultReferences,
           profile: harnessProfileByName(context.harness)
         }
       );
+      const forwardedBody = rewriteTokenCountRequest(countCompression.body, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade });
+      await appendCompressionEvidence({
+        events,
+        tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: anthropicMessagesSurface.surface,
+        policy: resolved.toolResultCompressionPolicy,
+        originalBody: request.body,
+        compressedBody: countCompression.body,
+        forwardedBody,
+        result: {
+          ...countCompression,
+          receiptIds: [],
+          eventEmitFailed: false,
+          compressionFailed
+        },
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
       await proxy.forward({
         requestId,
         idempotencyKey,
         organizationId: identity.organizationId,
         surface: anthropicMessagesSurface.surface,
         provider: routedProvider(decision),
-        body: rewriteTokenCountRequest(countBody, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade }),
+        body: forwardedBody,
         headers: lowerHeaders(request.headers),
         decision,
         reply,
         path: "/messages/count_tokens",
-        credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision))
+        credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
+        compressionTelemetry: compressionForwardTelemetry({
+          ...countCompression,
+          receiptIds: [],
+          eventEmitFailed: false,
+          compressionFailed
+        }, resolved.toolResultCompressionPolicy)
       });
     } catch (error) {
       await requestStates.finish(idempotencyKey, "failed", {

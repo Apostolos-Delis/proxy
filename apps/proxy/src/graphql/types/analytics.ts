@@ -177,13 +177,15 @@ export const CompressionSavingsRow = builder
       rule: t.exposeString("rule"),
       ruleVersion: t.exposeFloat("ruleVersion"),
       tool: t.exposeString("tool"),
+      commandClass: t.exposeString("commandClass"),
       blocks: t.exposeFloat("blocks"),
       beforeChars: t.exposeFloat("beforeChars"),
       afterChars: t.exposeFloat("afterChars"),
       savedChars: t.exposeFloat("savedChars"),
       beforeEstimatedTokens: t.exposeFloat("beforeEstimatedTokens"),
       afterEstimatedTokens: t.exposeFloat("afterEstimatedTokens"),
-      savedEstimatedTokens: t.exposeFloat("savedEstimatedTokens")
+      savedEstimatedTokens: t.exposeFloat("savedEstimatedTokens"),
+      estimateSource: t.exposeString("estimateSource")
     })
   });
 
@@ -200,6 +202,7 @@ export const CompressionSavingsReport = builder
       beforeEstimatedTokens: t.exposeFloat("beforeEstimatedTokens"),
       afterEstimatedTokens: t.exposeFloat("afterEstimatedTokens"),
       savedEstimatedTokens: t.exposeFloat("savedEstimatedTokens"),
+      estimateSource: t.exposeString("estimateSource"),
       rows: t.expose("rows", { type: [CompressionSavingsRow] })
     })
   });

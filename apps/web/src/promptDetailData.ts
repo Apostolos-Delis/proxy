@@ -5,6 +5,7 @@ export type PromptDetailResult = NonNullable<PromptDetailViewQuery["prompt"]>;
 export type PromptArtifactDetail = PromptDetailResult["requestArtifacts"][number];
 export type RequestSummary = NonNullable<PromptDetailResult["request"]>;
 export type ProxyEvent = PromptDetailResult["events"][number];
+export type CompressionReceipt = PromptDetailResult["compressionReceipts"][number];
 
 const EVENT_TONES: [string, string][] = [
   ["proxy.", "event-proxy"],

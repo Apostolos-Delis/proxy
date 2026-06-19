@@ -23,7 +23,7 @@ import { createDatabasePersistence } from "../src/persistence/index.js";
 import { buildServer } from "../src/server.js";
 import { listen, startAnthropicMock, startOpenAIMock, type MockServer } from "./helpers.js";
 
-type PromptCaptureMode = "hash_only" | "raw_text";
+type PromptCaptureMode = "none" | "hash_only" | "raw_text";
 type OpenAIOptions = Parameters<typeof startOpenAIMock>[0];
 
 export type PromptTestFixture = Awaited<ReturnType<typeof captureFixture>>;

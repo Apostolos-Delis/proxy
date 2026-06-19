@@ -85,6 +85,42 @@ describe("database migrations", () => {
         and column_name in ('organization_id', 'artifact_id', 'request_id', 'user_id', 'admin_session_id', 'access_path')
       order by column_name
     `);
+    const compressionReceiptColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'compression_receipts'
+        and column_name in (
+          'organization_id',
+          'workspace_id',
+          'request_id',
+          'api_key_id',
+          'mode',
+          'surface',
+          'block_path',
+          'tool_name',
+          'command',
+          'command_class',
+          'rule_id',
+          'rule_version',
+          'status',
+          'original_chars',
+          'compressed_chars',
+          'saved_chars',
+          'original_bytes',
+          'compressed_bytes',
+          'original_estimated_tokens',
+          'compressed_estimated_tokens',
+          'saved_estimated_tokens',
+          'estimate_source',
+          'original_sha256',
+          'compressed_sha256',
+          'original_artifact_id',
+          'compressed_artifact_id',
+          'skip_reason',
+          'event_id'
+        )
+      order by column_name
+    `);
     const invitationColumns = await client.query<{ column_name: string }>(`
       select column_name
       from information_schema.columns
@@ -168,6 +204,7 @@ describe("database migrations", () => {
       "agent_sessions",
       "api_key_provider_accounts",
       "api_keys",
+      "compression_receipts",
       "events",
       "prompt_access_audit",
       "prompt_artifacts",
@@ -200,6 +237,36 @@ describe("database migrations", () => {
       "organization_id",
       "request_id",
       "user_id"
+    ]);
+    expect(compressionReceiptColumns.rows.map((row) => row.column_name)).toEqual([
+      "api_key_id",
+      "block_path",
+      "command",
+      "command_class",
+      "compressed_artifact_id",
+      "compressed_bytes",
+      "compressed_chars",
+      "compressed_estimated_tokens",
+      "compressed_sha256",
+      "estimate_source",
+      "event_id",
+      "mode",
+      "organization_id",
+      "original_artifact_id",
+      "original_bytes",
+      "original_chars",
+      "original_estimated_tokens",
+      "original_sha256",
+      "request_id",
+      "rule_id",
+      "rule_version",
+      "saved_chars",
+      "saved_estimated_tokens",
+      "skip_reason",
+      "status",
+      "surface",
+      "tool_name",
+      "workspace_id"
     ]);
     expect(invitationColumns.rows.map((row) => row.column_name)).toEqual([
       "accepted_user_id",
