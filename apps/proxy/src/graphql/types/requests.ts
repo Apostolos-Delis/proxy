@@ -111,6 +111,10 @@ export const RequestDetail = builder.objectRef<RequestDetailShape>("RequestDetai
     providerAttempts: t.field({
       type: [ProviderAttempt],
       resolve: (detail, _args, context) => hasAdminRole(context) ? detail.providerAttempts : []
+    }),
+    healthSkips: t.field({
+      type: "JSON",
+      resolve: (detail, _args, context) => hasAdminRole(context) ? detail.healthSkips : []
     })
   })
 });

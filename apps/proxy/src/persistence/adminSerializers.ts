@@ -142,6 +142,7 @@ export function providerAttemptSummary(row: ProviderAttemptRow) {
     surface: row.surface,
     provider: row.provider,
     model: row.model,
+    providerAccountId: row.providerAccountId ?? undefined,
     upstreamRequestId: row.upstreamRequestId ?? undefined,
     terminalStatus: row.terminalStatus,
     statusCode: row.statusCode ?? undefined,

@@ -2,6 +2,7 @@ import { PROVIDER_ORDER } from "../providers";
 import type { ApiKeySummary } from "../routing/data";
 import { ownerLabel, type UserDirectory } from "../userDirectory";
 import type { ProviderAccountSummary, ProviderRegistrySummary } from "./data";
+import { providerHealthSearchTokens } from "./healthData";
 
 type ProviderDefaultLabels = {
   title: string;
@@ -146,6 +147,7 @@ export function providerCredentialSearchValue(
     row.account.status,
     row.account.secretHint ?? "",
     ownerLabel(users, row.account.ownerUserId),
+    ...providerHealthSearchTokens(row.account),
     ...boundKeyNames(row, boundKeys)
   ];
 }

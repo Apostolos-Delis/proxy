@@ -90,6 +90,17 @@ export type BudgetCheck = {
   readonly limit: number | string;
 };
 
+export type ProviderHealthSkip = {
+  readonly scope: "provider_account" | "provider_account_model";
+  readonly provider: Provider;
+  readonly providerId: string;
+  readonly providerAccountId: string;
+  readonly model: string;
+  readonly healthStatus: string;
+  readonly errorType?: string;
+  readonly expiresAt?: string;
+};
+
 export type ClassifierOutput = {
   complexity: "trivial" | "simple" | "normal" | "hard" | "deep";
   risk: string[];
@@ -114,6 +125,7 @@ export type RouteDecision = {
   guardrailActions: string[];
   reasonCodes: string[];
   budgetChecks?: BudgetCheck[];
+  healthSkips?: ProviderHealthSkip[];
   session?: {
     sessionKey: string;
     sessionId: string;
@@ -174,6 +186,7 @@ export type ProviderAttempt = {
   surface: Surface;
   provider: Provider;
   model: string;
+  providerAccountId?: string;
   terminalStatus: "pending" | "completed" | "failed" | "cancelled";
   usage?: JsonValue;
   upstreamRequestId?: string;

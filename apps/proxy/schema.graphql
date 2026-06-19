@@ -444,6 +444,7 @@ type Mutation {
   disableProvider(providerId: ID!): ProviderRegistryEntry
   login(email: String!, password: String!): Viewer!
   logout: Boolean!
+  probeProviderCredential(input: ProbeProviderCredentialInput!): ProviderHealthProbeResult!
   reactivateUser(userId: ID!): UserStatusResult!
   resendInvitation(invitationId: ID!): InvitationActionResult!
   revokeApiKey(apiKeyId: ID!): ApiKey!
@@ -485,6 +486,11 @@ type OverviewDashboard {
   modelUsage: UsageReport!
   overview: Overview!
   requests: [RequestSummary!]!
+}
+
+input ProbeProviderCredentialInput {
+  model: String!
+  providerAccountId: ID!
 }
 
 type PromptAccessAuditEntry {
@@ -622,6 +628,7 @@ type ProviderAccount {
   baseUrl: String
   boundKeyCount: Int!
   createdAt: String!
+  health: ProviderAccountHealth
   id: String!
   lastUsedAt: String
   name: String!
@@ -638,6 +645,17 @@ enum ProviderAccountAuthType {
   oauth
 }
 
+type ProviderAccountHealth {
+  consecutiveFailures: Int!
+  cooldownUntil: String
+  lastCheckedAt: String
+  lastErrorAt: String
+  lastErrorType: String
+  lastSuccessAt: String
+  modelHealth: [ProviderModelHealth!]!
+  status: String
+}
+
 type ProviderAttempt {
   attemptIndex: Int
   completedAt: String
@@ -647,6 +665,7 @@ type ProviderAttempt {
   id: String!
   model: String!
   provider: String!
+  providerAccountId: String
   requestId: String!
   routeCandidateId: String
   skipReason: String
@@ -679,6 +698,34 @@ type ProviderEndpoint {
 input ProviderEndpointInput {
   dialect: String!
   path: String!
+}
+
+type ProviderHealthProbeResult {
+  checkedAt: String!
+  dimensions: JSON!
+  errorType: String
+  healthStatus: String!
+  latencyMs: Int!
+  message: String
+  model: String!
+  probeId: String!
+  provider: String!
+  providerAccountId: String!
+  stateUpdated: Boolean!
+  status: String!
+  statusCode: Int
+}
+
+type ProviderModelHealth {
+  consecutiveFailures: Int!
+  lastErrorAt: String
+  lastErrorType: String
+  lastSuccessAt: String
+  lockoutUntil: String
+  model: String!
+  providerAccountId: String!
+  providerId: String!
+  status: String!
 }
 
 type ProviderRegistryEntry {
@@ -764,6 +811,7 @@ type Query {
 type RequestDetail {
   compressionReceipts: [CompressionReceipt!]!
   events: [ProxyEvent!]!
+  healthSkips: JSON!
   providerAttempts: [ProviderAttempt!]!
   request: RequestSummary
   routeDecisions: [RouteDecision!]!

@@ -16,6 +16,9 @@ import {
   modelCatalog,
   providers,
   providerAccounts,
+  providerAccountHealth,
+  providerAttempts,
+  providerModelHealth,
   users
 } from "@prompt-proxy/db";
 
@@ -53,6 +56,23 @@ const CANCEL_OAUTH = `mutation CancelOAuth($loginId: ID!) {
   cancelProviderCredentialOAuth(loginId: $loginId) { loginId status error }
 }`;
 const REVOKE = `mutation Revoke($id: ID!) { revokeProviderCredential(providerAccountId: $id) { id status } }`;
+const PROBE = `mutation Probe($input: ProbeProviderCredentialInput!) {
+  probeProviderCredential(input: $input) {
+    probeId
+    providerAccountId
+    provider
+    model
+    status
+    healthStatus
+    errorType
+    message
+    statusCode
+    latencyMs
+    checkedAt
+    stateUpdated
+    dimensions
+  }
+}`;
 const BIND = `mutation Bind($apiKeyId: ID!, $provider: String!, $providerAccountId: ID) {
   assignApiKeyProviderAccount(apiKeyId: $apiKeyId, provider: $provider, providerAccountId: $providerAccountId) {
     id providerCredentials { provider providerId providerAccountId name status }
@@ -67,6 +87,30 @@ const PROVIDERS = `query {
     enabled
     builtin
     endpoints { dialect path }
+  }
+}`;
+const HEALTH_LIST = `query {
+  providerAccounts {
+    id
+    health {
+      status
+      cooldownUntil
+      lastErrorType
+      lastErrorAt
+      lastSuccessAt
+      consecutiveFailures
+      modelHealth {
+        providerId
+        providerAccountId
+        model
+        status
+        lastErrorType
+        lastErrorAt
+        lockoutUntil
+        consecutiveFailures
+        lastSuccessAt
+      }
+    }
   }
 }`;
 
@@ -119,6 +163,13 @@ describe("BYOK provider credentials", () => {
     await sendMessage(fixture);
     const providerCall = fixture.anthropic.records.find((record) => record.path === "/messages");
     expect(providerCall?.headers["x-api-key"]).toBe(CUSTOMER_KEY);
+    const eventRows = await fixture.db.select().from(events);
+    const attemptRows = await fixture.db.select().from(providerAttempts).where(eq(providerAttempts.providerAccountId, account.id));
+    const started = eventRows.find((event) => event.eventType === "provider.request_started");
+    const terminal = eventRows.find((event) => event.eventType === "provider.response_completed");
+    expect(started?.payload).toEqual(expect.objectContaining({ providerAccountId: account.id }));
+    expect(terminal?.payload).toEqual(expect.objectContaining({ providerAccountId: account.id }));
+    expect(attemptRows).toHaveLength(1);
 
     const list = await gql(fixture, LIST);
     const serialized = JSON.stringify(list);
@@ -157,6 +208,435 @@ describe("BYOK provider credentials", () => {
       provider: "anthropic"
     });
     expect(otherWorkspaceCredential).toBeUndefined();
+  });
+
+  it("emits provider account cooldown events for BYOK rate limits", async () => {
+    const fixture = await setup("org_byok_rate_limited", {
+      PROVIDER_RATE_LIMIT_MAX_ATTEMPTS: "1",
+      PROVIDER_RATE_LIMIT_MAX_DELAY_MS: "1"
+    });
+    const rateLimitedOpenAI = await startOpenAIMock({
+      rateLimitProviderOnce: {
+        headers: { "retry-after": "30" }
+      }
+    });
+
+    try {
+      const created = await gql(fixture, CREATE, {
+        input: {
+          provider: "openai",
+          name: "Rate limited key",
+          apiKey: "sk-openai-customer",
+          baseUrl: rateLimitedOpenAI.url
+        }
+      });
+      expect(created.errors).toBeUndefined();
+      const account = created.data?.createProviderCredential;
+
+      const bound = await gql(fixture, BIND, {
+        apiKeyId: "org_byok_rate_limited:api-key:default",
+        provider: "openai",
+        providerAccountId: account.id
+      });
+      expect(bound.errors).toBeUndefined();
+
+      const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
+        method: "POST",
+        headers: {
+          "x-api-key": "proxy-token",
+          "content-type": "application/json"
+        },
+        body: openAIResponseBody
+      });
+      await response.text();
+
+      const eventRows = await fixture.db.select().from(events);
+      const cooldown = eventRows.find((event) => event.eventType === "provider_account.cooldown_started");
+
+      expect(response.status).toBe(429);
+      expect(cooldown?.workspaceId).toBe(defaultWorkspaceId("org_byok_rate_limited"));
+      expect(cooldown?.scopeType).toBe("provider_account");
+      expect(cooldown?.scopeId).toBe(account.id);
+      expect(cooldown?.payload).toEqual(expect.objectContaining({
+        providerAccountId: account.id,
+        classification: expect.objectContaining({
+          errorType: "rate_limited",
+          scope: "provider_account"
+        })
+      }));
+    } finally {
+      await rateLimitedOpenAI.close();
+    }
+  });
+
+  it("exposes provider account health and model lockouts through admin GraphQL", async () => {
+    const organizationId = "org_byok_health_graphql";
+    const fixture = await setup(organizationId);
+    const cooldownUntil = new Date("2026-06-18T12:05:00.000Z");
+    const lastErrorAt = new Date("2026-06-18T12:00:00.000Z");
+    const lastSuccessAt = new Date("2026-06-18T11:55:00.000Z");
+    const lockoutUntil = new Date("2026-06-18T12:10:00.000Z");
+
+    const created = await gql(fixture, CREATE, {
+      input: {
+        provider: "openai",
+        name: "Health key",
+        apiKey: "sk-openai-health"
+      }
+    });
+    expect(created.errors).toBeUndefined();
+    const account = created.data?.createProviderCredential;
+
+    await fixture.db.insert(providerAccountHealth).values({
+      id: `${organizationId}:account-health`,
+      organizationId,
+      workspaceId: defaultWorkspaceId(organizationId),
+      providerAccountId: account.id,
+      providerId: account.providerId,
+      status: "cooldown",
+      lastErrorType: "rate_limited",
+      lastErrorMessage: "rate limited",
+      lastErrorAt,
+      cooldownUntil,
+      consecutiveFailures: 2,
+      lastSuccessAt,
+      metadata: {}
+    });
+    await fixture.db.insert(providerModelHealth).values({
+      id: `${organizationId}:model-health`,
+      organizationId,
+      workspaceId: defaultWorkspaceId(organizationId),
+      providerId: account.providerId,
+      providerAccountId: account.id,
+      model: "gpt-locked",
+      status: "locked_out",
+      lastErrorType: "model_unavailable",
+      lastErrorAt,
+      lockoutUntil,
+      consecutiveFailures: 1,
+      lastSuccessAt,
+      metadata: {}
+    });
+
+    const result = await gql(fixture, HEALTH_LIST);
+    const listed = (result.data?.providerAccounts ?? []).find((row: { id: string }) => row.id === account.id);
+
+    expect(result.errors).toBeUndefined();
+    expect(listed?.health).toEqual({
+      status: "cooldown",
+      cooldownUntil: cooldownUntil.toISOString(),
+      lastErrorType: "rate_limited",
+      lastErrorAt: lastErrorAt.toISOString(),
+      lastSuccessAt: lastSuccessAt.toISOString(),
+      consecutiveFailures: 2,
+      modelHealth: [
+        {
+          providerId: account.providerId,
+          providerAccountId: account.id,
+          model: "gpt-locked",
+          status: "locked_out",
+          lastErrorType: "model_unavailable",
+          lastErrorAt: lastErrorAt.toISOString(),
+          lockoutUntil: lockoutUntil.toISOString(),
+          consecutiveFailures: 1,
+          lastSuccessAt: lastSuccessAt.toISOString()
+        }
+      ]
+    });
+    expect(JSON.stringify(result)).not.toContain("sk-openai-health");
+  });
+
+  it("probes a provider account and records healthy state", async () => {
+    const organizationId = "org_byok_probe_success";
+    const fixture = await setup(organizationId);
+
+    const created = await gql(fixture, CREATE, {
+      input: {
+        provider: "openai",
+        name: "Probe key",
+        apiKey: "sk-openai-probe",
+        baseUrl: fixture.openai.url
+      }
+    });
+    expect(created.errors).toBeUndefined();
+    const account = created.data?.createProviderCredential;
+
+    const result = await gql(fixture, PROBE, {
+      input: {
+        providerAccountId: account.id,
+        model: "gpt-probe"
+      }
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.probeProviderCredential).toEqual(expect.objectContaining({
+      providerAccountId: account.id,
+      provider: "openai",
+      model: "gpt-probe",
+      status: "success",
+      healthStatus: "healthy",
+      statusCode: 200,
+      stateUpdated: true
+    }));
+    expect(JSON.stringify(result)).not.toContain("sk-openai-probe");
+
+    const probeCalls = fixture.openai.records.filter((record) =>
+      record.path === "/responses" && record.body.model === "gpt-probe"
+    );
+    expect(probeCalls).toHaveLength(2);
+    expect(probeCalls[0]?.body).toEqual(expect.objectContaining({
+      stream: false,
+      max_output_tokens: 8
+    }));
+    expect(probeCalls[1]?.body).toEqual(expect.objectContaining({ stream: true }));
+    expect(probeCalls[0]?.headers.authorization).toBe("Bearer sk-openai-probe");
+
+    const [accountHealth] = await fixture.db
+      .select()
+      .from(providerAccountHealth)
+      .where(eq(providerAccountHealth.providerAccountId, account.id));
+    const [modelHealth] = await fixture.db
+      .select()
+      .from(providerModelHealth)
+      .where(eq(providerModelHealth.providerAccountId, account.id));
+    expect(accountHealth).toEqual(expect.objectContaining({
+      organizationId,
+      providerAccountId: account.id,
+      providerId: account.providerId,
+      status: "healthy",
+      consecutiveFailures: 0
+    }));
+    expect(accountHealth.lastCheckedAt).toBeInstanceOf(Date);
+    expect(accountHealth.lastSuccessAt).toBeInstanceOf(Date);
+    expect(modelHealth).toEqual(expect.objectContaining({
+      organizationId,
+      providerAccountId: account.id,
+      providerId: account.providerId,
+      model: "gpt-probe",
+      status: "healthy",
+      consecutiveFailures: 0
+    }));
+
+    const eventRows = await fixture.db.select().from(events);
+    const probeEvent = eventRows.find((event) => event.eventType === "provider_account.health_probe_completed");
+    expect(probeEvent?.workspaceId).toBe(defaultWorkspaceId(organizationId));
+    expect(probeEvent?.scopeType).toBe("provider_account");
+    expect(probeEvent?.scopeId).toBe(account.id);
+    expect(probeEvent?.payload).toEqual(expect.objectContaining({
+      providerAccountId: account.id,
+      providerId: account.providerId,
+      model: "gpt-probe",
+      status: "success",
+      healthStatus: "healthy",
+      stateUpdated: true,
+      dimensions: expect.objectContaining({
+        basicChat: expect.objectContaining({ status: "passed" }),
+        streaming: expect.objectContaining({ status: "passed" }),
+        toolCalls: expect.objectContaining({ status: "not_configured" })
+      })
+    }));
+    expect(JSON.stringify(probeEvent?.payload)).not.toContain("sk-openai-probe");
+  });
+
+  it("keeps partial stream probe results event-only", async () => {
+    const organizationId = "org_byok_probe_partial_stream";
+    const fixture = await setup(organizationId);
+    const streamFailingOpenAI = await startOpenAIMock({ failStreamProvider: true });
+    const cooldownUntil = new Date("2026-06-18T12:05:00.000Z");
+    const lockoutUntil = new Date("2026-06-18T12:10:00.000Z");
+    const lastErrorAt = new Date("2026-06-18T12:00:00.000Z");
+
+    try {
+      const created = await gql(fixture, CREATE, {
+        input: {
+          provider: "openai",
+          name: "Probe partial key",
+          apiKey: "sk-openai-probe-partial",
+          baseUrl: streamFailingOpenAI.url
+        }
+      });
+      expect(created.errors).toBeUndefined();
+      const account = created.data?.createProviderCredential;
+      await fixture.db.insert(providerAccountHealth).values({
+        id: `${organizationId}:account-health`,
+        organizationId,
+        workspaceId: defaultWorkspaceId(organizationId),
+        providerAccountId: account.id,
+        providerId: account.providerId,
+        status: "cooldown",
+        lastErrorType: "rate_limited",
+        lastErrorMessage: "existing cooldown",
+        lastErrorAt,
+        cooldownUntil,
+        consecutiveFailures: 3,
+        metadata: {}
+      });
+      await fixture.db.insert(providerModelHealth).values({
+        id: `${organizationId}:model-health`,
+        organizationId,
+        workspaceId: defaultWorkspaceId(organizationId),
+        providerId: account.providerId,
+        providerAccountId: account.id,
+        model: "gpt-probe",
+        status: "locked_out",
+        lastErrorType: "model_unavailable",
+        lastErrorAt,
+        lockoutUntil,
+        consecutiveFailures: 2,
+        metadata: {}
+      });
+
+      const result = await gql(fixture, PROBE, {
+        input: {
+          providerAccountId: account.id,
+          model: "gpt-probe"
+        }
+      });
+
+      expect(result.errors).toBeUndefined();
+      expect(result.data?.probeProviderCredential).toEqual(expect.objectContaining({
+        providerAccountId: account.id,
+        provider: "openai",
+        model: "gpt-probe",
+        status: "partial",
+        healthStatus: "unknown",
+        errorType: "stream_failed",
+        message: "Streaming probe failed.",
+        statusCode: 200,
+        stateUpdated: false,
+        dimensions: expect.objectContaining({
+          basicChat: expect.objectContaining({ status: "passed" }),
+          streaming: expect.objectContaining({ status: "failed" })
+        })
+      }));
+
+      const probeCalls = streamFailingOpenAI.records.filter((record) =>
+        record.path === "/responses" && record.body.model === "gpt-probe"
+      );
+      expect(probeCalls.map((record) => record.body.stream)).toEqual([false, true]);
+
+      const [accountHealth] = await fixture.db
+        .select()
+        .from(providerAccountHealth)
+        .where(eq(providerAccountHealth.providerAccountId, account.id));
+      const [modelHealth] = await fixture.db
+        .select()
+        .from(providerModelHealth)
+        .where(eq(providerModelHealth.providerAccountId, account.id));
+      expect(accountHealth).toEqual(expect.objectContaining({
+        status: "cooldown",
+        lastErrorType: "rate_limited",
+        lastErrorMessage: "existing cooldown",
+        consecutiveFailures: 3
+      }));
+      expect(accountHealth.cooldownUntil?.toISOString()).toBe(cooldownUntil.toISOString());
+      expect(modelHealth).toEqual(expect.objectContaining({
+        status: "locked_out",
+        lastErrorType: "model_unavailable",
+        consecutiveFailures: 2
+      }));
+      expect(modelHealth.lockoutUntil?.toISOString()).toBe(lockoutUntil.toISOString());
+
+      const eventRows = await fixture.db.select().from(events);
+      const probeEvent = eventRows.find((event) => event.eventType === "provider_account.health_probe_completed");
+      expect(probeEvent?.payload).toEqual(expect.objectContaining({
+        status: "partial",
+        healthStatus: "unknown",
+        errorType: "stream_failed",
+        stateUpdated: false,
+        dimensions: expect.objectContaining({
+          basicChat: expect.objectContaining({ status: "passed" }),
+          streaming: expect.objectContaining({ status: "failed" })
+        })
+      }));
+    } finally {
+      await streamFailingOpenAI.close();
+    }
+  });
+
+  it("probes a provider account and records high-confidence failure state", async () => {
+    const organizationId = "org_byok_probe_rate_limited";
+    const fixture = await setup(organizationId);
+    const rateLimitedOpenAI = await startOpenAIMock({
+      rateLimitProviderOnce: {
+        headers: { "retry-after": "30" },
+        body: { error: { message: "mock rate limit", code: "rate_limit" } }
+      }
+    });
+
+    try {
+      const created = await gql(fixture, CREATE, {
+        input: {
+          provider: "openai",
+          name: "Probe rate limit key",
+          apiKey: "sk-openai-probe-rate-limit",
+          baseUrl: rateLimitedOpenAI.url
+        }
+      });
+      expect(created.errors).toBeUndefined();
+      const account = created.data?.createProviderCredential;
+
+      const result = await gql(fixture, PROBE, {
+        input: {
+          providerAccountId: account.id,
+          model: "gpt-probe"
+        }
+      });
+
+      expect(result.errors).toBeUndefined();
+      expect(result.data?.probeProviderCredential).toEqual(expect.objectContaining({
+        providerAccountId: account.id,
+        provider: "openai",
+        model: "gpt-probe",
+        status: "failed",
+        healthStatus: "cooldown",
+        errorType: "rate_limited",
+        message: "Probe classified as rate_limited.",
+        statusCode: 429,
+        stateUpdated: true
+      }));
+      expect(JSON.stringify(result)).not.toContain("mock rate limit");
+      expect(JSON.stringify(result)).not.toContain("sk-openai-probe-rate-limit");
+      expect(rateLimitedOpenAI.records.filter((record) => record.path === "/responses")).toHaveLength(1);
+
+      const [accountHealth] = await fixture.db
+        .select()
+        .from(providerAccountHealth)
+        .where(eq(providerAccountHealth.providerAccountId, account.id));
+      expect(accountHealth).toEqual(expect.objectContaining({
+        organizationId,
+        providerAccountId: account.id,
+        providerId: account.providerId,
+        status: "cooldown",
+        lastErrorType: "rate_limited",
+        lastErrorMessage: "Probe classified as rate_limited.",
+        consecutiveFailures: 1
+      }));
+      expect(accountHealth.cooldownUntil).toBeInstanceOf(Date);
+      expect(accountHealth.lastCheckedAt).toBeInstanceOf(Date);
+
+      const eventRows = await fixture.db.select().from(events);
+      const probeEvent = eventRows.find((event) => event.eventType === "provider_account.health_probe_completed");
+      expect(probeEvent?.payload).toEqual(expect.objectContaining({
+        providerAccountId: account.id,
+        providerId: account.providerId,
+        model: "gpt-probe",
+        status: "failed",
+        healthStatus: "cooldown",
+        errorType: "rate_limited",
+        message: "Probe classified as rate_limited.",
+        stateUpdated: true,
+        classification: expect.objectContaining({
+          errorType: "rate_limited",
+          scope: "provider_account",
+          message: "Probe classified as rate_limited."
+        })
+      }));
+      expect(JSON.stringify(probeEvent?.payload)).not.toContain("mock rate limit");
+      expect(JSON.stringify(probeEvent?.payload)).not.toContain("sk-openai-probe-rate-limit");
+    } finally {
+      await rateLimitedOpenAI.close();
+    }
   });
 
   it("round-trips a credential binding for an org-scoped custom provider", async () => {
@@ -610,11 +1090,12 @@ describe("BYOK provider credentials", () => {
     expect(named.filter((row: { status: string }) => row.status === "active")).toHaveLength(1);
   });
 
-  async function setup(organizationId: string) {
+  async function setup(organizationId: string, envOverrides: Record<string, string> = {}) {
     activeFixture = await captureFixture(organizationId, "raw_text", false, {
       envOverrides: {
         PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY,
-        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8,10.0.0.0/8"
+        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8,10.0.0.0/8",
+        ...envOverrides
       }
     });
     return activeFixture;

@@ -14,6 +14,8 @@ import {
   promptArtifacts,
   providers,
   providerAccounts,
+  providerAccountHealth,
+  providerModelHealth,
   routingConfigs,
   routingConfigVersions
 } from "@prompt-proxy/db";
@@ -23,6 +25,7 @@ import { composeClassifierInstructions, type RoutingConfig } from "@prompt-proxy
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
 const ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+const OPENAI_PROVIDER_ID = "00000000-0000-0000-0000-000000000001";
 
 describe("routing config runtime resolution", () => {
   let activeFixture: PromptTestFixture | undefined;
@@ -725,11 +728,15 @@ describe("routing config runtime resolution", () => {
       record.body.type === "response.create" && record.body.model === "gpt-custom-ws-byok"
     );
     const eventRows = await activeFixture.db.select().from(events);
+    const started = eventRows.find((event) => event.eventType === "provider.request_started");
+    const terminal = eventRows.find((event) => event.eventType === "provider.response_completed");
 
     expect(providerCall).toBeTruthy();
     expect(providerCall?.headers.authorization).toBe("Bearer sk-custom-ws");
     expect(providerCall?.headers["x-custom-provider"]).toBe("byok");
     expect(providerCall?.headers["openai-beta"]).toBe("responses_websockets=2026-02-06");
+    expect(started?.payload).toEqual(expect.objectContaining({ providerAccountId }));
+    expect(terminal?.payload).toEqual(expect.objectContaining({ providerAccountId }));
     expect(eventRows.filter((event) => event.eventType === "provider.response_completed")).toHaveLength(1);
   });
 
@@ -1038,6 +1045,447 @@ describe("routing config runtime resolution", () => {
     expect(activeFixture.openai.records.filter((record) =>
       record.body.model !== "route-classifier-cheap"
     )).toHaveLength(0);
+  });
+
+  it("skips provider accounts under active cooldown", async () => {
+    const organizationId = "org_health_account_cooldown_skip";
+    const providerId = "00000000-0000-0000-0000-00000000c017";
+    const providerAccountId = `${organizationId}:provider-account:cooldown`;
+    const cooldownUntil = new Date(Date.now() + 60_000);
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: {
+        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8",
+        PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY
+      }
+    });
+    await setupHealthRoute(activeFixture, organizationId, {
+      routeSlug: "account-cooldown-skip",
+      secret: "account-cooldown-token",
+      providerId,
+      providerSlug: "custom-account-cooldown",
+      providerAccountId,
+      targets: [
+        { providerId: "custom-account-cooldown", model: "gpt-account-cooldown", effort: "high", verbosity: "medium" },
+        { providerId: "openai", model: "gpt-account-fallback", effort: "high", verbosity: "medium" }
+      ]
+    });
+    await activeFixture.db.insert(providerAccountHealth).values({
+      id: `${organizationId}:account-health`,
+      organizationId,
+      workspaceId: defaultWorkspaceId(organizationId),
+      providerAccountId,
+      providerId,
+      status: "cooldown",
+      lastErrorType: "rate_limited",
+      lastErrorMessage: "rate limited",
+      cooldownUntil,
+      consecutiveFailures: 1,
+      metadata: {}
+    });
+
+    const response = await sendHardResponse(activeFixture, "account-cooldown-token");
+    await response.text();
+    const decision = await routeDecisionPayload(activeFixture);
+    const providerCalls = activeFixture.openai.records.filter((record) =>
+      record.path === "/responses" && record.body.model !== "route-classifier-cheap"
+    );
+
+    expect(response.status).toBe(200);
+    expect(providerCalls.map((record) => record.body.model)).toEqual(["gpt-account-fallback"]);
+    expect(decision?.guardrailActions).toContain("target_skipped_provider_account_cooldown:custom-account-cooldown");
+    expect(decision?.healthSkips).toEqual([
+      expect.objectContaining({
+        scope: "provider_account",
+        provider: "custom-account-cooldown",
+        providerId,
+        providerAccountId,
+        model: "gpt-account-cooldown",
+        healthStatus: "cooldown",
+        errorType: "rate_limited",
+        expiresAt: cooldownUntil.toISOString()
+      })
+    ]);
+  });
+
+  it("skips builtin provider accounts under active cooldown", async () => {
+    const organizationId = "org_health_builtin_account_cooldown_skip";
+    const providerAccountId = `${organizationId}:provider-account:builtin-cooldown`;
+    const cooldownUntil = new Date(Date.now() + 60_000);
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: {
+        PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY
+      }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "builtin-account-cooldown-token",
+      slug: "builtin-account-cooldown",
+      configHash: "sha256:builtin-account-cooldown",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            targets: [
+              { providerId: "openai", model: "gpt-builtin-cooldown", effort: "high", verbosity: "medium" },
+              { providerId: "anthropic", model: "claude-builtin-fallback", effort: "high" }
+            ]
+          }
+        }
+      })
+    });
+    await activeFixture.db.insert(providerAccounts).values({
+      id: providerAccountId,
+      organizationId,
+      providerId: OPENAI_PROVIDER_ID,
+      name: "Builtin health test key",
+      authType: "api_key",
+      secretCiphertext: encryptSecret("sk-builtin-health-route", ENCRYPTION_KEY),
+      secretHint: "••••oute",
+      settings: {}
+    });
+    await activeFixture.db.insert(apiKeyProviderAccounts).values({
+      organizationId,
+      workspaceId: defaultWorkspaceId(organizationId),
+      apiKeyId: "api_key_builtin-account-cooldown",
+      providerId: OPENAI_PROVIDER_ID,
+      providerAccountId
+    });
+    await activeFixture.db.insert(providerAccountHealth).values({
+      id: `${organizationId}:account-health`,
+      organizationId,
+      workspaceId: defaultWorkspaceId(organizationId),
+      providerAccountId,
+      providerId: OPENAI_PROVIDER_ID,
+      status: "cooldown",
+      lastErrorType: "rate_limited",
+      lastErrorMessage: "rate limited",
+      cooldownUntil,
+      consecutiveFailures: 1,
+      metadata: {}
+    });
+
+    const response = await sendHardResponse(activeFixture, "builtin-account-cooldown-token");
+    await response.text();
+    const decision = await routeDecisionPayload(activeFixture);
+    const openAICalls = activeFixture.openai.records.filter((record) =>
+      record.path === "/responses" && record.body.model !== "route-classifier-cheap"
+    );
+    const anthropicCall = activeFixture.anthropic.records.find((record) => record.path === "/messages");
+
+    expect(response.status).toBe(200);
+    expect(openAICalls.map((record) => record.body.model)).toEqual([]);
+    expect(anthropicCall?.body.model).toBe("claude-builtin-fallback");
+    expect(decision?.guardrailActions).toContain("target_skipped_provider_account_cooldown:openai");
+    expect(decision?.healthSkips).toEqual([
+      expect.objectContaining({
+        scope: "provider_account",
+        provider: "openai",
+        providerId: OPENAI_PROVIDER_ID,
+        providerAccountId,
+        model: "gpt-builtin-cooldown",
+        healthStatus: "cooldown",
+        errorType: "rate_limited",
+        expiresAt: cooldownUntil.toISOString()
+      })
+    ]);
+  });
+
+  it("skips provider accounts with terminal health", async () => {
+    const organizationId = "org_health_account_terminal_skip";
+    const providerId = "00000000-0000-0000-0000-00000000c021";
+    const providerAccountId = `${organizationId}:provider-account:terminal`;
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: {
+        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8",
+        PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY
+      }
+    });
+    await setupHealthRoute(activeFixture, organizationId, {
+      routeSlug: "account-terminal-skip",
+      secret: "account-terminal-token",
+      providerId,
+      providerSlug: "custom-account-terminal",
+      providerAccountId,
+      targets: [
+        { providerId: "custom-account-terminal", model: "gpt-account-terminal", effort: "high", verbosity: "medium" },
+        { providerId: "openai", model: "gpt-account-terminal-fallback", effort: "high", verbosity: "medium" }
+      ]
+    });
+    await activeFixture.db.insert(providerAccountHealth).values({
+      id: `${organizationId}:account-health`,
+      organizationId,
+      workspaceId: defaultWorkspaceId(organizationId),
+      providerAccountId,
+      providerId,
+      status: "terminal",
+      lastErrorType: "auth_invalid",
+      lastErrorMessage: "Probe classified as auth_invalid.",
+      consecutiveFailures: 1,
+      metadata: {}
+    });
+
+    const response = await sendHardResponse(activeFixture, "account-terminal-token");
+    await response.text();
+    const decision = await routeDecisionPayload(activeFixture);
+    const providerCalls = activeFixture.openai.records.filter((record) =>
+      record.path === "/responses" && record.body.model !== "route-classifier-cheap"
+    );
+
+    expect(response.status).toBe(200);
+    expect(providerCalls.map((record) => record.body.model)).toEqual(["gpt-account-terminal-fallback"]);
+    expect(decision?.guardrailActions).toContain("target_skipped_provider_account_terminal:custom-account-terminal");
+    expect(decision?.healthSkips).toEqual([
+      expect.objectContaining({
+        scope: "provider_account",
+        provider: "custom-account-terminal",
+        providerId,
+        providerAccountId,
+        model: "gpt-account-terminal",
+        healthStatus: "terminal",
+        errorType: "auth_invalid"
+      })
+    ]);
+    expect(decision?.healthSkips?.[0]).not.toHaveProperty("expiresAt");
+  });
+
+  it("skips provider account models under active lockout", async () => {
+    const organizationId = "org_health_model_lockout_skip";
+    const providerId = "00000000-0000-0000-0000-00000000c018";
+    const providerAccountId = `${organizationId}:provider-account:model-lockout`;
+    const lockoutUntil = new Date(Date.now() + 60_000);
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: {
+        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8",
+        PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY
+      }
+    });
+    await setupHealthRoute(activeFixture, organizationId, {
+      routeSlug: "model-lockout-skip",
+      secret: "model-lockout-token",
+      providerId,
+      providerSlug: "custom-model-lockout",
+      providerAccountId,
+      targets: [
+        { providerId: "custom-model-lockout", model: "gpt-model-lockout", effort: "high", verbosity: "medium" },
+        { providerId: "openai", model: "gpt-model-fallback", effort: "high", verbosity: "medium" }
+      ]
+    });
+    await activeFixture.db.insert(providerModelHealth).values({
+      id: `${organizationId}:model-health`,
+      organizationId,
+      workspaceId: defaultWorkspaceId(organizationId),
+      providerId,
+      providerAccountId,
+      model: "gpt-model-lockout",
+      status: "locked_out",
+      lastErrorType: "model_unavailable",
+      lastErrorAt: new Date(),
+      lockoutUntil,
+      consecutiveFailures: 1,
+      metadata: {}
+    });
+
+    const response = await sendHardResponse(activeFixture, "model-lockout-token");
+    await response.text();
+    const decision = await routeDecisionPayload(activeFixture);
+    const providerCalls = activeFixture.openai.records.filter((record) =>
+      record.path === "/responses" && record.body.model !== "route-classifier-cheap"
+    );
+
+    expect(response.status).toBe(200);
+    expect(providerCalls.map((record) => record.body.model)).toEqual(["gpt-model-fallback"]);
+    expect(decision?.guardrailActions).toContain("target_skipped_provider_model_lockout:custom-model-lockout");
+    expect(decision?.healthSkips).toEqual([
+      expect.objectContaining({
+        scope: "provider_account_model",
+        provider: "custom-model-lockout",
+        providerId,
+        providerAccountId,
+        model: "gpt-model-lockout",
+        healthStatus: "locked_out",
+        errorType: "model_unavailable",
+        expiresAt: lockoutUntil.toISOString()
+      })
+    ]);
+  });
+
+  it("skips provider account models with terminal health", async () => {
+    const organizationId = "org_health_model_terminal_skip";
+    const providerId = "00000000-0000-0000-0000-00000000c022";
+    const providerAccountId = `${organizationId}:provider-account:model-terminal`;
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: {
+        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8",
+        PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY
+      }
+    });
+    await setupHealthRoute(activeFixture, organizationId, {
+      routeSlug: "model-terminal-skip",
+      secret: "model-terminal-token",
+      providerId,
+      providerSlug: "custom-model-terminal",
+      providerAccountId,
+      targets: [
+        { providerId: "custom-model-terminal", model: "gpt-model-terminal", effort: "high", verbosity: "medium" },
+        { providerId: "openai", model: "gpt-model-terminal-fallback", effort: "high", verbosity: "medium" }
+      ]
+    });
+    await activeFixture.db.insert(providerModelHealth).values({
+      id: `${organizationId}:model-health`,
+      organizationId,
+      workspaceId: defaultWorkspaceId(organizationId),
+      providerId,
+      providerAccountId,
+      model: "gpt-model-terminal",
+      status: "terminal",
+      lastErrorType: "model_access_denied",
+      lastErrorAt: new Date(),
+      consecutiveFailures: 1,
+      metadata: {}
+    });
+
+    const response = await sendHardResponse(activeFixture, "model-terminal-token");
+    await response.text();
+    const decision = await routeDecisionPayload(activeFixture);
+    const providerCalls = activeFixture.openai.records.filter((record) =>
+      record.path === "/responses" && record.body.model !== "route-classifier-cheap"
+    );
+
+    expect(response.status).toBe(200);
+    expect(providerCalls.map((record) => record.body.model)).toEqual(["gpt-model-terminal-fallback"]);
+    expect(decision?.guardrailActions).toContain("target_skipped_provider_model_terminal:custom-model-terminal");
+    expect(decision?.healthSkips).toEqual([
+      expect.objectContaining({
+        scope: "provider_account_model",
+        provider: "custom-model-terminal",
+        providerId,
+        providerAccountId,
+        model: "gpt-model-terminal",
+        healthStatus: "terminal",
+        errorType: "model_access_denied"
+      })
+    ]);
+    expect(decision?.healthSkips?.[0]).not.toHaveProperty("expiresAt");
+  });
+
+  it("treats expired provider account cooldowns as eligible", async () => {
+    const organizationId = "org_health_expired_cooldown";
+    const providerId = "00000000-0000-0000-0000-00000000c019";
+    const providerAccountId = `${organizationId}:provider-account:expired-cooldown`;
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: {
+        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8",
+        PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY
+      }
+    });
+    await setupHealthRoute(activeFixture, organizationId, {
+      routeSlug: "expired-cooldown",
+      secret: "expired-cooldown-token",
+      providerId,
+      providerSlug: "custom-expired-cooldown",
+      providerAccountId,
+      targets: [
+        { providerId: "custom-expired-cooldown", model: "gpt-expired-cooldown", effort: "high", verbosity: "medium" }
+      ]
+    });
+    await activeFixture.db.insert(providerAccountHealth).values({
+      id: `${organizationId}:account-health`,
+      organizationId,
+      workspaceId: defaultWorkspaceId(organizationId),
+      providerAccountId,
+      providerId,
+      status: "cooldown",
+      lastErrorType: "rate_limited",
+      lastErrorMessage: "rate limited",
+      cooldownUntil: new Date(Date.now() - 60_000),
+      consecutiveFailures: 1,
+      metadata: {}
+    });
+
+    const response = await sendHardResponse(activeFixture, "expired-cooldown-token");
+    await response.text();
+    const decision = await routeDecisionPayload(activeFixture);
+    const providerCall = activeFixture.openai.records.find((record) =>
+      record.path === "/responses" && record.body.model === "gpt-expired-cooldown"
+    );
+
+    expect(response.status).toBe(200);
+    expect(providerCall?.headers.authorization).toBe("Bearer sk-health-route");
+    expect(decision?.provider).toBe("custom-expired-cooldown");
+    expect(decision?.healthSkips ?? []).toEqual([]);
+  });
+
+  it("rejects before provider spend when all targets are unhealthy", async () => {
+    const organizationId = "org_health_all_unavailable";
+    const providerId = "00000000-0000-0000-0000-00000000c020";
+    const providerAccountId = `${organizationId}:provider-account:all-unavailable`;
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: {
+        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8",
+        PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY
+      }
+    });
+    await setupHealthRoute(activeFixture, organizationId, {
+      routeSlug: "all-unavailable",
+      secret: "all-unavailable-token",
+      providerId,
+      providerSlug: "custom-all-unavailable",
+      providerAccountId,
+      targets: [
+        { providerId: "custom-all-unavailable", model: "gpt-all-unavailable", effort: "high", verbosity: "medium" }
+      ]
+    });
+    await activeFixture.db.insert(providerAccountHealth).values({
+      id: `${organizationId}:account-health`,
+      organizationId,
+      workspaceId: defaultWorkspaceId(organizationId),
+      providerAccountId,
+      providerId,
+      status: "cooldown",
+      lastErrorType: "rate_limited",
+      lastErrorMessage: "rate limited",
+      cooldownUntil: new Date(Date.now() + 60_000),
+      consecutiveFailures: 1,
+      metadata: {}
+    });
+
+    const response = await sendHardResponse(activeFixture, "all-unavailable-token");
+    const body = await response.json() as { error?: string; message?: string };
+    const decision = await routeDecisionPayload(activeFixture);
+    const eventRows = await activeFixture.db.select().from(events);
+    const decisionEvent = eventRows.find((event) => event.eventType === "routing.decision_recorded");
+    const detail = await adminGql(
+      activeFixture.proxyUrl,
+      activeFixture.adminHeaders,
+      `query($requestId: ID!) { request(requestId: $requestId) { healthSkips } }`,
+      { requestId: decisionEvent?.scopeId }
+    );
+    const providerCalls = activeFixture.openai.records.filter((record) =>
+      record.path === "/responses" && record.body.model !== "route-classifier-cheap"
+    );
+
+    expect(response.status).toBe(503);
+    expect(body.error).toBe("provider_health_unavailable");
+    expect(body.message).toContain("provider target");
+    expect(providerCalls).toHaveLength(0);
+    expect(decision).toEqual(expect.objectContaining({
+      outcome: "reject",
+      error: "provider_health_unavailable",
+      healthSkips: [
+        expect.objectContaining({
+          scope: "provider_account",
+          provider: "custom-all-unavailable",
+          providerId,
+          providerAccountId,
+          model: "gpt-all-unavailable",
+          healthStatus: "cooldown",
+          errorType: "rate_limited"
+        })
+      ]
+    }));
+    expect(detail.errors).toBeUndefined();
+    expect(detail.data?.request.healthSkips).toEqual(decision?.healthSkips);
   });
 
   it("rejects requests over the routing config input-token cap before classifier spend", async () => {
@@ -1404,6 +1852,85 @@ async function assignRouteConfig(
     configHash: input.configHash,
     config
   };
+}
+
+async function setupHealthRoute(
+  fixture: PromptTestFixture,
+  organizationId: string,
+  input: {
+    routeSlug: string;
+    secret: string;
+    providerId: string;
+    providerSlug: string;
+    providerAccountId: string;
+    targets: RoutingConfig["routes"]["hard"]["targets"];
+  }
+) {
+  await fixture.db.insert(providers).values({
+    id: input.providerId,
+    organizationId,
+    slug: input.providerSlug,
+    displayName: "Health test provider",
+    baseUrl: fixture.openai.url,
+    authStyle: "bearer",
+    endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+    defaultHeaders: {},
+    forwardHarnessHeaders: false,
+    enabled: true
+  });
+  await fixture.db.insert(providerAccounts).values({
+    id: input.providerAccountId,
+    organizationId,
+    providerId: input.providerId,
+    name: "Health test key",
+    authType: "api_key",
+    secretCiphertext: encryptSecret("sk-health-route", ENCRYPTION_KEY),
+    secretHint: "••••oute",
+    settings: {}
+  });
+  await assignRouteConfig(fixture, organizationId, {
+    secret: input.secret,
+    slug: input.routeSlug,
+    configHash: `sha256:${input.routeSlug}`,
+    configure: (config) => ({
+      ...config,
+      routes: {
+        ...config.routes,
+        hard: {
+          ...config.routes.hard,
+          targets: input.targets
+        }
+      }
+    })
+  });
+  await fixture.db.insert(apiKeyProviderAccounts).values({
+    organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
+    apiKeyId: `api_key_${input.routeSlug}`,
+    providerId: input.providerId,
+    providerAccountId: input.providerAccountId
+  });
+}
+
+function sendHardResponse(fixture: PromptTestFixture, token: string) {
+  return fetch(`${fixture.proxyUrl}/v1/responses`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "router-hard",
+      input: "debug this provider health route",
+      stream: true
+    })
+  });
+}
+
+async function routeDecisionPayload(fixture: PromptTestFixture) {
+  const eventRows = await fixture.db.select().from(events);
+  const decision = eventRows.find((event) => event.eventType === "routing.decision_recorded");
+  return decision?.payload as Record<string, any> | undefined;
 }
 
 async function activeVersion(

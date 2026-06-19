@@ -36,6 +36,12 @@ export type ResolveCredentialInput = {
   provider: Provider;
 };
 
+export type ResolveProviderAccountCredentialInput = {
+  organizationId: string;
+  providerAccountId: string;
+  providerId?: string;
+};
+
 export type ProviderCredentialOptions = {
   encryptionKey: string | undefined;
   subscriptionOAuthEnabled: boolean;
@@ -68,8 +74,24 @@ export class ProviderCredentialStore {
       .limit(1);
     if (!binding) return undefined;
 
-    const cached = this.cache.get(binding.providerAccountId);
+    const credential = await this.resolveAccount({
+      organizationId: input.organizationId,
+      providerAccountId: binding.providerAccountId,
+      providerId: provider.id
+    }, now);
+    if (credential?.provider !== input.provider) return undefined;
+    return credential;
+  }
+
+  async resolveAccount(input: ResolveProviderAccountCredentialInput, now = Date.now()): Promise<UpstreamCredential | undefined> {
+    const cached = this.cache.get(input.providerAccountId);
     if (cached && cached.expiresAt > now) return cached.credential;
+
+    const predicates = [
+      eq(providerAccounts.organizationId, input.organizationId),
+      eq(providerAccounts.id, input.providerAccountId)
+    ];
+    if (input.providerId) predicates.push(eq(providerAccounts.providerId, input.providerId));
 
     const [account] = await this.db
       .select({
@@ -84,14 +106,10 @@ export class ProviderCredentialStore {
       })
       .from(providerAccounts)
       .innerJoin(providers, eq(providers.id, providerAccounts.providerId))
-      .where(and(
-        eq(providerAccounts.organizationId, input.organizationId),
-        eq(providerAccounts.id, binding.providerAccountId)
-      ))
+      .where(and(...predicates))
       .limit(1);
     if (!account) return undefined;
     if (account.status !== PROVIDER_ACCOUNT_STATUSES.ACTIVE) return undefined;
-    if (account.providerId !== provider.id) return undefined;
     if (!account.secretCiphertext) return undefined;
     // Fail closed on auth types this code predates: the column is plain text
     // and $type<> is compile-time only.

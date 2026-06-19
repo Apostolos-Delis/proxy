@@ -1,4 +1,5 @@
 import { undatedModel } from "../pricing.js";
+import { probeProviderCredential, ProviderHealthProbeError } from "../providerHealthProbe.js";
 import { writeSettingsFile } from "../settings.js";
 import { requireAdminRole } from "./authz.js";
 import { builder } from "./builder.js";
@@ -15,7 +16,7 @@ import {
   UserStatusResult
 } from "./types/invitations.js";
 import { ModelPricingEntry } from "./types/pricing.js";
-import { ApiKey, CreateApiKeyResult, ProviderAccount, ProviderCredentialOAuthStart, ProviderCredentialOAuthStatus, ProviderRegistryEntry, RoutingConfigDetail } from "./types/routing.js";
+import { ApiKey, CreateApiKeyResult, ProviderAccount, ProviderCredentialOAuthStart, ProviderCredentialOAuthStatus, ProviderHealthProbeResultType, ProviderRegistryEntry, RoutingConfigDetail } from "./types/routing.js";
 import { PromptCaptureConfig, Settings, SettingsInput } from "./types/settings.js";
 import { Viewer, WorkspaceSummary } from "./types/viewer.js";
 
@@ -58,6 +59,13 @@ const StartProviderCredentialOAuthInput = builder.inputType("StartProviderCreden
   fields: (t) => ({
     provider: t.string({ required: true }),
     name: t.string({ required: true })
+  })
+});
+
+const ProbeProviderCredentialInput = builder.inputType("ProbeProviderCredentialInput", {
+  fields: (t) => ({
+    providerAccountId: t.id({ required: true }),
+    model: t.string({ required: true })
   })
 });
 
@@ -653,6 +661,34 @@ builder.mutationFields((t) => ({
         const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
         return accounts.find((account) => account.id === created.providerAccountId) ?? null;
       } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  probeProviderCredential: t.field({
+    type: ProviderHealthProbeResultType,
+    args: { input: t.arg({ type: ProbeProviderCredentialInput, required: true }) },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("provider_accounts_not_found");
+      const identity = requireAdminRole(context);
+      try {
+        return await probeProviderCredential({
+          config: context.config,
+          events: context.events,
+          providerCredentials: context.persistence.providerCredentials,
+          providerRegistry: context.persistence.providerRegistry
+        }, {
+          organizationId: identity.organizationId,
+          workspaceId: identity.workspaceId,
+          actorUserId: identity.userId,
+          providerAccountId: String(args.input.providerAccountId),
+          model: args.input.model
+        });
+      } catch (error) {
+        if (error instanceof ProviderHealthProbeError) {
+          throw adminGraphQLError(error.message, error.statusCode);
+        }
         mapAdminError(error);
       }
     }

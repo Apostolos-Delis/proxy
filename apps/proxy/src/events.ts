@@ -250,6 +250,7 @@ export class ProviderAttemptStore {
     surface: Surface;
     provider: ProviderAttempt["provider"];
     model: string;
+    providerAccountId?: string;
   }) {
     const existingId = this.idempotency.get(input.idempotencyKey);
     if (existingId) {
@@ -265,6 +266,7 @@ export class ProviderAttemptStore {
       surface: input.surface,
       provider: input.provider,
       model: input.model,
+      providerAccountId: input.providerAccountId,
       terminalStatus: "pending"
     };
     this.attempts.set(attempt.id, attempt);

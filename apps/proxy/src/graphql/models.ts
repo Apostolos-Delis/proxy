@@ -58,6 +58,7 @@ export type RequestDetailShape = {
   providerAttempts: ProviderAttemptModel[];
   events: ProxyEventShape[];
   compressionReceipts: CompressionReceiptModel[];
+  healthSkips: unknown[];
 };
 
 export type ApiKeyModel = Awaited<ReturnType<Q["apiKeys"]>>["data"][number];

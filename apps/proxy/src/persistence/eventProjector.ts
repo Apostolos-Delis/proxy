@@ -4,6 +4,7 @@ import type { ProxyEvent } from "../events.js";
 import { persistClassifierUsage } from "./classifierUsage.js";
 import { persistCompressionReceipts } from "./compressionReceipts.js";
 import { persistProviderStarted, persistProviderTerminal, persistStreamStarted } from "./providerAttempt.js";
+import { projectProviderHealthProbe, projectProviderHealthTerminal } from "./providerHealth.js";
 import { persistRequestReceived, persistRoutingContext } from "./requestState.js";
 import { persistRouteDecision } from "./routeDecision.js";
 import { persistSessionRoute } from "./sessionRoute.js";
@@ -43,6 +44,11 @@ export async function projectEvent(tx: PromptProxyTransaction, event: ProxyEvent
     event.eventType === "provider.response_cancelled"
   ) {
     await persistProviderTerminal(tx, event);
+    await projectProviderHealthTerminal(tx, event);
+    return;
+  }
+  if (event.eventType === "provider_account.health_probe_completed") {
+    await projectProviderHealthProbe(tx, event);
     return;
   }
   if (event.eventType === "session.route_memory_recorded") {

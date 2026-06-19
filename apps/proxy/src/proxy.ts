@@ -1,5 +1,6 @@
 import type { FastifyReply } from "fastify";
 import { performance } from "node:perf_hooks";
+import type { ProviderHealthClassification } from "@prompt-proxy/schema";
 
 import type { ProviderAdapter, ProviderForwardInput } from "./adapters.js";
 import { bufferedStreamResponse, collectStreamResponse } from "./bufferedStreamResponse.js";
@@ -31,6 +32,7 @@ import {
   NoopMetricsCollector
 } from "./metrics.js";
 import { ProviderMetrics } from "./providerMetrics.js";
+import { classifyProviderTerminalHealth } from "./providerHealth.js";
 import { sseObserverForDialect, type StreamObservation } from "./sseObserver.js";
 import { providerCompressionTerminalTelemetry, requestBodyHash } from "./toolResultCompression.js";
 import { translators, type DialectTranslator } from "./translators/index.js";
@@ -70,13 +72,15 @@ export class ProviderProxy implements ProviderAdapter {
     const targetDialect = input.decision.providerSettings.dialect;
     const providerStream = isRecord(input.body) && input.body.stream === true;
     const responseStream = input.responseStream ?? providerStream;
+    const providerAccountId = input.credential?.providerAccountId;
 
     const { attempt, duplicate } = this.attempts.create({
       idempotencyKey: input.idempotencyKey,
       requestId: input.requestId,
       surface: input.surface,
       provider: input.provider,
-      model: selectedModel
+      model: selectedModel,
+      providerAccountId
     });
 
     if (!attempt || duplicate) {
@@ -101,6 +105,7 @@ export class ProviderProxy implements ProviderAdapter {
       fallbackIndex: 0
     };
     if (routeCandidateId !== undefined) providerRequestStartedPayload.routeCandidateId = routeCandidateId;
+    if (providerAccountId) providerRequestStartedPayload.providerAccountId = providerAccountId;
 
     await this.events.append({
       scopeType: "request",
@@ -484,11 +489,14 @@ export class ProviderProxy implements ProviderAdapter {
     input: {
       requestId: string;
       idempotencyKey: string;
+      organizationId: string;
+      workspaceId: string;
       surface: Surface;
       provider: Provider;
       decision: RouteDecision;
       compressionTelemetry?: JsonObject;
       onTerminal?: ProviderForwardInput["onTerminal"];
+      credential?: UpstreamCredential;
     },
     providerAttemptId: string,
     status: "completed" | "failed" | "cancelled",
@@ -507,8 +515,19 @@ export class ProviderProxy implements ProviderAdapter {
       usage: usage === undefined ? null : jsonPayload(usage)
     };
     Object.assign(payload, providerCompressionTerminalTelemetry(input.compressionTelemetry, upstreamStatus > 0));
+    if (input.credential?.providerAccountId) payload.providerAccountId = input.credential.providerAccountId;
     const error = terminalError(metadataPayload);
     if (error) payload.error = error;
+    const healthClassification = classifyProviderTerminalHealth({
+      provider: input.provider,
+      model: input.decision.selectedModel ?? "unknown",
+      terminalStatus: status,
+      statusCode: upstreamStatus,
+      error,
+      now: new Date()
+    });
+    if (healthClassification) payload.healthClassification = jsonPayload(healthClassification);
+
     try {
       await this.events.append({
         scopeType: "request",
@@ -520,6 +539,7 @@ export class ProviderProxy implements ProviderAdapter {
         payload,
         metadata: metadataPayload
       });
+      await this.appendHealthEvent(input, providerAttemptId, healthClassification);
 
       if (usage !== undefined) {
         await this.events.append({
@@ -550,6 +570,46 @@ export class ProviderProxy implements ProviderAdapter {
     } finally {
       this.providerMetrics.clearAttempt(providerAttemptId);
     }
+  }
+
+  private async appendHealthEvent(
+    input: {
+      requestId: string;
+      idempotencyKey: string;
+      organizationId: string;
+      workspaceId: string;
+      provider: Provider;
+      decision: RouteDecision;
+      credential?: UpstreamCredential;
+    },
+    providerAttemptId: string,
+    classification: ProviderHealthClassification | undefined
+  ) {
+    const providerAccountId = input.credential?.providerAccountId;
+    if (!providerAccountId || !classification) return;
+    if (classification.scope === "request_only" || classification.scope === "provider") return;
+
+    const selectedModel = input.decision.selectedModel ?? "unknown";
+    const eventType = healthEventType(classification);
+    if (!eventType) return;
+
+    await this.events.append({
+      tenantId: input.organizationId,
+      workspaceId: input.workspaceId,
+      scopeType: classification.scope === "provider_account" ? "provider_account" : "provider_model",
+      scopeId: classification.scope === "provider_account" ? providerAccountId : `${providerAccountId}:${selectedModel}`,
+      correlationId: input.requestId,
+      idempotencyKey: input.idempotencyKey,
+      producer: "prompt-proxy.provider-health",
+      eventType,
+      payload: {
+        provider: input.provider,
+        providerAccountId,
+        model: selectedModel,
+        providerAttemptId,
+        classification: jsonPayload(classification)
+      }
+    });
   }
 
   private async failBeforeFetch(
@@ -672,7 +732,7 @@ export class ProviderProxy implements ProviderAdapter {
   }
 }
 
-function providerRequestBody(input: {
+export function providerRequestBody(input: {
   provider: ProviderRegistryEntry;
   body: unknown;
   credential?: UpstreamCredential;
@@ -780,6 +840,16 @@ function terminalEventType(status: "completed" | "failed" | "cancelled") {
   if (status === "completed") return "provider.response_completed";
   if (status === "cancelled") return "provider.response_cancelled";
   return "provider.response_failed";
+}
+
+function healthEventType(classification: ProviderHealthClassification) {
+  if (classification.scope === "provider_account") {
+    return classification.cooldownUntil ? "provider_account.cooldown_started" : "provider_account.health_changed";
+  }
+  if (classification.scope === "provider_account_model" && classification.cooldownUntil) {
+    return "provider_model.lockout_started";
+  }
+  return undefined;
 }
 
 function terminalError(metadata: JsonObject) {

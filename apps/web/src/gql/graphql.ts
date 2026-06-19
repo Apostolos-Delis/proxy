@@ -86,6 +86,11 @@ export type ModelPricingSource =
   | 'env'
   | 'unpriced';
 
+export type ProbeProviderCredentialInput = {
+  model: string;
+  providerAccountId: string | number;
+};
+
 export type PromptCaptureSettingsInput = {
   promptCaptureMode?: string | null | undefined;
   retentionDays?: number | null | undefined;
@@ -322,7 +327,7 @@ export type SubscriptionAuthSettingQuery = { settings: { subscriptionOAuthEnable
 export type ProviderAccountsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type ProviderAccountsQuery = { providerAccounts: Array<{ id: string, organizationId: string, provider: string, name: string, authType: ProviderAccountAuthType, status: string, baseUrl: string | null, secretHint: string | null, ownerUserId: string | null, boundKeyCount: number, createdAt: string, lastUsedAt: string | null }> };
+export type ProviderAccountsQuery = { providerAccounts: Array<{ id: string, organizationId: string, provider: string, name: string, authType: ProviderAccountAuthType, status: string, baseUrl: string | null, secretHint: string | null, ownerUserId: string | null, boundKeyCount: number, createdAt: string, lastUsedAt: string | null, health: { status: string | null, cooldownUntil: string | null, lastErrorType: string | null, lastErrorAt: string | null, lastSuccessAt: string | null, lastCheckedAt: string | null, consecutiveFailures: number, modelHealth: Array<{ providerId: string, providerAccountId: string, model: string, status: string, lastErrorType: string | null, lastErrorAt: string | null, lockoutUntil: string | null, consecutiveFailures: number, lastSuccessAt: string | null }> } | null }> };
 
 export type ProviderRegistryQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -391,6 +396,13 @@ export type RevokeProviderCredentialMutationVariables = Exact<{
 
 
 export type RevokeProviderCredentialMutation = { revokeProviderCredential: { id: string, status: string } | null };
+
+export type ProbeProviderCredentialMutationVariables = Exact<{
+  input: ProbeProviderCredentialInput;
+}>;
+
+
+export type ProbeProviderCredentialMutation = { probeProviderCredential: { probeId: string, providerAccountId: string, provider: string, model: string, status: string, healthStatus: string, errorType: string | null, message: string | null, statusCode: number | null, latencyMs: number, checkedAt: string, stateUpdated: boolean, dimensions: unknown } };
 
 export type AssignApiKeyProviderAccountMutationVariables = Exact<{
   apiKeyId: string | number;
@@ -1387,6 +1399,26 @@ export const ProviderAccountsDocument = new TypedDocumentString(`
     secretHint
     ownerUserId
     boundKeyCount
+    health {
+      status
+      cooldownUntil
+      lastErrorType
+      lastErrorAt
+      lastSuccessAt
+      lastCheckedAt
+      consecutiveFailures
+      modelHealth {
+        providerId
+        providerAccountId
+        model
+        status
+        lastErrorType
+        lastErrorAt
+        lockoutUntil
+        consecutiveFailures
+        lastSuccessAt
+      }
+    }
     createdAt
     lastUsedAt
   }
@@ -1500,6 +1532,25 @@ export const RevokeProviderCredentialDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<RevokeProviderCredentialMutation, RevokeProviderCredentialMutationVariables>;
+export const ProbeProviderCredentialDocument = new TypedDocumentString(`
+    mutation ProbeProviderCredential($input: ProbeProviderCredentialInput!) {
+  probeProviderCredential(input: $input) {
+    probeId
+    providerAccountId
+    provider
+    model
+    status
+    healthStatus
+    errorType
+    message
+    statusCode
+    latencyMs
+    checkedAt
+    stateUpdated
+    dimensions
+  }
+}
+    `) as unknown as TypedDocumentString<ProbeProviderCredentialMutation, ProbeProviderCredentialMutationVariables>;
 export const AssignApiKeyProviderAccountDocument = new TypedDocumentString(`
     mutation AssignApiKeyProviderAccount($apiKeyId: ID!, $provider: String!, $providerAccountId: ID) {
   assignApiKeyProviderAccount(

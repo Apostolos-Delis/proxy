@@ -1,6 +1,7 @@
 import type { IncomingHttpHeaders, IncomingMessage, Server } from "node:http";
 import type { LookupFunction } from "node:net";
 import type { Duplex } from "node:stream";
+import type { ProviderHealthClassification } from "@prompt-proxy/schema";
 
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
@@ -33,6 +34,7 @@ import {
 } from "./persistence/providers.js";
 import { resolveRoutingSelection, type RoutingConfigResolverLike } from "./persistence/routingConfig.js";
 import type { SessionSystemPromptStore } from "./persistence/sessionRoute.js";
+import { classifyProviderTerminalHealth } from "./providerHealth.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { canAuthenticateOrgProvider, providerRequestHeaders } from "./proxy.js";
 import type { RoutingService } from "./router.js";
@@ -48,6 +50,7 @@ type ActiveRequest = {
   requestId: string;
   idempotencyKey: string;
   providerAttemptId: string;
+  providerAccountId?: string;
   provider: Provider;
   decision: RouteDecision;
   identity: RequestIdentity;
@@ -306,13 +309,16 @@ export class WebSocketRoutingProxy {
     }
     await this.pinSystemPrompt(identity, requestId, context.sessionId, systemPrompt);
     const provider = routedProvider(decision);
+    const credential = await this.resolveUpstreamCredential(identity, provider);
+    const providerAccountId = credential?.providerAccountId;
 
     const { attempt } = this.attempts.create({
       idempotencyKey,
       requestId,
       surface: openAIResponsesSurface.surface,
       provider,
-      model: decision.selectedModel ?? "unknown"
+      model: decision.selectedModel ?? "unknown",
+      providerAccountId
     });
     if (!attempt) throw new Error("duplicate_websocket_request");
 
@@ -321,6 +327,7 @@ export class WebSocketRoutingProxy {
       requestId,
       idempotencyKey,
       providerAttemptId: attempt.id,
+      providerAccountId,
       provider,
       decision,
       identity,
@@ -377,6 +384,7 @@ export class WebSocketRoutingProxy {
         fallbackIndex: 0
       };
       if (routeCandidateId !== undefined) providerRequestStartedPayload.routeCandidateId = routeCandidateId;
+      if (providerAccountId) providerRequestStartedPayload.providerAccountId = providerAccountId;
       await this.events.append({
         scopeType: "request",
         scopeId: requestId,
@@ -393,7 +401,7 @@ export class WebSocketRoutingProxy {
         forwardedBody,
         context.harnessProfileId,
         decision,
-        await this.resolveUpstreamCredential(identity, provider)
+        credential
       );
     } catch (error) {
       await this.finishActiveRequest(activeRequest, "failed", undefined, {
@@ -530,6 +538,16 @@ export class WebSocketRoutingProxy {
       )
     );
     if (error) payload.error = error;
+    if (activeRequest.providerAccountId) payload.providerAccountId = activeRequest.providerAccountId;
+    const healthClassification = classifyProviderTerminalHealth({
+      provider: activeRequest.provider,
+      model: activeRequest.decision.selectedModel ?? "unknown",
+      terminalStatus: status,
+      statusCode: status === "completed" ? 200 : 0,
+      error,
+      now: new Date()
+    });
+    if (healthClassification) payload.healthClassification = jsonPayload(healthClassification);
 
     await this.events.append({
       scopeType: "request",
@@ -541,6 +559,7 @@ export class WebSocketRoutingProxy {
       payload,
       metadata: metadataPayload
     });
+    await this.appendHealthEvent(activeRequest, healthClassification);
     if (usage !== undefined) {
       await this.events.append({
         scopeType: "request",
@@ -565,6 +584,38 @@ export class WebSocketRoutingProxy {
       providerAttemptId: activeRequest.providerAttemptId,
       usage: usage === undefined ? undefined : jsonPayload(usage),
       error
+    });
+  }
+
+  private async appendHealthEvent(
+    activeRequest: ActiveRequest,
+    classification: ProviderHealthClassification | undefined
+  ) {
+    if (!activeRequest.providerAccountId || !classification) return;
+    if (classification.scope === "request_only" || classification.scope === "provider") return;
+
+    const selectedModel = activeRequest.decision.selectedModel ?? "unknown";
+    const eventType = healthEventType(classification);
+    if (!eventType) return;
+
+    await this.events.append({
+      tenantId: activeRequest.identity.organizationId,
+      workspaceId: activeRequest.identity.workspaceId,
+      scopeType: classification.scope === "provider_account" ? "provider_account" : "provider_model",
+      scopeId: classification.scope === "provider_account"
+        ? activeRequest.providerAccountId
+        : `${activeRequest.providerAccountId}:${selectedModel}`,
+      correlationId: activeRequest.requestId,
+      idempotencyKey: activeRequest.idempotencyKey,
+      producer: "prompt-proxy.provider-health",
+      eventType,
+      payload: {
+        provider: activeRequest.provider,
+        providerAccountId: activeRequest.providerAccountId,
+        model: selectedModel,
+        providerAttemptId: activeRequest.providerAttemptId,
+        classification: jsonPayload(classification)
+      }
     });
   }
 
@@ -781,6 +832,16 @@ function terminalEventType(status: "completed" | "failed" | "cancelled") {
   if (status === "completed") return "provider.response_completed";
   if (status === "cancelled") return "provider.response_cancelled";
   return "provider.response_failed";
+}
+
+function healthEventType(classification: ProviderHealthClassification) {
+  if (classification.scope === "provider_account") {
+    return classification.cooldownUntil ? "provider_account.cooldown_started" : "provider_account.health_changed";
+  }
+  if (classification.scope === "provider_account_model" && classification.cooldownUntil) {
+    return "provider_model.lockout_started";
+  }
+  return undefined;
 }
 
 function terminalError(metadata: JsonObject) {

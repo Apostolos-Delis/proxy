@@ -20,19 +20,25 @@ Provider failures are not all the same:
 
 Today these can collapse into provider attempt failures and logs. The router needs durable state to avoid repeatedly selecting known-bad targets and to explain why targets were skipped.
 
-## Current State
+## Shipped V1 State
 
-Prompt Proxy supports provider accounts, BYOK bindings, provider attempts, usage, and route decisions. Provider HTTP forwarding retries upstream `429` responses with provider-aware delay handling.
+Prompt Proxy now supports provider accounts, BYOK bindings, provider attempts, usage, route decisions, and provider account/model health current state. Provider HTTP forwarding retries upstream `429` responses with provider-aware delay handling, and terminal provider outcomes are classified into typed health state when persistence is enabled.
 
-Missing pieces:
+Implemented V1 pieces:
 
 - provider account cooldown state
 - provider/model lockout state
-- provider-level circuit breaker state
 - typed provider error taxonomy
-- health probe status
+- operator-triggered health probes
 - skip evidence tied to provider state
 - operator view of account health
+
+Deferred pieces:
+
+- provider-level circuit breaker state
+- scheduled background probes
+- provider-registry cooldown overrides
+- first-class health metrics
 
 ## Health Taxonomy
 
@@ -109,7 +115,7 @@ index (organization_id, provider_id, model)
 index (organization_id, lockout_until)
 ```
 
-Add optional `provider_health` if provider-level circuit breakers are in scope for the same migration:
+Provider-level `provider_health` rows were explicitly deferred from V1. Add them later if provider-level circuit breakers are in scope:
 
 ```text
 id text primary key
@@ -128,21 +134,16 @@ unique (organization_id, provider_id)
 
 ## Events
 
-Add events:
+Shipped V1 events:
 
 ```text
 provider_account.health_changed
 provider_account.cooldown_started
-provider_account.cooldown_expired
 provider_model.lockout_started
-provider_model.lockout_expired
-provider.breaker_opened
-provider.breaker_half_opened
-provider.breaker_closed
-provider.health_probe_completed
+provider_account.health_probe_completed
 ```
 
-Events should not contain raw prompt text. Provider response body excerpts must be sanitized and capped.
+Expired cooldowns and lockouts are ignored at route time; V1 does not append explicit expiry events. Provider breaker events remain deferred. Events should not contain raw prompt text. Probe result payloads do not include raw upstream response bodies.
 
 ## Runtime Behavior
 
@@ -151,9 +152,10 @@ During route planning:
 1. Resolve candidate provider targets.
 2. Resolve candidate provider accounts.
 3. Load current health rows for accounts and provider/model pairs.
-4. Skip accounts whose cooldown or lockout is active.
-5. Add skip reasons to the route execution plan.
-6. Select the first eligible account.
+4. Skip accounts whose cooldown is active or whose account status is terminal.
+5. Skip provider-account/model pairs whose lockout is active.
+6. Add skip reasons to route decision evidence.
+7. Select the first eligible account.
 
 After provider attempts:
 
@@ -186,9 +188,9 @@ These defaults should be provider-overridable through the provider registry late
 
 V1 probe behavior:
 
-- Probes are operator-triggered or background scheduled.
+- Probes are operator-triggered from the console or admin GraphQL.
 - Probes use small safe prompts and low output caps.
-- Probes write events and current-state rows.
+- Probes write `provider_account.health_probe_completed` events and project current-state rows from that event.
 - Probes do not override routing config by themselves.
 - Probe failures can mark health state when confidence is high.
 
@@ -196,8 +198,7 @@ Probe dimensions:
 
 - basic chat availability
 - streaming availability
-- tool-call support
-- vision support when expected
+- tool-call support is deferred until a provider capability contract exists
 - latency sample
 
 ## Console
@@ -234,19 +235,19 @@ Integration tests:
 
 ## Rollout
 
-1. Add taxonomy and classifier helper.
-2. Add health tables and projections.
-3. Update route planning to read health state.
-4. Update provider terminal handling to write health state.
-5. Add console health panels.
-6. Add probes.
+1. Run migrations before deploying health-aware code: `0019_provider_health.sql`, then `0020_provider_attempt_account.sql`.
+2. Deploy code that projects terminal provider events and probe events into health state.
+3. Watch `routing.decision_recorded.healthSkips`, `provider_account.cooldown_started`, `provider_model.lockout_started`, and `provider_account.health_probe_completed`.
+4. Use the Model providers console or admin GraphQL probe mutation to clear false-positive terminal/cooldown state after validating credentials.
+5. See the [provider account health runbook](../../runbooks/provider-account-health.md) for operational commands and post-deploy checks.
 
 ## Non-Goals
 
 - No adaptive routing based on health scores.
 - No provider-wide automatic outage declarations from one request.
-- No raw upstream error body persistence.
+- No uncapped upstream error body persistence.
 - No Redis dependency in V1.
+- No scheduled background probes in V1.
 
 ## Acceptance Criteria
 

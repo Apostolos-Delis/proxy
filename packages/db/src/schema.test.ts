@@ -4,6 +4,8 @@ import { PROMPT_CAPTURE_MODES } from "@prompt-proxy/schema";
 
 import {
   events,
+  providerAccountHealth,
+  providerModelHealth,
   promptAccessAudit,
   promptArtifacts,
   providerAttempts,
@@ -19,6 +21,8 @@ import {
 describe("prompt proxy database schema", () => {
   it("exposes the core durable tables", () => {
     expect(events).toBeTruthy();
+    expect(providerAccountHealth).toBeTruthy();
+    expect(providerModelHealth).toBeTruthy();
     expect(promptArtifacts).toBeTruthy();
     expect(providers).toBeTruthy();
     expect(providerAttempts.routeCandidateId).toBeTruthy();

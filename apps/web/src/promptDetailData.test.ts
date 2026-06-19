@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { artifactToolNames, eventTone, exchangeMeta } from "./promptDetailData";
+import { artifactToolNames, eventTone, exchangeMeta, healthSkipsFromEvents, type ProxyEvent } from "./promptDetailData";
 
 describe("eventTone", () => {
   it("maps producer prefixes to tones", () => {
@@ -57,3 +57,68 @@ describe("exchangeMeta", () => {
     expect(exchangeMeta(312, 0)).toBe("312 chars");
   });
 });
+
+describe("healthSkipsFromEvents", () => {
+  it("extracts sanitized provider health skip evidence from route decision events", () => {
+    const skips = healthSkipsFromEvents([
+      event("routing.decision_recorded", {
+        healthSkips: [
+          {
+            scope: "provider_account",
+            provider: "openai",
+            providerId: "provider_1",
+            providerAccountId: "account_1",
+            model: "gpt-locked",
+            healthStatus: "cooldown",
+            errorType: "rate_limited",
+            expiresAt: "2026-06-18T12:05:00.000Z",
+            rawError: "do not render"
+          }
+        ]
+      })
+    ]);
+
+    expect(skips).toEqual([
+      {
+        scope: "provider_account",
+        provider: "openai",
+        providerId: "provider_1",
+        providerAccountId: "account_1",
+        model: "gpt-locked",
+        healthStatus: "cooldown",
+        errorType: "rate_limited",
+        expiresAt: "2026-06-18T12:05:00.000Z"
+      }
+    ]);
+    expect(JSON.stringify(skips)).not.toContain("do not render");
+  });
+
+  it("ignores malformed and unrelated event payloads", () => {
+    expect(healthSkipsFromEvents([
+      event("provider.response_failed", { healthSkips: [{ scope: "provider_account" }] }),
+      event("routing.decision_recorded", { healthSkips: ["bad"] }),
+      event("routing.decision_recorded", { healthSkips: [{ provider: 7 }] })
+    ])).toEqual([
+      {
+        scope: null,
+        provider: null,
+        providerId: null,
+        providerAccountId: null,
+        model: null,
+        healthStatus: null,
+        errorType: null,
+        expiresAt: null
+      }
+    ]);
+  });
+});
+
+function event(eventType: string, payload: unknown): ProxyEvent {
+  return {
+    eventId: `event_${eventType}`,
+    eventType,
+    producer: "prompt-proxy.routing",
+    payload,
+    createdAt: "2026-06-18T12:00:00.000Z"
+  } as ProxyEvent;
+}
