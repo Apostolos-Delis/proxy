@@ -1,8 +1,8 @@
 # Kong Scoping Review
 
-Source: https://github.com/Kong/kong  
-Local clone reviewed: `.context/upstreams/kong`  
-Commit reviewed: `1730282ec2f8ed097cf6ad6a3d69e55b7ba9ebb6` from 2026-06-17  
+Source: https://github.com/Kong/kong
+Local clone reviewed: `.context/upstreams/kong`
+Commit reviewed: `1730282ec2f8ed097cf6ad6a3d69e55b7ba9ebb6` from 2026-06-17
 Compared system: Prompt Proxy in this repository
 
 ## Executive Summary
