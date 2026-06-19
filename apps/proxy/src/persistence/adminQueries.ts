@@ -69,6 +69,7 @@ import {
   attemptCounts,
   classifierCostByRequestId,
   latestAttemptsByRequest,
+  providerSkipReasonsByRequest,
   usageAggregateForRow,
   type UsageAggregate
 } from "./adminRequestUsage.js";
@@ -446,8 +447,16 @@ export class AdminQueryService {
       ))
       .limit(1);
     const [request] = requestRow ? await this.summarizeRequests([requestRow]) : [];
+    const routeDecisionSummaries = requestRow
+      ? (await this.routeDecisionRowsForRequest(requestId)).map(routeDecisionSummary)
+      : [];
+    await this.addRoutingConfigNames(routeDecisionSummaries);
     return {
       request: request ?? null,
+      routeDecisions: routeDecisionSummaries,
+      providerAttempts: requestRow
+        ? (await this.providerAttemptRowsForRequest(requestId)).map(providerAttemptSummary)
+        : [],
       // Only fetch the timeline once the request passed the workspace check,
       // so foreign request ids cannot expose another workspace's events.
       events: requestRow ? await this.eventsForRequest(requestId) : [],
@@ -863,6 +872,8 @@ export class AdminQueryService {
     const requestEvents = await this.eventsForRequest(row.request.id);
     const compressionReceipts = await this.compressionReceiptsForRequest(row.request.id);
     const [artifact] = await this.addRoutingConfigNames([promptDetail(row, request)]);
+    const routeDecisionSummaries = (await this.routeDecisionRowsForRequest(row.request.id)).map(routeDecisionSummary);
+    await this.addRoutingConfigNames(routeDecisionSummaries);
     const siblingRows = await this.db
       .select()
       .from(promptArtifacts)
@@ -881,6 +892,8 @@ export class AdminQueryService {
         decision: row.decision
       }, request)),
       compressionReceipts,
+      routeDecisions: routeDecisionSummaries,
+      providerAttempts: (await this.providerAttemptRowsForRequest(row.request.id)).map(providerAttemptSummary),
       events: requestEvents
     };
   }
@@ -1248,6 +1261,7 @@ export class AdminQueryService {
     const decisionsByRequest = new Map(decisions.map((decision) => [decision.requestId, decision]));
     const attemptsByRequest = latestAttemptsByRequest(attempts);
     const attemptCountsByRequest = attemptCounts(attempts);
+    const skipReasonsByRequest = providerSkipReasonsByRequest(attempts);
     const classifierCostByRequest = classifierCostByRequestId(classifierUsageRows);
     const usageByRequest = options.aggregateUsageByRequest
       ? aggregateUsageByRequest(usageRows)
@@ -1268,7 +1282,8 @@ export class AdminQueryService {
         attempt,
         usage,
         classifierCost: classifierCostByRequest.get(request.id) ?? 0,
-        attemptCount: attemptCountsByRequest.get(request.id) ?? 0
+        attemptCount: attemptCountsByRequest.get(request.id) ?? 0,
+        routeSkipReasons: skipReasonsByRequest.get(request.id) ?? []
       }, pricing, costBaseline);
     });
     return this.addRoutingConfigNames(summaries);
@@ -1284,7 +1299,7 @@ export class AdminQueryService {
     const pending = (async () => {
       const requestIds = requestRows.map((request) => request.id);
       const decisions = await this.db
-        .select()
+        .select(requestSummaryDecisionColumns)
         .from(routeDecisions)
         .where(and(
           this.scopedTo(routeDecisions),
@@ -1349,6 +1364,28 @@ export class AdminQueryService {
       }
     }
     return summaries;
+  }
+
+  private routeDecisionRowsForRequest(requestId: string) {
+    return this.db
+      .select()
+      .from(routeDecisions)
+      .where(and(
+        this.scopedTo(routeDecisions),
+        eq(routeDecisions.requestId, requestId)
+      ))
+      .orderBy(asc(routeDecisions.createdAt));
+  }
+
+  private providerAttemptRowsForRequest(requestId: string) {
+    return this.db
+      .select()
+      .from(providerAttempts)
+      .where(and(
+        this.scopedTo(providerAttempts),
+        eq(providerAttempts.requestId, requestId)
+      ))
+      .orderBy(asc(providerAttempts.startedAt));
   }
 
   // Output tokens per route — the lever for effort/verbosity tuning. Output is
@@ -2053,13 +2090,45 @@ function numberFromMetadata(metadata: unknown, key: string) {
   return typeof value === "number" ? value : undefined;
 }
 
+const requestSummaryDecisionColumns = {
+  requestId: routeDecisions.requestId,
+  finalRoute: routeDecisions.finalRoute,
+  selectedProvider: routeDecisions.selectedProvider,
+  selectedModel: routeDecisions.selectedModel,
+  selectedCandidateId: routeDecisions.selectedCandidateId,
+  translated: routeDecisions.translated,
+  reasoningEffort: routeDecisions.reasoningEffort,
+  routingConfigId: routeDecisions.routingConfigId,
+  routingConfigVersionId: routeDecisions.routingConfigVersionId,
+  routingConfigVersion: routeDecisions.routingConfigVersion,
+  routingConfigHash: routeDecisions.routingConfigHash,
+  classifier: routeDecisions.classifier
+};
+
+type RequestSummaryDecisionRow = Pick<
+  typeof routeDecisions.$inferSelect,
+  | "requestId"
+  | "finalRoute"
+  | "selectedProvider"
+  | "selectedModel"
+  | "selectedCandidateId"
+  | "translated"
+  | "reasoningEffort"
+  | "routingConfigId"
+  | "routingConfigVersionId"
+  | "routingConfigVersion"
+  | "routingConfigHash"
+  | "classifier"
+>;
+
 function requestSummary(row: {
   request: RequestRow;
-  decision: typeof routeDecisions.$inferSelect | null;
+  decision: RequestSummaryDecisionRow | null;
   attempt: ProviderAttemptRow | null;
   usage: UsageAggregate | null;
   classifierCost: number;
   attemptCount: number;
+  routeSkipReasons: string[];
 }, pricing: ModelPricingTable, costBaseline: CostBaseline) {
   const usage = row.usage
     ? {
@@ -2104,6 +2173,9 @@ function requestSummary(row: {
     reasoningEffort: row.decision?.reasoningEffort ?? undefined,
     provider: row.decision?.selectedProvider ?? row.attempt?.provider ?? undefined,
     selectedModel,
+    selectedCandidateId: row.decision?.selectedCandidateId ?? undefined,
+    translated: row.decision?.translated ?? false,
+    routeSkipReasons: row.routeSkipReasons,
     rejected,
     routingConfig: routingConfigSummary(row.decision ?? row.request),
     classifier: row.decision?.classifier ?? undefined,
@@ -2125,7 +2197,7 @@ function requestSummary(row: {
 
 type RequestSummary = ReturnType<typeof requestSummary>;
 type SummaryInputs = {
-  decisions: (typeof routeDecisions.$inferSelect)[];
+  decisions: RequestSummaryDecisionRow[];
   attempts: ProviderAttemptRow[];
   usageRows: (typeof usageLedger.$inferSelect)[];
   classifierUsageRows: (typeof usageLedger.$inferSelect)[];
@@ -2471,7 +2543,6 @@ function timeseriesGroupLimit(value: number | undefined) {
   if (!value || !Number.isFinite(value)) return 8;
   return Math.max(1, Math.min(25, Math.floor(value)));
 }
-
 function baselineCostFor(
   pricing: ModelPricingTable,
   costBaseline: CostBaseline,

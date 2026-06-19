@@ -2324,6 +2324,151 @@ input[type="checkbox"][role="switch"]:focus-visible {
   width: 145px;
 }
 
+/* route plan */
+.route-plan-card {
+  overflow: hidden;
+}
+
+.route-plan-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.route-plan-fact {
+  min-width: 0;
+}
+
+.route-plan-fact span {
+  display: block;
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.route-plan-fact strong {
+  display: block;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-plan-fact em {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-size: 11.5px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-candidate-table {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--border);
+}
+
+.route-candidate-head,
+.route-candidate-row {
+  display: grid;
+  grid-template-columns: 42px minmax(180px, 1.4fr) minmax(160px, 1fr) minmax(150px, 0.9fr) minmax(160px, 0.9fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  background: var(--glass);
+}
+
+.route-candidate-head {
+  padding: 8px 12px;
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.route-candidate-row {
+  padding: 10px 12px;
+}
+
+.route-candidate-row.selected {
+  background: color-mix(in srgb, var(--accent-soft) 44%, var(--glass));
+}
+
+.route-candidate-order {
+  color: var(--fg-faint);
+}
+
+.route-candidate-target,
+.route-candidate-dialect,
+.route-candidate-status,
+.route-attempt-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.route-candidate-target strong,
+.route-candidate-target .faint,
+.route-candidate-dialect .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-selected-icon,
+.route-candidate-spacer {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.route-selected-icon {
+  color: var(--accent-2);
+}
+
+.route-skip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.route-skip-list span {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--glass-2);
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.route-attempt-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.route-attempt-pill .badge {
+  flex: none;
+}
+
 /* raw json card */
 .raw-json-card {
   padding: 14px 18px;

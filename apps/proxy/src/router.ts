@@ -1,3 +1,5 @@
+import type { RoutingConfig, RouteTarget } from "@prompt-proxy/schema";
+
 import {
   anthropicEffortForModel,
   nearestReasoningEffort,
@@ -20,6 +22,7 @@ import {
   type ProviderRegistryResolver
 } from "./persistence/providers.js";
 import { capRoute, checkBeforeClassification, checkDecision, type SessionRouteStore } from "./policy.js";
+import { buildRouteExecutionPlan, type TargetAvailability } from "./routeExecutionPlan.js";
 import { translators, translationTag } from "./translators/index.js";
 import type {
   Dialect,
@@ -35,7 +38,6 @@ import type {
   UpstreamCredential,
   Verbosity
 } from "./types.js";
-import type { RoutingConfig, RouteTarget } from "@prompt-proxy/schema";
 
 const classifierFailureFallbackRoute: RouteName = "balanced";
 const classificationCacheTtlMs = 5 * 60 * 1000;
@@ -57,10 +59,6 @@ type ProviderCredentialResolver = {
     provider: Provider;
   }): Promise<UpstreamCredential | undefined>;
 };
-
-type TargetAvailability =
-  | { status: "available"; dialect: Dialect; supportedEfforts?: ProviderEffort[] }
-  | { status: "unavailable"; reason: string };
 
 function routeSettings(selected: SelectedRouteSettings, supportedEfforts?: ProviderEffort[]): ResolvedRouteSettings {
   const effort = effectiveEffort(selected, supportedEfforts);
@@ -259,6 +257,19 @@ export class RoutingService {
       }
     } else {
       decision.budgetChecks = preBudget.checks;
+    }
+
+    if (decision.outcome === "route") {
+      decision.routeExecutionPlan = await buildRouteExecutionPlan({
+        requestId,
+        context,
+        decision,
+        classifierSettings,
+        routingConfig: routingConfig?.config,
+        defaultOrganizationId: this.config.defaultOrganizationId,
+        targetAvailability: (target, mode) => this.targetAvailability(context, target, mode)
+      });
+      await this.recordRouteExecutionPlan(requestId, idempotencyKey, decision);
     }
 
     if (decision.session) {
@@ -598,6 +609,39 @@ export class RoutingService {
     };
   }
 
+  private async recordRouteExecutionPlan(
+    requestId: string,
+    idempotencyKey: string,
+    decision: RouteDecision
+  ) {
+    const plan = decision.routeExecutionPlan;
+    if (!plan) return;
+    const selectedCandidate = plan.selected
+      ? plan.candidates.find((candidate) => candidate.id === plan.selected?.candidateId)
+      : undefined;
+    await this.events.append({
+      scopeType: "request",
+      scopeId: requestId,
+      correlationId: requestId,
+      idempotencyKey,
+      producer: "prompt-proxy.routing",
+      eventType: "routing.plan_recorded",
+      payload: jsonPayload({
+        requestedModel: decision.requestedModel,
+        classifierRoute: decision.classifierRoute,
+        finalRoute: decision.finalRoute,
+        provider: decision.provider,
+        selectedModel: decision.selectedModel,
+        routingConfig: decision.routingConfig ?? null,
+        routeExecutionPlan: plan,
+        selectedCandidateId: plan.selected?.candidateId,
+        translated: plan.selected?.translated ?? false,
+        translatorId: selectedCandidate?.translatorId ?? null,
+        policyVersion: decision.policyVersion
+      }) as JsonObject
+    });
+  }
+
   private resolveProviderSettings(
     context: RouteContext,
     route: RouteName,
@@ -680,25 +724,33 @@ export class RoutingService {
     const endpoint = targetEndpoint(context, provider, target, mode);
     if (!endpoint) return { status: "unavailable", reason: "dialect_unavailable" };
     if (endpoint.dialect !== context.surface) {
-      if (context.hasPreviousResponseId) return { status: "unavailable", reason: "previous_response_translation_unavailable" };
-      if (context.statefulResponses === true && !canTranslateStatefulResponses(context, endpoint.dialect)) {
-        return { status: "unavailable", reason: "stateful_translation_unavailable" };
+      if (context.hasPreviousResponseId) {
+        return { status: "unavailable", reason: "previous_response_translation_unavailable", dialect: endpoint.dialect };
       }
-      if (!translators.get(context.surface, endpoint.dialect)) return { status: "unavailable", reason: "translator_unavailable" };
+      if (context.statefulResponses === true && !canTranslateStatefulResponses(context, endpoint.dialect)) {
+        return { status: "unavailable", reason: "stateful_translation_unavailable", dialect: endpoint.dialect };
+      }
+      if (!translators.get(context.surface, endpoint.dialect)) {
+        return { status: "unavailable", reason: "translator_unavailable", dialect: endpoint.dialect };
+      }
     }
+    let credential: UpstreamCredential | undefined;
     if (!provider.builtin && provider.authStyle !== "none") {
-      const credential = await this.credentials?.resolveForRequest({
+      credential = await this.credentials?.resolveForRequest({
         organizationId,
         workspaceId: context.workspaceId,
         apiKeyId: context.apiKeyId,
         provider: target.providerId
       });
-      if (!credential) return { status: "unavailable", reason: "provider_credential_unresolved" };
+      if (!credential) {
+        return { status: "unavailable", reason: "provider_credential_unresolved", dialect: endpoint.dialect };
+      }
     }
     return {
       status: "available",
       dialect: endpoint.dialect,
-      supportedEfforts: reasoningEffortsFromCapabilities(provider.capabilities)
+      supportedEfforts: reasoningEffortsFromCapabilities(provider.capabilities),
+      providerAccountId: credential?.providerAccountId
     };
   }
 
@@ -709,6 +761,7 @@ export class RoutingService {
   ) {
     const payload = { ...decision };
     delete payload.providerSettings;
+    delete payload.routeExecutionPlan;
     await this.events.append({
       scopeType: "request",
       scopeId: requestId,

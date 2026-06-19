@@ -1,4 +1,10 @@
-import { SURFACE_NAMES } from "@prompt-proxy/schema";
+import {
+  routeExecutionPlanSchema,
+  routeSkipReasonSchema,
+  SURFACE_NAMES,
+  type RouteExecutionPlan,
+  type RouteSkipReason
+} from "@prompt-proxy/schema";
 
 import type { JsonObject, RoutingConfigSnapshot } from "../types.js";
 import type { Surface } from "../types.js";
@@ -79,6 +85,10 @@ export function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+export function booleanValue(value: unknown) {
+  return typeof value === "boolean" ? value : undefined;
+}
+
 export function recordValue(value: unknown): JsonObject | undefined {
   return isRecord(value) ? value as JsonObject : undefined;
 }
@@ -99,6 +109,15 @@ export function basisPoints(value: unknown) {
 export function routeValue(value: unknown) {
   if (value === "fast" || value === "balanced" || value === "hard" || value === "deep") return value;
   return undefined;
+}
+
+export function routeSkipReasonValue(value: unknown): RouteSkipReason | undefined {
+  if (value === undefined) return undefined;
+  const result = routeSkipReasonSchema.safeParse(value);
+  if (!result.success) {
+    throw new Error("Invalid route skip reason payload.");
+  }
+  return result.data;
 }
 
 // Storage paths must record surfaces/providers verbatim — an unrecognized
@@ -133,4 +152,13 @@ export function routingConfigSnapshotValue(value: unknown): RoutingConfigSnapsho
     version,
     configHash
   };
+}
+
+export function routeExecutionPlanValue(value: unknown): RouteExecutionPlan | undefined {
+  if (value === undefined) return undefined;
+  const result = routeExecutionPlanSchema.safeParse(value);
+  if (!result.success) {
+    throw new Error("Invalid route execution plan payload.");
+  }
+  return result.data;
 }

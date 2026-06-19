@@ -9,6 +9,7 @@ import { useCopyFeedback } from "./jsonView";
 import { ExchangeCard } from "./promptExchangeCard";
 import { CompressionReceiptsCard, EventTimeline, RawJsonCard } from "./promptEventTimeline";
 import { FactsRail } from "./promptFactsRail";
+import { RoutePlanCard } from "./routePlanCard";
 import { PageState, PageTitle } from "./ui";
 
 const PromptDetailViewDocument = graphql(`
@@ -79,6 +80,37 @@ const PromptDetailViewDocument = graphql(`
         cost {
           selected
         }
+      }
+      routeDecisions {
+        selectedProvider
+        selectedModel
+        classifierRoute
+        finalRoute
+        confidence
+        routeExecutionPlan
+        selectedCandidateId
+        translated
+        translatorId
+        routingConfig {
+          configId
+          configName
+          versionId
+          version
+          configHash
+        }
+      }
+      providerAttempts {
+        id
+        requestId
+        provider
+        model
+        terminalStatus
+        statusCode
+        error
+        routeCandidateId
+        attemptIndex
+        fallbackIndex
+        skipReason
       }
       request {
         requestId
@@ -153,7 +185,7 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
   if (queryError) return <PageState title="Prompt" label={queryError.message} />;
   if (!queryData) return <PageState title="Prompt" label="No prompt data" />;
 
-  const { artifact, request, events, compressionReceipts } = queryData;
+  const { artifact, request, events, compressionReceipts, routeDecisions, providerAttempts } = queryData;
   const artifacts = queryData.requestArtifacts ?? [artifact];
   return (
     <div className="page page-enter">
@@ -179,6 +211,7 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
         <div className="detail-main">
           <ExchangeCard artifacts={artifacts} request={request} focusedArtifactId={artifact.artifactId} />
           <CompressionReceiptsCard receipts={compressionReceipts} />
+          <RoutePlanCard routeDecisions={routeDecisions} providerAttempts={providerAttempts} />
           <EventTimeline events={events} />
           <RawJsonCard artifact={artifact} request={request} />
         </div>

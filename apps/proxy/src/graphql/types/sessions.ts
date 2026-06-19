@@ -1,14 +1,13 @@
 import { builder } from "../builder.js";
 import type {
-  ProviderAttemptModel,
-  RouteDecisionModel,
   SessionDetailModel,
   SessionSummaryModel,
   UsageLedgerRowModel
 } from "../models.js";
-import { CostTotals, ProxyEvent, RoutingConfigSnapshot, TokenTotals } from "./core.js";
+import { CostTotals, ProxyEvent, TokenTotals } from "./core.js";
 import { PromptArtifactDetail } from "./prompts.js";
 import { RequestSummary } from "./requests.js";
+import { ProviderAttempt, RouteDecision } from "./routingEvidence.js";
 
 export const SessionSummary = builder.objectRef<SessionSummaryModel>("SessionSummary").implement({
   fields: (t) => ({
@@ -37,26 +36,6 @@ export const SessionSummary = builder.objectRef<SessionSummaryModel>("SessionSum
   })
 });
 
-export const ProviderAttempt = builder
-  .objectRef<ProviderAttemptModel>("ProviderAttempt")
-  .implement({
-    fields: (t) => ({
-      id: t.exposeString("id"),
-      requestId: t.exposeString("requestId"),
-      surface: t.exposeString("surface"),
-      provider: t.exposeString("provider"),
-      model: t.exposeString("model"),
-      upstreamRequestId: t.exposeString("upstreamRequestId", { nullable: true }),
-      terminalStatus: t.exposeString("terminalStatus"),
-      statusCode: t.exposeInt("statusCode", { nullable: true }),
-      error: t.exposeString("error", { nullable: true }),
-      usage: t.field({ type: "JSON", resolve: (attempt) => attempt.usage }),
-      startedAt: t.exposeString("startedAt"),
-      firstByteAt: t.exposeString("firstByteAt", { nullable: true }),
-      completedAt: t.exposeString("completedAt", { nullable: true })
-    })
-  });
-
 export const UsageLedgerRow = builder.objectRef<UsageLedgerRowModel>("UsageLedgerRow").implement({
   fields: (t) => ({
     id: t.exposeString("id"),
@@ -78,36 +57,6 @@ export const UsageLedgerRow = builder.objectRef<UsageLedgerRowModel>("UsageLedge
     outputCostMicros: t.exposeFloat("outputCostMicros"),
     totalCostMicros: t.exposeFloat("totalCostMicros"),
     usage: t.field({ type: "JSON", resolve: (row) => row.usage }),
-    createdAt: t.exposeString("createdAt")
-  })
-});
-
-export const RouteDecision = builder.objectRef<RouteDecisionModel>("RouteDecision").implement({
-  fields: (t) => ({
-    id: t.exposeString("id"),
-    requestId: t.exposeString("requestId"),
-    requestedModel: t.exposeString("requestedModel"),
-    classifierRoute: t.exposeString("classifierRoute", { nullable: true }),
-    finalRoute: t.exposeString("finalRoute", { nullable: true }),
-    selectedProvider: t.exposeString("selectedProvider", { nullable: true }),
-    selectedModel: t.exposeString("selectedModel", { nullable: true }),
-    reasoningEffort: t.exposeString("reasoningEffort", { nullable: true }),
-    verbosity: t.exposeString("verbosity", { nullable: true }),
-    routingConfig: t.field({
-      type: RoutingConfigSnapshot,
-      nullable: true,
-      resolve: (decision) => decision.routingConfig
-    }),
-    classifier: t.field({
-      type: "JSON",
-      nullable: true,
-      resolve: (decision) => decision.classifier ?? null
-    }),
-    confidence: t.exposeFloat("confidence", { nullable: true }),
-    reasonCodes: t.exposeStringList("reasonCodes"),
-    guardrailActions: t.exposeStringList("guardrailActions"),
-    budgetChecks: t.field({ type: "JSON", resolve: (decision) => decision.budgetChecks }),
-    policyVersion: t.exposeString("policyVersion"),
     createdAt: t.exposeString("createdAt")
   })
 });

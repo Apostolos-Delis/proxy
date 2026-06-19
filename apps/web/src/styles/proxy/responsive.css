@@ -181,8 +181,24 @@
     .billing-kpis,
     .usage-kpi-grid,
     .usage-side-rail,
+    .route-plan-facts,
     .caching-anatomy {
     grid-template-columns: 1fr;
+  }
+
+  .route-candidate-head {
+    display: none;
+  }
+
+  .route-candidate-row {
+    grid-template-columns: 32px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .route-candidate-dialect,
+  .route-candidate-status,
+  .route-attempt-list {
+    grid-column: 2;
   }
 
   .settings-rail {

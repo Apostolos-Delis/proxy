@@ -549,8 +549,10 @@ type PromptDetail {
   artifact: PromptArtifactDetail!
   compressionReceipts: [CompressionReceipt!]!
   events: [ProxyEvent!]!
+  providerAttempts: [ProviderAttempt!]!
   request: RequestSummary
   requestArtifacts: [PromptArtifactDetail!]!
+  routeDecisions: [RouteDecision!]!
 }
 
 type PromptPage {
@@ -610,13 +612,17 @@ enum ProviderAccountAuthType {
 }
 
 type ProviderAttempt {
+  attemptIndex: Int
   completedAt: String
   error: String
+  fallbackIndex: Int
   firstByteAt: String
   id: String!
   model: String!
   provider: String!
   requestId: String!
+  routeCandidateId: String
+  skipReason: String
   startedAt: String!
   statusCode: Int
   surface: String!
@@ -730,7 +736,9 @@ type Query {
 type RequestDetail {
   compressionReceipts: [CompressionReceipt!]!
   events: [ProxyEvent!]!
+  providerAttempts: [ProviderAttempt!]!
   request: RequestSummary
+  routeDecisions: [RouteDecision!]!
 }
 
 type RequestSummary {
@@ -746,14 +754,17 @@ type RequestSummary {
   provider: String
   requestId: String!
   requestedModel: String
+  routeSkipReasons: [String!]!
   routingConfig: RoutingConfigSnapshot
   savings: Float!
+  selectedCandidateId: String
   selectedCost: Float!
   selectedModel: String
   sessionId: String
   surface: String
   terminalStatus: String!
   timeToFirstByteMs: Float
+  translated: Boolean
   usage: TokenTotals!
   userId: String
 }
@@ -772,9 +783,13 @@ type RouteDecision {
   reasoningEffort: String
   requestId: String!
   requestedModel: String!
+  routeExecutionPlan: JSON!
   routingConfig: RoutingConfigSnapshot
+  selectedCandidateId: String
   selectedModel: String
   selectedProvider: String
+  translated: Boolean!
+  translatorId: String
   verbosity: String
 }
 

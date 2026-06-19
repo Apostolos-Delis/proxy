@@ -9,6 +9,7 @@ import type {
 } from "../models.js";
 import { ProxyEvent, RoutingConfigSnapshot } from "./core.js";
 import { CompressionReceipt, RequestSummary } from "./requests.js";
+import { ProviderAttempt, RouteDecision } from "./routingEvidence.js";
 
 export const PromptCost = builder.objectRef<PromptSummaryModel["cost"]>("PromptCost").implement({
   fields: (t) => ({
@@ -96,6 +97,8 @@ export const PromptDetail = builder.objectRef<PromptDetailModel>("PromptDetail")
     }),
     requestArtifacts: t.expose("requestArtifacts", { type: [PromptArtifactDetail] }),
     compressionReceipts: t.expose("compressionReceipts", { type: [CompressionReceipt] }),
+    routeDecisions: t.expose("routeDecisions", { type: [RouteDecision] }),
+    providerAttempts: t.expose("providerAttempts", { type: [ProviderAttempt] }),
     events: t.expose("events", { type: [ProxyEvent] })
   })
 });

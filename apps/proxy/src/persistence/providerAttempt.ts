@@ -17,6 +17,7 @@ import {
   numberValue,
   providerValue,
   recordValue,
+  routeSkipReasonValue,
   stringValue,
   surfaceValue
 } from "./values.js";
@@ -45,6 +46,10 @@ export async function persistProviderStarted(tx: PromptProxyTransaction, event: 
       provider: providerValue(payload.provider) ?? "unknown",
       model: stringValue(payload.model) ?? "unknown",
       terminalStatus: "pending",
+      routeCandidateId: stringValue(payload.routeCandidateId),
+      attemptIndex: numberValue(payload.attemptIndex),
+      fallbackIndex: numberValue(payload.fallbackIndex),
+      skipReason: routeSkipReasonValue(payload.skipReason),
       startedAt: new Date(event.createdAt)
     })
     .onConflictDoNothing();

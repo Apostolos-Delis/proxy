@@ -176,7 +176,10 @@ describe("postgres persistence", () => {
         surface: "openai-responses",
         provider: "openai",
         model: "gpt-5.5",
-        providerAttemptId: "attempt_cost"
+        providerAttemptId: "attempt_cost",
+        routeCandidateId: "candidate_0",
+        attemptIndex: 0,
+        fallbackIndex: 0
       }
     });
     await eventService.append({
@@ -217,9 +220,142 @@ describe("postgres persistence", () => {
     expect(decisionRows[0]?.routingConfigVersion).toBe(3);
     expect(decisionRows[0]?.routingConfigHash).toBe("sha256:routing-config-test");
     expect(attemptRows[0]?.terminalStatus).toBe("completed");
+    expect(attemptRows[0]?.routeCandidateId).toBe("candidate_0");
+    expect(attemptRows[0]?.attemptIndex).toBe(0);
+    expect(attemptRows[0]?.fallbackIndex).toBe(0);
+    expect(attemptRows[0]?.skipReason).toBeNull();
     expect(usageRows[0]?.totalTokens).toBe(120);
     expect(usageRows[0]?.totalCostMicros).toBe(325);
     expect(eventRows.map((row) => row.sequence)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("projects route execution plan events into route decisions", async () => {
+    const fixture = await persistenceFixture("org_plan");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_plan");
+    const plan = routeExecutionPlan({
+      requestId: "request_plan",
+      organizationId: "org_plan",
+      workspaceId: defaultWorkspaceId("org_plan")
+    });
+
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_plan",
+      correlationId: "request_plan",
+      idempotencyKey: "idem_plan",
+      producer: "test",
+      eventType: "proxy.request_received",
+      payload: {
+        surface: "openai-responses",
+        requestedModel: "router-auto",
+        inputHash: "sha256:input",
+        inputChars: 400
+      }
+    });
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_plan",
+      correlationId: "request_plan",
+      idempotencyKey: "idem_plan",
+      producer: "test",
+      eventType: "routing.decision_recorded",
+      payload: {
+        outcome: "route",
+        surface: "openai-responses",
+        requestedModel: "router-auto",
+        finalRoute: "balanced",
+        selectedModel: "gpt-5.4",
+        provider: "openai",
+        guardrailActions: ["existing_guardrail"],
+        reasonCodes: ["existing_reason"],
+        budgetChecks: [{ status: "allow", reason: "existing_budget" }],
+        classifier: { confidence: 0.5 },
+        policyVersion: "test"
+      }
+    });
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_plan",
+      correlationId: "request_plan",
+      idempotencyKey: "idem_plan",
+      producer: "test",
+      eventType: "routing.plan_recorded",
+      payload: {
+        requestedModel: "router-auto",
+        routeExecutionPlan: plan,
+        policyVersion: "test"
+      }
+    });
+
+    const [decision] = await fixture.db
+      .select()
+      .from(routeDecisions)
+      .where(eq(routeDecisions.requestId, "request_plan"));
+
+    expect(decision?.routeExecutionPlan).toEqual(plan);
+    expect(decision?.selectedCandidateId).toBe("candidate_1");
+    expect(decision?.selectedProvider).toBe("anthropic");
+    expect(decision?.selectedModel).toBe("claude-sonnet-4-5");
+    expect(decision?.classifierRoute).toBe("hard");
+    expect(decision?.finalRoute).toBe("hard");
+    expect(decision?.routingConfigId).toBe("routing_config_1");
+    expect(decision?.routingConfigVersionId).toBe("routing_config_version_1");
+    expect(decision?.routingConfigVersion).toBe(1);
+    expect(decision?.routingConfigHash).toBe("sha256:route-plan");
+    expect(decision?.translated).toBe(true);
+    expect(decision?.translatorId).toBe("openai-responses_to_anthropic-messages");
+    expect(decision?.reasonCodes).toEqual(["existing_reason"]);
+    expect(decision?.guardrailActions).toEqual(["existing_guardrail"]);
+    expect(decision?.budgetChecks).toEqual([{ status: "allow", reason: "existing_budget" }]);
+    expect(decision?.classifier).toEqual({ confidence: 0.5 });
+  });
+
+  it("rejects invalid route execution plan events without partial projection", async () => {
+    const fixture = await persistenceFixture("org_invalid_plan");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_invalid_plan");
+
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_invalid_plan",
+      correlationId: "request_invalid_plan",
+      idempotencyKey: "idem_invalid_plan",
+      producer: "test",
+      eventType: "proxy.request_received",
+      payload: {
+        surface: "openai-responses",
+        requestedModel: "router-auto",
+        inputHash: "sha256:input",
+        inputChars: 400
+      }
+    });
+
+    await expect(eventService.append({
+      scopeType: "request",
+      scopeId: "request_invalid_plan",
+      correlationId: "request_invalid_plan",
+      idempotencyKey: "idem_invalid_plan",
+      producer: "test",
+      eventType: "routing.plan_recorded",
+      payload: {
+        requestedModel: "router-auto",
+        routeExecutionPlan: {
+          schemaVersion: 2
+        },
+        policyVersion: "test"
+      }
+    })).rejects.toThrow("Invalid route execution plan payload.");
+
+    const decisionRows = await fixture.db
+      .select()
+      .from(routeDecisions)
+      .where(eq(routeDecisions.requestId, "request_invalid_plan"));
+    const eventRows = await fixture.db
+      .select()
+      .from(events)
+      .where(eq(events.scopeId, "request_invalid_plan"));
+
+    expect(decisionRows).toEqual([]);
+    expect(eventRows.map((event) => event.eventType)).toEqual(["proxy.request_received"]);
   });
 
   it("persists cancelled provider terminal status from events", async () => {
@@ -1001,8 +1137,16 @@ describe("postgres persistence", () => {
       workspaceId: defaultWorkspaceId("org_admin_retry"),
       requestedModel: "router-auto",
       finalRoute: "hard",
-      selectedProvider: "openai",
-      selectedModel: "gpt-routed-hard-test",
+      selectedProvider: "anthropic",
+      selectedModel: "claude-sonnet-4-5",
+      routeExecutionPlan: routeExecutionPlan({
+        requestId: "request_retry",
+        organizationId: "org_admin_retry",
+        workspaceId: defaultWorkspaceId("org_admin_retry")
+      }),
+      selectedCandidateId: "candidate_1",
+      translated: true,
+      translatorId: "openai-responses_to_anthropic-messages",
       routingConfigId: "routing_config_retry",
       routingConfigVersionId: "routing_config_retry:v2",
       routingConfigVersion: 2,
@@ -1016,9 +1160,13 @@ describe("postgres persistence", () => {
         organizationId: "org_admin_retry",
         workspaceId: defaultWorkspaceId("org_admin_retry"),
         surface: "openai-responses",
-        provider: "openai",
-        model: "gpt-routed-hard-test",
+        provider: "anthropic",
+        model: "claude-sonnet-4-5",
         terminalStatus: "failed",
+        routeCandidateId: "candidate_1",
+        attemptIndex: 0,
+        fallbackIndex: 0,
+        skipReason: "target_skipped_rate_limit",
         startedAt: new Date(2026, 0, 1),
         completedAt: new Date(2026, 0, 1, 0, 0, 1)
       },
@@ -1028,9 +1176,12 @@ describe("postgres persistence", () => {
         organizationId: "org_admin_retry",
         workspaceId: defaultWorkspaceId("org_admin_retry"),
         surface: "openai-responses",
-        provider: "openai",
-        model: "gpt-routed-hard-test",
+        provider: "anthropic",
+        model: "claude-sonnet-4-5",
         terminalStatus: "completed",
+        routeCandidateId: "candidate_1",
+        attemptIndex: 1,
+        fallbackIndex: 0,
         startedAt: new Date(2026, 0, 2),
         completedAt: new Date(2026, 0, 2, 0, 0, 1)
       }
@@ -1042,8 +1193,8 @@ describe("postgres persistence", () => {
         workspaceId: defaultWorkspaceId("org_admin_retry"),
         requestId: "request_retry",
         providerAttemptId: "attempt_retry_old",
-        provider: "openai",
-        model: "gpt-routed-hard-test",
+        provider: "anthropic",
+        model: "claude-sonnet-4-5",
         inputTokens: 1,
         totalTokens: 1
       },
@@ -1053,8 +1204,8 @@ describe("postgres persistence", () => {
         workspaceId: defaultWorkspaceId("org_admin_retry"),
         requestId: "request_retry",
         providerAttemptId: "attempt_retry_new",
-        provider: "openai",
-        model: "gpt-routed-hard-test",
+        provider: "anthropic",
+        model: "claude-sonnet-4-5",
         inputTokens: 9,
         totalTokens: 9
       }
@@ -1064,8 +1215,12 @@ describe("postgres persistence", () => {
     const detail = await fixture.persistence.adminQueries.forScope("org_admin_retry", defaultWorkspaceId("org_admin_retry")).requestDetail("request_retry");
 
     expect(requestsPage.data).toHaveLength(1);
+    expect(requestsPage.data[0]).not.toHaveProperty("routeExecutionPlan");
     expect(requestsPage.data[0]?.terminalStatus).toBe("completed");
     expect(requestsPage.data[0]?.usage.totalTokens).toBe(9);
+    expect(requestsPage.data[0]?.selectedCandidateId).toBe("candidate_1");
+    expect(requestsPage.data[0]?.translated).toBe(true);
+    expect(requestsPage.data[0]?.routeSkipReasons).toEqual(["target_skipped_rate_limit"]);
     expect(requestsPage.data[0]?.routingConfig).toEqual({
       configId: "routing_config_retry",
       configName: "Retry routing config",
@@ -1081,6 +1236,37 @@ describe("postgres persistence", () => {
       version: 2,
       configHash: "sha256:routing-config-retry"
     });
+    expect(detail.routeDecisions).toEqual([
+      expect.objectContaining({
+        selectedCandidateId: "candidate_1",
+        translated: true,
+        translatorId: "openai-responses_to_anthropic-messages",
+        routeExecutionPlan: expect.objectContaining({
+          selected: expect.objectContaining({
+            candidateId: "candidate_1"
+          })
+        })
+      })
+    ]);
+    expect(detail.providerAttempts.map((attempt) => ({
+      id: attempt.id,
+      routeCandidateId: attempt.routeCandidateId,
+      attemptIndex: attempt.attemptIndex,
+      fallbackIndex: attempt.fallbackIndex
+    }))).toEqual([
+      {
+        id: "attempt_retry_old",
+        routeCandidateId: "candidate_1",
+        attemptIndex: 0,
+        fallbackIndex: 0
+      },
+      {
+        id: "attempt_retry_new",
+        routeCandidateId: "candidate_1",
+        attemptIndex: 1,
+        fallbackIndex: 0
+      }
+    ]);
   });
 
   it("keeps identical external session ids separate by organization", async () => {
@@ -1179,5 +1365,69 @@ function routeContext(): RouteContext {
     hasImages: false,
     extractedHints: [],
     routingExtractedHints: []
+  };
+}
+
+function routeExecutionPlan(input: {
+  requestId: string;
+  organizationId: string;
+  workspaceId: string;
+}) {
+  return {
+    schemaVersion: 1,
+    requestId: input.requestId,
+    organizationId: input.organizationId,
+    workspaceId: input.workspaceId,
+    apiKeyId: "api_key_1",
+    surface: "openai-responses",
+    dialect: "openai-responses",
+    classifier: {
+      provider: "openai",
+      model: "gpt-5-nano-2025-08-07",
+      route: "hard",
+      confidence: 0.88,
+      attempts: 1,
+      dataMode: "metadata"
+    },
+    routingConfig: {
+      id: "routing_config_1",
+      versionId: "routing_config_version_1",
+      version: 1,
+      hash: "sha256:route-plan"
+    },
+    candidates: [
+      {
+        id: "candidate_1",
+        order: 0,
+        providerId: "anthropic",
+        providerAccountIds: ["provider_account_1"],
+        model: "claude-sonnet-4-5",
+        endpointDialect: "anthropic-messages",
+        translated: true,
+        translatorId: "openai-responses_to_anthropic-messages",
+        compatible: true,
+        eligible: true,
+        skipReasons: [],
+        factors: {
+          nativeDialect: false,
+          capabilityMatch: true,
+          contextWindowOk: null,
+          providerHealthy: null,
+          accountAvailable: true,
+          budgetAllowed: null,
+          rateLimitAllowed: null,
+          sessionAffinityMatch: null
+        }
+      }
+    ],
+    selected: {
+      candidateId: "candidate_1",
+      providerId: "anthropic",
+      providerAccountId: "provider_account_1",
+      model: "claude-sonnet-4-5",
+      dialect: "anthropic-messages",
+      translated: true
+    },
+    policyResults: []
   };
 }

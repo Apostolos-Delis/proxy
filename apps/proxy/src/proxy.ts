@@ -84,6 +84,18 @@ export class ProviderProxy implements ProviderAdapter {
       stream: responseStream
     });
 
+    const routeCandidateId = input.decision.routeExecutionPlan?.selected?.candidateId;
+    const providerRequestStartedPayload: JsonObject = {
+      surface: input.surface,
+      provider: input.provider,
+      model: selectedModel,
+      providerAttemptId: attempt.id,
+      preparedRequestHash: requestBodyHash(input.body),
+      attemptIndex: 0,
+      fallbackIndex: 0
+    };
+    if (routeCandidateId !== undefined) providerRequestStartedPayload.routeCandidateId = routeCandidateId;
+
     await this.events.append({
       scopeType: "request",
       scopeId: input.requestId,
@@ -91,13 +103,7 @@ export class ProviderProxy implements ProviderAdapter {
       idempotencyKey: input.idempotencyKey,
       producer: "prompt-proxy.provider",
       eventType: "provider.request_started",
-      payload: {
-        surface: input.surface,
-        provider: input.provider,
-        model: selectedModel,
-        providerAttemptId: attempt.id,
-        preparedRequestHash: requestBodyHash(input.body)
-      }
+      payload: providerRequestStartedPayload
     });
     await this.requestStates.markProviderPending(input.idempotencyKey, attempt.id, input.requestId);
 

@@ -17,7 +17,7 @@ export async function projectEvent(tx: PromptProxyTransaction, event: ProxyEvent
     await persistRoutingContext(tx, event);
     return;
   }
-  if (event.eventType === "routing.decision_recorded") {
+  if (event.eventType === "routing.decision_recorded" || event.eventType === "routing.plan_recorded") {
     await persistRouteDecision(tx, event);
     return;
   }

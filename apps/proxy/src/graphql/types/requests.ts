@@ -2,6 +2,7 @@ import { builder } from "../builder.js";
 import type { CompressionReceiptModel, RequestDetailShape, RequestSummaryShape } from "../models.js";
 import { hasAdminRole } from "../authz.js";
 import { ProxyEvent, RoutingConfigSnapshot, TokenTotals } from "./core.js";
+import { ProviderAttempt, RouteDecision } from "./routingEvidence.js";
 
 export const RequestSummary = builder.objectRef<RequestSummaryShape>("RequestSummary").implement({
   fields: (t) => ({
@@ -14,6 +15,17 @@ export const RequestSummary = builder.objectRef<RequestSummaryShape>("RequestSum
     finalRoute: t.exposeString("finalRoute", { nullable: true }),
     provider: t.exposeString("provider", { nullable: true }),
     selectedModel: t.exposeString("selectedModel", { nullable: true }),
+    selectedCandidateId: t.string({
+      nullable: true,
+      resolve: (request, _args, context) => hasAdminRole(context) ? request.selectedCandidateId ?? null : null
+    }),
+    translated: t.boolean({
+      nullable: true,
+      resolve: (request, _args, context) => hasAdminRole(context) ? request.translated ?? false : null
+    }),
+    routeSkipReasons: t.stringList({
+      resolve: (request, _args, context) => hasAdminRole(context) ? request.routeSkipReasons ?? [] : []
+    }),
     routingConfig: t.field({
       type: RoutingConfigSnapshot,
       nullable: true,
@@ -91,6 +103,14 @@ export const RequestDetail = builder.objectRef<RequestDetailShape>("RequestDetai
     compressionReceipts: t.field({
       type: [CompressionReceipt],
       resolve: (detail, _args, context) => hasAdminRole(context) ? detail.compressionReceipts : []
+    }),
+    routeDecisions: t.field({
+      type: [RouteDecision],
+      resolve: (detail, _args, context) => hasAdminRole(context) ? detail.routeDecisions : []
+    }),
+    providerAttempts: t.field({
+      type: [ProviderAttempt],
+      resolve: (detail, _args, context) => hasAdminRole(context) ? detail.providerAttempts : []
     })
   })
 });

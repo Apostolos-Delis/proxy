@@ -45,6 +45,9 @@ const RequestsPageDocument = graphql(`
       latencyMs
       finalRoute
       provider
+      selectedCandidateId
+      translated
+      routeSkipReasons
       apiKeyId
       sessionId
       selectedCost

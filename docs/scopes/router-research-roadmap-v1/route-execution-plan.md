@@ -1,59 +1,45 @@
 # Route Execution Plan V1
 
+## Status
+
+Implemented as the durable evidence layer for current router behavior. V1 records how the router moved from a classified request to the selected provider target, without adding fallback, adaptive ordering, provider health enforcement, or new providers.
+
+The plan is recorded after classification and before provider spend. It is persisted with the route decision, linked to provider attempts, and exposed to admin-only GraphQL consumers and the operations console.
+
 ## Goal
 
-Create a durable route execution plan for every proxied request. The plan explains how the router moved from an incoming harness request to the selected provider attempt.
+Create a stable route planning contract that later router scopes can build on:
 
-The plan should be recorded after classification and before provider spend. It should survive config changes and be visible from the operations console.
-
-## Why This Matters
-
-The upstream routers all have useful fallback, cooldown, and provider selection behavior, but much of it is implicit. Prompt Proxy should add those capabilities without becoming a black box.
-
-A route execution plan is the shared evidence layer for:
-
-- provider target ordering
-- native vs translated eligibility
-- skipped targets
-- budget and rate-limit gates
 - provider account health
-- fallback attempts
-- final provider selection
+- auditable fallback
+- provider registry V2
+- policy pipeline
+- limits and budgets
+- harness compatibility tests
 - route quality analysis
 
-Without this plan, later features will either hide important behavior in logs or spread explanations across unrelated tables.
+The plan is immutable evidence for a request. Terminal outcomes still live on provider attempts and request/provider terminal events.
 
-## Current State
+## Runtime Flow
 
-Prompt Proxy already records route decisions and provider attempts. Those records identify selected route information and provider attempt outcomes, but they do not fully explain:
+```text
+request received
+  -> request context
+  -> classifier
+  -> active routing config version
+  -> ordered targets for the selected route tier
+  -> compatibility, credential, and budget evidence
+  -> routing.plan_recorded
+  -> provider.request_started
+  -> upstream provider call
+  -> provider/request terminal events
+```
 
-- every candidate target considered
-- why a candidate was skipped
-- which compatibility rule matched
-- which provider account was considered
-- whether the target was native or translated
-- whether fallback was planned or applied
-- which pre-provider policies affected the route
+When persistence is enabled, failing to append the route plan event fails the request before an upstream provider call. This preserves the invariant that provider spend has durable pre-spend evidence.
 
-The existing event and current-state model is the right foundation. This scope expands the route decision payload and projections.
+## Contract
 
-## Target Behavior
-
-For each incoming request:
-
-1. The surface handler authenticates and parses enough envelope data to create route context.
-2. The classifier returns a route tier.
-3. The routing config version resolves to an ordered target list for that tier.
-4. The router builds a plan by evaluating each target for compatibility, policy, account health, budget, and rate limits.
-5. The router records the plan before making the provider call.
-6. Provider attempts update the execution result as each attempt finishes.
-7. The final request record links to the plan, selected target, and terminal provider attempt.
-
-The plan should be immutable for the request. Runtime terminal outcomes can be written as provider attempt rows and terminal events linked to the plan.
-
-## Plan Shape
-
-Draft shape:
+The shared contract lives in `packages/schema` as `routeExecutionPlanSchema` and `RouteExecutionPlan`.
 
 ```ts
 type RouteExecutionPlan = {
@@ -62,8 +48,8 @@ type RouteExecutionPlan = {
   organizationId: string;
   workspaceId: string;
   apiKeyId: string;
-  surface: "openai-responses" | "openai-chat" | "anthropic-messages";
-  dialect: "openai-responses" | "openai-chat" | "anthropic-messages";
+  surface: "openai-responses" | "anthropic-messages" | "openai-chat";
+  dialect: "anthropic-messages" | "openai-responses" | "openai-chat";
   classifier: {
     provider: string;
     model: string;
@@ -79,19 +65,12 @@ type RouteExecutionPlan = {
     hash: string;
   };
   candidates: RouteCandidateEvaluation[];
-  selected: {
-    candidateId: string;
-    providerId: string;
-    providerAccountId: string | null;
-    model: string;
-    dialect: string;
-    translated: boolean;
-  } | null;
+  selected: RouteSelectedTarget | null;
   policyResults: RoutePolicyResult[];
 };
 ```
 
-Candidate shape:
+Candidate evaluations are ordered by the immutable routing config target order for the selected route tier:
 
 ```ts
 type RouteCandidateEvaluation = {
@@ -100,7 +79,7 @@ type RouteCandidateEvaluation = {
   providerId: string;
   providerAccountIds: string[];
   model: string;
-  endpointDialect: string;
+  endpointDialect: "anthropic-messages" | "openai-responses" | "openai-chat";
   translated: boolean;
   translatorId: string | null;
   compatible: boolean;
@@ -119,24 +98,76 @@ type RouteCandidateEvaluation = {
 };
 ```
 
-Skip reasons should be typed strings, not free-form prose. Examples:
+Selected targets must reference one planned candidate:
+
+```ts
+type RouteSelectedTarget = {
+  candidateId: string;
+  providerId: string;
+  providerAccountId: string | null;
+  model: string;
+  dialect: "anthropic-messages" | "openai-responses" | "openai-chat";
+  translated: boolean;
+};
+```
+
+Policy results capture pre-provider checks such as budget gates:
+
+```ts
+type RoutePolicyResult = {
+  id?: string;
+  policy: string;
+  status: "allowed" | "blocked" | "skipped" | "unknown";
+  skipReason: RouteSkipReason | null;
+  current?: number | string | null;
+  limit?: number | string | null;
+};
+```
+
+Schema invariants:
+
+- candidate ids are unique
+- `selected.candidateId` references a candidate in the same plan
+- selected provider, model, dialect, and translation flag match the referenced candidate
+- selected provider account, when present, is listed on that candidate
+- unknown schema versions and unknown skip reasons fail validation
+- raw prompt text is not part of the contract
+
+## Skip Reasons
+
+V1 uses typed skip reasons only.
+
+Populated by current runtime behavior:
 
 ```text
 target_unavailable_translator_missing
 target_unavailable_previous_response_id
 target_unavailable_stateful_websocket
-target_unavailable_model_capability
+target_unavailable_stateful_translation
+target_unavailable_dialect
+target_unavailable_provider_not_found
+target_unavailable_provider_registry
 target_skipped_provider_disabled
+target_skipped_missing_credential
+```
+
+Reserved for follow-up scopes:
+
+```text
+target_unavailable_model_capability
 target_skipped_account_cooldown
 target_skipped_model_lockout
 target_skipped_budget_limit
 target_skipped_rate_limit
-target_skipped_missing_credential
 ```
 
-## Data Model
+Reserved values are accepted by the schema so provider health, fallback, rate-limit, and policy-pipeline work can use the same contract without another migration.
 
-Add route execution plan storage to `route_decisions`:
+## Persistence
+
+Migration `0019_route_execution_plan.sql` adds route plan evidence to existing current-state rows.
+
+`route_decisions`:
 
 ```text
 route_execution_plan jsonb not null default '{}'
@@ -145,9 +176,7 @@ translated boolean not null default false
 translator_id text
 ```
 
-If the JSON payload becomes too large later, split it into a separate `route_execution_plans` table. V1 should keep it on `route_decisions` to avoid premature table sprawl.
-
-Provider attempt rows should gain:
+`provider_attempts`:
 
 ```text
 route_candidate_id text
@@ -156,91 +185,109 @@ fallback_index integer
 skip_reason text
 ```
 
-Events should include:
+`routing.plan_recorded` is the V1 route plan event. The event projector validates the plan and writes the plan JSON, selected candidate id, selected provider/model, translation metadata, classifier route, and routing config snapshot into `route_decisions`.
 
-```text
-routing.plan_recorded
-routing.target_skipped
-routing.target_selected
-```
+`provider.request_started` carries `routeCandidateId`, `attemptIndex`, and `fallbackIndex`. Current single-attempt behavior writes `attemptIndex = 0` and `fallbackIndex = 0`; future fallback will increment these values instead of inventing another linkage model.
 
-High-volume candidate skip events can be summarized inside `routing.plan_recorded`; individual skip events are only needed when a target was selected and then skipped at attempt time.
+High-volume unselected candidate skips are summarized inside `route_execution_plan.candidates[].skipReasons`. V1 does not emit individual `routing.target_skipped` or `routing.target_selected` events.
 
-## Runtime Flow
+## Admin API
 
-```text
-request received
-  -> request context
-  -> classifier
-  -> active routing config
-  -> candidate target list
-  -> compatibility evaluation
-  -> policy and account evaluation
-  -> persist route decision + plan
-  -> create provider attempt
-  -> send provider request
-  -> terminal provider event
-```
+Admin GraphQL exposes the plan through reusable routing evidence types:
 
-The plan must be recorded before provider spend. If the plan cannot be recorded while persistence is enabled, the request should fail before upstream provider calls.
+- `RouteDecision.routeExecutionPlan`
+- `RouteDecision.selectedCandidateId`
+- `RouteDecision.translated`
+- `RouteDecision.translatorId`
+- `ProviderAttempt.routeCandidateId`
+- `ProviderAttempt.attemptIndex`
+- `ProviderAttempt.fallbackIndex`
+- `ProviderAttempt.skipReason`
+
+`request(requestId:)` and `promptDetail(artifactId:)` return route decisions and provider attempts for admin users. Lower-privilege users receive empty route evidence arrays and cannot read route plan JSON, classifier internals, routing config snapshots, selected candidate ids, translation flags, or skip reason filters.
+
+Request list summaries stay lightweight. They select only summary columns from `route_decisions`; they do not fetch or serialize the `route_execution_plan` JSON. The list exposes admin-gated summary fields:
+
+- `selectedCandidateId`
+- `translated`
+- `routeSkipReasons`
+
+`routeSkipReasons` on the request list comes from persisted `provider_attempts.skip_reason`, not from scanning unexecuted candidates inside plan JSON. Candidate-level skip evidence is available in detail views.
 
 ## Console
 
-Add a route-plan panel to the request detail view:
+The operations console shows route evidence in the prompt detail route plan card:
 
-- classifier route and confidence
-- active config version and hash
-- target candidates in order
-- selected target
-- native vs translated label
-- skipped target reasons
-- provider account selected
-- provider attempt terminal status
+- classifier route, confidence, model, and data mode
+- routing config id, version, and hash
+- selected provider, model, dialect, and translation mode
+- ordered candidate table
+- candidate eligibility and skip reasons
+- provider attempts linked to each candidate
 
-Add filters:
+The request log adds filters for:
 
-- translated traffic
-- fallback applied
-- all candidates skipped
-- account cooldown skip
-- missing credential skip
-- budget/rate-limit skip
+- native vs translated traffic
+- provider-attempt skip reasons
 
-## Validation
+Older rows with the default empty plan continue to render without a route plan card.
 
-Unit tests:
+## V1 Boundaries
 
-- native first target selected
-- translated target selected when native unavailable
-- `previous_response_id` blocks translated target
-- missing credential skips org-defined provider
-- provider account cooldown skips candidate
-- route plan recorded before provider attempt
+Implemented:
 
-Integration tests:
+- plan schema in `packages/schema`
+- route decision and provider attempt persistence columns
+- `routing.plan_recorded` event projection
+- plan construction for the selected route tier's configured targets
+- translation compatibility skip reason mapping
+- custom-provider missing credential evidence
+- allowed budget policy result evidence
+- provider attempt candidate linkage
+- admin GraphQL route evidence
+- prompt detail route plan UI
+- request log translated/skip filters
 
-- request detail includes route plan
-- route config version hash survives config update
-- provider attempt links to selected candidate
+Not implemented in V1:
+
+- fallback execution
+- adaptive target ordering
+- provider/account health scoring
+- account cooldown or model lockout enforcement
+- rate-limit enforcement
+- context window estimation
+- broad translation expansion
+- new providers
+- per-candidate skip events outside the plan JSON
 
 ## Rollout
 
-1. Add route plan type and persistence column.
-2. Populate plan for existing native routing behavior.
-3. Render the plan in debug output or request detail.
-4. Add candidate skip reasons for existing compatibility checks.
-5. Make future fallback and health scopes depend on this plan.
+For persistence-enabled environments:
 
-## Non-Goals
+1. Apply migration `0019_route_execution_plan.sql`.
+2. Deploy proxy code that writes `routing.plan_recorded` before provider attempts.
+3. Regenerate GraphQL schema and web client types when changing route evidence fields.
+4. Expect existing rows to have `route_execution_plan = {}` and `translated = false`; no backfill is required.
+5. Verify new requests produce non-empty plans before relying on route evidence in follow-up scopes.
 
-- No new fallback behavior in this scope.
-- No adaptive target ordering.
-- No new providers.
-- No broad translation expansion.
+Validation used for this scope:
+
+```bash
+pnpm --filter @prompt-proxy/schema test
+pnpm --filter @prompt-proxy/db test
+pnpm --filter @prompt-proxy/proxy schema:print
+pnpm --filter @prompt-proxy/web codegen
+pnpm --filter @prompt-proxy/proxy typecheck
+pnpm --filter @prompt-proxy/web typecheck
+pnpm --filter @prompt-proxy/web test
+pnpm --dir apps/proxy exec vitest run test/persistence.test.ts test/routingConfigRuntime.test.ts test/adminAuthorization.test.ts
+```
 
 ## Acceptance Criteria
 
-- Every persisted request with a route decision has a non-empty route execution plan.
-- The plan records routing config identity, candidates, selected target, and skip reasons.
-- Provider attempts link back to the selected candidate.
-- The operations console can explain why the final provider/model was chosen.
+- Every new persisted routed request records a validated route execution plan before provider spend.
+- The plan records routing config identity, ordered candidates, selected target, policy evidence, and typed skip reasons.
+- Provider attempts link back to the selected route candidate.
+- Detail APIs can explain why the final provider/model was chosen.
+- Request list APIs stay lightweight and admin-gated.
+- Later provider health, fallback, limits, and policy scopes can extend evidence without replacing the contract.

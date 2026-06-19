@@ -194,6 +194,8 @@ builder.queryFields((t) => ({
         .requests.find((item) => item.requestId === requestId);
       return {
         request: requestSummary ?? null,
+        routeDecisions: [],
+        providerAttempts: [],
         events: allEvents.filter(
           (event) => event.scopeId === requestId || event.correlationId === requestId
         ),
