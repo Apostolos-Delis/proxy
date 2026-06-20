@@ -21,6 +21,20 @@ function normalizeBooleanEnv(value: unknown) {
 const booleanEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().default(false));
 const subscriptionOAuthEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().default(true));
 const optionalBooleanEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().optional());
+const metricsExporterSchema = z.enum(["none", "prometheus"]).default("prometheus");
+const metricsAuthModeSchema = z.enum(["token", "none"]).default("token");
+const optionalNonEmptyStringSchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().min(1).optional()
+);
+const metricsPathSchema = z
+  .string()
+  .trim()
+  .default("/metrics")
+  .refine(
+    (value) => value.startsWith("/") && !value.includes("?") && !value.includes("#") && !/\s/.test(value),
+    "METRICS_PATH must be an absolute path without whitespace, query string, or fragment"
+  );
 
 const modelCostsSchema = z.preprocess((value) => {
   if (value === undefined || value === "") return {};
@@ -92,6 +106,11 @@ const configSchema = z.object({
   SEED_USER_ID: z.string().min(1).default("local-user"),
   ADMIN_CORS_ORIGIN: z.string().default("http://127.0.0.1:5173,http://localhost:5173"),
   ADMIN_CONSOLE_URL: z.string().url().default("http://127.0.0.1:5173"),
+  METRICS_ENABLED: booleanEnvSchema,
+  METRICS_EXPORTER: metricsExporterSchema,
+  METRICS_PATH: metricsPathSchema,
+  METRICS_AUTH_MODE: metricsAuthModeSchema,
+  METRICS_TOKEN: optionalNonEmptyStringSchema,
   RESEND_API_KEY: z.string().optional(),
   RESEND_BASE_URL: z.string().url().default("https://api.resend.com"),
   EMAIL_FROM: z.string().min(1).default("Prompt Proxy <onboarding@resend.dev>"),
@@ -110,12 +129,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     PROMPT_PROXY_SETTINGS_PATH: settingsPath
   });
   const production = parsed.NODE_ENV === "production";
+  const metricsExporter = parsed.METRICS_ENABLED ? parsed.METRICS_EXPORTER : "none";
   const debugEndpointsEnabled = parsed.DEBUG_ENDPOINTS_ENABLED || (!production && !parsed.DATABASE_URL);
   if (production && debugEndpointsEnabled && parsed.PROMPT_PROXY_TOKEN === "dev-proxy-token") {
     throw new Error("PROMPT_PROXY_TOKEN must be set before enabling debug endpoints in production.");
   }
   if (production && parsed.DATABASE_URL && parsed.ADMIN_DEV_LOGIN_ENABLED && parsed.ADMIN_DEV_LOGIN_PASSWORD === "dev-password") {
     throw new Error("ADMIN_DEV_LOGIN_PASSWORD must be changed before enabling dev login with DATABASE_URL.");
+  }
+  if (production && parsed.METRICS_ENABLED && parsed.METRICS_AUTH_MODE === "none") {
+    throw new Error("METRICS_AUTH_MODE=none cannot be used with METRICS_ENABLED in production.");
+  }
+  if (production && parsed.METRICS_ENABLED && parsed.METRICS_AUTH_MODE === "token" && !parsed.METRICS_TOKEN) {
+    throw new Error("METRICS_TOKEN must be set before enabling token-authenticated metrics in production.");
   }
 
   return {
@@ -164,6 +190,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     seedUserId: parsed.SEED_USER_ID,
     adminCorsOrigins: parsed.ADMIN_CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean),
     adminConsoleUrl: trimTrailingSlash(parsed.ADMIN_CONSOLE_URL),
+    metricsEnabled: parsed.METRICS_ENABLED,
+    metricsExporter,
+    metricsPath: parsed.METRICS_PATH,
+    metricsAuthMode: parsed.METRICS_AUTH_MODE,
+    metricsToken: parsed.METRICS_TOKEN,
     resendApiKey: parsed.RESEND_API_KEY,
     resendBaseUrl: trimTrailingSlash(parsed.RESEND_BASE_URL),
     emailFrom: parsed.EMAIL_FROM,

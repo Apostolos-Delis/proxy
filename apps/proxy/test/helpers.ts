@@ -33,6 +33,7 @@ export async function startOpenAIMock(
     classifierResponsesShape?: boolean;
     compressedJsonProvider?: boolean;
     failProviderOnce?: boolean;
+    failStreamAfterChunk?: boolean;
     rateLimitProviderOnce?: RateLimitMock;
     slowProvider?: boolean;
     streamContentType?: string;
@@ -188,6 +189,10 @@ export async function startOpenAIMock(
     response.write(
       `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_mock" } })}\n\n`
     );
+    if (options.failStreamAfterChunk) {
+      setImmediate(() => response.destroy(new Error("mock stream failure")));
+      return;
+    }
     if (options.slowProvider) return;
     if (options.outputText) {
       response.write(

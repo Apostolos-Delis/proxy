@@ -13,6 +13,7 @@
 - [Subscription local auth import scope](scopes/subscription-local-auth-v1/PLAN.md)
 - [Provider architecture scope](scopes/provider-architecture-v1/PLAN.md)
 - [Harness model translation scope](scopes/harness-model-translation-v1/PLAN.md)
+- [Proxy metrics scope](scopes/proxy-metrics-v1/PLAN.md)
 
 ## Research
 
@@ -46,8 +47,10 @@
 - [Provider architecture V1 tickets](scopes/provider-architecture-v1/TICKETS.md)
 - [Harness model translation V1 tickets](scopes/harness-model-translation-v1/TICKETS.md)
 - [Tool output compression tickets](scopes/router-research-roadmap-v1/tool-output-compression-tickets.md)
+- [Proxy metrics V1 tickets](scopes/proxy-metrics-v1/TICKETS.md)
 - [Routing configs runbook](runbooks/routing-configs.md)
 - [AWS deployment runbook](runbooks/aws-deployment.md)
+- [Proxy metrics runbook](runbooks/proxy-metrics.md)
 - [Subscription auth runbook](runbooks/subscription-auth.md)
 
 ## Harness Setup

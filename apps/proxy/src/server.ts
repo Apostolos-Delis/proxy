@@ -1,5 +1,7 @@
+import { performance } from "node:perf_hooks";
+
 import cors from "@fastify/cors";
-import Fastify, { type FastifyReply } from "fastify";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 
 import { AdminAuthService } from "./adminAuth.js";
 import { registerAdminEventStream } from "./adminEvents.js";
@@ -26,6 +28,13 @@ import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStat
 import { registerAdminGraphQL } from "./graphql/route.js";
 import { harnessProfileByName } from "./harness.js";
 import { scheduleDailyModelCatalogRefresh } from "./jobs/modelCatalogRefresh.js";
+import {
+  createMetricsCollector,
+  metricErrorClassForStatus,
+  metricStatusClassFor,
+  metricTerminalStatusFor,
+  type MetricsCollector
+} from "./metrics.js";
 import { SessionRouteStore } from "./policy.js";
 import { createPostgresPersistence } from "./persistence/index.js";
 import { ConfigProviderRegistry } from "./persistence/providers.js";
@@ -49,10 +58,50 @@ import { WebSocketRoutingProxy } from "./wsProxy.js";
 
 type AppPersistence = ReturnType<typeof createPostgresPersistence>;
 
-export function buildServer(config: AppConfig = loadConfig(), options: { persistence?: AppPersistence } = {}) {
+export function buildServer(config: AppConfig = loadConfig(), options: { persistence?: AppPersistence; metrics?: MetricsCollector } = {}) {
   const app = Fastify({
     logger: { level: config.logLevel },
     bodyLimit: 1024 * 1024 * 50
+  });
+  const metrics = options.metrics ?? createMetricsCollector(config);
+  metrics.setGauge("prompt_proxy_up", 1);
+  const modelRequestsInFlight = new Map<string, { labels: Record<string, string>; value: number }>();
+  const requestMetrics = new WeakMap<FastifyRequest, RequestMetricsState>();
+
+  app.addHook("onRequest", (request, _reply, done) => {
+    const state = requestMetricsState(config, request);
+    requestMetrics.set(request, state);
+    if (state.surface) adjustModelRequestsInFlight(metrics, modelRequestsInFlight, state, 1);
+    done();
+  });
+  app.addHook("onResponse", async (request, reply) => {
+    const state = requestMetrics.get(request);
+    if (!state) return;
+
+    const durationSeconds = (performance.now() - state.startedAtMs) / 1000;
+    const statusClass = metricStatusClassFor(reply.statusCode);
+    const errorClass = state.errorClass ?? metricErrorClassForStatus(reply.statusCode);
+    metrics.incrementCounter("prompt_proxy_http_requests_total", {
+      route_family: state.routeFamily,
+      method: request.method,
+      status_class: statusClass,
+      error_class: errorClass
+    });
+    metrics.observeHistogram("prompt_proxy_http_request_duration_seconds", durationSeconds, {
+      route_family: state.routeFamily,
+      method: request.method,
+      status_class: statusClass
+    });
+
+    if (state.surface) {
+      finishModelRequestMetrics(
+        metrics,
+        modelRequestsInFlight,
+        state,
+        state.terminalStatus ?? (reply.statusCode >= 400 ? "failed" : "succeeded"),
+        errorClass
+      );
+    }
   });
   void app.register(cors, {
     origin: config.adminCorsOrigins,
@@ -60,21 +109,23 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     methods: ["GET", "HEAD", "POST"]
   });
   const persistence = options.persistence ?? (config.databaseUrl
-    ? createPostgresPersistence(config.databaseUrl, config)
+    ? createPostgresPersistence(config.databaseUrl, config, metrics)
     : undefined);
+  metrics.setGauge("prompt_proxy_persistence_enabled", persistence ? 1 : 0);
   const routingConfigs = persistence?.routingConfigs ?? new DefaultRoutingConfigResolver(config);
   const events = new EventService(
     config.eventStorePath,
     undefined,
     persistence?.eventSink,
-    config.defaultOrganizationId
+    config.defaultOrganizationId,
+    metrics
   );
   const auth = new ProxyAuthService(config, persistence?.apiKeys);
   const adminAuth = new AdminAuthService(config, persistence?.adminSessions);
   const attempts = new ProviderAttemptStore();
   const requestStates = persistence?.requestStates ?? new RequestStateStore();
   const sessions = new SessionRouteStore(persistence?.sessionPins);
-  const classifier = new LlmClassifier(config);
+  const classifier = new LlmClassifier(config, metrics);
   const providerRegistry = persistence?.providerRegistry ?? new ConfigProviderRegistry(config);
   const routing = new RoutingService(
     config,
@@ -82,9 +133,10 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     events,
     sessions,
     providerRegistry,
-    persistence?.providerCredentials
+    persistence?.providerCredentials,
+    metrics
   );
-  const proxy = new ProviderProxy(config, events, attempts, requestStates, providerRegistry);
+  const proxy = new ProviderProxy(config, events, attempts, requestStates, providerRegistry, metrics);
   const assistantResponseCapture = (input: {
     identity: RequestIdentity;
     requestId: string;
@@ -139,6 +191,17 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
 
   app.get("/healthz", async () => ({ status: "ok" }));
 
+  if (config.metricsEnabled && config.metricsExporter === "prometheus") {
+    app.get(config.metricsPath, async (request, reply) => {
+      if (config.metricsAuthMode === "token") {
+        requireAuth(request.headers, config.metricsToken ?? "");
+      }
+      reply.header("content-type", "application/openmetrics-text; version=1.0.0; charset=utf-8");
+      reply.header("cache-control", "no-store");
+      return metrics.renderOpenMetrics();
+    });
+  }
+
   app.get("/setup.sh", async (request, reply) => {
     const proto = headerValue(request.headers, "x-forwarded-proto")?.split(",")[0].trim() ?? request.protocol;
     const host = headerValue(request.headers, "x-forwarded-host") ?? headerValue(request.headers, "host") ?? `127.0.0.1:${config.port}`;
@@ -189,6 +252,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       request.headers
     ));
     const rawContext = openAIResponsesSurface.buildContext(request.body, lowerHeaders(request.headers));
+    markModelStream(metrics, modelRequestsInFlight, requestMetrics, request, requestWantsStream(request.body));
     const context = contextForIdentity(rawContext, identity);
     const proposedRequestId = createId("request");
     const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
@@ -253,6 +317,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+        markModelErrorClass(requestMetrics, request, "routing");
         sendRejectedDecision(decision, reply);
         return;
       }
@@ -308,7 +373,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           idempotencyKey,
           sessionId: context.sessionId,
           surface: openAIResponsesSurface.surface
-        })
+        }),
+        onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
       });
     } catch (error) {
       await requestStates.finish(idempotencyKey, "failed", {
@@ -326,6 +392,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       request.headers
     ));
     const rawContext = openAIChatSurface.buildContext(request.body, lowerHeaders(request.headers));
+    markModelStream(metrics, modelRequestsInFlight, requestMetrics, request, requestWantsStream(request.body));
     const context = contextForIdentity(rawContext, identity);
     const proposedRequestId = createId("request");
     const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
@@ -383,6 +450,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+        markModelErrorClass(requestMetrics, request, "routing");
         sendRejectedDecision(decision, reply);
         return;
       }
@@ -437,7 +505,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           idempotencyKey,
           sessionId: context.sessionId,
           surface: openAIChatSurface.surface
-        })
+        }),
+        onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
       });
     } catch (error) {
       await requestStates.finish(idempotencyKey, "failed", {
@@ -455,6 +524,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       request.headers
     ));
     const rawContext = anthropicMessagesSurface.buildContext(request.body, lowerHeaders(request.headers));
+    markModelStream(metrics, modelRequestsInFlight, requestMetrics, request, requestWantsStream(request.body));
     const context = contextForIdentity(rawContext, identity);
     const proposedRequestId = createId("request");
     const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
@@ -520,6 +590,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+        markModelErrorClass(requestMetrics, request, "routing");
         sendRejectedDecision(decision, reply);
         return;
       }
@@ -575,7 +646,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           idempotencyKey,
           sessionId: context.sessionId,
           surface: anthropicMessagesSurface.surface
-        })
+        }),
+        onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
       });
     } catch (error) {
       await requestStates.finish(idempotencyKey, "failed", {
@@ -593,6 +665,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       request.headers
     ));
     const rawContext = anthropicMessagesSurface.buildContext(request.body, lowerHeaders(request.headers));
+    markModelStream(metrics, modelRequestsInFlight, requestMetrics, request, false);
     const context = contextForIdentity(rawContext, identity);
     const proposedRequestId = createId("request");
     const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
@@ -623,6 +696,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       const decision = await routing.tokenCountDecision(context, resolved.routingConfig);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+        markModelErrorClass(requestMetrics, request, "routing");
         sendRejectedDecision(decision, reply);
         return;
       }
@@ -684,7 +758,8 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           receiptIds: [],
           eventEmitFailed: false,
           compressionFailed
-        }, resolved.toolResultCompressionPolicy)
+        }, resolved.toolResultCompressionPolicy),
+        onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
       });
     } catch (error) {
       await requestStates.finish(idempotencyKey, "failed", {
@@ -776,6 +851,11 @@ async function pinSystemPrompt(
 }
 
 function requireAuth(headers: Record<string, unknown>, token: string) {
+  if (!token) {
+    const error = new Error("Unauthorized");
+    (error as Error & { statusCode: number }).statusCode = 401;
+    throw error;
+  }
   const auth = headerValue(headers, "authorization") ?? "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : auth;
   const apiKey = headerValue(headers, "x-api-key") ?? "";
@@ -807,12 +887,146 @@ function sendRejectedDecision(decision: RouteDecision, reply: FastifyReply) {
   });
 }
 
+type RequestMetricsState = {
+  startedAtMs: number;
+  routeFamily: string;
+  surface?: Surface;
+  stream: string;
+  inFlightStream: string;
+  errorClass?: string;
+  terminalStatus?: string;
+  inFlightClosed?: boolean;
+  modelRecorded?: boolean;
+};
+
+function requestMetricsState(config: AppConfig, request: FastifyRequest): RequestMetricsState {
+  const path = requestPath(request.url);
+  return {
+    startedAtMs: performance.now(),
+    routeFamily: routeFamilyForPath(config, path),
+    surface: modelSurfaceForPath(path),
+    stream: "unknown",
+    inFlightStream: "unknown"
+  };
+}
+
+function markModelStream(
+  metrics: MetricsCollector,
+  inFlight: Map<string, { labels: Record<string, string>; value: number }>,
+  requestMetrics: WeakMap<FastifyRequest, RequestMetricsState>,
+  request: FastifyRequest,
+  stream: boolean
+) {
+  const state = requestMetrics.get(request);
+  if (!state?.surface) return;
+
+  const nextStream = stream ? "true" : "false";
+  state.stream = nextStream;
+  if (state.inFlightStream === nextStream) return;
+
+  adjustModelRequestsInFlight(metrics, inFlight, state, -1);
+  state.inFlightStream = nextStream;
+  adjustModelRequestsInFlight(metrics, inFlight, state, 1);
+}
+
+function markModelErrorClass(
+  requestMetrics: WeakMap<FastifyRequest, RequestMetricsState>,
+  request: FastifyRequest,
+  errorClass: string
+) {
+  const state = requestMetrics.get(request);
+  if (state?.surface) state.errorClass = errorClass;
+}
+
+function markModelTerminal(
+  metrics: MetricsCollector,
+  inFlight: Map<string, { labels: Record<string, string>; value: number }>,
+  requestMetrics: WeakMap<FastifyRequest, RequestMetricsState>,
+  request: FastifyRequest,
+  status: "completed" | "failed" | "cancelled",
+  errorClass: string
+) {
+  const state = requestMetrics.get(request);
+  if (!state?.surface) return;
+
+  const terminalStatus = metricTerminalStatusFor(status);
+  state.terminalStatus = terminalStatus;
+  state.errorClass = errorClass;
+  finishModelRequestMetrics(metrics, inFlight, state, terminalStatus, errorClass);
+}
+
+function requestPath(url: string) {
+  return url.split("?")[0] || "/";
+}
+
+function routeFamilyForPath(config: AppConfig, path: string) {
+  if (path === "/healthz") return "health";
+  if (path === config.metricsPath) return "metrics";
+  if (path === "/admin/graphql") return "graphql";
+  if (path.startsWith("/admin") || path.startsWith("/api") || path.startsWith("/_debug") || path === "/setup.sh") return "admin";
+  if (path === "/v1/messages" || path === "/v1/messages/count_tokens") return "anthropic";
+  if (path.startsWith("/v1/")) return "openai";
+  return "unknown";
+}
+
+function modelSurfaceForPath(path: string): Surface | undefined {
+  if (path === "/v1/responses") return openAIResponsesSurface.surface;
+  if (path === "/v1/chat/completions") return openAIChatSurface.surface;
+  if (path === "/v1/messages" || path === "/v1/messages/count_tokens") return anthropicMessagesSurface.surface;
+  return undefined;
+}
+
+function adjustModelRequestsInFlight(
+  metrics: MetricsCollector,
+  inFlight: Map<string, { labels: Record<string, string>; value: number }>,
+  state: RequestMetricsState,
+  delta: number
+) {
+  if (!state.surface) return;
+  const labels = { surface: state.surface, stream: state.inFlightStream };
+  const key = JSON.stringify(labels);
+  const current = inFlight.get(key) ?? { labels, value: 0 };
+  const next = Math.max(0, current.value + delta);
+  inFlight.set(key, { labels, value: next });
+  metrics.setGauge("prompt_proxy_model_requests_in_flight", next, labels);
+}
+
+function finishModelRequestMetrics(
+  metrics: MetricsCollector,
+  inFlight: Map<string, { labels: Record<string, string>; value: number }>,
+  state: RequestMetricsState,
+  terminalStatus: string,
+  errorClass: string
+) {
+  if (!state.surface) return;
+  if (!state.inFlightClosed) {
+    adjustModelRequestsInFlight(metrics, inFlight, state, -1);
+    state.inFlightClosed = true;
+  }
+  if (state.modelRecorded) return;
+
+  const durationSeconds = (performance.now() - state.startedAtMs) / 1000;
+  metrics.incrementCounter("prompt_proxy_model_requests_total", {
+    surface: state.surface,
+    stream: state.stream,
+    terminal_status: terminalStatus,
+    error_class: errorClass
+  });
+  metrics.observeHistogram("prompt_proxy_model_request_duration_seconds", durationSeconds, {
+    surface: state.surface,
+    stream: state.stream,
+    terminal_status: terminalStatus
+  });
+  state.modelRecorded = true;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const config = loadConfig();
+  const metrics = createMetricsCollector(config);
   const persistence = config.databaseUrl
-    ? createPostgresPersistence(config.databaseUrl, config)
+    ? createPostgresPersistence(config.databaseUrl, config, metrics)
     : undefined;
-  const app = buildServer(config, { persistence });
+  const app = buildServer(config, { persistence, metrics });
   await app.listen({ port: config.port, host: "0.0.0.0" });
   // Heal historical ledger rows: first fold legacy exclusive-shape cache
   // counts into input/total, then reprice rows that booked $0 before their

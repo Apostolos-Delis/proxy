@@ -1,4 +1,6 @@
-import { and, eq, sql } from "drizzle-orm";
+import { performance } from "node:perf_hooks";
+
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import {
   createPostgresDatabase,
@@ -13,6 +15,10 @@ import {
 import type { OutboxItem, PersistentEventSink, ProxyEvent } from "../events.js";
 import { ensureOrganization } from "./identity.js";
 import { projectEvent } from "./eventProjector.js";
+import {
+  type MetricsCollector,
+  NoopMetricsCollector
+} from "../metrics.js";
 
 export function createPostgresEventSink(databaseUrl: string) {
   const db = createPostgresDatabase(databaseUrl);
@@ -26,45 +32,97 @@ export function createDatabaseEventSink(db: PromptProxyDatabase) {
 export class DatabaseEventSink implements PersistentEventSink {
   constructor(
     private readonly db: PromptProxyTransactionalDatabase,
-    private readonly useAdvisoryLocks: boolean
+    private readonly useAdvisoryLocks: boolean,
+    private readonly metrics: MetricsCollector = new NoopMetricsCollector()
   ) {}
 
   async append(event: ProxyEvent, outbox: OutboxItem) {
-    await this.db.transaction(async (tx) => {
-      await ensureOrganization(tx, event.tenantId);
-      const sequence = await nextEventSequence(tx, event, this.useAdvisoryLocks);
-      await projectEvent(tx, event);
-      await tx.insert(events).values({
-        id: event.eventId,
-        sequence,
-        schemaVersion: event.schemaVersion,
-        organizationId: event.tenantId,
-        workspaceId: event.workspaceId,
-        scopeType: event.scopeType,
-        scopeId: event.scopeId,
-        sessionId: event.sessionId,
-        turnId: event.turnId,
-        parentEventId: event.parentEventId,
-        causationId: event.causationId,
-        correlationId: event.correlationId,
-        idempotencyKey: event.idempotencyKey,
-        actorType: event.actor.type,
-        actorId: event.actor.id,
-        producer: event.producer,
-        eventType: event.eventType,
-        payloadHash: event.payloadHash,
-        sensitivity: event.sensitivity,
-        redactionState: event.redactionState,
-        payload: event.payload,
-        metadata: event.metadata,
-        createdAt: new Date(event.createdAt)
+    const startedAtMs = performance.now();
+    try {
+      await this.db.transaction(async (tx) => {
+        await ensureOrganization(tx, event.tenantId);
+        const sequence = await nextEventSequence(tx, event, this.useAdvisoryLocks);
+        await projectEvent(tx, event);
+        await tx.insert(events).values({
+          id: event.eventId,
+          sequence,
+          schemaVersion: event.schemaVersion,
+          organizationId: event.tenantId,
+          workspaceId: event.workspaceId,
+          scopeType: event.scopeType,
+          scopeId: event.scopeId,
+          sessionId: event.sessionId,
+          turnId: event.turnId,
+          parentEventId: event.parentEventId,
+          causationId: event.causationId,
+          correlationId: event.correlationId,
+          idempotencyKey: event.idempotencyKey,
+          actorType: event.actor.type,
+          actorId: event.actor.id,
+          producer: event.producer,
+          eventType: event.eventType,
+          payloadHash: event.payloadHash,
+          sensitivity: event.sensitivity,
+          redactionState: event.redactionState,
+          payload: event.payload,
+          metadata: event.metadata,
+          createdAt: new Date(event.createdAt)
+        });
+        await tx.insert(eventOutbox).values({
+          id: outbox.outboxId,
+          eventId: event.eventId,
+          status: outbox.status
+        });
       });
-      await tx.insert(eventOutbox).values({
-        id: outbox.outboxId,
-        eventId: event.eventId,
-        status: outbox.status
+      this.metrics.observeHistogram("prompt_proxy_db_query_duration_seconds", (performance.now() - startedAtMs) / 1000, {
+        operation: "event_append",
+        outcome: "succeeded"
       });
-    });
+      await this.recordDurableOutboxHealth();
+    } catch (error) {
+      this.metrics.observeHistogram("prompt_proxy_db_query_duration_seconds", (performance.now() - startedAtMs) / 1000, {
+        operation: "event_append",
+        outcome: "failed"
+      });
+      this.metrics.incrementCounter("prompt_proxy_db_errors_total", {
+        operation: "event_append",
+        error_class: "persistence"
+      });
+      throw error;
+    }
+  }
+
+  private async recordDurableOutboxHealth() {
+    try {
+      await this.db.transaction(async (tx) => {
+        const [countRow] = await tx
+          .select({ backlog: sql<number>`count(*)::int` })
+          .from(eventOutbox)
+          .where(eq(eventOutbox.status, "queued"));
+        const [oldest] = await tx
+          .select({ createdAt: eventOutbox.createdAt })
+          .from(eventOutbox)
+          .where(eq(eventOutbox.status, "queued"))
+          .orderBy(asc(eventOutbox.createdAt))
+          .limit(1);
+
+        this.metrics.setGauge("prompt_proxy_outbox_backlog", Number(countRow?.backlog ?? 0));
+        const oldestCreatedAt = oldest?.createdAt === undefined
+          ? undefined
+          : new Date(oldest.createdAt).getTime();
+        this.metrics.setGauge(
+          "prompt_proxy_outbox_oldest_item_age_seconds",
+          oldestCreatedAt === undefined || !Number.isFinite(oldestCreatedAt)
+            ? 0
+            : Math.max(0, (Date.now() - oldestCreatedAt) / 1000)
+        );
+      });
+    } catch {
+      this.metrics.incrementCounter("prompt_proxy_db_errors_total", {
+        operation: "outbox_health",
+        error_class: "persistence"
+      });
+    }
   }
 }
 

@@ -10,6 +10,10 @@ import { hasUserSignal } from "./features.js";
 import { jsonPayload, type EventService } from "./events.js";
 import type { AppConfig } from "./config.js";
 import {
+  type MetricsCollector,
+  NoopMetricsCollector
+} from "./metrics.js";
+import {
   ProviderRegistryError,
   providerEndpointForDialect,
   type ProviderRegistryEntry,
@@ -104,7 +108,8 @@ export class RoutingService {
     private readonly events: EventService,
     private readonly sessions: SessionRouteStore,
     private readonly providerRegistry: ProviderRegistryResolver,
-    private readonly credentials?: ProviderCredentialResolver
+    private readonly credentials?: ProviderCredentialResolver,
+    private readonly metrics: MetricsCollector = new NoopMetricsCollector()
   ) {}
 
   async decide(input: {
@@ -710,6 +715,7 @@ export class RoutingService {
       eventType: "routing.decision_recorded",
       payload: jsonPayload(payload) as JsonObject
     });
+    this.recordDecisionMetric(decision);
   }
 
   private reject(
@@ -738,6 +744,37 @@ export class RoutingService {
       errorStatus
     };
   }
+
+  private recordDecisionMetric(decision: RouteDecision) {
+    const requestedRoute = requestedRouteLabel(decision);
+    const guardrailAction = decision.guardrailActions[0] ?? "none";
+    if (decision.outcome === "reject") {
+      this.metrics.incrementCounter("prompt_proxy_routing_rejections_total", {
+        surface: decision.surface,
+        requested_route: requestedRoute,
+        error_class: "routing",
+        guardrail_action: guardrailAction
+      });
+      return;
+    }
+
+    this.metrics.incrementCounter("prompt_proxy_routing_decisions_total", {
+      surface: decision.surface,
+      requested_route: requestedRoute,
+      final_route: decision.finalRoute ?? "none",
+      provider: decision.provider ?? "unknown",
+      model: decision.selectedModel ?? "unknown",
+      guardrail_action: guardrailAction
+    });
+  }
+}
+
+function requestedRouteLabel(decision: RouteDecision) {
+  if (decision.classifierRoute) return decision.classifierRoute;
+  if (decision.requestedModel?.startsWith("router-")) return decision.requestedModel.slice("router-".length);
+  if (decision.requestedModel?.includes("router-")) return decision.requestedModel.split("router-").at(-1) ?? "unknown";
+  if (decision.requestedModel) return "provider_model";
+  return "unknown";
 }
 
 function rejectionMessage(error: string, check: NonNullable<RouteDecision["budgetChecks"]>[number] | undefined) {

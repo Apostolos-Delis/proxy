@@ -178,6 +178,8 @@ Customer secrets are encrypted at rest with AES-256-GCM using `PROVIDER_SECRET_E
 
 **Debug (local development, authenticated):** `GET /_debug/events`, `/_debug/provider-attempts`, `/_debug/outbox`, `/_debug/sessions`, `/_debug/projections`, `/_debug/route-quality`. These endpoints are enabled automatically only when `DATABASE_URL` is unset; set `DEBUG_ENDPOINTS_ENABLED=true` to enable them with persistence, and never expose them with the default development proxy token.
 
+**Operational metrics (disabled by default):** `GET /metrics` emits OpenMetrics/Prometheus text when `METRICS_ENABLED=true`, `METRICS_EXPORTER=prometheus`, and `METRICS_TOKEN` are configured. See the [proxy metrics runbook](docs/runbooks/proxy-metrics.md).
+
 ## Persistence
 
 `packages/db` is a Drizzle/Postgres layer. When `DATABASE_URL` is set, every proxy event also persists durable current-state rows for requests, route decisions, provider attempts, usage, sessions, prompt artifacts, events, and outbox items — written in the same transaction.
