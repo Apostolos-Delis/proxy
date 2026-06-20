@@ -1,0 +1,8 @@
+{
+  "profileId": "claude-code-messages",
+  "caseId": "translated-responses-stream",
+  "surface": "anthropic-messages",
+  "targetDialect": "openai-responses",
+  "description": "Claude Code Anthropic Messages request translated to OpenAI Responses with text, image, tool history, and streamed response translation.",
+  "mode": "translated"
+}

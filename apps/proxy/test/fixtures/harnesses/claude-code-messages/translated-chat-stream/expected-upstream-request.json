@@ -1,0 +1,67 @@
+{
+  "model": "gpt-cross-chat",
+  "messages": [
+    {
+      "role": "system",
+      "content": "Use tools carefully.\n\nPrefer concise output."
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "List files."
+        },
+        {
+          "type": "image_url",
+          "image_url": {
+            "url": "data:image/png;base64,iVBORw0KGgo="
+          }
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": "Planning shell call.",
+      "tool_calls": [
+        {
+          "id": "toolu_cross_chat_1",
+          "type": "function",
+          "function": {
+            "name": "shell",
+            "arguments": "{\"cmd\":\"ls\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "toolu_cross_chat_1",
+      "content": "package.json"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "shell",
+        "description": "Run shell",
+        "parameters": {
+          "type": "object"
+        }
+      }
+    }
+  ],
+  "tool_choice": {
+    "type": "function",
+    "function": {
+      "name": "shell"
+    }
+  },
+  "stream": true,
+  "max_completion_tokens": 222,
+  "reasoning_effort": "high",
+  "stream_options": {
+    "include_usage": true
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "model": "gpt-chat-native",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Explain the selected file."
+    }
+  ],
+  "metadata": {
+    "session_id": "cursor-session-golden"
+  },
+  "stream": true,
+  "max_tokens": 128,
+  "max_completion_tokens": 222,
+  "reasoning_effort": "high",
+  "stream_options": {
+    "include_usage": true
+  }
+}

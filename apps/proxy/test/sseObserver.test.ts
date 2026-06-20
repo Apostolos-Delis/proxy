@@ -66,6 +66,16 @@ describe("openai-responses observer", () => {
     expect(observation.error).toBe("The model hit a provider-side failure.");
     expect(observation.upstreamResponseId).toBe("resp_failed1");
   });
+
+  it("completes streams that omit terminal usage", async () => {
+    const bytes = await fixtureBytes("openai-responses-missing-usage.sse");
+    const observation = observeInChunks("openai-responses", bytes, 11);
+
+    expect(observation.status).toBe("completed");
+    expect(observation.usage).toBeUndefined();
+    expect(observation.upstreamResponseId).toBe("resp_no_usage");
+    expect(observation.outputText).toBe("No usage, still done.");
+  });
 });
 
 describe("openai-chat observer", () => {

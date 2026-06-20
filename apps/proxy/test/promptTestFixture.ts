@@ -361,6 +361,7 @@ async function closeFixture(input: {
   anthropic: MockServer;
   client: PGlite;
 }) {
+  input.app.server.closeAllConnections();
   await input.app.close();
   await input.openai.close();
   if (input.openaiChatgpt !== input.openai) {

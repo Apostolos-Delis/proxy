@@ -1,0 +1,10 @@
+{
+  "model": "router-hard",
+  "messages": [
+    {
+      "role": "user",
+      "content": "list files"
+    }
+  ],
+  "stream": true
+}

@@ -10,7 +10,7 @@ import {
 import type { PromptCaptureMode } from "@prompt-proxy/schema";
 
 import { promptBlockTagsForSurface } from "../harness.js";
-import type { Surface } from "../types.js";
+import type { RouteContext, Surface } from "../types.js";
 import { createId, isRecord, roughTokenEstimate, sha256, stableJson, unreachable } from "../util.js";
 
 export type PromptArtifactCaptureInput = {
@@ -19,6 +19,9 @@ export type PromptArtifactCaptureInput = {
   requestId: string;
   surface: Surface;
   body: unknown;
+  harness?: RouteContext["harness"];
+  harnessProfileId?: RouteContext["harnessProfileId"];
+  transport?: RouteContext["transport"];
 };
 
 export type PromptCaptureSettings = {
@@ -108,6 +111,9 @@ export class PromptArtifactStore {
     workspaceId: string;
     requestId: string;
     surface: Surface;
+    harness?: RouteContext["harness"];
+    harnessProfileId?: RouteContext["harnessProfileId"];
+    transport?: RouteContext["transport"];
     text: string;
     truncated?: boolean;
   }) {
@@ -249,11 +255,20 @@ export class PromptArtifactStore {
 
 }
 
-export function promptCaptureEventPayload(surface: Surface, artifacts: CapturedPromptArtifact[]) {
+export function promptCaptureEventPayload(input: {
+  surface: Surface;
+  transport?: RouteContext["transport"];
+  harness?: RouteContext["harness"];
+  harnessProfileId?: RouteContext["harnessProfileId"];
+  artifacts: CapturedPromptArtifact[];
+}) {
   return {
-    surface,
-    artifactCount: artifacts.length,
-    artifacts: artifacts.map((artifact) => ({
+    surface: input.surface,
+    transport: input.transport ?? "http",
+    harness: input.harness ?? null,
+    harnessProfileId: input.harnessProfileId ?? null,
+    artifactCount: input.artifacts.length,
+    artifacts: input.artifacts.map((artifact) => ({
       artifactId: artifact.id,
       kind: artifact.kind,
       storageMode: artifact.storageMode,
@@ -342,6 +357,9 @@ function artifactRow(
 ): typeof promptArtifacts.$inferInsert {
   const metadata = {
     surface: input.surface,
+    transport: input.transport ?? "http",
+    harness: input.harness ?? null,
+    harnessProfileId: input.harnessProfileId ?? null,
     chars: artifact.content?.length ?? 0,
     ...artifact.metadata
   };

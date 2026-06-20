@@ -2,7 +2,7 @@ import { ROUTING_HINT_NAMES, type RoutingHintName } from "@prompt-proxy/schema";
 
 import type { RouteContext } from "./types.js";
 import { explicitAlias } from "./catalog.js";
-import { detectHarness, promptBlockTagsForSurface } from "./harness.js";
+import { detectHarnessSurfaceProfile, harnessProfileByName, promptBlockTagsForSurface } from "./harness.js";
 import { isRecord, roughTokenEstimate, sha256, stableJson } from "./util.js";
 
 const hintPatterns: Record<RoutingHintName, RegExp> = {
@@ -15,10 +15,15 @@ const hintPatterns: Record<RoutingHintName, RegExp> = {
   production: /\b(production|data loss|payment|billing)\b/i
 };
 
-export function buildOpenAIContext(body: unknown, headers: Record<string, string | undefined>): RouteContext {
+export function buildOpenAIContext(
+  body: unknown,
+  headers: Record<string, string | undefined>,
+  transport: RouteContext["transport"] = "http"
+): RouteContext {
   const request = isRecord(body) ? body : {};
   const surface = "openai-responses";
-  const profile = detectHarness({ surface, body: request, headers });
+  const surfaceProfile = detectHarnessSurfaceProfile({ surface, body: request, headers, transport });
+  const profile = harnessProfileByName(surfaceProfile.harness);
   const promptBlockTags = promptBlockTagsForSurface(surface);
   const fullText = [
     stringifyText(request.instructions),
@@ -32,7 +37,9 @@ export function buildOpenAIContext(body: unknown, headers: Record<string, string
 
   return {
     surface,
+    transport,
     harness: profile.name,
+    harnessProfileId: surfaceProfile.id,
     statefulResponses: profile.statefulResponses,
     requestedModel,
     inputChars: fullText.length,
@@ -47,6 +54,7 @@ export function buildOpenAIContext(body: unknown, headers: Record<string, string
     toolCount: tools.length,
     hasPreviousResponseId: typeof request.previous_response_id === "string",
     hasImages: hasImageInput(request.input),
+    unsupportedFields: unsupportedTranslatedFieldsForOpenAIResponses(request),
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
     sessionId: profile.sessionId(request, headers),
@@ -56,10 +64,15 @@ export function buildOpenAIContext(body: unknown, headers: Record<string, string
   };
 }
 
-export function buildOpenAIChatContext(body: unknown, headers: Record<string, string | undefined>): RouteContext {
+export function buildOpenAIChatContext(
+  body: unknown,
+  headers: Record<string, string | undefined>,
+  transport: RouteContext["transport"] = "http"
+): RouteContext {
   const request = isRecord(body) ? body : {};
   const surface = "openai-chat";
-  const profile = detectHarness({ surface, body: request, headers });
+  const surfaceProfile = detectHarnessSurfaceProfile({ surface, body: request, headers, transport });
+  const profile = harnessProfileByName(surfaceProfile.harness);
   const promptBlockTags = promptBlockTagsForSurface(surface);
   const fullText = [
     stringifyText(request.messages),
@@ -72,7 +85,9 @@ export function buildOpenAIChatContext(body: unknown, headers: Record<string, st
 
   return {
     surface,
+    transport,
     harness: profile.name,
+    harnessProfileId: surfaceProfile.id,
     statefulResponses: profile.statefulResponses,
     requestedModel,
     inputChars: fullText.length,
@@ -87,6 +102,7 @@ export function buildOpenAIChatContext(body: unknown, headers: Record<string, st
     toolCount: tools.length,
     hasPreviousResponseId: false,
     hasImages: hasImageInput(request.messages),
+    unsupportedFields: [],
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
     sessionId: profile.sessionId(request, headers),
@@ -96,10 +112,15 @@ export function buildOpenAIChatContext(body: unknown, headers: Record<string, st
   };
 }
 
-export function buildAnthropicContext(body: unknown, headers: Record<string, string | undefined>): RouteContext {
+export function buildAnthropicContext(
+  body: unknown,
+  headers: Record<string, string | undefined>,
+  transport: RouteContext["transport"] = "http"
+): RouteContext {
   const request = isRecord(body) ? body : {};
   const surface = "anthropic-messages";
-  const profile = detectHarness({ surface, body: request, headers });
+  const surfaceProfile = detectHarnessSurfaceProfile({ surface, body: request, headers, transport });
+  const profile = harnessProfileByName(surfaceProfile.harness);
   const promptBlockTags = promptBlockTagsForSurface(surface);
   const fullText = [
     stringifyText(request.system),
@@ -113,7 +134,9 @@ export function buildAnthropicContext(body: unknown, headers: Record<string, str
 
   return {
     surface,
+    transport,
     harness: profile.name,
+    harnessProfileId: surfaceProfile.id,
     statefulResponses: profile.statefulResponses,
     requestedModel,
     inputChars: fullText.length,
@@ -128,6 +151,7 @@ export function buildAnthropicContext(body: unknown, headers: Record<string, str
     toolCount: tools.length,
     hasPreviousResponseId: false,
     hasImages: hasImageInput(request.messages),
+    unsupportedFields: [],
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
     sessionId: profile.sessionId(request, headers),
@@ -177,6 +201,17 @@ function routingInputFrom(latestUserText: string | undefined, fullText: string) 
     source: "full_request" as const,
     text: fullText
   };
+}
+
+function unsupportedTranslatedFieldsForOpenAIResponses(request: Record<string, unknown>) {
+  const fields: string[] = [];
+  if (
+    Array.isArray(request.include) &&
+    request.include.some((value) => value === "reasoning.encrypted_content")
+  ) {
+    fields.push("include.reasoning.encrypted_content");
+  }
+  return fields;
 }
 
 function stripHarnessBlocks(text: string, tags: ReadonlySet<string>): string {

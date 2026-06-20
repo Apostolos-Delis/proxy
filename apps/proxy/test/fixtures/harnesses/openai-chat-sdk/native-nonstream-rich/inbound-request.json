@@ -1,0 +1,68 @@
+{
+  "model": "router-hard",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a generic Chat SDK caller."
+    },
+    {
+      "role": "developer",
+      "content": "Prefer concise output."
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Run pwd using a tool."
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_chat_native_1",
+          "type": "function",
+          "function": {
+            "name": "shell",
+            "arguments": "{\"cmd\":\"pwd\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_chat_native_1",
+      "content": "/repo"
+    },
+    {
+      "role": "user",
+      "content": "Summarize the result."
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "shell",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "cmd": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "cmd"
+          ]
+        }
+      }
+    }
+  ],
+  "prompt_cache_retention": "24h",
+  "stream": false,
+  "max_tokens": 64,
+  "max_completion_tokens": 999
+}

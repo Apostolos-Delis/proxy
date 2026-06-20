@@ -1,0 +1,6 @@
+{
+  "outcome": "route",
+  "surface": "anthropic-messages",
+  "provider": "anthropic",
+  "selectedModel": "claude-code-native"
+}

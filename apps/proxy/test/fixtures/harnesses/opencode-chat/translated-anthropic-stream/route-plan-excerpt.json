@@ -1,0 +1,10 @@
+{
+  "outcome": "route",
+  "surface": "openai-chat",
+  "provider": "cross-anthropic-chat",
+  "selectedModel": "claude-opus-4-8-cross-family",
+  "reasoningEffort": "high",
+  "guardrailActions": [
+    "translated_request:openai-chat_to_anthropic-messages"
+  ]
+}

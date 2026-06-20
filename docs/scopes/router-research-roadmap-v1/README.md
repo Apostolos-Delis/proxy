@@ -25,6 +25,10 @@ The upstream research lives in:
 9. [Metrics and events](metrics-and-events.md)
 10. [Product boundaries](product-boundaries.md)
 
+## Ticket Breakdowns
+
+- [Harness compatibility tests tickets](harness-compatibility-tests-tickets.md)
+
 ## Sequencing
 
 The recommended order is:

@@ -1,0 +1,7 @@
+{
+  "profileId": "cursor-byok-chat",
+  "caseId": "native-stream",
+  "surface": "openai-chat",
+  "description": "Cursor BYOK OpenAI Chat native streaming request with metadata session detection and injected stream usage options.",
+  "mode": "native"
+}

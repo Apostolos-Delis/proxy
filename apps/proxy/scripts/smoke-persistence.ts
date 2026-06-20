@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
@@ -10,8 +11,7 @@ import { createDatabasePersistence } from "../src/persistence/index.js";
 
 export async function createSmokePersistence(config: AppConfig, env: NodeJS.ProcessEnv) {
   const client = new PGlite();
-  const migration = await readFile(join(process.cwd(), "../../packages/db/migrations/0000_foundation.sql"), "utf8");
-  await client.exec(migration);
+  await applySmokeMigrations(client);
 
   const db = createPgliteDatabase(client);
   await seedDatabase(db, seedOptionsFromEnv(env));
@@ -20,4 +20,16 @@ export async function createSmokePersistence(config: AppConfig, env: NodeJS.Proc
     persistence: createDatabasePersistence(db, config, false),
     close: () => client.close()
   };
+}
+
+async function applySmokeMigrations(client: PGlite) {
+  const migrationsDir = [
+    join(process.cwd(), "../../packages/db/migrations"),
+    join(process.cwd(), "../../packages/db/dist/migrations")
+  ].find((path) => existsSync(path));
+  if (!migrationsDir) throw new Error("Smoke migrations directory not found.");
+  const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
+  for (const file of files) {
+    await client.exec(await readFile(join(migrationsDir, file), "utf8"));
+  }
 }

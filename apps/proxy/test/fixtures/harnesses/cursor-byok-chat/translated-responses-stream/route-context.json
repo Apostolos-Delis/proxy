@@ -1,0 +1,8 @@
+{
+  "surface": "openai-chat",
+  "harness": "cursor",
+  "statefulResponses": false,
+  "sessionId": "cursor-translated-session",
+  "hasTools": true,
+  "hasImages": false
+}

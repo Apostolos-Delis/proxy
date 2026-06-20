@@ -1,0 +1,8 @@
+{
+  "profileId": "generic-anthropic-messages",
+  "caseId": "translated-chat-stream",
+  "surface": "anthropic-messages",
+  "targetDialect": "openai-chat",
+  "description": "Generic Anthropic Messages request translated to OpenAI Chat with text and tool-call stream deltas.",
+  "mode": "translated"
+}

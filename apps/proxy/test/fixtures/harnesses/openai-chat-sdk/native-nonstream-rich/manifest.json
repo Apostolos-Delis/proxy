@@ -1,0 +1,7 @@
+{
+  "profileId": "openai-chat-sdk",
+  "caseId": "native-nonstream-rich",
+  "surface": "openai-chat",
+  "description": "Generic OpenAI Chat SDK native non-streaming request with system, developer, user, assistant tool_calls, tool result messages, max token variants, and usage.",
+  "mode": "native"
+}

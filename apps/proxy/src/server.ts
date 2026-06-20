@@ -52,7 +52,7 @@ import {
 import { ProviderProxy } from "./proxy.js";
 import { RoutingService } from "./router.js";
 import { buildSetupScript } from "./setupScript.js";
-import type { Provider, RouteDecision, Surface } from "./types.js";
+import type { Provider, RouteContext, RouteDecision, Surface } from "./types.js";
 import { createId, headerValue, idempotencyFrom, isRecord, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
 
@@ -143,6 +143,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     idempotencyKey: string;
     sessionId?: string;
     surface: Surface;
+    transport?: RouteContext["transport"];
+    harness?: RouteContext["harness"];
+    harnessProfileId?: RouteContext["harnessProfileId"];
   }) => {
     if (!persistence) return undefined;
     return async (text: string, truncated: boolean) => {
@@ -152,6 +155,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           workspaceId: input.identity.workspaceId,
           requestId: input.requestId,
           surface: input.surface,
+          transport: input.transport,
+          harness: input.harness,
+          harnessProfileId: input.harnessProfileId,
           text,
           truncated
         });
@@ -162,6 +168,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           idempotencyKey: input.idempotencyKey,
           sessionId: input.sessionId,
           surface: input.surface,
+          transport: input.transport,
+          harness: input.harness,
+          harnessProfileId: input.harnessProfileId,
           artifacts
         });
       } catch (error) {
@@ -277,7 +286,10 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         workspaceId: identity.workspaceId,
         requestId,
         surface: openAIResponsesSurface.surface,
-        body: request.body
+        body: request.body,
+        transport: context.transport,
+        harness: context.harness,
+        harnessProfileId: context.harnessProfileId
       }) ?? [];
       await appendPromptCaptureEvent({
         events,
@@ -286,6 +298,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         sessionId: context.sessionId,
         surface: openAIResponsesSurface.surface,
+        transport: context.transport,
+        harness: context.harness,
+        harnessProfileId: context.harnessProfileId,
         artifacts: capturedArtifacts
       });
 
@@ -360,6 +375,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         organizationId: identity.organizationId,
         surface: openAIResponsesSurface.surface,
         provider: routedProvider(decision),
+        harnessProfileId: context.harnessProfileId,
         body: forwardedBody,
         responseStream: requestWantsStream(request.body),
         headers: lowerHeaders(request.headers),
@@ -372,7 +388,10 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           requestId,
           idempotencyKey,
           sessionId: context.sessionId,
-          surface: openAIResponsesSurface.surface
+          surface: openAIResponsesSurface.surface,
+          transport: context.transport,
+          harness: context.harness,
+          harnessProfileId: context.harnessProfileId
         }),
         onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
       });
@@ -418,7 +437,10 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         workspaceId: identity.workspaceId,
         requestId,
         surface: openAIChatSurface.surface,
-        body: request.body
+        body: request.body,
+        transport: context.transport,
+        harness: context.harness,
+        harnessProfileId: context.harnessProfileId
       }) ?? [];
       await appendPromptCaptureEvent({
         events,
@@ -427,6 +449,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         sessionId: context.sessionId,
         surface: openAIChatSurface.surface,
+        transport: context.transport,
+        harness: context.harness,
+        harnessProfileId: context.harnessProfileId,
         artifacts: capturedArtifacts
       });
 
@@ -493,6 +518,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         organizationId: identity.organizationId,
         surface: openAIChatSurface.surface,
         provider: routedProvider(decision),
+        harnessProfileId: context.harnessProfileId,
         body: forwardedBody,
         responseStream: requestWantsStream(request.body),
         headers: lowerHeaders(request.headers),
@@ -505,7 +531,10 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           requestId,
           idempotencyKey,
           sessionId: context.sessionId,
-          surface: openAIChatSurface.surface
+          surface: openAIChatSurface.surface,
+          transport: context.transport,
+          harness: context.harness,
+          harnessProfileId: context.harnessProfileId
         }),
         onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
       });
@@ -552,7 +581,10 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         workspaceId: identity.workspaceId,
         requestId,
         surface: anthropicMessagesSurface.surface,
-        body: request.body
+        body: request.body,
+        transport: context.transport,
+        harness: context.harness,
+        harnessProfileId: context.harnessProfileId
       }) ?? [];
       await appendPromptCaptureEvent({
         events,
@@ -561,6 +593,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         sessionId: context.sessionId,
         surface: anthropicMessagesSurface.surface,
+        transport: context.transport,
+        harness: context.harness,
+        harnessProfileId: context.harnessProfileId,
         artifacts: capturedArtifacts
       });
 
@@ -635,6 +670,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         organizationId: identity.organizationId,
         surface: anthropicMessagesSurface.surface,
         provider: routedProvider(decision),
+        harnessProfileId: context.harnessProfileId,
         body: forwardedBody,
         responseStream: requestWantsStream(request.body),
         headers: lowerHeaders(request.headers),
@@ -647,7 +683,10 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           requestId,
           idempotencyKey,
           sessionId: context.sessionId,
-          surface: anthropicMessagesSurface.surface
+          surface: anthropicMessagesSurface.surface,
+          transport: context.transport,
+          harness: context.harness,
+          harnessProfileId: context.harnessProfileId
         }),
         onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
       });
@@ -750,6 +789,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         organizationId: identity.organizationId,
         surface: anthropicMessagesSurface.surface,
         provider: routedProvider(decision),
+        harnessProfileId: context.harnessProfileId,
         body: forwardedBody,
         headers: lowerHeaders(request.headers),
         decision,

@@ -1,0 +1,7 @@
+{
+  "profileId": "generic-openai-responses",
+  "caseId": "reject-unsupported-encrypted-include",
+  "surface": "openai-responses",
+  "description": "OpenAI Responses encrypted reasoning include rejects translated targets instead of silently dropping the field.",
+  "mode": "unsupported"
+}

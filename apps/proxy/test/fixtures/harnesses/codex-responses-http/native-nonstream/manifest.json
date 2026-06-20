@@ -1,0 +1,7 @@
+{
+  "profileId": "codex-responses-http",
+  "caseId": "native-nonstream",
+  "surface": "openai-responses",
+  "description": "Codex HTTP native OpenAI Responses non-streaming request.",
+  "mode": "native"
+}

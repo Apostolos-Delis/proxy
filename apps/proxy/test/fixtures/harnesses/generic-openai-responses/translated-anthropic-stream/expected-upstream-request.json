@@ -1,0 +1,80 @@
+{
+  "model": "claude-opus-4-8-responses-cross",
+  "tools": [
+    {
+      "name": "shell",
+      "description": "Run shell",
+      "input_schema": {
+        "type": "object"
+      }
+    }
+  ],
+  "tool_choice": {
+    "type": "tool",
+    "name": "shell"
+  },
+  "stream": true,
+  "system": [
+    {
+      "type": "text",
+      "text": "Use tools carefully."
+    },
+    {
+      "type": "text",
+      "text": "Prefer concise output."
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "List files."
+        },
+        {
+          "type": "image",
+          "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "abc123"
+          }
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "call_cross_resp_1",
+          "name": "shell",
+          "input": {
+            "cmd": "ls"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "call_cross_resp_1",
+          "content": "package.json"
+        }
+      ]
+    }
+  ],
+  "stop_sequences": [
+    "DONE"
+  ],
+  "thinking": {
+    "type": "adaptive",
+    "display": "omitted"
+  },
+  "output_config": {
+    "effort": "high"
+  },
+  "max_tokens": 321
+}

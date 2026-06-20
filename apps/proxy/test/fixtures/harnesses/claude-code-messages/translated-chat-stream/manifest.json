@@ -1,0 +1,8 @@
+{
+  "profileId": "claude-code-messages",
+  "caseId": "translated-chat-stream",
+  "surface": "anthropic-messages",
+  "targetDialect": "openai-chat",
+  "description": "Claude Code Anthropic Messages request translated to OpenAI Chat with text and tool-call stream deltas.",
+  "mode": "translated"
+}

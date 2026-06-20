@@ -130,6 +130,9 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
     const terminal = status !== "classifying" && status !== "provider_pending";
     const request = await this.findRequest(idempotencyKey, undefined, undefined, patch.requestId);
     if (!request) return undefined;
+    if (terminal && isTerminalRequestStatus(request.status)) {
+      return this.stateForRequest(request);
+    }
     if (terminal && patch.providerAttemptId) {
       return this.stateForRequest(request);
     }
@@ -271,6 +274,10 @@ function requestStateStatus(status: string): RequestState["status"] {
   if (status === "failed") return "failed";
   if (status === "cancelled") return "cancelled";
   return "classifying";
+}
+
+function isTerminalRequestStatus(status: string) {
+  return status === "completed" || status === "failed" || status === "cancelled";
 }
 
 function isRouteContext(value: unknown): value is RouteContext {

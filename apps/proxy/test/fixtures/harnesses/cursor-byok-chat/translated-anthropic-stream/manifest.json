@@ -1,0 +1,8 @@
+{
+  "profileId": "cursor-byok-chat",
+  "caseId": "translated-anthropic-stream",
+  "surface": "openai-chat",
+  "targetDialect": "anthropic-messages",
+  "description": "Cursor BYOK OpenAI Chat request translated to Anthropic Messages with role, image, tool, thinking, and streaming response coverage.",
+  "mode": "translated"
+}

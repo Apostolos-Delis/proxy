@@ -1,0 +1,13 @@
+{
+  "type": "response.create",
+  "model": "gpt-5.5",
+  "previous_response_id": "resp_ws_1",
+  "input": "git status",
+  "tools": [
+    {
+      "type": "function",
+      "name": "shell"
+    }
+  ],
+  "stream": true
+}

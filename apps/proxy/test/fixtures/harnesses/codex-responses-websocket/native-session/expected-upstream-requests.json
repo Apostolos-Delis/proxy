@@ -1,0 +1,43 @@
+[
+  {
+    "type": "response.create",
+    "model": "gpt-codex-ws-native",
+    "input": "fix the websocket routing regression",
+    "tools": [
+      {
+        "type": "function",
+        "name": "shell"
+      }
+    ],
+    "stream": true,
+    "store": false,
+    "reasoning": {
+      "effort": "high"
+    },
+    "text": {
+      "verbosity": "medium"
+    },
+    "max_output_tokens": 321
+  },
+  {
+    "type": "response.create",
+    "model": "gpt-codex-ws-native",
+    "previous_response_id": "resp_ws_1",
+    "input": "git status",
+    "tools": [
+      {
+        "type": "function",
+        "name": "shell"
+      }
+    ],
+    "stream": true,
+    "store": false,
+    "reasoning": {
+      "effort": "high"
+    },
+    "text": {
+      "verbosity": "medium"
+    },
+    "max_output_tokens": 321
+  }
+]

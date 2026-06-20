@@ -11,6 +11,10 @@ import { defaultWorkspaceId } from "@prompt-proxy/db";
 
 import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
+import {
+  buildHarnessSmokeStatusArtifact,
+  type RealHarnessSmokeStatus
+} from "../src/harnessSmokeStatus.js";
 import { createSmokePersistence } from "./smoke-persistence.js";
 import { assertPersistedRoutingDecision } from "./smoke-routing-assertions.js";
 
@@ -54,51 +58,43 @@ try {
     const address = app.server.address() as AddressInfo;
     return `http://127.0.0.1:${address.port}`;
   });
+  const realHarnesses: RealHarnessSmokeStatus[] = [];
 
-  try {
-    await runCodex(proxyUrl);
-  } catch (error) {
-    const events = await debugJson(proxyUrl, "/_debug/events");
-    const attempts = await debugJson(proxyUrl, "/_debug/provider-attempts");
-    throw new Error(
-      `Codex CLI smoke failed. openai_records=${JSON.stringify(openaiRecords)} events=${JSON.stringify(events)} attempts=${JSON.stringify(attempts)}`,
-      { cause: error }
-    );
-  }
-  try {
-    await runClaude(proxyUrl);
-  } catch (error) {
-    const events = await debugJson(proxyUrl, "/_debug/events");
-    const attempts = await debugJson(proxyUrl, "/_debug/provider-attempts");
-    throw new Error(
-      `Claude Code CLI smoke failed. anthropic_records=${JSON.stringify(anthropicRecords)} events=${JSON.stringify(events)} attempts=${JSON.stringify(attempts)}`,
-      { cause: error }
-    );
-  }
+  const codexSmoke = await runOptionalHarnessSmoke("codex", "codex", () => runCodexWithDebug(proxyUrl));
+  realHarnesses.push(codexSmoke);
+  const claudeSmoke = await runOptionalHarnessSmoke("claude-code", "claude", () => runClaudeWithDebug(proxyUrl));
+  realHarnesses.push(claudeSmoke);
 
-  if (!openaiRecords.some((record) => record.body.model === config.openaiHardModel)) {
+  if (codexSmoke.status === "passed" && !openaiRecords.some((record) => record.body.model === config.openaiHardModel)) {
     throw new Error("Codex CLI did not route to OpenAI hard model.");
   }
-  if (!anthropicRecords.some((record) => record.body.model === config.anthropicHardModel)) {
+  if (claudeSmoke.status === "passed" && !anthropicRecords.some((record) => record.body.model === config.anthropicHardModel)) {
     throw new Error("Claude Code CLI did not route to Anthropic hard model.");
   }
-  await assertPersistedRoutingDecision(smokeAdminQueries, {
-    label: "Codex CLI",
-    surface: "openai-responses",
-    finalRoute: "hard",
-    selectedModel: config.openaiHardModel,
-    routingConfigId: defaultRoutingConfigId
-  });
-  await assertPersistedRoutingDecision(smokeAdminQueries, {
-    label: "Claude Code CLI",
-    surface: "anthropic-messages",
-    finalRoute: "hard",
-    selectedModel: config.anthropicHardModel,
-    routingConfigId: defaultRoutingConfigId
-  });
+  if (codexSmoke.status === "passed") {
+    await assertPersistedRoutingDecision(smokeAdminQueries, {
+      label: "Codex CLI",
+      surface: "openai-responses",
+      finalRoute: "hard",
+      selectedModel: config.openaiHardModel,
+      routingConfigId: defaultRoutingConfigId
+    });
+    console.log(`codex_cli_route=hard model=${config.openaiHardModel} config=${defaultRoutingConfigId}`);
+  }
+  if (claudeSmoke.status === "passed") {
+    await assertPersistedRoutingDecision(smokeAdminQueries, {
+      label: "Claude Code CLI",
+      surface: "anthropic-messages",
+      finalRoute: "hard",
+      selectedModel: config.anthropicHardModel,
+      routingConfigId: defaultRoutingConfigId
+    });
+    console.log(`claude_cli_route=hard model=${config.anthropicHardModel} config=${defaultRoutingConfigId}`);
+  }
 
-  console.log(`codex_cli_route=hard model=${config.openaiHardModel} config=${defaultRoutingConfigId}`);
-  console.log(`claude_cli_route=hard model=${config.anthropicHardModel} config=${defaultRoutingConfigId}`);
+  const statusArtifact = buildHarnessSmokeStatusArtifact({ realHarnesses });
+  await writeSmokeStatusArtifact(statusArtifact);
+  printSmokeStatusArtifact(statusArtifact);
 } finally {
   await app.close();
   await smokePersistence.close();
@@ -112,6 +108,44 @@ async function debugJson(proxyUrl: string, path: string) {
   });
   if (!response.ok) return { status: response.status, body: await response.text() };
   return response.json();
+}
+
+async function runCodexWithDebug(proxyUrl: string) {
+  try {
+    await runCodex(proxyUrl);
+  } catch (error) {
+    const events = await debugJson(proxyUrl, "/_debug/events");
+    const attempts = await debugJson(proxyUrl, "/_debug/provider-attempts");
+    throw new Error(
+      `Codex CLI smoke failed. openai_records=${JSON.stringify(openaiRecords)} events=${JSON.stringify(events)} attempts=${JSON.stringify(attempts)}`,
+      { cause: error }
+    );
+  }
+}
+
+async function runClaudeWithDebug(proxyUrl: string) {
+  try {
+    await runClaude(proxyUrl);
+  } catch (error) {
+    const events = await debugJson(proxyUrl, "/_debug/events");
+    const attempts = await debugJson(proxyUrl, "/_debug/provider-attempts");
+    throw new Error(
+      `Claude Code CLI smoke failed. anthropic_records=${JSON.stringify(anthropicRecords)} events=${JSON.stringify(events)} attempts=${JSON.stringify(attempts)}`,
+      { cause: error }
+    );
+  }
+}
+
+async function runOptionalHarnessSmoke(
+  harness: RealHarnessSmokeStatus["harness"],
+  command: string,
+  run: () => Promise<void>
+): Promise<RealHarnessSmokeStatus> {
+  if (!(await commandAvailable(command))) {
+    return { harness, status: "skipped", reason: "binary_unavailable" };
+  }
+  await run();
+  return { harness, status: "passed" };
 }
 
 async function runCodex(proxyUrl: string) {
@@ -169,6 +203,29 @@ async function runClaude(proxyUrl: string) {
   });
 }
 
+function commandAvailable(command: string) {
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const settle = (available: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(available);
+    };
+    const child = spawn(command, ["--version"], {
+      env: process.env,
+      stdio: "ignore"
+    });
+    timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      settle(false);
+    }, 5000);
+    child.on("error", () => settle(false));
+    child.on("close", () => settle(true));
+  });
+}
+
 function runCommand(command: string, args: string[], env: Record<string, string>) {
   return new Promise<void>((resolve, reject) => {
     const child = spawn(command, args, {
@@ -201,6 +258,34 @@ function runCommand(command: string, args: string[], env: Record<string, string>
       reject(new Error(`${command} exited ${code}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
     });
   });
+}
+
+async function writeSmokeStatusArtifact(artifact: ReturnType<typeof buildHarnessSmokeStatusArtifact>) {
+  const target = process.env.HARNESS_SMOKE_STATUS_PATH;
+  if (!target) return;
+  await writeFile(target, `${JSON.stringify(artifact, null, 2)}\n`);
+}
+
+function printSmokeStatusArtifact(artifact: ReturnType<typeof buildHarnessSmokeStatusArtifact>) {
+  for (const path of artifact.paths) {
+    console.log([
+      "harness_path_status",
+      `profile=${path.profileId}`,
+      `surface=${path.surface}`,
+      `target=${path.targetDialect}`,
+      `support=${path.support}`,
+      `status=${path.status}`,
+      `fixtures=${path.fixtureCount}`
+    ].join(" "));
+  }
+  for (const harness of artifact.realHarnesses) {
+    console.log([
+      "real_harness_status",
+      `harness=${harness.harness}`,
+      `status=${harness.status}`,
+      harness.reason ? `reason=${harness.reason}` : undefined
+    ].filter(Boolean).join(" "));
+  }
 }
 
 async function mockOpenAI(records: Recorded[]) {

@@ -1,0 +1,9 @@
+{
+  "surface": "openai-responses",
+  "harness": "codex",
+  "statefulResponses": true,
+  "transport": "websocket",
+  "sessionId": "codex-golden-ws-session",
+  "hasPreviousResponseId": false,
+  "hasTools": true
+}

@@ -1,0 +1,8 @@
+{
+  "model": "router-hard",
+  "input": "explain the cached reasoning state",
+  "include": [
+    "reasoning.encrypted_content"
+  ],
+  "stream": true
+}

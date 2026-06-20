@@ -1,0 +1,7 @@
+{
+  "surface": "openai-responses",
+  "harness": "codex",
+  "statefulResponses": true,
+  "hasPreviousResponseId": true,
+  "hasTools": false
+}

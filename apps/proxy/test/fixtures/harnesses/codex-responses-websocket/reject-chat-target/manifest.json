@@ -1,0 +1,7 @@
+{
+  "profileId": "codex-responses-websocket",
+  "caseId": "reject-chat-target",
+  "surface": "openai-responses",
+  "description": "Codex Responses WebSocket rejects route targets that only expose OpenAI Chat endpoints.",
+  "mode": "unsupported"
+}

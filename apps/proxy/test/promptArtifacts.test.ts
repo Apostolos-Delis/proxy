@@ -69,6 +69,9 @@ describe("prompt artifact capture", () => {
         sourceRole: "tool",
         metadata: expect.objectContaining({
           surface: "openai-responses",
+          transport: "http",
+          harness: "generic",
+          harnessProfileId: "generic-openai-responses",
           toolCount: 1,
           tools: [{ type: "function", name: "shell" }]
         })
@@ -76,6 +79,9 @@ describe("prompt artifact capture", () => {
     ]));
     expect(captureEvent?.payload).toEqual(expect.objectContaining({
       surface: "openai-responses",
+      transport: "http",
+      harness: "generic",
+      harnessProfileId: "generic-openai-responses",
       artifactCount: 3,
       artifacts: expect.arrayContaining([
         expect.objectContaining({

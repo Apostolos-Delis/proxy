@@ -1,0 +1,9 @@
+{
+  "outcome": "reject",
+  "surface": "openai-responses",
+  "error": "route_not_available_for_surface",
+  "guardrailActions": [
+    "session_explicit_route_override",
+    "target_skipped_previous_response_translation_unavailable:previous-response-chat-only"
+  ]
+}

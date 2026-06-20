@@ -19,6 +19,20 @@ export type MockServer = {
   close: () => Promise<void>;
 };
 
+type ChatStreamToolCall = {
+  id: string;
+  name: string;
+  arguments: string;
+  index?: number;
+};
+
+type AnthropicStreamToolUse = {
+  id: string;
+  name: string;
+  partialJson: string;
+  index?: number;
+};
+
 type RateLimitMock = {
   headers?: Record<string, string>;
   body?: unknown;
@@ -38,9 +52,14 @@ export async function startOpenAIMock(
     slowProvider?: boolean;
     streamContentType?: string;
     providerHeaders?: Record<string, string>;
+    streamJsonProvider?: boolean;
+    responsesStreamError?: { message: string; responseId?: string };
+    omitResponsesUsage?: boolean;
     wsTerminalEvent?: "response.completed" | "response.incomplete";
     wsUpgradeHeaders?: Record<string, string>;
     outputText?: string;
+    chatStreamToolCall?: ChatStreamToolCall;
+    responsesJsonProvider?: boolean;
     redirectProviderTo?: string;
   } = {}
 ): Promise<MockServer> {
@@ -140,6 +159,26 @@ export async function startOpenAIMock(
       return;
     }
 
+    if ((options.responsesJsonProvider || options.streamJsonProvider) && request.url !== "/chat/completions" && (!body.stream || options.streamJsonProvider)) {
+      sendJson(response, {
+        id: "resp_mock",
+        object: "response",
+        status: "completed",
+        output: [{
+          id: "msg_mock",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: options.outputText ?? "responses mock" }]
+        }],
+        usage: {
+          input_tokens: 100,
+          output_tokens: 20,
+          output_tokens_details: { reasoning_tokens: 5 }
+        }
+      });
+      return;
+    }
+
     if (request.url === "/chat/completions") {
       const usage = {
         prompt_tokens: 100,
@@ -160,19 +199,60 @@ export async function startOpenAIMock(
         ...options.providerHeaders
       });
       response.on("close", () => resolveProviderClosed?.());
+      if (options.outputText !== "") {
+        response.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl_mock",
+            object: "chat.completion.chunk",
+            choices: [{ index: 0, delta: { content: options.outputText ?? "chat mock" }, finish_reason: null }],
+            usage: null
+          })}\n\n`
+        );
+      }
+      if (options.chatStreamToolCall) {
+        const index = options.chatStreamToolCall.index ?? 1;
+        response.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl_mock",
+            object: "chat.completion.chunk",
+            choices: [{
+              index: 0,
+              delta: {
+                tool_calls: [{
+                  index,
+                  id: options.chatStreamToolCall.id,
+                  type: "function",
+                  function: { name: options.chatStreamToolCall.name, arguments: "" }
+                }]
+              },
+              finish_reason: null
+            }],
+            usage: null
+          })}\n\n`
+        );
+        response.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl_mock",
+            object: "chat.completion.chunk",
+            choices: [{
+              index: 0,
+              delta: {
+                tool_calls: [{
+                  index,
+                  function: { arguments: options.chatStreamToolCall.arguments }
+                }]
+              },
+              finish_reason: null
+            }],
+            usage: null
+          })}\n\n`
+        );
+      }
       response.write(
         `data: ${JSON.stringify({
           id: "chatcmpl_mock",
           object: "chat.completion.chunk",
-          choices: [{ index: 0, delta: { content: options.outputText ?? "chat mock" }, finish_reason: null }],
-          usage: null
-        })}\n\n`
-      );
-      response.write(
-        `data: ${JSON.stringify({
-          id: "chatcmpl_mock",
-          object: "chat.completion.chunk",
-          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          choices: [{ index: 0, delta: {}, finish_reason: options.chatStreamToolCall ? "tool_calls" : "stop" }],
           usage: null
         })}\n\n`
       );
@@ -202,6 +282,18 @@ export async function startOpenAIMock(
       return;
     }
     if (options.slowProvider) return;
+    if (options.responsesStreamError) {
+      response.write(
+        `data: ${JSON.stringify({
+          type: "error",
+          message: options.responsesStreamError.message,
+          error: { message: options.responsesStreamError.message },
+          response: { id: options.responsesStreamError.responseId ?? "resp_mock" }
+        })}\n\n`
+      );
+      response.end();
+      return;
+    }
     if (options.outputText) {
       response.write(
         `data: ${JSON.stringify({ type: "response.output_text.delta", delta: options.outputText })}\n\n`
@@ -212,11 +304,13 @@ export async function startOpenAIMock(
         type: "response.completed",
         response: {
           id: "resp_mock",
-          usage: {
-            input_tokens: 100,
-            output_tokens: 20,
-            output_tokens_details: { reasoning_tokens: 5 }
-          }
+          ...(options.omitResponsesUsage ? {} : {
+            usage: {
+              input_tokens: 100,
+              output_tokens: 20,
+              output_tokens_details: { reasoning_tokens: 5 }
+            }
+          })
         }
       })}\n\n`
     );
@@ -285,6 +379,7 @@ function isClassifierRequest(body: Record<string, unknown>) {
 
 export async function startAnthropicMock(options: {
   outputText?: string;
+  toolUse?: AnthropicStreamToolUse;
   rateLimitProviderOnce?: RateLimitMock;
 } = {}): Promise<MockServer> {
   const records: RecordedRequest[] = [];
@@ -326,9 +421,32 @@ export async function startAnthropicMock(options: {
         })}\n\n`
       );
     }
+    if (options.toolUse) {
+      const index = options.toolUse.index ?? (options.outputText ? 1 : 0);
+      response.write(
+        `data: ${JSON.stringify({
+          type: "content_block_start",
+          index,
+          content_block: {
+            type: "tool_use",
+            id: options.toolUse.id,
+            name: options.toolUse.name,
+            input: {}
+          }
+        })}\n\n`
+      );
+      response.write(
+        `data: ${JSON.stringify({
+          type: "content_block_delta",
+          index,
+          delta: { type: "input_json_delta", partial_json: options.toolUse.partialJson }
+        })}\n\n`
+      );
+    }
     response.write(
       `data: ${JSON.stringify({
         type: "message_delta",
+        delta: { stop_reason: "end_turn", stop_sequence: null },
         usage: { output_tokens: 30 }
       })}\n\n`
     );
@@ -353,7 +471,10 @@ function listenMock(server: ReturnType<typeof createServer>, records: RecordedRe
       resolve({
         url: `http://127.0.0.1:${address.port}`,
         records,
-        close: () => new Promise((done) => server.close(() => done()))
+        close: () => new Promise((done) => {
+          server.close(() => done());
+          server.closeAllConnections();
+        })
       });
     });
   });

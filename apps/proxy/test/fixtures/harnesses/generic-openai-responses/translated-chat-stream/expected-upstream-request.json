@@ -1,0 +1,55 @@
+{
+  "model": "gpt-chat-only",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "shell",
+        "description": "Run shell",
+        "parameters": {
+          "type": "object"
+        }
+      }
+    }
+  ],
+  "stream": true,
+  "messages": [
+    {
+      "role": "system",
+      "content": "Use tools carefully."
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "List files."
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_same_family_1",
+          "type": "function",
+          "function": {
+            "name": "shell",
+            "arguments": "{\"cmd\":\"ls\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_same_family_1",
+      "content": "package.json"
+    }
+  ],
+  "reasoning_effort": "high",
+  "max_completion_tokens": 321,
+  "stream_options": {
+    "include_usage": true
+  }
+}

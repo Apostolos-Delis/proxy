@@ -1,0 +1,64 @@
+{
+  "model": "gpt-cross-responses",
+  "stream": true,
+  "max_output_tokens": 222,
+  "tools": [
+    {
+      "type": "function",
+      "name": "shell",
+      "description": "Run shell",
+      "parameters": {
+        "type": "object"
+      }
+    }
+  ],
+  "tool_choice": {
+    "type": "function",
+    "name": "shell"
+  },
+  "instructions": "Use tools carefully.\n\nPrefer concise output.",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "List files."
+        },
+        {
+          "type": "input_image",
+          "image_url": {
+            "url": "data:image/png;base64,iVBORw0KGgo="
+          }
+        }
+      ]
+    },
+    {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "Planning shell call."
+        }
+      ]
+    },
+    {
+      "id": "toolu_cross_responses_1",
+      "type": "function_call",
+      "call_id": "toolu_cross_responses_1",
+      "name": "shell",
+      "arguments": "{\"cmd\":\"ls\"}"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "toolu_cross_responses_1",
+      "output": "package.json"
+    }
+  ],
+  "reasoning": {
+    "effort": "high"
+  },
+  "store": false
+}

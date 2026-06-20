@@ -1,0 +1,7 @@
+{
+  "profileId": "codex-responses-websocket",
+  "caseId": "native-session",
+  "surface": "openai-responses",
+  "description": "Codex Responses WebSocket native session with preconnect headers and pinned continuation routing.",
+  "mode": "native"
+}

@@ -1,0 +1,7 @@
+{
+  "outcome": "route",
+  "surface": "openai-chat",
+  "provider": "openai",
+  "selectedModel": "gpt-chat-native",
+  "reasoningEffort": "high"
+}

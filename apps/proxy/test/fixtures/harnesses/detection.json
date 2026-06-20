@@ -1,0 +1,325 @@
+[
+  {
+    "name": "codex responses http prompt cache",
+    "profileId": "codex-responses-http",
+    "surface": "openai-responses",
+    "body": {
+      "model": "router-auto",
+      "input": "fix the parser",
+      "prompt_cache_key": "codex-http-session"
+    },
+    "headers": {},
+    "expected": {
+      "harness": "codex",
+      "statefulResponses": true,
+      "sessionId": "codex-http-session",
+      "identityHeaders": [
+        "x-codex-turn-state",
+        "x-codex-turn-metadata",
+        "x-openai-subagent",
+        "x-request-id",
+        "traceparent",
+        "tracestate"
+      ],
+      "dialectHeaders": ["openai-beta"],
+      "promptBlockTags": ["environment_context", "system_instruction", "user_instructions"]
+    }
+  },
+  {
+    "name": "codex responses websocket session header",
+    "profileId": "codex-responses-websocket",
+    "surface": "openai-responses",
+    "body": {
+      "model": "router-auto",
+      "input": "continue the websocket turn"
+    },
+    "headers": {
+      "session_id": "codex-ws-session"
+    },
+    "expected": {
+      "harness": "codex",
+      "statefulResponses": true,
+      "sessionId": "codex-ws-session",
+      "identityHeaders": [
+        "x-codex-turn-state",
+        "x-codex-turn-metadata",
+        "x-openai-subagent",
+        "x-request-id",
+        "traceparent",
+        "tracestate"
+      ],
+      "dialectHeaders": ["openai-beta"],
+      "promptBlockTags": ["environment_context", "system_instruction", "user_instructions"]
+    }
+  },
+  {
+    "name": "claude code metadata session",
+    "profileId": "claude-code-messages",
+    "surface": "anthropic-messages",
+    "body": {
+      "model": "claude-router-auto",
+      "metadata": {
+        "user_id": "user_abcd_account_1234_session_12345678-abcd"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix the parser"
+        }
+      ]
+    },
+    "headers": {},
+    "expected": {
+      "harness": "claude-code",
+      "statefulResponses": false,
+      "sessionId": "12345678-abcd",
+      "identityHeaders": [
+        "x-claude-code-session-id",
+        "x-claude-code-agent-id",
+        "x-claude-code-parent-agent-id",
+        "x-request-id",
+        "traceparent",
+        "tracestate"
+      ],
+      "dialectHeaders": ["anthropic-version", "anthropic-beta"],
+      "promptBlockTags": [
+        "command-message",
+        "command-name",
+        "local-command-stdout",
+        "system-reminder",
+        "system_instruction"
+      ]
+    }
+  },
+  {
+    "name": "generic openai chat sdk",
+    "profileId": "openai-chat-sdk",
+    "surface": "openai-chat",
+    "body": {
+      "model": "router-auto",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix the parser"
+        }
+      ]
+    },
+    "headers": {},
+    "expected": {
+      "harness": "generic",
+      "statefulResponses": false,
+      "sessionId": null,
+      "identityHeaders": ["x-request-id", "traceparent", "tracestate"],
+      "dialectHeaders": [],
+      "promptBlockTags": [
+        "command-message",
+        "command-name",
+        "local-command-stdout",
+        "system-reminder",
+        "system_instruction"
+      ]
+    }
+  },
+  {
+    "name": "opencode chat prompt cache",
+    "profileId": "opencode-chat",
+    "surface": "openai-chat",
+    "body": {
+      "model": "router-auto",
+      "prompt_cache_key": "opencode-body-session",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix the parser"
+        }
+      ]
+    },
+    "headers": {},
+    "expected": {
+      "harness": "opencode",
+      "statefulResponses": false,
+      "sessionId": "opencode-body-session",
+      "identityHeaders": ["x-opencode-session-id", "x-request-id", "traceparent", "tracestate"],
+      "dialectHeaders": [],
+      "promptBlockTags": [
+        "command-message",
+        "command-name",
+        "local-command-stdout",
+        "system-reminder",
+        "system_instruction"
+      ]
+    }
+  },
+  {
+    "name": "opencode chat user agent",
+    "profileId": "opencode-chat",
+    "surface": "openai-chat",
+    "body": {
+      "model": "router-auto",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix the parser"
+        }
+      ]
+    },
+    "headers": {
+      "user-agent": "opencode/1.0"
+    },
+    "expected": {
+      "harness": "opencode",
+      "statefulResponses": false,
+      "sessionId": null,
+      "identityHeaders": ["x-opencode-session-id", "x-request-id", "traceparent", "tracestate"],
+      "dialectHeaders": [],
+      "promptBlockTags": [
+        "command-message",
+        "command-name",
+        "local-command-stdout",
+        "system-reminder",
+        "system_instruction"
+      ]
+    }
+  },
+  {
+    "name": "cursor byok header session",
+    "profileId": "cursor-byok-chat",
+    "surface": "openai-chat",
+    "body": {
+      "model": "router-auto",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix the parser"
+        }
+      ]
+    },
+    "headers": {
+      "x-cursor-session-id": "cursor-header-session"
+    },
+    "expected": {
+      "harness": "cursor",
+      "statefulResponses": false,
+      "sessionId": "cursor-header-session",
+      "identityHeaders": ["x-cursor-session-id", "x-cursor-request-id", "x-request-id", "traceparent", "tracestate"],
+      "dialectHeaders": [],
+      "promptBlockTags": [
+        "command-message",
+        "command-name",
+        "local-command-stdout",
+        "system-reminder",
+        "system_instruction"
+      ]
+    }
+  },
+  {
+    "name": "cursor byok metadata session",
+    "profileId": "cursor-byok-chat",
+    "surface": "openai-chat",
+    "body": {
+      "model": "router-auto",
+      "metadata": {
+        "conversation_id": "cursor-body-session"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix the parser"
+        }
+      ]
+    },
+    "headers": {},
+    "expected": {
+      "harness": "cursor",
+      "statefulResponses": false,
+      "sessionId": "cursor-body-session",
+      "identityHeaders": ["x-cursor-session-id", "x-cursor-request-id", "x-request-id", "traceparent", "tracestate"],
+      "dialectHeaders": [],
+      "promptBlockTags": [
+        "command-message",
+        "command-name",
+        "local-command-stdout",
+        "system-reminder",
+        "system_instruction"
+      ]
+    }
+  },
+  {
+    "name": "generic openai responses fallback",
+    "profileId": "generic-openai-responses",
+    "surface": "openai-responses",
+    "body": {
+      "model": "router-auto",
+      "input": "fix the parser"
+    },
+    "headers": {},
+    "expected": {
+      "harness": "generic",
+      "statefulResponses": false,
+      "sessionId": null,
+      "identityHeaders": ["x-request-id", "traceparent", "tracestate"],
+      "dialectHeaders": ["openai-beta"],
+      "promptBlockTags": ["environment_context", "system_instruction", "user_instructions"]
+    }
+  },
+  {
+    "name": "generic anthropic messages fallback",
+    "profileId": "generic-anthropic-messages",
+    "surface": "anthropic-messages",
+    "body": {
+      "model": "claude-router-auto",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix the parser"
+        }
+      ]
+    },
+    "headers": {},
+    "expected": {
+      "harness": "generic",
+      "statefulResponses": false,
+      "sessionId": null,
+      "identityHeaders": ["x-request-id", "traceparent", "tracestate"],
+      "dialectHeaders": ["anthropic-version", "anthropic-beta"],
+      "promptBlockTags": [
+        "command-message",
+        "command-name",
+        "local-command-stdout",
+        "system-reminder",
+        "system_instruction"
+      ]
+    }
+  },
+  {
+    "name": "invalid session-like header falls back to generic",
+    "profileId": "openai-chat-sdk",
+    "surface": "openai-chat",
+    "body": {
+      "model": "router-auto",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix the parser"
+        }
+      ]
+    },
+    "headers": {
+      "x-cursor-session-id": "bad session"
+    },
+    "expected": {
+      "harness": "generic",
+      "statefulResponses": false,
+      "sessionId": null,
+      "identityHeaders": ["x-request-id", "traceparent", "tracestate"],
+      "dialectHeaders": [],
+      "promptBlockTags": [
+        "command-message",
+        "command-name",
+        "local-command-stdout",
+        "system-reminder",
+        "system_instruction"
+      ]
+    }
+  }
+]

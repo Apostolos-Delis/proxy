@@ -339,6 +339,8 @@ export class RequestStateStore {
   }
 
   finish(idempotencyKey: string, status: RequestState["status"], patch: Partial<RequestState> = {}) {
+    const current = this.states.get(idempotencyKey);
+    if (current && isTerminalStatus(status) && isTerminalStatus(current.status)) return current;
     return this.patch(idempotencyKey, {
       ...patch,
       status
@@ -356,6 +358,10 @@ export class RequestStateStore {
     this.states.set(idempotencyKey, next);
     return next;
   }
+}
+
+function isTerminalStatus(status: RequestState["status"]) {
+  return status === "completed" || status === "failed" || status === "cancelled";
 }
 
 export function jsonPayload(value: unknown): JsonValue {

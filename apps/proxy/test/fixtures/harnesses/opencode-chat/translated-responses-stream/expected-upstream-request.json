@@ -1,0 +1,44 @@
+{
+  "model": "gpt-responses-only",
+  "tools": [
+    {
+      "type": "function",
+      "name": "shell",
+      "description": "Run shell",
+      "parameters": {
+        "type": "object"
+      }
+    }
+  ],
+  "stream": true,
+  "instructions": "Use tools carefully.\n\nPrefer concise output.",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "List files."
+        }
+      ]
+    },
+    {
+      "id": "call_same_family_2",
+      "type": "function_call",
+      "call_id": "call_same_family_2",
+      "name": "shell",
+      "arguments": "{\"cmd\":\"ls\"}"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call_same_family_2",
+      "output": "package.json"
+    }
+  ],
+  "reasoning": {
+    "effort": "high"
+  },
+  "max_output_tokens": 444,
+  "store": false
+}

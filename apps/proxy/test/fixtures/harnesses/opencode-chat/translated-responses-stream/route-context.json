@@ -1,0 +1,8 @@
+{
+  "surface": "openai-chat",
+  "harness": "opencode",
+  "statefulResponses": false,
+  "sessionId": "opencode-translated-session",
+  "hasTools": true,
+  "hasImages": false
+}

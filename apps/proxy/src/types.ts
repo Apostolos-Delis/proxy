@@ -8,6 +8,7 @@ import type {
   RoutingConfig,
   SessionPinnedSettings,
   Surface as SchemaSurface,
+  HarnessCompatibilityProfileId,
   Verbosity as RoutingVerbosity
 } from "@prompt-proxy/schema";
 
@@ -56,6 +57,7 @@ export type RouteContext = {
   surface: Surface;
   transport?: "http" | "websocket";
   harness?: "claude-code" | "codex" | "opencode" | "cursor" | "generic";
+  harnessProfileId?: HarnessCompatibilityProfileId;
   statefulResponses?: boolean;
   requestedModel: string;
   inputChars: number;
@@ -70,6 +72,7 @@ export type RouteContext = {
   toolCount: number;
   hasPreviousResponseId: boolean;
   hasImages: boolean;
+  unsupportedFields?: string[];
   extractedHints: string[];
   routingExtractedHints: string[];
   sessionId?: string;

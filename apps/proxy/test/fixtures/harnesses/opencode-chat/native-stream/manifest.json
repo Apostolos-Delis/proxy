@@ -1,0 +1,7 @@
+{
+  "profileId": "opencode-chat",
+  "caseId": "native-stream",
+  "surface": "openai-chat",
+  "description": "opencode OpenAI Chat native streaming request with header session detection and explicit stream options.",
+  "mode": "native"
+}

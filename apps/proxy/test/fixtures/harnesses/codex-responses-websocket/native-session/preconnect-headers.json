@@ -1,0 +1,6 @@
+{
+  "x-codex-turn-state": "turn-state-upstream",
+  "x-models-etag": "models-etag-upstream",
+  "x-reasoning-included": "true",
+  "openai-model": "gpt-codex-ws-native"
+}

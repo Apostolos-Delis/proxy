@@ -1,0 +1,19 @@
+{
+  "model": "router-hard",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are opencode."
+    },
+    {
+      "role": "user",
+      "content": "Summarize the workspace."
+    }
+  ],
+  "stream": true,
+  "stream_options": {
+    "include_usage": true,
+    "other": "keep"
+  },
+  "max_completion_tokens": 999
+}

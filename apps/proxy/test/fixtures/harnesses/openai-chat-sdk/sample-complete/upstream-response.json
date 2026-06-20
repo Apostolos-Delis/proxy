@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl_fixture",
+  "object": "chat.completion",
+  "created": 1781830000,
+  "model": "gpt-fixture",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "pong"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 4,
+    "completion_tokens": 2,
+    "total_tokens": 6
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "profileId": "codex-responses-http",
+  "caseId": "reject-previous-response-translation",
+  "surface": "openai-responses",
+  "description": "Codex Responses continuation rejects translated targets because previous_response_id is provider-owned state.",
+  "mode": "unsupported"
+}

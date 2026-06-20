@@ -1,0 +1,19 @@
+{
+  "id": "chatcmpl_mock",
+  "choices": [
+    {
+      "message": {
+        "role": "assistant",
+        "content": "generic chat nonstream"
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 100,
+    "completion_tokens": 20,
+    "completion_tokens_details": {
+      "reasoning_tokens": 5
+    },
+    "total_tokens": 120
+  }
+}

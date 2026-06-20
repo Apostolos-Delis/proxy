@@ -1,0 +1,11 @@
+{
+  "outcome": "route",
+  "surface": "anthropic-messages",
+  "provider": "cross-responses-openai",
+  "selectedModel": "gpt-cross-responses",
+  "reasoningEffort": "high",
+  "guardrailActions": [
+    "session_explicit_route_override",
+    "translated_request:anthropic-messages_to_openai-responses"
+  ]
+}

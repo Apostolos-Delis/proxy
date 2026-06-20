@@ -1,0 +1,18 @@
+{
+  "id": "resp_mock",
+  "object": "response",
+  "status": "completed",
+  "output": [
+    {
+      "id": "msg_mock",
+      "type": "message",
+      "role": "assistant",
+      "content": [{ "type": "output_text", "text": "codex nonstream" }]
+    }
+  ],
+  "usage": {
+    "input_tokens": 100,
+    "output_tokens": 20,
+    "output_tokens_details": { "reasoning_tokens": 5 }
+  }
+}
