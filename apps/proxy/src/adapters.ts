@@ -3,7 +3,7 @@ import type { FastifyReply } from "fastify";
 import { buildAnthropicContext, buildOpenAIChatContext, buildOpenAIContext } from "./features.js";
 import { anthropicEffortForModel, supportsAnthropicAdaptiveThinking } from "./catalog.js";
 import { translators } from "./translators/index.js";
-import type { Dialect, RouteContext, RouteDecision, Surface, Provider, SelectedRouteSettings, UpstreamCredential } from "./types.js";
+import type { Dialect, JsonObject, RouteContext, RouteDecision, Surface, Provider, SelectedRouteSettings, UpstreamCredential } from "./types.js";
 import { isRecord, roughTokenEstimate, stableJson } from "./util.js";
 
 export type SurfaceAdapter = {
@@ -28,6 +28,7 @@ export type ProviderForwardInput = {
   path?: string;
   credential?: UpstreamCredential;
   onAssistantText?: (text: string, truncated: boolean) => Promise<void>;
+  compressionTelemetry?: JsonObject;
 };
 
 export type ProviderAdapter = {

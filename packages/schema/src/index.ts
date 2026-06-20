@@ -88,6 +88,20 @@ export const PROMPT_CAPTURE_MODES = {
   ENCRYPTED_RAW: "encrypted_raw"
 } as const;
 
+export const COMPRESSION_POLICY_MODES = [
+  "disabled",
+  "measure_only",
+  "compress_lossless",
+  "compress_explicit_lossy"
+] as const;
+
+export const COMPRESSION_RULE_IDS = [
+  "mcp-json-whitespace",
+  "json-whitespace",
+  "bash-output-noise",
+  "shell-command-lossy-summary"
+] as const;
+
 export const ORGANIZATION_MEMBER_ROLES = {
   OWNER: "owner",
   ADMIN: "admin",
@@ -179,6 +193,8 @@ export type RequestStatus = typeof REQUEST_STATUSES[keyof typeof REQUEST_STATUSE
 export type ProviderAttemptStatus = typeof PROVIDER_ATTEMPT_STATUSES[keyof typeof PROVIDER_ATTEMPT_STATUSES];
 export type UsageLedgerKind = typeof USAGE_LEDGER_KINDS[number];
 export type PromptCaptureMode = typeof PROMPT_CAPTURE_MODES[keyof typeof PROMPT_CAPTURE_MODES];
+export type CompressionPolicyMode = typeof COMPRESSION_POLICY_MODES[number];
+export type CompressionRuleId = typeof COMPRESSION_RULE_IDS[number];
 export type OrganizationMemberRole = typeof ORGANIZATION_MEMBER_ROLES[keyof typeof ORGANIZATION_MEMBER_ROLES];
 export type OrganizationMemberStatus = typeof ORGANIZATION_MEMBER_STATUSES[keyof typeof ORGANIZATION_MEMBER_STATUSES];
 export type InvitationStatus = typeof INVITATION_STATUSES[keyof typeof INVITATION_STATUSES];
@@ -288,6 +304,28 @@ export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() => z.union([
 ]));
 
 export const jsonObjectSchema: z.ZodType<JsonObject> = z.record(z.string(), jsonValueSchema);
+
+export const compressionPolicySchema = z.strictObject({
+  mode: z.enum(COMPRESSION_POLICY_MODES),
+  minOriginalBytes: z.number().int().positive().optional(),
+  minSavingsTokens: z.number().int().nonnegative().optional(),
+  enabledRules: z.array(z.enum(COMPRESSION_RULE_IDS)).optional(),
+  storeOriginalArtifact: z.boolean().optional(),
+  storeCompressedArtifact: z.boolean().optional()
+});
+
+export type CompressionPolicy = z.infer<typeof compressionPolicySchema>;
+
+export function defaultCompressionPolicy(): CompressionPolicy {
+  return {
+    mode: "disabled",
+    minOriginalBytes: 512,
+    minSavingsTokens: 0,
+    enabledRules: [...COMPRESSION_RULE_IDS],
+    storeOriginalArtifact: false,
+    storeCompressedArtifact: false
+  };
+}
 
 export const providerRegistryEndpointSchema = z.strictObject({
   dialect: dialectSchema,

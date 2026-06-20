@@ -6,6 +6,7 @@ Sources reviewed:
 - [9router](9router-scope.md)
 - [Kong](kong-scope.md)
 - [OmniRoute](omniroute-scope.md)
+- [Second-pass implementation follow-up](router-upstream-implementation-follow-up.md)
 
 Compared system: Prompt Proxy in this repository
 

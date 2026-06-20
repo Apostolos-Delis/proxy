@@ -1,4 +1,4 @@
-import type { PromptCaptureMode } from "@prompt-proxy/schema";
+import { defaultCompressionPolicy, type PromptCaptureMode } from "@prompt-proxy/schema";
 
 import type { AppConfig } from "../config.js";
 import { defaultCostBaseline } from "../pricing.js";
@@ -23,7 +23,7 @@ export async function settingsResponse(
         systemPrompt: null,
         cacheTtlUpgrade: false,
         automaticCaching: false,
-        toolResultCompression: false,
+        toolResultCompressionPolicy: defaultCompressionPolicy(),
         duplicateToolResultReferences: false,
         costBaseline: {
           anthropicMessagesModel: defaultCostBaseline["anthropic-messages"],
@@ -36,7 +36,7 @@ export async function settingsResponse(
     systemPrompt: editable.systemPrompt,
     cacheTtlUpgrade: editable.cacheTtlUpgrade,
     automaticCaching: editable.automaticCaching,
-    toolResultCompression: editable.toolResultCompression,
+    toolResultCompressionPolicy: editable.toolResultCompressionPolicy,
     duplicateToolResultReferences: editable.duplicateToolResultReferences,
     costBaseline: editable.costBaseline,
     classifier: {

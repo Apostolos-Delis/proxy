@@ -116,6 +116,7 @@ export class RoutingService {
   }): Promise<RouteDecision> {
     const { requestId, context, idempotencyKey, routingConfig } = input;
     const routingConfigSnapshot = routingConfig?.snapshot;
+    const compressionPolicy = routingConfig?.compressionPolicy;
 
     await this.events.append({
       scopeType: "request",
@@ -140,13 +141,15 @@ export class RoutingService {
         hasImages: context.hasImages,
         extractedHints: context.extractedHints,
         routingExtractedHints: context.routingExtractedHints,
-        routingConfig: routingConfigSnapshot ? jsonPayload(routingConfigSnapshot) : null
+        routingConfig: routingConfigSnapshot ? jsonPayload(routingConfigSnapshot) : null,
+        compressionPolicy: compressionPolicy ? jsonPayload(compressionPolicy) : null
       }
     });
 
     const preBudget = checkBeforeClassification(context, routingConfig?.config.limits);
     if (preBudget.rejected) {
       const rejected = this.reject(context, preBudget.rejected.reason, preBudget.checks, 429);
+      rejected.compressionPolicy = compressionPolicy;
       await this.recordDecision(requestId, idempotencyKey, rejected);
       return rejected;
     }
@@ -244,6 +247,7 @@ export class RoutingService {
       decision.budgetChecks = [...preBudget.checks, ...postBudget.checks];
       if (postBudget.rejected) {
         const rejected = this.reject(context, postBudget.rejected.reason, decision.budgetChecks, 429);
+        rejected.compressionPolicy = compressionPolicy;
         await this.recordDecision(requestId, idempotencyKey, rejected);
         return rejected;
       }
@@ -292,11 +296,13 @@ export class RoutingService {
     let finalRoute = capRoute(context.explicitAlias ?? "hard", routingConfig?.config.limits.maxRoute);
     const guardrailActions: string[] = [];
     const routingConfigSnapshot = routingConfig?.snapshot;
+    const compressionPolicy = routingConfig?.compressionPolicy;
 
     const routeSettings = await this.resolveProviderSettings(context, finalRoute, routingConfig?.config, guardrailActions);
     if (!routeSettings) {
       const rejected = this.reject(context, "route_not_available_for_surface");
       rejected.guardrailActions = guardrailActions;
+      rejected.compressionPolicy = compressionPolicy;
       return rejected;
     }
 
@@ -314,6 +320,7 @@ export class RoutingService {
       guardrailActions,
       reasonCodes: ["token_count_model_resolution"],
       routingConfig: routingConfigSnapshot,
+      compressionPolicy,
       policyVersion: "2026-06-08"
     };
   }
@@ -512,6 +519,7 @@ export class RoutingService {
         if (context.statefulResponses === true) {
           const rejected = this.reject(context, "session_pin_unavailable");
           rejected.guardrailActions = guardrailActions;
+          rejected.compressionPolicy = routingConfig?.compressionPolicy;
           return rejected;
         }
         guardrailActions.push("pin_rebound");
@@ -523,6 +531,7 @@ export class RoutingService {
     if (!routeSettings) {
       const rejected = this.reject(context, "route_not_available_for_surface");
       rejected.guardrailActions = guardrailActions;
+      rejected.compressionPolicy = routingConfig?.compressionPolicy;
       return rejected;
     }
 
@@ -577,6 +586,7 @@ export class RoutingService {
           }
         : undefined,
       routingConfig: routingConfigSnapshot,
+      compressionPolicy: routingConfig?.compressionPolicy,
       policyVersion: "2026-06-08"
     };
   }

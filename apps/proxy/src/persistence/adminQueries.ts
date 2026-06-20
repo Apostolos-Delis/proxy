@@ -4,6 +4,7 @@ import {
   agentSessions,
   apiKeyProviderAccounts,
   apiKeys,
+  compressionReceipts,
   events,
   invitations,
   modelCatalog,
@@ -54,7 +55,10 @@ import {
 } from "./adminSerializers.js";
 import { CACHE_TTL_DEFAULT_MS } from "../cacheWindows.js";
 import { CACHE_BUST_SAMPLE_CAP, detectCacheBusts } from "./cacheBusts.js";
-import { aggregateCompressionSavings, COMPRESSION_SAVINGS_SAMPLE_CAP } from "./compressionSavings.js";
+import {
+  aggregateCompressionReceiptSavings,
+  COMPRESSION_SAVINGS_SAMPLE_CAP
+} from "./compressionSavings.js";
 import { aggregateIdleGaps, IDLE_GAP_SAMPLE_CAP } from "./idleGaps.js";
 import { pricingFromRow } from "./modelPricing.js";
 import { orgCostBaseline } from "./organizationSettings.js";
@@ -431,7 +435,8 @@ export class AdminQueryService {
       request: request ?? null,
       // Only fetch the timeline once the request passed the workspace check,
       // so foreign request ids cannot expose another workspace's events.
-      events: requestRow ? await this.eventsForRequest(requestId) : []
+      events: requestRow ? await this.eventsForRequest(requestId) : [],
+      compressionReceipts: requestRow ? await this.compressionReceiptsForRequest(requestId) : []
     };
   }
 
@@ -815,6 +820,7 @@ export class AdminQueryService {
 
     const [request] = await this.summarizeRequests([row.request]);
     const requestEvents = await this.eventsForRequest(row.request.id);
+    const compressionReceipts = await this.compressionReceiptsForRequest(row.request.id);
     const [artifact] = await this.addRoutingConfigNames([promptDetail(row)]);
     const siblingRows = await this.db
       .select()
@@ -833,6 +839,7 @@ export class AdminQueryService {
         request: row.request,
         decision: row.decision
       })),
+      compressionReceipts,
       events: requestEvents
     };
   }
@@ -1502,19 +1509,19 @@ export class AdminQueryService {
   async compressionSavings(filters: DateRangeFilters = {}) {
     const start = dateValue(filters.start);
     const end = dateValue(filters.end);
-    const conditions = [this.scopedTo(events), eq(events.eventType, "compression.recorded")];
-    if (start) conditions.push(gte(events.createdAt, start));
-    if (end) conditions.push(lte(events.createdAt, end));
+    const conditions = [
+      this.scopedTo(compressionReceipts),
+      eq(compressionReceipts.status, "applied")
+    ];
+    if (start) conditions.push(gte(compressionReceipts.createdAt, start));
+    if (end) conditions.push(lte(compressionReceipts.createdAt, end));
     const rows = await this.db
-      .select({ payload: events.payload })
-      .from(events)
+      .select()
+      .from(compressionReceipts)
       .where(and(...conditions))
-      .orderBy(desc(events.createdAt))
+      .orderBy(desc(compressionReceipts.createdAt))
       .limit(COMPRESSION_SAVINGS_SAMPLE_CAP);
-    return aggregateCompressionSavings(
-      rows.map((row) => row.payload),
-      rows.length === COMPRESSION_SAVINGS_SAMPLE_CAP
-    );
+    return aggregateCompressionReceiptSavings(rows, rows.length === COMPRESSION_SAVINGS_SAMPLE_CAP);
   }
 
   private eventCount() {
@@ -1668,6 +1675,18 @@ export class AdminQueryService {
       .map(eventSummary);
   }
 
+  private async compressionReceiptsForRequest(requestId: string) {
+    const rows = await this.db
+      .select()
+      .from(compressionReceipts)
+      .where(and(
+        this.scopedTo(compressionReceipts),
+        eq(compressionReceipts.requestId, requestId)
+      ))
+      .orderBy(asc(compressionReceipts.createdAt), asc(compressionReceipts.blockPath), asc(compressionReceipts.ruleId));
+    return rows.map(compressionReceiptSummary);
+  }
+
   private async eventsForSession(sessionId: string, requestIds: string[]) {
     const scopeConditions = [
       eq(events.sessionId, sessionId),
@@ -1797,6 +1816,46 @@ function routingConfigVersionDetail(row: RoutingConfigVersionRow, active: boolea
     config: row.config
   };
 }
+
+function compressionReceiptSummary(row: typeof compressionReceipts.$inferSelect) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    workspaceId: row.workspaceId,
+    requestId: row.requestId,
+    apiKeyId: row.apiKeyId,
+    mode: row.mode,
+    surface: row.surface,
+    blockPath: row.blockPath,
+    toolName: row.toolName,
+    command: row.command,
+    commandClass: row.commandClass,
+    ruleId: row.ruleId,
+    ruleVersion: row.ruleVersion,
+    status: row.status,
+    originalChars: row.originalChars,
+    compressedChars: row.compressedChars,
+    savedChars: row.savedChars,
+    originalBytes: row.originalBytes,
+    compressedBytes: row.compressedBytes,
+    savedBytes: row.originalBytes - row.compressedBytes,
+    originalEstimatedTokens: row.originalEstimatedTokens,
+    compressedEstimatedTokens: row.compressedEstimatedTokens,
+    savedEstimatedTokens: row.savedEstimatedTokens,
+    originalTokenEstimate: row.originalEstimatedTokens,
+    compressedTokenEstimate: row.compressedEstimatedTokens,
+    savedTokens: row.savedEstimatedTokens,
+    estimateSource: row.estimateSource,
+    originalSha256: row.originalSha256,
+    compressedSha256: row.compressedSha256,
+    originalArtifactId: row.originalArtifactId,
+    compressedArtifactId: row.compressedArtifactId,
+    skipReason: row.skipReason,
+    eventId: row.eventId,
+    createdAt: row.createdAt.toISOString()
+  };
+}
+
 type PromptRow = {
   artifact: typeof promptArtifacts.$inferSelect;
   request: typeof requests.$inferSelect;

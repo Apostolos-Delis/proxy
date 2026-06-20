@@ -101,6 +101,7 @@ HTTP surface adapter
   -> event store: routing.decision_recorded
   -> provider service
   -> event store: provider.request_started
+  -> event store: provider.request_forwarded
   -> upstream provider stream
   -> response stream passthrough
   -> event store: provider.response_completed / provider.response_failed
@@ -236,6 +237,7 @@ routing.classification_failed
 routing.decision_recorded
 routing.compatibility_escalated
 provider.request_started
+provider.request_forwarded
 provider.stream_started
 provider.response_completed
 provider.response_failed

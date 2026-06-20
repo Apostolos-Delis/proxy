@@ -22,7 +22,14 @@ graphql(`
       systemPrompt
       cacheTtlUpgrade
       automaticCaching
-      toolResultCompression
+      toolResultCompressionPolicy {
+        mode
+        minOriginalBytes
+        minSavingsTokens
+        enabledRules
+        storeOriginalArtifact
+        storeCompressedArtifact
+      }
       duplicateToolResultReferences
       costBaseline {
         anthropicMessagesModel

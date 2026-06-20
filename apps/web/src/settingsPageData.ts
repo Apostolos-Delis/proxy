@@ -65,6 +65,27 @@ const promptCaptureOptions = [
   { value: "encrypted_raw", label: "Encrypted raw" }
 ] as const;
 
+const defaultCompressionRules = [
+  "mcp-json-whitespace",
+  "json-whitespace",
+  "bash-output-noise",
+  "shell-command-lossy-summary"
+] as const;
+
+function toolResultCompressionPolicy(settings: EditableSettings, enabled: boolean) {
+  return {
+    ...settings.toolResultCompressionPolicy,
+    mode: enabled ? "compress_lossless" : "disabled",
+    minOriginalBytes: settings.toolResultCompressionPolicy.minOriginalBytes ?? 512,
+    minSavingsTokens: settings.toolResultCompressionPolicy.minSavingsTokens ?? 0,
+    enabledRules: settings.toolResultCompressionPolicy.enabledRules.length > 0
+      ? settings.toolResultCompressionPolicy.enabledRules
+      : [...defaultCompressionRules],
+    storeOriginalArtifact: settings.toolResultCompressionPolicy.storeOriginalArtifact ?? false,
+    storeCompressedArtifact: settings.toolResultCompressionPolicy.storeCompressedArtifact ?? false
+  };
+}
+
 export const settingsSections: SettingsSectionDef[] = [
   {
     id: "system",
@@ -110,8 +131,8 @@ export const settingsSections: SettingsSectionDef[] = [
         type: "toggle",
         label: "Compress MCP tool results",
         desc: "Strips insignificant whitespace from pretty-printed JSON returned by MCP tools before forwarding. Lossless — numbers, nulls, keys, and ordering are preserved exactly. Reduces tokens on MCP-heavy sessions.",
-        get: (settings) => settings.toolResultCompression,
-        set: (settings, value) => ({ ...settings, toolResultCompression: value })
+        get: (settings) => settings.toolResultCompressionPolicy.mode !== "disabled",
+        set: (settings, value) => ({ ...settings, toolResultCompressionPolicy: toolResultCompressionPolicy(settings, value) })
       },
       {
         id: "duplicateToolResultReferences",
@@ -296,7 +317,14 @@ export function settingsInput(settings: EditableSettings) {
     systemPrompt: settings.systemPrompt,
     cacheTtlUpgrade: settings.cacheTtlUpgrade,
     automaticCaching: settings.automaticCaching,
-    toolResultCompression: settings.toolResultCompression,
+    toolResultCompressionPolicy: {
+      mode: settings.toolResultCompressionPolicy.mode,
+      minOriginalBytes: settings.toolResultCompressionPolicy.minOriginalBytes,
+      minSavingsTokens: settings.toolResultCompressionPolicy.minSavingsTokens,
+      enabledRules: settings.toolResultCompressionPolicy.enabledRules,
+      storeOriginalArtifact: settings.toolResultCompressionPolicy.storeOriginalArtifact,
+      storeCompressedArtifact: settings.toolResultCompressionPolicy.storeCompressedArtifact
+    },
     duplicateToolResultReferences: settings.duplicateToolResultReferences,
     costBaseline: {
       anthropicMessagesModel: settings.costBaseline.anthropicMessagesModel,

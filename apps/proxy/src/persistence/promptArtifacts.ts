@@ -135,6 +135,45 @@ export class PromptArtifactStore {
     return [row];
   }
 
+  async captureCompressionArtifact(input: {
+    organizationId: string;
+    workspaceId: string;
+    requestId: string;
+    surface: Surface;
+    kind: "compression_original_tool_result" | "compression_compressed_tool_result";
+    content: unknown;
+    blockPath: string;
+    toolName: string;
+    ruleId: string;
+    ruleVersion: number;
+    status: string;
+  }) {
+    const settings = await this.settings(input.organizationId);
+    if (settings.promptCaptureMode !== "raw_text") return undefined;
+    const content = typeof input.content === "string" ? input.content : stableJson(input.content);
+    const row = artifactRow(
+      input,
+      {
+        kind: input.kind,
+        content,
+        sourceRole: "tool",
+        metadata: {
+          blockPath: input.blockPath,
+          toolName: input.toolName,
+          ruleId: input.ruleId,
+          ruleVersion: input.ruleVersion,
+          status: input.status
+        }
+      },
+      settings,
+      new Date()
+    );
+    await this.db.transaction(async (tx) => {
+      await tx.insert(promptArtifacts).values([row]);
+    });
+    return row;
+  }
+
   async configure(input: {
     organizationId: string;
     promptCaptureMode: PromptCaptureMode;

@@ -20,6 +20,7 @@ export type RequestSummaryModel = Awaited<ReturnType<Q["requests"]>>["data"][num
 export type RoutingConfigSnapshotModel = NonNullable<RequestSummaryModel["routingConfig"]>;
 export type RequestDetailModel = Awaited<ReturnType<Q["requestDetail"]>>;
 export type ProxyEventModel = RequestDetailModel["events"][number];
+export type CompressionReceiptModel = RequestDetailModel["compressionReceipts"][number];
 
 // Satisfied by both the database event serializer and the in-memory event
 // store's zod-derived ProxyEvent (which keeps sessionId/correlationId optional).
@@ -54,6 +55,7 @@ export type OverviewDashboardShape = Omit<OverviewDashboardModel, "requests" | "
 export type RequestDetailShape = {
   request: RequestSummaryShape | null;
   events: ProxyEventShape[];
+  compressionReceipts: CompressionReceiptModel[];
 };
 
 export type ApiKeyModel = Awaited<ReturnType<Q["apiKeys"]>>["data"][number];

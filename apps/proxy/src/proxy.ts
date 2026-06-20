@@ -20,6 +20,7 @@ import {
 import { extractResponseText } from "./persistence/promptArtifacts.js";
 import { copySelectedHeaders, detectHarness, dialectHeadersFor, identityHeadersFor } from "./harness.js";
 import { sseObserverForDialect, type StreamObservation } from "./sseObserver.js";
+import { providerCompressionTerminalTelemetry, requestBodyHash } from "./toolResultCompression.js";
 import { translators, type DialectTranslator } from "./translators/index.js";
 import type { JsonObject, Provider, RouteDecision, Surface, UpstreamCredential } from "./types.js";
 import {
@@ -75,7 +76,8 @@ export class ProviderProxy implements ProviderAdapter {
         surface: input.surface,
         provider: input.provider,
         model: selectedModel,
-        providerAttemptId: attempt.id
+        providerAttemptId: attempt.id,
+        preparedRequestHash: requestBodyHash(input.body)
       }
     });
     await this.requestStates.markProviderPending(input.idempotencyKey, attempt.id);
@@ -387,6 +389,7 @@ export class ProviderProxy implements ProviderAdapter {
       surface: Surface;
       provider: Provider;
       decision: RouteDecision;
+      compressionTelemetry?: JsonObject;
     },
     providerAttemptId: string,
     status: "completed" | "failed" | "cancelled",
@@ -404,6 +407,7 @@ export class ProviderProxy implements ProviderAdapter {
       upstreamStatus,
       usage: usage === undefined ? null : jsonPayload(usage)
     };
+    Object.assign(payload, providerCompressionTerminalTelemetry(input.compressionTelemetry, upstreamStatus > 0));
     const error = terminalError(metadataPayload);
     if (error) payload.error = error;
 
@@ -471,6 +475,24 @@ export class ProviderProxy implements ProviderAdapter {
         provider,
         body: input.body,
         credential: input.credential
+      });
+      await this.events.append({
+        scopeType: "request",
+        scopeId: input.requestId,
+        correlationId: input.requestId,
+        idempotencyKey: `${input.idempotencyKey}:provider-forwarded:${upstreamAttempt}`,
+        producer: "prompt-proxy.provider",
+        eventType: "provider.request_forwarded",
+        payload: {
+          surface: input.surface,
+          provider: input.provider,
+          model: input.decision.selectedModel ?? "unknown",
+          providerAttemptId,
+          upstreamAttempt,
+          preparedRequestHash: requestBodyHash(input.body),
+          forwardedRequestHash: requestBodyHash(body),
+          ...input.compressionTelemetry
+        }
       });
       const upstream = await fetchWithPinnedAddress(providerRequestUrl({
         provider,

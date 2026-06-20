@@ -16,7 +16,14 @@ function makeSettings(overrides: Partial<EditableSettings> = {}): EditableSettin
     systemPrompt: null,
     cacheTtlUpgrade: false,
     automaticCaching: false,
-    toolResultCompression: false,
+    toolResultCompressionPolicy: {
+      mode: "disabled",
+      minOriginalBytes: 512,
+      minSavingsTokens: 0,
+      enabledRules: ["mcp-json-whitespace", "json-whitespace", "bash-output-noise", "shell-command-lossy-summary"],
+      storeOriginalArtifact: false,
+      storeCompressedArtifact: false
+    },
     duplicateToolResultReferences: false,
     costBaseline: {
       anthropicMessagesModel: "claude-fable-5",

@@ -83,12 +83,113 @@ input ClassifierSettingsInput {
   timeoutMs: Int
 }
 
+type CompressionPreview {
+  blocks: Int!
+  compressedBytes: Int!
+  compressedTokenEstimate: Int!
+  contentAvailable: Boolean!
+  contentRedactionReason: String
+  originalBytes: Int!
+  originalTokenEstimate: Int!
+  previewBlocks: [CompressionPreviewBlock!]!
+  savedBytes: Int!
+  savedTokens: Int!
+  source: String!
+  surface: String
+}
+
+type CompressionPreviewBlock {
+  blockPath: String!
+  command: String
+  commandClass: String
+  compressedBytes: Int!
+  compressedChars: Int!
+  compressedSha256: String!
+  compressedTokenEstimate: Int!
+  diffSegments: [CompressionPreviewDiffSegment!]!
+  estimateSource: String!
+  originalBytes: Int!
+  originalChars: Int!
+  originalSha256: String!
+  originalTokenEstimate: Int!
+  ruleId: String!
+  ruleVersion: Int!
+  savedBytes: Int!
+  savedChars: Int!
+  savedTokens: Int!
+  skipReason: String
+  status: String!
+  toolName: String!
+}
+
+type CompressionPreviewDiffSegment {
+  side: String!
+  text: String!
+}
+
+input CompressionPreviewInput {
+  body: JSON
+  policy: ToolResultCompressionPolicyInput
+  requestId: ID
+  surface: String
+}
+
+type CompressionReceipt {
+  apiKeyId: String
+  blockPath: String!
+  command: String
+  commandClass: String
+  compressedArtifactId: String
+  compressedBytes: Int!
+  compressedChars: Int!
+  compressedEstimatedTokens: Int!
+  compressedSha256: String!
+  compressedTokenEstimate: Int!
+  createdAt: String!
+  estimateSource: String!
+  eventId: String!
+  id: String!
+  mode: String!
+  organizationId: String!
+  originalArtifactId: String
+  originalBytes: Int!
+  originalChars: Int!
+  originalEstimatedTokens: Int!
+  originalSha256: String!
+  originalTokenEstimate: Int!
+  requestId: String!
+  ruleId: String!
+  ruleVersion: Int!
+  savedBytes: Int!
+  savedChars: Int!
+  savedEstimatedTokens: Int!
+  savedTokens: Int!
+  skipReason: String
+  status: String!
+  surface: String!
+  toolName: String!
+  workspaceId: String!
+}
+
+type CompressionRuleCatalog {
+  classification: String!
+  displayName: String!
+  eligibleToolNames: [String!]!
+  id: String!
+  knownRisks: [String!]!
+  minOriginalBytes: Int!
+  minSavingsTokens: Int!
+  supportedSurfaces: [String!]!
+  version: Int!
+}
+
 type CompressionSavingsReport {
   afterChars: Float!
   afterEstimatedTokens: Float!
   beforeChars: Float!
   beforeEstimatedTokens: Float!
   blocks: Float!
+  estimateSource: String!
   eventCount: Float!
   rows: [CompressionSavingsRow!]!
   sampled: Boolean!
@@ -102,6 +203,8 @@ type CompressionSavingsRow {
   beforeChars: Float!
   beforeEstimatedTokens: Float!
   blocks: Float!
+  commandClass: String!
+  estimateSource: String!
   rule: String!
   ruleVersion: Float!
   savedChars: Float!
@@ -200,7 +303,7 @@ type EditableSettings {
   routeQuality: RouteQualitySettings!
   schemaVersion: Int!
   systemPrompt: String
-  toolResultCompression: Boolean!
+  toolResultCompressionPolicy: ToolResultCompressionPolicySettings!
 }
 
 type EmailDelivery {
@@ -444,6 +547,7 @@ type PromptCost {
 
 type PromptDetail {
   artifact: PromptArtifactDetail!
+  compressionReceipts: [CompressionReceipt!]!
   events: [ProxyEvent!]!
   request: RequestSummary
   requestArtifacts: [PromptArtifactDetail!]!
@@ -589,6 +693,8 @@ type Query {
   apiKey(apiKeyId: ID!): ApiKey
   apiKeys: [ApiKey!]!
   cacheBusts(end: String, start: String): CacheBustReport!
+  compressionPreview(input: CompressionPreviewInput!): CompressionPreview!
+  compressionRules: [CompressionRuleCatalog!]!
   compressionSavings(end: String, start: String): CompressionSavingsReport!
   idleGaps(end: String, start: String): IdleGapReport!
   invitations: [Invitation!]!
@@ -622,6 +728,7 @@ type Query {
 }
 
 type RequestDetail {
+  compressionReceipts: [CompressionReceipt!]!
   events: [ProxyEvent!]!
   request: RequestSummary
 }
@@ -885,7 +992,7 @@ input SettingsInput {
   routeQuality: RouteQualitySettingsInput
   schemaVersion: Int
   systemPrompt: String
-  toolResultCompression: Boolean
+  toolResultCompressionPolicy: ToolResultCompressionPolicyInput
 }
 
 input StartProviderCredentialOAuthInput {
@@ -939,6 +1046,24 @@ type TokenTotals {
   outputTokens: Float!
   reasoningTokens: Float!
   totalTokens: Float!
+}
+
+input ToolResultCompressionPolicyInput {
+  enabledRules: [String!]
+  minOriginalBytes: Int
+  minSavingsTokens: Int
+  mode: String
+  storeCompressedArtifact: Boolean
+  storeOriginalArtifact: Boolean
+}
+
+type ToolResultCompressionPolicySettings {
+  enabledRules: [String!]!
+  minOriginalBytes: Int
+  minSavingsTokens: Int
+  mode: String!
+  storeCompressedArtifact: Boolean
+  storeOriginalArtifact: Boolean
 }
 
 input UpdateProviderInput {

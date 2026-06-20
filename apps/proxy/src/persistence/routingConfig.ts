@@ -8,10 +8,11 @@ import {
   workspaces,
   type PromptProxyDbSession
 } from "@prompt-proxy/db";
-import { routingConfigSchema, type RoutingConfig } from "@prompt-proxy/schema";
+import { defaultCompressionPolicy, routingConfigSchema, type CompressionPolicy, type RoutingConfig } from "@prompt-proxy/schema";
 import { CACHE_TTL_POLICY_LOOKBACK_MS } from "../cacheWindows.js";
 import type { RoutingConfigSelection, RoutingConfigSnapshot } from "../types.js";
 import { aggregateIdleGaps, IDLE_GAP_SAMPLE_CAP } from "./idleGaps.js";
+import { compressionPolicyFromSettings } from "./organizationSettings.js";
 
 const CACHE_TTL_POLICY_CACHE_MS = 5 * 60 * 1000;
 
@@ -27,7 +28,7 @@ export type ResolvedRoutingConfig = {
   organizationSystemPrompt?: string;
   cacheTtlUpgrade: boolean;
   automaticCaching: boolean;
-  toolResultCompression: boolean;
+  toolResultCompressionPolicy: CompressionPolicy;
   duplicateToolResultReferences: boolean;
 };
 
@@ -110,7 +111,7 @@ export class RoutingConfigResolver implements RoutingConfigResolverLike {
       organizationSystemPrompt: orgSettings?.systemPrompt ?? undefined,
       cacheTtlUpgrade,
       automaticCaching: orgSettings?.settings?.automaticCaching === true,
-      toolResultCompression: orgSettings?.settings?.toolResultCompression === true,
+      toolResultCompressionPolicy: compressionPolicyFromSettings(orgSettings?.settings),
       duplicateToolResultReferences: orgSettings?.settings?.duplicateToolResultReferences === true
     };
   }
@@ -183,7 +184,7 @@ export async function resolveRoutingSelection(
   systemPrompt?: string;
   cacheTtlUpgrade: boolean;
   automaticCaching: boolean;
-  toolResultCompression: boolean;
+  toolResultCompressionPolicy: CompressionPolicy;
   duplicateToolResultReferences: boolean;
 }> {
   const resolved = await resolver?.resolve(input);
@@ -191,19 +192,20 @@ export async function resolveRoutingSelection(
     return {
       cacheTtlUpgrade: false,
       automaticCaching: false,
-      toolResultCompression: false,
+      toolResultCompressionPolicy: defaultCompressionPolicy(),
       duplicateToolResultReferences: false
     };
   }
   return {
     routingConfig: {
       snapshot: routingConfigSnapshot(resolved),
-      config: resolved.config
+      config: resolved.config,
+      compressionPolicy: resolved.toolResultCompressionPolicy
     },
     systemPrompt: resolved.organizationSystemPrompt,
     cacheTtlUpgrade: resolved.cacheTtlUpgrade,
     automaticCaching: resolved.automaticCaching,
-    toolResultCompression: resolved.toolResultCompression,
+    toolResultCompressionPolicy: resolved.toolResultCompressionPolicy,
     duplicateToolResultReferences: resolved.duplicateToolResultReferences
   };
 }

@@ -1,5 +1,5 @@
 import { builder } from "../builder.js";
-import type { RequestDetailShape, RequestSummaryShape } from "../models.js";
+import type { CompressionReceiptModel, RequestDetailShape, RequestSummaryShape } from "../models.js";
 import { hasAdminRole } from "../authz.js";
 import { ProxyEvent, RoutingConfigSnapshot, TokenTotals } from "./core.js";
 
@@ -38,6 +38,45 @@ export const RequestSummary = builder.objectRef<RequestSummaryShape>("RequestSum
   })
 });
 
+export const CompressionReceipt = builder.objectRef<CompressionReceiptModel>("CompressionReceipt").implement({
+  fields: (t) => ({
+    id: t.exposeString("id"),
+    organizationId: t.exposeString("organizationId"),
+    workspaceId: t.exposeString("workspaceId"),
+    requestId: t.exposeString("requestId"),
+    apiKeyId: t.exposeString("apiKeyId", { nullable: true }),
+    mode: t.exposeString("mode"),
+    surface: t.exposeString("surface"),
+    blockPath: t.exposeString("blockPath"),
+    toolName: t.exposeString("toolName"),
+    command: t.exposeString("command", { nullable: true }),
+    commandClass: t.exposeString("commandClass", { nullable: true }),
+    ruleId: t.exposeString("ruleId"),
+    ruleVersion: t.exposeInt("ruleVersion"),
+    status: t.exposeString("status"),
+    originalChars: t.exposeInt("originalChars"),
+    compressedChars: t.exposeInt("compressedChars"),
+    savedChars: t.exposeInt("savedChars"),
+    originalBytes: t.exposeInt("originalBytes"),
+    compressedBytes: t.exposeInt("compressedBytes"),
+    savedBytes: t.exposeInt("savedBytes"),
+    originalEstimatedTokens: t.exposeInt("originalEstimatedTokens"),
+    compressedEstimatedTokens: t.exposeInt("compressedEstimatedTokens"),
+    savedEstimatedTokens: t.exposeInt("savedEstimatedTokens"),
+    originalTokenEstimate: t.exposeInt("originalTokenEstimate"),
+    compressedTokenEstimate: t.exposeInt("compressedTokenEstimate"),
+    savedTokens: t.exposeInt("savedTokens"),
+    estimateSource: t.exposeString("estimateSource"),
+    originalSha256: t.exposeString("originalSha256"),
+    compressedSha256: t.exposeString("compressedSha256"),
+    originalArtifactId: t.exposeString("originalArtifactId", { nullable: true }),
+    compressedArtifactId: t.exposeString("compressedArtifactId", { nullable: true }),
+    skipReason: t.exposeString("skipReason", { nullable: true }),
+    eventId: t.exposeString("eventId"),
+    createdAt: t.exposeString("createdAt")
+  })
+});
+
 export const RequestDetail = builder.objectRef<RequestDetailShape>("RequestDetail").implement({
   fields: (t) => ({
     request: t.field({
@@ -48,6 +87,10 @@ export const RequestDetail = builder.objectRef<RequestDetailShape>("RequestDetai
     events: t.field({
       type: [ProxyEvent],
       resolve: (detail, _args, context) => hasAdminRole(context) ? detail.events : []
+    }),
+    compressionReceipts: t.field({
+      type: [CompressionReceipt],
+      resolve: (detail, _args, context) => hasAdminRole(context) ? detail.compressionReceipts : []
     })
   })
 });

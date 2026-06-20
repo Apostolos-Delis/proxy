@@ -2,6 +2,7 @@ import { BarChart3, Check, CircleDollarSign, FileJson, GitBranch, Logs, RotateCw
 import type { ComponentType } from "react";
 import { useMemo, useState } from "react";
 
+import { CompressionPreviewPanel } from "./compressionPreviewPanel";
 import { SettingRow, SettingsSectionCard } from "./settingsFields";
 import { changedRowIds, filterSections, restartPending, sectionsFor, validate, type EditableSettings } from "./settingsPageData";
 import { Badge } from "./ui";
@@ -106,6 +107,9 @@ export function SettingsForm({
             {section.rows.map((row) => (
               <SettingRow key={row.id} row={row} settings={settings} initial={initial} onChange={setSettings} />
             ))}
+            {section.id === "optimization" ? (
+              <CompressionPreviewPanel policy={settings.toolResultCompressionPolicy} />
+            ) : null}
             {section.id === "system" && systemPromptEdited ? (
               <div className="settings-warning">
                 Active harness sessions keep their pinned organization prompt. This change applies to new sessions and sessionless requests.

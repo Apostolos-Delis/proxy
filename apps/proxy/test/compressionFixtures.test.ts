@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { compressToolResults, type CompressionRecord } from "../src/toolResultCompression.js";
+import { benchmarkCompressionFixtures } from "../src/compressionBenchmark.js";
+import { compressToolResults, compressionRules, type CompressionRecord } from "../src/toolResultCompression.js";
 import { roughTokenEstimate } from "../src/util.js";
 
 const esc = String.fromCharCode(27);
@@ -23,6 +24,34 @@ ${Array.from({ length: 40 }, (_, index) => `    { "id": "${index}", "note": "val
   ]
 }`;
 
+const githubJson = JSON.stringify({
+  issues: Array.from({ length: 60 }, (_, index) => ({
+    id: `I_kwDO${index}`,
+    number: index + 1,
+    title: `Improve compression benchmark ${index}`,
+    labels: ["routing", "compression"],
+    assignee: null
+  }))
+}, null, 2);
+
+const linearJson = JSON.stringify({
+  nodes: Array.from({ length: 60 }, (_, index) => ({
+    identifier: `PROXY-${index}`,
+    title: `Token-aware receipt ${index}`,
+    state: { name: index % 2 === 0 ? "Todo" : "In Progress" },
+    estimate: null
+  }))
+}, null, 2);
+
+const slackJson = JSON.stringify({
+  messages: Array.from({ length: 60 }, (_, index) => ({
+    channel: "router-research",
+    user: `U${index}`,
+    text: `Compression rollout note ${index}`,
+    thread_ts: null
+  }))
+}, null, 2);
+
 const csv = [
   "id,name,amount,status",
   ...Array.from({ length: 80 }, (_, index) => `${index},Customer ${index},${index * 7},active`)
@@ -39,6 +68,18 @@ const searchOutput = Array.from(
   { length: 80 },
   (_, index) => `src/file_${index}.ts:${index + 1}: matched search result with context`
 ).join("\n");
+
+const grepOutput = Array.from(
+  { length: 80 },
+  (_, index) => `apps/proxy/src/file_${index}.ts:${index + 1}:const value_${index} = "match";`
+).join("\n");
+
+const testOutput = `${esc}[32m✓${esc}[0m compression.test.ts\n${`${esc}[32m✓${esc}[0m case passed\n`.repeat(100)}`;
+
+const buildOutput = [
+  `${esc}[36mwebpack${esc}[0m compiling\r10%\r60%\r100%`,
+  ...Array.from({ length: 80 }, (_, index) => `${esc}[32masset${esc}[0m chunk-${index}.js ${index + 1} KiB`)
+].join("\n");
 
 const browserOutput = [
   "URL: https://example.test/dashboard",
@@ -62,6 +103,27 @@ const fixtures: CompressionFixture[] = [
     }
   },
   {
+    name: "GitHub MCP issues JSON",
+    toolName: "mcp__github__search_issues",
+    content: githubJson,
+    expectedRule: "mcp-json-whitespace",
+    assertOutput: (output) => expect(JSON.parse(output).issues).toHaveLength(60)
+  },
+  {
+    name: "Linear MCP issues JSON",
+    toolName: "mcp__linear__list_issues",
+    content: linearJson,
+    expectedRule: "mcp-json-whitespace",
+    assertOutput: (output) => expect(JSON.parse(output).nodes).toHaveLength(60)
+  },
+  {
+    name: "Slack MCP search JSON",
+    toolName: "mcp__slack__search",
+    content: slackJson,
+    expectedRule: "mcp-json-whitespace",
+    assertOutput: (output) => expect(JSON.parse(output).messages).toHaveLength(60)
+  },
+  {
     name: "CSV table",
     toolName: "CustomReportTool",
     content: csv,
@@ -83,6 +145,33 @@ const fixtures: CompressionFixture[] = [
       expect(output).not.toContain("\r10%");
       expect(output).toContain("100%");
       expect(output).toContain("WARN detail");
+    }
+  },
+  {
+    name: "grep output",
+    toolName: "Bash",
+    content: grepOutput,
+    assertOutput: (output) => expect(output).toBe(grepOutput)
+  },
+  {
+    name: "test output",
+    toolName: "Bash",
+    content: testOutput,
+    expectedRule: "bash-output-noise",
+    assertOutput: (output) => {
+      expect(output).not.toContain(esc);
+      expect(output).toContain("case passed");
+    }
+  },
+  {
+    name: "build output",
+    toolName: "Bash",
+    content: buildOutput,
+    expectedRule: "bash-output-noise",
+    assertOutput: (output) => {
+      expect(output).not.toContain(esc);
+      expect(output).toContain("100%");
+      expect(output).toContain("chunk-79.js");
     }
   },
   {
@@ -129,9 +218,15 @@ describe("compression fixture corpus", () => {
 
     expect(rows.map((row) => ({ name: row.name, rule: row.rule }))).toEqual([
       { name: "pretty JSON with exact numeric spellings", rule: "json-whitespace" },
+      { name: "GitHub MCP issues JSON", rule: "mcp-json-whitespace" },
+      { name: "Linear MCP issues JSON", rule: "mcp-json-whitespace" },
+      { name: "Slack MCP search JSON", rule: "mcp-json-whitespace" },
       { name: "CSV table", rule: null },
       { name: "TSV table", rule: null },
       { name: "shell log", rule: "bash-output-noise" },
+      { name: "grep output", rule: null },
+      { name: "test output", rule: "bash-output-noise" },
+      { name: "build output", rule: "bash-output-noise" },
       { name: "search output", rule: null },
       { name: "browser-like output", rule: null }
     ]);
@@ -140,6 +235,20 @@ describe("compression fixture corpus", () => {
       expect(row.afterEstimatedTokens).toBeGreaterThan(0);
       expect(row.savedEstimatedTokens).toBeGreaterThanOrEqual(0);
       expect(row.recordSavedEstimatedTokens).toBe(row.savedEstimatedTokens);
+    }
+  });
+
+  it("ranks candidate rules by median and p95 token savings", () => {
+    const rows = benchmarkCompressionFixtures(fixtures, compressionRules);
+
+    expect(rows.map((row) => row.rule).sort()).toEqual(["bash-output-noise", "json-whitespace", "mcp-json-whitespace"]);
+    expect(rows[0].medianSavedTokens).toBeGreaterThanOrEqual(rows[1].medianSavedTokens);
+    expect(rows[1].medianSavedTokens).toBeGreaterThanOrEqual(rows[2].medianSavedTokens);
+    for (const row of rows) {
+      expect(row.samples).toBeGreaterThan(0);
+      expect(row.medianSavedTokens).toBeGreaterThan(0);
+      expect(row.p95SavedTokens).toBeGreaterThanOrEqual(row.medianSavedTokens);
+      expect(row.totalSavedTokens).toBeGreaterThanOrEqual(row.medianSavedTokens);
     }
   });
 });

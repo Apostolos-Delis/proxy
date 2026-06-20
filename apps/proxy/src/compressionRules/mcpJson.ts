@@ -1,5 +1,5 @@
 import { mapTextContent, type CompressionRule } from "../toolResultCompression.js";
-import { compactJsonString } from "./jsonWhitespace.js";
+import { compactJsonString } from "./jsonCompaction.js";
 
 // Deterministic, lossless whitespace compaction for MCP tool results. MCP
 // servers commonly return pretty-printed JSON; removing the insignificant

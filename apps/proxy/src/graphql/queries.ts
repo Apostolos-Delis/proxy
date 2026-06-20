@@ -1,12 +1,20 @@
 import { CACHE_TTL_DEFAULT_MS, CACHE_TTL_POLICY_LOOKBACK_MS, CACHE_TTL_UPGRADED_MS } from "../cacheWindows.js";
+import {
+  compressionReceiptPreviewBlock,
+  previewCompressionReceipts,
+  previewCompressionSample
+} from "../compressionPreview.js";
 import { aggregateCompressionSavings } from "../persistence/compressionSavings.js";
 import { aggregateIdleGaps } from "../persistence/idleGaps.js";
 import { aggregateTokenAttribution } from "../persistence/tokenAttributionReport.js";
 import { compareModelPricingEntries, staticPricingEntries } from "../pricing.js";
 import { readSettingsFile } from "../settings.js";
+import { availableCompressionRules } from "../toolResultCompression.js";
+import type { Surface } from "../types.js";
 import { requireAdminRole } from "./authz.js";
 import { builder } from "./builder.js";
 import { scopedQueries, viewerPayload } from "./context.js";
+import { adminGraphQLError } from "./errors.js";
 import type { RequestSummaryShape, UsageReportModel, UsageTimeseriesModel } from "./models.js";
 import { settingsResponse } from "./settingsPayload.js";
 import {
@@ -24,6 +32,7 @@ import {
   UsageReport,
   UsageTimeseries
 } from "./types/analytics.js";
+import { CompressionPreviewInput, CompressionPreviewType } from "./types/compression.js";
 import { ModelPricingEntry } from "./types/pricing.js";
 import { Invitation, PublicInvitation } from "./types/invitations.js";
 import { PromptAccessAuditEntry, PromptDetail, PromptPage } from "./types/prompts.js";
@@ -38,11 +47,36 @@ import {
 } from "./types/routing.js";
 import { SearchResult } from "./types/search.js";
 import { SessionDetail, SessionSummary } from "./types/sessions.js";
-import { Settings } from "./types/settings.js";
+import { CompressionRuleCatalog, Settings } from "./types/settings.js";
 import { OrgMember, UserDetail, UserSummary } from "./types/users.js";
 import { Viewer } from "./types/viewer.js";
 
 const PROMPT_GRAPHQL_ACCESS_PATH = "/admin/graphql#prompt";
+
+function compressionPreviewSurface(value: string | null | undefined): Surface {
+  if (value === "anthropic-messages" || value === "openai-responses" || value === "openai-chat") return value;
+  throw adminGraphQLError("compression_preview_surface_required", 400);
+}
+
+async function compressionPreviewContentAccess(
+  context: Parameters<typeof scopedQueries>[0],
+  organizationId: string
+) {
+  if (!context.persistence) return { allowed: false, reason: "prompt_capture_unavailable" };
+  const settings = await context.persistence.promptArtifacts.settings(organizationId);
+  if (settings.promptCaptureMode !== "raw_text") {
+    return { allowed: false, reason: `prompt_capture_${settings.promptCaptureMode}` };
+  }
+  return { allowed: true, reason: null };
+}
+
+async function compressionPreviewPolicy(
+  context: Parameters<typeof scopedQueries>[0],
+  organizationId: string
+) {
+  if (!context.persistence) return undefined;
+  return (await context.persistence.organizationSettings.editable(organizationId)).toolResultCompressionPolicy;
+}
 
 function emptyUsageReport(): UsageReportModel {
   return {
@@ -162,7 +196,8 @@ builder.queryFields((t) => ({
         request: requestSummary ?? null,
         events: allEvents.filter(
           (event) => event.scopeId === requestId || event.correlationId === requestId
-        )
+        ),
+        compressionReceipts: []
       };
     }
   }),
@@ -369,6 +404,53 @@ builder.queryFields((t) => ({
         .filter((event) => event.eventType === "compression.recorded")
         .map((event) => event.payload);
       return aggregateCompressionSavings(payloads, false);
+    }
+  }),
+
+  compressionRules: t.field({
+    type: [CompressionRuleCatalog],
+    resolve: (_root, _args, context) => {
+      requireAdminRole(context);
+      return availableCompressionRules();
+    }
+  }),
+
+  compressionPreview: t.field({
+    type: CompressionPreviewType,
+    args: {
+      input: t.arg({ type: CompressionPreviewInput, required: true })
+    },
+    resolve: async (_root, args, context) => {
+      const identity = requireAdminRole(context);
+      const hasRequestId = args.input.requestId !== undefined && args.input.requestId !== null;
+      const hasBody = args.input.body !== undefined && args.input.body !== null;
+      if (hasRequestId === hasBody) throw adminGraphQLError("compression_preview_requires_request_id_or_body", 400);
+
+      if (hasRequestId) {
+        const queries = scopedQueries(context);
+        if (!queries) {
+          return previewCompressionReceipts({
+            blocks: [],
+            contentRedactionReason: "database_unavailable"
+          });
+        }
+        const detail = await queries.requestDetail(String(args.input.requestId));
+        return previewCompressionReceipts({
+          blocks: detail.compressionReceipts.map(compressionReceiptPreviewBlock),
+          contentRedactionReason: "request_preview_uses_receipts_only"
+        });
+      }
+
+      const surface = compressionPreviewSurface(args.input.surface);
+      const contentAccess = await compressionPreviewContentAccess(context, identity.organizationId);
+      const policy = args.input.policy ?? (await compressionPreviewPolicy(context, identity.organizationId));
+      return previewCompressionSample({
+        surface,
+        body: args.input.body,
+        policy,
+        contentAllowed: contentAccess.allowed,
+        contentRedactionReason: contentAccess.reason
+      });
     }
   }),
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { bashOutputRule } from "../src/compressionRules/bashOutput.js";
+import { classifyShellCommand, shellCommandSummaryRule } from "../src/compressionRules/shellCommandSummary.js";
 
 const ESC = String.fromCharCode(27); // "";
 
@@ -11,6 +12,7 @@ function run(toolName: string, content: unknown) {
 describe("bashOutputRule", () => {
   it("matches shell tool names only", () => {
     expect(bashOutputRule.matches("Bash")).toBe(true);
+    expect(bashOutputRule.matches("bash")).toBe(true);
     expect(bashOutputRule.matches("shell")).toBe(true);
     expect(bashOutputRule.matches("local_shell")).toBe(true);
     expect(bashOutputRule.matches("mcp__x__y")).toBe(false);
@@ -77,5 +79,64 @@ describe("bashOutputRule", () => {
   it("is deterministic", () => {
     const input = `${ESC}[32mok\r retry\r done${ESC}[0m`;
     expect(run("Bash", input)).toBe(run("Bash", input));
+  });
+});
+
+describe("shellCommandSummaryRule", () => {
+  it.each([
+    [{ command: "git diff -- src" }, "git_diff"],
+    [{ command: "git status --short" }, "git_status"],
+    [{ command: "rg TODO apps" }, "grep_rg"],
+    [{ command: "fd route apps" }, "find_fd"],
+    [{ command: "tree apps/proxy" }, "ls_tree"],
+    [{ command: "pytest -q" }, "test_output"],
+    [{ command: "vitest run" }, "test_output"],
+    [{ command: "tsc --noEmit" }, "build_output"],
+    [{ command: "eslint ." }, "build_output"],
+    [{ command: "pnpm install" }, "package_install"]
+  ] as const)("classifies %o", (input, commandClass) => {
+    expect(classifyShellCommand(input)).toBe(commandClass);
+  });
+
+  it("matches harness shell tool aliases", () => {
+    expect(shellCommandSummaryRule.matches("Bash")).toBe(true);
+    expect(shellCommandSummaryRule.matches("bash")).toBe(true);
+    expect(shellCommandSummaryRule.matches("shell")).toBe(true);
+    expect(shellCommandSummaryRule.matches("local_shell")).toBe(true);
+    expect(shellCommandSummaryRule.matches("run_terminal_cmd")).toBe(true);
+  });
+
+  it("does not summarize when the output would not shrink", () => {
+    expect(shellCommandSummaryRule.filter({
+      toolName: "Bash",
+      toolInput: { command: "pytest -q" },
+      content: "FAILED tests/test_router.py::test_routes\ntests/test_router.py:42: AssertionError"
+    })).toBeUndefined();
+  });
+
+  it("preserves error indicators, stack tails, paths, and line numbers", () => {
+    const output = [
+      ...Array.from({ length: 120 }, (_, index) => `progress line ${index}`),
+      "FAILED tests/test_router.py::test_routes",
+      "tests/test_router.py:42: AssertionError",
+      "Traceback (most recent call last):",
+      "  File \"tests/test_router.py\", line 42, in test_routes",
+      "AssertionError: expected hard route",
+      ...Array.from({ length: 20 }, (_, index) => `tail line ${index}`)
+    ].join("\n");
+
+    const result = shellCommandSummaryRule.filter({
+      toolName: "Bash",
+      toolInput: { command: "pytest -q" },
+      content: output
+    }) as string;
+
+    expect(result.length).toBeLessThan(output.length);
+    expect(result).toContain("commandClass=test_output");
+    expect(result).toContain("FAILED tests/test_router.py::test_routes");
+    expect(result).toContain("tests/test_router.py:42");
+    expect(result).toContain("Traceback");
+    expect(result).toContain("AssertionError");
+    expect(result).toContain("tail line 19");
   });
 });

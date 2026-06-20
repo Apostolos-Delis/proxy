@@ -1,8 +1,8 @@
 # LiteLLM Scoping Review
 
-Source: https://github.com/BerriAI/litellm  
-Local clone reviewed: `.context/upstreams/litellm`  
-Commit reviewed: `e4a53f50de24701c0d0c9334c2fb0ab5e770e828` from 2026-06-18  
+Source: https://github.com/BerriAI/litellm
+Local clone reviewed: `.context/upstreams/litellm`
+Commit reviewed: `e4a53f50de24701c0d0c9334c2fb0ab5e770e828` from 2026-06-18
 Compared system: Prompt Proxy in this repository
 
 ## Executive Summary

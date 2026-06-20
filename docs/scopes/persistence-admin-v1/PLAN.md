@@ -54,6 +54,7 @@ route_decisions
 provider_attempts
 usage_ledger
 prompt_artifacts
+compression_receipts
 prompt_access_audit
 user_sessions
 events
@@ -67,7 +68,7 @@ Every durable operational row is scoped by `organization_id`. Event rows use the
 
 Organizations contain workspaces (modeled on the Anthropic Console / OpenAI Platform hierarchy): identity and membership stay at the organization, traffic and traffic configuration live in a workspace.
 
-- Workspace-scoped (`workspace_id NOT NULL`): `api_keys`, `routing_configs`, `routing_config_versions`, `api_key_provider_accounts`, `agent_sessions`, `turns`, `requests`, `route_decisions`, `provider_attempts`, `usage_ledger`, `prompt_artifacts`, `prompt_access_audit`.
+- Workspace-scoped (`workspace_id NOT NULL`): `api_keys`, `routing_configs`, `routing_config_versions`, `api_key_provider_accounts`, `agent_sessions`, `turns`, `requests`, `route_decisions`, `provider_attempts`, `usage_ledger`, `prompt_artifacts`, `compression_receipts`, `prompt_access_audit`.
 - Org-scoped (unchanged): `users`, `organization_members`, `invitations`, `organization_settings` (prompt capture + retention), `user_settings`, `provider_accounts` (BYOK credentials are shared infrastructure; only the key→credential bindings are workspace rows), `model_catalog`, `projection_cursors`.
 - `events.workspace_id` is nullable: traffic and workspace-entity events carry it; org-level events (members, invitations, provider accounts) leave it null.
 - Every organization has a default workspace with the deterministic id `${organizationId}:workspace:default` (`defaultWorkspaceId()` in `@prompt-proxy/db`); migration `0006_workspaces.sql` backfills all pre-workspace rows into it.
@@ -77,7 +78,7 @@ Organizations contain workspaces (modeled on the Anthropic Console / OpenAI Plat
 
 ### Prompt artifact capture
 
-Each request captures every conversation message it carries as a `prompt_artifacts` row with a `kind` describing the source: `system` / `instructions` (system prompts), `user_message` (typed user text), `injected_context` (harness-injected `<system-reminder>` blocks), `tool_use` (assistant tool calls), `tool_result` (tool output returned as user-role messages), `assistant_response` (assistant text, streamed or replayed in history), and `tool_schema_metadata` (hash-only tool schema summary). Because agent harnesses resend the full conversation on every request, capture dedupes by `(kind, content_hash)` across the request's session — each message is stored once, attributed to the request that first carried it, and the session view reconstructs the full conversation from those rows. Session identity comes from harness headers, falling back to the Claude Code `metadata.user_id` session suffix or the Codex `prompt_cache_key`, then to a per-request session.
+Each request captures every conversation message it carries as a `prompt_artifacts` row with a `kind` describing the source: `system` / `instructions` (system prompts), `user_message` (typed user text), `injected_context` (harness-injected `<system-reminder>` blocks), `tool_use` (assistant tool calls), `tool_result` (tool output returned as user-role messages), `assistant_response` (assistant text, streamed or replayed in history), `tool_schema_metadata` (hash-only tool schema summary), and policy-gated compression artifacts for original/compressed tool-result blocks. Because agent harnesses resend the full conversation every turn, capture dedupes ordinary conversation artifacts by `(kind, content_hash)` across the request's session — each message is stored once, attributed to the request that first carried it, and the session view reconstructs the full conversation from those rows. Session identity comes from harness headers, falling back to the Claude Code `metadata.user_id` session suffix or the Codex `prompt_cache_key`, then to a per-request session.
 
 ## Admin Console
 

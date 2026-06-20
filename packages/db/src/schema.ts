@@ -649,6 +649,55 @@ export const promptArtifacts = pgTable(
   ]
 );
 
+export const compressionReceipts = pgTable(
+  "compression_receipts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    requestId: text("request_id")
+      .notNull()
+      .references(() => requests.id, { onDelete: "cascade" }),
+    apiKeyId: text("api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
+    mode: text("mode").notNull(),
+    surface: text("surface").notNull(),
+    blockPath: text("block_path").notNull(),
+    toolName: text("tool_name").notNull(),
+    command: text("command"),
+    commandClass: text("command_class"),
+    ruleId: text("rule_id").notNull(),
+    ruleVersion: integer("rule_version").notNull(),
+    status: text("status").notNull(),
+    originalChars: integer("original_chars").notNull().default(0),
+    compressedChars: integer("compressed_chars").notNull().default(0),
+    savedChars: integer("saved_chars").notNull().default(0),
+    originalBytes: integer("original_bytes").notNull().default(0),
+    compressedBytes: integer("compressed_bytes").notNull().default(0),
+    originalEstimatedTokens: integer("original_estimated_tokens").notNull().default(0),
+    compressedEstimatedTokens: integer("compressed_estimated_tokens").notNull().default(0),
+    savedEstimatedTokens: integer("saved_estimated_tokens").notNull().default(0),
+    estimateSource: text("estimate_source").notNull().default("rough_chars_per_4"),
+    originalSha256: text("original_sha256").notNull(),
+    compressedSha256: text("compressed_sha256").notNull(),
+    originalArtifactId: text("original_artifact_id").references(() => promptArtifacts.id, { onDelete: "set null" }),
+    compressedArtifactId: text("compressed_artifact_id").references(() => promptArtifacts.id, { onDelete: "set null" }),
+    skipReason: text("skip_reason"),
+    eventId: text("event_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("compression_receipts_event_block_rule_idx").on(table.eventId, table.blockPath, table.ruleId, table.status),
+    index("compression_receipts_request_id_idx").on(table.requestId),
+    index("compression_receipts_org_workspace_request_idx").on(table.organizationId, table.workspaceId, table.requestId),
+    index("compression_receipts_api_key_idx").on(table.organizationId, table.workspaceId, table.apiKeyId),
+    index("compression_receipts_org_workspace_created_idx").on(table.organizationId, table.workspaceId, table.createdAt)
+  ]
+);
+
 export const promptAccessAudit = pgTable(
   "prompt_access_audit",
   {

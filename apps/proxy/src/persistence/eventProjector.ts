@@ -2,6 +2,7 @@ import type { PromptProxyTransaction } from "@prompt-proxy/db";
 
 import type { ProxyEvent } from "../events.js";
 import { persistClassifierUsage } from "./classifierUsage.js";
+import { persistCompressionReceipts } from "./compressionReceipts.js";
 import { persistProviderStarted, persistProviderTerminal, persistStreamStarted } from "./providerAttempt.js";
 import { persistRequestReceived, persistRoutingContext } from "./requestState.js";
 import { persistRouteDecision } from "./routeDecision.js";
@@ -22,6 +23,10 @@ export async function projectEvent(tx: PromptProxyTransaction, event: ProxyEvent
   }
   if (event.eventType === "routing.classification_recorded") {
     await persistClassifierUsage(tx, event);
+    return;
+  }
+  if (event.eventType === "compression.recorded" || event.eventType === "compression.measurement_recorded") {
+    await persistCompressionReceipts(tx, event);
     return;
   }
   if (event.eventType === "provider.request_started") {

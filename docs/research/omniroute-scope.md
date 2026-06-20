@@ -1,8 +1,8 @@
 # OmniRoute Scoping Review
 
-Source: https://github.com/diegosouzapw/OmniRoute  
-Local clone reviewed: `.context/upstreams/OmniRoute`  
-Commit reviewed: `dd5a3db55ed9bca1f71398e6e584da2983a70bea` from 2026-06-17  
+Source: https://github.com/diegosouzapw/OmniRoute
+Local clone reviewed: `.context/upstreams/OmniRoute`
+Commit reviewed: `dd5a3db55ed9bca1f71398e6e584da2983a70bea` from 2026-06-17
 Compared system: Prompt Proxy in this repository
 
 ## Executive Summary

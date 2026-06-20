@@ -21,6 +21,7 @@
 - [9router scoping review](research/9router-scope.md)
 - [Kong scoping review](research/kong-scope.md)
 - [OmniRoute scoping review](research/omniroute-scope.md)
+- [Router upstream implementation follow-up](research/router-upstream-implementation-follow-up.md)
 
 ## Router Research Scopes
 
@@ -44,6 +45,7 @@
 - [Subscription auth V1 tickets](scopes/subscription-auth-v1/TICKETS.md)
 - [Provider architecture V1 tickets](scopes/provider-architecture-v1/TICKETS.md)
 - [Harness model translation V1 tickets](scopes/harness-model-translation-v1/TICKETS.md)
+- [Tool output compression tickets](scopes/router-research-roadmap-v1/tool-output-compression-tickets.md)
 - [Routing configs runbook](runbooks/routing-configs.md)
 - [AWS deployment runbook](runbooks/aws-deployment.md)
 - [Subscription auth runbook](runbooks/subscription-auth.md)

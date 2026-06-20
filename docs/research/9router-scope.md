@@ -1,8 +1,8 @@
 # 9router Scoping Review
 
-Source: https://github.com/decolua/9router  
-Local clone reviewed: `.context/upstreams/9router`  
-Commit reviewed: `f2a7ae20309b4af55023eb11d1c02f63be1b80d1` from 2026-06-18  
+Source: https://github.com/decolua/9router
+Local clone reviewed: `.context/upstreams/9router`
+Commit reviewed: `f2a7ae20309b4af55023eb11d1c02f63be1b80d1` from 2026-06-18
 Compared system: Prompt Proxy in this repository
 
 ## Executive Summary

@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 
-import { routingConfigSchema, type RouteName, type RoutingConfig } from "@prompt-proxy/schema";
+import {
+  defaultCompressionPolicy,
+  routingConfigSchema,
+  type RouteName,
+  type RoutingConfig
+} from "@prompt-proxy/schema";
 
 import type { AppConfig } from "./config.js";
 import type { ResolvedRoutingConfig } from "./persistence/routingConfig.js";
@@ -22,7 +27,7 @@ export class DefaultRoutingConfigResolver {
       config: routingConfig,
       cacheTtlUpgrade: false,
       automaticCaching: false,
-      toolResultCompression: false,
+      toolResultCompressionPolicy: defaultCompressionPolicy(),
       duplicateToolResultReferences: false
     };
   }

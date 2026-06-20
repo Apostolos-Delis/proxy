@@ -9,6 +9,7 @@ The upstream research lives in:
 - [Kong scoping review](../../research/kong-scope.md)
 - [OmniRoute scoping review](../../research/omniroute-scope.md)
 - [Aggregate recommendations](../../research/router-research-recommendations.md)
+- [Second-pass implementation follow-up](../../research/router-upstream-implementation-follow-up.md)
 
 ## Scope Documents
 
@@ -20,6 +21,7 @@ The upstream research lives in:
 6. [Policy pipeline](policy-pipeline.md)
 7. [Limits and budgets](limits-and-budgets.md)
 8. [Tool output compression](tool-output-compression.md)
+   - [Tool output compression tickets](tool-output-compression-tickets.md)
 9. [Metrics and events](metrics-and-events.md)
 10. [Product boundaries](product-boundaries.md)
 

@@ -7,7 +7,7 @@ import { graphql } from "./gql";
 import { gqlFetch } from "./graphql";
 import { useCopyFeedback } from "./jsonView";
 import { ExchangeCard } from "./promptExchangeCard";
-import { EventTimeline, RawJsonCard } from "./promptEventTimeline";
+import { CompressionReceiptsCard, EventTimeline, RawJsonCard } from "./promptEventTimeline";
 import { FactsRail } from "./promptFactsRail";
 import { PageState, PageTitle } from "./ui";
 
@@ -106,6 +106,28 @@ const PromptDetailViewDocument = graphql(`
           configHash
         }
       }
+      compressionReceipts {
+        id
+        mode
+        surface
+        blockPath
+        toolName
+        command
+        commandClass
+        ruleId
+        ruleVersion
+        status
+        skipReason
+        originalBytes
+        compressedBytes
+        savedBytes
+        originalTokenEstimate
+        compressedTokenEstimate
+        savedTokens
+        estimateSource
+        originalSha256
+        compressedSha256
+      }
       events {
         eventId
         eventType
@@ -131,7 +153,7 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
   if (queryError) return <PageState title="Prompt" label={queryError.message} />;
   if (!queryData) return <PageState title="Prompt" label="No prompt data" />;
 
-  const { artifact, request, events } = queryData;
+  const { artifact, request, events, compressionReceipts } = queryData;
   const artifacts = queryData.requestArtifacts ?? [artifact];
   return (
     <div className="page page-enter">
@@ -156,6 +178,7 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
       <div className="detail-layout">
         <div className="detail-main">
           <ExchangeCard artifacts={artifacts} request={request} focusedArtifactId={artifact.artifactId} />
+          <CompressionReceiptsCard receipts={compressionReceipts} />
           <EventTimeline events={events} />
           <RawJsonCard artifact={artifact} request={request} />
         </div>

@@ -1,6 +1,11 @@
 import { eq, sql } from "drizzle-orm";
 
 import { organizationSettings, type PromptProxyDbSession } from "@prompt-proxy/db";
+import {
+  compressionPolicySchema,
+  defaultCompressionPolicy,
+  type CompressionPolicy
+} from "@prompt-proxy/schema";
 
 import { defaultCostBaseline, type CostBaseline } from "../pricing.js";
 
@@ -43,6 +48,15 @@ function modelSetting(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+export function compressionPolicyFromSettings(settings: Record<string, unknown> | undefined): CompressionPolicy {
+  const parsed = compressionPolicySchema.safeParse(settings?.toolResultCompressionPolicy);
+  return parsed.success ? normalizeCompressionPolicy(parsed.data) : defaultCompressionPolicy();
+}
+
+function normalizeCompressionPolicy(policy: CompressionPolicy): CompressionPolicy {
+  return { ...defaultCompressionPolicy(), ...policy };
+}
+
 export class OrganizationSettingsStore {
   constructor(private readonly db: PromptProxyDbSession) {}
 
@@ -70,7 +84,7 @@ export class OrganizationSettingsStore {
     systemPrompt: string | null;
     cacheTtlUpgrade: boolean;
     automaticCaching: boolean;
-    toolResultCompression: boolean;
+    toolResultCompressionPolicy: CompressionPolicy;
     duplicateToolResultReferences: boolean;
     costBaseline: { anthropicMessagesModel: string; openaiResponsesModel: string; openaiChatModel: string };
   }> {
@@ -86,7 +100,7 @@ export class OrganizationSettingsStore {
       systemPrompt: row?.systemPrompt ?? null,
       cacheTtlUpgrade: row?.settings?.cacheTtlUpgrade === true,
       automaticCaching: row?.settings?.automaticCaching === true,
-      toolResultCompression: row?.settings?.toolResultCompression === true,
+      toolResultCompressionPolicy: compressionPolicyFromSettings(row?.settings),
       duplicateToolResultReferences: row?.settings?.duplicateToolResultReferences === true,
       costBaseline: settingsCostBaseline(costBaselineFromSettings(row?.settings))
     };
@@ -128,8 +142,24 @@ export class OrganizationSettingsStore {
     });
   }
 
-  async setToolResultCompression(organizationId: string, enabled: boolean): Promise<boolean> {
-    return this.setBooleanSetting(organizationId, "toolResultCompression", enabled);
+  async setToolResultCompressionPolicy(organizationId: string, policy: unknown): Promise<CompressionPolicy> {
+    const normalized = normalizeCompressionPolicy(compressionPolicySchema.parse(policy));
+    const serialized = JSON.stringify(normalized);
+    await this.db
+      .insert(organizationSettings)
+      .values({
+        organizationId,
+        settings: { toolResultCompressionPolicy: normalized },
+        updatedAt: new Date()
+      })
+      .onConflictDoUpdate({
+        target: organizationSettings.organizationId,
+        set: {
+          settings: sql`(organization_settings.settings - 'toolResultCompression') || jsonb_build_object('toolResultCompressionPolicy', ${serialized}::jsonb)`,
+          updatedAt: new Date()
+        }
+      });
+    return normalized;
   }
 
   async setDuplicateToolResultReferences(organizationId: string, enabled: boolean): Promise<boolean> {

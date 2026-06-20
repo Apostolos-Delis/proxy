@@ -1,10 +1,10 @@
-import { ChevronRight, Clock3 } from "lucide-react";
+import { ChevronRight, Clock3, Zap } from "lucide-react";
 import { useState } from "react";
 
-import { formatDateTime, formatDurationMs } from "./format";
+import { compactId, formatCompact, formatDateTime, formatDurationMs } from "./format";
 import { JsonView } from "./jsonView";
-import { eventTone, totalSpan, type PromptArtifactDetail, type ProxyEvent, type RequestSummary } from "./promptDetailData";
-import { GlassCard } from "./ui";
+import { eventTone, totalSpan, type CompressionReceipt, type PromptArtifactDetail, type ProxyEvent, type RequestSummary } from "./promptDetailData";
+import { DataTable, GlassCard, StatusBadge } from "./ui";
 
 export function EventTimeline({ events }: { events: ProxyEvent[] }) {
   const start = events.length > 0 ? new Date(events[0].createdAt).getTime() : 0;
@@ -18,6 +18,52 @@ export function EventTimeline({ events }: { events: ProxyEvent[] }) {
         {events.map((event) => <EventRow key={event.eventId} event={event} start={start} />)}
         {events.length === 0 ? <div className="empty compact-empty">No events recorded for this request.</div> : null}
       </div>
+    </GlassCard>
+  );
+}
+
+export function CompressionReceiptsCard({ receipts }: { receipts: CompressionReceipt[] }) {
+  const savedTokens = receipts.reduce((sum, receipt) => sum + receipt.savedTokens, 0);
+  return (
+    <GlassCard className="compression-receipts-card table-wrap">
+      <div className="card-head">
+        <div className="card-title"><Zap />Compression receipts</div>
+        <span className="faint mono">{receipts.length} blocks · {formatCompact(savedTokens)} tokens</span>
+      </div>
+      {receipts.length === 0 ? (
+        <div className="empty compact-empty">No compression receipts recorded for this request.</div>
+      ) : (
+        <DataTable>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Rule</th>
+              <th>Tool</th>
+              <th>Bytes</th>
+              <th>Tokens</th>
+              <th>Hash</th>
+            </tr>
+          </thead>
+          <tbody>
+            {receipts.map((receipt) => (
+              <tr key={receipt.id}>
+                <td><StatusBadge status={receipt.status} /></td>
+                <td>
+                  <div className="mono">{receipt.ruleId}</div>
+                  <div className="faint">v{receipt.ruleVersion}{receipt.skipReason ? ` · ${receipt.skipReason}` : ""}</div>
+                </td>
+                <td>
+                  <div className="mono">{receipt.toolName}</div>
+                  <div className="faint">{receipt.commandClass ?? receipt.blockPath}</div>
+                </td>
+                <td className="mono">{formatCompact(receipt.originalBytes)} -&gt; {formatCompact(receipt.compressedBytes)}</td>
+                <td className="mono">{formatCompact(receipt.savedTokens)}</td>
+                <td className="mono" title={receipt.compressedSha256}>{compactId(receipt.compressedSha256, 9)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </DataTable>
+      )}
     </GlassCard>
   );
 }

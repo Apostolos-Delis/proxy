@@ -1,6 +1,7 @@
 import type { AppPersistence } from "../context.js";
 import { builder } from "../builder.js";
 import type { SettingsPayload } from "../settingsPayload.js";
+import type { CompressionRuleCatalogEntry } from "../../toolResultCompression.js";
 
 export type PromptCaptureConfigModel = Awaited<
   ReturnType<AppPersistence["promptArtifacts"]["configure"]>
@@ -13,6 +14,7 @@ type EditableSettingsModel = SettingsPayload["settings"];
 type EditableClassifierModel = EditableSettingsModel["classifier"];
 type CostBaselineSettingsModel = EditableSettingsModel["costBaseline"];
 type RouteQualitySettingsModel = EditableSettingsModel["routeQuality"];
+type ToolResultCompressionPolicySettingsModel = EditableSettingsModel["toolResultCompressionPolicy"];
 type RuntimeSettingsModel = SettingsPayload["runtime"];
 
 export const ClassifierRuntime = builder
@@ -83,6 +85,38 @@ export const CostBaselineSettings = builder
     })
   });
 
+export const ToolResultCompressionPolicySettings = builder
+  .objectRef<ToolResultCompressionPolicySettingsModel>("ToolResultCompressionPolicySettings")
+  .implement({
+    fields: (t) => ({
+      mode: t.exposeString("mode"),
+      minOriginalBytes: t.exposeInt("minOriginalBytes", { nullable: true }),
+      minSavingsTokens: t.exposeInt("minSavingsTokens", { nullable: true }),
+      enabledRules: t.field({
+        type: ["String"],
+        resolve: (policy) => policy.enabledRules ?? []
+      }),
+      storeOriginalArtifact: t.exposeBoolean("storeOriginalArtifact", { nullable: true }),
+      storeCompressedArtifact: t.exposeBoolean("storeCompressedArtifact", { nullable: true })
+    })
+  });
+
+export const CompressionRuleCatalog = builder
+  .objectRef<CompressionRuleCatalogEntry>("CompressionRuleCatalog")
+  .implement({
+    fields: (t) => ({
+      id: t.exposeString("id"),
+      displayName: t.exposeString("displayName"),
+      version: t.exposeInt("version"),
+      classification: t.exposeString("classification"),
+      supportedSurfaces: t.exposeStringList("supportedSurfaces"),
+      eligibleToolNames: t.exposeStringList("eligibleToolNames"),
+      minOriginalBytes: t.exposeInt("minOriginalBytes"),
+      minSavingsTokens: t.exposeInt("minSavingsTokens"),
+      knownRisks: t.exposeStringList("knownRisks")
+    })
+  });
+
 export const EditableSettings = builder
   .objectRef<EditableSettingsModel>("EditableSettings")
   .implement({
@@ -91,7 +125,7 @@ export const EditableSettings = builder
       systemPrompt: t.exposeString("systemPrompt", { nullable: true }),
       cacheTtlUpgrade: t.exposeBoolean("cacheTtlUpgrade"),
       automaticCaching: t.exposeBoolean("automaticCaching"),
-      toolResultCompression: t.exposeBoolean("toolResultCompression"),
+      toolResultCompressionPolicy: t.expose("toolResultCompressionPolicy", { type: ToolResultCompressionPolicySettings }),
       duplicateToolResultReferences: t.exposeBoolean("duplicateToolResultReferences"),
       costBaseline: t.expose("costBaseline", { type: CostBaselineSettings }),
       classifier: t.expose("classifier", { type: EditableClassifier }),
@@ -160,13 +194,24 @@ export const CostBaselineSettingsInput = builder.inputType("CostBaselineSettings
   })
 });
 
+export const ToolResultCompressionPolicyInput = builder.inputType("ToolResultCompressionPolicyInput", {
+  fields: (t) => ({
+    mode: t.string(),
+    minOriginalBytes: t.int(),
+    minSavingsTokens: t.int(),
+    enabledRules: t.field({ type: ["String"] }),
+    storeOriginalArtifact: t.boolean(),
+    storeCompressedArtifact: t.boolean()
+  })
+});
+
 export const SettingsInput = builder.inputType("SettingsInput", {
   fields: (t) => ({
     schemaVersion: t.int(),
     systemPrompt: t.string(),
     cacheTtlUpgrade: t.boolean(),
     automaticCaching: t.boolean(),
-    toolResultCompression: t.boolean(),
+    toolResultCompressionPolicy: t.field({ type: ToolResultCompressionPolicyInput }),
     duplicateToolResultReferences: t.boolean(),
     costBaseline: t.field({ type: CostBaselineSettingsInput }),
     classifier: t.field({ type: ClassifierSettingsInput }),

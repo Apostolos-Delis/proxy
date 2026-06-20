@@ -198,6 +198,8 @@ Before using it proxy-side, verify:
 
 This can be slotted ahead of `jsonWhitespaceRule`: tabularize when safe and token-beneficial, otherwise fall through to whitespace stripping.
 
+Current spike recommendation: keep RTK-style table rendering benchmark-only / measure-only. The safe candidate only accepts top-level arrays of uniform primitive objects, rejects risky numeric spellings and duplicate-key objects, and expands back to the original values in fixtures. It should not become a mutating runtime rule until exact tokenizer benchmarks show consistent savings over compact JSON on Linear, GitHub, Slack, and analytics fixtures.
+
 ### Learned Token Pruning
 
 The Token Company and LLMLingua-style compressors prune low-signal tokens with a learned model. That can work for prose, but it is risky for coding-agent traffic because code, logs, diffs, IDs, flags, and line numbers are often exactly the details the model must preserve.
@@ -225,7 +227,7 @@ The immediate lossless program is narrower than "compress everything":
    `compression.recorded` currently tracks character counts. TOON-style or table-style rules need token counts or at least offline token benchmarks because character shrinkage can be a token regression.
 
 4. Spike RTK-style MCP table rendering for uniform arrays.
-   Build fixtures with Linear, GitHub, Slack, and analytics-style payloads. Prove number preservation and token savings before adding a rule.
+   The current spike is deliberately benchmark-only and falls back for large-number, decimal, duplicate-key, nested, or non-uniform shapes. Keep it there until exact-token benchmarks prove it should ship as a runtime rule.
 
 5. Pin compression rule versions.
    Include the rule label and version in events. Treat output-byte changes as deliberate releases because they can cause one-time cache churn.
