@@ -68,21 +68,26 @@ export function UsagePage() {
   // Individual useQuery calls, not useQueries: useQueries matches observers by query
   // hash, so a dimension/range switch spins up fresh observers and keepPreviousData
   // has no previous data to keep — the skeleton swap collapses the page scroll.
-  const { error: dashboardQueryError, data: dashboardQueryData } = useQuery({
+  const {
+    error: dashboardQueryError,
+    data: dashboardQueryData,
+    isPlaceholderData: isDashboardPlaceholderData
+  } = useQuery({
     queryKey: ["usage-dashboard", dimension, start, end, interval],
     queryFn: () => fetchUsageDashboard(dimension, { start, end, interval }),
     placeholderData: keepPreviousData
   });
+  const dashboardReady = Boolean(dashboardQueryData) && !isDashboardPlaceholderData;
   const { error: routeOutputQueryError, data: routeOutputQueryData } = useQuery({
     queryKey: ["route-output-report", start, end],
     queryFn: () => fetchRouteOutputReport({ start, end }),
     placeholderData: keepPreviousData,
-    enabled: layout === "console"
+    enabled: layout === "console" && dashboardReady
   });
   const { data: lookupsQueryData } = useQuery({
     queryKey: ["usage-lookups"],
     queryFn: fetchUsageLookups,
-    enabled: isAdmin
+    enabled: isAdmin && dashboardReady
   });
   // The Grid/Focus widgets slice by model and user independently of the
   // console breakdown dimension, and compare against the preceding window.
@@ -91,19 +96,19 @@ export function UsagePage() {
     queryKey: ["usage", "model", start, end],
     queryFn: () => fetchUsageReport("model", { start, end }),
     placeholderData: keepPreviousData,
-    enabled: layout !== "console" && dimension !== "model"
+    enabled: layout !== "console" && dimension !== "model" && dashboardReady
   });
   const { data: userQueryData } = useQuery({
     queryKey: ["usage", "user", start, end],
     queryFn: () => fetchUsageReport("user", { start, end }),
     placeholderData: keepPreviousData,
-    enabled: layout === "grid"
+    enabled: layout === "grid" && dashboardReady
   });
   const { data: previousQueryData } = useQuery({
     queryKey: ["usage", "model", previousRange.start, previousRange.end],
     queryFn: () => fetchUsageReport("model", previousRange),
     placeholderData: keepPreviousData,
-    enabled: layout !== "console"
+    enabled: layout !== "console" && dashboardReady
   });
   const error = dashboardQueryError ?? routeOutputQueryError;
 

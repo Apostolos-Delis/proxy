@@ -55,51 +55,67 @@ export function CachingPage() {
   const previousRange = usagePreviousRangeQuery(range, anchor);
   const { data: meQueryData } = useQuery({ queryKey: ["me"], queryFn: fetchMe });
   const isAdmin = isAdminRole(meQueryData?.user.role);
-  const { error: dashboardQueryError, data: dashboardQueryData } = useQuery({
+  const {
+    error: dashboardQueryError,
+    data: dashboardQueryData,
+    isPlaceholderData: isDashboardPlaceholderData
+  } = useQuery({
     queryKey: ["usage-dashboard", "provider", start, end, interval],
     queryFn: () => fetchUsageDashboard("provider", { start, end, interval }),
     placeholderData: keepPreviousData
   });
+  const dashboardReady = Boolean(dashboardQueryData) && !isDashboardPlaceholderData;
   const { data: previousQueryData } = useQuery({
     queryKey: ["usage", "provider", previousRange.start, previousRange.end],
     queryFn: () => fetchUsageReport("provider", previousRange),
-    placeholderData: keepPreviousData
+    placeholderData: keepPreviousData,
+    enabled: dashboardReady
   });
   const { error: keyUsageQueryError, data: keyUsageQueryData } = useQuery({
     queryKey: ["usage", "api_key", start, end],
     queryFn: () => fetchUsageReport("api_key", { start, end }),
-    placeholderData: keepPreviousData
+    placeholderData: keepPreviousData,
+    enabled: dashboardReady
   });
   const { error: modelUsageQueryError, data: modelUsageQueryData } = useQuery({
     queryKey: ["usage", "model", start, end],
     queryFn: () => fetchUsageReport("model", { start, end }),
-    placeholderData: keepPreviousData
+    placeholderData: keepPreviousData,
+    enabled: dashboardReady
   });
-  const { error: ratesQueryError, data: ratesQueryData } = useQuery({ queryKey: ["cache-pricing-rates"], queryFn: fetchCachePricingRates });
+  const { error: ratesQueryError, data: ratesQueryData } = useQuery({
+    queryKey: ["cache-pricing-rates"],
+    queryFn: fetchCachePricingRates,
+    enabled: dashboardReady
+  });
   const { data: lookupsQueryData } = useQuery({
     queryKey: ["usage-lookups"],
     queryFn: fetchUsageLookups,
-    enabled: isAdmin
+    enabled: isAdmin && dashboardReady
   });
   const { error: bustsQueryError, data: bustsQueryData } = useQuery({
     queryKey: ["cache-busts", start, end],
     queryFn: () => fetchCacheBusts({ start, end }),
-    placeholderData: keepPreviousData
+    placeholderData: keepPreviousData,
+    enabled: dashboardReady
   });
   const { error: compressionSavingsQueryError, data: compressionSavingsQueryData } = useQuery({
     queryKey: ["compression-savings", start, end],
     queryFn: () => fetchCompressionSavings({ start, end }),
-    placeholderData: keepPreviousData
+    placeholderData: keepPreviousData,
+    enabled: dashboardReady
   });
   const { error: attributionQueryError, data: attributionQueryData } = useQuery({
     queryKey: ["token-attribution", start, end],
     queryFn: () => fetchTokenAttribution({ start, end }),
-    placeholderData: keepPreviousData
+    placeholderData: keepPreviousData,
+    enabled: dashboardReady
   });
   const { error: idleGapsQueryError, data: idleGapsQueryData } = useQuery({
     queryKey: ["idle-gaps", start, end],
     queryFn: () => fetchIdleGaps({ start, end }),
-    placeholderData: keepPreviousData
+    placeholderData: keepPreviousData,
+    enabled: dashboardReady
   });
 
   const error = dashboardQueryError ?? bustsQueryError
