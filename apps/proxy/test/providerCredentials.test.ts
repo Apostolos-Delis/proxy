@@ -126,6 +126,39 @@ describe("BYOK provider credentials", () => {
     expect(serialized).not.toContain("secret_ciphertext");
   });
 
+  it("does not resolve provider credential bindings outside the request workspace", async () => {
+    const fixture = await setup("org_byok_binding_workspace_scope");
+
+    const created = await gql(fixture, CREATE, {
+      input: { provider: "anthropic", name: "Scoped key", apiKey: CUSTOMER_KEY }
+    });
+    expect(created.errors).toBeUndefined();
+    const account = created.data?.createProviderCredential;
+
+    const bound = await gql(fixture, BIND, {
+      apiKeyId: "org_byok_binding_workspace_scope:api-key:default",
+      provider: "anthropic",
+      providerAccountId: account.id
+    });
+    expect(bound.errors).toBeUndefined();
+
+    const scopedCredential = await fixture.persistence.providerCredentials.resolveForRequest({
+      organizationId: "org_byok_binding_workspace_scope",
+      workspaceId: defaultWorkspaceId("org_byok_binding_workspace_scope"),
+      apiKeyId: "org_byok_binding_workspace_scope:api-key:default",
+      provider: "anthropic"
+    });
+    expect(scopedCredential?.providerAccountId).toBe(account.id);
+
+    const otherWorkspaceCredential = await fixture.persistence.providerCredentials.resolveForRequest({
+      organizationId: "org_byok_binding_workspace_scope",
+      workspaceId: "org_byok_binding_workspace_scope:workspace:other",
+      apiKeyId: "org_byok_binding_workspace_scope:api-key:default",
+      provider: "anthropic"
+    });
+    expect(otherWorkspaceCredential).toBeUndefined();
+  });
+
   it("round-trips a credential binding for an org-scoped custom provider", async () => {
     const fixture = await setup("org_byok_custom");
     await fixture.db.insert(providers).values({

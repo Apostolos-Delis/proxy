@@ -820,6 +820,47 @@ describe("prompt proxy", () => {
     expect(body.id).toBe("resp_mock");
   });
 
+  it("does not forward upstream provider cookies to clients", async () => {
+    await openai.close();
+    openai = await startOpenAIMock({
+      providerHeaders: {
+        "set-cookie": "provider_session=secret; HttpOnly",
+        "x-provider-trace": "trace-1"
+      }
+    });
+    const app = buildServer(
+      loadConfig({
+        ...testEnv(),
+        PROMPT_PROXY_TOKEN: "proxy-token",
+        OPENAI_API_KEY: "openai-upstream-key",
+        ANTHROPIC_API_KEY: "anthropic-upstream-key",
+        OPENAI_BASE_URL: openai.url,
+        ANTHROPIC_BASE_URL: anthropic.url,
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-hard",
+        messages: [{ role: "user", content: "hello" }]
+      })
+    });
+    const body = await response.json();
+    await app.close();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(response.headers.get("x-provider-trace")).toBe("trace-1");
+    expect(body.id).toBe("chatcmpl_mock");
+  });
+
   it("routes Claude Code-style Anthropic Messages requests through the classifier", async () => {
     const config = loadConfig({
         ...testEnv(),

@@ -185,6 +185,45 @@ describe("admin global search", () => {
     expect(shortQuery.results).toEqual([]);
   });
 
+  it("does not attach route decisions from a different workspace to log search hits", async () => {
+    const fixture = await setup("org_search_route_scope");
+    const createdAt = new Date("2026-06-08T12:00:00.000Z");
+
+    await fixture.db.insert(workspaces).values({
+      id: "ws_search_route_other",
+      organizationId: "org_search_route_scope",
+      slug: "other",
+      name: "Other"
+    });
+    await fixture.db.insert(users).values({ id: "user_search_route" });
+    await fixture.db.insert(agentSessions).values({
+      id: "session_search_route",
+      organizationId: "org_search_route_scope",
+      workspaceId: defaultWorkspaceId("org_search_route_scope"),
+      userId: "user_search_route",
+      surface: "openai-responses"
+    });
+    await fixture.db.insert(requests).values(
+      usageRequest("request_search_route", "org_search_route_scope", "user_search_route", "session_search_route", "openai-responses", createdAt)
+    );
+    await fixture.db.insert(promptArtifacts).values(
+      sessionPrompt("artifact_search_route", "org_search_route_scope", "request_search_route", "Find the workspace leak", createdAt)
+    );
+    await fixture.db.insert(routeDecisions).values({
+      ...usageDecision("decision_search_route_wrong_workspace", "request_search_route", "org_search_route_scope", "fast", "openai", "gpt-wrong-workspace"),
+      workspaceId: "ws_search_route_other"
+    });
+
+    const search = await fetchSearch(fixture, "workspace leak");
+    expect(search.results).toEqual([
+      expect.objectContaining({
+        kind: "log",
+        id: "artifact_search_route",
+        subtitle: "router-auto"
+      })
+    ]);
+  });
+
   async function fetchSearch(fixture: PromptTestFixture, query: string) {
     const result = await adminGql(
       fixture.proxyUrl,

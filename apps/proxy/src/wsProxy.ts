@@ -63,6 +63,7 @@ type WsLogger = { warn: (obj: unknown, msg?: string) => void };
 type ProviderCredentialResolver = {
   resolveForRequest(input: {
     organizationId: string;
+    workspaceId?: string;
     apiKeyId?: string;
     provider: Provider;
   }): Promise<UpstreamCredential | undefined>;
@@ -291,7 +292,7 @@ export class WebSocketRoutingProxy {
       routingConfig: resolved.routingConfig
     });
     if (decision.outcome === "reject") {
-      await this.requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+      await this.requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
       throw new Error(decision.error ?? "websocket_request_rejected");
     }
     await this.pinSystemPrompt(identity, requestId, context.sessionId, systemPrompt);
@@ -306,8 +307,7 @@ export class WebSocketRoutingProxy {
     });
     if (!attempt) throw new Error("duplicate_websocket_request");
 
-    await this.requestStates.markProviderPending(idempotencyKey, attempt.id);
-
+    await this.requestStates.markProviderPending(idempotencyKey, attempt.id, requestId);
     const activeRequest: ActiveRequest = {
       requestId,
       idempotencyKey,
@@ -363,12 +363,12 @@ export class WebSocketRoutingProxy {
         payload: {
           surface: openAIResponsesSurface.surface,
           provider,
-            transport: "websocket",
-            model: decision.selectedModel ?? "unknown",
-            providerAttemptId: attempt.id,
-            preparedRequestHash: requestBodyHash(forwardedBody)
-          }
-        });
+          transport: "websocket",
+          model: decision.selectedModel ?? "unknown",
+          providerAttemptId: attempt.id,
+          preparedRequestHash: requestBodyHash(forwardedBody)
+        }
+      });
       upstreamTarget = await this.resolveWebSocketUpstream(
         identity,
         headers,
@@ -536,6 +536,7 @@ export class WebSocketRoutingProxy {
       error
     });
     await this.requestStates.finish(activeRequest.idempotencyKey, status, {
+      requestId: activeRequest.requestId,
       providerAttemptId: activeRequest.providerAttemptId,
       usage: usage === undefined ? undefined : jsonPayload(usage),
       error
@@ -586,6 +587,7 @@ export class WebSocketRoutingProxy {
   private resolveUpstreamCredential(identity: RequestIdentity, provider: Provider) {
     return this.credentials?.resolveForRequest({
       organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId,
       apiKeyId: identity.apiKeyId,
       provider
     });

@@ -321,6 +321,7 @@ async function* anthropicSseToResponses(chunks: AsyncIterable<Uint8Array>) {
   let model: unknown;
   let responseCreated = false;
   let messageCreated = false;
+  let messageOutputIndex = 0;
   let usage: Record<string, unknown> = {};
   let completed = false;
 
@@ -333,13 +334,14 @@ async function* anthropicSseToResponses(chunks: AsyncIterable<Uint8Array>) {
     })];
   };
 
-  const ensureMessageCreated = () => {
+  const ensureMessageCreated = (outputIndex = 0) => {
     const out = ensureResponseCreated();
     if (messageCreated) return out;
     messageCreated = true;
+    messageOutputIndex = outputIndex;
     out.push(responsesFrame("response.output_item.added", {
       type: "response.output_item.added",
-      output_index: 0,
+      output_index: messageOutputIndex,
       item: { id: "msg_translated", type: "message", status: "in_progress", role: "assistant", content: [] }
     }));
     return out;
@@ -377,12 +379,13 @@ async function* anthropicSseToResponses(chunks: AsyncIterable<Uint8Array>) {
     }
     if (type === "content_block_delta" && isRecord(event.delta)) {
       if (event.delta.type === "text_delta" && typeof event.delta.text === "string") {
+        const outputIndex = integerValue(event.index) ?? 0;
         return [
-          ...ensureMessageCreated(),
+          ...ensureMessageCreated(outputIndex),
           responsesFrame("response.output_text.delta", {
             type: "response.output_text.delta",
             item_id: "msg_translated",
-            output_index: 0,
+            output_index: messageOutputIndex,
             content_index: 0,
             delta: event.delta.text
           })
@@ -498,6 +501,7 @@ async function* responsesSseToAnthropic(chunks: AsyncIterable<Uint8Array>) {
   let model: unknown;
   let messageStarted = false;
   let textBlockStarted = false;
+  let sawToolCall = false;
   const openBlockIndexes = new Set<number>();
 
   const ensureMessageStart = () => {
@@ -544,6 +548,7 @@ async function* responsesSseToAnthropic(chunks: AsyncIterable<Uint8Array>) {
     }
     if (type === "response.output_item.added" && isRecord(event.item) && event.item.type === "function_call") {
       const outputIndex = integerValue(event.output_index) ?? 0;
+      sawToolCall = true;
       openBlockIndexes.add(outputIndex);
       return [
         ...ensureMessageStart(),
@@ -553,7 +558,7 @@ async function* responsesSseToAnthropic(chunks: AsyncIterable<Uint8Array>) {
           content_block: {
             type: "tool_use",
             id: stringValue(event.item.id) ?? stringValue(event.item.call_id),
-            name: stringValue(event.item.name),
+            name: responsesToolNameToAnthropic(stringValue(event.item.namespace), stringValue(event.item.name)),
             input: {}
           }
         })
@@ -572,7 +577,7 @@ async function* responsesSseToAnthropic(chunks: AsyncIterable<Uint8Array>) {
         ...closeOpenContentBlocks(),
         anthropicFrame("message_delta", {
           type: "message_delta",
-          delta: { stop_reason: "end_turn", stop_sequence: null },
+          delta: { stop_reason: sawToolCall ? "tool_use" : "end_turn", stop_sequence: null },
           usage: isRecord(response?.usage) ? responsesUsageToAnthropic(response.usage) : undefined
         }),
         anthropicFrame("message_stop", { type: "message_stop" })
@@ -978,10 +983,12 @@ function responsesToolChoiceToAnthropic(choice: unknown) {
   if (choice === "auto") return { type: "auto" };
   if (choice === "required") return { type: "any" };
   if (isRecord(choice) && choice.type === "function" && typeof choice.name === "string") {
-    return { type: "tool", name: choice.name };
+    const name = responsesToolNameToAnthropic(stringValue(choice.namespace), choice.name);
+    return name ? { type: "tool", name } : undefined;
   }
   if (isRecord(choice) && choice.type === "function" && isRecord(choice.function) && typeof choice.function.name === "string") {
-    return { type: "tool", name: choice.function.name };
+    const name = responsesToolNameToAnthropic(stringValue(choice.function.namespace), choice.function.name);
+    return name ? { type: "tool", name } : undefined;
   }
   return undefined;
 }
@@ -1016,9 +1023,16 @@ function responsesFunctionCallToAnthropic(item: unknown) {
   return {
     type: "tool_use",
     id: stringValue(item.call_id) ?? stringValue(item.id),
-    name: namespace && name ? encodeNamespacedToolName(namespace, name) : name,
+    name: responsesToolNameToAnthropic(namespace, name),
     input: parseMaybeJson(item.arguments)
   };
+}
+
+function responsesToolNameToAnthropic(namespace: string | undefined, name: string | undefined) {
+  if (!name) return undefined;
+  if (!namespace) return name;
+  const encoded = encodeNamespacedToolName(namespace, name);
+  return encoded.length <= MAX_ANTHROPIC_TOOL_NAME_LENGTH ? encoded : undefined;
 }
 
 function anthropicToolUseToResponses(block: unknown) {

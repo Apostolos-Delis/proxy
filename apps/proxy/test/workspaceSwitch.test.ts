@@ -1,13 +1,26 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { defaultWorkspaceId, events, requests, routingConfigs, workspaces } from "@prompt-proxy/db";
+import {
+  defaultWorkspaceId,
+  events,
+  promptArtifacts,
+  providerAttempts,
+  requests,
+  routeDecisions,
+  routingConfigs,
+  usageLedger,
+  workspaces
+} from "@prompt-proxy/db";
 
 import {
   adminGql,
   captureFixture,
   sessionEvent,
+  usageAttempt,
+  usageDecision,
   usageRequest,
+  usageRow,
   type PromptTestFixture
 } from "./promptTestFixture.js";
 
@@ -204,6 +217,83 @@ describe("workspace switching", () => {
       "query { apiKeys { id } }"
     )).data?.apiKeys;
     expect(keys).toEqual([]);
+  });
+
+  it("does not attach usage rows from a different workspace to scoped request summaries", async () => {
+    const fixture = await setup("org_ws_usage_scope");
+    const created = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, createMutation, {
+      input: { name: "Second" }
+    })).data?.createWorkspace;
+    const at = new Date("2026-06-19T12:00:00.000Z");
+
+    await fixture.db.insert(requests).values({
+      ...usageRequest("request_usage_scope", "org_ws_usage_scope", "local-user", "", "openai-responses", at),
+      sessionId: null
+    });
+    await fixture.db.insert(routeDecisions).values(
+      usageDecision("decision_usage_scope", "request_usage_scope", "org_ws_usage_scope", "fast", "openai", "gpt-fast")
+    );
+    await fixture.db.insert(providerAttempts).values(
+      usageAttempt("attempt_usage_scope", "request_usage_scope", "org_ws_usage_scope", "openai-responses", "openai", "gpt-fast", "completed", at)
+    );
+    await fixture.db.insert(usageLedger).values({
+      ...usageRow("usage_wrong_workspace", "request_usage_scope", "attempt_usage_scope", "org_ws_usage_scope", "openai", "gpt-fast", "fast", 100, 25, 1000),
+      workspaceId: created.id
+    });
+
+    const defaultRequests = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query { requests { requestId usage { totalTokens } selectedCost } }"
+    )).data?.requests;
+    expect(defaultRequests).toEqual([
+      expect.objectContaining({
+        requestId: "request_usage_scope",
+        usage: expect.objectContaining({ totalTokens: 0 }),
+        selectedCost: 0
+      })
+    ]);
+  });
+
+  it("does not attach route decisions from a different workspace to scoped prompt summaries", async () => {
+    const fixture = await setup("org_ws_prompt_decisions");
+    const created = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, createMutation, {
+      input: { name: "Second" }
+    })).data?.createWorkspace;
+    const at = new Date("2026-06-19T12:00:00.000Z");
+
+    await fixture.db.insert(requests).values({
+      ...usageRequest("request_prompt_decision_scope", "org_ws_prompt_decisions", "local-user", "", "openai-responses", at),
+      sessionId: null
+    });
+    await fixture.db.insert(promptArtifacts).values({
+      id: "artifact_prompt_decision_scope",
+      organizationId: "org_ws_prompt_decisions",
+      workspaceId: defaultWorkspaceId("org_ws_prompt_decisions"),
+      requestId: "request_prompt_decision_scope",
+      kind: "user_message",
+      storageMode: "raw_text",
+      contentHash: "sha256:prompt_decision_scope",
+      rawText: "Prompt with a mismatched decision row",
+      createdAt: at
+    });
+    await fixture.db.insert(routeDecisions).values({
+      ...usageDecision("decision_wrong_workspace", "request_prompt_decision_scope", "org_ws_prompt_decisions", "fast", "openai", "gpt-fast"),
+      workspaceId: created.id
+    });
+
+    const prompts = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      "query { prompts { data { artifactId finalRoute selectedModel } } }"
+    )).data?.prompts;
+    const prompt = prompts.data.find((item: { artifactId: string }) => item.artifactId === "artifact_prompt_decision_scope");
+
+    expect(prompt).toEqual({
+      artifactId: "artifact_prompt_decision_scope",
+      finalRoute: null,
+      selectedModel: null
+    });
   });
 
   it("does not expose event timelines for requests in other workspaces", async () => {

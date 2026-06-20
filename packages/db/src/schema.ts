@@ -484,7 +484,7 @@ export const requests = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true })
   },
   (table) => [
-    uniqueIndex("requests_org_idempotency_idx").on(table.organizationId, table.idempotencyKey),
+    uniqueIndex("requests_org_workspace_idempotency_idx").on(table.organizationId, table.workspaceId, table.idempotencyKey),
     index("requests_org_workspace_created_idx").on(table.organizationId, table.workspaceId, table.createdAt),
     index("requests_session_id_idx").on(table.sessionId),
     index("requests_user_id_idx").on(table.organizationId, table.userId),

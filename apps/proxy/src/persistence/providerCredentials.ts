@@ -1,5 +1,6 @@
 import {
   apiKeyProviderAccounts,
+  defaultWorkspaceId,
   decryptSecret,
   encryptSecret,
   providers,
@@ -30,6 +31,7 @@ const OAUTH_REFRESH_SKEW_MS = 60_000;
 
 export type ResolveCredentialInput = {
   organizationId: string;
+  workspaceId?: string;
   apiKeyId?: string;
   provider: Provider;
 };
@@ -59,6 +61,7 @@ export class ProviderCredentialStore {
       .from(apiKeyProviderAccounts)
       .where(and(
         eq(apiKeyProviderAccounts.organizationId, input.organizationId),
+        eq(apiKeyProviderAccounts.workspaceId, input.workspaceId ?? defaultWorkspaceId(input.organizationId)),
         eq(apiKeyProviderAccounts.apiKeyId, input.apiKeyId),
         eq(apiKeyProviderAccounts.providerId, provider.id)
       ))

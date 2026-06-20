@@ -64,6 +64,14 @@ import {
 import { aggregateIdleGaps, IDLE_GAP_SAMPLE_CAP } from "./idleGaps.js";
 import { pricingFromRow } from "./modelPricing.js";
 import { orgCostBaseline } from "./organizationSettings.js";
+import {
+  aggregateUsageByRequest,
+  attemptCounts,
+  classifierCostByRequestId,
+  latestAttemptsByRequest,
+  usageAggregateForRow,
+  type UsageAggregate
+} from "./adminRequestUsage.js";
 import { aggregateTokenAttribution, TOKEN_ATTRIBUTION_SAMPLE_CAP } from "./tokenAttributionReport.js";
 import {
   OTHER_ROLLUP_GROUP_KEY,
@@ -449,7 +457,9 @@ export class AdminQueryService {
 
   async prompts(filters: PromptListFilters = {}) {
     const rows = await this.promptRows(filters);
-    const data = await this.addRoutingConfigNames(rows.map((row) => promptSummary(row)));
+    const requestRows = [...new Map(rows.map((row) => [row.request.id, row.request])).values()];
+    const requestSummaries = new Map((await this.summarizeRequests(requestRows)).map((request) => [request.requestId, request]));
+    const data = await this.addRoutingConfigNames(rows.map((row) => promptSummary(row, requestSummaries.get(row.request.id))));
     return {
       data,
       pagination: {
@@ -805,10 +815,11 @@ export class AdminQueryService {
 
     const requestRows = await this.requestRowsForSession(sessionId);
     const requestSummaries = await this.summarizeRequests(requestRows, { aggregateUsageByRequest: true });
+    const requestSummariesById = new Map(requestSummaries.map((request) => [request.requestId, request]));
     const requestIds = requestRows.map((request) => request.id);
     const userRows = session.userId ? await this.userRowsForOrg() : new Map<string, UserRow>();
     const detailRows = await this.sessionDetailRows(sessionId, requestIds);
-    const promptArtifactSummaries = detailRows.prompts.map((row) => promptDetail(row));
+    const promptArtifactSummaries = detailRows.prompts.map((row) => promptDetail(row, requestSummariesById.get(row.request.id)));
     const routeDecisionSummaries = detailRows.routeDecisions.map(routeDecisionSummary);
     await this.addRoutingConfigNames([...promptArtifactSummaries, ...routeDecisionSummaries]);
     return {
@@ -836,6 +847,7 @@ export class AdminQueryService {
         eq(requests.organizationId, promptArtifacts.organizationId)
       ))
       .leftJoin(routeDecisions, and(
+        this.scopedTo(routeDecisions),
         eq(routeDecisions.requestId, requests.id),
         eq(routeDecisions.organizationId, requests.organizationId)
       ))
@@ -850,7 +862,7 @@ export class AdminQueryService {
     const [request] = await this.summarizeRequests([row.request]);
     const requestEvents = await this.eventsForRequest(row.request.id);
     const compressionReceipts = await this.compressionReceiptsForRequest(row.request.id);
-    const [artifact] = await this.addRoutingConfigNames([promptDetail(row)]);
+    const [artifact] = await this.addRoutingConfigNames([promptDetail(row, request)]);
     const siblingRows = await this.db
       .select()
       .from(promptArtifacts)
@@ -867,7 +879,7 @@ export class AdminQueryService {
         artifact: sibling,
         request: row.request,
         decision: row.decision
-      })),
+      }, request)),
       compressionReceipts,
       events: requestEvents
     };
@@ -893,6 +905,7 @@ export class AdminQueryService {
       .from(apiKeys)
       .leftJoin(routingConfigs, and(
         eq(routingConfigs.organizationId, apiKeys.organizationId),
+        eq(routingConfigs.workspaceId, apiKeys.workspaceId),
         eq(routingConfigs.id, apiKeys.routingConfigId)
       ))
       .where(and(...conditions))
@@ -1289,7 +1302,10 @@ export class AdminQueryService {
         ? await this.db
             .select()
             .from(usageLedger)
-            .where(inArray(usageLedger.providerAttemptId, attemptIds))
+            .where(and(
+              this.scopedTo(usageLedger),
+              inArray(usageLedger.providerAttemptId, attemptIds)
+            ))
         : [];
       // Classifier rows have no provider attempt, so they are keyed by request.
       const classifierUsageRows = requestIds.length > 0
@@ -1297,6 +1313,7 @@ export class AdminQueryService {
             .select()
             .from(usageLedger)
             .where(and(
+              this.scopedTo(usageLedger),
               inArray(usageLedger.requestId, requestIds),
               eq(usageLedger.kind, "classifier")
             ))
@@ -1646,8 +1663,7 @@ export class AdminQueryService {
       .select({
         artifact: promptArtifacts,
         request: requests,
-        decision: routeDecisions,
-        usage: usageLedger
+        decision: routeDecisions
       })
       .from(promptArtifacts)
       .innerJoin(requests, and(
@@ -1655,12 +1671,9 @@ export class AdminQueryService {
         eq(requests.organizationId, promptArtifacts.organizationId)
       ))
       .leftJoin(routeDecisions, and(
+        this.scopedTo(routeDecisions),
         eq(routeDecisions.requestId, requests.id),
         eq(routeDecisions.organizationId, requests.organizationId)
-      ))
-      .leftJoin(usageLedger, and(
-        eq(usageLedger.requestId, requests.id),
-        eq(usageLedger.organizationId, requests.organizationId)
       ))
       .where(and(...conditions))
       .orderBy(desc(promptArtifacts.createdAt))
@@ -1738,7 +1751,6 @@ export class AdminQueryService {
 
 type RequestRow = typeof requests.$inferSelect;
 type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
-type UsageLedgerRow = typeof usageLedger.$inferSelect;
 type SessionRow = typeof agentSessions.$inferSelect;
 type UserRow = typeof usersTable.$inferSelect;
 type MemberRow = typeof organizationMembers.$inferSelect;
@@ -1889,7 +1901,6 @@ type PromptRow = {
   artifact: typeof promptArtifacts.$inferSelect;
   request: typeof requests.$inferSelect;
   decision: typeof routeDecisions.$inferSelect | null;
-  usage: typeof usageLedger.$inferSelect | null;
 };
 
 function promptConditions(organizationId: string, workspaceId: string, filters: PromptListFilters) {
@@ -1967,7 +1978,7 @@ function providerRegistrySummary(row: ProviderRegistryRow) {
   };
 }
 
-function promptSummary(row: PromptRow) {
+function promptSummary(row: PromptRow, request?: RequestSummary | null) {
   return {
     artifactId: row.artifact.id,
     organizationId: row.artifact.organizationId,
@@ -1984,25 +1995,24 @@ function promptSummary(row: PromptRow) {
     tokenEstimate: row.artifact.tokenEstimate ?? undefined,
     preview: promptPreview(row.artifact.rawText ?? row.artifact.redactedText),
     finalRoute: row.decision?.finalRoute ?? undefined,
-    provider: row.decision?.selectedProvider ?? row.usage?.provider ?? undefined,
-    selectedModel: row.decision?.selectedModel ?? undefined,
+    provider: row.decision?.selectedProvider ?? request?.provider ?? undefined,
+    selectedModel: row.decision?.selectedModel ?? request?.selectedModel ?? undefined,
     routingConfig: routingConfigSummary(row.decision ?? row.request),
     classifier: row.decision?.classifier ?? undefined,
     cost: {
-      selected: (row.usage?.totalCostMicros ?? 0) / 1_000_000
+      selected: request?.selectedCost ?? 0
     },
     createdAt: row.artifact.createdAt.toISOString()
   };
 }
 
-function promptDetail(row: Pick<PromptRow, "artifact" | "request"> & Partial<Pick<PromptRow, "decision" | "usage">>) {
+function promptDetail(row: Pick<PromptRow, "artifact" | "request"> & Partial<Pick<PromptRow, "decision">>, request?: RequestSummary | null) {
   return {
     ...promptSummary({
       artifact: row.artifact,
       request: row.request,
-      decision: row.decision ?? null,
-      usage: row.usage ?? null
-    }),
+      decision: row.decision ?? null
+    }, request),
     rawText: row.artifact.rawText ?? null,
     redactedText: row.artifact.redactedText ?? null,
     encryptedBlobRef: row.artifact.encryptedBlobRef ?? null,
@@ -2122,7 +2132,6 @@ type SummaryInputs = {
 };
 type UsageGroupBy = "user" | "api_key" | "provider" | "model" | "model_effort" | "route" | "surface" | "session";
 type UsageInterval = "hour" | "day";
-type UsageAggregate = ReturnType<typeof emptyUsageAggregate>;
 type UsageGroup = {
   key: string;
   requestCount: number;
@@ -2368,8 +2377,17 @@ function finalizeUsageGroup(group: UsageGroup, latency: ReturnType<typeof latenc
     retryRate: group.requestCount === 0 ? 0 : group.retriedRequests / group.requestCount,
     latency,
     usage: group.usage,
-    cost: group.cost
+    cost: {
+      selected: costAmount(group.cost.selected),
+      baseline: costAmount(group.cost.baseline),
+      savings: costAmount(group.cost.savings),
+      classifier: costAmount(group.cost.classifier)
+    }
   };
+}
+
+function costAmount(value: number) {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }
 
 function latencySummaryFromRow(row: UsageLatencyRow | undefined) {
@@ -2454,63 +2472,6 @@ function timeseriesGroupLimit(value: number | undefined) {
   return Math.max(1, Math.min(25, Math.floor(value)));
 }
 
-function latestAttemptsByRequest(attempts: ProviderAttemptRow[]) {
-  const latest = new Map<string, ProviderAttemptRow>();
-  const sorted = [...attempts].sort((left, right) =>
-    timestamp(right.startedAt) - timestamp(left.startedAt)
-  );
-  for (const attempt of sorted) {
-    if (!latest.has(attempt.requestId)) latest.set(attempt.requestId, attempt);
-  }
-  return latest;
-}
-
-function attemptCounts(attempts: ProviderAttemptRow[]) {
-  const counts = new Map<string, number>();
-  for (const attempt of attempts) {
-    counts.set(attempt.requestId, (counts.get(attempt.requestId) ?? 0) + 1);
-  }
-  return counts;
-}
-
-function aggregateUsageByRequest(usageRows: UsageLedgerRow[]) {
-  const byRequest = new Map<string, UsageAggregate>();
-  for (const row of usageRows) {
-    const usage = byRequest.get(row.requestId) ?? emptyUsageAggregate();
-    addUsageRow(usage, row);
-    byRequest.set(row.requestId, usage);
-  }
-  return byRequest;
-}
-
-function classifierCostByRequestId(classifierUsageRows: UsageLedgerRow[]) {
-  const byRequest = new Map<string, number>();
-  for (const row of classifierUsageRows) {
-    byRequest.set(row.requestId, (byRequest.get(row.requestId) ?? 0) + row.totalCostMicros / 1_000_000);
-  }
-  return byRequest;
-}
-
-function usageAggregateForRow(row: UsageLedgerRow) {
-  const usage = emptyUsageAggregate();
-  addUsageRow(usage, row);
-  return usage;
-}
-
-function addUsageRow(usage: UsageAggregate, row: UsageLedgerRow) {
-  usage.inputTokens += row.inputTokens;
-  usage.cachedInputTokens += row.cachedInputTokens;
-  usage.cacheCreationInputTokens += row.cacheCreationInputTokens;
-  usage.outputTokens += row.outputTokens;
-  usage.reasoningTokens += row.reasoningTokens;
-  usage.totalTokens += row.totalTokens;
-  usage.totalCostMicros += row.totalCostMicros;
-}
-
-function timestamp(value: Date | null | undefined) {
-  return value?.getTime() ?? 0;
-}
-
 function baselineCostFor(
   pricing: ModelPricingTable,
   costBaseline: CostBaseline,
@@ -2545,13 +2506,6 @@ function emptyUsage() {
     outputTokens: 0,
     reasoningTokens: 0,
     totalTokens: 0
-  };
-}
-
-function emptyUsageAggregate() {
-  return {
-    ...emptyUsage(),
-    totalCostMicros: 0
   };
 }
 

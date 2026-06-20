@@ -113,10 +113,12 @@ async function searchLogs(db: PromptProxyDbSession, organizationId: string, work
     })
     .from(promptArtifacts)
     .innerJoin(requests, and(
+      workspaceScope(requests, organizationId, workspaceId),
       eq(requests.id, promptArtifacts.requestId),
       eq(requests.organizationId, promptArtifacts.organizationId)
     ))
     .leftJoin(routeDecisions, and(
+      workspaceScope(routeDecisions, organizationId, workspaceId),
       eq(routeDecisions.requestId, requests.id),
       eq(routeDecisions.organizationId, requests.organizationId)
     ))
@@ -234,6 +236,7 @@ async function searchApiKeys(db: PromptProxyDbSession, organizationId: string, w
     .from(apiKeys)
     .leftJoin(routingConfigs, and(
       eq(routingConfigs.organizationId, apiKeys.organizationId),
+      eq(routingConfigs.workspaceId, apiKeys.workspaceId),
       eq(routingConfigs.id, apiKeys.routingConfigId)
     ))
     .where(and(
