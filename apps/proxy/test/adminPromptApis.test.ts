@@ -9,13 +9,24 @@ import {
   organizations,
   promptAccessAudit,
   promptArtifacts,
+  providerAttempts,
   requests,
+  routeDecisions,
+  usageLedger,
   users,
   workspaces
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
 
-import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
+import {
+  adminGql,
+  captureFixture,
+  usageAttempt,
+  usageDecision,
+  usageRequest,
+  usageRow,
+  type PromptTestFixture
+} from "./promptTestFixture.js";
 
 const promptListQuery = `query Prompts($userId: String, $surface: String, $route: String, $model: String, $limit: Int, $offset: Int) {
   prompts(userId: $userId, surface: $surface, route: $route, model: $model, limit: $limit, offset: $offset) {
@@ -32,6 +43,7 @@ const promptListQuery = `query Prompts($userId: String, $surface: String, $route
       selectedModel
       routingConfig { configId configName version configHash }
       classifier
+      cost { selected }
     }
     pagination { limit offset count }
   }
@@ -316,6 +328,93 @@ describe("admin prompt APIs", () => {
       finalRoute: "hard"
     }));
     expect(detail.events.map((event: any) => event.eventType)).toContain("prompt_artifacts.captured");
+  });
+
+  it("lists prompt artifacts once when requests have provider and classifier usage", async () => {
+    const fixture = await setup("org_prompt_usage_join");
+    const createdAt = new Date("2026-01-02T03:04:05.000Z");
+    await fixture.db.insert(requests).values({
+      ...usageRequest(
+        "request_prompt_usage_join",
+        "org_prompt_usage_join",
+        "local-user",
+        "",
+        "openai-responses",
+        createdAt
+      ),
+      sessionId: null
+    });
+    await fixture.db.insert(routeDecisions).values(usageDecision(
+      "decision_prompt_usage_join",
+      "request_prompt_usage_join",
+      "org_prompt_usage_join",
+      "hard",
+      "openai",
+      "gpt-5.5"
+    ));
+    await fixture.db.insert(providerAttempts).values(usageAttempt(
+      "attempt_prompt_usage_join",
+      "request_prompt_usage_join",
+      "org_prompt_usage_join",
+      "openai-responses",
+      "openai",
+      "gpt-5.5",
+      "completed",
+      createdAt
+    ));
+    await fixture.db.insert(promptArtifacts).values({
+      id: "artifact_prompt_usage_join",
+      organizationId: "org_prompt_usage_join",
+      workspaceId: defaultWorkspaceId("org_prompt_usage_join"),
+      requestId: "request_prompt_usage_join",
+      kind: "user_message",
+      storageMode: "raw_text",
+      contentHash: "sha256:prompt_usage_join",
+      rawText: "Prompt with provider and classifier usage.",
+      createdAt
+    });
+    await fixture.db.insert(usageLedger).values([
+      usageRow(
+        "usage_prompt_usage_join_provider",
+        "request_prompt_usage_join",
+        "attempt_prompt_usage_join",
+        "org_prompt_usage_join",
+        "openai",
+        "gpt-5.5",
+        "hard",
+        10,
+        20,
+        2_000
+      ),
+      {
+        id: "usage_prompt_usage_join_classifier",
+        organizationId: "org_prompt_usage_join",
+        workspaceId: defaultWorkspaceId("org_prompt_usage_join"),
+        requestId: "request_prompt_usage_join",
+        kind: "classifier",
+        provider: "openai",
+        model: "route-classifier-cheap",
+        route: "hard",
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+        totalCostMicros: 9_000
+      }
+    ]);
+
+    const prompts = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptListQuery, {
+      limit: 10,
+      offset: 0
+    })).data?.prompts;
+    const rows = prompts.data.filter((item: any) => item.requestId === "request_prompt_usage_join");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(expect.objectContaining({
+      artifactId: "artifact_prompt_usage_join",
+      cost: { selected: 0.011 },
+      provider: "openai",
+      selectedModel: "gpt-5.5"
+    }));
   });
 
   it("uses API-key ownership instead of spoofed harness user headers", async () => {

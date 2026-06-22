@@ -307,7 +307,7 @@ export type RequestStateGate = {
 
 export type RequestStateStoreLike = {
   begin(idempotencyKey: string, requestId?: string, context?: unknown): RequestStateGate | Promise<RequestStateGate>;
-  markProviderPending(idempotencyKey: string, providerAttemptId: string): RequestState | undefined | Promise<RequestState | undefined>;
+  markProviderPending(idempotencyKey: string, providerAttemptId: string, requestId?: string): RequestState | undefined | Promise<RequestState | undefined>;
   finish(idempotencyKey: string, status: RequestState["status"], patch?: Partial<RequestState>): RequestState | undefined | Promise<RequestState | undefined>;
 };
 
@@ -329,11 +329,13 @@ export class RequestStateStore {
     return { state, duplicate: false };
   }
 
-  markProviderPending(idempotencyKey: string, providerAttemptId: string) {
-    return this.patch(idempotencyKey, {
+  markProviderPending(idempotencyKey: string, providerAttemptId: string, requestId?: string) {
+    const patch: Partial<RequestState> = {
       status: "provider_pending",
       providerAttemptId
-    });
+    };
+    if (requestId) patch.requestId = requestId;
+    return this.patch(idempotencyKey, patch);
   }
 
   finish(idempotencyKey: string, status: RequestState["status"], patch: Partial<RequestState> = {}) {

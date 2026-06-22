@@ -37,6 +37,7 @@ export async function startOpenAIMock(
     rateLimitProviderOnce?: RateLimitMock;
     slowProvider?: boolean;
     streamContentType?: string;
+    providerHeaders?: Record<string, string>;
     wsTerminalEvent?: "response.completed" | "response.incomplete";
     wsUpgradeHeaders?: Record<string, string>;
     outputText?: string;
@@ -132,7 +133,8 @@ export async function startOpenAIMock(
       });
       response.writeHead(200, {
         "content-type": "application/json",
-        "content-encoding": "gzip"
+        "content-encoding": "gzip",
+        ...options.providerHeaders
       });
       response.end(gzipSync(payload));
       return;
@@ -150,10 +152,13 @@ export async function startOpenAIMock(
           id: "chatcmpl_mock",
           choices: [{ message: { role: "assistant", content: options.outputText ?? "chat mock" } }],
           usage
-        });
+        }, options.providerHeaders);
         return;
       }
-      response.writeHead(200, { "content-type": options.streamContentType ?? "text/event-stream" });
+      response.writeHead(200, {
+        "content-type": options.streamContentType ?? "text/event-stream",
+        ...options.providerHeaders
+      });
       response.on("close", () => resolveProviderClosed?.());
       response.write(
         `data: ${JSON.stringify({
@@ -184,7 +189,10 @@ export async function startOpenAIMock(
       return;
     }
 
-    response.writeHead(200, { "content-type": options.streamContentType ?? "text/event-stream" });
+    response.writeHead(200, {
+      "content-type": options.streamContentType ?? "text/event-stream",
+      ...options.providerHeaders
+    });
     response.on("close", () => resolveProviderClosed?.());
     response.write(
       `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_mock" } })}\n\n`
@@ -363,7 +371,7 @@ function readJson(request: IncomingMessage) {
   });
 }
 
-function sendJson(response: ServerResponse, body: unknown) {
-  response.writeHead(200, { "content-type": "application/json" });
+function sendJson(response: ServerResponse, body: unknown, headers: Record<string, string> = {}) {
+  response.writeHead(200, { "content-type": "application/json", ...headers });
   response.end(JSON.stringify(body));
 }

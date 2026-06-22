@@ -316,7 +316,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         routingConfig: resolved.routingConfig
       });
       if (decision.outcome === "reject") {
-        await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+        await requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
         markModelErrorClass(requestMetrics, request, "routing");
         sendRejectedDecision(decision, reply);
         return;
@@ -378,6 +378,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
     } catch (error) {
       await requestStates.finish(idempotencyKey, "failed", {
+        requestId,
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
@@ -449,7 +450,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         routingConfig: resolved.routingConfig
       });
       if (decision.outcome === "reject") {
-        await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+        await requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
         markModelErrorClass(requestMetrics, request, "routing");
         sendRejectedDecision(decision, reply);
         return;
@@ -510,6 +511,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
     } catch (error) {
       await requestStates.finish(idempotencyKey, "failed", {
+        requestId,
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
@@ -589,7 +591,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         routingConfig: resolved.routingConfig
       });
       if (decision.outcome === "reject") {
-        await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+        await requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
         markModelErrorClass(requestMetrics, request, "routing");
         sendRejectedDecision(decision, reply);
         return;
@@ -651,6 +653,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
     } catch (error) {
       await requestStates.finish(idempotencyKey, "failed", {
+        requestId,
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
@@ -695,7 +698,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       );
       const decision = await routing.tokenCountDecision(context, resolved.routingConfig);
       if (decision.outcome === "reject") {
-        await requestStates.finish(idempotencyKey, "failed", { error: decision.error });
+        await requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
         markModelErrorClass(requestMetrics, request, "routing");
         sendRejectedDecision(decision, reply);
         return;
@@ -763,6 +766,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       });
     } catch (error) {
       await requestStates.finish(idempotencyKey, "failed", {
+        requestId,
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
@@ -789,6 +793,7 @@ function resolveUpstreamCredential(
   if (!persistence) return undefined;
   return persistence.providerCredentials.resolveForRequest({
     organizationId: identity.organizationId,
+    workspaceId: identity.workspaceId,
     apiKeyId: identity.apiKeyId,
     provider
   });

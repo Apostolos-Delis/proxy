@@ -294,6 +294,22 @@ describe("Anthropic Messages to OpenAI translators", () => {
     expect(out).toContain("\"input_tokens\":5");
     expect(out).toContain("\"output_tokens\":2");
   });
+
+  it("keeps streamed Responses output indexes distinct when Anthropic streams a tool before text", async () => {
+    const translator = translators.get("anthropic-messages", "openai-responses");
+    const input = [
+      `data: ${JSON.stringify({ type: "message_start", message: { id: "msg_1", usage: {} } })}`,
+      `data: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "toolu_1", name: "shell" } })}`,
+      `data: ${JSON.stringify({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "after tool" } })}`,
+      `data: ${JSON.stringify({ type: "message_stop" })}`
+    ].join("\n\n");
+
+    const out = await transform(translator!, `${input}\n\n`);
+
+    expect(out).toContain("\"output_index\":0,\"item\":{\"id\":\"toolu_1\"");
+    expect(out).toContain("\"output_index\":1,\"item\":{\"id\":\"msg_translated\"");
+    expect(out).toContain("\"output_index\":1,\"content_index\":0,\"delta\":\"after tool\"");
+  });
 });
 
 describe("OpenAI to Anthropic Messages translators", () => {
@@ -410,6 +426,24 @@ describe("OpenAI to Anthropic Messages translators", () => {
     for (const tool of request.tools) {
       expect(tool.name).toMatch(/^[a-zA-Z0-9_-]{1,128}$/);
     }
+  });
+
+  it("re-encodes namespaced Responses tool choices to flattened Anthropic tool names", () => {
+    const translator = translators.get("openai-responses", "anthropic-messages");
+    const request = translator?.request({
+      input: [],
+      tools: [{
+        type: "namespace",
+        name: "multi_agent_v1",
+        tools: [{ type: "function", name: "spawn_agent", parameters: { type: "object" } }]
+      }],
+      tool_choice: { type: "function", name: "spawn_agent", namespace: "multi_agent_v1" }
+    }) as any;
+
+    expect(request.tools).toEqual([
+      { name: "ns_14_multi_agent_v1spawn_agent", description: undefined, input_schema: { type: "object" } }
+    ]);
+    expect(request.tool_choice).toEqual({ type: "tool", name: "ns_14_multi_agent_v1spawn_agent" });
   });
 
   it("re-encodes namespaced function_call history into matching tool_use names", () => {
@@ -563,5 +597,30 @@ describe("OpenAI to Anthropic Messages translators", () => {
     expect(out).toContain("\"text\":\"done\"");
     expect(out).toContain("\"input_tokens\":5");
     expect(out).toContain("\"output_tokens\":2");
+  });
+
+  it("marks streamed Responses function calls as Anthropic tool_use stops", async () => {
+    const translator = translators.get("openai-responses", "anthropic-messages");
+    const input = [
+      `event: response.created\ndata: ${JSON.stringify({ type: "response.created", response: { id: "resp_1", model: "gpt-source" } })}`,
+      `event: response.output_item.added\ndata: ${JSON.stringify({
+        type: "response.output_item.added",
+        output_index: 0,
+        item: { id: "call_1", call_id: "call_1", type: "function_call", name: "spawn_agent", namespace: "multi_agent_v1" }
+      })}`,
+      `event: response.function_call_arguments.delta\ndata: ${JSON.stringify({
+        type: "response.function_call_arguments.delta",
+        output_index: 0,
+        delta: "{\"cmd\":\"ls\"}"
+      })}`,
+      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { usage: { input_tokens: 5, output_tokens: 2 } } })}`
+    ].join("\n\n");
+
+    const out = await transform(translator!, `${input}\n\n`);
+
+    expect(out).toContain("\"type\":\"tool_use\"");
+    expect(out).toContain("\"name\":\"ns_14_multi_agent_v1spawn_agent\"");
+    expect(out).toContain("\"partial_json\":\"{\\\"cmd\\\":\\\"ls\\\"}\"");
+    expect(out).toContain("\"stop_reason\":\"tool_use\"");
   });
 });

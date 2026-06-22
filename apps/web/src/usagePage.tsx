@@ -13,7 +13,7 @@ import {
 } from "./usageData";
 import { ChartLegend, StackedBarsChart } from "./charts";
 import { downloadJson } from "./dashboard";
-import { formatCompact, formatCompactMoney, formatInteger, formatPercent } from "./format";
+import { formatCompact, formatCompactMoney, formatDurationMs, formatInteger, formatPercent } from "./format";
 import { BarListRow, GlassCard, PageSkeleton, PageState, Segmented } from "./ui";
 import {
   stackedUsageSeries,
@@ -24,7 +24,7 @@ import {
   type UsageMetric,
   type UsageRangeKey
 } from "./usageAnalytics";
-import { UsageBreakdownTable, UsageDimensionTabs, formatDurationMs } from "./usageBreakdown";
+import { UsageBreakdownTable, UsageDimensionTabs } from "./usageBreakdown";
 import { UsageFocusLayout, UsageGridLayout, type UsageDashboardData } from "./usageLayouts";
 import { fetchMe } from "./session";
 

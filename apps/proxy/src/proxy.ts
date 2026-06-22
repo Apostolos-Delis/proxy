@@ -99,7 +99,7 @@ export class ProviderProxy implements ProviderAdapter {
         preparedRequestHash: requestBodyHash(input.body)
       }
     });
-    await this.requestStates.markProviderPending(input.idempotencyKey, attempt.id);
+    await this.requestStates.markProviderPending(input.idempotencyKey, attempt.id, input.requestId);
 
     const abortController = new AbortController();
     let streamCompleted = false;
@@ -176,6 +176,7 @@ export class ProviderProxy implements ProviderAdapter {
         error: error instanceof Error ? error.message : "Provider request failed."
       });
       await this.requestStates.finish(input.idempotencyKey, aborted ? "cancelled" : "failed", {
+        requestId: input.requestId,
         providerAttemptId: attempt.id,
         error: error instanceof Error ? error.message : "Provider request failed."
       });
@@ -229,6 +230,7 @@ export class ProviderProxy implements ProviderAdapter {
         error
       });
       await this.requestStates.finish(input.idempotencyKey, status, {
+        requestId: input.requestId,
         providerAttemptId: attempt.id,
         usage: usage === undefined ? undefined : jsonPayload(usage),
         error
@@ -278,6 +280,7 @@ export class ProviderProxy implements ProviderAdapter {
           error: observation.error
         });
         await this.requestStates.finish(input.idempotencyKey, status, {
+          requestId: input.requestId,
           providerAttemptId: attempt.id,
           usage: observation.usage,
           upstreamRequestId: observation.upstreamResponseId,
@@ -316,6 +319,7 @@ export class ProviderProxy implements ProviderAdapter {
           error: message
         });
         await this.requestStates.finish(input.idempotencyKey, aborted ? "cancelled" : "failed", {
+          requestId: input.requestId,
           providerAttemptId: attempt.id,
           usage: observation.usage,
           error: message
@@ -405,6 +409,7 @@ export class ProviderProxy implements ProviderAdapter {
           error: message
         });
         await this.requestStates.finish(input.idempotencyKey, status, {
+          requestId: input.requestId,
           providerAttemptId: attempt.id,
           usage: observation.usage,
           error: message
@@ -426,6 +431,7 @@ export class ProviderProxy implements ProviderAdapter {
         error: observation.error
       });
       await this.requestStates.finish(input.idempotencyKey, status, {
+        requestId: input.requestId,
         providerAttemptId: attempt.id,
         usage: observation.usage,
         upstreamRequestId: observation.upstreamResponseId,
@@ -536,6 +542,7 @@ export class ProviderProxy implements ProviderAdapter {
       error
     });
     await this.requestStates.finish(input.idempotencyKey, "failed", {
+      requestId: input.requestId,
       providerAttemptId,
       error
     });
@@ -759,19 +766,21 @@ function terminalError(metadata: JsonObject) {
 
 function copyResponseHeaders(upstream: Response, reply: FastifyReply) {
   for (const [key, value] of upstream.headers.entries()) {
-    if (hopByHopHeaders.has(key.toLowerCase())) continue;
+    if (blockedResponseHeaders.has(key.toLowerCase())) continue;
     reply.header(key, value);
     reply.raw.setHeader(key, value);
   }
 }
 
-const hopByHopHeaders = new Set([
+const blockedResponseHeaders = new Set([
   "connection",
   "content-encoding",
   "content-length",
   "keep-alive",
   "proxy-authenticate",
   "proxy-authorization",
+  "set-cookie",
+  "set-cookie2",
   "te",
   "trailer",
   "transfer-encoding",

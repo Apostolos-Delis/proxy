@@ -6,6 +6,8 @@ infra/cdk/cdk.out/
 .vite/
 .prompt-proxy/
 .env
+.env.*
+!.env.example
 .DS_Store
 
 .worktrees

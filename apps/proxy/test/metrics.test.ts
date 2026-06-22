@@ -20,6 +20,12 @@ import {
   type MetricsCollector
 } from "../src/metrics.js";
 
+const productionSecrets = {
+  PROMPT_PROXY_TOKEN: "prod-proxy-token",
+  OPENAI_API_KEY: "prod-openai-key",
+  ANTHROPIC_API_KEY: "prod-anthropic-key"
+};
+
 describe("metrics collector", () => {
   it("records counters, gauges, and histograms in memory", () => {
     const metrics = new InMemoryMetricsCollector({
@@ -162,12 +168,14 @@ describe("metrics config", () => {
   it("rejects unsafe production metrics auth", () => {
     expect(() => loadConfig({
       NODE_ENV: "production",
+      ...productionSecrets,
       METRICS_ENABLED: "true",
       METRICS_AUTH_MODE: "none"
     })).toThrow("METRICS_AUTH_MODE=none cannot be used with METRICS_ENABLED in production.");
 
     expect(() => loadConfig({
       NODE_ENV: "production",
+      ...productionSecrets,
       METRICS_ENABLED: "true",
       METRICS_EXPORTER: "prometheus",
       METRICS_AUTH_MODE: "token"

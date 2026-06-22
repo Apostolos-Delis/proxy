@@ -7,6 +7,10 @@ import {
   settingsToEnv
 } from "./settings.js";
 
+const DEFAULT_PROXY_TOKEN = "dev-proxy-token";
+const DEFAULT_OPENAI_API_KEY = "test-openai-key";
+const DEFAULT_ANTHROPIC_API_KEY = "test-anthropic-key";
+
 function normalizeBooleanEnv(value: unknown) {
   if (value === undefined) return undefined;
   if (typeof value === "boolean") return value;
@@ -50,16 +54,16 @@ const modelCostsSchema = z.preprocess((value) => {
 const configSchema = z.object({
   NODE_ENV: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(8787),
-  PROMPT_PROXY_TOKEN: z.string().min(1).default("dev-proxy-token"),
+  PROMPT_PROXY_TOKEN: z.string().min(1).default(DEFAULT_PROXY_TOKEN),
   PROMPT_PROXY_SETTINGS_PATH: z.string().optional(),
-  OPENAI_API_KEY: z.string().min(1).default("test-openai-key"),
+  OPENAI_API_KEY: z.string().min(1).default(DEFAULT_OPENAI_API_KEY),
   OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   OPENAI_CHATGPT_BASE_URL: z.string().url().default("https://chatgpt.com/backend-api/codex"),
   OPENAI_FAST_MODEL: z.string().min(1).default("gpt-5.4-mini"),
   OPENAI_BALANCED_MODEL: z.string().min(1).default("gpt-5.4"),
   OPENAI_HARD_MODEL: z.string().min(1).default("gpt-5.5"),
   OPENAI_DEEP_MODEL: z.string().min(1).default("gpt-5.5-pro"),
-  ANTHROPIC_API_KEY: z.string().min(1).default("test-anthropic-key"),
+  ANTHROPIC_API_KEY: z.string().min(1).default(DEFAULT_ANTHROPIC_API_KEY),
   ANTHROPIC_BASE_URL: z.string().url().default("https://api.anthropic.com/v1"),
   ANTHROPIC_FAST_MODEL: z.string().min(1).default("claude-haiku-4-5"),
   ANTHROPIC_BALANCED_MODEL: z.string().min(1).default("claude-sonnet-4-5"),
@@ -131,8 +135,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const production = parsed.NODE_ENV === "production";
   const metricsExporter = parsed.METRICS_ENABLED ? parsed.METRICS_EXPORTER : "none";
   const debugEndpointsEnabled = parsed.DEBUG_ENDPOINTS_ENABLED || (!production && !parsed.DATABASE_URL);
-  if (production && debugEndpointsEnabled && parsed.PROMPT_PROXY_TOKEN === "dev-proxy-token") {
-    throw new Error("PROMPT_PROXY_TOKEN must be set before enabling debug endpoints in production.");
+  if (production && parsed.PROMPT_PROXY_TOKEN === DEFAULT_PROXY_TOKEN) {
+    throw new Error("PROMPT_PROXY_TOKEN must be changed in production.");
+  }
+  if (production && parsed.OPENAI_API_KEY === DEFAULT_OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY must be set in production.");
+  }
+  if (production && parsed.ANTHROPIC_API_KEY === DEFAULT_ANTHROPIC_API_KEY) {
+    throw new Error("ANTHROPIC_API_KEY must be set in production.");
   }
   if (production && parsed.DATABASE_URL && parsed.ADMIN_DEV_LOGIN_ENABLED && parsed.ADMIN_DEV_LOGIN_PASSWORD === "dev-password") {
     throw new Error("ADMIN_DEV_LOGIN_PASSWORD must be changed before enabling dev login with DATABASE_URL.");

@@ -3,7 +3,7 @@ import { ArrowUpRight, KeyRound } from "lucide-react";
 
 import { displayUser } from "./consoleData";
 import type { UsageGroup, UsageLookupApiKey, UsageLookupUser } from "./usageData";
-import { compactId, formatCompact, formatInteger, formatMoney, formatPercent } from "./format";
+import { compactId, formatCompact, formatDurationMs, formatInteger, formatMoney, formatPercent } from "./format";
 import { ConsoleTable, type ConsoleTableColumn } from "./table";
 import { Avatar, BarListRow, RouteBadge } from "./ui";
 import {
@@ -265,12 +265,6 @@ function failuresLogsSearch(dimension: UsageDimension, key: string, range: Usage
   const advField = advFields[dimension];
   if (!advField) return null;
   return { ...rangeParam, status: "failed", adv: [[advField, "equals", key, "and"]] };
-}
-
-export function formatDurationMs(value: number) {
-  if (value >= 60_000) return `${(value / 60_000).toFixed(1)}m`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}s`;
-  return `${Math.round(value)}ms`;
 }
 
 function searchValue(row: UsageGroup, dimension: UsageDimension, lookups: GroupLabelLookups) {

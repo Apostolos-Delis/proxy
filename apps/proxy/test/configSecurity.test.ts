@@ -3,12 +3,18 @@ import { describe, expect, it } from "vitest";
 import { AdminAuthService } from "../src/adminAuth.js";
 import { loadConfig } from "../src/config.js";
 
+const productionSecrets = {
+  PROMPT_PROXY_TOKEN: "prod-proxy-token",
+  OPENAI_API_KEY: "prod-openai-key",
+  ANTHROPIC_API_KEY: "prod-anthropic-key"
+};
+
 describe("security-sensitive config defaults", () => {
   it("disables debug endpoints when DATABASE_URL is configured unless explicitly enabled", () => {
     const config = loadConfig({
       NODE_ENV: "production",
       DATABASE_URL: "postgres://user:pass@localhost:5432/prompt_proxy",
-      PROMPT_PROXY_TOKEN: "prod-proxy-token"
+      ...productionSecrets
     });
 
     expect(config.debugEndpointsEnabled).toBe(false);
@@ -16,7 +22,8 @@ describe("security-sensitive config defaults", () => {
 
   it("disables local-only debug and proxy token fallbacks in production", () => {
     const config = loadConfig({
-      NODE_ENV: "production"
+      NODE_ENV: "production",
+      ...productionSecrets
     });
 
     expect(config.debugEndpointsEnabled).toBe(false);
@@ -24,19 +31,34 @@ describe("security-sensitive config defaults", () => {
     expect(config.adminGraphiqlEnabled).toBe(false);
   });
 
-  it("rejects debug endpoints with DATABASE_URL and the default proxy token", () => {
+  it("rejects the default proxy token in production", () => {
     expect(() => loadConfig({
       NODE_ENV: "production",
       DATABASE_URL: "postgres://user:pass@localhost:5432/prompt_proxy",
-      DEBUG_ENDPOINTS_ENABLED: "true"
-    })).toThrow("PROMPT_PROXY_TOKEN must be set before enabling debug endpoints in production.");
+      OPENAI_API_KEY: "prod-openai-key",
+      ANTHROPIC_API_KEY: "prod-anthropic-key"
+    })).toThrow("PROMPT_PROXY_TOKEN must be changed in production.");
+  });
+
+  it("rejects default upstream provider keys in production", () => {
+    expect(() => loadConfig({
+      NODE_ENV: "production",
+      PROMPT_PROXY_TOKEN: "prod-proxy-token",
+      ANTHROPIC_API_KEY: "prod-anthropic-key"
+    })).toThrow("OPENAI_API_KEY must be set in production.");
+
+    expect(() => loadConfig({
+      NODE_ENV: "production",
+      PROMPT_PROXY_TOKEN: "prod-proxy-token",
+      OPENAI_API_KEY: "prod-openai-key"
+    })).toThrow("ANTHROPIC_API_KEY must be set in production.");
   });
 
   it("rejects dev login with DATABASE_URL and the default password", () => {
     expect(() => loadConfig({
       NODE_ENV: "production",
       DATABASE_URL: "postgres://user:pass@localhost:5432/prompt_proxy",
-      PROMPT_PROXY_TOKEN: "prod-proxy-token",
+      ...productionSecrets,
       ADMIN_DEV_LOGIN_ENABLED: "true"
     })).toThrow("ADMIN_DEV_LOGIN_PASSWORD must be changed before enabling dev login with DATABASE_URL.");
   });

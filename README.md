@@ -34,6 +34,8 @@ Log into the console with the dev credentials from `.env` — `ADMIN_DEV_LOGIN_E
 
 To use real models, set `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` in `.env`. The proxy and console can also run separately with `pnpm dev:proxy` and `pnpm dev:web`.
 
+For production (`NODE_ENV=production`), set explicit values for `PROMPT_PROXY_TOKEN`, `OPENAI_API_KEY`, and `ANTHROPIC_API_KEY`; the local development defaults are rejected at startup.
+
 ## Connect a coding agent
 
 ### One-liner

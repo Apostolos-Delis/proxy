@@ -32,7 +32,7 @@ const sessionDetailQuery = `query SessionDetail($sessionId: ID!) {
     session { sessionId externalSessionId sessionIdentity userId }
     user
     requests { requestId }
-    promptArtifacts { rawText }
+    promptArtifacts { rawText provider selectedModel cost { selected } }
     routeDecisions { finalRoute }
     providerAttempts { terminalStatus }
     usageLedger { totalCostMicros }
@@ -226,6 +226,18 @@ describe("session replay admin APIs", () => {
     expect(sessionDetail.promptArtifacts.map((artifact: any) => artifact.rawText)).toEqual([
       "First session prompt",
       "Second session prompt"
+    ]);
+    expect(sessionDetail.promptArtifacts).toEqual([
+      expect.objectContaining({
+        provider: "openai",
+        selectedModel: "gpt-fast",
+        cost: { selected: 0.001 }
+      }),
+      expect.objectContaining({
+        provider: "openai",
+        selectedModel: "gpt-hard",
+        cost: { selected: 0.003 }
+      })
     ]);
     expect(sessionDetail.routeDecisions.map((decision: any) => decision.finalRoute).sort()).toEqual(["fast", "hard"]);
     expect(sessionDetail.providerAttempts.map((attempt: any) => attempt.terminalStatus).sort()).toEqual(["completed", "failed"]);

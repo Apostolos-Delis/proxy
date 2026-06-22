@@ -31,7 +31,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
     const routeContext = isRouteContext(context) ? context : undefined;
     const organizationId = routeContext?.organizationId ?? this.organizationId;
     const workspaceId = routeContext?.workspaceId ?? defaultWorkspaceId(organizationId);
-    const existing = await this.findRequest(idempotencyKey, organizationId);
+    const existing = await this.findRequest(idempotencyKey, organizationId, workspaceId);
     if (existing) {
       const status = requestStateStatus(existing.status);
       if (status === "classifying" || status === "provider_pending") {
@@ -45,12 +45,13 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
         .set({ status: "classifying", completedAt: null })
         .where(and(
           eq(requests.organizationId, existing.organizationId),
+          eq(requests.workspaceId, existing.workspaceId),
           eq(requests.idempotencyKey, idempotencyKey),
           inArray(requests.status, ["failed", "cancelled", "completed"])
         ))
         .returning();
       if (claimed.length === 0) {
-        const current = await this.findRequest(idempotencyKey, organizationId);
+        const current = await this.findRequest(idempotencyKey, organizationId, workspaceId);
         return {
           state: await this.stateForRequest(current ?? existing),
           duplicate: true
@@ -96,7 +97,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
         .onConflictDoNothing();
     });
 
-    const stored = await this.findRequest(idempotencyKey, organizationId);
+    const stored = await this.findRequest(idempotencyKey, organizationId, workspaceId);
     if (!stored) {
       return {
         state: { idempotencyKey, requestId, status: "classifying" },
@@ -110,13 +111,13 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
     };
   }
 
-  async markProviderPending(idempotencyKey: string, providerAttemptId: string) {
-    const request = await this.findRequest(idempotencyKey);
+  async markProviderPending(idempotencyKey: string, providerAttemptId: string, requestId?: string) {
+    const request = await this.findRequest(idempotencyKey, undefined, undefined, requestId);
     if (!request) return undefined;
     await this.readDb
       .update(requests)
       .set({ status: "provider_pending" })
-      .where(and(eq(requests.organizationId, request.organizationId), eq(requests.idempotencyKey, idempotencyKey)));
+      .where(eq(requests.id, request.id));
     return {
       idempotencyKey,
       requestId: request.id,
@@ -127,7 +128,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
 
   async finish(idempotencyKey: string, status: RequestState["status"], patch: Partial<RequestState> = {}) {
     const terminal = status !== "classifying" && status !== "provider_pending";
-    const request = await this.findRequest(idempotencyKey);
+    const request = await this.findRequest(idempotencyKey, undefined, undefined, patch.requestId);
     if (!request) return undefined;
     if (terminal && patch.providerAttemptId) {
       return this.stateForRequest(request);
@@ -136,7 +137,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
     await this.readDb
       .update(requests)
       .set(terminal ? { status, completedAt: new Date() } : { status })
-      .where(and(eq(requests.organizationId, request.organizationId), eq(requests.idempotencyKey, idempotencyKey)));
+      .where(eq(requests.id, request.id));
     return {
       ...patch,
       idempotencyKey,
@@ -145,13 +146,15 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
     };
   }
 
-  private async findRequest(idempotencyKey: string, organizationId?: string) {
+  private async findRequest(idempotencyKey: string, organizationId?: string, workspaceId?: string, requestId?: string) {
+    const conditions = [eq(requests.idempotencyKey, idempotencyKey)];
+    if (requestId) conditions.push(eq(requests.id, requestId));
+    if (organizationId) conditions.push(eq(requests.organizationId, organizationId));
+    if (workspaceId) conditions.push(eq(requests.workspaceId, workspaceId));
     const query = this.readDb
       .select()
       .from(requests)
-      .where(organizationId
-        ? and(eq(requests.organizationId, organizationId), eq(requests.idempotencyKey, idempotencyKey))
-        : eq(requests.idempotencyKey, idempotencyKey))
+      .where(and(...conditions))
       .limit(1);
     const [request] = await query;
     return request;
@@ -226,7 +229,7 @@ export async function persistRequestReceived(tx: PromptProxyTransaction, event: 
       metadata: payload
     })
     .onConflictDoUpdate({
-      target: [requests.organizationId, requests.idempotencyKey],
+      target: [requests.organizationId, requests.workspaceId, requests.idempotencyKey],
       set: {
         userId,
         sessionId: dbSessionId,

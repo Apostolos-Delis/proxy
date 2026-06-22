@@ -37,8 +37,8 @@ export async function requireAdmin({ context }: { context: RouterContext }) {
 }
 
 export function LoginPage() {
-  const [email, setEmail] = useState("local@example.com");
-  const [password, setPassword] = useState("dev-password");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const queryClient = useQueryClient();
   const navigate = useNavigate({ from: "/login" });
   const mutation = useMutation({

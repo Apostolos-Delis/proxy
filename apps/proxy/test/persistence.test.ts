@@ -667,6 +667,109 @@ describe("postgres persistence", () => {
     expect(requestRows[0]?.organizationId).toBe("org_b");
   });
 
+  it("scopes direct request idempotency by workspace", async () => {
+    const fixture = await persistenceFixture("org_workspace_idem");
+    const secondWorkspaceId = "org_workspace_idem:workspace:second";
+    const first = await fixture.persistence.requestStates.begin("idem_shared", "request_default", {
+      ...routeContext(),
+      organizationId: "org_workspace_idem"
+    });
+    await fixture.db.insert(workspaces).values({
+      id: secondWorkspaceId,
+      organizationId: "org_workspace_idem",
+      slug: "second",
+      name: "Second"
+    });
+    const second = await fixture.persistence.requestStates.begin("idem_shared", "request_second", {
+      ...routeContext(),
+      organizationId: "org_workspace_idem",
+      workspaceId: secondWorkspaceId
+    });
+    await fixture.persistence.requestStates.markProviderPending("idem_shared", "attempt_second", "request_second");
+    await fixture.persistence.requestStates.finish("idem_shared", "failed", {
+      requestId: "request_second",
+      error: "failed second"
+    });
+
+    const requestRows = await fixture.db.select().from(requests);
+
+    expect(first.duplicate).toBe(false);
+    expect(second.duplicate).toBe(false);
+    expect(requestRows.map((row) => ({
+      id: row.id,
+      workspaceId: row.workspaceId,
+      idempotencyKey: row.idempotencyKey,
+      status: row.status
+    })).sort((left, right) => left.id.localeCompare(right.id))).toEqual([
+      {
+        id: "request_default",
+        workspaceId: defaultWorkspaceId("org_workspace_idem"),
+        idempotencyKey: "idem_shared",
+        status: "classifying"
+      },
+      {
+        id: "request_second",
+        workspaceId: secondWorkspaceId,
+        idempotencyKey: "idem_shared",
+        status: "failed"
+      }
+    ]);
+  });
+
+  it("projects request-received events with workspace-scoped idempotency", async () => {
+    const fixture = await persistenceFixture("org_event_workspace_idem");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_event_workspace_idem");
+    const secondWorkspaceId = "org_event_workspace_idem:workspace:second";
+
+    for (const [scopeId, workspaceId] of [
+      ["request_event_default", defaultWorkspaceId("org_event_workspace_idem")],
+      ["request_event_second", secondWorkspaceId]
+    ] as const) {
+      if (workspaceId === secondWorkspaceId) {
+        await fixture.db.insert(workspaces).values({
+          id: secondWorkspaceId,
+          organizationId: "org_event_workspace_idem",
+          slug: "second",
+          name: "Second"
+        });
+      }
+      await eventService.append({
+        workspaceId,
+        scopeType: "request",
+        scopeId,
+        correlationId: scopeId,
+        idempotencyKey: "idem_event_shared",
+        producer: "test",
+        eventType: "proxy.request_received",
+        payload: {
+          surface: "openai-responses",
+          requestedModel: "router-auto",
+          inputHash: `sha256:${scopeId}`,
+          inputChars: 12
+        }
+      });
+    }
+
+    const requestRows = await fixture.db.select().from(requests);
+
+    expect(requestRows.map((row) => ({
+      id: row.id,
+      workspaceId: row.workspaceId,
+      idempotencyKey: row.idempotencyKey
+    })).sort((left, right) => left.id.localeCompare(right.id))).toEqual([
+      {
+        id: "request_event_default",
+        workspaceId: defaultWorkspaceId("org_event_workspace_idem"),
+        idempotencyKey: "idem_event_shared"
+      },
+      {
+        id: "request_event_second",
+        workspaceId: secondWorkspaceId,
+        idempotencyKey: "idem_event_shared"
+      }
+    ]);
+  });
+
   it("normalizes Codex and Claude Code session ids into durable sessions", async () => {
     const fixture = await persistenceFixture("org_sessions");
     await fixture.persistence.requestStates.begin("idem_codex", "request_codex", {

@@ -52,6 +52,7 @@ type ResolvedRouteSettings = {
 type ProviderCredentialResolver = {
   resolveForRequest(input: {
     organizationId: string;
+    workspaceId?: string;
     apiKeyId?: string;
     provider: Provider;
   }): Promise<UpstreamCredential | undefined>;
@@ -395,6 +396,7 @@ export class RoutingService {
     if (!provider.builtin && provider.authStyle !== "none") {
       credential = await this.credentials?.resolveForRequest({
         organizationId,
+        workspaceId: context.workspaceId,
         apiKeyId: context.apiKeyId,
         provider: settings.providerId
       });
@@ -687,6 +689,7 @@ export class RoutingService {
     if (!provider.builtin && provider.authStyle !== "none") {
       const credential = await this.credentials?.resolveForRequest({
         organizationId,
+        workspaceId: context.workspaceId,
         apiKeyId: context.apiKeyId,
         provider: target.providerId
       });
