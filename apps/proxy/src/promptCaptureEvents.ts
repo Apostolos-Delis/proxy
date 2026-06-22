@@ -4,7 +4,7 @@ import {
   promptCaptureEventPayload,
   type CapturedPromptArtifact
 } from "./persistence/promptArtifacts.js";
-import type { JsonObject, Surface } from "./types.js";
+import type { JsonObject, RouteContext, Surface } from "./types.js";
 
 export async function appendPromptCaptureEvent(input: {
   events: EventService;
@@ -13,6 +13,9 @@ export async function appendPromptCaptureEvent(input: {
   idempotencyKey: string;
   sessionId?: string;
   surface: Surface;
+  transport?: RouteContext["transport"];
+  harness?: RouteContext["harness"];
+  harnessProfileId?: RouteContext["harnessProfileId"];
   artifacts: CapturedPromptArtifact[];
 }) {
   if (input.artifacts.length === 0) return;
@@ -27,6 +30,12 @@ export async function appendPromptCaptureEvent(input: {
     actor: actorForIdentity(input.identity),
     producer: "prompt-proxy.prompt-artifacts",
     eventType: "prompt_artifacts.captured",
-    payload: jsonPayload(promptCaptureEventPayload(input.surface, input.artifacts)) as JsonObject
+    payload: jsonPayload(promptCaptureEventPayload({
+      surface: input.surface,
+      transport: input.transport ?? "http",
+      harness: input.harness,
+      harnessProfileId: input.harnessProfileId,
+      artifacts: input.artifacts
+    })) as JsonObject
   });
 }

@@ -1,0 +1,7 @@
+{
+  "surface": "openai-chat",
+  "harness": "generic",
+  "statefulResponses": false,
+  "hasTools": false,
+  "hasImages": false
+}

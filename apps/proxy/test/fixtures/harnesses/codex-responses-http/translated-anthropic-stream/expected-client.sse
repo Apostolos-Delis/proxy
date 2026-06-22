@@ -1,0 +1,17 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_mock","status":"in_progress"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_translated","type":"message","status":"in_progress","role":"assistant","content":[]}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"msg_translated","output_index":0,"content_index":0,"delta":"anthropic responses cross"}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":1,"item":{"id":"toolu_response_stream","type":"function_call","call_id":"toolu_response_stream","name":"shell","arguments":"","status":"in_progress"}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","output_index":1,"delta":"{\"cmd\":\"pwd\"}"}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_mock","status":"completed","usage":{"input_tokens":120,"output_tokens":30,"total_tokens":150}}}

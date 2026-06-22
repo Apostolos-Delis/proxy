@@ -306,6 +306,7 @@
 
 /* misc utility */
 .row { display: flex; align-items: center; }
+.wrap { flex-wrap: wrap; }
 .gap-8 { gap: 8px; } .gap-12 { gap: 12px; } .gap-16 { gap: 16px; }
 .muted { color: var(--fg-muted); }
 .nowrap { white-space: nowrap; }

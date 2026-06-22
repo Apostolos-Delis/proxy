@@ -49,6 +49,7 @@
 - [Harness model translation V1 tickets](scopes/harness-model-translation-v1/TICKETS.md)
 - [Tool output compression tickets](scopes/router-research-roadmap-v1/tool-output-compression-tickets.md)
 - [Proxy metrics V1 tickets](scopes/proxy-metrics-v1/TICKETS.md)
+- [Harness compatibility tests V1 tickets](scopes/router-research-roadmap-v1/harness-compatibility-tests-tickets.md)
 - [Routing configs runbook](runbooks/routing-configs.md)
 - [AWS deployment runbook](runbooks/aws-deployment.md)
 - [Proxy metrics runbook](runbooks/proxy-metrics.md)
@@ -56,6 +57,7 @@
 
 ## Harness Setup
 
+- [Harness compatibility matrix](harnesses/compatibility-matrix.md)
 - [opencode setup](harnesses/opencode.md)
 - [Cursor BYOK setup](harnesses/cursor-byok.md)
 - [Claude Code setup](harnesses/claude-code.md)

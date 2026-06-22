@@ -1,0 +1,7 @@
+{
+  "profileId": "claude-code-messages",
+  "caseId": "native-stream",
+  "surface": "anthropic-messages",
+  "description": "Claude Code Anthropic Messages native streaming request with split usage frames and exact SSE forwarding.",
+  "mode": "native"
+}

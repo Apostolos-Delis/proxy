@@ -1,0 +1,7 @@
+{
+  "profileId": "openai-chat-sdk",
+  "caseId": "sample-complete",
+  "surface": "openai-chat",
+  "description": "Complete fixture used to validate the harness golden fixture loader.",
+  "mode": "native"
+}

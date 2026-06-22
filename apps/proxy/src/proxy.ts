@@ -19,7 +19,13 @@ import {
   type ProviderRegistryResolver
 } from "./persistence/providers.js";
 import { extractResponseText } from "./persistence/promptArtifacts.js";
-import { copySelectedHeaders, detectHarness, dialectHeadersFor, identityHeadersFor } from "./harness.js";
+import {
+  copySelectedHeaders,
+  detectHarnessSurfaceProfile,
+  dialectHeadersFor,
+  harnessSurfaceProfileById,
+  identityHeadersFor
+} from "./harness.js";
 import {
   type MetricsCollector,
   NoopMetricsCollector
@@ -109,9 +115,16 @@ export class ProviderProxy implements ProviderAdapter {
 
     const abortController = new AbortController();
     let streamCompleted = false;
+    let clientClosed = false;
     const abortUpstream = () => {
+      clientClosed = true;
       if (!streamCompleted) abortController.abort();
     };
+    const clientGone = () =>
+      clientClosed ||
+      abortController.signal.aborted ||
+      input.reply.raw.destroyed ||
+      (input.reply.raw as { closed?: boolean }).closed === true;
     input.reply.raw.once("close", abortUpstream);
 
     let resolvedProvider: ProviderRegistryEntry | undefined;
@@ -166,7 +179,7 @@ export class ProviderProxy implements ProviderAdapter {
       });
     } catch (error) {
       input.reply.raw.off("close", abortUpstream);
-      const aborted = abortController.signal.aborted;
+      const aborted = clientGone();
       if (aborted) {
         this.providerMetrics.recordClientCancellation({
           surface: input.surface,
@@ -197,9 +210,11 @@ export class ProviderProxy implements ProviderAdapter {
     });
 
     const contentType = upstream.headers.get("content-type") ?? "";
+    const isJson = contentType.includes("application/json");
     const isSse = contentType.includes("text/event-stream") || (
       upstream.ok &&
-      providerStream
+      providerStream &&
+      !isJson
     );
 
     copyResponseHeaders(upstream, input.reply);
@@ -300,7 +315,7 @@ export class ProviderProxy implements ProviderAdapter {
       } catch (error) {
         const observation = observer.finish("cancelled");
         const message = error instanceof Error ? error.message : "Stream failed.";
-        const aborted = abortController.signal.aborted;
+        const aborted = clientGone();
         if (aborted) {
           this.providerMetrics.recordClientCancellation({
             surface: input.surface,
@@ -382,7 +397,7 @@ export class ProviderProxy implements ProviderAdapter {
       } catch (error) {
         const observation = observer.finish("cancelled");
         const message = error instanceof Error ? error.message : "Stream failed.";
-        const aborted = abortController.signal.aborted;
+        const aborted = clientGone();
         const status = aborted ? "cancelled" : "failed";
         this.providerMetrics.recordStreamBytes({
           surface: input.surface,
@@ -607,6 +622,7 @@ export class ProviderProxy implements ProviderAdapter {
           provider,
           endpoint,
           surface: input.surface,
+          harnessProfileId: input.harnessProfileId,
           body,
           incoming: input.headers,
           credential: input.credential
@@ -688,6 +704,7 @@ export function providerRequestHeaders(input: {
   provider: ProviderRegistryEntry;
   endpoint: ProviderRegistryEndpoint;
   surface: Surface;
+  harnessProfileId?: ProviderForwardInput["harnessProfileId"];
   body: unknown;
   incoming: Record<string, string | undefined>;
   credential?: UpstreamCredential;
@@ -726,7 +743,9 @@ export function providerRequestHeaders(input: {
     headers["x-api-key"] = token;
   }
 
-  const profile = detectHarness({ surface: input.surface, body: input.body, headers: input.incoming });
+  const profile = input.harnessProfileId
+    ? harnessSurfaceProfileById(input.harnessProfileId)
+    : detectHarnessSurfaceProfile({ surface: input.surface, body: input.body, headers: input.incoming });
   copySelectedHeaders(input.incoming, headers, dialectHeadersFor(input.endpoint.dialect));
 
   if (input.endpoint.dialect === "anthropic-messages") {

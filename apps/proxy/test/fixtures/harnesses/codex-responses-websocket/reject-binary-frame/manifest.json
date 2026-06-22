@@ -1,0 +1,7 @@
+{
+  "profileId": "codex-responses-websocket",
+  "caseId": "reject-binary-frame",
+  "surface": "openai-responses",
+  "description": "Codex Responses WebSocket rejects binary client frames before routing.",
+  "mode": "unsupported"
+}

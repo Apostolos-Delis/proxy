@@ -1,0 +1,8 @@
+{
+  "surface": "anthropic-messages",
+  "harness": "claude-code",
+  "statefulResponses": false,
+  "sessionId": "12345678-abcd-1234-abcd-123456789abc",
+  "hasTools": true,
+  "hasImages": true
+}

@@ -1,0 +1,8 @@
+{
+  "profileId": "openai-chat-sdk",
+  "caseId": "translated-anthropic-stream",
+  "surface": "openai-chat",
+  "targetDialect": "anthropic-messages",
+  "description": "OpenAI Chat request translated to Anthropic Messages with role, image, tool, thinking, and streaming response coverage.",
+  "mode": "translated"
+}

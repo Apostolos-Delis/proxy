@@ -182,7 +182,7 @@ Expose:
 - tested fixture count
 - last smoke test status where available
 
-Docs should tell operators which harness/provider combinations are safe.
+Docs should tell operators which harness/provider combinations are safe. See the operator-facing [harness compatibility matrix](../../harnesses/compatibility-matrix.md) guide for the console and GraphQL fields.
 
 ## Validation
 
@@ -204,6 +204,8 @@ Smoke tests:
 - mock provider native paths
 - mock provider translated paths
 - real installed harness smoke where available
+
+`pnpm smoke:harnesses` reports fixture-backed native and translated path status, writes a JSON artifact when `HARNESS_SMOKE_STATUS_PATH` is set, and skips real Codex or Claude Code smoke cleanly when the corresponding local binary is unavailable.
 
 ## Rollout
 

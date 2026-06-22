@@ -1,0 +1,18 @@
+{
+  "id": "msg_mock",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-code-native",
+  "content": [
+    {
+      "type": "text",
+      "text": "claude nonstream"
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 120,
+    "output_tokens": 30
+  }
+}

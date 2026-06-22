@@ -1,0 +1,9 @@
+{
+  "outcome": "reject",
+  "surface": "openai-responses",
+  "error": "route_not_available_for_surface",
+  "guardrailActions": [
+    "session_explicit_route_override",
+    "target_skipped_websocket_native_only:chat-only-openai"
+  ]
+}

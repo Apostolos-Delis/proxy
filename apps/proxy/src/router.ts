@@ -1,4 +1,10 @@
-import type { RoutingConfig, RouteTarget } from "@prompt-proxy/schema";
+import {
+  TRANSLATABLE_DIALECT_PAIRS,
+  harnessCompatibilityForTarget,
+  type HarnessCompatibilityProfileId,
+  type RoutingConfig,
+  type RouteTarget
+} from "@prompt-proxy/schema";
 
 import {
   anthropicEffortForModel,
@@ -139,6 +145,9 @@ export class RoutingService {
         routingInputHash: context.routingInputHash,
         routingInputChars: context.routingInputChars,
         routingEstimatedInputTokens: context.routingEstimatedInputTokens,
+        transport: context.transport ?? "http",
+        harness: context.harness ?? null,
+        harnessProfileId: context.harnessProfileId ?? null,
         hasTools: context.hasTools,
         toolCount: context.toolCount,
         hasPreviousResponseId: context.hasPreviousResponseId,
@@ -297,7 +306,10 @@ export class RoutingService {
         eventType: "session.route_memory_recorded",
         payload: jsonPayload({
           ...decision.session,
-          surface: context.surface
+          surface: context.surface,
+          transport: context.transport ?? "http",
+          harness: context.harness ?? null,
+          harnessProfileId: context.harnessProfileId ?? null
         }) as JsonObject
       });
     }
@@ -721,19 +733,21 @@ export class RoutingService {
     }
     if (!provider) return { status: "unavailable", reason: "provider_not_found" };
     if (!provider.enabled) return { status: "unavailable", reason: "provider_disabled" };
-    const endpoint = targetEndpoint(context, provider, target, mode);
+    const targetDialects = compatibilityTargetDialects(context, provider, target, mode);
+    const compatibility = harnessCompatibilityForTarget({
+      profileId: compatibilityProfileId(context),
+      surface: context.surface,
+      transport: context.transport ?? "http",
+      statefulResponses: context.statefulResponses,
+      hasPreviousResponseId: context.hasPreviousResponseId,
+      unsupportedFields: context.unsupportedFields,
+      targetDialects,
+      availableTranslators: availableTranslatorPairs()
+    });
+    if (compatibility.status === "unavailable") return { status: "unavailable", reason: compatibility.reason ?? "dialect_unavailable" };
+    if (!compatibility.dialect) return { status: "unavailable", reason: "dialect_unavailable" };
+    const endpoint = providerEndpointForDialect(provider, compatibility.dialect);
     if (!endpoint) return { status: "unavailable", reason: "dialect_unavailable" };
-    if (endpoint.dialect !== context.surface) {
-      if (context.hasPreviousResponseId) {
-        return { status: "unavailable", reason: "previous_response_translation_unavailable", dialect: endpoint.dialect };
-      }
-      if (context.statefulResponses === true && !canTranslateStatefulResponses(context, endpoint.dialect)) {
-        return { status: "unavailable", reason: "stateful_translation_unavailable", dialect: endpoint.dialect };
-      }
-      if (!translators.get(context.surface, endpoint.dialect)) {
-        return { status: "unavailable", reason: "translator_unavailable", dialect: endpoint.dialect };
-      }
-    }
     let credential: UpstreamCredential | undefined;
     if (!provider.builtin && provider.authStyle !== "none") {
       credential = await this.credentials?.resolveForRequest({
@@ -860,24 +874,30 @@ function appendTranslationAction(guardrailActions: string[], from: Dialect, to: 
   if (!guardrailActions.includes(tag)) guardrailActions.push(tag);
 }
 
-function canTranslateStatefulResponses(context: RouteContext, dialect: Dialect) {
-  return context.surface === "openai-responses" &&
-    context.transport !== "websocket" &&
-    dialect === "anthropic-messages";
-}
-
-function targetEndpoint(
+function compatibilityTargetDialects(
   context: RouteContext,
   provider: ProviderRegistryEntry,
   target: Pick<RouteTarget, "providerId"> & { dialect?: Dialect },
   mode: "native" | "translated" = "translated"
 ) {
-  if (context.transport === "websocket") return providerEndpointForDialect(provider, context.surface);
-  if (target.dialect) return providerEndpointForDialect(provider, target.dialect);
-  if (mode === "native") return providerEndpointForDialect(provider, context.surface);
-  return providerEndpointForDialect(provider, context.surface) ?? provider.endpoints.find((candidate) =>
-    translators.canTranslate(context.surface, candidate.dialect)
-  );
+  if (target.dialect) {
+    return providerEndpointForDialect(provider, target.dialect) ? [target.dialect] : [];
+  }
+  if (mode === "native") {
+    return providerEndpointForDialect(provider, context.surface) ? [context.surface] : [];
+  }
+  return provider.endpoints.map((endpoint) => endpoint.dialect);
+}
+
+function availableTranslatorPairs() {
+  return TRANSLATABLE_DIALECT_PAIRS.filter(([from, to]) => translators.get(from, to));
+}
+
+function compatibilityProfileId(context: RouteContext): HarnessCompatibilityProfileId {
+  if (context.harnessProfileId) return context.harnessProfileId;
+  if (context.surface === "anthropic-messages") return "generic-anthropic-messages";
+  if (context.surface === "openai-chat") return "openai-chat-sdk";
+  return "generic-openai-responses";
 }
 
 // Key on the routing view, not the byte-identical provider body. The full
@@ -894,6 +914,8 @@ function classificationCacheKey(
     context.userId ?? "",
     context.teamId ?? "",
     context.surface,
+    context.harnessProfileId ?? "",
+    context.transport ?? "http",
     context.requestedModel,
     context.routingInputSource,
     context.routingInputHash,
@@ -903,6 +925,7 @@ function classificationCacheKey(
     context.toolCount,
     context.hasImages,
     context.hasPreviousResponseId,
+    context.unsupportedFields?.join(",") ?? "",
     context.routingExtractedHints.join(","),
     snapshot?.configHash ?? "default"
   ].join("|");

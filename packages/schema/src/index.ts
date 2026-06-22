@@ -254,12 +254,20 @@ function nearestAnthropicEffort(requested: Effort, supported: readonly Effort[])
 
 export {
   canTranslateDialect,
+  HARNESS_COMPATIBILITY_PROFILE_IDS,
+  harnessCompatibilityForTarget,
+  harnessCompatibilityMatrix,
   TRANSLATABLE_DIALECT_PAIRS,
   TRANSLATION_COMPATIBILITY_DIALECTS,
   translationCompatibilityForDialects,
+  type HarnessCompatibilityProfile,
+  type HarnessCompatibilityProfileId,
+  type HarnessCompatibilityResult,
   type TranslationCompatibilityResult,
+  type TranslationCompatibilityReason,
   type TranslationCompatibilityStatus,
-  type TranslationDialect
+  type TranslationDialect,
+  type TranslationPair
 } from "./translationCompatibility.js";
 
 export type JsonValue =

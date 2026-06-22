@@ -1,6 +1,21 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { buildAnthropicContext, buildOpenAIChatContext, buildOpenAIContext, classifierView } from "../src/features.js";
+import {
+  copySelectedHeaders,
+  dialectHeadersFor,
+  harnessProfileByName,
+  harnessSurfaceProfileById,
+  harnessSurfaceProfiles,
+  identityHeadersFor,
+  promptBlockTagsForSurface,
+  type HarnessName,
+  type HarnessProfileId
+} from "../src/harness.js";
+import type { RouteContext, Surface } from "../src/types.js";
 
 const conductorPreamble = [
   "<system_instruction>",
@@ -24,7 +39,128 @@ function anthropicBody(messages: unknown) {
   return { model: "claude-router-auto", messages };
 }
 
+type DetectionFixture = {
+  name: string;
+  profileId: HarnessProfileId;
+  surface: Surface;
+  body: unknown;
+  headers: Record<string, string>;
+  expected: {
+    harness: HarnessName;
+    statefulResponses: boolean;
+    sessionId: string | null;
+    identityHeaders: string[];
+    dialectHeaders: string[];
+    promptBlockTags: string[];
+  };
+};
+
+const detectionFixtures = JSON.parse(readFileSync(
+  fileURLToPath(new URL("./fixtures/harnesses/detection.json", import.meta.url)),
+  "utf8"
+)) as DetectionFixture[];
+
+function buildContextForFixture(fixture: DetectionFixture): RouteContext {
+  const transport = fixture.profileId === "codex-responses-websocket" ? "websocket" : "http";
+  if (fixture.surface === "openai-responses") return buildOpenAIContext(fixture.body, fixture.headers, transport);
+  if (fixture.surface === "openai-chat") return buildOpenAIChatContext(fixture.body, fixture.headers);
+  return buildAnthropicContext(fixture.body, fixture.headers);
+}
+
+function sortedPromptBlockTags(surface: Surface) {
+  return Array.from(promptBlockTagsForSurface(surface)).sort();
+}
+
+function sorted(values: string[]) {
+  return [...values].sort();
+}
+
+describe("harness profile metadata", () => {
+  it("exports stable surface profile ids for supported harness paths", () => {
+    expect(harnessSurfaceProfiles.map((profile) => profile.id)).toEqual([
+      "claude-code-messages",
+      "codex-responses-http",
+      "codex-responses-websocket",
+      "cursor-byok-chat",
+      "opencode-chat",
+      "openai-chat-sdk",
+      "generic-openai-responses",
+      "generic-anthropic-messages"
+    ]);
+  });
+
+  it("describes native HTTP, websocket, chat SDK, and generic fallback surfaces", () => {
+    expect(harnessSurfaceProfileById("codex-responses-http")).toMatchObject({
+      harness: "codex",
+      surface: "openai-responses",
+      dialect: "openai-responses",
+      transport: "http"
+    });
+    expect(harnessSurfaceProfileById("codex-responses-websocket")).toMatchObject({
+      harness: "codex",
+      surface: "openai-responses",
+      transport: "websocket",
+      unsupportedTranslatedFeatures: ["websocket_transport", "previous_response_id"]
+    });
+    expect(harnessSurfaceProfileById("openai-chat-sdk")).toMatchObject({
+      harness: "generic",
+      surface: "openai-chat",
+      dialect: "openai-chat"
+    });
+    expect(harnessSurfaceProfileById("generic-anthropic-messages")).toMatchObject({
+      harness: "generic",
+      surface: "anthropic-messages",
+      dialect: "anthropic-messages"
+    });
+  });
+
+  it("keeps profile metadata JSON-safe for future admin surfaces", () => {
+    expect(JSON.parse(JSON.stringify(harnessSurfaceProfiles))).toEqual(harnessSurfaceProfiles);
+  });
+});
+
 describe("harness block stripping", () => {
+  it("covers every surface profile with a detection fixture", () => {
+    expect(new Set(detectionFixtures.map((fixture) => fixture.profileId))).toEqual(
+      new Set(harnessSurfaceProfiles.map((profile) => profile.id))
+    );
+  });
+
+  it.each(detectionFixtures)("$name", (fixture) => {
+    const context = buildContextForFixture(fixture);
+    const surfaceProfile = harnessSurfaceProfileById(fixture.profileId);
+    const harnessProfile = harnessProfileByName(context.harness);
+    const incomingHeaders = {
+      ...Object.fromEntries(fixture.expected.identityHeaders.map((header) => [header, `${header}-value`])),
+      ...Object.fromEntries(fixture.expected.dialectHeaders.map((header) => [header, `${header}-value`])),
+      authorization: "Bearer secret",
+      "x-not-forwarded": "internal"
+    };
+    const identityHeaders: Record<string, string> = {};
+    const dialectHeaders: Record<string, string> = {};
+
+    expect(context.harness).toBe(fixture.expected.harness);
+    expect(context.harnessProfileId).toBe(fixture.profileId);
+    expect(context.statefulResponses).toBe(fixture.expected.statefulResponses);
+    expect(context.sessionId ?? null).toBe(fixture.expected.sessionId);
+    expect(surfaceProfile.surface).toBe(fixture.surface);
+    expect(identityHeadersFor(harnessProfile)).toEqual(fixture.expected.identityHeaders);
+    expect(dialectHeadersFor(surfaceProfile.dialect)).toEqual(fixture.expected.dialectHeaders);
+    expect(surfaceProfile.identityHeaders).toEqual(fixture.expected.identityHeaders);
+    expect(surfaceProfile.dialectHeaders).toEqual(fixture.expected.dialectHeaders);
+    expect(sortedPromptBlockTags(fixture.surface)).toEqual(fixture.expected.promptBlockTags);
+
+    copySelectedHeaders(incomingHeaders, identityHeaders, identityHeadersFor(harnessProfile));
+    copySelectedHeaders(incomingHeaders, dialectHeaders, dialectHeadersFor(surfaceProfile.dialect));
+
+    expect(sorted(Object.keys(identityHeaders))).toEqual(sorted(fixture.expected.identityHeaders));
+    expect(sorted(Object.keys(dialectHeaders))).toEqual(sorted(fixture.expected.dialectHeaders));
+    expect(identityHeaders).not.toHaveProperty("authorization");
+    expect(dialectHeaders).not.toHaveProperty("authorization");
+    expect(identityHeaders).not.toHaveProperty("x-not-forwarded");
+    expect(dialectHeaders).not.toHaveProperty("x-not-forwarded");
+  });
+
   it("recognizes every router alias spelling on every surface", () => {
     expect(buildOpenAIContext({ model: "claude-router-fast", input: "status" }, {}).explicitAlias).toBe("fast");
     expect(buildOpenAIContext({ model: "anthropic-router-deep", input: "status" }, {}).explicitAlias).toBe("deep");
@@ -49,6 +185,7 @@ describe("harness block stripping", () => {
     );
 
     expect(context.harness).toBe("codex");
+    expect(context.harnessProfileId).toBe("codex-responses-http");
     expect(context.statefulResponses).toBe(true);
     expect(context.sessionId).toBe("codex-session-1234");
   });
@@ -59,10 +196,12 @@ describe("harness block stripping", () => {
         model: "router-auto",
         input: "fix the parser"
       },
-      { session_id: "codex-ws-session" }
+      { session_id: "codex-ws-session" },
+      "websocket"
     );
 
     expect(context.harness).toBe("codex");
+    expect(context.harnessProfileId).toBe("codex-responses-websocket");
     expect(context.statefulResponses).toBe(true);
     expect(context.sessionId).toBe("codex-ws-session");
   });
@@ -78,6 +217,7 @@ describe("harness block stripping", () => {
     );
 
     expect(context.harness).toBe("opencode");
+    expect(context.harnessProfileId).toBe("opencode-chat");
     expect(context.statefulResponses).toBe(false);
     expect(context.sessionId).toBe("opencode-session-1234");
   });
@@ -101,6 +241,7 @@ describe("harness block stripping", () => {
     );
 
     expect(context.harness).toBe("cursor");
+    expect(context.harnessProfileId).toBe("cursor-byok-chat");
     expect(context.statefulResponses).toBe(false);
     expect(context.sessionId).toBe("cursor-session-1234");
     expect(context.routingInputText).toBe("fix the terminal parser");
@@ -117,6 +258,7 @@ describe("harness block stripping", () => {
     );
 
     expect(context.harness).toBe("claude-code");
+    expect(context.harnessProfileId).toBe("claude-code-messages");
     expect(context.statefulResponses).toBe(false);
     expect(context.sessionId).toBe("12345678-abcd");
   });

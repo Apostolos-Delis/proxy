@@ -1,0 +1,10 @@
+{
+  "model": "router-auto",
+  "messages": [
+    {
+      "role": "user",
+      "content": "ping"
+    }
+  ],
+  "stream": true
+}

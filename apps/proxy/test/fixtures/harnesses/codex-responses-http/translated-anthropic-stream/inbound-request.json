@@ -1,0 +1,72 @@
+{
+  "model": "router-hard",
+  "prompt_cache_key": "codex-translated-anthropic-session",
+  "instructions": "Use tools carefully.",
+  "input": [
+    {
+      "type": "message",
+      "role": "developer",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Prefer concise output."
+        }
+      ]
+    },
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "List files."
+        },
+        {
+          "type": "input_image",
+          "image_url": "data:image/png;base64,abc123"
+        }
+      ]
+    },
+    {
+      "id": "call_cross_resp_1",
+      "type": "function_call",
+      "call_id": "call_cross_resp_1",
+      "name": "shell",
+      "arguments": "{\"cmd\":\"ls\"}"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call_cross_resp_1",
+      "output": "package.json"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "name": "shell",
+      "description": "Run shell",
+      "parameters": {
+        "type": "object"
+      }
+    },
+    {
+      "type": "web_search",
+      "external_web_access": true
+    }
+  ],
+  "tool_choice": {
+    "type": "function",
+    "name": "shell"
+  },
+  "reasoning": {
+    "effort": "low"
+  },
+  "parallel_tool_calls": true,
+  "client_metadata": {
+    "session": "golden"
+  },
+  "store": true,
+  "stop": "DONE",
+  "stream": true,
+  "max_output_tokens": 999
+}

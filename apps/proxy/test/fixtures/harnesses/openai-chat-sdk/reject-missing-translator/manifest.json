@@ -1,0 +1,7 @@
+{
+  "profileId": "openai-chat-sdk",
+  "caseId": "reject-missing-translator",
+  "surface": "openai-chat",
+  "description": "OpenAI Chat request distinguishes a selected endpoint dialect from a missing translator pair.",
+  "mode": "unsupported"
+}

@@ -1,0 +1,12 @@
+{
+  "type": "response.create",
+  "model": "router-hard",
+  "input": "fix the websocket routing regression",
+  "tools": [
+    {
+      "type": "function",
+      "name": "shell"
+    }
+  ],
+  "stream": true
+}

@@ -1,0 +1,7 @@
+{
+  "profileId": "openai-chat-sdk",
+  "caseId": "reject-missing-provider-endpoint",
+  "surface": "openai-chat",
+  "description": "OpenAI Chat request rejects a provider that has no native or translatable endpoint dialect.",
+  "mode": "unsupported"
+}

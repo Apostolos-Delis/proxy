@@ -1,0 +1,8 @@
+{
+  "outcome": "reject",
+  "surface": "openai-responses",
+  "error": "route_not_available_for_surface",
+  "guardrailActions": [
+    "target_skipped_unsupported_field:encrypted-include-anthropic"
+  ]
+}

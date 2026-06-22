@@ -36,7 +36,7 @@ import type { SessionSystemPromptStore } from "./persistence/sessionRoute.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { canAuthenticateOrgProvider, providerRequestHeaders } from "./proxy.js";
 import type { RoutingService } from "./router.js";
-import type { JsonObject, Provider, RouteDecision, RouteName, UpstreamCredential } from "./types.js";
+import type { JsonObject, Provider, RouteContext, RouteDecision, RouteName, UpstreamCredential } from "./types.js";
 import {
   lookupForPinnedAddress,
   providerRequestPinnedAddress,
@@ -54,6 +54,9 @@ type ActiveRequest = {
   sessionId?: string;
   compressionTelemetry?: JsonObject;
   providerRequestForwarded?: boolean;
+  harness?: RouteContext["harness"];
+  harnessProfileId?: RouteContext["harnessProfileId"];
+  transport?: RouteContext["transport"];
 };
 
 // Structural subset of the Fastify/pino logger, so the proxy can warn without
@@ -228,7 +231,7 @@ export class WebSocketRoutingProxy {
       routeBody,
       headers
     ));
-    const rawContext = openAIResponsesSurface.buildContext(routeBody, headers);
+    const rawContext = openAIResponsesSurface.buildContext(routeBody, headers, "websocket");
     const context = {
       ...contextForIdentity(rawContext, identity),
       transport: "websocket" as const
@@ -259,7 +262,10 @@ export class WebSocketRoutingProxy {
       workspaceId: identity.workspaceId,
       requestId,
       surface: openAIResponsesSurface.surface,
-      body: routeBody
+      body: routeBody,
+      harness: context.harness,
+      harnessProfileId: context.harnessProfileId,
+      transport: context.transport
     }) ?? [];
     await appendPromptCaptureEvent({
       events: this.events,
@@ -268,7 +274,10 @@ export class WebSocketRoutingProxy {
       idempotencyKey,
       sessionId: context.sessionId,
       surface: openAIResponsesSurface.surface,
-      artifacts: capturedArtifacts
+      artifacts: capturedArtifacts,
+      harness: context.harness,
+      harnessProfileId: context.harnessProfileId,
+      transport: context.transport
     });
 
     const resolved = await this.resolveRoutingConfig(identity);
@@ -315,7 +324,10 @@ export class WebSocketRoutingProxy {
       provider,
       decision,
       identity,
-      sessionId: context.sessionId
+      sessionId: context.sessionId,
+      harness: context.harness,
+      harnessProfileId: context.harnessProfileId,
+      transport: context.transport
     };
 
     let forwardedBody: unknown;
@@ -379,6 +391,7 @@ export class WebSocketRoutingProxy {
         identity,
         headers,
         forwardedBody,
+        context.harnessProfileId,
         decision,
         await this.resolveUpstreamCredential(identity, provider)
       );
@@ -470,6 +483,9 @@ export class WebSocketRoutingProxy {
         workspaceId: activeRequest.identity.workspaceId,
         requestId: activeRequest.requestId,
         surface: openAIResponsesSurface.surface,
+        transport: activeRequest.transport,
+        harness: activeRequest.harness,
+        harnessProfileId: activeRequest.harnessProfileId,
         text
       });
       await appendPromptCaptureEvent({
@@ -479,6 +495,9 @@ export class WebSocketRoutingProxy {
         idempotencyKey: activeRequest.idempotencyKey,
         sessionId: activeRequest.sessionId,
         surface: openAIResponsesSurface.surface,
+        transport: activeRequest.transport,
+        harness: activeRequest.harness,
+        harnessProfileId: activeRequest.harnessProfileId,
         artifacts
       });
     } catch {
@@ -553,6 +572,7 @@ export class WebSocketRoutingProxy {
     identity: RequestIdentity,
     incoming: Record<string, string | undefined>,
     body: unknown,
+    harnessProfileId: RouteContext["harnessProfileId"],
     decision: RouteDecision,
     credential?: UpstreamCredential
   ): Promise<WebSocketUpstreamTarget> {
@@ -583,6 +603,7 @@ export class WebSocketRoutingProxy {
         provider,
         endpoint,
         surface: openAIResponsesSurface.surface,
+        harnessProfileId,
         body,
         incoming,
         credential
@@ -621,6 +642,7 @@ export class WebSocketRoutingProxy {
           provider,
           endpoint,
           surface: openAIResponsesSurface.surface,
+          harnessProfileId: "codex-responses-websocket",
           body: {},
           incoming,
           credential

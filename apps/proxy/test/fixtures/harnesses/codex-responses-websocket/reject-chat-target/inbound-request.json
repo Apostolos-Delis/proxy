@@ -1,0 +1,6 @@
+{
+  "type": "response.create",
+  "model": "router-hard",
+  "input": "debug this translated websocket target",
+  "stream": true
+}

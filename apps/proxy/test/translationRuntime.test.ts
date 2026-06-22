@@ -6,12 +6,19 @@ import {
   defaultWorkspaceId,
   events,
   hashApiKey,
+  promptArtifacts,
+  providerAttempts,
   providers,
+  requests,
   routingConfigs,
-  routingConfigVersions
+  routingConfigVersions,
+  usageLedger
 } from "@prompt-proxy/db";
+import { harnessCompatibilityForTarget } from "@prompt-proxy/schema";
 import type { Dialect, RoutingConfig } from "@prompt-proxy/schema";
 
+import { scopedIdempotencyKey } from "../src/auth.js";
+import { idempotencyFrom } from "../src/util.js";
 import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
 describe("translated OpenAI routing runtime", () => {
@@ -472,14 +479,195 @@ describe("translated OpenAI routing runtime", () => {
     });
     const body = await response.json();
     const decision = await lastDecisionPayload(activeFixture);
+    const compatibility = harnessCompatibilityForTarget({
+      profileId: "codex-responses-http",
+      surface: "openai-responses",
+      transport: "http",
+      statefulResponses: true,
+      targetDialects: ["openai-chat"]
+    });
 
     expect(response.status).toBe(400);
     expect(body.error).toBe("route_not_available_for_surface");
     expect(activeFixture.openai.records.find((record) => record.body.model === "gpt-stateful-chat")).toBeUndefined();
-    expect(decision?.guardrailActions).toContain("target_skipped_stateful_translation_unavailable:stateful-chat-only-openai");
+    expect(compatibility.reason).toBe("stateful_translation_unavailable");
+    expect(decision?.guardrailActions).toContain(`target_skipped_${compatibility.reason}:stateful-chat-only-openai`);
     expect(decision?.guardrailActions).not.toContain("translated_request:openai-responses_to_openai-chat");
   });
+
+  it("handles upstream JSON bodies on streaming requests as JSON responses", async () => {
+    const organizationId = "org_stream_json_on_stream_request";
+    const idempotencyKey = "idem-stream-json-on-stream-request";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: {
+        outputText: "json stream body",
+        streamJsonProvider: true
+      }
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "idempotency-key": idempotencyKey
+      },
+      body: JSON.stringify({
+        model: "router-hard",
+        input: "return json despite stream",
+        stream: true
+      })
+    });
+    const body = await response.json() as any;
+    const providerCall = activeFixture.openai.records.find((record) =>
+      record.path === "/responses" && record.body.model === "gpt-5.5"
+    );
+    const { requestRow, attemptRow } = await persistedProviderAttempt(activeFixture, organizationId, idempotencyKey);
+    const usageRows = await activeFixture.db.select().from(usageLedger);
+    const artifacts = await activeFixture.db.select().from(promptArtifacts);
+    const assistantArtifact = artifacts.find((artifact) => artifact.kind === "assistant_response");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(body.output[0].content[0].text).toBe("json stream body");
+    expect(providerCall?.body.stream).toBe(true);
+    expect(requestRow?.status).toBe("completed");
+    expect(attemptRow?.terminalStatus).toBe("completed");
+    expect(usageRows.find((row) => row.kind === "provider")?.outputTokens).toBe(20);
+    expect(assistantArtifact?.rawText).toBe("json stream body");
+  });
+
+  it("records provider stream error frames as failed durable status", async () => {
+    const organizationId = "org_stream_error_status";
+    const idempotencyKey = "idem-stream-error-status";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: {
+        responsesStreamError: {
+          message: "stream failed",
+          responseId: "resp_stream_error"
+        }
+      }
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "idempotency-key": idempotencyKey
+      },
+      body: JSON.stringify({
+        model: "router-hard",
+        input: "surface provider stream error",
+        stream: true
+      })
+    });
+    const body = await response.text();
+    const { requestRow, attemptRow } = await persistedProviderAttempt(activeFixture, organizationId, idempotencyKey);
+    const eventRows = await activeFixture.db.select().from(events);
+
+    expect(response.status).toBe(200);
+    expect(body).toContain("\"type\":\"error\"");
+    expect(body).toContain("stream failed");
+    expect(requestRow?.status).toBe("failed");
+    expect(attemptRow?.terminalStatus).toBe("failed");
+    expect(attemptRow?.error).toBe("stream failed");
+    expect(attemptRow?.upstreamRequestId).toBe("resp_stream_error");
+    expect(eventRows.some((event) => event.eventType === "provider.response_failed")).toBe(true);
+  });
+
+  it("completes streams that have output text but no terminal usage", async () => {
+    const organizationId = "org_stream_missing_usage";
+    const idempotencyKey = "idem-stream-missing-usage";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: {
+        outputText: "missing usage stream",
+        omitResponsesUsage: true
+      }
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "idempotency-key": idempotencyKey
+      },
+      body: JSON.stringify({
+        model: "router-hard",
+        input: "finish without usage",
+        stream: true
+      })
+    });
+    const body = await response.text();
+    const { requestRow, attemptRow } = await persistedProviderAttempt(activeFixture, organizationId, idempotencyKey);
+    const usageRows = await activeFixture.db.select().from(usageLedger);
+    const artifacts = await activeFixture.db.select().from(promptArtifacts);
+    const assistantArtifact = artifacts.find((artifact) => artifact.kind === "assistant_response");
+
+    expect(response.status).toBe(200);
+    expect(body).toContain("missing usage stream");
+    expect(requestRow?.status).toBe("completed");
+    expect(attemptRow?.terminalStatus).toBe("completed");
+    expect(usageRows).toHaveLength(0);
+    expect(assistantArtifact?.rawText).toBe("missing usage stream");
+  });
+
+  it("records cancellation when the client disconnects mid-stream", async () => {
+    const organizationId = "org_stream_client_disconnect";
+    const idempotencyKey = "idem-stream-client-disconnect";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: { slowProvider: true }
+    });
+    const controller = new AbortController();
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "idempotency-key": idempotencyKey
+      },
+      body: JSON.stringify({
+        model: "router-hard",
+        input: "cancel this stream",
+        stream: true
+      }),
+      signal: controller.signal
+    });
+    const reader = response.body?.getReader();
+    expect(reader).toBeTruthy();
+    await reader?.read();
+    controller.abort();
+    await reader?.cancel().catch(() => undefined);
+    await activeFixture.openai.providerClosed;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    const { requestRow, attemptRow } = await persistedProviderAttempt(activeFixture, organizationId, idempotencyKey);
+    const artifacts = await activeFixture.db.select().from(promptArtifacts);
+
+    expect(requestRow?.status).toBe("cancelled");
+    expect(attemptRow?.terminalStatus).toBe("cancelled");
+    expect(artifacts.find((artifact) => artifact.kind === "assistant_response")).toBeUndefined();
+  });
 });
+
+async function persistedProviderAttempt(fixture: PromptTestFixture, organizationId: string, idempotencyKey: string) {
+  const operationKey = idempotencyFrom("openai-responses:create", {}, { "idempotency-key": idempotencyKey });
+  const scopedKey = scopedIdempotencyKey(organizationId, defaultWorkspaceId(organizationId), operationKey);
+  const [requestRow] = await fixture.db
+    .select()
+    .from(requests)
+    .where(eq(requests.idempotencyKey, scopedKey))
+    .limit(1);
+  if (!requestRow) return { requestRow: undefined, attemptRow: undefined };
+  const [attemptRow] = await fixture.db
+    .select()
+    .from(providerAttempts)
+    .where(eq(providerAttempts.requestId, requestRow.id))
+    .limit(1);
+  return { requestRow, attemptRow };
+}
 
 async function insertOrgProvider(
   fixture: PromptTestFixture,

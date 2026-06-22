@@ -1,0 +1,82 @@
+{
+  "model": "claude-router-hard",
+  "system": [
+    {
+      "type": "text",
+      "text": "You are Claude Code."
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Inspect this screenshot and then run pwd."
+        },
+        {
+          "type": "image",
+          "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "iVBORw0KGgo="
+          }
+        },
+        {
+          "type": "text",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "toolu_claude_native_1",
+          "name": "Bash",
+          "input": {
+            "command": "pwd"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_claude_native_1",
+          "content": [
+            {
+              "type": "text",
+              "text": "/repo"
+            }
+          ],
+          "is_error": false
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "Bash",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "user_id": "claude_code_session_123e4567-e89b-12d3-a456-426614174000"
+  },
+  "stream": false,
+  "max_tokens": 999
+}

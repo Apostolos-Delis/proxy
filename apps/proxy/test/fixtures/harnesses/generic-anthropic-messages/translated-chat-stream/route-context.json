@@ -1,0 +1,7 @@
+{
+  "surface": "anthropic-messages",
+  "harness": "generic",
+  "statefulResponses": false,
+  "hasTools": true,
+  "hasImages": true
+}

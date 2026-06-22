@@ -1,0 +1,46 @@
+[
+  {
+    "type": "response.created",
+    "response": {
+      "id": "resp_ws_1",
+      "model": "gpt-codex-ws-native"
+    }
+  },
+  {
+    "type": "response.completed",
+    "response": {
+      "id": "resp_ws_1",
+      "model": "gpt-codex-ws-native",
+      "status": "completed",
+      "usage": {
+        "input_tokens": 100,
+        "output_tokens": 20,
+        "output_tokens_details": {
+          "reasoning_tokens": 5
+        }
+      }
+    }
+  },
+  {
+    "type": "response.created",
+    "response": {
+      "id": "resp_ws_2",
+      "model": "gpt-codex-ws-native"
+    }
+  },
+  {
+    "type": "response.completed",
+    "response": {
+      "id": "resp_ws_2",
+      "model": "gpt-codex-ws-native",
+      "status": "completed",
+      "usage": {
+        "input_tokens": 100,
+        "output_tokens": 20,
+        "output_tokens_details": {
+          "reasoning_tokens": 5
+        }
+      }
+    }
+  }
+]

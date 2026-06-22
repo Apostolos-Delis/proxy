@@ -1,8 +1,34 @@
+import type { HarnessCompatibilityProfileId } from "@prompt-proxy/schema";
+
 import type { Dialect, Surface } from "./types.js";
 import { isRecord } from "./util.js";
 
+export type HarnessName = "claude-code" | "codex" | "opencode" | "cursor" | "generic";
+
+export type HarnessProfileId = HarnessCompatibilityProfileId;
+
+export type HarnessTransport = "http" | "websocket";
+
+export type HarnessSurfaceProfile = {
+  readonly id: HarnessProfileId;
+  readonly displayName: string;
+  readonly harness: HarnessName;
+  readonly surface: Surface;
+  readonly dialect: Dialect;
+  readonly transport: HarnessTransport;
+  readonly endpoints: readonly string[];
+  readonly sessionKeys: readonly string[];
+  readonly requiredRequestFields: readonly string[];
+  readonly requiredResponseFields: readonly string[];
+  readonly dialectHeaders: readonly string[];
+  readonly identityHeaders: readonly string[];
+  readonly statefulFeatures: readonly string[];
+  readonly unsupportedTranslatedFeatures: readonly string[];
+};
+
 export type HarnessProfile = {
-  readonly name: "claude-code" | "codex" | "opencode" | "cursor" | "generic";
+  readonly name: HarnessName;
+  readonly profiles: readonly HarnessSurfaceProfile[];
   readonly statefulResponses: boolean;
   readonly identityHeaders: readonly string[];
   readonly dialectHeaders: readonly string[];
@@ -16,19 +42,84 @@ export type HarnessDetectionInput = {
   surface: Surface;
   body: unknown;
   headers: Record<string, string | undefined>;
+  transport?: HarnessTransport;
 };
+
+const codexIdentityHeaders = [
+  "x-codex-turn-state",
+  "x-codex-turn-metadata",
+  "x-openai-subagent",
+  "x-request-id",
+  "traceparent",
+  "tracestate"
+] as const;
+
+const claudeCodeIdentityHeaders = [
+  "x-claude-code-session-id",
+  "x-claude-code-agent-id",
+  "x-claude-code-parent-agent-id",
+  "x-request-id",
+  "traceparent",
+  "tracestate"
+] as const;
+
+const opencodeIdentityHeaders = [
+  "x-opencode-session-id",
+  "x-request-id",
+  "traceparent",
+  "tracestate"
+] as const;
+
+const cursorIdentityHeaders = [
+  "x-cursor-session-id",
+  "x-cursor-request-id",
+  "x-request-id",
+  "traceparent",
+  "tracestate"
+] as const;
+
+const genericIdentityHeaders = ["x-request-id", "traceparent", "tracestate"] as const;
+const anthropicDialectHeaders = ["anthropic-version", "anthropic-beta"] as const;
+const openAIResponsesDialectHeaders = ["openai-beta"] as const;
 
 export const codexHarness: HarnessProfile = {
   name: "codex",
-  statefulResponses: true,
-  identityHeaders: [
-    "x-codex-turn-state",
-    "x-codex-turn-metadata",
-    "x-openai-subagent",
-    "x-request-id",
-    "traceparent",
-    "tracestate"
+  profiles: [
+    {
+      id: "codex-responses-http",
+      displayName: "Codex Responses HTTP",
+      harness: "codex",
+      surface: "openai-responses",
+      dialect: "openai-responses",
+      transport: "http",
+      endpoints: ["/v1/responses"],
+      sessionKeys: ["x-codex-session-id", "x-client-request-id", "session_id", "prompt_cache_key", "promptCacheKey"],
+      requiredRequestFields: ["model", "input"],
+      requiredResponseFields: ["id", "object", "output"],
+      dialectHeaders: openAIResponsesDialectHeaders,
+      identityHeaders: codexIdentityHeaders,
+      statefulFeatures: ["previous_response_id"],
+      unsupportedTranslatedFeatures: ["previous_response_id"]
+    },
+    {
+      id: "codex-responses-websocket",
+      displayName: "Codex Responses WebSocket",
+      harness: "codex",
+      surface: "openai-responses",
+      dialect: "openai-responses",
+      transport: "websocket",
+      endpoints: ["/v1/responses"],
+      sessionKeys: ["session_id", "x-codex-session-id", "x-client-request-id"],
+      requiredRequestFields: ["model", "input"],
+      requiredResponseFields: ["id", "object", "output"],
+      dialectHeaders: openAIResponsesDialectHeaders,
+      identityHeaders: codexIdentityHeaders,
+      statefulFeatures: ["previous_response_id", "connection_route"],
+      unsupportedTranslatedFeatures: ["websocket_transport", "previous_response_id"]
+    }
   ],
+  statefulResponses: true,
+  identityHeaders: codexIdentityHeaders,
   dialectHeaders: [],
   promptBlockTags: ["environment_context", "user_instructions"],
   bashToolNames: ["shell", "local_shell"],
@@ -51,16 +142,27 @@ export const codexHarness: HarnessProfile = {
 
 export const claudeCodeHarness: HarnessProfile = {
   name: "claude-code",
-  statefulResponses: false,
-  identityHeaders: [
-    "x-claude-code-session-id",
-    "x-claude-code-agent-id",
-    "x-claude-code-parent-agent-id",
-    "x-request-id",
-    "traceparent",
-    "tracestate"
+  profiles: [
+    {
+      id: "claude-code-messages",
+      displayName: "Claude Code Messages",
+      harness: "claude-code",
+      surface: "anthropic-messages",
+      dialect: "anthropic-messages",
+      transport: "http",
+      endpoints: ["/v1/messages"],
+      sessionKeys: ["x-claude-code-session-id", "metadata.user_id"],
+      requiredRequestFields: ["model", "messages", "max_tokens"],
+      requiredResponseFields: ["id", "type", "role", "content"],
+      dialectHeaders: anthropicDialectHeaders,
+      identityHeaders: claudeCodeIdentityHeaders,
+      statefulFeatures: [],
+      unsupportedTranslatedFeatures: []
+    }
   ],
-  dialectHeaders: ["anthropic-version", "anthropic-beta"],
+  statefulResponses: false,
+  identityHeaders: claudeCodeIdentityHeaders,
+  dialectHeaders: anthropicDialectHeaders,
   promptBlockTags: ["system-reminder", "command-name", "command-message", "local-command-stdout"],
   bashToolNames: ["Bash", "bash"],
   detect: ({ surface, body, headers }) =>
@@ -76,13 +178,26 @@ export const claudeCodeHarness: HarnessProfile = {
 
 export const opencodeHarness: HarnessProfile = {
   name: "opencode",
-  statefulResponses: false,
-  identityHeaders: [
-    "x-opencode-session-id",
-    "x-request-id",
-    "traceparent",
-    "tracestate"
+  profiles: [
+    {
+      id: "opencode-chat",
+      displayName: "opencode Chat",
+      harness: "opencode",
+      surface: "openai-chat",
+      dialect: "openai-chat",
+      transport: "http",
+      endpoints: ["/v1/chat/completions"],
+      sessionKeys: ["x-opencode-session-id", "prompt_cache_key", "promptCacheKey"],
+      requiredRequestFields: ["model", "messages"],
+      requiredResponseFields: ["id", "object", "choices"],
+      dialectHeaders: [],
+      identityHeaders: opencodeIdentityHeaders,
+      statefulFeatures: [],
+      unsupportedTranslatedFeatures: []
+    }
   ],
+  statefulResponses: false,
+  identityHeaders: opencodeIdentityHeaders,
   dialectHeaders: [],
   promptBlockTags: ["system-reminder", "command-name", "command-message", "local-command-stdout"],
   bashToolNames: ["bash", "shell", "local_shell"],
@@ -100,14 +215,26 @@ export const opencodeHarness: HarnessProfile = {
 
 export const cursorHarness: HarnessProfile = {
   name: "cursor",
-  statefulResponses: false,
-  identityHeaders: [
-    "x-cursor-session-id",
-    "x-cursor-request-id",
-    "x-request-id",
-    "traceparent",
-    "tracestate"
+  profiles: [
+    {
+      id: "cursor-byok-chat",
+      displayName: "Cursor BYOK Chat",
+      harness: "cursor",
+      surface: "openai-chat",
+      dialect: "openai-chat",
+      transport: "http",
+      endpoints: ["/v1/chat/completions"],
+      sessionKeys: ["x-cursor-session-id", "cursor-session-id", "metadata.session_id", "metadata.conversation_id"],
+      requiredRequestFields: ["model", "messages"],
+      requiredResponseFields: ["id", "object", "choices"],
+      dialectHeaders: [],
+      identityHeaders: cursorIdentityHeaders,
+      statefulFeatures: [],
+      unsupportedTranslatedFeatures: []
+    }
   ],
+  statefulResponses: false,
+  identityHeaders: cursorIdentityHeaders,
   dialectHeaders: [],
   promptBlockTags: ["system-reminder", "command-name", "command-message", "local-command-stdout"],
   bashToolNames: ["run_terminal_cmd", "shell"],
@@ -122,8 +249,58 @@ export const cursorHarness: HarnessProfile = {
 
 export const genericHarness: HarnessProfile = {
   name: "generic",
+  profiles: [
+    {
+      id: "openai-chat-sdk",
+      displayName: "OpenAI Chat SDK",
+      harness: "generic",
+      surface: "openai-chat",
+      dialect: "openai-chat",
+      transport: "http",
+      endpoints: ["/v1/chat/completions"],
+      sessionKeys: [],
+      requiredRequestFields: ["model", "messages"],
+      requiredResponseFields: ["id", "object", "choices"],
+      dialectHeaders: [],
+      identityHeaders: genericIdentityHeaders,
+      statefulFeatures: [],
+      unsupportedTranslatedFeatures: []
+    },
+    {
+      id: "generic-openai-responses",
+      displayName: "Generic OpenAI Responses",
+      harness: "generic",
+      surface: "openai-responses",
+      dialect: "openai-responses",
+      transport: "http",
+      endpoints: ["/v1/responses"],
+      sessionKeys: [],
+      requiredRequestFields: ["model", "input"],
+      requiredResponseFields: ["id", "object", "output"],
+      dialectHeaders: openAIResponsesDialectHeaders,
+      identityHeaders: genericIdentityHeaders,
+      statefulFeatures: ["previous_response_id"],
+      unsupportedTranslatedFeatures: ["previous_response_id"]
+    },
+    {
+      id: "generic-anthropic-messages",
+      displayName: "Generic Anthropic Messages",
+      harness: "generic",
+      surface: "anthropic-messages",
+      dialect: "anthropic-messages",
+      transport: "http",
+      endpoints: ["/v1/messages"],
+      sessionKeys: [],
+      requiredRequestFields: ["model", "messages", "max_tokens"],
+      requiredResponseFields: ["id", "type", "role", "content"],
+      dialectHeaders: anthropicDialectHeaders,
+      identityHeaders: genericIdentityHeaders,
+      statefulFeatures: [],
+      unsupportedTranslatedFeatures: []
+    }
+  ],
   statefulResponses: false,
-  identityHeaders: ["x-request-id", "traceparent", "tracestate"],
+  identityHeaders: genericIdentityHeaders,
   dialectHeaders: [],
   promptBlockTags: ["system_instruction"],
   bashToolNames: ["Bash", "bash", "shell", "local_shell", "run_terminal_cmd"],
@@ -133,8 +310,39 @@ export const genericHarness: HarnessProfile = {
 
 export const harnessProfiles = [claudeCodeHarness, codexHarness, cursorHarness, opencodeHarness, genericHarness] as const;
 
+export const harnessSurfaceProfiles = harnessProfiles.flatMap((profile) => profile.profiles);
+
+export function harnessSurfaceProfileById(id: HarnessProfileId): HarnessSurfaceProfile {
+  const profile = harnessSurfaceProfiles.find((candidate) => candidate.id === id);
+  if (!profile) throw new Error(`unknown_harness_surface_profile:${id}`);
+  return profile;
+}
+
 export function detectHarness(input: HarnessDetectionInput): HarnessProfile {
   return harnessProfiles.find((profile) => profile.detect(input)) ?? genericHarness;
+}
+
+export function detectHarnessSurfaceProfile(input: HarnessDetectionInput): HarnessSurfaceProfile {
+  const profile = detectHarness(input);
+  return harnessSurfaceProfileFor(profile.name, input.surface, input.transport ?? "http");
+}
+
+export function harnessSurfaceProfileFor(
+  name: HarnessProfile["name"],
+  surface: Surface,
+  transport: HarnessTransport
+): HarnessSurfaceProfile {
+  return harnessSurfaceProfiles.find((profile) =>
+    profile.harness === name &&
+    profile.surface === surface &&
+    profile.transport === transport
+  ) ?? harnessSurfaceProfiles.find((profile) =>
+    profile.harness === name &&
+    profile.surface === surface
+  ) ?? harnessSurfaceProfiles.find((profile) =>
+    profile.harness === "generic" &&
+    profile.surface === surface
+  ) ?? harnessSurfaceProfileById("generic-openai-responses");
 }
 
 export function harnessProfileByName(name: HarnessProfile["name"] | undefined): HarnessProfile {
@@ -160,11 +368,11 @@ export function promptBlockTagsForSurface(surface: Surface) {
 
 export function dialectHeadersFor(dialect: Dialect): readonly string[] {
   if (dialect === "anthropic-messages") return claudeCodeHarness.dialectHeaders;
-  if (dialect === "openai-responses") return ["openai-beta"];
+  if (dialect === "openai-responses") return openAIResponsesDialectHeaders;
   return [];
 }
 
-export function identityHeadersFor(profile: HarnessProfile): readonly string[] {
+export function identityHeadersFor(profile: Pick<HarnessProfile, "identityHeaders"> | Pick<HarnessSurfaceProfile, "identityHeaders">): readonly string[] {
   return profile.identityHeaders;
 }
 

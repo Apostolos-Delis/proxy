@@ -1,0 +1,9 @@
+{
+  "surface": "openai-responses",
+  "harness": "codex",
+  "statefulResponses": true,
+  "sessionId": "codex-translated-anthropic-session",
+  "hasPreviousResponseId": false,
+  "hasTools": true,
+  "hasImages": true
+}

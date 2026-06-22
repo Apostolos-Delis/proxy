@@ -1,0 +1,8 @@
+{
+  "profileId": "generic-openai-responses",
+  "caseId": "translated-anthropic-stream",
+  "surface": "openai-responses",
+  "targetDialect": "anthropic-messages",
+  "description": "OpenAI Responses request without previous_response_id translated to Anthropic Messages with streamed text and function-call deltas.",
+  "mode": "translated"
+}

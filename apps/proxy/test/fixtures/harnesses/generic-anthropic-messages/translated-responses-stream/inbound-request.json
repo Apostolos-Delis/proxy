@@ -1,0 +1,106 @@
+{
+  "model": "claude-router-hard",
+  "system": [
+    {
+      "type": "text",
+      "text": "Use tools carefully.",
+      "cache_control": {
+        "type": "ephemeral"
+      }
+    },
+    {
+      "type": "text",
+      "text": "Prefer concise output."
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "List files.",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        },
+        {
+          "type": "image",
+          "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "iVBORw0KGgo="
+          }
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Planning shell call."
+        },
+        {
+          "type": "tool_use",
+          "id": "toolu_cross_responses_1",
+          "name": "shell",
+          "input": {
+            "cmd": "ls"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_cross_responses_1",
+          "content": "package.json"
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "shell",
+      "description": "Run shell",
+      "input_schema": {
+        "type": "object"
+      },
+      "cache_control": {
+        "type": "ephemeral"
+      }
+    }
+  ],
+  "tool_choice": {
+    "type": "tool",
+    "name": "shell"
+  },
+  "thinking": {
+    "type": "adaptive"
+  },
+  "output_config": {
+    "effort": "low"
+  },
+  "context_management": {
+    "edits": [
+      {
+        "type": "clear_tool_uses_20250919"
+      }
+    ]
+  },
+  "mcp_servers": [
+    {
+      "type": "url",
+      "url": "https://mcp.example"
+    }
+  ],
+  "top_k": 10,
+  "cache_control": {
+    "type": "ephemeral"
+  },
+  "stream": true,
+  "max_tokens": 999
+}

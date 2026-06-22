@@ -1,0 +1,7 @@
+{
+  "profileId": "claude-code-messages",
+  "caseId": "native-nonstream",
+  "surface": "anthropic-messages",
+  "description": "Claude Code Anthropic Messages native non-streaming request with metadata session, tool-use history, tool-result history, image blocks, empty text blocks, and forwarded Anthropic dialect headers.",
+  "mode": "native"
+}

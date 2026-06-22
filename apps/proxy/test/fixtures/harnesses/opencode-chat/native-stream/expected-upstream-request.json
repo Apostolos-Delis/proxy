@@ -1,0 +1,20 @@
+{
+  "model": "gpt-chat-native",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are opencode."
+    },
+    {
+      "role": "user",
+      "content": "Summarize the workspace."
+    }
+  ],
+  "stream": true,
+  "stream_options": {
+    "include_usage": true,
+    "other": "keep"
+  },
+  "max_completion_tokens": 222,
+  "reasoning_effort": "high"
+}

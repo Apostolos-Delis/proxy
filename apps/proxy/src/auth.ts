@@ -77,6 +77,9 @@ export function requestReceivedPayload(
   return {
     ...extra,
     surface,
+    transport: context.transport ?? "http",
+    harness: context.harness ?? null,
+    harnessProfileId: context.harnessProfileId ?? null,
     sessionId: context.sessionId ?? null,
     userId: context.userId ?? null,
     teamId: context.teamId ?? null,

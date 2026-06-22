@@ -1,4 +1,5 @@
 import type { FastifyReply } from "fastify";
+import type { HarnessCompatibilityProfileId } from "@prompt-proxy/schema";
 
 import { buildAnthropicContext, buildOpenAIChatContext, buildOpenAIContext } from "./features.js";
 import { anthropicEffortForModel, supportsAnthropicAdaptiveThinking } from "./catalog.js";
@@ -11,7 +12,7 @@ export type SurfaceAdapter = {
   readonly dialect: Dialect;
   readonly createOperation: string;
   readonly countTokensOperation?: string;
-  buildContext(body: unknown, headers: Record<string, string | undefined>): RouteContext;
+  buildContext(body: unknown, headers: Record<string, string | undefined>, transport?: RouteContext["transport"]): RouteContext;
 };
 
 export type ProviderForwardInput = {
@@ -20,6 +21,7 @@ export type ProviderForwardInput = {
   organizationId: string;
   surface: Surface;
   provider: Provider;
+  harnessProfileId?: HarnessCompatibilityProfileId;
   body: unknown;
   responseStream?: boolean;
   headers: Record<string, string | undefined>;

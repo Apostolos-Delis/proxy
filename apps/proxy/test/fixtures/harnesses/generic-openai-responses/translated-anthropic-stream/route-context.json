@@ -1,0 +1,8 @@
+{
+  "surface": "openai-responses",
+  "harness": "generic",
+  "statefulResponses": false,
+  "hasPreviousResponseId": false,
+  "hasTools": true,
+  "hasImages": true
+}

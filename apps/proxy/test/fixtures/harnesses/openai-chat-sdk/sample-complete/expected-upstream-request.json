@@ -1,0 +1,10 @@
+{
+  "model": "gpt-fixture",
+  "messages": [
+    {
+      "role": "user",
+      "content": "ping"
+    }
+  ],
+  "stream": true
+}

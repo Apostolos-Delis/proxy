@@ -1,0 +1,8 @@
+{
+  "profileId": "generic-openai-responses",
+  "caseId": "translated-chat-stream",
+  "surface": "openai-responses",
+  "targetDialect": "openai-chat",
+  "description": "OpenAI Responses HTTP translated to an OpenAI Chat provider with function call history, function call output, reasoning, max token, and SSE response translation.",
+  "mode": "translated"
+}

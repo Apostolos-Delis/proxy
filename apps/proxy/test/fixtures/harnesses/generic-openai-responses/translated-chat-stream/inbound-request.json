@@ -1,0 +1,42 @@
+{
+  "model": "router-hard",
+  "instructions": "Use tools carefully.",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "List files."
+        }
+      ]
+    },
+    {
+      "type": "function_call",
+      "call_id": "call_same_family_1",
+      "name": "shell",
+      "arguments": "{\"cmd\":\"ls\"}"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call_same_family_1",
+      "output": "package.json"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "name": "shell",
+      "description": "Run shell",
+      "parameters": {
+        "type": "object"
+      }
+    }
+  ],
+  "reasoning": {
+    "effort": "low"
+  },
+  "stream": true,
+  "max_output_tokens": 999
+}

@@ -1,0 +1,8 @@
+{
+  "profileId": "cursor-byok-chat",
+  "caseId": "translated-responses-stream",
+  "surface": "openai-chat",
+  "targetDialect": "openai-responses",
+  "description": "Cursor BYOK OpenAI Chat translated to an OpenAI Responses provider with tool calls, tool results, reasoning, max token fields, and SSE response translation.",
+  "mode": "translated"
+}

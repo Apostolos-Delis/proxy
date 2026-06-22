@@ -18,6 +18,7 @@ import { SessionDetailPage } from "./sessionDetailPage";
 import { SettingsPage } from "./settingsPage";
 import { AppShell } from "./shell";
 import { CachingPage } from "./cachingPage";
+import { HarnessCompatibilityPage } from "./harnessCompatibilityPage";
 import { UsagePage } from "./usagePage";
 import { UsersPage } from "./usersPage";
 
@@ -128,6 +129,13 @@ const routingConfigsRoute = createRoute({
   component: RoutingConfigsPage
 });
 
+const compatibilityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/compatibility",
+  beforeLoad: requireAdmin,
+  component: HarnessCompatibilityPage
+});
+
 const routingConfigCreateRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/routing/new",
@@ -179,6 +187,7 @@ const routeTree = rootRoute.addChildren([
   keysCreateRoute,
   providersRoute,
   routingConfigsRoute,
+  compatibilityRoute,
   routingConfigCreateRoute,
   routingConfigDetailRoute,
   usersRoute,

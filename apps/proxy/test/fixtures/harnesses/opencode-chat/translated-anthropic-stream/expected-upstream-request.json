@@ -1,0 +1,84 @@
+{
+  "model": "claude-opus-4-8-cross-family",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "List files."
+        },
+        {
+          "type": "image",
+          "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "abc123"
+          }
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Planning shell call."
+        },
+        {
+          "type": "tool_use",
+          "id": "call_cross_chat_1",
+          "name": "shell",
+          "input": {
+            "cmd": "ls"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "call_cross_chat_1",
+          "content": "package.json"
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "shell",
+      "description": "Run shell",
+      "input_schema": {
+        "type": "object"
+      }
+    }
+  ],
+  "tool_choice": {
+    "type": "tool",
+    "name": "shell"
+  },
+  "stream": true,
+  "system": [
+    {
+      "type": "text",
+      "text": "Use tools carefully."
+    },
+    {
+      "type": "text",
+      "text": "Prefer concise output."
+    }
+  ],
+  "max_tokens": 111,
+  "stop_sequences": [
+    "DONE"
+  ],
+  "thinking": {
+    "type": "adaptive",
+    "display": "omitted"
+  },
+  "output_config": {
+    "effort": "high"
+  }
+}
