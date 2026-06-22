@@ -75,7 +75,23 @@ describe("database migrations", () => {
       select column_name
       from information_schema.columns
       where table_name = 'route_decisions'
-        and column_name in ('routing_config_id', 'routing_config_version_id', 'routing_config_version', 'routing_config_hash')
+        and column_name in (
+          'route_execution_plan',
+          'selected_candidate_id',
+          'translated',
+          'translator_id',
+          'routing_config_id',
+          'routing_config_version_id',
+          'routing_config_version',
+          'routing_config_hash'
+        )
+      order by column_name
+    `);
+    const providerAttemptRouteColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'provider_attempts'
+        and column_name in ('route_candidate_id', 'attempt_index', 'fallback_index', 'skip_reason')
       order by column_name
     `);
     const auditColumns = await client.query<{ column_name: string }>(`
@@ -225,10 +241,20 @@ describe("database migrations", () => {
       "routing_config_version_id"
     ]);
     expect(decisionRoutingColumns.rows.map((row) => row.column_name)).toEqual([
+      "route_execution_plan",
       "routing_config_hash",
       "routing_config_id",
       "routing_config_version",
-      "routing_config_version_id"
+      "routing_config_version_id",
+      "selected_candidate_id",
+      "translated",
+      "translator_id"
+    ]);
+    expect(providerAttemptRouteColumns.rows.map((row) => row.column_name)).toEqual([
+      "attempt_index",
+      "fallback_index",
+      "route_candidate_id",
+      "skip_reason"
     ]);
     expect(auditColumns.rows.map((row) => row.column_name)).toEqual([
       "access_path",
@@ -314,6 +340,107 @@ describe("database migrations", () => {
       "organization_id",
       "slug"
     ]);
+  });
+
+  it("adds route execution plan defaults for existing write paths", async () => {
+    const client = await migratedClient();
+
+    try {
+      await client.exec(`
+        insert into organizations (id, slug, name) values ('org_route_plan', 'org-route-plan', 'Org Route Plan');
+        insert into workspaces (id, organization_id, slug, name) values
+          ('workspace_route_plan', 'org_route_plan', 'default', 'Default');
+        insert into requests (
+          id,
+          organization_id,
+          workspace_id,
+          surface,
+          idempotency_key,
+          requested_model,
+          input_hash
+        ) values (
+          'request_route_plan',
+          'org_route_plan',
+          'workspace_route_plan',
+          'openai-responses',
+          'idem-route-plan',
+          'router-auto',
+          'hash-route-plan'
+        );
+        insert into route_decisions (
+          id,
+          request_id,
+          organization_id,
+          workspace_id,
+          requested_model,
+          policy_version
+        ) values (
+          'decision_route_plan',
+          'request_route_plan',
+          'org_route_plan',
+          'workspace_route_plan',
+          'router-auto',
+          '2026-06-08'
+        );
+        insert into provider_attempts (
+          id,
+          request_id,
+          organization_id,
+          workspace_id,
+          surface,
+          provider,
+          model
+        ) values (
+          'attempt_route_plan',
+          'request_route_plan',
+          'org_route_plan',
+          'workspace_route_plan',
+          'openai-responses',
+          'openai',
+          'gpt-5.4'
+        );
+      `);
+
+      const decisions = await client.query<{
+        route_execution_plan: string;
+        selected_candidate_id: string | null;
+        translated: boolean;
+        translator_id: string | null;
+      }>(`
+        select
+          route_execution_plan::text,
+          selected_candidate_id,
+          translated,
+          translator_id
+        from route_decisions
+        where id = 'decision_route_plan'
+      `);
+      const attempts = await client.query<{
+        route_candidate_id: string | null;
+        attempt_index: number | null;
+        fallback_index: number | null;
+        skip_reason: string | null;
+      }>(`
+        select route_candidate_id, attempt_index, fallback_index, skip_reason
+        from provider_attempts
+        where id = 'attempt_route_plan'
+      `);
+
+      expect(decisions.rows).toEqual([{
+        route_execution_plan: "{}",
+        selected_candidate_id: null,
+        translated: false,
+        translator_id: null
+      }]);
+      expect(attempts.rows).toEqual([{
+        route_candidate_id: null,
+        attempt_index: null,
+        fallback_index: null,
+        skip_reason: null
+      }]);
+    } finally {
+      await client.close();
+    }
   });
 
   it("enforces tenant- and workspace-scoped routing config references", async () => {

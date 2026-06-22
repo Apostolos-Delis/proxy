@@ -285,13 +285,13 @@ describe("routing config runtime resolution", () => {
         include: ["reasoning.encrypted_content"]
       })
     });
-    await response.text();
+    const body = await response.text();
 
     const providerCall = activeFixture.openai.records.find((record) =>
       record.body.model === "gpt-config-hard"
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status, body).toBe(200);
     expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
     expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("xhigh");
     expect(providerCall).toBeTruthy();
@@ -305,8 +305,201 @@ describe("routing config runtime resolution", () => {
     expect(providerCall?.headers["x-request-id"]).toBe("request-id-config");
 
     const eventRows = await activeFixture.db.select().from(events);
+    const eventTypes = eventRows
+      .filter((event) => event.scopeType === "request")
+      .sort((left, right) => left.sequence - right.sequence)
+      .map((event) => event.eventType);
+    const planIndex = eventTypes.indexOf("routing.plan_recorded");
+    expect(planIndex).toBeGreaterThan(-1);
+    expect(planIndex).toBeLessThan(eventTypes.indexOf("routing.decision_recorded"));
+    expect(planIndex).toBeLessThan(eventTypes.indexOf("provider.request_started"));
+    const providerStarted = eventRows.find((event) => event.eventType === "provider.request_started");
+    expect(providerStarted?.payload).toMatchObject({
+      routeCandidateId: "candidate_1",
+      attemptIndex: 0,
+      fallbackIndex: 0
+    });
+    const plan = eventRows.find((event) => event.eventType === "routing.plan_recorded");
     const decision = eventRows.find((event) => event.eventType === "routing.decision_recorded");
     expect(decision?.payload).not.toHaveProperty("providerSettings");
+    expect(decision?.payload).not.toHaveProperty("routeExecutionPlan");
+    const routeExecutionPlan = plan?.payload.routeExecutionPlan as Record<string, any> | undefined;
+    expect(routeExecutionPlan).toMatchObject({
+      schemaVersion: 1,
+      requestId: plan?.scopeId,
+      organizationId,
+      workspaceId: `${organizationId}:workspace:default`,
+      surface: "openai-responses",
+      dialect: "openai-responses",
+      routingConfig: {
+        hash: "sha256:openai-route-config"
+      },
+      selected: {
+        candidateId: "candidate_1",
+        providerId: "openai",
+        model: "gpt-config-hard",
+        dialect: "openai-responses",
+        translated: false
+      }
+    });
+    expect(routeExecutionPlan?.candidates).toEqual([
+      expect.objectContaining({
+        id: "candidate_0",
+        order: 0,
+        providerId: "anthropic",
+        translated: true,
+        compatible: false,
+        eligible: false,
+        skipReasons: ["target_unavailable_previous_response_id"]
+      }),
+      expect.objectContaining({
+        id: "candidate_1",
+        order: 1,
+        providerId: "openai",
+        model: "gpt-config-hard",
+        endpointDialect: "openai-responses",
+        translated: false,
+        compatible: true,
+        eligible: true,
+        factors: expect.objectContaining({
+          nativeDialect: true,
+          capabilityMatch: true,
+          budgetAllowed: true
+        })
+      })
+    ]);
+    expect(routeExecutionPlan?.policyResults).toEqual([
+      expect.objectContaining({
+        policy: "budget_route_route_limit",
+        status: "allowed",
+        skipReason: null,
+        current: "hard",
+        limit: "deep"
+      })
+    ]);
+    expect(routeExecutionPlan?.candidates?.[1]).not.toHaveProperty("providerSettings");
+  });
+
+  it("records missing credential and budget evidence in route plan candidates", async () => {
+    const organizationId = "org_config_route_plan_missing_credential";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: { ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8" },
+      openAIOptions: {
+        classifierOutput: {
+          complexity: "hard",
+          risk: ["debugging"],
+          recommended_route: "hard",
+          can_use_fast_model: false,
+          needs_deep_reasoning: false,
+          reason_codes: ["missing_credential_plan"],
+          confidence: 0.91
+        }
+      }
+    });
+    await activeFixture.db.insert(providers).values({
+      id: "00000000-0000-0000-0000-00000000e019",
+      organizationId,
+      slug: "acme-needs-key",
+      displayName: "Acme needs key",
+      baseUrl: activeFixture.openai.url,
+      authStyle: "bearer",
+      endpoints: [{ dialect: "openai-responses", path: "/responses" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "missing-credential-plan-token",
+      slug: "missing-credential-plan",
+      configHash: "sha256:missing-credential-plan-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            targets: [
+              {
+                providerId: "acme-needs-key",
+                model: "acme-hard",
+                effort: "high",
+                verbosity: "medium"
+              },
+              {
+                providerId: "openai",
+                model: "gpt-credential-plan",
+                effort: "high",
+                verbosity: "medium"
+              }
+            ]
+          }
+        }
+      })
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer missing-credential-plan-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this route plan",
+        stream: true
+      })
+    });
+    const body = await response.text();
+
+    const providerCall = activeFixture.openai.records.find((record) =>
+      record.body.model === "gpt-credential-plan"
+    );
+    const eventRows = await activeFixture.db.select().from(events);
+    const decision = eventRows.find((event) => event.eventType === "routing.decision_recorded");
+    const plan = eventRows.find((event) => event.eventType === "routing.plan_recorded");
+    expect(decision?.payload).not.toHaveProperty("routeExecutionPlan");
+    const routeExecutionPlan = plan?.payload.routeExecutionPlan as Record<string, any> | undefined;
+
+    expect(response.status, body).toBe(200);
+    expect(providerCall).toBeTruthy();
+    expect(routeExecutionPlan?.selected).toEqual(expect.objectContaining({
+      candidateId: "candidate_1",
+      providerId: "openai",
+      model: "gpt-credential-plan",
+      providerAccountId: null
+    }));
+    expect(routeExecutionPlan?.candidates).toEqual([
+      expect.objectContaining({
+        id: "candidate_0",
+        providerId: "acme-needs-key",
+        eligible: false,
+        skipReasons: ["target_skipped_missing_credential"],
+        factors: expect.objectContaining({
+          accountAvailable: false,
+          budgetAllowed: true,
+          rateLimitAllowed: null
+        })
+      }),
+      expect.objectContaining({
+        id: "candidate_1",
+        providerId: "openai",
+        eligible: true,
+        skipReasons: [],
+        factors: expect.objectContaining({
+          accountAvailable: true,
+          budgetAllowed: true,
+          rateLimitAllowed: null
+        })
+      })
+    ]);
+    expect(routeExecutionPlan?.policyResults).toEqual([
+      expect.objectContaining({
+        policy: "budget_route_route_limit",
+        status: "allowed",
+        current: "hard",
+        limit: "deep"
+      })
+    ]);
   });
 
   it("omits effort for custom providers without effort capabilities", async () => {
@@ -611,6 +804,37 @@ describe("routing config runtime resolution", () => {
       { name: "shell", input_schema: { type: "object", properties: {} } }
     ]);
     expect(providerCall?.headers["x-claude-code-session-id"]).toBe("claude-session-config");
+
+    const eventRows = await activeFixture.db.select().from(events);
+    const decision = eventRows.find((event) => event.eventType === "routing.decision_recorded");
+    const plan = eventRows.find((event) => event.eventType === "routing.plan_recorded");
+    expect(decision?.payload).not.toHaveProperty("routeExecutionPlan");
+    const routeExecutionPlan = plan?.payload.routeExecutionPlan as Record<string, any> | undefined;
+    expect(routeExecutionPlan).toMatchObject({
+      schemaVersion: 1,
+      surface: "anthropic-messages",
+      dialect: "anthropic-messages",
+      routingConfig: {
+        hash: "sha256:anthropic-route-config"
+      },
+      selected: {
+        candidateId: "candidate_0",
+        providerId: "anthropic",
+        model: "claude-opus-4-8",
+        dialect: "anthropic-messages",
+        translated: false
+      }
+    });
+    expect(routeExecutionPlan?.candidates?.[0]).toMatchObject({
+      providerId: "anthropic",
+      model: "claude-opus-4-8",
+      endpointDialect: "anthropic-messages",
+      translated: false,
+      factors: expect.objectContaining({
+        nativeDialect: true,
+        capabilityMatch: true
+      })
+    });
   });
   it("prepends the organization system prompt to OpenAI Responses instructions", async () => {
     const organizationId = "org_system_prompt_openai";

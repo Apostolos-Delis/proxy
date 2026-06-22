@@ -13,7 +13,7 @@ The upstream research lives in:
 
 ## Scope Documents
 
-1. [Route execution plan](route-execution-plan.md)
+1. [Route execution plan](route-execution-plan.md) ([tickets](route-execution-plan-tickets.md))
 2. [Provider account health](provider-account-health.md)
 3. [Auditable fallback](auditable-fallback.md)
 4. [Provider registry V2](provider-registry-v2.md)

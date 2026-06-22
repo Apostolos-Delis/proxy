@@ -64,6 +64,10 @@ export function routeDecisionSummary(row: typeof routeDecisions.$inferSelect) {
     guardrailActions: row.guardrailActions,
     budgetChecks: row.budgetChecks,
     classifier: row.classifier,
+    routeExecutionPlan: row.routeExecutionPlan,
+    selectedCandidateId: row.selectedCandidateId ?? undefined,
+    translated: row.translated,
+    translatorId: row.translatorId ?? undefined,
     policyVersion: row.policyVersion,
     createdAt: row.createdAt.toISOString()
   };
@@ -143,6 +147,10 @@ export function providerAttemptSummary(row: ProviderAttemptRow) {
     statusCode: row.statusCode ?? undefined,
     error: row.error ?? undefined,
     usage: row.usage as JsonObject,
+    routeCandidateId: row.routeCandidateId ?? undefined,
+    attemptIndex: row.attemptIndex ?? undefined,
+    fallbackIndex: row.fallbackIndex ?? undefined,
+    skipReason: row.skipReason ?? undefined,
     startedAt: row.startedAt.toISOString(),
     firstByteAt: row.firstByteAt?.toISOString() ?? undefined,
     completedAt: row.completedAt?.toISOString() ?? undefined

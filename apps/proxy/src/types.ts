@@ -4,6 +4,7 @@ import type {
   CompressionPolicy,
   Provider as SchemaProvider,
   ProviderAccountAuthType,
+  RouteExecutionPlan,
   RoutingConfig,
   SessionPinnedSettings,
   Surface as SchemaSurface,
@@ -140,6 +141,7 @@ export type RouteDecision = {
   };
   routingConfig?: RoutingConfigSnapshot;
   compressionPolicy?: CompressionPolicy;
+  routeExecutionPlan?: RouteExecutionPlan;
   policyVersion: string;
   error?: string;
   errorMessage?: string;

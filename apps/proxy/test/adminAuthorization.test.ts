@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { events, organizationMembers, requests, routeDecisions, users } from "@prompt-proxy/db";
+import {
+  defaultWorkspaceId,
+  events,
+  organizationMembers,
+  providerAttempts,
+  requests,
+  routeDecisions,
+  users
+} from "@prompt-proxy/db";
 import { ORGANIZATION_MEMBER_ROLES, type OrganizationMemberRole } from "@prompt-proxy/schema";
 
 import { adminGql, captureFixture, sessionEvent, usageDecision, usageRequest, type PromptTestFixture } from "./promptTestFixture.js";
@@ -75,12 +83,27 @@ describe("admin authorization", () => {
       request(requestId: $requestId) {
         request {
           requestId
+          selectedCandidateId
+          translated
+          routeSkipReasons
           routingConfig { configId version configHash }
           classifier
         }
         events {
           eventId
           payload
+        }
+        routeDecisions {
+          routeExecutionPlan
+          selectedCandidateId
+          translated
+          translatorId
+        }
+        providerAttempts {
+          routeCandidateId
+          attemptIndex
+          fallbackIndex
+          skipReason
         }
       }
     }`;
@@ -91,10 +114,15 @@ describe("admin authorization", () => {
     expect(memberResponse.errors).toBeUndefined();
     expect(memberResponse.data?.request.request).toEqual(expect.objectContaining({
       requestId: "request_sanitized",
+      selectedCandidateId: null,
+      translated: null,
+      routeSkipReasons: [],
       routingConfig: null,
       classifier: null
     }));
     expect(memberResponse.data?.request.events).toEqual([]);
+    expect(memberResponse.data?.request.routeDecisions).toEqual([]);
+    expect(memberResponse.data?.request.providerAttempts).toEqual([]);
 
     const adminResponse = await adminGql(fixture.proxyUrl, fixture.adminHeaders, query, {
       requestId: "request_sanitized"
@@ -103,12 +131,31 @@ describe("admin authorization", () => {
     expect(adminResponse.data?.request.request.routingConfig).toEqual(expect.objectContaining({
       configId: "org_admin_authz_request_detail:routing-config:default"
     }));
+    expect(adminResponse.data?.request.request).toEqual(expect.objectContaining({
+      selectedCandidateId: "candidate_0",
+      translated: false,
+      routeSkipReasons: []
+    }));
     expect(adminResponse.data?.request.request.classifier).toEqual(expect.objectContaining({
       model: "route-classifier-cheap"
     }));
     expect(adminResponse.data?.request.events[0].payload).toEqual(expect.objectContaining({
       internalHint: "sensitive-routing-context"
     }));
+    expect(adminResponse.data?.request.routeDecisions[0]).toEqual(expect.objectContaining({
+      selectedCandidateId: "candidate_0",
+      translated: false,
+      translatorId: null,
+      routeExecutionPlan: expect.objectContaining({
+        schemaVersion: 1
+      })
+    }));
+    expect(adminResponse.data?.request.providerAttempts[0]).toEqual({
+      routeCandidateId: "candidate_0",
+      attemptIndex: 0,
+      fallbackIndex: 0,
+      skipReason: null
+    });
   });
 
   async function setup(organizationId: string) {
@@ -139,7 +186,23 @@ async function seedRequestDetail(fixture: PromptTestFixture) {
       model: "route-classifier-cheap",
       confidence: 0.82,
       reasonCodes: ["sensitive-internal-signal"]
-    }
+    },
+    routeExecutionPlan: requestRouteExecutionPlan(organizationId) as never,
+    selectedCandidateId: "candidate_0",
+    translated: false
+  });
+  await fixture.db.insert(providerAttempts).values({
+    id: "attempt_sanitized",
+    requestId: "request_sanitized",
+    organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
+    surface: "openai-responses",
+    provider: "openai",
+    model: "gpt-fast",
+    terminalStatus: "completed",
+    routeCandidateId: "candidate_0",
+    attemptIndex: 0,
+    fallbackIndex: 0
   });
   await fixture.db.insert(events).values({
     ...sessionEvent("event_sanitized", organizationId, "request_sanitized", "session_sanitized", createdAt),
@@ -149,6 +212,67 @@ async function seedRequestDetail(fixture: PromptTestFixture) {
       internalHint: "sensitive-routing-context"
     }
   });
+}
+
+function requestRouteExecutionPlan(organizationId: string) {
+  const routingConfigId = `${organizationId}:routing-config:default`;
+  return {
+    schemaVersion: 1,
+    requestId: "request_sanitized",
+    organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
+    apiKeyId: "api_key_sanitized",
+    surface: "openai-responses",
+    dialect: "openai-responses",
+    classifier: {
+      provider: "openai",
+      model: "route-classifier-cheap",
+      route: "fast",
+      confidence: 0.82,
+      attempts: 1,
+      dataMode: "metadata"
+    },
+    routingConfig: {
+      id: routingConfigId,
+      versionId: `${routingConfigId}:v1`,
+      version: 1,
+      hash: "sha256:sanitized-decision"
+    },
+    candidates: [
+      {
+        id: "candidate_0",
+        order: 0,
+        providerId: "openai",
+        providerAccountIds: [],
+        model: "gpt-fast",
+        endpointDialect: "openai-responses",
+        translated: false,
+        translatorId: null,
+        compatible: true,
+        eligible: true,
+        skipReasons: [],
+        factors: {
+          nativeDialect: true,
+          capabilityMatch: true,
+          contextWindowOk: null,
+          providerHealthy: null,
+          accountAvailable: true,
+          budgetAllowed: null,
+          rateLimitAllowed: null,
+          sessionAffinityMatch: null
+        }
+      }
+    ],
+    selected: {
+      candidateId: "candidate_0",
+      providerId: "openai",
+      providerAccountId: null,
+      model: "gpt-fast",
+      dialect: "openai-responses",
+      translated: false
+    },
+    policyResults: []
+  };
 }
 
 async function headersForRole(fixture: PromptTestFixture, role: OrganizationMemberRole) {

@@ -352,6 +352,19 @@ export class WebSocketRoutingProxy {
         result: compression,
         warn: (err, message) => this.log?.warn({ err, requestId }, message)
       });
+
+      const routeCandidateId = decision.routeExecutionPlan?.selected?.candidateId;
+      const providerRequestStartedPayload: JsonObject = {
+        surface: openAIResponsesSurface.surface,
+        provider,
+        transport: "websocket",
+        model: decision.selectedModel ?? "unknown",
+        providerAttemptId: attempt.id,
+        preparedRequestHash: requestBodyHash(forwardedBody),
+        attemptIndex: 0,
+        fallbackIndex: 0
+      };
+      if (routeCandidateId !== undefined) providerRequestStartedPayload.routeCandidateId = routeCandidateId;
       await this.events.append({
         scopeType: "request",
         scopeId: requestId,
@@ -360,14 +373,7 @@ export class WebSocketRoutingProxy {
         idempotencyKey,
         producer: "prompt-proxy.provider",
         eventType: "provider.request_started",
-        payload: {
-          surface: openAIResponsesSurface.surface,
-          provider,
-          transport: "websocket",
-          model: decision.selectedModel ?? "unknown",
-          providerAttemptId: attempt.id,
-          preparedRequestHash: requestBodyHash(forwardedBody)
-        }
+        payload: providerRequestStartedPayload
       });
       upstreamTarget = await this.resolveWebSocketUpstream(
         identity,

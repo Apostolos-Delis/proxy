@@ -6,8 +6,10 @@ import {
   events,
   promptAccessAudit,
   promptArtifacts,
+  providerAttempts,
   providers,
   requests,
+  routeDecisions,
   routingConfigs,
   routingConfigVersions,
   usageLedger,
@@ -19,8 +21,10 @@ describe("prompt proxy database schema", () => {
     expect(events).toBeTruthy();
     expect(promptArtifacts).toBeTruthy();
     expect(providers).toBeTruthy();
+    expect(providerAttempts.routeCandidateId).toBeTruthy();
     expect(promptAccessAudit).toBeTruthy();
     expect(requests).toBeTruthy();
+    expect(routeDecisions.routeExecutionPlan).toBeTruthy();
     expect(routingConfigs).toBeTruthy();
     expect(routingConfigVersions).toBeTruthy();
     expect(usageLedger).toBeTruthy();

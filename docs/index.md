@@ -41,6 +41,7 @@
 ## Execution
 
 - [Implementation tickets](implementation-tickets.md)
+- [Route execution plan V1 tickets](scopes/router-research-roadmap-v1/route-execution-plan-tickets.md)
 - [Routing configs V1 tickets](scopes/routing-configs-v1/TICKETS.md)
 - [AWS prod-like deployment tickets](scopes/aws-prod-like-deployment-v1/TICKETS.md)
 - [Subscription auth V1 tickets](scopes/subscription-auth-v1/TICKETS.md)

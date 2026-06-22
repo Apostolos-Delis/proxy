@@ -54,6 +54,8 @@ export type OverviewDashboardShape = Omit<OverviewDashboardModel, "requests" | "
 
 export type RequestDetailShape = {
   request: RequestSummaryShape | null;
+  routeDecisions: RouteDecisionModel[];
+  providerAttempts: ProviderAttemptModel[];
   events: ProxyEventShape[];
   compressionReceipts: CompressionReceiptModel[];
 };

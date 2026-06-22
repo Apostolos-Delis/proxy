@@ -1,25 +1,26 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Boxes, Layers, Shield, Users } from "lucide-react";
+import { Boxes, Languages, Layers, Shield, TriangleAlert, Users } from "lucide-react";
 
-import { isListedPromptArtifact, promptArtifactRank } from "./artifactKinds";
-import { displayUser } from "./consoleData";
 import { compactId, formatCompact, formatDateTime, formatMoney } from "./format";
-import type { RequestsPageQuery } from "./gql/graphql";
 import { promptDetailQueryOptions } from "./promptDetailPage";
+import {
+  formatLatency,
+  promptRows,
+  requestSearchValue,
+  selectedCost,
+  selectedModel,
+  skipReasonLabel,
+  terminalStatus,
+  totalTokens,
+  translationMode,
+  type PromptLogRow
+} from "./requestsPageData";
 import { RoutingConfigMicro } from "./routingSnapshot";
 import { optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { StatusBadge, UserCell } from "./ui";
 
-type PromptSummary = RequestsPageQuery["prompts"]["data"][number];
-type RequestSummary = RequestsPageQuery["requests"][number];
-
-export type PromptLogRow = {
-  prompt: PromptSummary;
-  request?: RequestSummary;
-  userName: string;
-  userEmail?: string | null;
-};
+export { promptRows, requestSearchValue };
 
 export const requestColumns: ConsoleTableColumn<PromptLogRow>[] = [
   { id: "prompt", header: "Prompt", size: 420, accessorFn: (row) => row.prompt.preview ?? "", cell: ({ row }) => <PromptCell row={row.original} /> },
@@ -51,46 +52,10 @@ export function requestFilters(rows: PromptLogRow[]): ConsoleTableFilter<PromptL
     { id: "user", label: "User", allLabel: "All users", icon: <Users />, options: uniqueOptionItems(rows.map((row) => ({ value: row.prompt.userId ?? "unknown", label: row.userName }))), getValue: (row) => row.prompt.userId ?? "unknown" },
     { id: "surface", label: "Surface", allLabel: "All surfaces", icon: <Layers />, options: optionItems(rows.map((row) => row.prompt.surface)), getValue: (row) => row.prompt.surface },
     { id: "model", label: "Model", allLabel: "All models", icon: <Boxes />, options: optionItems(rows.map(selectedModel)), getValue: selectedModel },
+    { id: "translation", label: "Translation", allLabel: "All modes", icon: <Languages />, options: optionItems(rows.map(translationMode)), getValue: translationMode },
+    { id: "skipReason", label: "Skip reason", allLabel: "All skips", icon: <TriangleAlert />, options: uniqueOptionItems(rows.flatMap((row) => row.request?.routeSkipReasons.map(skipReasonLabel) ?? [])), getValue: (row) => row.request?.routeSkipReasons.map(skipReasonLabel) ?? [] },
     { id: "status", label: "Status", allLabel: "All statuses", icon: <Shield />, options: optionItems(rows.map(terminalStatus)), getValue: terminalStatus }
   ];
-}
-
-export function requestSearchValue(row: PromptLogRow) {
-  const { prompt, request } = row;
-  return [
-    prompt.preview,
-    prompt.requestId,
-    prompt.routingConfig?.configName,
-    prompt.routingConfig?.configHash,
-    request?.routingConfig?.configName,
-    request?.routingConfig?.configHash,
-    row.userName,
-    prompt.userId,
-    selectedModel(row),
-    terminalStatus(row),
-    prompt.surface
-  ].filter((value): value is string => Boolean(value));
-}
-
-export function promptRows(prompts: PromptSummary[], requests: RequestSummary[], users: RequestsPageQuery["users"]): PromptLogRow[] {
-  const requestsById = new Map(requests.map((request) => [request.requestId, request]));
-  const usersById = new Map(users.map((user) => [user.userId, user]));
-  const promptsByRequest = new Map<string, PromptSummary>();
-  prompts.filter(isVisiblePromptArtifact).forEach((prompt) => {
-    const existing = promptsByRequest.get(prompt.requestId);
-    if (!existing || artifactRank(prompt) < artifactRank(existing)) {
-      promptsByRequest.set(prompt.requestId, prompt);
-    }
-  });
-  return [...promptsByRequest.values()].map((prompt) => {
-    const user = prompt.userId ? usersById.get(prompt.userId) : undefined;
-    return {
-      prompt,
-      request: requestsById.get(prompt.requestId),
-      userName: user ? displayUser(user) : prompt.userId ?? "unknown",
-      userEmail: user?.email
-    };
-  });
 }
 
 function PromptCell({ row }: { row: PromptLogRow }) {
@@ -138,32 +103,4 @@ function ModelCell({ row }: { row: PromptLogRow }) {
       <RoutingConfigMicro snapshot={row.prompt.routingConfig ?? row.request?.routingConfig} />
     </>
   );
-}
-
-function totalTokens(row: PromptLogRow) {
-  return row.request?.usage.totalTokens ?? row.prompt.tokenEstimate ?? 0;
-}
-
-function selectedCost(row: PromptLogRow) {
-  return row.request?.selectedCost ?? row.prompt.cost.selected;
-}
-
-function selectedModel(row: PromptLogRow) {
-  return row.prompt.selectedModel ?? row.request?.selectedModel ?? "unknown";
-}
-
-function terminalStatus(row: PromptLogRow) {
-  return row.request?.terminalStatus ?? "unknown";
-}
-
-function isVisiblePromptArtifact(prompt: PromptSummary) {
-  return isListedPromptArtifact(prompt.kind);
-}
-
-function artifactRank(prompt: PromptSummary) {
-  return promptArtifactRank(prompt.kind);
-}
-
-function formatLatency(value?: number | null) {
-  return value === undefined || value === null ? "unknown" : `${formatCompact(value)}ms`;
 }
