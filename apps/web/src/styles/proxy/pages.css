@@ -383,6 +383,7 @@
 
 .usage-grid-range {
   justify-content: flex-end;
+  gap: 8px;
   margin-bottom: 16px;
 }
 
