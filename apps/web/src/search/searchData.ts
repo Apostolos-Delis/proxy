@@ -12,7 +12,6 @@ import {
   ScrollText,
   ServerCog,
   Settings,
-  ShieldCheck,
   Users
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -40,7 +39,6 @@ export type PalettePagePath =
   | "/logs"
   | "/prompts"
   | "/routing"
-  | "/compatibility"
   | "/api-keys"
   | "/providers"
   | "/users"
@@ -95,7 +93,6 @@ export const palettePages: PalettePage[] = [
   { path: "/logs", title: "Logs", subtitle: "Sessions & request stream", keywords: ["sessions", "replay", "conversations", "agents", "turns", "requests", "traffic", "prompts", "stream"], icon: Logs },
   { path: "/prompts", title: "Prompts", subtitle: "Captured prompt artifacts", keywords: ["artifacts", "raw text", "capture"], icon: ScrollText },
   { path: "/routing", title: "Routing", subtitle: "Config versions", keywords: ["routes", "configs", "classifier", "models", "versions"], icon: GitBranch },
-  { path: "/compatibility", title: "Compatibility", subtitle: "Harness matrix", keywords: ["harness", "matrix", "native", "translated", "blocked", "fixtures"], icon: ShieldCheck },
   { path: "/api-keys", title: "API keys", subtitle: "Manage secrets", keywords: ["secrets", "tokens", "credentials", "keys"], icon: KeyRound },
   { path: "/providers", title: "Model providers", subtitle: "Registry and credentials", keywords: ["provider", "providers", "models", "credentials", "byok"], icon: ServerCog },
   { path: "/users", title: "Users", subtitle: "Team & access", keywords: ["team", "members", "access", "roles"], icon: Users },

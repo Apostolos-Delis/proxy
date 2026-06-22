@@ -227,11 +227,6 @@ export type CompressionPreviewPanelQueryVariables = Exact<{
 
 export type CompressionPreviewPanelQuery = { compressionPreview: { contentAvailable: boolean, contentRedactionReason: string | null, blocks: number, savedBytes: number, savedTokens: number, previewBlocks: Array<{ blockPath: string, toolName: string, ruleId: string, status: string, skipReason: string | null, originalBytes: number, compressedBytes: number, savedTokens: number, diffSegments: Array<{ side: string, text: string }> }> } };
 
-export type HarnessCompatibilityMatrixQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type HarnessCompatibilityMatrixQuery = { harnessCompatibilityMatrix: Array<{ profileId: string, displayName: string, harness: string, surface: string, transport: string, targetDialect: string, effectiveDialect: string | null, translatedFrom: string, translatedTo: string | null, status: string, support: string, nativeSupport: boolean, translatedSupport: boolean, statefulFeatures: Array<string>, unsupportedStatefulFeatures: Array<string>, reasonCodes: Array<string>, testedFixtureCount: number, lastSmokeStatus: { status: string, checkedAt: string | null, detail: string | null } | null }> };
-
 export type InvitationsListQueryVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -990,34 +985,6 @@ export const CompressionPreviewPanelDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CompressionPreviewPanelQuery, CompressionPreviewPanelQueryVariables>;
-export const HarnessCompatibilityMatrixDocument = new TypedDocumentString(`
-    query HarnessCompatibilityMatrix {
-  harnessCompatibilityMatrix {
-    profileId
-    displayName
-    harness
-    surface
-    transport
-    targetDialect
-    effectiveDialect
-    translatedFrom
-    translatedTo
-    status
-    support
-    nativeSupport
-    translatedSupport
-    statefulFeatures
-    unsupportedStatefulFeatures
-    reasonCodes
-    testedFixtureCount
-    lastSmokeStatus {
-      status
-      checkedAt
-      detail
-    }
-  }
-}
-    `) as unknown as TypedDocumentString<HarnessCompatibilityMatrixQuery, HarnessCompatibilityMatrixQueryVariables>;
 export const InvitationsListDocument = new TypedDocumentString(`
     query InvitationsList {
   invitations {

@@ -9,7 +9,6 @@ import {
 import { aggregateCompressionSavings } from "../persistence/compressionSavings.js";
 import { aggregateIdleGaps } from "../persistence/idleGaps.js";
 import { aggregateTokenAttribution } from "../persistence/tokenAttributionReport.js";
-import { harnessCompatibilityReport } from "../harnessCompatibilityReport.js";
 import { compareModelPricingEntries, staticPricingEntries } from "../pricing.js";
 import { readSettingsFile } from "../settings.js";
 import { availableCompressionRules } from "../toolResultCompression.js";
@@ -42,7 +41,6 @@ import { PromptAccessAuditEntry, PromptDetail, PromptPage } from "./types/prompt
 import { RequestDetail, RequestSummary } from "./types/requests.js";
 import {
   ApiKey,
-  HarnessCompatibilityMatrixEntry,
   ProviderAccount,
   ProviderCredentialOAuthStatus,
   ProviderRegistryEntry,
@@ -720,14 +718,6 @@ builder.queryFields((t) => ({
     resolve: async (_root, _args, context) => {
       const queries = scopedQueries(context);
       return queries ? (await queries.providers()).data : [];
-    }
-  }),
-
-  harnessCompatibilityMatrix: t.field({
-    type: [HarnessCompatibilityMatrixEntry],
-    resolve: (_root, _args, context) => {
-      requireAdminRole(context);
-      return harnessCompatibilityReport();
     }
   }),
 

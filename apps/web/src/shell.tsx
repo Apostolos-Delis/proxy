@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, Layers, Logs, Moon, PanelLeft, PanelLeftClose, Search, ServerCog, Settings, ShieldCheck, Sun, Users } from "lucide-react";
+import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, Layers, Logs, Moon, PanelLeft, PanelLeftClose, Search, ServerCog, Settings, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -19,7 +19,6 @@ type NavPath =
   | "/caching"
   | "/logs"
   | "/routing"
-  | "/compatibility"
   | "/settings"
   | "/api-keys"
   | "/providers"
@@ -38,7 +37,6 @@ const workspaceNav = [
 
 const operationsNav = [
   { to: "/routing", label: "Routing", icon: GitBranch },
-  { to: "/compatibility", label: "Compatibility", icon: ShieldCheck },
   { to: "/settings", label: "Settings", icon: Settings }
 ] as const;
 
@@ -62,7 +60,6 @@ const titles: Record<string, [string, string | null]> = {
   "/settings": ["Settings", "Runtime configuration"],
   "/routing": ["Routing", "Config versions"],
   "/routing/new": ["Routing", "New config"],
-  "/compatibility": ["Compatibility", "Harness matrix"],
   "/prompts": ["Prompts", "Captured prompt artifacts"]
 };
 
