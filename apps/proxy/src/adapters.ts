@@ -29,6 +29,7 @@ export type ProviderForwardInput = {
   credential?: UpstreamCredential;
   onAssistantText?: (text: string, truncated: boolean) => Promise<void>;
   compressionTelemetry?: JsonObject;
+  onTerminal?: (terminal: { status: "completed" | "failed" | "cancelled"; errorClass: string }) => void;
 };
 
 export type ProviderAdapter = {

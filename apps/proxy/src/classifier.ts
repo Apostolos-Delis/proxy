@@ -1,10 +1,17 @@
 import { z } from "zod";
+import { performance } from "node:perf_hooks";
 import {
   composeClassifierInstructions,
   type RoutingConfigClassifier
 } from "@prompt-proxy/schema";
 
 import type { AppConfig } from "./config.js";
+import {
+  type MetricsCollector,
+  NoopMetricsCollector
+} from "./metrics.js";
+import { normalizeUsage } from "./persistence/values.js";
+import { pricingForProviderModel, usageCostMicros } from "./pricing.js";
 import type {
   ClassifierOutput,
   RouteContext,
@@ -56,7 +63,10 @@ export class ClassifierError extends Error {
 }
 
 export class LlmClassifier {
-  constructor(private readonly config: AppConfig) {}
+  constructor(
+    private readonly config: AppConfig,
+    private readonly metrics: MetricsCollector = new NoopMetricsCollector()
+  ) {}
 
   async classify(
     context: RouteContext,
@@ -66,11 +76,22 @@ export class LlmClassifier {
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= settings.maxAttempts; attempt += 1) {
+      const startedAtMs = performance.now();
       try {
         const { output, usage } = await this.callClassifier(context, settings, target);
+        this.recordClassifierAttempt(settings, startedAtMs, "succeeded", "none");
+        this.recordClassifierUsage(settings, usage);
         return { output, attempts: attempt, usage };
       } catch (error) {
         lastError = error;
+        this.recordClassifierAttempt(settings, startedAtMs, "failed", "classifier");
+        if (attempt < settings.maxAttempts) {
+          this.metrics.incrementCounter("prompt_proxy_classifier_retries_total", {
+            provider: settings.providerId,
+            model: settings.model,
+            error_class: "classifier"
+          });
+        }
       }
     }
 
@@ -121,6 +142,46 @@ export class LlmClassifier {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private recordClassifierAttempt(
+    settings: ClassifierSettings,
+    startedAtMs: number,
+    outcome: "succeeded" | "failed",
+    errorClass: string
+  ) {
+    const labels = {
+      provider: settings.providerId,
+      model: settings.model,
+      outcome,
+      error_class: errorClass
+    };
+    this.metrics.incrementCounter("prompt_proxy_classifier_attempts_total", labels);
+    this.metrics.observeHistogram("prompt_proxy_classifier_duration_seconds", (performance.now() - startedAtMs) / 1000, {
+      provider: settings.providerId,
+      model: settings.model,
+      outcome
+    });
+  }
+
+  private recordClassifierUsage(settings: ClassifierSettings, usage: Record<string, unknown> | undefined) {
+    if (!usage) return;
+    const normalized = normalizeUsage(usage);
+    const labels = {
+      provider: settings.providerId,
+      model: settings.model
+    };
+    this.metrics.incrementCounter("prompt_proxy_classifier_tokens_total", { ...labels, usage_kind: "input" }, normalized.inputTokens);
+    this.metrics.incrementCounter("prompt_proxy_classifier_tokens_total", { ...labels, usage_kind: "cached_input" }, normalized.cachedInputTokens);
+    this.metrics.incrementCounter("prompt_proxy_classifier_tokens_total", { ...labels, usage_kind: "cache_creation_input" }, normalized.cacheCreationInputTokens);
+    this.metrics.incrementCounter("prompt_proxy_classifier_tokens_total", { ...labels, usage_kind: "output" }, normalized.outputTokens);
+    this.metrics.incrementCounter("prompt_proxy_classifier_tokens_total", { ...labels, usage_kind: "reasoning" }, normalized.reasoningTokens);
+    this.metrics.incrementCounter("prompt_proxy_classifier_tokens_total", { ...labels, usage_kind: "total" }, normalized.totalTokens);
+    const cost = usageCostMicros(pricingForProviderModel(this.config.modelCosts, settings.providerId, settings.model), normalized);
+    this.metrics.incrementCounter("prompt_proxy_classifier_cost_usd_total", {
+      ...labels,
+      cost_kind: "classifier"
+    }, cost.totalCostMicros / 1_000_000);
   }
 }
 

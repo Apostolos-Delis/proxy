@@ -1,3 +1,5 @@
+import { performance } from "node:perf_hooks";
+
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 
 import {
@@ -74,6 +76,10 @@ import {
   type UsageRollupScope
 } from "./usageRollups.js";
 import { knownSurfaceValue, routeValue } from "./values.js";
+import {
+  type MetricsCollector,
+  NoopMetricsCollector
+} from "../metrics.js";
 
 type DateRangeFilters = {
   start?: string;
@@ -125,7 +131,8 @@ export class AdminQueryService {
     private readonly db: PromptProxyDbSession,
     private readonly organizationId: string,
     private readonly workspaceId: string,
-    private readonly config: AdminQueryConfig
+    private readonly config: AdminQueryConfig,
+    private readonly metrics: MetricsCollector = new NoopMetricsCollector()
   ) {}
 
   // All workspace-scoped table reads go through this predicate; new queries
@@ -632,7 +639,7 @@ export class AdminQueryService {
 
   private usageRollupReport(scope: UsageRollupScope, groupBy: UsageGroupBy): Promise<UsageRollupReport> {
     return this.cached(`usage-rollup-report:${groupBy}:${usageScopeKey(scope)}`, () =>
-      usageRollupReportRows(this.db, scope, groupBy));
+      this.recordDbQuery("usage_rollup", () => usageRollupReportRows(this.db, scope, groupBy)));
   }
 
   private usageBucketRollupReport(
@@ -642,7 +649,29 @@ export class AdminQueryService {
     keptKeys: string[] | null
   ): Promise<UsageBucketRollupReport> {
     return this.cached(`usage-bucket-rollup-report:${groupBy}:${step}:${JSON.stringify(keptKeys)}:${usageScopeKey(scope)}`, () =>
-      usageBucketRollupReportRows(this.db, scope, groupBy, step, keptKeys));
+      this.recordDbQuery("usage_bucket_rollup", () => usageBucketRollupReportRows(this.db, scope, groupBy, step, keptKeys)));
+  }
+
+  private async recordDbQuery<T>(operation: string, load: () => Promise<T>) {
+    const startedAtMs = performance.now();
+    try {
+      const result = await load();
+      this.metrics.observeHistogram("prompt_proxy_db_query_duration_seconds", (performance.now() - startedAtMs) / 1000, {
+        operation,
+        outcome: "succeeded"
+      });
+      return result;
+    } catch (error) {
+      this.metrics.observeHistogram("prompt_proxy_db_query_duration_seconds", (performance.now() - startedAtMs) / 1000, {
+        operation,
+        outcome: "failed"
+      });
+      this.metrics.incrementCounter("prompt_proxy_db_errors_total", {
+        operation,
+        error_class: "persistence"
+      });
+      throw error;
+    }
   }
 
   // Baseline spend is priced live from the rollup's (surface, requestedModel)

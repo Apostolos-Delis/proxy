@@ -1,4 +1,5 @@
 import type { FastifyReply } from "fastify";
+import { performance } from "node:perf_hooks";
 
 import type { ProviderAdapter, ProviderForwardInput } from "./adapters.js";
 import { bufferedStreamResponse, collectStreamResponse } from "./bufferedStreamResponse.js";
@@ -19,6 +20,11 @@ import {
 } from "./persistence/providers.js";
 import { extractResponseText } from "./persistence/promptArtifacts.js";
 import { copySelectedHeaders, detectHarness, dialectHeadersFor, identityHeadersFor } from "./harness.js";
+import {
+  type MetricsCollector,
+  NoopMetricsCollector
+} from "./metrics.js";
+import { ProviderMetrics } from "./providerMetrics.js";
 import { sseObserverForDialect, type StreamObservation } from "./sseObserver.js";
 import { providerCompressionTerminalTelemetry, requestBodyHash } from "./toolResultCompression.js";
 import { translators, type DialectTranslator } from "./translators/index.js";
@@ -32,13 +38,18 @@ import {
 import { isRecord } from "./util.js";
 
 export class ProviderProxy implements ProviderAdapter {
+  private readonly providerMetrics: ProviderMetrics;
+
   constructor(
     private readonly config: AppConfig,
     private readonly events: EventService,
     private readonly attempts: ProviderAttemptStore,
     private readonly requestStates: RequestStateStoreLike,
-    private readonly providerRegistry: ProviderRegistryResolver
-  ) {}
+    private readonly providerRegistry: ProviderRegistryResolver,
+    metrics: MetricsCollector = new NoopMetricsCollector()
+  ) {
+    this.providerMetrics = new ProviderMetrics(config, attempts, metrics);
+  }
 
   async forward(input: ProviderForwardInput) {
     if (!input.decision.selectedModel) {
@@ -51,6 +62,8 @@ export class ProviderProxy implements ProviderAdapter {
     }
     const selectedModel = input.decision.selectedModel;
     const targetDialect = input.decision.providerSettings.dialect;
+    const providerStream = isRecord(input.body) && input.body.stream === true;
+    const responseStream = input.responseStream ?? providerStream;
 
     const { attempt, duplicate } = this.attempts.create({
       idempotencyKey: input.idempotencyKey,
@@ -64,6 +77,12 @@ export class ProviderProxy implements ProviderAdapter {
       input.reply.code(409).send({ error: "Duplicate request is still active." });
       return;
     }
+    this.providerMetrics.startAttempt({
+      providerAttemptId: attempt.id,
+      surface: input.surface,
+      provider: input.provider,
+      stream: responseStream
+    });
 
     await this.events.append({
       scopeType: "request",
@@ -130,6 +149,7 @@ export class ProviderProxy implements ProviderAdapter {
     }
 
     let upstream: Response;
+    const fetchStartedAtMs = performance.now();
     try {
       upstream = await this.fetchWithRateLimitRetries({
         input,
@@ -141,6 +161,13 @@ export class ProviderProxy implements ProviderAdapter {
     } catch (error) {
       input.reply.raw.off("close", abortUpstream);
       const aborted = abortController.signal.aborted;
+      if (aborted) {
+        this.providerMetrics.recordClientCancellation({
+          surface: input.surface,
+          stream: responseStream,
+          stage: "before_provider"
+        });
+      }
       await this.appendTerminal(input, attempt.id, aborted ? "cancelled" : "failed", undefined, 0, {
         error: error instanceof Error ? error.message : "Provider request failed."
       });
@@ -154,9 +181,14 @@ export class ProviderProxy implements ProviderAdapter {
       });
       throw error;
     }
+    this.providerMetrics.recordTimeToFirstByte({
+      surface: input.surface,
+      provider: input.provider,
+      model: selectedModel,
+      stream: responseStream,
+      seconds: (performance.now() - fetchStartedAtMs) / 1000
+    });
 
-    const providerStream = isRecord(input.body) && input.body.stream === true;
-    const responseStream = input.responseStream ?? providerStream;
     const contentType = upstream.headers.get("content-type") ?? "";
     const isSse = contentType.includes("text/event-stream") || (
       upstream.ok &&
@@ -172,6 +204,14 @@ export class ProviderProxy implements ProviderAdapter {
     }
 
     if (!isSse || !upstream.body) {
+      if (providerStream) {
+        this.providerMetrics.recordProtocolMismatch({
+          surface: input.surface,
+          provider: input.provider,
+          model: selectedModel,
+          stream: responseStream
+        });
+      }
       const upstreamText = await upstream.text();
       const text = upstream.ok && responseTranslator
         ? translateResponseText(upstreamText, responseTranslator)
@@ -252,6 +292,13 @@ export class ProviderProxy implements ProviderAdapter {
         const observation = observer.finish("cancelled");
         const message = error instanceof Error ? error.message : "Stream failed.";
         const aborted = abortController.signal.aborted;
+        if (aborted) {
+          this.providerMetrics.recordClientCancellation({
+            surface: input.surface,
+            stream: responseStream,
+            stage: "after_headers"
+          });
+        }
         await this.appendTerminal(
           input,
           attempt.id,
@@ -304,12 +351,14 @@ export class ProviderProxy implements ProviderAdapter {
     try {
       let observation: StreamObservation;
       let status: "completed" | "failed";
+      let forwardedBytes = 0;
       try {
         const responseBody = responseTranslator
           ? responseTranslator.sseTransform(upstream.body)
           : upstream.body;
         for await (const chunk of responseBody) {
           const bytes = chunk instanceof Uint8Array ? chunk : Buffer.from(chunk);
+          forwardedBytes += bytes.byteLength;
           observer.observe(bytes);
           if (!input.reply.raw.write(bytes)) {
             await onceDrain(input.reply.raw);
@@ -324,10 +373,25 @@ export class ProviderProxy implements ProviderAdapter {
         const observation = observer.finish("cancelled");
         const message = error instanceof Error ? error.message : "Stream failed.";
         const aborted = abortController.signal.aborted;
+        const status = aborted ? "cancelled" : "failed";
+        this.providerMetrics.recordStreamBytes({
+          surface: input.surface,
+          provider: input.provider,
+          model: selectedModel,
+          status,
+          bytes: forwardedBytes
+        });
+        if (aborted) {
+          this.providerMetrics.recordClientCancellation({
+            surface: input.surface,
+            stream: responseStream,
+            stage: forwardedBytes > 0 ? "after_bytes" : "after_headers"
+          });
+        }
         await this.appendTerminal(
           input,
           attempt.id,
-          aborted ? "cancelled" : "failed",
+          status,
           observation.usage,
           upstream.status,
           {
@@ -336,17 +400,24 @@ export class ProviderProxy implements ProviderAdapter {
           }
         );
         this.attempts.update(attempt.id, {
-          terminalStatus: aborted ? "cancelled" : "failed",
+          terminalStatus: status,
           usage: observation.usage,
           error: message
         });
-        await this.requestStates.finish(input.idempotencyKey, aborted ? "cancelled" : "failed", {
+        await this.requestStates.finish(input.idempotencyKey, status, {
           providerAttemptId: attempt.id,
           usage: observation.usage,
           error: message
         });
         throw error;
       }
+      this.providerMetrics.recordStreamBytes({
+        surface: input.surface,
+        provider: input.provider,
+        model: selectedModel,
+        status,
+        bytes: forwardedBytes
+      });
       await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, withoutOutputText(observation));
       this.attempts.update(attempt.id, {
         terminalStatus: status,
@@ -390,6 +461,7 @@ export class ProviderProxy implements ProviderAdapter {
       provider: Provider;
       decision: RouteDecision;
       compressionTelemetry?: JsonObject;
+      onTerminal?: ProviderForwardInput["onTerminal"];
     },
     providerAttemptId: string,
     status: "completed" | "failed" | "cancelled",
@@ -410,31 +482,46 @@ export class ProviderProxy implements ProviderAdapter {
     Object.assign(payload, providerCompressionTerminalTelemetry(input.compressionTelemetry, upstreamStatus > 0));
     const error = terminalError(metadataPayload);
     if (error) payload.error = error;
-
-    await this.events.append({
-      scopeType: "request",
-      scopeId: input.requestId,
-      correlationId: input.requestId,
-      idempotencyKey: input.idempotencyKey,
-      producer: "prompt-proxy.provider",
-      eventType: terminalEventType(status),
-      payload,
-      metadata: metadataPayload
-    });
-
-    if (usage !== undefined) {
+    try {
       await this.events.append({
         scopeType: "request",
         scopeId: input.requestId,
         correlationId: input.requestId,
         idempotencyKey: input.idempotencyKey,
-        producer: "prompt-proxy.usage",
-        eventType: "usage.recorded",
-        payload: {
-          providerAttemptId,
-          usage: jsonPayload(usage)
-        }
+        producer: "prompt-proxy.provider",
+        eventType: terminalEventType(status),
+        payload,
+        metadata: metadataPayload
       });
+
+      if (usage !== undefined) {
+        await this.events.append({
+          scopeType: "request",
+          scopeId: input.requestId,
+          correlationId: input.requestId,
+          idempotencyKey: input.idempotencyKey,
+          producer: "prompt-proxy.usage",
+          eventType: "usage.recorded",
+          payload: {
+            providerAttemptId,
+            usage: jsonPayload(usage)
+          }
+        });
+      }
+
+      const errorClass = this.providerMetrics.recordTerminal({
+        surface: input.surface,
+        provider: input.provider,
+        decision: input.decision,
+        providerAttemptId,
+        status,
+        usage,
+        upstreamStatus,
+        metadata: metadataPayload
+      });
+      input.onTerminal?.({ status, errorClass });
+    } finally {
+      this.providerMetrics.clearAttempt(providerAttemptId);
     }
   }
 

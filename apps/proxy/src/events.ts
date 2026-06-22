@@ -4,6 +4,10 @@ import { dirname } from "node:path";
 import { defaultWorkspaceId } from "@prompt-proxy/db";
 import { z } from "zod";
 
+import {
+  type MetricsCollector,
+  NoopMetricsCollector
+} from "./metrics.js";
 import type { JsonObject, JsonValue, ProviderAttempt, Surface } from "./types.js";
 import { createId, sha256, stableJson } from "./util.js";
 
@@ -41,6 +45,7 @@ export type OutboxItem = {
   outboxId: string;
   eventId: string;
   status: "queued" | "processing" | "succeeded" | "failed";
+  queuedAt: string;
   error?: string;
 };
 
@@ -86,7 +91,8 @@ export class EventService {
     private readonly filePath?: string,
     private readonly outboxHandler?: (event: ProxyEvent) => Promise<void>,
     private readonly persistentSink?: PersistentEventSink,
-    private readonly defaultTenantId = "local"
+    private readonly defaultTenantId = "local",
+    private readonly metrics: MetricsCollector = new NoopMetricsCollector()
   ) {}
 
   async append(input: AppendEventInput) {
@@ -123,46 +129,65 @@ export class EventService {
       createdAt: new Date().toISOString()
     });
 
-    const outboxItem: OutboxItem = { outboxId: createId("outbox"), eventId: event.eventId, status: "queued" };
+    const outboxItem: OutboxItem = {
+      outboxId: createId("outbox"),
+      eventId: event.eventId,
+      status: "queued",
+      queuedAt: new Date().toISOString()
+    };
+    let appendSucceeded = false;
 
     try {
-      if (this.persistentSink) {
-        await this.persistentSink.append(event, outboxItem);
-      }
-    } catch (error) {
-      if (this.scopes.get(scopeKey)?.sequence === sequence) {
-        if (previousScope === undefined) {
-          this.scopes.delete(scopeKey);
-        } else {
-          this.scopes.set(scopeKey, previousScope);
+      try {
+        if (this.persistentSink) {
+          await this.persistentSink.append(event, outboxItem);
         }
+      } catch (error) {
+        if (this.scopes.get(scopeKey)?.sequence === sequence) {
+          if (previousScope === undefined) {
+            this.scopes.delete(scopeKey);
+          } else {
+            this.scopes.set(scopeKey, previousScope);
+          }
+        }
+        throw error;
+      }
+
+      this.events.push(event);
+      this.outbox.push(outboxItem);
+
+      // Listeners observe committed events only; a throwing listener must not
+      // fail the append.
+      for (const listener of this.listeners) {
+        try {
+          listener(event);
+        } catch {
+          // ignore
+        }
+      }
+
+      if (this.filePath) {
+        await mkdir(dirname(this.filePath), { recursive: true });
+        await appendFile(this.filePath, `${JSON.stringify(event)}\n`);
+      }
+
+      this.metrics.incrementCounter("prompt_proxy_event_appends_total", { outcome: "succeeded", error_class: "none" });
+      this.metrics.incrementCounter("prompt_proxy_event_outbox_items_total", { outcome: "queued", error_class: "none" });
+      if (!this.persistentSink) this.recordOutboxHealth();
+      appendSucceeded = true;
+
+      if (this.outboxHandler) {
+        await this.processOutbox(this.outboxHandler);
+      }
+
+      return event;
+    } catch (error) {
+      if (!appendSucceeded) {
+        this.metrics.incrementCounter("prompt_proxy_event_appends_total", { outcome: "failed", error_class: "persistence" });
+        if (!this.persistentSink) this.recordOutboxHealth();
       }
       throw error;
     }
-
-    this.events.push(event);
-    this.outbox.push(outboxItem);
-
-    // Listeners observe committed events only; a throwing listener must not
-    // fail the append.
-    for (const listener of this.listeners) {
-      try {
-        listener(event);
-      } catch {
-        // ignore
-      }
-    }
-
-    if (this.filePath) {
-      await mkdir(dirname(this.filePath), { recursive: true });
-      await appendFile(this.filePath, `${JSON.stringify(event)}\n`);
-    }
-
-    if (this.outboxHandler) {
-      await this.processOutbox(this.outboxHandler);
-    }
-
-    return event;
   }
 
   subscribe(listener: (event: ProxyEvent) => void) {
@@ -184,17 +209,34 @@ export class EventService {
     for (const item of this.outbox) {
       if (item.status !== "queued") continue;
       item.status = "processing";
+      this.metrics.incrementCounter("prompt_proxy_event_outbox_items_total", { outcome: "processing", error_class: "none" });
       const event = this.events.find((candidate) => candidate.eventId === item.eventId);
       try {
         if (!event) throw new Error("Outbox event not found.");
         await handler(event);
         item.status = "succeeded";
         delete item.error;
+        this.metrics.incrementCounter("prompt_proxy_event_outbox_items_total", { outcome: "succeeded", error_class: "none" });
       } catch (error) {
         item.status = "failed";
         item.error = error instanceof Error ? error.message : "Outbox handler failed.";
+        this.metrics.incrementCounter("prompt_proxy_event_outbox_items_total", { outcome: "failed", error_class: "unknown" });
       }
     }
+    if (!this.persistentSink) this.recordOutboxHealth();
+  }
+
+  private recordOutboxHealth() {
+    const queued = this.outbox.filter((item) => item.status === "queued");
+    this.metrics.setGauge("prompt_proxy_outbox_backlog", queued.length);
+    const oldestQueuedAt = queued
+      .map((item) => new Date(item.queuedAt).getTime())
+      .filter((time) => Number.isFinite(time))
+      .sort((left, right) => left - right)[0];
+    this.metrics.setGauge(
+      "prompt_proxy_outbox_oldest_item_age_seconds",
+      oldestQueuedAt === undefined ? 0 : Math.max(0, (Date.now() - oldestQueuedAt) / 1000)
+    );
   }
 }
 

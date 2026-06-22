@@ -29,6 +29,7 @@ import { normalizeLegacyCachedUsage } from "./usageNormalization.js";
 import { repriceZeroCostUsage } from "./usageRepricing.js";
 import { UserAdminService } from "./userAdmin.js";
 import { WorkspaceAdminService } from "./workspaceAdmin.js";
+import type { MetricsCollector } from "../metrics.js";
 
 export type DatabasePersistenceConfig = AdminQueryConfig & {
   defaultOrganizationId: string;
@@ -38,14 +39,15 @@ export type DatabasePersistenceConfig = AdminQueryConfig & {
   subscriptionOAuthEnabled: boolean;
 };
 
-export function createPostgresPersistence(databaseUrl: string, config: AppConfig) {
-  return createDatabasePersistence(createPostgresDatabase(databaseUrl), config, true);
+export function createPostgresPersistence(databaseUrl: string, config: AppConfig, metrics?: MetricsCollector) {
+  return createDatabasePersistence(createPostgresDatabase(databaseUrl), config, true, metrics);
 }
 
 export function createDatabasePersistence(
   db: PromptProxyDatabase,
   config: DatabasePersistenceConfig,
-  useAdvisoryLocks: boolean
+  useAdvisoryLocks: boolean,
+  metrics?: MetricsCollector
 ) {
   const transactional = createTransactionalDatabase(db);
   // Getter, not a snapshot: a kill-switch flip must reach the create, resolve,
@@ -67,7 +69,7 @@ export function createDatabasePersistence(
     providerCredentialOAuth: new ProviderCredentialOAuthService(providerCredentialAdmin),
     providerRegistryAdmin: new ProviderRegistryAdminService(transactional, config),
     providerRegistry: new ProviderRegistryStore(db, config),
-    eventSink: new DatabaseEventSink(transactional, useAdvisoryLocks),
+    eventSink: new DatabaseEventSink(transactional, useAdvisoryLocks, metrics),
     modelCatalogRefresh: new ModelCatalogRefreshJob(transactional, {
       auditOrganizationId: config.defaultOrganizationId
     }),
@@ -91,7 +93,7 @@ export function createDatabasePersistence(
           routeQualityLowConfidenceThreshold: config.routeQualityLowConfidenceThreshold,
           classifierModel: config.classifierModel,
           classifierProvider: config.classifierProvider
-        })
+        }, metrics)
     }
   };
 }
