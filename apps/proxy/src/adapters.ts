@@ -20,6 +20,7 @@ export type ProviderForwardInput = {
   idempotencyKey: string;
   organizationId: string;
   workspaceId: string;
+  sessionId?: string;
   surface: Surface;
   provider: Provider;
   harnessProfileId?: HarnessCompatibilityProfileId;

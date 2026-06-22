@@ -7,7 +7,8 @@ import type {
   PromptPaginationModel,
   PromptSummaryModel
 } from "../models.js";
-import { ProxyEvent, RoutingConfigSnapshot } from "./core.js";
+import { hasAdminRole } from "../authz.js";
+import { PreflightDecision, ProxyEvent, RoutingConfigSnapshot } from "./core.js";
 import { CompressionReceipt, RequestSummary } from "./requests.js";
 import { ProviderAttempt, RouteDecision } from "./routingEvidence.js";
 
@@ -99,7 +100,11 @@ export const PromptDetail = builder.objectRef<PromptDetailModel>("PromptDetail")
     compressionReceipts: t.expose("compressionReceipts", { type: [CompressionReceipt] }),
     routeDecisions: t.expose("routeDecisions", { type: [RouteDecision] }),
     providerAttempts: t.expose("providerAttempts", { type: [ProviderAttempt] }),
-    events: t.expose("events", { type: [ProxyEvent] })
+    events: t.expose("events", { type: [ProxyEvent] }),
+    preflightDecisions: t.field({
+      type: [PreflightDecision],
+      resolve: (detail, _args, context) => hasAdminRole(context) ? detail.preflightDecisions : []
+    })
   })
 });
 

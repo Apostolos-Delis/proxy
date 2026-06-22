@@ -1,7 +1,7 @@
 import { builder } from "../builder.js";
 import type { CompressionReceiptModel, RequestDetailShape, RequestSummaryShape } from "../models.js";
 import { hasAdminRole } from "../authz.js";
-import { ProxyEvent, RoutingConfigSnapshot, TokenTotals } from "./core.js";
+import { PreflightDecision, ProxyEvent, RoutingConfigSnapshot, TokenTotals } from "./core.js";
 import { ProviderAttempt, RouteDecision } from "./routingEvidence.js";
 
 export const RequestSummary = builder.objectRef<RequestSummaryShape>("RequestSummary").implement({
@@ -115,6 +115,10 @@ export const RequestDetail = builder.objectRef<RequestDetailShape>("RequestDetai
     healthSkips: t.field({
       type: "JSON",
       resolve: (detail, _args, context) => hasAdminRole(context) ? detail.healthSkips : []
+    }),
+    preflightDecisions: t.field({
+      type: [PreflightDecision],
+      resolve: (detail, _args, context) => hasAdminRole(context) ? detail.preflightDecisions : []
     })
   })
 });

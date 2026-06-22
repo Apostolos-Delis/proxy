@@ -10,6 +10,7 @@ import {
 
 import { usageCostMicros } from "../pricing.js";
 import { createId } from "../util.js";
+import { BudgetWindowService } from "./budgetWindows.js";
 import { catalogPricingForModel } from "./modelPricing.js";
 import { routeForRequest } from "./routeDecision.js";
 import {
@@ -104,6 +105,13 @@ export async function persistProviderTerminal(tx: PromptProxyTransaction, event:
     })
     .where(eq(requests.id, event.scopeId));
 
+  const budgetWindows = new BudgetWindowService(tx);
+  await budgetWindows.releaseReservationsForRequest({
+    organizationId: event.tenantId,
+    requestId: event.scopeId,
+    at: completedAt
+  });
+
   if (!usage) return;
   const [attempt] = await tx
     .select()
@@ -121,6 +129,12 @@ export async function persistProviderTerminal(tx: PromptProxyTransaction, event:
   const modelPricing = await catalogPricingForModel(tx, event.tenantId, attempt.provider, attempt.model);
   const costs = usageCostMicros(modelPricing, normalized);
   const route = await routeForRequest(tx, event.scopeId);
+  const [existingUsage] = await tx
+    .select({ totalCostMicros: usageLedger.totalCostMicros })
+    .from(usageLedger)
+    .where(eq(usageLedger.providerAttemptId, providerAttemptId))
+    .limit(1);
+  const budgetCostDeltaMicros = costs.totalCostMicros - (existingUsage?.totalCostMicros ?? 0);
 
   await tx
     .insert(usageLedger)
@@ -161,6 +175,14 @@ export async function persistProviderTerminal(tx: PromptProxyTransaction, event:
         usage
       }
     });
+
+  await budgetWindows.recordActualSpend({
+    organizationId: event.tenantId,
+    workspaceId: request.workspaceId,
+    apiKeyId: request.apiKeyId,
+    costMicros: budgetCostDeltaMicros,
+    at: completedAt
+  });
 }
 
 function terminalStatus(eventType: string, payloadStatus: unknown) {

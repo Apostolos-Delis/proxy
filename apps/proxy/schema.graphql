@@ -6,6 +6,19 @@ type AcceptedInvitation {
   userId: String!
 }
 
+type ActiveRequestLimit {
+  apiKeyId: String
+  apiKeyName: String
+  expiresAt: String!
+  id: String!
+  organizationId: String!
+  providerAccountId: String
+  providerAccountName: String
+  requestId: String!
+  startedAt: String!
+  workspaceId: String!
+}
+
 type ActiveSessionCount {
   activeSessions: Float!
   windowMs: Float!
@@ -23,6 +36,17 @@ type ApiKey {
   routingConfig: ApiKeyRoutingConfigRef
   routingConfigId: String
   userId: String
+}
+
+type ApiKeyLimitPolicy {
+  apiKeyId: String
+  apiKeyName: String
+  createdAt: String!
+  id: String!
+  organizationId: String!
+  policy: JSON!
+  updatedAt: String!
+  workspaceId: String!
 }
 
 type ApiKeyProviderBinding {
@@ -46,6 +70,24 @@ type AuthUser {
   role: String!
   sessionId: String!
   userId: String!
+  workspaceId: String!
+}
+
+type BudgetWindow {
+  actualUsd: Float!
+  createdAt: String!
+  exceededEmittedAt: String
+  id: String!
+  limitUsd: Float!
+  organizationId: String!
+  periodEndAt: String!
+  periodStartAt: String!
+  reservedUsd: Float!
+  scopeId: String!
+  scopeType: String!
+  updatedAt: String!
+  warningEmittedAt: String
+  windowType: String!
   workspaceId: String!
 }
 
@@ -370,6 +412,14 @@ type LatencySummary {
   p95Ms: Int
 }
 
+type LimitsDashboard {
+  activeRequests: [ActiveRequestLimit!]!
+  apiKeyPolicies: [ApiKeyLimitPolicy!]!
+  budgetWindows: [BudgetWindow!]!
+  rejectionEvents: [ProxyEvent!]!
+  workspacePolicies: [WorkspaceLimitPolicy!]!
+}
+
 enum MemberRole {
   admin
   member
@@ -459,6 +509,25 @@ type OverviewDashboard {
   modelUsage: UsageReport!
   overview: Overview!
   requests: [RequestSummary!]!
+}
+
+type PreflightDecision {
+  createdAt: String!
+  current: Float
+  estimatedCost: Float
+  eventId: String!
+  eventType: String!
+  id: String!
+  kind: String!
+  limit: Float
+  limitType: String
+  payload: JSON!
+  reserved: Float
+  resetAt: String
+  scopeId: String
+  scopeType: String
+  status: String!
+  windowType: String
 }
 
 input ProbeProviderCredentialInput {
@@ -555,6 +624,7 @@ type PromptDetail {
   artifact: PromptArtifactDetail!
   compressionReceipts: [CompressionReceipt!]!
   events: [ProxyEvent!]!
+  preflightDecisions: [PreflightDecision!]!
   providerAttempts: [ProviderAttempt!]!
   request: RequestSummary
   requestArtifacts: [PromptArtifactDetail!]!
@@ -751,6 +821,7 @@ type Query {
   compressionSavings(end: String, start: String): CompressionSavingsReport!
   idleGaps(end: String, start: String): IdleGapReport!
   invitations: [Invitation!]!
+  limitsDashboard: LimitsDashboard!
   members: [OrgMember!]!
   modelPricing: [ModelPricingEntry!]!
   overview: Overview!
@@ -784,6 +855,7 @@ type RequestDetail {
   compressionReceipts: [CompressionReceipt!]!
   events: [ProxyEvent!]!
   healthSkips: JSON!
+  preflightDecisions: [PreflightDecision!]!
   providerAttempts: [ProviderAttempt!]!
   request: RequestSummary
   routeDecisions: [RouteDecision!]!
@@ -1265,6 +1337,15 @@ type Viewer {
   user: AuthUser!
   workspaceId: String!
   workspaces: [WorkspaceSummary!]!
+}
+
+type WorkspaceLimitPolicy {
+  createdAt: String!
+  id: String!
+  organizationId: String!
+  policy: JSON!
+  updatedAt: String!
+  workspaceId: String!
 }
 
 type WorkspaceSummary {

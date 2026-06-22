@@ -2009,6 +2009,118 @@ input[type="checkbox"][role="switch"]:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.preflight-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.preflight-row {
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+}
+
+.preflight-rejected {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+
+.preflight-row-head,
+.preflight-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preflight-row-head {
+  justify-content: space-between;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: capitalize;
+}
+
+.preflight-row-head > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.preflight-row-meta {
+  flex-wrap: wrap;
+  margin-top: 6px;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+.preflight-row-meta span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.limits-page {
+  gap: 20px;
+}
+
+.limits-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.limits-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.limits-card .tbl td,
+.limits-card .tbl th {
+  vertical-align: top;
+}
+
+.limits-scope,
+.limits-window-meter,
+.limit-policy-item,
+.limit-policy-item > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.limits-window-meter {
+  min-width: 180px;
+}
+
+.limit-policy-list {
+  display: grid;
+  gap: 10px;
+}
+
+.limit-policy-item {
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.limit-policy-item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.limit-policy-values {
+  display: flex;
+  flex-flow: row wrap;
+  gap: 6px;
+}
+
+.limit-policy-item strong,
+.limits-scope span {
+  overflow-wrap: anywhere;
+}
+
 /* exchange bubbles (session replay) */
 .convo-bubble.convo-system {
   border-style: dashed;

@@ -3,9 +3,12 @@ import { performance } from "node:perf_hooks";
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 
 import {
+  activeRequestLimits,
   agentSessions,
+  apiKeyLimitPolicies,
   apiKeyProviderAccounts,
   apiKeys,
+  budgetWindows,
   compressionReceipts,
   events,
   invitations,
@@ -24,6 +27,7 @@ import {
   routingConfigVersions,
   users as usersTable,
   usageLedger,
+  workspaceLimitPolicies,
   type PromptProxyDbSession
 } from "@prompt-proxy/db";
 
@@ -58,6 +62,7 @@ import {
   usageLedgerSummary
 } from "./adminSerializers.js";
 import { CACHE_TTL_DEFAULT_MS } from "../cacheWindows.js";
+import { preflightDecisionsForEvents } from "../preflightDecisions.js";
 import { CACHE_BUST_SAMPLE_CAP, detectCacheBusts } from "./cacheBusts.js";
 import {
   aggregateCompressionReceiptSavings,
@@ -119,6 +124,13 @@ export type RequestListFilters = {
   start?: string;
   end?: string;
 };
+
+const LIMIT_REJECTION_EVENT_TYPES = [
+  "limit.request_rate_rejected",
+  "limit.token_rate_rejected",
+  "limit.parallel_rejected",
+  "budget.rejected"
+] as const;
 
 export type UsageAnalyticsFilters = {
   groupBy?: string;
@@ -267,6 +279,84 @@ export class AdminQueryService {
     if (!row) return null;
     const bindings = await this.apiKeyProviderBindings([apiKeyId]);
     return { apiKey: apiKeySummary(row, bindings.get(apiKeyId) ?? []) };
+  }
+
+  async limitsDashboard() {
+    const [workspacePolicyRows, apiKeyPolicyRows, activeRows, budgetRows, rejectionRows] = await Promise.all([
+      this.db
+        .select()
+        .from(workspaceLimitPolicies)
+        .where(this.scopedTo(workspaceLimitPolicies))
+        .orderBy(desc(workspaceLimitPolicies.updatedAt)),
+      this.db
+        .select({
+          id: apiKeyLimitPolicies.id,
+          organizationId: apiKeyLimitPolicies.organizationId,
+          workspaceId: apiKeyLimitPolicies.workspaceId,
+          apiKeyId: apiKeyLimitPolicies.apiKeyId,
+          apiKeyName: apiKeys.name,
+          policy: apiKeyLimitPolicies.policy,
+          createdAt: apiKeyLimitPolicies.createdAt,
+          updatedAt: apiKeyLimitPolicies.updatedAt
+        })
+        .from(apiKeyLimitPolicies)
+        .innerJoin(apiKeys, and(
+          eq(apiKeys.organizationId, apiKeyLimitPolicies.organizationId),
+          eq(apiKeys.workspaceId, apiKeyLimitPolicies.workspaceId),
+          eq(apiKeys.id, apiKeyLimitPolicies.apiKeyId)
+        ))
+        .where(this.scopedTo(apiKeyLimitPolicies))
+        .orderBy(desc(apiKeyLimitPolicies.updatedAt)),
+      this.db
+        .select({
+          id: activeRequestLimits.id,
+          organizationId: activeRequestLimits.organizationId,
+          workspaceId: activeRequestLimits.workspaceId,
+          apiKeyId: activeRequestLimits.apiKeyId,
+          apiKeyName: apiKeys.name,
+          providerAccountId: activeRequestLimits.providerAccountId,
+          providerAccountName: providerAccounts.name,
+          requestId: activeRequestLimits.requestId,
+          startedAt: activeRequestLimits.startedAt,
+          expiresAt: activeRequestLimits.expiresAt
+        })
+        .from(activeRequestLimits)
+        .leftJoin(apiKeys, and(
+          eq(apiKeys.organizationId, activeRequestLimits.organizationId),
+          eq(apiKeys.workspaceId, activeRequestLimits.workspaceId),
+          eq(apiKeys.id, activeRequestLimits.apiKeyId)
+        ))
+        .leftJoin(providerAccounts, and(
+          eq(providerAccounts.organizationId, activeRequestLimits.organizationId),
+          eq(providerAccounts.id, activeRequestLimits.providerAccountId)
+        ))
+        .where(this.scopedTo(activeRequestLimits))
+        .orderBy(desc(activeRequestLimits.startedAt))
+        .limit(100),
+      this.db
+        .select()
+        .from(budgetWindows)
+        .where(this.scopedTo(budgetWindows))
+        .orderBy(desc(budgetWindows.periodEndAt))
+        .limit(100),
+      this.db
+        .select()
+        .from(events)
+        .where(and(
+          this.scopedTo(events),
+          inArray(events.eventType, [...LIMIT_REJECTION_EVENT_TYPES])
+        ))
+        .orderBy(desc(events.createdAt))
+        .limit(100)
+    ]);
+
+    return {
+      workspacePolicies: workspacePolicyRows.map(workspaceLimitPolicySummary),
+      apiKeyPolicies: apiKeyPolicyRows.map(apiKeyLimitPolicySummary),
+      activeRequests: activeRows.map(activeRequestLimitSummary),
+      budgetWindows: budgetRows.map(budgetWindowSummary),
+      rejectionEvents: rejectionRows.map(eventSummary)
+    };
   }
 
   async providerAccounts() {
@@ -544,7 +634,8 @@ export class AdminQueryService {
       // so foreign request ids cannot expose another workspace's events.
       events: requestEvents,
       compressionReceipts: requestRow ? await this.compressionReceiptsForRequest(requestId) : [],
-      healthSkips: healthSkipsFromEvents(requestEvents)
+      healthSkips: healthSkipsFromEvents(requestEvents),
+      preflightDecisions: preflightDecisionsForEvents(requestEvents)
     };
   }
 
@@ -979,7 +1070,8 @@ export class AdminQueryService {
       compressionReceipts,
       routeDecisions: routeDecisionSummaries,
       providerAttempts: (await this.providerAttemptRowsForRequest(row.request.id)).map(providerAttemptSummary),
-      events: requestEvents
+      events: requestEvents,
+      preflightDecisions: preflightDecisionsForEvents(requestEvents)
     };
   }
 
@@ -2085,6 +2177,85 @@ function apiKeySummary(row: ApiKeySummaryRow, providerBindings: ProviderBindingS
     expiresAt: row.expiresAt?.toISOString() ?? null,
     revokedAt: row.revokedAt?.toISOString() ?? null,
     lastUsedAt: row.lastUsedAt?.toISOString() ?? null
+  };
+}
+
+function workspaceLimitPolicySummary(row: typeof workspaceLimitPolicies.$inferSelect) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    workspaceId: row.workspaceId,
+    policy: row.policy,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+
+function apiKeyLimitPolicySummary(row: {
+  id: string;
+  organizationId: string;
+  workspaceId: string;
+  apiKeyId: string;
+  apiKeyName: string;
+  policy: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    workspaceId: row.workspaceId,
+    apiKeyId: row.apiKeyId,
+    apiKeyName: row.apiKeyName,
+    policy: row.policy,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+
+function activeRequestLimitSummary(row: {
+  id: string;
+  organizationId: string;
+  workspaceId: string;
+  apiKeyId: string | null;
+  apiKeyName: string | null;
+  providerAccountId: string | null;
+  providerAccountName: string | null;
+  requestId: string;
+  startedAt: Date;
+  expiresAt: Date;
+}) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    workspaceId: row.workspaceId,
+    apiKeyId: row.apiKeyId,
+    apiKeyName: row.apiKeyName,
+    providerAccountId: row.providerAccountId,
+    providerAccountName: row.providerAccountName,
+    requestId: row.requestId,
+    startedAt: row.startedAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString()
+  };
+}
+
+function budgetWindowSummary(row: typeof budgetWindows.$inferSelect) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    workspaceId: row.workspaceId,
+    scopeType: row.scopeType,
+    scopeId: row.scopeId,
+    windowType: row.windowType,
+    periodStartAt: row.periodStartAt.toISOString(),
+    periodEndAt: row.periodEndAt.toISOString(),
+    limitUsd: Number(row.limitUsd),
+    reservedUsd: Number(row.reservedUsd),
+    actualUsd: Number(row.actualUsd),
+    warningEmittedAt: row.warningEmittedAt?.toISOString() ?? null,
+    exceededEmittedAt: row.exceededEmittedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
   };
 }
 

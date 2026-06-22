@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
-import { boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, type PgTableExtraConfigValue } from "drizzle-orm/pg-core";
+import { boolean, check, foreignKey, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, type PgTableExtraConfigValue } from "drizzle-orm/pg-core";
 
 import type {
+  ApiKeyLimitPolicy,
   EventOutboxStatus,
   InvitationStatus,
   OrganizationMemberRole,
@@ -17,7 +18,8 @@ import type {
   RoutingConfig,
   RouteName,
   SessionPinnedSettings,
-  UsageLedgerKind
+  UsageLedgerKind,
+  WorkspaceLimitPolicy
 } from "@prompt-proxy/schema";
 
 export const organizations = pgTable(
@@ -257,6 +259,141 @@ export const apiKeys = pgTable(
   ]
 );
 
+export const apiKeyLimitPolicies = pgTable(
+  "api_key_limit_policies",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    apiKeyId: text("api_key_id").notNull(),
+    policy: jsonb("policy").$type<ApiKeyLimitPolicy>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("api_key_limit_policies_org_workspace_api_key_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.apiKeyId
+    ),
+    foreignKey({
+      name: "api_key_limit_policies_api_key_fk",
+      columns: [table.organizationId, table.workspaceId, table.apiKeyId],
+      foreignColumns: [apiKeys.organizationId, apiKeys.workspaceId, apiKeys.id]
+    }).onDelete("cascade")
+  ]
+);
+
+export const workspaceLimitPolicies = pgTable(
+  "workspace_limit_policies",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    policy: jsonb("policy").$type<WorkspaceLimitPolicy>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("workspace_limit_policies_org_workspace_idx").on(table.organizationId, table.workspaceId),
+    foreignKey({
+      name: "workspace_limit_policies_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade")
+  ]
+);
+
+export const budgetWindows = pgTable(
+  "budget_windows",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    scopeType: text("scope_type").notNull(),
+    scopeId: text("scope_id").notNull(),
+    windowType: text("window_type").notNull(),
+    periodStartAt: timestamp("period_start_at", { withTimezone: true }).notNull(),
+    periodEndAt: timestamp("period_end_at", { withTimezone: true }).notNull(),
+    limitUsd: numeric("limit_usd", { precision: 18, scale: 6 }).notNull(),
+    reservedUsd: numeric("reserved_usd", { precision: 18, scale: 6 }).notNull().default("0"),
+    actualUsd: numeric("actual_usd", { precision: 18, scale: 6 }).notNull().default("0"),
+    warningEmittedAt: timestamp("warning_emitted_at", { withTimezone: true }),
+    exceededEmittedAt: timestamp("exceeded_emitted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("budget_windows_scope_window_start_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.scopeType,
+      table.scopeId,
+      table.windowType,
+      table.periodStartAt
+    ),
+    index("budget_windows_org_workspace_period_end_idx").on(table.organizationId, table.workspaceId, table.periodEndAt),
+    check("budget_windows_period_order_check", sql`${table.periodEndAt} > ${table.periodStartAt}`),
+    check("budget_windows_limit_usd_positive_check", sql`${table.limitUsd} > 0`),
+    check("budget_windows_reserved_usd_nonnegative_check", sql`${table.reservedUsd} >= 0`),
+    check("budget_windows_actual_usd_nonnegative_check", sql`${table.actualUsd} >= 0`),
+    foreignKey({
+      name: "budget_windows_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade")
+  ]
+);
+
+export const budgetReservations = pgTable(
+  "budget_reservations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    requestId: text("request_id")
+      .notNull()
+      .references(() => requests.id, { onDelete: "cascade" }),
+    scopeType: text("scope_type").notNull(),
+    scopeId: text("scope_id").notNull(),
+    windowType: text("window_type").notNull(),
+    periodStartAt: timestamp("period_start_at", { withTimezone: true }).notNull(),
+    periodEndAt: timestamp("period_end_at", { withTimezone: true }).notNull(),
+    reservedUsd: numeric("reserved_usd", { precision: 18, scale: 6 }).notNull(),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("budget_reservations_request_window_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.requestId,
+      table.scopeType,
+      table.scopeId,
+      table.windowType,
+      table.periodStartAt
+    ),
+    index("budget_reservations_release_idx").on(table.organizationId, table.workspaceId, table.requestId, table.releasedAt),
+    check("budget_reservations_period_order_check", sql`${table.periodEndAt} > ${table.periodStartAt}`),
+    check("budget_reservations_reserved_usd_positive_check", sql`${table.reservedUsd} > 0`),
+    foreignKey({
+      name: "budget_reservations_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade")
+  ]
+);
+
 export const organizationSettings = pgTable("organization_settings", {
   organizationId: text("organization_id")
     .primaryKey()
@@ -374,6 +511,48 @@ export const apiKeyProviderAccounts = pgTable(
       name: "api_key_provider_accounts_account_fk",
       columns: [table.organizationId, table.providerAccountId],
       foreignColumns: [providerAccounts.organizationId, providerAccounts.id]
+    }).onDelete("cascade")
+  ]
+);
+
+export const activeRequestLimits = pgTable(
+  "active_request_limits",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    apiKeyId: text("api_key_id"),
+    providerAccountId: text("provider_account_id"),
+    requestId: text("request_id").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("active_request_limits_request_id_idx").on(table.requestId),
+    index("active_request_limits_org_workspace_api_key_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.apiKeyId
+    ),
+    index("active_request_limits_provider_account_idx").on(table.organizationId, table.providerAccountId),
+    index("active_request_limits_expires_at_idx").on(table.expiresAt),
+    check("active_request_limits_expiry_check", sql`${table.expiresAt} > ${table.startedAt}`),
+    foreignKey({
+      name: "active_request_limits_api_key_fk",
+      columns: [table.organizationId, table.workspaceId, table.apiKeyId],
+      foreignColumns: [apiKeys.organizationId, apiKeys.workspaceId, apiKeys.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "active_request_limits_provider_account_fk",
+      columns: [table.organizationId, table.providerAccountId],
+      foreignColumns: [providerAccounts.organizationId, providerAccounts.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "active_request_limits_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
     }).onDelete("cascade")
   ]
 );

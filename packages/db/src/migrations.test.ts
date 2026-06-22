@@ -193,6 +193,34 @@ describe("database migrations", () => {
         and column_name in ('organization_id', 'workspace_id', 'provider_id', 'provider_account_id', 'model', 'status', 'last_error_type', 'last_error_at', 'lockout_until', 'consecutive_failures', 'last_success_at', 'metadata')
       order by column_name
     `);
+    const apiKeyLimitPolicyColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'api_key_limit_policies'
+        and column_name in ('id', 'organization_id', 'workspace_id', 'api_key_id', 'policy', 'created_at', 'updated_at')
+      order by column_name
+    `);
+    const workspaceLimitPolicyColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'workspace_limit_policies'
+        and column_name in ('id', 'organization_id', 'workspace_id', 'policy', 'created_at', 'updated_at')
+      order by column_name
+    `);
+    const budgetWindowColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'budget_windows'
+        and column_name in ('id', 'organization_id', 'workspace_id', 'scope_type', 'scope_id', 'window_type', 'period_start_at', 'period_end_at', 'limit_usd', 'reserved_usd', 'actual_usd', 'warning_emitted_at', 'exceeded_emitted_at', 'created_at', 'updated_at')
+      order by column_name
+    `);
+    const activeRequestLimitColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'active_request_limits'
+        and column_name in ('id', 'organization_id', 'workspace_id', 'api_key_id', 'provider_account_id', 'request_id', 'started_at', 'expires_at')
+      order by column_name
+    `);
     const retiredPolicyTable = ["route", "policies"].join("_");
     const routePolicyTables = await client.query<{ table_name: string }>(`
       select table_name
@@ -238,9 +266,13 @@ describe("database migrations", () => {
       "slug"
     ]);
     expect(workspaceScopedColumns.rows.map((row) => row.table_name)).toEqual([
+      "active_request_limits",
       "agent_sessions",
+      "api_key_limit_policies",
       "api_key_provider_accounts",
       "api_keys",
+      "budget_reservations",
+      "budget_windows",
       "compression_receipts",
       "events",
       "prompt_access_audit",
@@ -254,7 +286,8 @@ describe("database migrations", () => {
       "routing_configs",
       "turns",
       "usage_ledger",
-      "user_sessions"
+      "user_sessions",
+      "workspace_limit_policies"
     ]);
     expect(requestRoutingColumns.rows.map((row) => row.column_name)).toEqual([
       "api_key_id",
@@ -391,6 +424,50 @@ describe("database migrations", () => {
       "provider_account_id",
       "provider_id",
       "status",
+      "workspace_id"
+    ]);
+    expect(apiKeyLimitPolicyColumns.rows.map((row) => row.column_name)).toEqual([
+      "api_key_id",
+      "created_at",
+      "id",
+      "organization_id",
+      "policy",
+      "updated_at",
+      "workspace_id"
+    ]);
+    expect(workspaceLimitPolicyColumns.rows.map((row) => row.column_name)).toEqual([
+      "created_at",
+      "id",
+      "organization_id",
+      "policy",
+      "updated_at",
+      "workspace_id"
+    ]);
+    expect(budgetWindowColumns.rows.map((row) => row.column_name)).toEqual([
+      "actual_usd",
+      "created_at",
+      "exceeded_emitted_at",
+      "id",
+      "limit_usd",
+      "organization_id",
+      "period_end_at",
+      "period_start_at",
+      "reserved_usd",
+      "scope_id",
+      "scope_type",
+      "updated_at",
+      "warning_emitted_at",
+      "window_type",
+      "workspace_id"
+    ]);
+    expect(activeRequestLimitColumns.rows.map((row) => row.column_name)).toEqual([
+      "api_key_id",
+      "expires_at",
+      "id",
+      "organization_id",
+      "provider_account_id",
+      "request_id",
+      "started_at",
       "workspace_id"
     ]);
   });
@@ -892,6 +969,213 @@ describe("database migrations", () => {
       `);
 
       expect(active.rows[0]).toEqual({ active_version_id: "version_a" });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("enforces tenant- and workspace-scoped limit references", async () => {
+    const client = await migratedClient();
+
+    try {
+      await client.exec(`
+        insert into organizations (id, slug, name) values
+          ('org_a', 'org-a', 'Org A'),
+          ('org_b', 'org-b', 'Org B');
+
+        insert into workspaces (id, organization_id, slug, name) values
+          ('ws_a1', 'org_a', 'primary', 'Primary'),
+          ('ws_a2', 'org_a', 'secondary', 'Secondary'),
+          ('ws_b', 'org_b', 'primary', 'Primary');
+
+        insert into api_keys (id, organization_id, workspace_id, key_hash, name) values
+          ('key_a', 'org_a', 'ws_a1', 'hash_key_a', 'Key A'),
+          ('key_b', 'org_b', 'ws_b', 'hash_key_b', 'Key B');
+
+        insert into provider_accounts (id, organization_id, provider_id, name) values
+          ('account_a', 'org_a', '00000000-0000-0000-0000-000000000001', 'Account A'),
+          ('account_b', 'org_b', '00000000-0000-0000-0000-000000000001', 'Account B');
+      `);
+
+      await expect(client.exec(`
+        insert into workspace_limit_policies (id, organization_id, workspace_id, policy)
+        values ('workspace_policy_cross_org', 'org_b', 'ws_a1', '{"requestsPerMinute": 10}'::jsonb);
+      `)).rejects.toThrow();
+
+      await expect(client.exec(`
+        insert into api_key_limit_policies (id, organization_id, workspace_id, api_key_id, policy)
+        values ('api_key_policy_cross_workspace', 'org_a', 'ws_a2', 'key_a', '{"requestsPerMinute": 10}'::jsonb);
+      `)).rejects.toThrow();
+
+      await expect(client.exec(`
+        insert into budget_windows (
+          id,
+          organization_id,
+          workspace_id,
+          scope_type,
+          scope_id,
+          window_type,
+          period_start_at,
+          period_end_at,
+          limit_usd
+        ) values (
+          'budget_cross_org',
+          'org_b',
+          'ws_a1',
+          'workspace',
+          'ws_a1',
+          'daily',
+          now(),
+          now() + interval '1 day',
+          25
+        );
+      `)).rejects.toThrow();
+
+      await expect(client.exec(`
+        insert into active_request_limits (
+          id,
+          organization_id,
+          workspace_id,
+          api_key_id,
+          provider_account_id,
+          request_id,
+          started_at,
+          expires_at
+        ) values (
+          'active_cross_workspace',
+          'org_a',
+          'ws_a2',
+          'key_a',
+          'account_a',
+          'request_cross_workspace',
+          now(),
+          now() + interval '10 minutes'
+        );
+      `)).rejects.toThrow();
+
+      await expect(client.exec(`
+        insert into active_request_limits (
+          id,
+          organization_id,
+          workspace_id,
+          api_key_id,
+          provider_account_id,
+          request_id,
+          started_at,
+          expires_at
+        ) values (
+          'active_cross_account',
+          'org_a',
+          'ws_a1',
+          'key_a',
+          'account_b',
+          'request_cross_account',
+          now(),
+          now() + interval '10 minutes'
+        );
+      `)).rejects.toThrow();
+
+      await expect(client.exec(`
+        insert into budget_windows (
+          id,
+          organization_id,
+          workspace_id,
+          scope_type,
+          scope_id,
+          window_type,
+          period_start_at,
+          period_end_at,
+          limit_usd
+        ) values (
+          'budget_negative',
+          'org_a',
+          'ws_a1',
+          'workspace',
+          'ws_a1',
+          'daily',
+          now(),
+          now() + interval '1 day',
+          -1
+        );
+      `)).rejects.toThrow();
+
+      await expect(client.exec(`
+        insert into active_request_limits (
+          id,
+          organization_id,
+          workspace_id,
+          api_key_id,
+          provider_account_id,
+          request_id,
+          started_at,
+          expires_at
+        ) values (
+          'active_invalid_expiry',
+          'org_a',
+          'ws_a1',
+          'key_a',
+          'account_a',
+          'request_invalid_expiry',
+          now(),
+          now()
+        );
+      `)).rejects.toThrow();
+
+      await client.exec(`
+        insert into workspace_limit_policies (id, organization_id, workspace_id, policy)
+        values ('workspace_policy_a', 'org_a', 'ws_a1', '{"requestsPerMinute": 10}'::jsonb);
+
+        insert into api_key_limit_policies (id, organization_id, workspace_id, api_key_id, policy)
+        values ('api_key_policy_a', 'org_a', 'ws_a1', 'key_a', '{"requestsPerMinute": 10}'::jsonb);
+
+        insert into budget_windows (
+          id,
+          organization_id,
+          workspace_id,
+          scope_type,
+          scope_id,
+          window_type,
+          period_start_at,
+          period_end_at,
+          limit_usd
+        ) values (
+          'budget_a',
+          'org_a',
+          'ws_a1',
+          'workspace',
+          'ws_a1',
+          'daily',
+          now(),
+          now() + interval '1 day',
+          25
+        );
+
+        insert into active_request_limits (
+          id,
+          organization_id,
+          workspace_id,
+          api_key_id,
+          provider_account_id,
+          request_id,
+          started_at,
+          expires_at
+        ) values (
+          'active_a',
+          'org_a',
+          'ws_a1',
+          'key_a',
+          'account_a',
+          'request_a',
+          now(),
+          now() + interval '10 minutes'
+        );
+      `);
+
+      const active = await client.query<{ count: number }>(`
+        select count(*)::int as count from active_request_limits
+      `);
+
+      expect(active.rows[0]).toEqual({ count: 1 });
     } finally {
       await client.close();
     }

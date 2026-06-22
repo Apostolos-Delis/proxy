@@ -9,6 +9,7 @@ import {
 import { aggregateCompressionSavings } from "../persistence/compressionSavings.js";
 import { aggregateIdleGaps } from "../persistence/idleGaps.js";
 import { aggregateTokenAttribution } from "../persistence/tokenAttributionReport.js";
+import { preflightDecisionsForEvents } from "../preflightDecisions.js";
 import { compareModelPricingEntries, staticPricingEntries } from "../pricing.js";
 import { readSettingsFile } from "../settings.js";
 import { availableCompressionRules } from "../toolResultCompression.js";
@@ -37,6 +38,7 @@ import {
 import { CompressionPreviewInput, CompressionPreviewType } from "./types/compression.js";
 import { ModelPricingEntry } from "./types/pricing.js";
 import { Invitation, PublicInvitation } from "./types/invitations.js";
+import { LimitsDashboard } from "./types/limits.js";
 import { PromptAccessAuditEntry, PromptDetail, PromptPage } from "./types/prompts.js";
 import { RequestDetail, RequestSummary } from "./types/requests.js";
 import {
@@ -279,15 +281,17 @@ builder.queryFields((t) => ({
       const requestSummary: RequestSummaryShape | undefined = context.projections
         .usage(allEvents)
         .requests.find((item) => item.requestId === requestId);
+      const requestEvents = allEvents.filter(
+        (event) => event.scopeId === requestId || event.correlationId === requestId
+      );
       return {
         request: requestSummary ?? null,
         routeDecisions: [],
         providerAttempts: [],
-        events: allEvents.filter(
-          (event) => event.scopeId === requestId || event.correlationId === requestId
-        ),
+        events: requestEvents,
         compressionReceipts: [],
-        healthSkips: []
+        healthSkips: [],
+        preflightDecisions: preflightDecisionsForEvents(requestEvents)
       };
     }
   }),
@@ -688,6 +692,23 @@ builder.queryFields((t) => ({
       if (!queries) return null;
       const detail = await queries.apiKeyDetail(String(args.apiKeyId));
       return detail?.apiKey ?? null;
+    }
+  }),
+
+  limitsDashboard: t.field({
+    type: LimitsDashboard,
+    resolve: async (_root, _args, context) => {
+      requireAdminRole(context);
+      const queries = scopedQueries(context);
+      return queries
+        ? queries.limitsDashboard()
+        : {
+            workspacePolicies: [],
+            apiKeyPolicies: [],
+            activeRequests: [],
+            budgetWindows: [],
+            rejectionEvents: []
+          };
     }
   }),
 

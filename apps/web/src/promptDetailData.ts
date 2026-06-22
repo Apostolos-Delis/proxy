@@ -16,6 +16,7 @@ export type HealthSkipEvidence = {
   errorType: string | null;
   expiresAt: string | null;
 };
+export type PreflightDecision = PromptDetailResult["preflightDecisions"][number];
 
 const EVENT_TONES: [string, string][] = [
   ["proxy.", "event-proxy"],

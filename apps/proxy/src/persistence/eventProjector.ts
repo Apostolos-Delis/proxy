@@ -1,6 +1,7 @@
 import type { PromptProxyTransaction } from "@prompt-proxy/db";
 
 import type { ProxyEvent } from "../events.js";
+import { persistBudgetReserved, persistBudgetSignal } from "./budgetWindows.js";
 import { persistClassifierUsage } from "./classifierUsage.js";
 import { persistCompressionReceipts } from "./compressionReceipts.js";
 import { persistProviderStarted, persistProviderTerminal, persistStreamStarted } from "./providerAttempt.js";
@@ -53,5 +54,13 @@ export async function projectEvent(tx: PromptProxyTransaction, event: ProxyEvent
   }
   if (event.eventType === "session.route_memory_recorded") {
     await persistSessionRoute(tx, event);
+    return;
+  }
+  if (event.eventType === "budget.reserved") {
+    await persistBudgetReserved(tx, event);
+    return;
+  }
+  if (event.eventType === "budget.warning_emitted" || event.eventType === "budget.exceeded") {
+    await persistBudgetSignal(tx, event);
   }
 }

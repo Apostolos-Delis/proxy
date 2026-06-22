@@ -35,7 +35,15 @@ import {
   metricTerminalStatusFor,
   type MetricsCollector
 } from "./metrics.js";
+import {
+  appendBudgetRejectedEvent,
+  appendBudgetReservedEvent,
+  appendLimitRejectedEvent,
+  type LimitRejected
+} from "./limitEvents.js";
 import { SessionRouteStore } from "./policy.js";
+import type { ActiveRequestLimitReservation } from "./persistence/activeRequestLimits.js";
+import { BudgetReservationRejectedError, type BudgetReservationRejection } from "./persistence/budgetWindows.js";
 import { createPostgresPersistence } from "./persistence/index.js";
 import { ConfigProviderRegistry } from "./persistence/providers.js";
 import { resolveRoutingSelection, type RoutingConfigResolverLike } from "./persistence/routingConfig.js";
@@ -137,7 +145,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     persistence?.providerHealth,
     metrics
   );
-  const proxy = new ProviderProxy(config, events, attempts, requestStates, providerRegistry, metrics);
+  const proxy = new ProviderProxy(config, events, attempts, requestStates, providerRegistry, metrics, persistence?.budgetWindows);
   const assistantResponseCapture = (input: {
     identity: RequestIdentity;
     requestId: string;
@@ -191,6 +199,10 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     persistence?.promptArtifacts,
     routingConfigs,
     persistence?.sessionPrompts,
+    persistence?.budgetWindows,
+    persistence?.activeRequestLimits,
+    persistence?.requestRateLimits,
+    persistence?.tokenRateLimits,
     app.log
   );
   const projections = new ProjectionService(config);
@@ -268,8 +280,37 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
     if (sendDuplicateRequest(gate, reply)) return;
     const requestId = gate.state.requestId ?? proposedRequestId;
+    let activeLimit: ActiveRequestLimitReservation | undefined;
 
     try {
+      activeLimit = await reserveActiveRequestLimit(persistence, identity, requestId);
+      if (activeLimit.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: activeLimit.reason });
+        await appendLimitRejectedEvent({
+          events,
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          rejection: activeLimit
+        });
+        sendParallelRequestLimitRejected(activeLimit, reply);
+        return;
+      }
+      const requestRateLimit = await checkRequestRateLimit(persistence, identity);
+      if (requestRateLimit.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: requestRateLimit.reason });
+        await appendLimitRejectedEvent({
+          events,
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          rejection: requestRateLimit
+        });
+        sendLimitRejected(requestRateLimit, reply);
+        return;
+      }
       await events.append({
         tenantId: identity.organizationId,
         workspaceId: identity.workspaceId,
@@ -337,6 +378,26 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         sendRejectedDecision(decision, reply);
         return;
       }
+      const tokenRateLimit = await checkTokenRateLimit(
+        persistence,
+        identity,
+        requestId,
+        context.estimatedInputTokens,
+        selectedOutputTokenCap(request.body, decision)
+      );
+      if (tokenRateLimit.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: tokenRateLimit.reason });
+        await appendLimitRejectedEvent({
+          events,
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          rejection: tokenRateLimit
+        });
+        sendLimitRejected(tokenRateLimit, reply);
+        return;
+      }
       await pinSystemPrompt(persistence, identity, openAIResponsesSurface.surface, requestId, context.sessionId, systemPrompt);
 
       const compression = await compressForForwardWithResult({
@@ -370,20 +431,39 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         result: compression,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
+      const provider = routedProvider(decision);
+      const credential = await resolveUpstreamCredential(persistence, identity, provider);
+      const budgetReservation = await reserveBudget({
+        persistence,
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        context,
+        decision,
+        body: compression.body
+      });
+      if (budgetReservation.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: budgetReservation.rejection.reason });
+        sendBudgetRejected(budgetReservation, reply);
+        return;
+      }
       await proxy.forward({
         requestId,
         idempotencyKey,
         organizationId: identity.organizationId,
         workspaceId: identity.workspaceId,
+        sessionId: context.sessionId,
         surface: openAIResponsesSurface.surface,
-        provider: routedProvider(decision),
+        provider,
         harnessProfileId: context.harnessProfileId,
         body: forwardedBody,
         responseStream: requestWantsStream(request.body),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
-        credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
+        credential,
         compressionTelemetry: compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy),
         onAssistantText: assistantResponseCapture({
           identity,
@@ -403,6 +483,11 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
+    } finally {
+      await releaseActiveRequestLimit(
+        activeLimit,
+        (err, message) => app.log.warn({ err, requestId }, message)
+      );
     }
   });
 
@@ -420,8 +505,37 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
     if (sendDuplicateRequest(gate, reply)) return;
     const requestId = gate.state.requestId ?? proposedRequestId;
+    let activeLimit: ActiveRequestLimitReservation | undefined;
 
     try {
+      activeLimit = await reserveActiveRequestLimit(persistence, identity, requestId);
+      if (activeLimit.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: activeLimit.reason });
+        await appendLimitRejectedEvent({
+          events,
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          rejection: activeLimit
+        });
+        sendParallelRequestLimitRejected(activeLimit, reply);
+        return;
+      }
+      const requestRateLimit = await checkRequestRateLimit(persistence, identity);
+      if (requestRateLimit.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: requestRateLimit.reason });
+        await appendLimitRejectedEvent({
+          events,
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          rejection: requestRateLimit
+        });
+        sendLimitRejected(requestRateLimit, reply);
+        return;
+      }
       await events.append({
         tenantId: identity.organizationId,
         workspaceId: identity.workspaceId,
@@ -482,6 +596,26 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         sendRejectedDecision(decision, reply);
         return;
       }
+      const tokenRateLimit = await checkTokenRateLimit(
+        persistence,
+        identity,
+        requestId,
+        context.estimatedInputTokens,
+        selectedOutputTokenCap(request.body, decision)
+      );
+      if (tokenRateLimit.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: tokenRateLimit.reason });
+        await appendLimitRejectedEvent({
+          events,
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          rejection: tokenRateLimit
+        });
+        sendLimitRejected(tokenRateLimit, reply);
+        return;
+      }
 
       const compression = await compressForForwardWithResult({
         events,
@@ -514,20 +648,39 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         result: compression,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
+      const provider = routedProvider(decision);
+      const credential = await resolveUpstreamCredential(persistence, identity, provider);
+      const budgetReservation = await reserveBudget({
+        persistence,
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        context,
+        decision,
+        body: compression.body
+      });
+      if (budgetReservation.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: budgetReservation.rejection.reason });
+        sendBudgetRejected(budgetReservation, reply);
+        return;
+      }
       await proxy.forward({
         requestId,
         idempotencyKey,
         organizationId: identity.organizationId,
         workspaceId: identity.workspaceId,
+        sessionId: context.sessionId,
         surface: openAIChatSurface.surface,
-        provider: routedProvider(decision),
+        provider,
         harnessProfileId: context.harnessProfileId,
         body: forwardedBody,
         responseStream: requestWantsStream(request.body),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
-        credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
+        credential,
         compressionTelemetry: compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy),
         onAssistantText: assistantResponseCapture({
           identity,
@@ -547,6 +700,11 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
+    } finally {
+      await releaseActiveRequestLimit(
+        activeLimit,
+        (err, message) => app.log.warn({ err, requestId }, message)
+      );
     }
   });
 
@@ -564,8 +722,37 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
     if (sendDuplicateRequest(gate, reply)) return;
     const requestId = gate.state.requestId ?? proposedRequestId;
+    let activeLimit: ActiveRequestLimitReservation | undefined;
 
     try {
+      activeLimit = await reserveActiveRequestLimit(persistence, identity, requestId);
+      if (activeLimit.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: activeLimit.reason });
+        await appendLimitRejectedEvent({
+          events,
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          rejection: activeLimit
+        });
+        sendParallelRequestLimitRejected(activeLimit, reply);
+        return;
+      }
+      const requestRateLimit = await checkRequestRateLimit(persistence, identity);
+      if (requestRateLimit.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: requestRateLimit.reason });
+        await appendLimitRejectedEvent({
+          events,
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          rejection: requestRateLimit
+        });
+        sendLimitRejected(requestRateLimit, reply);
+        return;
+      }
       await events.append({
         tenantId: identity.organizationId,
         workspaceId: identity.workspaceId,
@@ -634,6 +821,26 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         sendRejectedDecision(decision, reply);
         return;
       }
+      const tokenRateLimit = await checkTokenRateLimit(
+        persistence,
+        identity,
+        requestId,
+        context.estimatedInputTokens,
+        selectedOutputTokenCap(request.body, decision)
+      );
+      if (tokenRateLimit.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: tokenRateLimit.reason });
+        await appendLimitRejectedEvent({
+          events,
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          rejection: tokenRateLimit
+        });
+        sendLimitRejected(tokenRateLimit, reply);
+        return;
+      }
       await pinSystemPrompt(persistence, identity, anthropicMessagesSurface.surface, requestId, context.sessionId, systemPrompt);
 
       const compression = await compressForForwardWithResult({
@@ -667,20 +874,39 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         result: compression,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
+      const provider = routedProvider(decision);
+      const credential = await resolveUpstreamCredential(persistence, identity, provider);
+      const budgetReservation = await reserveBudget({
+        persistence,
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        context,
+        decision,
+        body: compression.body
+      });
+      if (budgetReservation.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: budgetReservation.rejection.reason });
+        sendBudgetRejected(budgetReservation, reply);
+        return;
+      }
       await proxy.forward({
         requestId,
         idempotencyKey,
         organizationId: identity.organizationId,
         workspaceId: identity.workspaceId,
+        sessionId: context.sessionId,
         surface: anthropicMessagesSurface.surface,
-        provider: routedProvider(decision),
+        provider,
         harnessProfileId: context.harnessProfileId,
         body: forwardedBody,
         responseStream: requestWantsStream(request.body),
         headers: lowerHeaders(request.headers),
         decision,
         reply,
-        credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
+        credential,
         compressionTelemetry: compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy),
         onAssistantText: assistantResponseCapture({
           identity,
@@ -700,6 +926,11 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
+    } finally {
+      await releaseActiveRequestLimit(
+        activeLimit,
+        (err, message) => app.log.warn({ err, requestId }, message)
+      );
     }
   });
 
@@ -717,7 +948,36 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
     if (sendDuplicateRequest(gate, reply)) return;
     const requestId = gate.state.requestId ?? proposedRequestId;
+    let activeLimit: ActiveRequestLimitReservation | undefined;
     try {
+      activeLimit = await reserveActiveRequestLimit(persistence, identity, requestId);
+      if (activeLimit.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: activeLimit.reason });
+        await appendLimitRejectedEvent({
+          events,
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          rejection: activeLimit
+        });
+        sendParallelRequestLimitRejected(activeLimit, reply);
+        return;
+      }
+      const requestRateLimit = await checkRequestRateLimit(persistence, identity);
+      if (requestRateLimit.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: requestRateLimit.reason });
+        await appendLimitRejectedEvent({
+          events,
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          rejection: requestRateLimit
+        });
+        sendLimitRejected(requestRateLimit, reply);
+        return;
+      }
       await events.append({
         tenantId: identity.organizationId,
         workspaceId: identity.workspaceId,
@@ -744,6 +1004,26 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         await requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
         markModelErrorClass(requestMetrics, request, "routing");
         sendRejectedDecision(decision, reply);
+        return;
+      }
+      const tokenRateLimit = await checkTokenRateLimit(
+        persistence,
+        identity,
+        requestId,
+        context.estimatedInputTokens,
+        0
+      );
+      if (tokenRateLimit.status === "rejected") {
+        await requestStates.finish(idempotencyKey, "failed", { error: tokenRateLimit.reason });
+        await appendLimitRejectedEvent({
+          events,
+          identity,
+          requestId,
+          idempotencyKey,
+          sessionId: context.sessionId,
+          rejection: tokenRateLimit
+        });
+        sendLimitRejected(tokenRateLimit, reply);
         return;
       }
 
@@ -792,6 +1072,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         organizationId: identity.organizationId,
         workspaceId: identity.workspaceId,
+        sessionId: context.sessionId,
         surface: anthropicMessagesSurface.surface,
         provider: routedProvider(decision),
         harnessProfileId: context.harnessProfileId,
@@ -815,6 +1096,11 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
+    } finally {
+      await releaseActiveRequestLimit(
+        activeLimit,
+        (err, message) => app.log.warn({ err, requestId }, message)
+      );
     }
   });
 
@@ -842,6 +1128,143 @@ function resolveUpstreamCredential(
     apiKeyId: identity.apiKeyId,
     provider
   });
+}
+
+async function reserveBudget(input: {
+  persistence: AppPersistence | undefined;
+  events: EventService;
+  identity: RequestIdentity;
+  requestId: string;
+  idempotencyKey: string;
+  sessionId?: string;
+  context: RouteContext;
+  decision: RouteDecision;
+  body: unknown;
+}): Promise<
+  | { status: "disabled" }
+  | { status: "reserved" }
+  | { status: "rejected"; rejection: BudgetReservationRejection; estimatedCostMicros: number }
+> {
+  if (!input.persistence || !input.decision.provider || !input.decision.selectedModel) {
+    return { status: "disabled" };
+  }
+  const plan = await input.persistence.budgetWindows.planRequestReservation({
+    organizationId: input.identity.organizationId,
+    workspaceId: input.identity.workspaceId,
+    apiKeyId: input.identity.apiKeyId,
+    provider: input.decision.provider,
+    model: input.decision.selectedModel,
+    inputTokens: input.context.estimatedInputTokens,
+    outputTokens: selectedOutputTokenCap(input.body, input.decision),
+    at: new Date()
+  });
+  if (plan.rejection) {
+    await appendBudgetRejectedEvent({
+      events: input.events,
+      identity: input.identity,
+      requestId: input.requestId,
+      idempotencyKey: input.idempotencyKey,
+      sessionId: input.sessionId,
+      rejection: plan.rejection,
+      estimatedCostMicros: plan.estimatedCostMicros
+    });
+    return { status: "rejected", rejection: plan.rejection, estimatedCostMicros: plan.estimatedCostMicros };
+  }
+  if (plan.entries.length === 0) return { status: "disabled" };
+  try {
+    await appendBudgetReservedEvent({
+      events: input.events,
+      identity: input.identity,
+      requestId: input.requestId,
+      idempotencyKey: input.idempotencyKey,
+      sessionId: input.sessionId,
+      entries: plan.entries,
+      estimatedCostMicros: plan.estimatedCostMicros
+    });
+  } catch (error) {
+    if (!(error instanceof BudgetReservationRejectedError)) throw error;
+    await appendBudgetRejectedEvent({
+      events: input.events,
+      identity: input.identity,
+      requestId: input.requestId,
+      idempotencyKey: input.idempotencyKey,
+      sessionId: input.sessionId,
+      rejection: error.rejection,
+      estimatedCostMicros: plan.estimatedCostMicros
+    });
+    return { status: "rejected", rejection: error.rejection, estimatedCostMicros: plan.estimatedCostMicros };
+  }
+  return { status: "reserved" };
+}
+
+function outputTokenCap(body: unknown) {
+  if (!isRecord(body)) return 4096;
+  for (const key of ["max_output_tokens", "max_tokens", "max_completion_tokens"]) {
+    const value = body[key];
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.ceil(value);
+    }
+  }
+  return 4096;
+}
+
+function selectedOutputTokenCap(body: unknown, decision: RouteDecision) {
+  return decision.providerSettings?.maxOutputTokens ?? outputTokenCap(body);
+}
+
+function checkRequestRateLimit(
+  persistence: AppPersistence | undefined,
+  identity: RequestIdentity
+) {
+  if (!persistence) return Promise.resolve({ status: "disabled" as const });
+  return persistence.requestRateLimits.check({
+    organizationId: identity.organizationId,
+    workspaceId: identity.workspaceId,
+    apiKeyId: identity.apiKeyId
+  });
+}
+
+function checkTokenRateLimit(
+  persistence: AppPersistence | undefined,
+  identity: RequestIdentity,
+  requestId: string,
+  inputTokens: number,
+  outputTokens: number
+) {
+  if (!persistence) return Promise.resolve({ status: "disabled" as const });
+  return persistence.tokenRateLimits.check({
+    organizationId: identity.organizationId,
+    workspaceId: identity.workspaceId,
+    apiKeyId: identity.apiKeyId,
+    requestId,
+    estimatedTokens: inputTokens + outputTokens
+  });
+}
+
+function reserveActiveRequestLimit(
+  persistence: AppPersistence | undefined,
+  identity: RequestIdentity,
+  requestId: string
+) {
+  if (!persistence) return Promise.resolve({ status: "disabled" as const });
+  return persistence.activeRequestLimits.reserve({
+    organizationId: identity.organizationId,
+    workspaceId: identity.workspaceId,
+    apiKeyId: identity.apiKeyId,
+    requestId
+  });
+}
+
+async function releaseActiveRequestLimit(
+  activeLimit: ActiveRequestLimitReservation | undefined,
+  warn: (err: unknown, message: string) => void
+) {
+  if (activeLimit?.status !== "reserved") return;
+  try {
+    await activeLimit.release();
+  } catch (error) {
+    warn(error, "active request limit release failed");
+  }
 }
 
 async function optionalIdentity(
@@ -1068,6 +1491,49 @@ function finishModelRequestMetrics(
     terminal_status: terminalStatus
   });
   state.modelRecorded = true;
+}
+
+function sendParallelRequestLimitRejected(
+  activeLimit: Extract<ActiveRequestLimitReservation, { status: "rejected" }>,
+  reply: FastifyReply
+) {
+  reply.code(429).send({
+    error: activeLimit.reason,
+    message: "Active parallel request limit exceeded.",
+    scope: activeLimit.scope,
+    current: activeLimit.current,
+    limit: activeLimit.limit,
+    resetAt: activeLimit.resetAt
+  });
+}
+
+function sendLimitRejected(limit: LimitRejected, reply: FastifyReply) {
+  reply.code(429).send({
+    error: limit.reason,
+    message: "Limit exceeded.",
+    scope: limit.scope,
+    current: limit.current,
+    limit: limit.limit,
+    resetAt: limit.resetAt
+  });
+}
+
+function sendBudgetRejected(
+  budget: { rejection: BudgetReservationRejection; estimatedCostMicros: number },
+  reply: FastifyReply
+) {
+  reply.code(429).send({
+    error: budget.rejection.reason,
+    message: "Budget limit exceeded.",
+    scopeType: budget.rejection.scopeType,
+    scopeId: budget.rejection.scopeId,
+    windowType: budget.rejection.windowType,
+    currentUsd: budget.rejection.currentUsd,
+    reservedUsd: budget.rejection.reservedUsd,
+    limitUsd: budget.rejection.limitUsd,
+    resetAt: budget.rejection.resetAt,
+    estimatedCostMicros: budget.estimatedCostMicros
+  });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

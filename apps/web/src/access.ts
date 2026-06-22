@@ -5,6 +5,7 @@ export function isAdminRole(role: string | null | undefined) {
 const adminOnlyPathPrefixes = [
   "/api-keys",
   "/billing",
+  "/limits",
   "/logs",
   "/prompts",
   "/providers",
