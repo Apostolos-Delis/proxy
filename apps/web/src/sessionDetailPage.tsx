@@ -1,15 +1,16 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft } from "lucide-react";
+import { Check, ChevronLeft, Copy } from "lucide-react";
 
 import { MiniBars } from "./charts";
 import { compactId, formatCompact, formatDateTime, formatDurationMs, formatMoney } from "./format";
 import { graphql } from "./gql";
 import { gqlFetch } from "./graphql";
-import { CopyButton } from "./jsonView";
+import { CopyButton, useCopyFeedback } from "./jsonView";
 import {
   artifactText,
   conversationTurns,
+  type ConversationTurn,
   dominantRequestRoute,
   dominantRequestStatus,
   sessionUserName,
@@ -20,6 +21,8 @@ import {
 import { SessionTimeline } from "./sessionTimeline";
 import { TierGauge } from "./routing/tierViz";
 import { Avatar, GlassCard, PageState, StatusBadge } from "./ui";
+
+const MAX_SESSION_MINIBARS = 180;
 
 const SessionDetailViewDocument = graphql(`
   query SessionDetailView($sessionId: ID!) {
@@ -62,9 +65,8 @@ const SessionDetailViewDocument = graphql(`
         kind
         sourceIndex
         contentHash
+        chars
         createdAt
-        rawText
-        redactedText
         preview
         tokenEstimate
         metadata
@@ -89,7 +91,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }) {
   const spans = systemSpans(turns);
   const durationMs = sessionWallMs(turns);
   const hasCapturedText = turns.some((turn) => turn.artifacts.some((artifact) => artifactText(artifact)));
-  const transcript = hasCapturedText ? transcriptText(turns) : null;
+  const tokenBars = sessionTokenBars(turns.map((turn) => turn.request.usage.totalTokens));
   return (
     <div className="page page-enter session-detail">
       <div className="session-crumbs">
@@ -99,7 +101,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }) {
           {compactId(session.externalSessionId ?? session.sessionId, 12)}
           <CopyButton text={session.externalSessionId ?? session.sessionId} />
         </span>
-        {transcript ? <span className="session-crumbs-actions"><CopyButton text={transcript} label="Copy transcript" /></span> : null}
+        {hasCapturedText ? <span className="session-crumbs-actions"><SessionTranscriptCopyButton turns={turns} /></span> : null}
       </div>
       <header className="session-head">
         <div className="row gap-12">
@@ -122,12 +124,27 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }) {
         <SessionStat label="Duration" value={durationMs != null ? formatDurationMs(durationMs) : "—"} />
         {turns.length >= 2 ? (
           <div className="session-minibars" title="Tokens per request">
-            <MiniBars data={turns.map((turn) => turn.request.usage.totalTokens)} height={34} valueFormatter={formatCompact} />
+            <MiniBars data={tokenBars} height={34} valueFormatter={formatCompact} />
           </div>
         ) : null}
       </GlassCard>
-      <SessionTimeline turns={turns} spans={spans} />
+      <SessionTimeline key={session.sessionId} turns={turns} spans={spans} />
     </div>
+  );
+}
+
+function SessionTranscriptCopyButton({ turns }: { turns: ConversationTurn[] }) {
+  const { copied, copy } = useCopyFeedback();
+  return (
+    <button
+      type="button"
+      className={`copy-button${copied ? " copied" : ""}`}
+      aria-label="Copy preview transcript"
+      onClick={() => copy(transcriptText(turns))}
+    >
+      {copied ? <Check /> : <Copy />}
+      <span>{copied ? "Copied" : "Copy preview transcript"}</span>
+    </button>
   );
 }
 
@@ -138,4 +155,14 @@ function SessionStat({ label, value, accent = false }: { label: string; value: s
       <div className={`v${accent ? " accent" : ""}`}>{value}</div>
     </div>
   );
+}
+
+function sessionTokenBars(values: number[]) {
+  if (values.length <= MAX_SESSION_MINIBARS) return values;
+  const bucketSize = Math.ceil(values.length / MAX_SESSION_MINIBARS);
+  const buckets: number[] = [];
+  for (let index = 0; index < values.length; index += bucketSize) {
+    buckets.push(Math.max(...values.slice(index, index + bucketSize)));
+  }
+  return buckets;
 }

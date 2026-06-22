@@ -543,7 +543,7 @@ export type SessionDetailViewQueryVariables = Exact<{
 }>;
 
 
-export type SessionDetailViewQuery = { session: { user: unknown, session: { sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, sessionIdentity: string | null, requestCount: number, startedAt: string, usage: { inputTokens: number, outputTokens: number }, cost: { selected: number } }, requests: Array<{ requestId: string, createdAt: string | null, selectedModel: string | null, finalRoute: string | null, terminalStatus: string, latencyMs: number | null, selectedCost: number, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, totalTokens: number } }>, promptArtifacts: Array<{ artifactId: string, requestId: string, kind: string, sourceIndex: number | null, contentHash: string, createdAt: string, rawText: string | null, redactedText: string | null, preview: string | null, tokenEstimate: number | null, metadata: unknown }> } | null };
+export type SessionDetailViewQuery = { session: { user: unknown, session: { sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, sessionIdentity: string | null, requestCount: number, startedAt: string, usage: { inputTokens: number, outputTokens: number }, cost: { selected: number } }, requests: Array<{ requestId: string, createdAt: string | null, selectedModel: string | null, finalRoute: string | null, terminalStatus: string, latencyMs: number | null, selectedCost: number, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, totalTokens: number } }>, promptArtifacts: Array<{ artifactId: string, requestId: string, kind: string, sourceIndex: number | null, contentHash: string, chars: number | null, createdAt: string, preview: string | null, tokenEstimate: number | null, metadata: unknown }> } | null };
 
 export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -2078,9 +2078,8 @@ export const SessionDetailViewDocument = new TypedDocumentString(`
       kind
       sourceIndex
       contentHash
+      chars
       createdAt
-      rawText
-      redactedText
       preview
       tokenEstimate
       metadata

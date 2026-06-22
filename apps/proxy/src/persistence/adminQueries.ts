@@ -129,6 +129,26 @@ export type UsageTimeseriesFilters = UsageAnalyticsFilters & {
   limit?: number;
 };
 
+export type SessionDetailOptions = {
+  includePromptArtifacts?: boolean;
+  includePromptArtifactContent?: boolean;
+  includeRouteDecisions?: boolean;
+  includeProviderAttempts?: boolean;
+  includeUsageLedger?: boolean;
+  includeEvents?: boolean;
+};
+
+function sessionDetailOptions(options: SessionDetailOptions): Required<SessionDetailOptions> {
+  return {
+    includePromptArtifacts: options.includePromptArtifacts ?? true,
+    includePromptArtifactContent: options.includePromptArtifactContent ?? true,
+    includeRouteDecisions: options.includeRouteDecisions ?? true,
+    includeProviderAttempts: options.includeProviderAttempts ?? true,
+    includeUsageLedger: options.includeUsageLedger ?? true,
+    includeEvents: options.includeEvents ?? true
+  };
+}
+
 export class AdminQueryService {
   // Instances are created per GraphQL request (see graphql/context.ts), so
   // these caches dedupe work across root fields of one document — including
@@ -811,7 +831,8 @@ export class AdminQueryService {
     };
   }
 
-  async sessionDetail(sessionId: string) {
+  async sessionDetail(sessionId: string, options: SessionDetailOptions = {}) {
+    const detailOptions = sessionDetailOptions(options);
     const [session] = await this.db
       .select()
       .from(agentSessions)
@@ -827,7 +848,7 @@ export class AdminQueryService {
     const requestSummariesById = new Map(requestSummaries.map((request) => [request.requestId, request]));
     const requestIds = requestRows.map((request) => request.id);
     const userRows = session.userId ? await this.userRowsForOrg() : new Map<string, UserRow>();
-    const detailRows = await this.sessionDetailRows(sessionId, requestIds);
+    const detailRows = await this.sessionDetailRows(sessionId, requestIds, detailOptions);
     const promptArtifactSummaries = detailRows.prompts.map((row) => promptDetail(row, requestSummariesById.get(row.request.id)));
     const routeDecisionSummaries = detailRows.routeDecisions.map(routeDecisionSummary);
     await this.addRoutingConfigNames([...promptArtifactSummaries, ...routeDecisionSummaries]);
@@ -1058,11 +1079,11 @@ export class AdminQueryService {
       .orderBy(desc(invitations.createdAt));
   }
 
-  private async sessionDetailRows(sessionId: string, requestIds: string[]) {
-    const prompts = requestIds.length > 0
+  private async sessionDetailRows(sessionId: string, requestIds: string[], options: Required<SessionDetailOptions>) {
+    const prompts = options.includePromptArtifacts && requestIds.length > 0
       ? await this.db
           .select({
-            artifact: promptArtifacts,
+            artifact: promptArtifactDetailColumns(options.includePromptArtifactContent),
             request: requests
           })
           .from(promptArtifacts)
@@ -1076,7 +1097,7 @@ export class AdminQueryService {
           ))
           .orderBy(asc(promptArtifacts.createdAt))
       : [];
-    const decisions = requestIds.length > 0
+    const decisions = options.includeRouteDecisions && requestIds.length > 0
       ? await this.db
           .select()
           .from(routeDecisions)
@@ -1086,7 +1107,7 @@ export class AdminQueryService {
           ))
           .orderBy(asc(routeDecisions.createdAt))
       : [];
-    const attempts = requestIds.length > 0
+    const attempts = options.includeProviderAttempts && requestIds.length > 0
       ? await this.db
           .select()
           .from(providerAttempts)
@@ -1096,7 +1117,7 @@ export class AdminQueryService {
           ))
           .orderBy(asc(providerAttempts.startedAt))
       : [];
-    const usageRows = requestIds.length > 0
+    const usageRows = options.includeUsageLedger && requestIds.length > 0
       ? await this.db
           .select()
           .from(usageLedger)
@@ -1111,7 +1132,7 @@ export class AdminQueryService {
       routeDecisions: decisions,
       providerAttempts: attempts,
       usageLedger: usageRows,
-      events: await this.eventsForSession(sessionId, requestIds)
+      events: options.includeEvents ? await this.eventsForSession(sessionId, requestIds) : []
     };
   }
 
@@ -2082,6 +2103,31 @@ function dateValue(value: string | undefined) {
 function promptPreview(value: string | null | undefined) {
   if (!value) return null;
   return value.length > 160 ? `${value.slice(0, 160)}...` : value;
+}
+
+function promptArtifactDetailColumns(includeContent: boolean) {
+  return {
+    id: promptArtifacts.id,
+    organizationId: promptArtifacts.organizationId,
+    workspaceId: promptArtifacts.workspaceId,
+    requestId: promptArtifacts.requestId,
+    kind: promptArtifacts.kind,
+    storageMode: promptArtifacts.storageMode,
+    contentHash: promptArtifacts.contentHash,
+    rawText: includeContent ? promptArtifacts.rawText : promptArtifactPreviewColumn(promptArtifacts.rawText),
+    tokenEstimate: promptArtifacts.tokenEstimate,
+    sourceRole: promptArtifacts.sourceRole,
+    sourceIndex: promptArtifacts.sourceIndex,
+    redactedText: includeContent ? promptArtifacts.redactedText : promptArtifactPreviewColumn(promptArtifacts.redactedText),
+    encryptedBlobRef: includeContent ? promptArtifacts.encryptedBlobRef : sql<string | null>`null`,
+    metadata: promptArtifacts.metadata,
+    expiresAt: promptArtifacts.expiresAt,
+    createdAt: promptArtifacts.createdAt
+  };
+}
+
+function promptArtifactPreviewColumn(column: typeof promptArtifacts.rawText | typeof promptArtifacts.redactedText) {
+  return sql<string | null>`case when ${column} is null then null else substring(${column} from 1 for 161) end`;
 }
 
 function numberFromMetadata(metadata: unknown, key: string) {

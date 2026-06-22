@@ -190,7 +190,26 @@ export function sessionWallMs(turns: ConversationTurn[]) {
 }
 
 export function artifactText(artifact?: SessionArtifact) {
-  return artifact ? artifact.rawText ?? artifact.redactedText ?? artifact.preview : null;
+  if (!artifact) return null;
+  return artifactStoredText(artifact) ?? artifact.preview ?? null;
+}
+
+export function artifactHasStoredText(artifact: SessionArtifact) {
+  return artifactStoredText(artifact) != null;
+}
+
+export function artifactNeedsDetailLink(artifact: SessionArtifact) {
+  if (artifactHasStoredText(artifact)) return false;
+  const text = artifactText(artifact);
+  if (!text) return false;
+  return text.endsWith("...") || (artifact.chars != null && artifact.chars > text.length);
+}
+
+function artifactStoredText(artifact: SessionArtifact) {
+  const content = artifact as SessionArtifact & { rawText?: unknown; redactedText?: unknown };
+  if (typeof content.rawText === "string") return content.rawText;
+  if (typeof content.redactedText === "string") return content.redactedText;
+  return null;
 }
 
 export function transcriptText(turns: ConversationTurn[]) {

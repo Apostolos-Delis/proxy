@@ -1478,6 +1478,25 @@ input[type="checkbox"][role="switch"]:focus-visible {
   margin-bottom: 6px;
 }
 
+.session-more {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--glass);
+  color: var(--fg-muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.13s var(--ease), background 0.13s var(--ease), color 0.13s var(--ease);
+}
+
+.session-more:hover {
+  border-color: var(--border-strong);
+  background: var(--glass-hover);
+  color: var(--fg);
+}
+
 .req-head {
   display: flex;
   align-items: center;

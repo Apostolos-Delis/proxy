@@ -8,17 +8,14 @@ import { CopyButton } from "./jsonView";
 import { TierGauge } from "./routing/tierViz";
 import {
   artifactRole,
+  artifactHasStoredText,
+  artifactNeedsDetailLink,
   artifactText,
   artifactToolNames,
   type ConversationTurn,
   type SessionArtifact
 } from "./sessionsPageData";
 import { GlassCard, StatusBadge } from "./ui";
-
-export function SessionTimeline({ turns, spans }: { turns: ConversationTurn[]; spans: Map<string, number> }) {
-  if (turns.length === 0) return <GlassCard><div className="empty">No requests recorded for this session.</div></GlassCard>;
-  return turns.map((turn) => <RequestBlock key={turn.request.requestId} turn={turn} spans={spans} />);
-}
 
 function RequestBlock({ turn, spans }: { turn: ConversationTurn; spans: Map<string, number> }) {
   const { request, index, gapMs, artifacts, priorMessages, priorTokens } = turn;
@@ -109,6 +106,30 @@ const ROLE_ICONS: Record<ArtifactRole, ReactNode> = {
 
 const CLAMP_CHARS = 280;
 const CLAMP_LINES = 5;
+const INITIAL_VISIBLE_TURNS = 80;
+const VISIBLE_TURN_STEP = 500;
+
+export function SessionTimeline({ turns, spans }: { turns: ConversationTurn[]; spans: Map<string, number> }) {
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_TURNS);
+  if (turns.length === 0) return <GlassCard><div className="empty">No requests recorded for this session.</div></GlassCard>;
+  const visibleTurns = turns.slice(0, visibleCount);
+  const hiddenCount = turns.length - visibleTurns.length;
+  const nextCount = Math.min(VISIBLE_TURN_STEP, hiddenCount);
+  return (
+    <>
+      {visibleTurns.map((turn) => <RequestBlock key={turn.request.requestId} turn={turn} spans={spans} />)}
+      {hiddenCount > 0 ? (
+        <button
+          type="button"
+          className="session-more"
+          onClick={() => setVisibleCount((count) => Math.min(count + VISIBLE_TURN_STEP, turns.length))}
+        >
+          Show next {formatCompact(nextCount)} requests · {formatCompact(visibleTurns.length)} of {formatCompact(turns.length)} shown
+        </button>
+      ) : null}
+    </>
+  );
+}
 
 function MessageItem({ artifact, identicalAcross, last }: {
   artifact: SessionArtifact;
@@ -118,11 +139,34 @@ function MessageItem({ artifact, identicalAcross, last }: {
   const { role, label } = artifactRole(artifact);
   const text = artifactText(artifact);
   const lines = text ? text.split("\n").length : 0;
-  const isLong = text != null && (text.length > CLAMP_CHARS || lines > CLAMP_LINES);
+  const hasStoredText = artifactHasStoredText(artifact);
+  const isLong = hasStoredText && text != null && (text.length > CLAMP_CHARS || lines > CLAMP_LINES);
+  const needsDetailLink = artifactNeedsDetailLink(artifact);
   const [open, setOpen] = useState(false);
   const tools = artifactToolNames(artifact);
   const isCode = role === "tool" || role === "system" || role === "context";
   const tokens = artifact.tokenEstimate ?? 0;
+  const detailLabel = artifact.chars != null
+    ? `Open full ${label.toLowerCase()} · ${formatCompact(artifact.chars)} chars`
+    : `Open full ${label.toLowerCase()}`;
+  let messageAction: ReactNode = null;
+  if (isLong) {
+    messageAction = (
+      <button type="button" className="expander" onClick={() => setOpen((value) => !value)}>
+        {open ? <ChevronDown /> : <ChevronRight />}
+        {open
+          ? "Collapse"
+          : `Expand full ${label.toLowerCase()} · ${formatCompact(lines)} lines${tokens > 0 ? ` · ~${formatCompact(tokens)} tokens` : ""}`}
+      </button>
+    );
+  } else if (needsDetailLink) {
+    messageAction = (
+      <Link to="/logs/$artifactId" params={{ artifactId: artifact.artifactId }} className="expander">
+        <FileText />
+        {detailLabel}
+      </Link>
+    );
+  }
   return (
     <TimelineItem tone={role} icon={KIND_ICONS[artifact.kind] ?? ROLE_ICONS[role]} last={last}>
       <div className="msg">
@@ -138,19 +182,12 @@ function MessageItem({ artifact, identicalAcross, last }: {
             {tokens > 0 && isLong ? " · " : null}
             {isLong ? `${formatCompact(lines)} lines` : null}
           </span>
-          {text ? <CopyButton text={text} /> : null}
+          {text && hasStoredText ? <CopyButton text={text} /> : null}
         </div>
         {text
           ? <div className={`msg-body${isCode ? " code" : ""}${isLong && !open ? " clamp" : ""}`}>{text}</div>
           : <div className="msg-body msg-missing">Content not stored.</div>}
-        {isLong ? (
-          <button type="button" className="expander" onClick={() => setOpen((value) => !value)}>
-            {open ? <ChevronDown /> : <ChevronRight />}
-            {open
-              ? "Collapse"
-              : `Expand full ${label.toLowerCase()} · ${formatCompact(lines)} lines${tokens > 0 ? ` · ~${formatCompact(tokens)} tokens` : ""}`}
-          </button>
-        ) : null}
+        {messageAction}
       </div>
     </TimelineItem>
   );

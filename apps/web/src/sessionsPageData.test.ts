@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  artifactHasStoredText,
+  artifactNeedsDetailLink,
+  artifactText,
   artifactToolNames,
   conversationTurns,
   dominantRequestStatus,
@@ -15,6 +18,11 @@ import {
   type SessionRequest,
   type SessionSummary
 } from "./sessionsPageData";
+
+type TestSessionArtifact = SessionArtifact & {
+  rawText?: string | null;
+  redactedText?: string | null;
+};
 
 function usage(overrides: Partial<SessionRequest["usage"]> = {}): SessionRequest["usage"] {
   return {
@@ -39,16 +47,17 @@ function request(requestId: string, createdAt: string, latencyMs: number | null 
   };
 }
 
-function artifact(overrides: Partial<SessionArtifact> & Pick<SessionArtifact, "artifactId" | "requestId" | "kind" | "contentHash" | "createdAt">): SessionArtifact {
+function artifact(overrides: Partial<TestSessionArtifact> & Pick<SessionArtifact, "artifactId" | "requestId" | "kind" | "contentHash" | "createdAt">): SessionArtifact {
   return {
     sourceIndex: null,
+    chars: null,
     rawText: null,
     redactedText: null,
     preview: null,
     tokenEstimate: null,
     metadata: null,
     ...overrides
-  };
+  } as SessionArtifact;
 }
 
 function detail(requests: SessionRequest[], promptArtifacts: SessionArtifact[], user: unknown = null): SessionDetail {
@@ -192,6 +201,24 @@ describe("artifactToolNames", () => {
     expect(artifactToolNames(artifact(base))).toEqual([]);
     expect(artifactToolNames(artifact({ ...base, metadata: "read" }))).toEqual([]);
     expect(artifactToolNames(artifact({ ...base, metadata: { toolNames: [1, null] } }))).toEqual([]);
+  });
+});
+
+describe("artifactText", () => {
+  const base = { artifactId: "a1", requestId: "r1", kind: "user_message", contentHash: "h1", createdAt: "2026-06-10T10:00:00Z" };
+
+  it("prefers stored full text over preview text", () => {
+    const value = artifact({ ...base, rawText: "full text", preview: "preview" });
+    expect(artifactText(value)).toBe("full text");
+    expect(artifactHasStoredText(value)).toBe(true);
+    expect(artifactNeedsDetailLink(value)).toBe(false);
+  });
+
+  it("uses preview text and flags truncated preview-only artifacts", () => {
+    const value = artifact({ ...base, preview: "short preview...", chars: 500 });
+    expect(artifactText(value)).toBe("short preview...");
+    expect(artifactHasStoredText(value)).toBe(false);
+    expect(artifactNeedsDetailLink(value)).toBe(true);
   });
 });
 
