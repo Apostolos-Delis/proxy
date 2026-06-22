@@ -12,6 +12,7 @@ import type { ClassifierSettings } from "./classifier.js";
 import type {
   Dialect,
   ProviderEffort,
+  ProviderHealthSkip,
   RouteContext,
   RouteDecision,
   SelectedRouteSettings
@@ -19,10 +20,10 @@ import type {
 
 export type TargetAvailability =
   | { status: "available"; dialect: Dialect; supportedEfforts?: ProviderEffort[]; providerAccountId?: string }
-  | { status: "unavailable"; reason: string; dialect?: Dialect };
+  | { status: "unavailable"; reason: string; dialect?: Dialect; healthSkip?: ProviderHealthSkip };
 
 export type TargetAvailabilityResolver = (
-  target: Pick<RouteTarget, "providerId"> & { dialect?: Dialect },
+  target: Pick<RouteTarget, "providerId" | "model"> & { dialect?: Dialect },
   mode?: "native" | "translated"
 ) => Promise<TargetAvailability>;
 

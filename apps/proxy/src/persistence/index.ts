@@ -17,6 +17,7 @@ import { OrganizationSettingsStore } from "./organizationSettings.js";
 import { ProviderCredentialAdminService } from "./providerCredentialAdmin.js";
 import { ProviderCredentialOAuthService } from "./providerCredentialOAuth.js";
 import { ProviderCredentialStore, type ProviderCredentialOptions } from "./providerCredentials.js";
+import { ProviderHealthStore } from "./providerHealth.js";
 import { ProviderRegistryAdminService } from "./providerRegistryAdmin.js";
 import { ProviderRegistryStore } from "./providers.js";
 import { PromptAccessAuditStore } from "./promptAccessAudit.js";
@@ -67,6 +68,7 @@ export function createDatabasePersistence(
     providerCredentials: new ProviderCredentialStore(db, credentialOptions),
     providerCredentialAdmin,
     providerCredentialOAuth: new ProviderCredentialOAuthService(providerCredentialAdmin),
+    providerHealth: new ProviderHealthStore(db),
     providerRegistryAdmin: new ProviderRegistryAdminService(transactional, config),
     providerRegistry: new ProviderRegistryStore(db, config),
     eventSink: new DatabaseEventSink(transactional, useAdvisoryLocks, metrics),

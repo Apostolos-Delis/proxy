@@ -6,6 +6,16 @@ export type PromptArtifactDetail = PromptDetailResult["requestArtifacts"][number
 export type RequestSummary = NonNullable<PromptDetailResult["request"]>;
 export type ProxyEvent = PromptDetailResult["events"][number];
 export type CompressionReceipt = PromptDetailResult["compressionReceipts"][number];
+export type HealthSkipEvidence = {
+  scope: string | null;
+  provider: string | null;
+  providerId: string | null;
+  providerAccountId: string | null;
+  model: string | null;
+  healthStatus: string | null;
+  errorType: string | null;
+  expiresAt: string | null;
+};
 
 const EVENT_TONES: [string, string][] = [
   ["proxy.", "event-proxy"],
@@ -48,4 +58,33 @@ export function totalSpan(events: ProxyEvent[], start: number) {
 export function formatDuration(value?: number | null) {
   if (value == null) return "unknown";
   return formatDurationMs(value);
+}
+
+export function healthSkipsFromEvents(events: ProxyEvent[]): HealthSkipEvidence[] {
+  const skips: HealthSkipEvidence[] = [];
+  for (const event of events) {
+    if (event.eventType !== "routing.decision_recorded") continue;
+    if (!event.payload || typeof event.payload !== "object" || Array.isArray(event.payload)) continue;
+    const healthSkips = (event.payload as Record<string, unknown>).healthSkips;
+    if (!Array.isArray(healthSkips)) continue;
+    for (const skip of healthSkips) {
+      if (!skip || typeof skip !== "object" || Array.isArray(skip)) continue;
+      const record = skip as Record<string, unknown>;
+      skips.push({
+        scope: stringOrNull(record.scope),
+        provider: stringOrNull(record.provider),
+        providerId: stringOrNull(record.providerId),
+        providerAccountId: stringOrNull(record.providerAccountId),
+        model: stringOrNull(record.model),
+        healthStatus: stringOrNull(record.healthStatus),
+        errorType: stringOrNull(record.errorType),
+        expiresAt: stringOrNull(record.expiresAt)
+      });
+    }
+  }
+  return skips;
+}
+
+function stringOrNull(value: unknown) {
+  return typeof value === "string" ? value : null;
 }

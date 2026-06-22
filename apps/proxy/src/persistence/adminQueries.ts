@@ -15,7 +15,9 @@ import {
   promptArtifacts,
   providers,
   providerAccounts,
+  providerAccountHealth,
   providerAttempts,
+  providerModelHealth,
   requests,
   routeDecisions,
   routingConfigs,
@@ -291,9 +293,17 @@ export class AdminQueryService {
       ))
       .orderBy(desc(providerAccounts.createdAt));
 
-    const boundCounts = await this.providerAccountBoundKeyCounts(rows.map((row) => row.id));
+    const providerAccountIds = rows.map((row) => row.id);
+    const boundCounts = await this.providerAccountBoundKeyCounts(providerAccountIds);
+    const accountHealth = await this.providerAccountHealthRows(providerAccountIds);
+    const modelHealth = await this.providerModelHealthRows(providerAccountIds);
     return {
-      data: rows.map((row) => providerAccountSummary(row, boundCounts.get(row.id) ?? 0))
+      data: rows.map((row) => providerAccountSummary(
+        row,
+        boundCounts.get(row.id) ?? 0,
+        accountHealth.get(row.id) ?? null,
+        modelHealth.get(row.id) ?? []
+      ))
     };
   }
 
@@ -386,6 +396,58 @@ export class AdminQueryService {
     return counts;
   }
 
+  private async providerAccountHealthRows(providerAccountIds: string[]) {
+    const rowsByAccount = new Map<string, ProviderAccountHealthRow>();
+    if (providerAccountIds.length === 0) return rowsByAccount;
+    const rows = await this.db
+      .select({
+        providerAccountId: providerAccountHealth.providerAccountId,
+        status: providerAccountHealth.status,
+        lastErrorType: providerAccountHealth.lastErrorType,
+        lastErrorAt: providerAccountHealth.lastErrorAt,
+        cooldownUntil: providerAccountHealth.cooldownUntil,
+        consecutiveFailures: providerAccountHealth.consecutiveFailures,
+        lastSuccessAt: providerAccountHealth.lastSuccessAt,
+        lastCheckedAt: providerAccountHealth.lastCheckedAt
+      })
+      .from(providerAccountHealth)
+      .where(and(
+        eq(providerAccountHealth.organizationId, this.organizationId),
+        inArray(providerAccountHealth.providerAccountId, providerAccountIds)
+      ));
+    for (const row of rows) rowsByAccount.set(row.providerAccountId, row);
+    return rowsByAccount;
+  }
+
+  private async providerModelHealthRows(providerAccountIds: string[]) {
+    const rowsByAccount = new Map<string, ProviderModelHealthRow[]>();
+    if (providerAccountIds.length === 0) return rowsByAccount;
+    const rows = await this.db
+      .select({
+        providerId: providerModelHealth.providerId,
+        providerAccountId: providerModelHealth.providerAccountId,
+        model: providerModelHealth.model,
+        status: providerModelHealth.status,
+        lastErrorType: providerModelHealth.lastErrorType,
+        lastErrorAt: providerModelHealth.lastErrorAt,
+        lockoutUntil: providerModelHealth.lockoutUntil,
+        consecutiveFailures: providerModelHealth.consecutiveFailures,
+        lastSuccessAt: providerModelHealth.lastSuccessAt
+      })
+      .from(providerModelHealth)
+      .where(and(
+        eq(providerModelHealth.organizationId, this.organizationId),
+        inArray(providerModelHealth.providerAccountId, providerAccountIds)
+      ))
+      .orderBy(asc(providerModelHealth.model));
+    for (const row of rows) {
+      const list = rowsByAccount.get(row.providerAccountId) ?? [];
+      list.push(row);
+      rowsByAccount.set(row.providerAccountId, list);
+    }
+    return rowsByAccount;
+  }
+
   private async providerSummariesBySlug() {
     const { data } = await this.providers();
     return new Map(data.map((provider) => [
@@ -471,6 +533,7 @@ export class AdminQueryService {
       ? (await this.routeDecisionRowsForRequest(requestId)).map(routeDecisionSummary)
       : [];
     await this.addRoutingConfigNames(routeDecisionSummaries);
+    const requestEvents = requestRow ? await this.eventsForRequest(requestId) : [];
     return {
       request: request ?? null,
       routeDecisions: routeDecisionSummaries,
@@ -479,8 +542,9 @@ export class AdminQueryService {
         : [],
       // Only fetch the timeline once the request passed the workspace check,
       // so foreign request ids cannot expose another workspace's events.
-      events: requestRow ? await this.eventsForRequest(requestId) : [],
-      compressionReceipts: requestRow ? await this.compressionReceiptsForRequest(requestId) : []
+      events: requestEvents,
+      compressionReceipts: requestRow ? await this.compressionReceiptsForRequest(requestId) : [],
+      healthSkips: healthSkipsFromEvents(requestEvents)
     };
   }
 
@@ -1851,6 +1915,29 @@ type ProviderAccountSummaryRow = {
   lastUsedAt: Date | null;
 };
 
+type ProviderAccountHealthRow = {
+  providerAccountId: string;
+  status: string;
+  lastErrorType: string | null;
+  lastErrorAt: Date | null;
+  cooldownUntil: Date | null;
+  consecutiveFailures: number;
+  lastSuccessAt: Date | null;
+  lastCheckedAt: Date | null;
+};
+
+type ProviderModelHealthRow = {
+  providerId: string;
+  providerAccountId: string;
+  model: string;
+  status: string;
+  lastErrorType: string | null;
+  lastErrorAt: Date | null;
+  lockoutUntil: Date | null;
+  consecutiveFailures: number;
+  lastSuccessAt: Date | null;
+};
+
 type ProviderRegistryRow = {
   id: string;
   organizationId: string | null;
@@ -2001,7 +2088,12 @@ function apiKeySummary(row: ApiKeySummaryRow, providerBindings: ProviderBindingS
   };
 }
 
-function providerAccountSummary(row: ProviderAccountSummaryRow, boundKeyCount: number) {
+function providerAccountSummary(
+  row: ProviderAccountSummaryRow,
+  boundKeyCount: number,
+  health: ProviderAccountHealthRow | null,
+  modelHealth: ProviderModelHealthRow[]
+) {
   return {
     id: row.id,
     organizationId: row.organizationId,
@@ -2014,9 +2106,66 @@ function providerAccountSummary(row: ProviderAccountSummaryRow, boundKeyCount: n
     secretHint: row.secretHint ?? null,
     ownerUserId: row.createdByUserId ?? null,
     boundKeyCount,
+    health: providerAccountHealthSummary(health, modelHealth),
     createdAt: row.createdAt.toISOString(),
     lastUsedAt: row.lastUsedAt?.toISOString() ?? null
   };
+}
+
+function providerAccountHealthSummary(
+  health: ProviderAccountHealthRow | null,
+  modelHealth: ProviderModelHealthRow[]
+) {
+  if (!health && modelHealth.length === 0) return null;
+  return {
+    status: health?.status ?? null,
+    lastErrorType: health?.lastErrorType ?? null,
+    lastErrorAt: health?.lastErrorAt?.toISOString() ?? null,
+    cooldownUntil: health?.cooldownUntil?.toISOString() ?? null,
+    consecutiveFailures: health?.consecutiveFailures ?? 0,
+    lastSuccessAt: health?.lastSuccessAt?.toISOString() ?? null,
+    lastCheckedAt: health?.lastCheckedAt?.toISOString() ?? null,
+    modelHealth: modelHealth.map((row) => ({
+      providerId: row.providerId,
+      providerAccountId: row.providerAccountId,
+      model: row.model,
+      status: row.status,
+      lastErrorType: row.lastErrorType ?? null,
+      lastErrorAt: row.lastErrorAt?.toISOString() ?? null,
+      lockoutUntil: row.lockoutUntil?.toISOString() ?? null,
+      consecutiveFailures: row.consecutiveFailures,
+      lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null
+    }))
+  };
+}
+
+function healthSkipsFromEvents(events: { eventType: string; payload: unknown }[]) {
+  const skips: JsonObject[] = [];
+  for (const event of events) {
+    if (event.eventType !== "routing.decision_recorded") continue;
+    if (!event.payload || typeof event.payload !== "object" || Array.isArray(event.payload)) continue;
+    const healthSkips = (event.payload as Record<string, unknown>).healthSkips;
+    if (!Array.isArray(healthSkips)) continue;
+    for (const skip of healthSkips) {
+      if (!skip || typeof skip !== "object" || Array.isArray(skip)) continue;
+      const record = skip as Record<string, unknown>;
+      skips.push({
+        scope: stringOrNull(record.scope),
+        provider: stringOrNull(record.provider),
+        providerId: stringOrNull(record.providerId),
+        providerAccountId: stringOrNull(record.providerAccountId),
+        model: stringOrNull(record.model),
+        healthStatus: stringOrNull(record.healthStatus),
+        errorType: stringOrNull(record.errorType),
+        expiresAt: stringOrNull(record.expiresAt)
+      });
+    }
+  }
+  return skips;
+}
+
+function stringOrNull(value: unknown) {
+  return typeof value === "string" ? value : null;
 }
 
 function providerRegistrySummary(row: ProviderRegistryRow) {

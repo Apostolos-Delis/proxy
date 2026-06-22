@@ -48,6 +48,7 @@ export async function startOpenAIMock(
     compressedJsonProvider?: boolean;
     failProviderOnce?: boolean;
     failStreamAfterChunk?: boolean;
+    failStreamProvider?: boolean;
     rateLimitProviderOnce?: RateLimitMock;
     slowProvider?: boolean;
     streamContentType?: string;
@@ -131,6 +132,12 @@ export async function startOpenAIMock(
       providerFailed = true;
       response.writeHead(500, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: { message: "mock provider unavailable" } }));
+      return;
+    }
+
+    if (options.failStreamProvider && body.stream === true) {
+      response.writeHead(500, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "mock stream unavailable" } }));
       return;
     }
 

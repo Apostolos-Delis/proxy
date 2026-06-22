@@ -105,6 +105,7 @@ describe("admin authorization", () => {
           fallbackIndex
           skipReason
         }
+        healthSkips
       }
     }`;
 
@@ -123,6 +124,7 @@ describe("admin authorization", () => {
     expect(memberResponse.data?.request.events).toEqual([]);
     expect(memberResponse.data?.request.routeDecisions).toEqual([]);
     expect(memberResponse.data?.request.providerAttempts).toEqual([]);
+    expect(memberResponse.data?.request.healthSkips).toEqual([]);
 
     const adminResponse = await adminGql(fixture.proxyUrl, fixture.adminHeaders, query, {
       requestId: "request_sanitized"
@@ -156,6 +158,18 @@ describe("admin authorization", () => {
       fallbackIndex: 0,
       skipReason: null
     });
+    expect(adminResponse.data?.request.healthSkips).toEqual([
+      {
+        scope: "provider_account",
+        provider: "openai",
+        providerId: "00000000-0000-0000-0000-000000000001",
+        providerAccountId: "account_sanitized",
+        model: "gpt-fast",
+        healthStatus: "cooldown",
+        errorType: "rate_limited",
+        expiresAt: "2026-06-08T12:05:00.000Z"
+      }
+    ]);
   });
 
   async function setup(organizationId: string) {
@@ -206,10 +220,24 @@ async function seedRequestDetail(fixture: PromptTestFixture) {
   });
   await fixture.db.insert(events).values({
     ...sessionEvent("event_sanitized", organizationId, "request_sanitized", "session_sanitized", createdAt),
+    eventType: "routing.decision_recorded",
     payload: {
       surface: "openai-responses",
       requestedModel: "router-auto",
-      internalHint: "sensitive-routing-context"
+      internalHint: "sensitive-routing-context",
+      healthSkips: [
+        {
+          scope: "provider_account",
+          provider: "openai",
+          providerId: "00000000-0000-0000-0000-000000000001",
+          providerAccountId: "account_sanitized",
+          model: "gpt-fast",
+          healthStatus: "cooldown",
+          errorType: "rate_limited",
+          expiresAt: "2026-06-08T12:05:00.000Z",
+          rawError: "upstream secret error text"
+        }
+      ]
     }
   });
 }

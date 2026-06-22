@@ -25,6 +25,26 @@ const ProviderAccountsDocument = graphql(`
       secretHint
       ownerUserId
       boundKeyCount
+      health {
+        status
+        cooldownUntil
+        lastErrorType
+        lastErrorAt
+        lastSuccessAt
+        lastCheckedAt
+        consecutiveFailures
+        modelHealth {
+          providerId
+          providerAccountId
+          model
+          status
+          lastErrorType
+          lastErrorAt
+          lockoutUntil
+          consecutiveFailures
+          lastSuccessAt
+        }
+      }
       createdAt
       lastUsedAt
     }
@@ -149,6 +169,26 @@ const RevokeProviderCredentialDocument = graphql(`
   }
 `);
 
+const ProbeProviderCredentialDocument = graphql(`
+  mutation ProbeProviderCredential($input: ProbeProviderCredentialInput!) {
+    probeProviderCredential(input: $input) {
+      probeId
+      providerAccountId
+      provider
+      model
+      status
+      healthStatus
+      errorType
+      message
+      statusCode
+      latencyMs
+      checkedAt
+      stateUpdated
+      dimensions
+    }
+  }
+`);
+
 const AssignApiKeyProviderAccountDocument = graphql(`
   mutation AssignApiKeyProviderAccount($apiKeyId: ID!, $provider: String!, $providerAccountId: ID) {
     assignApiKeyProviderAccount(apiKeyId: $apiKeyId, provider: $provider, providerAccountId: $providerAccountId) {
@@ -248,6 +288,10 @@ export async function disableProvider(providerId: string) {
 
 export async function revokeProviderCredential(providerAccountId: string) {
   return (await gqlFetch(RevokeProviderCredentialDocument, { providerAccountId })).revokeProviderCredential;
+}
+
+export async function probeProviderCredential(input: { providerAccountId: string; model: string }) {
+  return (await gqlFetch(ProbeProviderCredentialDocument, { input })).probeProviderCredential;
 }
 
 export async function assignApiKeyProviderAccount(

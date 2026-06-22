@@ -151,6 +151,13 @@ describe("database migrations", () => {
         and column_name in ('provider_id', 'base_url', 'auth_type', 'secret_ciphertext', 'secret_hint', 'created_by_user_id', 'last_used_at')
       order by column_name
     `);
+    const providerAttemptColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'provider_attempts'
+        and column_name = 'provider_account_id'
+      order by column_name
+    `);
     const providerBindingColumns = await client.query<{ column_name: string }>(`
       select column_name
       from information_schema.columns
@@ -170,6 +177,20 @@ describe("database migrations", () => {
       from information_schema.columns
       where table_name = 'providers'
         and column_name in ('id', 'organization_id', 'slug', 'display_name', 'base_url', 'auth_style', 'endpoints', 'default_headers', 'capabilities', 'forward_harness_headers', 'enabled')
+      order by column_name
+    `);
+    const providerAccountHealthColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'provider_account_health'
+        and column_name in ('organization_id', 'workspace_id', 'provider_account_id', 'provider_id', 'status', 'last_error_type', 'last_error_message', 'last_error_at', 'cooldown_until', 'consecutive_failures', 'last_success_at', 'last_checked_at', 'metadata')
+      order by column_name
+    `);
+    const providerModelHealthColumns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'provider_model_health'
+        and column_name in ('organization_id', 'workspace_id', 'provider_id', 'provider_account_id', 'model', 'status', 'last_error_type', 'last_error_at', 'lockout_until', 'consecutive_failures', 'last_success_at', 'metadata')
       order by column_name
     `);
     const retiredPolicyTable = ["route", "policies"].join("_");
@@ -224,7 +245,9 @@ describe("database migrations", () => {
       "events",
       "prompt_access_audit",
       "prompt_artifacts",
+      "provider_account_health",
       "provider_attempts",
+      "provider_model_health",
       "requests",
       "route_decisions",
       "routing_config_versions",
@@ -314,6 +337,7 @@ describe("database migrations", () => {
       "secret_ciphertext",
       "secret_hint"
     ]);
+    expect(providerAttemptColumns.rows.map((row) => row.column_name)).toEqual(["provider_account_id"]);
     expect(providerBindingColumns.rows.map((row) => row.column_name)).toEqual([
       "api_key_id",
       "organization_id",
@@ -340,6 +364,303 @@ describe("database migrations", () => {
       "organization_id",
       "slug"
     ]);
+    expect(providerAccountHealthColumns.rows.map((row) => row.column_name)).toEqual([
+      "consecutive_failures",
+      "cooldown_until",
+      "last_checked_at",
+      "last_error_at",
+      "last_error_message",
+      "last_error_type",
+      "last_success_at",
+      "metadata",
+      "organization_id",
+      "provider_account_id",
+      "provider_id",
+      "status",
+      "workspace_id"
+    ]);
+    expect(providerModelHealthColumns.rows.map((row) => row.column_name)).toEqual([
+      "consecutive_failures",
+      "last_error_at",
+      "last_error_type",
+      "last_success_at",
+      "lockout_until",
+      "metadata",
+      "model",
+      "organization_id",
+      "provider_account_id",
+      "provider_id",
+      "status",
+      "workspace_id"
+    ]);
+  });
+
+  it("creates provider health constraints and indexes", async () => {
+    const client = await migratedClient();
+
+    try {
+      await client.exec(`
+        insert into organizations (id, slug, name) values
+          ('org_provider_health', 'org-provider-health', 'Provider Health');
+        insert into workspaces (id, organization_id, slug, name) values
+          ('org_provider_health:workspace:default', 'org_provider_health', 'default', 'Default');
+        insert into provider_accounts (
+          id,
+          organization_id,
+          provider_id,
+          name,
+          auth_type,
+          secret_ciphertext,
+          secret_hint,
+          status
+        ) values (
+          'account_provider_health',
+          'org_provider_health',
+          '00000000-0000-0000-0000-000000000002',
+          'Anthropic Health',
+          'api_key',
+          'ciphertext',
+          'hint',
+          'active'
+        );
+
+        insert into provider_account_health (
+          id,
+          organization_id,
+          workspace_id,
+          provider_account_id,
+          provider_id,
+          status,
+          last_error_type,
+          cooldown_until
+        ) values (
+          'health_account_provider_health',
+          'org_provider_health',
+          'org_provider_health:workspace:default',
+          'account_provider_health',
+          '00000000-0000-0000-0000-000000000002',
+          'cooldown',
+          'rate_limited',
+          '2026-06-18T12:00:00Z'
+        );
+
+        insert into provider_model_health (
+          id,
+          organization_id,
+          workspace_id,
+          provider_id,
+          provider_account_id,
+          model,
+          status,
+          last_error_type,
+          lockout_until
+        ) values (
+          'health_model_provider_health',
+          'org_provider_health',
+          'org_provider_health:workspace:default',
+          '00000000-0000-0000-0000-000000000002',
+          'account_provider_health',
+          'claude-sonnet-4-5',
+          'locked_out',
+          'model_unavailable',
+          '2026-06-18T12:10:00Z'
+        );
+      `);
+
+      await expect(client.exec(`
+        insert into provider_account_health (
+          id,
+          organization_id,
+          provider_account_id,
+          provider_id,
+          status
+        ) values (
+          'health_account_provider_health_duplicate',
+          'org_provider_health',
+          'account_provider_health',
+          '00000000-0000-0000-0000-000000000002',
+          'cooldown'
+        );
+      `)).rejects.toThrow();
+
+      await expect(client.exec(`
+        insert into provider_account_health (
+          id,
+          organization_id,
+          provider_account_id,
+          provider_id,
+          status
+        ) values (
+          'health_account_provider_health_mismatched_provider',
+          'org_provider_health',
+          'account_provider_health',
+          '00000000-0000-0000-0000-000000000001',
+          'cooldown'
+        );
+      `)).rejects.toThrow();
+
+      await expect(client.exec(`
+        insert into provider_model_health (
+          id,
+          organization_id,
+          provider_id,
+          provider_account_id,
+          model,
+          status
+        ) values (
+          'health_model_provider_health_duplicate',
+          'org_provider_health',
+          '00000000-0000-0000-0000-000000000002',
+          'account_provider_health',
+          'claude-sonnet-4-5',
+          'locked_out'
+        );
+      `)).rejects.toThrow();
+
+      const indexes = await client.query<{ indexname: string }>(`
+        select indexname
+        from pg_indexes
+        where tablename in ('provider_account_health', 'provider_model_health')
+        order by indexname
+      `);
+      const constraints = await client.query<{ conname: string }>(`
+        select conname
+        from pg_constraint
+        where conname in (
+          'provider_account_health_account_fk',
+          'provider_account_health_workspace_fk',
+          'provider_model_health_account_fk',
+          'provider_model_health_workspace_fk'
+        )
+        order by conname
+      `);
+
+      expect(indexes.rows.map((row) => row.indexname)).toEqual([
+        "provider_account_health_org_account_idx",
+        "provider_account_health_org_cooldown_idx",
+        "provider_account_health_org_provider_idx",
+        "provider_account_health_pkey",
+        "provider_model_health_org_lockout_idx",
+        "provider_model_health_org_provider_account_model_idx",
+        "provider_model_health_org_provider_model_idx",
+        "provider_model_health_pkey"
+      ]);
+      expect(constraints.rows.map((row) => row.conname)).toEqual([
+        "provider_account_health_account_fk",
+        "provider_account_health_workspace_fk",
+        "provider_model_health_account_fk",
+        "provider_model_health_workspace_fk"
+      ]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("creates provider attempt account reference", async () => {
+    const client = await migratedClient();
+
+    try {
+      await client.exec(`
+        insert into organizations (id, slug, name) values
+          ('org_attempt_account', 'org-attempt-account', 'Attempt Account');
+        insert into workspaces (id, organization_id, slug, name) values
+          ('org_attempt_account:workspace:default', 'org_attempt_account', 'default', 'Default');
+        insert into requests (
+          id,
+          organization_id,
+          workspace_id,
+          surface,
+          idempotency_key,
+          requested_model,
+          input_hash
+        ) values (
+          'request_attempt_account',
+          'org_attempt_account',
+          'org_attempt_account:workspace:default',
+          'anthropic-messages',
+          'idem_attempt_account',
+          'claude-sonnet-4-5',
+          'hash_attempt_account'
+        );
+        insert into provider_accounts (
+          id,
+          organization_id,
+          provider_id,
+          name,
+          auth_type,
+          secret_ciphertext,
+          secret_hint,
+          status
+        ) values (
+          'account_attempt_account',
+          'org_attempt_account',
+          '00000000-0000-0000-0000-000000000002',
+          'Anthropic Attempt Account',
+          'api_key',
+          'ciphertext',
+          'hint',
+          'active'
+        );
+        insert into provider_attempts (
+          id,
+          organization_id,
+          workspace_id,
+          request_id,
+          surface,
+          provider,
+          model,
+          provider_account_id
+        ) values (
+          'attempt_account',
+          'org_attempt_account',
+          'org_attempt_account:workspace:default',
+          'request_attempt_account',
+          'anthropic-messages',
+          'anthropic',
+          'claude-sonnet-4-5',
+          'account_attempt_account'
+        );
+      `);
+
+      await expect(client.exec(`
+        insert into provider_attempts (
+          id,
+          organization_id,
+          workspace_id,
+          request_id,
+          surface,
+          provider,
+          model,
+          provider_account_id
+        ) values (
+          'attempt_missing_account',
+          'org_attempt_account',
+          'org_attempt_account:workspace:default',
+          'request_attempt_account',
+          'anthropic-messages',
+          'anthropic',
+          'claude-sonnet-4-5',
+          'missing_account'
+        );
+      `)).rejects.toThrow();
+
+      const indexes = await client.query<{ indexname: string }>(`
+        select indexname
+        from pg_indexes
+        where tablename = 'provider_attempts'
+          and indexname = 'provider_attempts_org_provider_account_idx'
+      `);
+      const constraints = await client.query<{ conname: string }>(`
+        select conname
+        from pg_constraint
+        where conname = 'provider_attempts_provider_account_fk'
+      `);
+
+      expect(indexes.rows.map((row) => row.indexname)).toEqual(["provider_attempts_org_provider_account_idx"]);
+      expect(constraints.rows.map((row) => row.conname)).toEqual(["provider_attempts_provider_account_fk"]);
+    } finally {
+      await client.close();
+    }
   });
 
   it("adds route execution plan defaults for existing write paths", async () => {

@@ -14,7 +14,10 @@ import {
   events,
   hashApiKey,
   organizations,
+  providerAccountHealth,
+  providerAccounts,
   providerAttempts,
+  providerModelHealth,
   requests,
   routeDecisions,
   routingConfigs,
@@ -356,6 +359,212 @@ describe("postgres persistence", () => {
 
     expect(decisionRows).toEqual([]);
     expect(eventRows.map((event) => event.eventType)).toEqual(["proxy.request_received"]);
+  });
+
+  it("persists provider account ids on provider attempts", async () => {
+    const fixture = await persistenceFixture("org_attempt_account_persisted");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_attempt_account_persisted");
+
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_attempt_account_persisted",
+      correlationId: "request_attempt_account_persisted",
+      idempotencyKey: "idem_attempt_account_persisted",
+      producer: "test",
+      eventType: "proxy.request_received",
+      payload: {
+        surface: "anthropic-messages",
+        requestedModel: "claude-router-auto",
+        inputHash: "sha256:attempt-account",
+        inputChars: 10
+      }
+    });
+    await fixture.db.insert(providerAccounts).values({
+      id: "account_attempt_account_persisted",
+      organizationId: "org_attempt_account_persisted",
+      providerId: "00000000-0000-0000-0000-000000000002",
+      name: "Anthropic Attempt Account",
+      authType: "api_key",
+      secretCiphertext: "ciphertext",
+      secretHint: "hint",
+      status: "active"
+    });
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_attempt_account_persisted",
+      correlationId: "request_attempt_account_persisted",
+      idempotencyKey: "idem_attempt_account_persisted",
+      producer: "test",
+      eventType: "provider.request_started",
+      payload: {
+        surface: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude-sonnet-4-5",
+        providerAttemptId: "attempt_account_persisted",
+        providerAccountId: "account_attempt_account_persisted"
+      }
+    });
+
+    const attemptRows = await fixture.db.select().from(providerAttempts).where(eq(providerAttempts.id, "attempt_account_persisted"));
+
+    expect(attemptRows[0]?.providerAccountId).toBe("account_attempt_account_persisted");
+  });
+
+  it("updates provider account health from terminal provider failures", async () => {
+    const fixture = await persistenceFixture("org_account_health_projection");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_account_health_projection");
+    const providerAccountId = "account_health_projection";
+
+    await appendHealthRequest(eventService, "request_account_health_projection", "idem_account_health_projection");
+    await insertHealthProviderAccount(fixture, "org_account_health_projection", providerAccountId);
+    await appendHealthStarted(eventService, "request_account_health_projection", "idem_account_health_projection", providerAccountId);
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_account_health_projection",
+      correlationId: "request_account_health_projection",
+      idempotencyKey: "idem_account_health_projection",
+      producer: "test",
+      eventType: "provider.response_failed",
+      payload: {
+        surface: "anthropic-messages",
+        provider: "anthropic",
+        selectedModel: "claude-sonnet-4-5",
+        providerAttemptId: "attempt_request_account_health_projection",
+        providerAccountId,
+        terminalStatus: "failed",
+        upstreamStatus: 429,
+        error: "rate limited"
+      }
+    });
+
+    const rows = await fixture.db.select().from(providerAccountHealth).where(eq(providerAccountHealth.providerAccountId, providerAccountId));
+
+    expect(rows[0]).toEqual(expect.objectContaining({
+      status: "cooldown",
+      lastErrorType: "rate_limited",
+      consecutiveFailures: 1
+    }));
+    expect(rows[0]?.cooldownUntil).toBeTruthy();
+  });
+
+  it("updates provider model health from terminal provider model failures", async () => {
+    const fixture = await persistenceFixture("org_model_health_projection");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_model_health_projection");
+    const providerAccountId = "account_model_health_projection";
+
+    await appendHealthRequest(eventService, "request_model_health_projection", "idem_model_health_projection");
+    await insertHealthProviderAccount(fixture, "org_model_health_projection", providerAccountId);
+    await appendHealthStarted(eventService, "request_model_health_projection", "idem_model_health_projection", providerAccountId);
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_model_health_projection",
+      correlationId: "request_model_health_projection",
+      idempotencyKey: "idem_model_health_projection",
+      producer: "test",
+      eventType: "provider.response_failed",
+      payload: {
+        surface: "anthropic-messages",
+        provider: "anthropic",
+        selectedModel: "claude-sonnet-4-5",
+        providerAttemptId: "attempt_request_model_health_projection",
+        providerAccountId,
+        terminalStatus: "failed",
+        upstreamStatus: 404,
+        error: "model claude-sonnet-4-5 not found"
+      }
+    });
+
+    const rows = await fixture.db.select().from(providerModelHealth).where(eq(providerModelHealth.providerAccountId, providerAccountId));
+
+    expect(rows[0]).toEqual(expect.objectContaining({
+      status: "locked_out",
+      lastErrorType: "model_unavailable",
+      consecutiveFailures: 1
+    }));
+    expect(rows[0]?.lockoutUntil).toBeTruthy();
+  });
+
+  it("resets provider health state on successful provider attempts", async () => {
+    const fixture = await persistenceFixture("org_health_success_projection");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_health_success_projection");
+    const providerAccountId = "account_health_success_projection";
+
+    await appendHealthRequest(eventService, "request_health_success_projection", "idem_health_success_projection");
+    await insertHealthProviderAccount(fixture, "org_health_success_projection", providerAccountId);
+    await fixture.db.insert(providerAccountHealth).values({
+      id: "account_health_success_projection_state",
+      organizationId: "org_health_success_projection",
+      providerAccountId,
+      providerId: "00000000-0000-0000-0000-000000000002",
+      status: "cooldown",
+      lastErrorType: "rate_limited",
+      lastErrorMessage: "rate limited",
+      lastErrorAt: new Date("2026-06-18T11:59:00.000Z"),
+      cooldownUntil: new Date("2026-06-18T12:05:00.000Z"),
+      consecutiveFailures: 2,
+      metadata: {}
+    });
+    await appendHealthStarted(eventService, "request_health_success_projection", "idem_health_success_projection", providerAccountId);
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_health_success_projection",
+      correlationId: "request_health_success_projection",
+      idempotencyKey: "idem_health_success_projection",
+      producer: "test",
+      eventType: "provider.response_completed",
+      payload: {
+        surface: "anthropic-messages",
+        provider: "anthropic",
+        selectedModel: "claude-sonnet-4-5",
+        providerAttemptId: "attempt_request_health_success_projection",
+        providerAccountId,
+        terminalStatus: "completed",
+        upstreamStatus: 200,
+        usage: null
+      }
+    });
+
+    const rows = await fixture.db.select().from(providerAccountHealth).where(eq(providerAccountHealth.providerAccountId, providerAccountId));
+
+    expect(rows[0]).toEqual(expect.objectContaining({
+      status: "healthy",
+      lastErrorType: null,
+      lastErrorMessage: null,
+      cooldownUntil: null,
+      consecutiveFailures: 0
+    }));
+  });
+
+  it("does not update account health for request-only provider failures", async () => {
+    const fixture = await persistenceFixture("org_health_request_only_projection");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_health_request_only_projection");
+    const providerAccountId = "account_health_request_only_projection";
+
+    await appendHealthRequest(eventService, "request_health_request_only_projection", "idem_health_request_only_projection");
+    await insertHealthProviderAccount(fixture, "org_health_request_only_projection", providerAccountId);
+    await appendHealthStarted(eventService, "request_health_request_only_projection", "idem_health_request_only_projection", providerAccountId);
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_health_request_only_projection",
+      correlationId: "request_health_request_only_projection",
+      idempotencyKey: "idem_health_request_only_projection",
+      producer: "test",
+      eventType: "provider.response_failed",
+      payload: {
+        surface: "anthropic-messages",
+        provider: "anthropic",
+        selectedModel: "claude-sonnet-4-5",
+        providerAttemptId: "attempt_request_health_request_only_projection",
+        providerAccountId,
+        terminalStatus: "failed",
+        upstreamStatus: 400,
+        error: "context_length_exceeded"
+      }
+    });
+
+    const rows = await fixture.db.select().from(providerAccountHealth).where(eq(providerAccountHealth.providerAccountId, providerAccountId));
+
+    expect(rows).toHaveLength(0);
   });
 
   it("persists cancelled provider terminal status from events", async () => {
@@ -1331,6 +1540,63 @@ describe("postgres persistence", () => {
     });
     const persistence = createDatabasePersistence(db, config, false);
     return { db, config, persistence };
+  }
+
+  async function appendHealthRequest(eventService: EventService, requestId: string, idempotencyKey: string) {
+    await eventService.append({
+      scopeType: "request",
+      scopeId: requestId,
+      correlationId: requestId,
+      idempotencyKey,
+      producer: "test",
+      eventType: "proxy.request_received",
+      payload: {
+        surface: "anthropic-messages",
+        requestedModel: "claude-router-auto",
+        inputHash: `sha256:${requestId}`,
+        inputChars: 10
+      }
+    });
+  }
+
+  async function appendHealthStarted(
+    eventService: EventService,
+    requestId: string,
+    idempotencyKey: string,
+    providerAccountId: string
+  ) {
+    await eventService.append({
+      scopeType: "request",
+      scopeId: requestId,
+      correlationId: requestId,
+      idempotencyKey,
+      producer: "test",
+      eventType: "provider.request_started",
+      payload: {
+        surface: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude-sonnet-4-5",
+        providerAttemptId: `attempt_${requestId}`,
+        providerAccountId
+      }
+    });
+  }
+
+  async function insertHealthProviderAccount(
+    fixture: Awaited<ReturnType<typeof persistenceFixture>>,
+    organizationId: string,
+    providerAccountId: string
+  ) {
+    await fixture.db.insert(providerAccounts).values({
+      id: providerAccountId,
+      organizationId,
+      providerId: "00000000-0000-0000-0000-000000000002",
+      name: providerAccountId,
+      authType: "api_key",
+      secretCiphertext: "ciphertext",
+      secretHint: "hint",
+      status: "active"
+    });
   }
 
   async function activeVersion(

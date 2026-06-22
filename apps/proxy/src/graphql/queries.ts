@@ -288,7 +288,8 @@ builder.queryFields((t) => ({
         events: allEvents.filter(
           (event) => event.scopeId === requestId || event.correlationId === requestId
         ),
-        compressionReceipts: []
+        compressionReceipts: [],
+        healthSkips: []
       };
     }
   }),

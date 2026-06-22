@@ -134,6 +134,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     sessions,
     providerRegistry,
     persistence?.providerCredentials,
+    persistence?.providerHealth,
     metrics
   );
   const proxy = new ProviderProxy(config, events, attempts, requestStates, providerRegistry, metrics);
@@ -373,6 +374,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         requestId,
         idempotencyKey,
         organizationId: identity.organizationId,
+        workspaceId: identity.workspaceId,
         surface: openAIResponsesSurface.surface,
         provider: routedProvider(decision),
         harnessProfileId: context.harnessProfileId,
@@ -516,6 +518,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         requestId,
         idempotencyKey,
         organizationId: identity.organizationId,
+        workspaceId: identity.workspaceId,
         surface: openAIChatSurface.surface,
         provider: routedProvider(decision),
         harnessProfileId: context.harnessProfileId,
@@ -668,6 +671,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         requestId,
         idempotencyKey,
         organizationId: identity.organizationId,
+        workspaceId: identity.workspaceId,
         surface: anthropicMessagesSurface.surface,
         provider: routedProvider(decision),
         harnessProfileId: context.harnessProfileId,
@@ -787,6 +791,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         requestId,
         idempotencyKey,
         organizationId: identity.organizationId,
+        workspaceId: identity.workspaceId,
         surface: anthropicMessagesSurface.surface,
         provider: routedProvider(decision),
         harnessProfileId: context.harnessProfileId,

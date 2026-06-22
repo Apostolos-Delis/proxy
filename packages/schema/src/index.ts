@@ -75,6 +75,56 @@ export const PROVIDER_ATTEMPT_STATUSES = {
   CANCELLED: "cancelled"
 } as const;
 
+export const PROVIDER_HEALTH_ERROR_TYPES = [
+  "auth_invalid",
+  "auth_expired",
+  "rate_limited",
+  "quota_exhausted",
+  "provider_unavailable",
+  "model_unavailable",
+  "model_access_denied",
+  "context_overflow",
+  "request_incompatible",
+  "stream_failed",
+  "stream_disconnected",
+  "unknown_transient",
+  "unknown_terminal"
+] as const;
+
+export const PROVIDER_HEALTH_STATUSES = [
+  "healthy",
+  "cooldown",
+  "locked_out",
+  "terminal",
+  "unknown"
+] as const;
+
+export const PROVIDER_HEALTH_CLASSIFICATION_SOURCES = [
+  "provider_status",
+  "provider_header",
+  "response_body",
+  "stream_observer",
+  "proxy_policy"
+] as const;
+
+export const PROVIDER_HEALTH_CONFIDENCES = [
+  "exact",
+  "heuristic",
+  "unknown"
+] as const;
+
+export const PROVIDER_HEALTH_SCOPES = [
+  "provider",
+  "provider_account",
+  "provider_model",
+  "provider_account_model",
+  "request_only"
+] as const;
+
+export const PROVIDER_HEALTH_MESSAGE_MAX_CHARS = 500;
+export const PROVIDER_HEALTH_METADATA_MAX_KEYS = 25;
+export const PROVIDER_HEALTH_METADATA_STRING_MAX_CHARS = 500;
+
 // A usage ledger row is either the billed provider response for a request
 // ("provider") or the routing classifier's own LLM call that decided where to
 // send it ("classifier"). Classifier rows carry cost but no provider attempt.
@@ -191,6 +241,11 @@ export type Verbosity = typeof VERBOSITIES[number];
 export type EventOutboxStatus = typeof EVENT_OUTBOX_STATUSES[keyof typeof EVENT_OUTBOX_STATUSES];
 export type RequestStatus = typeof REQUEST_STATUSES[keyof typeof REQUEST_STATUSES];
 export type ProviderAttemptStatus = typeof PROVIDER_ATTEMPT_STATUSES[keyof typeof PROVIDER_ATTEMPT_STATUSES];
+export type ProviderHealthErrorType = typeof PROVIDER_HEALTH_ERROR_TYPES[number];
+export type ProviderHealthStatus = typeof PROVIDER_HEALTH_STATUSES[number];
+export type ProviderHealthClassificationSource = typeof PROVIDER_HEALTH_CLASSIFICATION_SOURCES[number];
+export type ProviderHealthConfidence = typeof PROVIDER_HEALTH_CONFIDENCES[number];
+export type ProviderHealthScope = typeof PROVIDER_HEALTH_SCOPES[number];
 export type UsageLedgerKind = typeof USAGE_LEDGER_KINDS[number];
 export type PromptCaptureMode = typeof PROMPT_CAPTURE_MODES[keyof typeof PROMPT_CAPTURE_MODES];
 export type CompressionPolicyMode = typeof COMPRESSION_POLICY_MODES[number];
@@ -295,6 +350,11 @@ export const providerAuthStyleSchema = z.enum(PROVIDER_AUTH_STYLES);
 export const effortSchema = z.enum(EFFORTS);
 export const classifierEffortSchema = z.enum(CLASSIFIER_EFFORTS);
 export const verbositySchema = z.enum(VERBOSITIES);
+export const providerHealthErrorTypeSchema = z.enum(PROVIDER_HEALTH_ERROR_TYPES);
+export const providerHealthStatusSchema = z.enum(PROVIDER_HEALTH_STATUSES);
+export const providerHealthClassificationSourceSchema = z.enum(PROVIDER_HEALTH_CLASSIFICATION_SOURCES);
+export const providerHealthConfidenceSchema = z.enum(PROVIDER_HEALTH_CONFIDENCES);
+export const providerHealthScopeSchema = z.enum(PROVIDER_HEALTH_SCOPES);
 export const routingConfigTextSchema = z.string().refine((value) => value.trim().length > 0, {
   message: "Must contain non-whitespace text."
 });
@@ -334,6 +394,35 @@ export function defaultCompressionPolicy(): CompressionPolicy {
     storeCompressedArtifact: false
   };
 }
+
+export const providerHealthMetadataValueSchema = z.union([
+  z.null(),
+  z.boolean(),
+  z.number(),
+  z.string().max(PROVIDER_HEALTH_METADATA_STRING_MAX_CHARS)
+]);
+
+export const providerHealthMetadataSchema = z.record(
+  z.string().min(1),
+  providerHealthMetadataValueSchema
+).refine((value) => Object.keys(value).length <= PROVIDER_HEALTH_METADATA_MAX_KEYS, {
+  message: `Provider health metadata must have ${PROVIDER_HEALTH_METADATA_MAX_KEYS} keys or fewer.`
+});
+
+export const providerHealthClassificationSchema = z.strictObject({
+  errorType: providerHealthErrorTypeSchema,
+  source: providerHealthClassificationSourceSchema,
+  confidence: providerHealthConfidenceSchema,
+  retryable: z.boolean(),
+  scope: providerHealthScopeSchema,
+  cooldownUntil: z.string().datetime({ offset: true }).nullable(),
+  message: z.string().max(PROVIDER_HEALTH_MESSAGE_MAX_CHARS).nullable(),
+  metadata: providerHealthMetadataSchema.default({})
+});
+
+export type ProviderHealthMetadataValue = z.infer<typeof providerHealthMetadataValueSchema>;
+export type ProviderHealthMetadata = z.infer<typeof providerHealthMetadataSchema>;
+export type ProviderHealthClassification = z.infer<typeof providerHealthClassificationSchema>;
 
 export const providerRegistryEndpointSchema = z.strictObject({
   dialect: dialectSchema,

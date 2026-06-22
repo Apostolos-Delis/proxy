@@ -38,6 +38,28 @@
 - [Metrics and events scope](scopes/router-research-roadmap-v1/metrics-and-events.md)
 - [Product boundaries scope](scopes/router-research-roadmap-v1/product-boundaries.md)
 
+## Research
+
+- [Router research aggregate recommendations](research/router-research-recommendations.md)
+- [LiteLLM scoping review](research/litellm-scope.md)
+- [9router scoping review](research/9router-scope.md)
+- [Kong scoping review](research/kong-scope.md)
+- [OmniRoute scoping review](research/omniroute-scope.md)
+
+## Router Research Scopes
+
+- [Router research roadmap index](scopes/router-research-roadmap-v1/README.md)
+- [Route execution plan scope](scopes/router-research-roadmap-v1/route-execution-plan.md)
+- [Provider account health scope](scopes/router-research-roadmap-v1/provider-account-health.md)
+- [Auditable fallback scope](scopes/router-research-roadmap-v1/auditable-fallback.md)
+- [Provider registry V2 scope](scopes/router-research-roadmap-v1/provider-registry-v2.md)
+- [Harness compatibility tests scope](scopes/router-research-roadmap-v1/harness-compatibility-tests.md)
+- [Policy pipeline scope](scopes/router-research-roadmap-v1/policy-pipeline.md)
+- [Limits and budgets scope](scopes/router-research-roadmap-v1/limits-and-budgets.md)
+- [Tool output compression scope](scopes/router-research-roadmap-v1/tool-output-compression.md)
+- [Metrics and events scope](scopes/router-research-roadmap-v1/metrics-and-events.md)
+- [Product boundaries scope](scopes/router-research-roadmap-v1/product-boundaries.md)
+
 ## Execution
 
 - [Implementation tickets](implementation-tickets.md)
@@ -54,6 +76,7 @@
 - [AWS deployment runbook](runbooks/aws-deployment.md)
 - [Proxy metrics runbook](runbooks/proxy-metrics.md)
 - [Subscription auth runbook](runbooks/subscription-auth.md)
+- [Provider account health runbook](runbooks/provider-account-health.md)
 
 ## Harness Setup
 

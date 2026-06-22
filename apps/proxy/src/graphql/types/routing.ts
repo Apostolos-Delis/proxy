@@ -1,4 +1,5 @@
 import { builder } from "../builder.js";
+import type { ProviderHealthProbeResult } from "../../providerHealthProbe.js";
 import { ProviderAccountAuthType } from "./core.js";
 import type {
   HarnessCompatibilityMatrixRow,
@@ -215,6 +216,54 @@ export const ApiKey = builder.objectRef<ApiKeyModel>("ApiKey").implement({
   })
 });
 
+type ProviderAccountHealthModel = NonNullable<ProviderAccountModel["health"]>;
+type ProviderModelHealthModel = ProviderAccountHealthModel["modelHealth"][number];
+
+export const ProviderModelHealth = builder.objectRef<ProviderModelHealthModel>("ProviderModelHealth").implement({
+  fields: (t) => ({
+    providerId: t.exposeString("providerId"),
+    providerAccountId: t.exposeString("providerAccountId"),
+    model: t.exposeString("model"),
+    status: t.exposeString("status"),
+    lastErrorType: t.exposeString("lastErrorType", { nullable: true }),
+    lastErrorAt: t.exposeString("lastErrorAt", { nullable: true }),
+    lockoutUntil: t.exposeString("lockoutUntil", { nullable: true }),
+    consecutiveFailures: t.exposeInt("consecutiveFailures"),
+    lastSuccessAt: t.exposeString("lastSuccessAt", { nullable: true })
+  })
+});
+
+export const ProviderAccountHealth = builder.objectRef<ProviderAccountHealthModel>("ProviderAccountHealth").implement({
+  fields: (t) => ({
+    status: t.exposeString("status", { nullable: true }),
+    lastErrorType: t.exposeString("lastErrorType", { nullable: true }),
+    lastErrorAt: t.exposeString("lastErrorAt", { nullable: true }),
+    cooldownUntil: t.exposeString("cooldownUntil", { nullable: true }),
+    consecutiveFailures: t.exposeInt("consecutiveFailures"),
+    lastSuccessAt: t.exposeString("lastSuccessAt", { nullable: true }),
+    lastCheckedAt: t.exposeString("lastCheckedAt", { nullable: true }),
+    modelHealth: t.expose("modelHealth", { type: [ProviderModelHealth] })
+  })
+});
+
+export const ProviderHealthProbeResultType = builder.objectRef<ProviderHealthProbeResult>("ProviderHealthProbeResult").implement({
+  fields: (t) => ({
+    probeId: t.exposeString("probeId"),
+    providerAccountId: t.exposeString("providerAccountId"),
+    provider: t.exposeString("provider"),
+    model: t.exposeString("model"),
+    status: t.exposeString("status"),
+    healthStatus: t.exposeString("healthStatus"),
+    errorType: t.exposeString("errorType", { nullable: true }),
+    message: t.exposeString("message", { nullable: true }),
+    statusCode: t.exposeInt("statusCode", { nullable: true }),
+    latencyMs: t.exposeInt("latencyMs"),
+    checkedAt: t.exposeString("checkedAt"),
+    stateUpdated: t.exposeBoolean("stateUpdated"),
+    dimensions: t.field({ type: "JSON", resolve: (result) => result.dimensions })
+  })
+});
+
 export const ProviderAccount = builder.objectRef<ProviderAccountModel>("ProviderAccount").implement({
     fields: (t) => ({
       id: t.exposeString("id"),
@@ -228,6 +277,7 @@ export const ProviderAccount = builder.objectRef<ProviderAccountModel>("Provider
     secretHint: t.exposeString("secretHint", { nullable: true }),
     ownerUserId: t.exposeString("ownerUserId", { nullable: true }),
     boundKeyCount: t.exposeInt("boundKeyCount"),
+    health: t.expose("health", { type: ProviderAccountHealth, nullable: true }),
     createdAt: t.exposeString("createdAt"),
     lastUsedAt: t.exposeString("lastUsedAt", { nullable: true })
   })

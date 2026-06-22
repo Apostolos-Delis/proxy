@@ -9,6 +9,8 @@ import type {
   PromptCaptureMode,
   ProviderAccountAuthType,
   ProviderAttemptStatus,
+  ProviderHealthErrorType,
+  ProviderHealthStatus,
   RequestStatus,
   RouteExecutionPlan,
   RouteSkipReason,
@@ -338,6 +340,7 @@ export const providerAccounts = pgTable(
       .on(table.organizationId, table.providerId, table.name)
       .where(sql`status = 'active'`),
     uniqueIndex("provider_accounts_org_id_idx").on(table.organizationId, table.id),
+    uniqueIndex("provider_accounts_org_id_provider_id_idx").on(table.organizationId, table.id, table.providerId),
     index("provider_accounts_organization_id_idx").on(table.organizationId)
   ]
 );
@@ -371,6 +374,88 @@ export const apiKeyProviderAccounts = pgTable(
       name: "api_key_provider_accounts_account_fk",
       columns: [table.organizationId, table.providerAccountId],
       foreignColumns: [providerAccounts.organizationId, providerAccounts.id]
+    }).onDelete("cascade")
+  ]
+);
+
+export const providerAccountHealth = pgTable(
+  "provider_account_health",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id"),
+    providerAccountId: text("provider_account_id").notNull(),
+    providerId: uuid("provider_id")
+      .notNull()
+      .references(() => providers.id),
+    status: text("status").$type<ProviderHealthStatus>().notNull(),
+    lastErrorType: text("last_error_type").$type<ProviderHealthErrorType>(),
+    lastErrorMessage: text("last_error_message"),
+    lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+    cooldownUntil: timestamp("cooldown_until", { withTimezone: true }),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({})
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("provider_account_health_org_account_idx").on(table.organizationId, table.providerAccountId),
+    index("provider_account_health_org_provider_idx").on(table.organizationId, table.providerId),
+    index("provider_account_health_org_cooldown_idx").on(table.organizationId, table.cooldownUntil),
+    foreignKey({
+      name: "provider_account_health_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "provider_account_health_account_fk",
+      columns: [table.organizationId, table.providerAccountId, table.providerId],
+      foreignColumns: [providerAccounts.organizationId, providerAccounts.id, providerAccounts.providerId]
+    }).onDelete("cascade")
+  ]
+);
+
+export const providerModelHealth = pgTable(
+  "provider_model_health",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id"),
+    providerId: uuid("provider_id")
+      .notNull()
+      .references(() => providers.id),
+    providerAccountId: text("provider_account_id").notNull(),
+    model: text("model").notNull(),
+    status: text("status").$type<ProviderHealthStatus>().notNull(),
+    lastErrorType: text("last_error_type").$type<ProviderHealthErrorType>(),
+    lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+    lockoutUntil: timestamp("lockout_until", { withTimezone: true }),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({})
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("provider_model_health_org_provider_account_model_idx").on(
+      table.organizationId,
+      table.providerId,
+      table.providerAccountId,
+      table.model
+    ),
+    index("provider_model_health_org_provider_model_idx").on(table.organizationId, table.providerId, table.model),
+    index("provider_model_health_org_lockout_idx").on(table.organizationId, table.lockoutUntil),
+    foreignKey({
+      name: "provider_model_health_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "provider_model_health_account_fk",
+      columns: [table.organizationId, table.providerAccountId, table.providerId],
+      foreignColumns: [providerAccounts.organizationId, providerAccounts.id, providerAccounts.providerId]
     }).onDelete("cascade")
   ]
 );
@@ -555,6 +640,7 @@ export const providerAttempts = pgTable(
     surface: text("surface").notNull(),
     provider: text("provider").notNull(),
     model: text("model").notNull(),
+    providerAccountId: text("provider_account_id"),
     upstreamRequestId: text("upstream_request_id"),
     terminalStatus: text("terminal_status").$type<ProviderAttemptStatus>().notNull().default("pending"),
     statusCode: integer("status_code"),
@@ -577,7 +663,13 @@ export const providerAttempts = pgTable(
       table.requestId,
       table.startedAt
     ),
-    index("provider_attempts_model_idx").on(table.organizationId, table.workspaceId, table.provider, table.model)
+    index("provider_attempts_model_idx").on(table.organizationId, table.workspaceId, table.provider, table.model),
+    index("provider_attempts_org_provider_account_idx").on(table.organizationId, table.providerAccountId),
+    foreignKey({
+      name: "provider_attempts_provider_account_fk",
+      columns: [table.organizationId, table.providerAccountId],
+      foreignColumns: [providerAccounts.organizationId, providerAccounts.id]
+    })
   ]
 );
 

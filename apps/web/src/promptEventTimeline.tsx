@@ -1,19 +1,30 @@
-import { ChevronRight, Clock3, Zap } from "lucide-react";
+import { ChevronRight, Clock3, ShieldAlert, Zap } from "lucide-react";
 import { useState } from "react";
 
 import { compactId, formatCompact, formatDateTime, formatDurationMs } from "./format";
 import { JsonView } from "./jsonView";
-import { eventTone, totalSpan, type CompressionReceipt, type PromptArtifactDetail, type ProxyEvent, type RequestSummary } from "./promptDetailData";
-import { DataTable, GlassCard, StatusBadge } from "./ui";
+import {
+  eventTone,
+  healthSkipsFromEvents,
+  totalSpan,
+  type CompressionReceipt,
+  type HealthSkipEvidence,
+  type PromptArtifactDetail,
+  type ProxyEvent,
+  type RequestSummary
+} from "./promptDetailData";
+import { Badge, DataTable, GlassCard, StatusBadge } from "./ui";
 
 export function EventTimeline({ events }: { events: ProxyEvent[] }) {
   const start = events.length > 0 ? new Date(events[0].createdAt).getTime() : 0;
+  const healthSkips = healthSkipsFromEvents(events);
   return (
     <GlassCard className="timeline-card">
       <div className="card-head">
         <div className="card-title"><Clock3 />Event timeline</div>
         <span className="faint mono">{events.length} events · {events.length > 0 ? totalSpan(events, start) : "0ms"}</span>
       </div>
+      {healthSkips.length > 0 ? <HealthSkipRows skips={healthSkips} /> : null}
       <div className="event-timeline">
         {events.map((event) => <EventRow key={event.eventId} event={event} start={start} />)}
         {events.length === 0 ? <div className="empty compact-empty">No events recorded for this request.</div> : null}
@@ -68,6 +79,29 @@ export function CompressionReceiptsCard({ receipts }: { receipts: CompressionRec
   );
 }
 
+function HealthSkipRows({ skips }: { skips: HealthSkipEvidence[] }) {
+  return (
+    <div className="health-skip-list">
+      {skips.map((skip, index) => <HealthSkipRow key={`${skip.providerAccountId ?? "account"}:${skip.model ?? "model"}:${index}`} skip={skip} />)}
+    </div>
+  );
+}
+
+function HealthSkipRow({ skip }: { skip: HealthSkipEvidence }) {
+  const title = [skip.provider ?? "provider", skip.model ?? "model"].join(" / ");
+  return (
+    <div className="health-skip-row">
+      <ShieldAlert />
+      <div className="health-skip-main">
+        <strong>{title}</strong>
+        <span className="faint mono">{skip.providerAccountId ?? skip.providerId ?? "unknown account"}</span>
+      </div>
+      <Badge variant="warn" dot>{healthSkipLabel(skip)}</Badge>
+      <span className="health-skip-detail">{healthSkipDetail(skip)}</span>
+    </div>
+  );
+}
+
 function EventRow({ event, start }: { event: ProxyEvent; start: number }) {
   const [open, setOpen] = useState(false);
   const offset = new Date(event.createdAt).getTime() - start;
@@ -91,6 +125,23 @@ function EventRow({ event, start }: { event: ProxyEvent; start: number }) {
       {open && hasPayload ? <div className="event-payload"><JsonView value={payload} maxHeight={300} /></div> : null}
     </div>
   );
+}
+
+function healthSkipLabel(skip: HealthSkipEvidence) {
+  if ((skip.scope === "provider_account_model" || skip.scope === "provider_model") && skip.healthStatus === "terminal") return "model terminal";
+  if (skip.scope === "provider_account_model" || skip.scope === "provider_model") return "model lockout";
+  if (skip.scope === "provider_account" && skip.healthStatus === "terminal") return "account terminal";
+  if (skip.scope === "provider_account") return "account cooldown";
+  return "health skip";
+}
+
+function healthSkipDetail(skip: HealthSkipEvidence) {
+  const parts = [
+    skip.healthStatus,
+    skip.errorType,
+    skip.expiresAt ? `until ${formatDateTime(skip.expiresAt)}` : null
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "no additional health metadata";
 }
 
 export function RawJsonCard({ artifact, request }: { artifact: PromptArtifactDetail; request: RequestSummary | null }) {

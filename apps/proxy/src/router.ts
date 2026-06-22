@@ -27,6 +27,7 @@ import {
   type ProviderRegistryEntry,
   type ProviderRegistryResolver
 } from "./persistence/providers.js";
+import { providerHealthTargetKey, type ProviderHealthTarget } from "./persistence/providerHealth.js";
 import { capRoute, checkBeforeClassification, checkDecision, type SessionRouteStore } from "./policy.js";
 import { buildRouteExecutionPlan, type TargetAvailability } from "./routeExecutionPlan.js";
 import { translators, translationTag } from "./translators/index.js";
@@ -35,6 +36,7 @@ import type {
   JsonObject,
   Provider,
   ProviderEffort,
+  ProviderHealthSkip,
   RouteContext,
   RouteDecision,
   RouteName,
@@ -64,6 +66,14 @@ type ProviderCredentialResolver = {
     apiKeyId?: string;
     provider: Provider;
   }): Promise<UpstreamCredential | undefined>;
+};
+
+type ProviderHealthReader = {
+  skipsForTargets(input: {
+    organizationId: string;
+    targets: ProviderHealthTarget[];
+    now?: Date;
+  }): Promise<Map<string, ProviderHealthSkip>>;
 };
 
 function routeSettings(selected: SelectedRouteSettings, supportedEfforts?: ProviderEffort[]): ResolvedRouteSettings {
@@ -114,6 +124,7 @@ export class RoutingService {
     private readonly sessions: SessionRouteStore,
     private readonly providerRegistry: ProviderRegistryResolver,
     private readonly credentials?: ProviderCredentialResolver,
+    private readonly providerHealth?: ProviderHealthReader,
     private readonly metrics: MetricsCollector = new NoopMetricsCollector()
   ) {}
 
@@ -327,15 +338,23 @@ export class RoutingService {
     const routingConfigSnapshot = routingConfig?.snapshot;
     const compressionPolicy = routingConfig?.compressionPolicy;
 
-    const routeSettings = await this.resolveProviderSettings(context, finalRoute, routingConfig?.config, guardrailActions);
+    const healthSkips: ProviderHealthSkip[] = [];
+    const routeSettings = await this.resolveProviderSettings(context, finalRoute, routingConfig?.config, guardrailActions, healthSkips);
     if (!routeSettings) {
-      const rejected = this.reject(context, "route_not_available_for_surface");
+      const healthUnavailable = exhaustedByHealth(guardrailActions, healthSkips);
+      const rejected = this.reject(
+        context,
+        healthUnavailable ? "provider_health_unavailable" : "route_not_available_for_surface",
+        [],
+        healthUnavailable ? 503 : 400,
+        healthSkips
+      );
       rejected.guardrailActions = guardrailActions;
       rejected.compressionPolicy = compressionPolicy;
       return rejected;
     }
 
-    return {
+    const decision: RouteDecision = {
       outcome: "route",
       surface: context.surface,
       requestedModel: context.requestedModel,
@@ -352,6 +371,8 @@ export class RoutingService {
       compressionPolicy,
       policyVersion: "2026-06-08"
     };
+    if (healthSkips.length > 0) decision.healthSkips = healthSkips;
+    return decision;
   }
 
   private async classify(
@@ -523,6 +544,7 @@ export class RoutingService {
     }
 
     const session = await this.sessions.plan(context, finalRoute, maxRoute, floorSignal);
+    const healthSkips: ProviderHealthSkip[] = [];
     if (session) {
       finalRoute = session.selectedRoute;
       if (session.action === "kept") guardrailActions.push("session_route_kept");
@@ -537,7 +559,7 @@ export class RoutingService {
     let pinnedRouteSettings: ResolvedRouteSettings | undefined;
     let invalidatedPin: { provider: Provider; routingConfigVersionId?: string } | undefined;
     if (session?.action === "kept" && session.pin) {
-      pinnedRouteSettings = await this.resolvePinnedSettings(context, session.pin.settings, guardrailActions);
+      pinnedRouteSettings = await this.resolvePinnedSettings(context, session.pin.settings, guardrailActions, healthSkips);
       if (pinnedRouteSettings) {
         guardrailActions.push("session_settings_pinned");
       } else {
@@ -547,7 +569,7 @@ export class RoutingService {
           routingConfigVersionId: session.pin.routingConfigVersionId
         };
         if (context.statefulResponses === true) {
-          const rejected = this.reject(context, "session_pin_unavailable");
+          const rejected = this.reject(context, "session_pin_unavailable", [], 400, healthSkips);
           rejected.guardrailActions = guardrailActions;
           rejected.compressionPolicy = routingConfig?.compressionPolicy;
           return rejected;
@@ -557,9 +579,16 @@ export class RoutingService {
     }
 
     const routeSettings =
-      pinnedRouteSettings ?? await this.resolveProviderSettings(context, finalRoute, routingConfig?.config, guardrailActions);
+      pinnedRouteSettings ?? await this.resolveProviderSettings(context, finalRoute, routingConfig?.config, guardrailActions, healthSkips);
     if (!routeSettings) {
-      const rejected = this.reject(context, "route_not_available_for_surface");
+      const healthUnavailable = exhaustedByHealth(guardrailActions, healthSkips);
+      const rejected = this.reject(
+        context,
+        healthUnavailable ? "provider_health_unavailable" : "route_not_available_for_surface",
+        [],
+        healthUnavailable ? 503 : 400,
+        healthSkips
+      );
       rejected.guardrailActions = guardrailActions;
       rejected.compressionPolicy = routingConfig?.compressionPolicy;
       return rejected;
@@ -575,7 +604,7 @@ export class RoutingService {
           };
     }
 
-    return {
+    const decision: RouteDecision = {
       outcome: "route",
       surface: context.surface,
       requestedModel: context.requestedModel,
@@ -619,6 +648,8 @@ export class RoutingService {
       compressionPolicy: routingConfig?.compressionPolicy,
       policyVersion: "2026-06-08"
     };
+    if (healthSkips.length > 0) decision.healthSkips = healthSkips;
+    return decision;
   }
 
   private async recordRouteExecutionPlan(
@@ -658,11 +689,12 @@ export class RoutingService {
     context: RouteContext,
     route: RouteName,
     routingConfig: RoutingConfig | undefined,
-    guardrailActions: string[] = []
+    guardrailActions: string[] = [],
+    healthSkips: ProviderHealthSkip[] = []
   ): Promise<ResolvedRouteSettings | undefined> {
     if (routingConfig) {
       const routeConfig = routingConfig.routes[route];
-      return this.resolveTargets(context, routeConfig.targets, guardrailActions);
+      return this.resolveTargets(context, routeConfig.targets, guardrailActions, healthSkips);
     }
 
     return Promise.resolve(undefined);
@@ -671,12 +703,14 @@ export class RoutingService {
   private async resolveTargets(
     context: RouteContext,
     targets: RouteTarget[],
-    guardrailActions: string[]
+    guardrailActions: string[],
+    healthSkips: ProviderHealthSkip[]
   ): Promise<ResolvedRouteSettings | undefined> {
     const translatedCandidates: RouteTarget[] = [];
     for (const target of targets) {
       const availability = await this.targetAvailability(context, target, "native");
       if (availability.status === "unavailable") {
+        if (availability.healthSkip) healthSkips.push(availability.healthSkip);
         if (availability.reason === "dialect_unavailable") {
           translatedCandidates.push(target);
           continue;
@@ -690,6 +724,7 @@ export class RoutingService {
     for (const target of translatedCandidates) {
       const availability = await this.targetAvailability(context, target, "translated");
       if (availability.status === "unavailable") {
+        if (availability.healthSkip) healthSkips.push(availability.healthSkip);
         guardrailActions.push(`target_skipped_${availability.reason}:${target.providerId}`);
         continue;
       }
@@ -702,10 +737,12 @@ export class RoutingService {
   private async resolvePinnedSettings(
     context: RouteContext,
     settings: SelectedRouteSettings,
-    guardrailActions: string[]
+    guardrailActions: string[],
+    healthSkips: ProviderHealthSkip[]
   ): Promise<ResolvedRouteSettings | undefined> {
     const availability = await this.targetAvailability(context, settings);
     if (availability.status === "unavailable") {
+      if (availability.healthSkip) healthSkips.push(availability.healthSkip);
       guardrailActions.push(`pin_skipped_${availability.reason}:${settings.providerId}`);
       return undefined;
     }
@@ -715,7 +752,7 @@ export class RoutingService {
 
   private async targetAvailability(
     context: RouteContext,
-    target: Pick<RouteTarget, "providerId"> & { dialect?: Dialect },
+    target: Pick<RouteTarget, "providerId" | "model"> & { dialect?: Dialect },
     mode: "native" | "translated" = "translated"
   ): Promise<TargetAvailability> {
     const organizationId = context.organizationId ?? this.config.defaultOrganizationId;
@@ -748,16 +785,24 @@ export class RoutingService {
     if (!compatibility.dialect) return { status: "unavailable", reason: "dialect_unavailable" };
     const endpoint = providerEndpointForDialect(provider, compatibility.dialect);
     if (!endpoint) return { status: "unavailable", reason: "dialect_unavailable" };
-    let credential: UpstreamCredential | undefined;
-    if (!provider.builtin && provider.authStyle !== "none") {
-      credential = await this.credentials?.resolveForRequest({
-        organizationId,
-        workspaceId: context.workspaceId,
-        apiKeyId: context.apiKeyId,
-        provider: target.providerId
-      });
-      if (!credential) {
-        return { status: "unavailable", reason: "provider_credential_unresolved", dialect: endpoint.dialect };
+    const credential = await this.credentials?.resolveForRequest({
+      organizationId,
+      workspaceId: context.workspaceId,
+      apiKeyId: context.apiKeyId,
+      provider: target.providerId
+    });
+    if (!provider.builtin && provider.authStyle !== "none" && !credential) {
+      return { status: "unavailable", reason: "provider_credential_unresolved", dialect: endpoint.dialect };
+    }
+    if (credential) {
+      const healthSkip = await this.healthSkipForTarget(organizationId, provider, target, credential);
+      if (healthSkip) {
+        return {
+          status: "unavailable",
+          reason: healthSkipReason(healthSkip),
+          dialect: endpoint.dialect,
+          healthSkip
+        };
       }
     }
     return {
@@ -766,6 +811,26 @@ export class RoutingService {
       supportedEfforts: reasoningEffortsFromCapabilities(provider.capabilities),
       providerAccountId: credential?.providerAccountId
     };
+  }
+
+  private async healthSkipForTarget(
+    organizationId: string,
+    provider: ProviderRegistryEntry,
+    target: Pick<RouteTarget, "providerId" | "model">,
+    credential: UpstreamCredential
+  ) {
+    if (!this.providerHealth) return undefined;
+    const healthTarget = {
+      provider: target.providerId,
+      providerId: provider.id,
+      providerAccountId: credential.providerAccountId,
+      model: target.model
+    };
+    const skips = await this.providerHealth.skipsForTargets({
+      organizationId,
+      targets: [healthTarget]
+    });
+    return skips.get(providerHealthTargetKey(healthTarget));
   }
 
   private async recordDecision(
@@ -792,10 +857,11 @@ export class RoutingService {
     context: RouteContext,
     error: string,
     budgetChecks: RouteDecision["budgetChecks"] = [],
-    errorStatus = 400
+    errorStatus = 400,
+    healthSkips: ProviderHealthSkip[] = []
   ): RouteDecision {
     const rejectedCheck = budgetChecks.find((check) => check.status === "reject" && check.reason === error);
-    return {
+    const decision: RouteDecision = {
       outcome: "reject",
       surface: context.surface,
       requestedModel: context.requestedModel,
@@ -813,6 +879,8 @@ export class RoutingService {
       } : undefined,
       errorStatus
     };
+    if (healthSkips.length > 0) decision.healthSkips = healthSkips;
+    return decision;
   }
 
   private recordDecisionMetric(decision: RouteDecision) {
@@ -857,6 +925,9 @@ function rejectionMessage(error: string, check: NonNullable<RouteDecision["budge
   if (error === "route_limit" && check) {
     return `Prompt Proxy rejected this request because route ${String(check.current)} exceeds the active routing config maxRoute ${String(check.limit)}.`;
   }
+  if (error === "provider_health_unavailable") {
+    return "Prompt Proxy rejected this request because every eligible provider target is currently unhealthy, cooling down, or locked out. Check provider health before retrying.";
+  }
   return error;
 }
 
@@ -872,6 +943,29 @@ function appendTranslationAction(guardrailActions: string[], from: Dialect, to: 
   if (from === to) return;
   const tag = translationTag(from, to);
   if (!guardrailActions.includes(tag)) guardrailActions.push(tag);
+}
+
+function exhaustedByHealth(guardrailActions: string[], healthSkips: ProviderHealthSkip[]) {
+  if (healthSkips.length === 0) return false;
+  const skipActions = guardrailActions.filter((action) =>
+    action.startsWith("target_skipped_") || action.startsWith("pin_skipped_"));
+  return skipActions.length > 0 && skipActions.every((action) =>
+    action.startsWith("target_skipped_provider_account_cooldown:") ||
+    action.startsWith("target_skipped_provider_account_terminal:") ||
+    action.startsWith("target_skipped_provider_model_lockout:") ||
+    action.startsWith("target_skipped_provider_model_terminal:") ||
+    action.startsWith("pin_skipped_provider_account_cooldown:") ||
+    action.startsWith("pin_skipped_provider_account_terminal:") ||
+    action.startsWith("pin_skipped_provider_model_lockout:") ||
+    action.startsWith("pin_skipped_provider_model_terminal:"));
+}
+
+function healthSkipReason(healthSkip: ProviderHealthSkip) {
+  if (healthSkip.scope === "provider_account_model") {
+    return healthSkip.healthStatus === "terminal" ? "provider_model_terminal" : "provider_model_lockout";
+  }
+  if (healthSkip.healthStatus === "terminal") return "provider_account_terminal";
+  return "provider_account_cooldown";
 }
 
 function compatibilityTargetDialects(

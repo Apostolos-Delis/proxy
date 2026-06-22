@@ -45,6 +45,7 @@ export async function persistProviderStarted(tx: PromptProxyTransaction, event: 
       surface: surfaceValue(payload.surface) ?? "unknown",
       provider: providerValue(payload.provider) ?? "unknown",
       model: stringValue(payload.model) ?? "unknown",
+      providerAccountId: stringValue(payload.providerAccountId),
       terminalStatus: "pending",
       routeCandidateId: stringValue(payload.routeCandidateId),
       attemptIndex: numberValue(payload.attemptIndex),

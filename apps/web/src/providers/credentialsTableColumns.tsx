@@ -16,6 +16,8 @@ import {
   providerCredentialStatus,
   type ProviderCredentialRow
 } from "./credentialsTableData";
+import { providerHealthSearchTokens } from "./healthData";
+import { ProviderCredentialHealthCell } from "./healthViews";
 import { ProviderMark } from "./icons";
 
 type ProviderCredentialColumnConfig = {
@@ -81,6 +83,13 @@ export function providerCredentialColumns({
       accessorFn: (row) => row.kind === "account" ? row.account.lastUsedAt ?? "" : "",
       size: 135,
       cell: ({ row }) => <LastUsedCell row={row.original} />
+    },
+    {
+      id: "health",
+      header: "Health",
+      accessorFn: (row) => row.kind === "account" ? providerHealthAccessor(row.account) : "not tracked",
+      size: 170,
+      cell: ({ row }) => <ProviderCredentialHealthCell row={row.original} />
     },
     {
       id: "status",
@@ -184,6 +193,10 @@ function BindingsCell({ row, boundKeys }: { row: ProviderCredentialRow; boundKey
 function LastUsedCell({ row }: { row: ProviderCredentialRow }) {
   if (row.kind === "default") return <span className="provider-key-lastused faint">provider default</span>;
   return <span className="provider-key-lastused">{row.account.lastUsedAt ? formatDateTime(row.account.lastUsedAt) : "never"}</span>;
+}
+
+function providerHealthAccessor(account: ProviderAccountSummary) {
+  return providerHealthSearchTokens(account).join(" ");
 }
 
 function BoundKeyTags({
