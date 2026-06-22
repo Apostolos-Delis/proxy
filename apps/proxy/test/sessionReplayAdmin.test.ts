@@ -247,6 +247,59 @@ describe("session replay admin APIs", () => {
     expect(crossSession?.session).toBeNull();
   });
 
+  it("serves lightweight session prompt previews unless raw text is selected", async () => {
+    const fixture = await setup("org_session_preview");
+    const createdAt = new Date("2026-06-08T12:00:00.000Z");
+    const rawText = `${"A".repeat(180)} full tail`;
+
+    await fixture.db.insert(agentSessions).values({
+      id: "session_preview",
+      organizationId: "org_session_preview",
+      workspaceId: defaultWorkspaceId("org_session_preview"),
+      userId: "local-user",
+      surface: "openai-responses",
+      externalSessionId: "preview-session",
+      startedAt: createdAt,
+      updatedAt: createdAt
+    });
+    await fixture.db.insert(requests).values(
+      usageRequest("session_preview_request", "org_session_preview", "local-user", "session_preview", "openai-responses", createdAt)
+    );
+    await fixture.db.insert(promptArtifacts).values(
+      sessionPrompt("session_preview_prompt", "org_session_preview", "session_preview_request", rawText, createdAt)
+    );
+
+    const previewDetail = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query SessionPreview($sessionId: ID!) {
+        session(sessionId: $sessionId) {
+          promptArtifacts { preview chars }
+        }
+      }`,
+      { sessionId: "session_preview" }
+    )).data?.session;
+    const fullDetail = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query SessionFull($sessionId: ID!) {
+        session(sessionId: $sessionId) {
+          promptArtifacts { rawText preview chars }
+        }
+      }`,
+      { sessionId: "session_preview" }
+    )).data?.session;
+
+    expect(previewDetail.promptArtifacts).toEqual([
+      expect.objectContaining({
+        preview: `${"A".repeat(160)}...`,
+        chars: rawText.length
+      })
+    ]);
+    expect(JSON.stringify(previewDetail)).not.toContain("full tail");
+    expect(fullDetail.promptArtifacts[0].rawText).toBe(rawText);
+  });
+
   it("replays real and fallback sessions created by proxy requests", async () => {
     const fixture = await setup("org_session_replay_identity");
 

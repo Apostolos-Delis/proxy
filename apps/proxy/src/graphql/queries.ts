@@ -1,3 +1,5 @@
+import { Kind, type GraphQLResolveInfo, type SelectionNode } from "graphql";
+
 import { CACHE_TTL_DEFAULT_MS, CACHE_TTL_POLICY_LOOKBACK_MS, CACHE_TTL_UPGRADED_MS } from "../cacheWindows.js";
 import {
   compressionReceiptPreviewBlock,
@@ -101,6 +103,91 @@ function emptyUsageReport(): UsageReportModel {
       cost: { selected: 0, baseline: 0, savings: 0, classifier: 0 }
     }
   };
+}
+
+function sessionDetailOptions(info: GraphQLResolveInfo) {
+  const fields = selectedFieldNames(info);
+  const promptArtifactFields = selectedChildFieldNames(info, "promptArtifacts");
+  return {
+    includePromptArtifacts: fields.has("promptArtifacts"),
+    includePromptArtifactContent: promptArtifactFields.has("rawText") ||
+      promptArtifactFields.has("redactedText") ||
+      promptArtifactFields.has("encryptedBlobRef"),
+    includeRouteDecisions: fields.has("routeDecisions"),
+    includeProviderAttempts: fields.has("providerAttempts"),
+    includeUsageLedger: fields.has("usageLedger"),
+    includeEvents: fields.has("events")
+  };
+}
+
+function selectedFieldNames(info: GraphQLResolveInfo) {
+  const fields = new Set<string>();
+  const seenFragments = new Set<string>();
+  for (const node of info.fieldNodes) {
+    if (node.selectionSet) collectFieldNames(info, node.selectionSet.selections, fields, seenFragments);
+  }
+  return fields;
+}
+
+function selectedChildFieldNames(info: GraphQLResolveInfo, parentField: string) {
+  const fields = new Set<string>();
+  const seenFragments = new Set<string>();
+  for (const node of info.fieldNodes) {
+    if (node.selectionSet) {
+      collectChildFieldNames(info, node.selectionSet.selections, parentField, fields, seenFragments, false);
+    }
+  }
+  return fields;
+}
+
+function collectFieldNames(
+  info: GraphQLResolveInfo,
+  selections: readonly SelectionNode[],
+  fields: Set<string>,
+  seenFragments: Set<string>
+) {
+  for (const selection of selections) {
+    if (selection.kind === Kind.FIELD) {
+      fields.add(selection.name.value);
+      continue;
+    }
+    if (selection.kind === Kind.INLINE_FRAGMENT) {
+      collectFieldNames(info, selection.selectionSet.selections, fields, seenFragments);
+      continue;
+    }
+    const fragment = info.fragments[selection.name.value];
+    if (!fragment || seenFragments.has(selection.name.value)) continue;
+    seenFragments.add(selection.name.value);
+    collectFieldNames(info, fragment.selectionSet.selections, fields, seenFragments);
+  }
+}
+
+function collectChildFieldNames(
+  info: GraphQLResolveInfo,
+  selections: readonly SelectionNode[],
+  parentField: string,
+  fields: Set<string>,
+  seenFragments: Set<string>,
+  insideParent: boolean
+) {
+  for (const selection of selections) {
+    if (selection.kind === Kind.FIELD) {
+      if (insideParent) fields.add(selection.name.value);
+      if (!insideParent && selection.name.value === parentField && selection.selectionSet) {
+        collectChildFieldNames(info, selection.selectionSet.selections, parentField, fields, seenFragments, true);
+      }
+      continue;
+    }
+    if (selection.kind === Kind.INLINE_FRAGMENT) {
+      collectChildFieldNames(info, selection.selectionSet.selections, parentField, fields, seenFragments, insideParent);
+      continue;
+    }
+    const fragmentKey = `${selection.name.value}:${insideParent}`;
+    const fragment = info.fragments[selection.name.value];
+    if (!fragment || seenFragments.has(fragmentKey)) continue;
+    seenFragments.add(fragmentKey);
+    collectChildFieldNames(info, fragment.selectionSet.selections, parentField, fields, seenFragments, insideParent);
+  }
 }
 
 builder.queryFields((t) => ({
@@ -572,10 +659,10 @@ builder.queryFields((t) => ({
     type: SessionDetail,
     nullable: true,
     args: { sessionId: t.arg.id({ required: true }) },
-    resolve: async (_root, args, context) => {
+    resolve: async (_root, args, context, info) => {
       requireAdminRole(context);
       const queries = scopedQueries(context);
-      return queries ? queries.sessionDetail(String(args.sessionId)) : null;
+      return queries ? queries.sessionDetail(String(args.sessionId), sessionDetailOptions(info)) : null;
     }
   }),
 
