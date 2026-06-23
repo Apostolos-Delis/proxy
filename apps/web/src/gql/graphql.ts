@@ -277,6 +277,11 @@ export type KeyTrafficRequestsQueryVariables = Exact<{
 
 export type KeyTrafficRequestsQuery = { requests: Array<{ requestId: string, createdAt: string | null, provider: string | null, apiKeyId: string | null, selectedModel: string | null, terminalStatus: string, selectedCost: number, baselineCost: number, usage: { totalTokens: number } }> };
 
+export type LimitsDashboardViewQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type LimitsDashboardViewQuery = { limitsDashboard: { workspacePolicies: Array<{ id: string, workspaceId: string, policy: unknown, updatedAt: string }>, apiKeyPolicies: Array<{ id: string, apiKeyId: string | null, apiKeyName: string | null, policy: unknown, updatedAt: string }>, activeRequests: Array<{ id: string, requestId: string, workspaceId: string, apiKeyId: string | null, apiKeyName: string | null, providerAccountName: string | null, expiresAt: string }>, budgetWindows: Array<{ id: string, scopeType: string, scopeId: string, windowType: string, periodEndAt: string, limitUsd: number, reservedUsd: number, actualUsd: number }>, rejectionEvents: Array<{ eventId: string, eventType: string, scopeId: string, payload: unknown, createdAt: string }> } };
+
 export type ModelPricingCardQueryVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -307,7 +312,7 @@ export type PromptDetailViewQueryVariables = Exact<{
 }>;
 
 
-export type PromptDetailViewQuery = { prompt: { artifact: { artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }, requestArtifacts: Array<{ artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }>, routeDecisions: Array<{ selectedProvider: string | null, selectedModel: string | null, classifierRoute: string | null, finalRoute: string | null, confidence: number | null, routeExecutionPlan: unknown, selectedCandidateId: string | null, translated: boolean, translatorId: string | null, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null }>, providerAttempts: Array<{ id: string, requestId: string, provider: string, model: string, terminalStatus: string, statusCode: number | null, error: string | null, routeCandidateId: string | null, attemptIndex: number | null, fallbackIndex: number | null, skipReason: string | null }>, request: { requestId: string, terminalStatus: string, finalRoute: string | null, requestedModel: string | null, selectedModel: string | null, provider: string | null, latencyMs: number | null, timeToFirstByteMs: number | null, selectedCost: number, classifier: unknown, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null } | null, compressionReceipts: Array<{ id: string, mode: string, surface: string, blockPath: string, toolName: string, command: string | null, commandClass: string | null, ruleId: string, ruleVersion: number, status: string, skipReason: string | null, originalBytes: number, compressedBytes: number, savedBytes: number, originalTokenEstimate: number, compressedTokenEstimate: number, savedTokens: number, estimateSource: string, originalSha256: string, compressedSha256: string }>, events: Array<{ eventId: string, eventType: string, producer: string, payload: unknown, createdAt: string }> } | null };
+export type PromptDetailViewQuery = { prompt: { artifact: { artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }, requestArtifacts: Array<{ artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }>, routeDecisions: Array<{ selectedProvider: string | null, selectedModel: string | null, classifierRoute: string | null, finalRoute: string | null, confidence: number | null, routeExecutionPlan: unknown, selectedCandidateId: string | null, translated: boolean, translatorId: string | null, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null }>, providerAttempts: Array<{ id: string, requestId: string, provider: string, model: string, terminalStatus: string, statusCode: number | null, error: string | null, routeCandidateId: string | null, attemptIndex: number | null, fallbackIndex: number | null, skipReason: string | null }>, request: { requestId: string, terminalStatus: string, finalRoute: string | null, requestedModel: string | null, selectedModel: string | null, provider: string | null, latencyMs: number | null, timeToFirstByteMs: number | null, selectedCost: number, classifier: unknown, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null } | null, compressionReceipts: Array<{ id: string, mode: string, surface: string, blockPath: string, toolName: string, command: string | null, commandClass: string | null, ruleId: string, ruleVersion: number, status: string, skipReason: string | null, originalBytes: number, compressedBytes: number, savedBytes: number, originalTokenEstimate: number, compressedTokenEstimate: number, savedTokens: number, estimateSource: string, originalSha256: string, compressedSha256: string }>, events: Array<{ eventId: string, eventType: string, producer: string, payload: unknown, createdAt: string }>, preflightDecisions: Array<{ id: string, eventType: string, kind: string, status: string, scopeType: string | null, scopeId: string | null, limitType: string | null, windowType: string | null, current: number | null, reserved: number | null, limit: number | null, estimatedCost: number | null, resetAt: string | null, createdAt: string }> } | null };
 
 export type PromptsListQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -1076,6 +1081,51 @@ export const KeyTrafficRequestsDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<KeyTrafficRequestsQuery, KeyTrafficRequestsQueryVariables>;
+export const LimitsDashboardViewDocument = new TypedDocumentString(`
+    query LimitsDashboardView {
+  limitsDashboard {
+    workspacePolicies {
+      id
+      workspaceId
+      policy
+      updatedAt
+    }
+    apiKeyPolicies {
+      id
+      apiKeyId
+      apiKeyName
+      policy
+      updatedAt
+    }
+    activeRequests {
+      id
+      requestId
+      workspaceId
+      apiKeyId
+      apiKeyName
+      providerAccountName
+      expiresAt
+    }
+    budgetWindows {
+      id
+      scopeType
+      scopeId
+      windowType
+      periodEndAt
+      limitUsd
+      reservedUsd
+      actualUsd
+    }
+    rejectionEvents {
+      eventId
+      eventType
+      scopeId
+      payload
+      createdAt
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<LimitsDashboardViewQuery, LimitsDashboardViewQueryVariables>;
 export const ModelPricingCardDocument = new TypedDocumentString(`
     query ModelPricingCard {
   modelPricing {
@@ -1315,6 +1365,22 @@ export const PromptDetailViewDocument = new TypedDocumentString(`
       eventType
       producer
       payload
+      createdAt
+    }
+    preflightDecisions {
+      id
+      eventType
+      kind
+      status
+      scopeType
+      scopeId
+      limitType
+      windowType
+      current
+      reserved
+      limit
+      estimatedCost
+      resetAt
       createdAt
     }
   }

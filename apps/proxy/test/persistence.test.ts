@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   agentSessions,
   apiKeys,
+  budgetWindows,
   createPgliteDatabase,
   defaultWorkspaceId,
   events,
@@ -23,6 +24,7 @@ import {
   routingConfigs,
   routingConfigVersions,
   usageLedger,
+  workspaceLimitPolicies,
   workspaces
 } from "@prompt-proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
@@ -112,6 +114,16 @@ describe("postgres persistence", () => {
         requestedModel: "router-auto",
         inputHash: "sha256:input",
         inputChars: 400
+      }
+    });
+    await fixture.db.insert(workspaceLimitPolicies).values({
+      id: "workspace_budget_policy_cost",
+      organizationId: "org_cost",
+      workspaceId: defaultWorkspaceId("org_cost"),
+      policy: {
+        budget: {
+          dailyUsd: 10
+        }
       }
     });
     await eventService.append({
@@ -210,6 +222,7 @@ describe("postgres persistence", () => {
     const decisionRows = await fixture.db.select().from(routeDecisions).where(eq(routeDecisions.requestId, "request_cost"));
     const attemptRows = await fixture.db.select().from(providerAttempts).where(eq(providerAttempts.id, "attempt_cost"));
     const usageRows = await fixture.db.select().from(usageLedger).where(eq(usageLedger.providerAttemptId, "attempt_cost"));
+    const budgetRows = await fixture.db.select().from(budgetWindows).where(eq(budgetWindows.scopeId, defaultWorkspaceId("org_cost")));
     const eventRows = await fixture.db.select().from(events).where(eq(events.scopeId, "request_cost"));
 
     expect(requestRows[0]?.status).toBe("completed");
@@ -229,6 +242,8 @@ describe("postgres persistence", () => {
     expect(attemptRows[0]?.skipReason).toBeNull();
     expect(usageRows[0]?.totalTokens).toBe(120);
     expect(usageRows[0]?.totalCostMicros).toBe(325);
+    expect(budgetRows[0]?.windowType).toBe("daily");
+    expect(Number(budgetRows[0]?.actualUsd)).toBeCloseTo(0.000325);
     expect(eventRows.map((row) => row.sequence)).toEqual([1, 2, 3, 4, 5]);
   });
 

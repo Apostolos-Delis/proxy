@@ -512,6 +512,41 @@ export const routingConfigLimitsSchema = z.strictObject({
   }
 });
 
+const limitPositiveIntSchema = z.number().int().positive();
+const budgetUsdLimitSchema = z.number().positive();
+
+export const budgetResetTimeUtcSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, {
+  message: "resetTimeUtc must use HH:MM 24-hour UTC format."
+});
+
+export const limitBudgetPolicySchema = z.strictObject({
+  dailyUsd: budgetUsdLimitSchema.optional(),
+  weeklyUsd: budgetUsdLimitSchema.optional(),
+  monthlyUsd: budgetUsdLimitSchema.optional(),
+  warningThreshold: z.number().min(0).max(1).optional(),
+  resetTimeUtc: budgetResetTimeUtcSchema.optional()
+}).refine(
+  (budget) => budget.dailyUsd !== undefined || budget.weeklyUsd !== undefined || budget.monthlyUsd !== undefined,
+  { message: "Budget policy must include at least one spend cap." }
+);
+
+export const limitPolicySchema = z.strictObject({
+  requestsPerMinute: limitPositiveIntSchema.optional(),
+  tokensPerMinute: limitPositiveIntSchema.optional(),
+  parallelRequests: limitPositiveIntSchema.optional(),
+  budget: limitBudgetPolicySchema.optional()
+}).refine(
+  (policy) =>
+    policy.requestsPerMinute !== undefined ||
+    policy.tokensPerMinute !== undefined ||
+    policy.parallelRequests !== undefined ||
+    policy.budget !== undefined,
+  { message: "Limit policy must include at least one limit." }
+);
+
+export const apiKeyLimitPolicySchema = limitPolicySchema;
+export const workspaceLimitPolicySchema = limitPolicySchema;
+
 export const routingConfigSessionSchema = z.strictObject({
   pinInitialRoute: z.boolean(),
   allowUpgrade: z.boolean(),
@@ -530,6 +565,10 @@ export const routingConfigSchema = z.strictObject({
 
 export type RoutingConfigClassifier = z.infer<typeof routingConfigClassifierSchema>;
 export type RoutingConfigLimits = z.infer<typeof routingConfigLimitsSchema>;
+export type LimitBudgetPolicy = z.infer<typeof limitBudgetPolicySchema>;
+export type LimitPolicy = z.infer<typeof limitPolicySchema>;
+export type ApiKeyLimitPolicy = z.infer<typeof apiKeyLimitPolicySchema>;
+export type WorkspaceLimitPolicy = z.infer<typeof workspaceLimitPolicySchema>;
 export type RouteTarget = z.infer<typeof routeTargetSchema>;
 
 export const sessionPinnedSettingsSchema = routeTargetSchema.extend({

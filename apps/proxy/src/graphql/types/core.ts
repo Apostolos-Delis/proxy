@@ -3,6 +3,7 @@ import { PROVIDER_ACCOUNT_AUTH_TYPES } from "@prompt-proxy/schema";
 import { builder } from "../builder.js";
 import type {
   CostTotalsModel,
+  PreflightDecisionModel,
   ProxyEventShape,
   RoutingConfigSnapshotModel,
   TokenTotalsModel
@@ -62,5 +63,26 @@ export const ProxyEvent = builder.objectRef<ProxyEventShape>("ProxyEvent").imple
     payload: t.field({ type: "JSON", resolve: (event) => event.payload }),
     metadata: t.field({ type: "JSON", resolve: (event) => event.metadata }),
     createdAt: t.exposeString("createdAt")
+  })
+});
+
+export const PreflightDecision = builder.objectRef<PreflightDecisionModel>("PreflightDecision").implement({
+  fields: (t) => ({
+    id: t.exposeString("id"),
+    eventId: t.exposeString("eventId"),
+    eventType: t.exposeString("eventType"),
+    kind: t.exposeString("kind"),
+    status: t.exposeString("status"),
+    scopeType: t.exposeString("scopeType", { nullable: true }),
+    scopeId: t.exposeString("scopeId", { nullable: true }),
+    limitType: t.exposeString("limitType", { nullable: true }),
+    windowType: t.exposeString("windowType", { nullable: true }),
+    current: t.exposeFloat("current", { nullable: true }),
+    reserved: t.exposeFloat("reserved", { nullable: true }),
+    limit: t.exposeFloat("limit", { nullable: true }),
+    estimatedCost: t.exposeFloat("estimatedCost", { nullable: true }),
+    resetAt: t.exposeString("resetAt", { nullable: true }),
+    createdAt: t.exposeString("createdAt"),
+    payload: t.field({ type: "JSON", resolve: (decision) => decision.payload })
   })
 });

@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, Layers, Logs, Moon, PanelLeft, PanelLeftClose, Search, ServerCog, Settings, Sun, Users } from "lucide-react";
+import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, Layers, Logs, Moon, PanelLeft, PanelLeftClose, Search, ServerCog, Settings, ShieldAlert, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -18,6 +18,7 @@ type NavPath =
   | "/cost"
   | "/caching"
   | "/logs"
+  | "/limits"
   | "/routing"
   | "/settings"
   | "/api-keys"
@@ -37,6 +38,7 @@ const workspaceNav = [
 
 const operationsNav = [
   { to: "/routing", label: "Routing", icon: GitBranch },
+  { to: "/limits", label: "Limits", icon: ShieldAlert },
   { to: "/settings", label: "Settings", icon: Settings }
 ] as const;
 
@@ -57,6 +59,7 @@ const titles: Record<string, [string, string | null]> = {
   "/providers": ["Model providers", "Registry and credentials"],
   "/users": ["Users", "Team & access"],
   "/billing": ["Billing", "Spend & pricing"],
+  "/limits": ["Limits", "Budgets & caps"],
   "/settings": ["Settings", "Runtime configuration"],
   "/routing": ["Routing", "Config versions"],
   "/routing/new": ["Routing", "New config"],

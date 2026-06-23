@@ -49,6 +49,7 @@
   .usage-grid-split,
   .usage-focus-split,
   .caching-grid,
+  .limits-grid,
   .overview-main-grid {
     grid-template-columns: 1fr;
   }
@@ -73,7 +74,8 @@
 
   .usage-side-rail,
   .usage-kpi-grid,
-  .billing-kpis {
+  .billing-kpis,
+  .limits-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -179,6 +181,8 @@
     .route-target,
     .route-target-fields,
     .billing-kpis,
+    .limits-grid,
+    .limits-kpi-grid,
     .usage-kpi-grid,
     .usage-side-rail,
     .route-plan-facts,

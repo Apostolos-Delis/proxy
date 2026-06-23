@@ -11,6 +11,8 @@ import {
   type ProviderAttemptStore,
   type RequestStateStoreLike
 } from "./events.js";
+import { appendBudgetSignalEvents } from "./limitEvents.js";
+import type { BudgetSignal } from "./persistence/budgetWindows.js";
 import {
   operatorTokenForProvider,
   ProviderRegistryError,
@@ -45,6 +47,14 @@ import {
 } from "./upstream.js";
 import { isRecord } from "./util.js";
 
+type BudgetSignalPlanner = {
+  pendingSignalsForRequest(input: {
+    organizationId: string;
+    requestId: string;
+    at: Date;
+  }): Promise<BudgetSignal[]>;
+};
+
 export class ProviderProxy implements ProviderAdapter {
   private readonly providerMetrics: ProviderMetrics;
 
@@ -54,7 +64,8 @@ export class ProviderProxy implements ProviderAdapter {
     private readonly attempts: ProviderAttemptStore,
     private readonly requestStates: RequestStateStoreLike,
     private readonly providerRegistry: ProviderRegistryResolver,
-    metrics: MetricsCollector = new NoopMetricsCollector()
+    metrics: MetricsCollector = new NoopMetricsCollector(),
+    private readonly budgetWindows?: BudgetSignalPlanner
   ) {
     this.providerMetrics = new ProviderMetrics(config, attempts, metrics);
   }
@@ -491,6 +502,7 @@ export class ProviderProxy implements ProviderAdapter {
       idempotencyKey: string;
       organizationId: string;
       workspaceId: string;
+      sessionId?: string;
       surface: Surface;
       provider: Provider;
       decision: RouteDecision;
@@ -528,8 +540,9 @@ export class ProviderProxy implements ProviderAdapter {
     });
     if (healthClassification) payload.healthClassification = jsonPayload(healthClassification);
 
+    let terminalEventCreatedAt: string | Date | undefined;
     try {
-      await this.events.append({
+      const terminalEvent = await this.events.append({
         scopeType: "request",
         scopeId: input.requestId,
         correlationId: input.requestId,
@@ -539,6 +552,7 @@ export class ProviderProxy implements ProviderAdapter {
         payload,
         metadata: metadataPayload
       });
+      terminalEventCreatedAt = terminalEvent.createdAt;
       await this.appendHealthEvent(input, providerAttemptId, healthClassification);
 
       if (usage !== undefined) {
@@ -570,6 +584,33 @@ export class ProviderProxy implements ProviderAdapter {
     } finally {
       this.providerMetrics.clearAttempt(providerAttemptId);
     }
+    if (terminalEventCreatedAt) await this.appendBudgetSignals(input, new Date(terminalEventCreatedAt));
+  }
+
+  private async appendBudgetSignals(
+    input: {
+      organizationId: string;
+      requestId: string;
+      idempotencyKey: string;
+      sessionId?: string;
+    },
+    at: Date
+  ) {
+    if (!this.budgetWindows) return;
+    const signals = await this.budgetWindows.pendingSignalsForRequest({
+      organizationId: input.organizationId,
+      requestId: input.requestId,
+      at
+    });
+    if (signals.length === 0) return;
+    await appendBudgetSignalEvents({
+      events: this.events,
+      organizationId: input.organizationId,
+      requestId: input.requestId,
+      idempotencyKey: input.idempotencyKey,
+      sessionId: input.sessionId,
+      signals
+    });
   }
 
   private async appendHealthEvent(

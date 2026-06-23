@@ -9,9 +9,12 @@ import { ModelDiscoveryStore } from "../modelDiscovery.js";
 import { ModelCatalogRefreshJob } from "../jobs/modelCatalogRefresh.js";
 import { AdminQueryService, type AdminQueryConfig } from "./adminQueries.js";
 import { AdminSessionStore } from "./adminSessions.js";
+import { ActiveRequestLimitStore } from "./activeRequestLimits.js";
 import { ApiKeyAdminService } from "./apiKeyAdmin.js";
+import { BudgetWindowService } from "./budgetWindows.js";
 import { DatabaseEventSink } from "./eventSink.js";
 import { ApiKeyIdentityStore } from "./identity.js";
+import { LimitPolicyResolver } from "./limitPolicies.js";
 import { ModelPricingAdminService } from "./modelPricingAdmin.js";
 import { OrganizationSettingsStore } from "./organizationSettings.js";
 import { ProviderCredentialAdminService } from "./providerCredentialAdmin.js";
@@ -22,10 +25,12 @@ import { ProviderRegistryAdminService } from "./providerRegistryAdmin.js";
 import { ProviderRegistryStore } from "./providers.js";
 import { PromptAccessAuditStore } from "./promptAccessAudit.js";
 import { PromptArtifactStore } from "./promptArtifacts.js";
+import { RequestRateLimitStore } from "./requestRateLimits.js";
 import { PersistentRequestStateStore } from "./requestState.js";
 import { RoutingConfigAdminService } from "./routingConfigAdmin.js";
 import { RoutingConfigResolver } from "./routingConfig.js";
 import { createSessionPinLoader, SessionSystemPromptStore } from "./sessionRoute.js";
+import { TokenRateLimitStore } from "./tokenRateLimits.js";
 import { normalizeLegacyCachedUsage } from "./usageNormalization.js";
 import { repriceZeroCostUsage } from "./usageRepricing.js";
 import { UserAdminService } from "./userAdmin.js";
@@ -72,6 +77,10 @@ export function createDatabasePersistence(
     providerRegistryAdmin: new ProviderRegistryAdminService(transactional, config),
     providerRegistry: new ProviderRegistryStore(db, config),
     eventSink: new DatabaseEventSink(transactional, useAdvisoryLocks, metrics),
+    activeRequestLimits: new ActiveRequestLimitStore(transactional, db),
+    budgetWindows: new BudgetWindowService(db),
+    limitPolicies: new LimitPolicyResolver(db),
+    requestRateLimits: new RequestRateLimitStore(transactional),
     modelCatalogRefresh: new ModelCatalogRefreshJob(transactional, {
       auditOrganizationId: config.defaultOrganizationId
     }),
@@ -81,6 +90,7 @@ export function createDatabasePersistence(
     promptAccessAudit: new PromptAccessAuditStore(db),
     promptArtifacts: new PromptArtifactStore(transactional, db),
     requestStates: new PersistentRequestStateStore(transactional, db, config.defaultOrganizationId),
+    tokenRateLimits: new TokenRateLimitStore(transactional),
     routingConfigAdmin: new RoutingConfigAdminService(transactional),
     routingConfigs: new RoutingConfigResolver(db),
     sessionPins: createSessionPinLoader(db),

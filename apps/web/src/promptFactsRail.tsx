@@ -3,11 +3,15 @@ import type { ReactNode } from "react";
 
 import { compactId, formatCompact, formatDateTime, formatMoney, formatPercent } from "./format";
 import { CopyButton } from "./jsonView";
-import { formatDuration, type PromptArtifactDetail, type RequestSummary } from "./promptDetailData";
+import { formatDuration, type PreflightDecision, type PromptArtifactDetail, type RequestSummary } from "./promptDetailData";
 import { classifierSnapshot, type ClassifierSnapshot } from "./routingSnapshot";
 import { Badge, GlassCard, RouteBadge, StatusBadge } from "./ui";
 
-export function FactsRail({ artifact, request }: { artifact: PromptArtifactDetail; request: RequestSummary | null }) {
+export function FactsRail({ artifact, request, preflightDecisions }: {
+  artifact: PromptArtifactDetail;
+  request: RequestSummary | null;
+  preflightDecisions: PreflightDecision[];
+}) {
   const config = artifact.routingConfig ?? request?.routingConfig;
   const classifier = classifierSnapshot(artifact.classifier ?? request?.classifier);
   return (
@@ -41,6 +45,7 @@ export function FactsRail({ artifact, request }: { artifact: PromptArtifactDetai
               {config?.configHash ? <HashValue value={config.configHash} /> : <span className="faint">unknown</span>}
             </Fact>
           </div>
+          {preflightDecisions.length > 0 ? <PreflightList decisions={preflightDecisions} /> : null}
         </FactSection>
         <FactSection title="Usage">
           <div className="fact-grid">
@@ -67,6 +72,50 @@ export function FactsRail({ artifact, request }: { artifact: PromptArtifactDetai
       </GlassCard>
     </aside>
   );
+}
+
+function PreflightList({ decisions }: { decisions: PreflightDecision[] }) {
+  return (
+    <div className="preflight-list">
+      {decisions.map((decision) => (
+        <div key={decision.id} className={`preflight-row${decision.status === "rejected" ? " preflight-rejected" : ""}`}>
+          <div className="preflight-row-head">
+            <span>{decisionLabel(decision)}</span>
+            <Badge variant={decision.status === "rejected" ? "danger" : "accent"}>{decision.status}</Badge>
+          </div>
+          <div className="preflight-row-meta">
+            <span>{scopeLabel(decision)}</span>
+            <span>{decisionUsage(decision)}</span>
+            {decision.resetAt ? <span>resets {formatDateTime(decision.resetAt)}</span> : null}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function decisionLabel(decision: PreflightDecision) {
+  if (decision.kind === "budget") {
+    const window = decision.windowType ? `${decision.windowType} ` : "";
+    return `${window}budget`;
+  }
+  return (decision.limitType ?? decision.kind).replaceAll("_", " ");
+}
+
+function scopeLabel(decision: PreflightDecision) {
+  const scope = (decision.scopeType ?? "scope").replaceAll("_", " ");
+  return decision.scopeId ? `${scope} ${compactId(decision.scopeId, 8)}` : scope;
+}
+
+function decisionUsage(decision: PreflightDecision) {
+  if (decision.kind === "budget") {
+    const used = decision.status === "reserved"
+      ? decision.reserved
+      : (decision.current ?? 0) + (decision.reserved ?? 0) + (decision.estimatedCost ?? 0);
+    const limit = decision.limit ?? 0;
+    return `${formatMoney(used)} / ${formatMoney(limit)}`;
+  }
+  return `${formatCompact(decision.current ?? 0)} / ${formatCompact(decision.limit ?? 0)}`;
 }
 
 function RouteFlow({ requested, served, provider, route, classifier }: {

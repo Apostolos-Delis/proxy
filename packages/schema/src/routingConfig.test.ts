@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  apiKeyLimitPolicySchema,
   anthropicEffortForModel,
   anthropicReasoningEffortsForModel,
   composeClassifierInstructions,
@@ -8,6 +9,7 @@ import {
   ROUTING_CLASSIFIER_BASE_INSTRUCTIONS,
   routingConfigSchema,
   supportsAnthropicAdaptiveThinking,
+  workspaceLimitPolicySchema,
   type RoutingConfig
 } from "./index.js";
 
@@ -474,6 +476,79 @@ describe("providerRegistryEntrySchema", () => {
       ["endpoints", 0, "path"],
       ["default_headers", "x-empty"]
     ]));
+  });
+});
+
+describe("limitPolicySchema", () => {
+  const validPolicy = {
+    requestsPerMinute: 120,
+    tokensPerMinute: 200000,
+    parallelRequests: 5,
+    budget: {
+      dailyUsd: 25,
+      weeklyUsd: 100,
+      monthlyUsd: 300,
+      warningThreshold: 0.8,
+      resetTimeUtc: "00:00"
+    }
+  };
+
+  it("accepts API-key and workspace limit policies", () => {
+    expect(apiKeyLimitPolicySchema.parse(validPolicy)).toEqual(validPolicy);
+    expect(workspaceLimitPolicySchema.parse(validPolicy)).toEqual(validPolicy);
+  });
+
+  it("accepts a policy with only one concrete limit", () => {
+    expect(apiKeyLimitPolicySchema.parse({ requestsPerMinute: 60 })).toEqual({ requestsPerMinute: 60 });
+  });
+
+  it("accepts warning threshold boundaries", () => {
+    expect(apiKeyLimitPolicySchema.parse({ budget: { dailyUsd: 25, warningThreshold: 0 } })).toEqual({
+      budget: { dailyUsd: 25, warningThreshold: 0 }
+    });
+    expect(apiKeyLimitPolicySchema.parse({ budget: { dailyUsd: 25, warningThreshold: 1 } })).toEqual({
+      budget: { dailyUsd: 25, warningThreshold: 1 }
+    });
+  });
+
+  it("rejects empty policies and budget blocks without spend caps", () => {
+    expect(apiKeyLimitPolicySchema.safeParse({}).success).toBe(false);
+    expect(apiKeyLimitPolicySchema.safeParse({ budget: { warningThreshold: 0.8 } }).success).toBe(false);
+  });
+
+  it("rejects invalid numeric bounds", () => {
+    const rpmResult = apiKeyLimitPolicySchema.safeParse({ requestsPerMinute: 0 });
+    const warningResult = apiKeyLimitPolicySchema.safeParse({
+      budget: {
+        dailyUsd: 25,
+        warningThreshold: 1.1
+      }
+    });
+    const negativeWarningResult = apiKeyLimitPolicySchema.safeParse({
+      budget: {
+        dailyUsd: 25,
+        warningThreshold: -0.1
+      }
+    });
+
+    expect(rpmResult.success).toBe(false);
+    expect(rpmResult.error?.issues[0]?.path).toEqual(["requestsPerMinute"]);
+    expect(warningResult.success).toBe(false);
+    expect(warningResult.error?.issues[0]?.path).toEqual(["budget", "warningThreshold"]);
+    expect(negativeWarningResult.success).toBe(false);
+    expect(negativeWarningResult.error?.issues[0]?.path).toEqual(["budget", "warningThreshold"]);
+  });
+
+  it("rejects reset times outside HH:MM UTC format", () => {
+    const result = workspaceLimitPolicySchema.safeParse({
+      budget: {
+        monthlyUsd: 300,
+        resetTimeUtc: "24:00"
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(["budget", "resetTimeUtc"]);
   });
 });
 

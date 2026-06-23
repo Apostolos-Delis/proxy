@@ -106,6 +106,14 @@ describe("admin authorization", () => {
           skipReason
         }
         healthSkips
+        preflightDecisions {
+          status
+          kind
+          scopeType
+          current
+          limit
+          payload
+        }
       }
     }`;
 
@@ -125,6 +133,7 @@ describe("admin authorization", () => {
     expect(memberResponse.data?.request.routeDecisions).toEqual([]);
     expect(memberResponse.data?.request.providerAttempts).toEqual([]);
     expect(memberResponse.data?.request.healthSkips).toEqual([]);
+    expect(memberResponse.data?.request.preflightDecisions).toEqual([]);
 
     const adminResponse = await adminGql(fixture.proxyUrl, fixture.adminHeaders, query, {
       requestId: "request_sanitized"
@@ -169,6 +178,18 @@ describe("admin authorization", () => {
         errorType: "rate_limited",
         expiresAt: "2026-06-08T12:05:00.000Z"
       }
+    ]);
+    expect(adminResponse.data?.request.preflightDecisions).toEqual([
+      expect.objectContaining({
+        status: "rejected",
+        kind: "requests_per_minute",
+        scopeType: "api_key",
+        current: 121,
+        limit: 120,
+        payload: expect.objectContaining({
+          internalLimitReason: "sensitive-limit-context"
+        })
+      })
     ]);
   });
 
@@ -218,28 +239,45 @@ async function seedRequestDetail(fixture: PromptTestFixture) {
     attemptIndex: 0,
     fallbackIndex: 0
   });
-  await fixture.db.insert(events).values({
-    ...sessionEvent("event_sanitized", organizationId, "request_sanitized", "session_sanitized", createdAt),
-    eventType: "routing.decision_recorded",
-    payload: {
-      surface: "openai-responses",
-      requestedModel: "router-auto",
-      internalHint: "sensitive-routing-context",
-      healthSkips: [
-        {
-          scope: "provider_account",
-          provider: "openai",
-          providerId: "00000000-0000-0000-0000-000000000001",
-          providerAccountId: "account_sanitized",
-          model: "gpt-fast",
-          healthStatus: "cooldown",
-          errorType: "rate_limited",
-          expiresAt: "2026-06-08T12:05:00.000Z",
-          rawError: "upstream secret error text"
-        }
-      ]
+  await fixture.db.insert(events).values([
+    {
+      ...sessionEvent("event_sanitized", organizationId, "request_sanitized", "session_sanitized", createdAt),
+      eventType: "routing.decision_recorded",
+      payload: {
+        surface: "openai-responses",
+        requestedModel: "router-auto",
+        internalHint: "sensitive-routing-context",
+        healthSkips: [
+          {
+            scope: "provider_account",
+            provider: "openai",
+            providerId: "00000000-0000-0000-0000-000000000001",
+            providerAccountId: "account_sanitized",
+            model: "gpt-fast",
+            healthStatus: "cooldown",
+            errorType: "rate_limited",
+            expiresAt: "2026-06-08T12:05:00.000Z",
+            rawError: "upstream secret error text"
+          }
+        ]
+      }
+    },
+    {
+      ...sessionEvent("event_limit_sanitized", organizationId, "request_sanitized", "session_sanitized", createdAt),
+      sequence: 2,
+      producer: "prompt-proxy.limits",
+      eventType: "limit.request_rate_rejected",
+      payload: {
+        reason: "request_rate_limit",
+        limitType: "requests_per_minute",
+        scope: "api_key",
+        current: 121,
+        limit: 120,
+        resetAt: "2026-06-08T12:01:00.000Z",
+        internalLimitReason: "sensitive-limit-context"
+      }
     }
-  });
+  ]);
 }
 
 function requestRouteExecutionPlan(organizationId: string) {

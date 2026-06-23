@@ -6,6 +6,7 @@ import { CostPage } from "./costPage";
 import { InvitePage } from "./invitePage";
 import { CreateApiKeyPage } from "./keys/createKeyPage";
 import { KeysPage } from "./keysPage";
+import { LimitsPage } from "./limitsPage";
 import { LogsPage } from "./logsPage";
 import { OverviewPage } from "./overviewPage";
 import { ProvidersPage } from "./providersPage";
@@ -93,6 +94,13 @@ const logsRoute = createRoute({
   component: LogsPage
 });
 
+const limitsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/limits",
+  beforeLoad: requireAdmin,
+  component: LimitsPage
+});
+
 const logDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/logs/$artifactId",
@@ -174,6 +182,7 @@ const routeTree = rootRoute.addChildren([
   promptDetailRoute,
   sessionDetailRoute,
   logsRoute,
+  limitsRoute,
   logDetailRoute,
   keysRoute,
   keysCreateRoute,

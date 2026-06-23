@@ -12,6 +12,7 @@ import {
   ScrollText,
   ServerCog,
   Settings,
+  ShieldAlert,
   Users
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -37,6 +38,7 @@ export type PalettePagePath =
   | "/cost"
   | "/caching"
   | "/logs"
+  | "/limits"
   | "/prompts"
   | "/routing"
   | "/api-keys"
@@ -91,6 +93,7 @@ export const palettePages: PalettePage[] = [
   { path: "/cost", title: "Cost", subtitle: "Spend, savings & attribution", keywords: ["spend", "savings", "attribution", "models"], icon: CircleDollarSign },
   { path: "/caching", title: "Caching", subtitle: "Prompt-cache performance", keywords: ["cache", "hit rate", "savings", "prefix", "ttl", "tokens"], icon: Layers },
   { path: "/logs", title: "Logs", subtitle: "Sessions & request stream", keywords: ["sessions", "replay", "conversations", "agents", "turns", "requests", "traffic", "prompts", "stream"], icon: Logs },
+  { path: "/limits", title: "Limits", subtitle: "Budgets & caps", keywords: ["budget", "limits", "rate", "rpm", "tpm", "parallel", "rejections"], icon: ShieldAlert },
   { path: "/prompts", title: "Prompts", subtitle: "Captured prompt artifacts", keywords: ["artifacts", "raw text", "capture"], icon: ScrollText },
   { path: "/routing", title: "Routing", subtitle: "Config versions", keywords: ["routes", "configs", "classifier", "models", "versions"], icon: GitBranch },
   { path: "/api-keys", title: "API keys", subtitle: "Manage secrets", keywords: ["secrets", "tokens", "credentials", "keys"], icon: KeyRound },

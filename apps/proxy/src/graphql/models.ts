@@ -1,6 +1,7 @@
 import type { AdminQueryService } from "../persistence/adminQueries.js";
 import type { PromptAccessAuditStore } from "../persistence/promptAccessAudit.js";
 import type { AdminSessionStore } from "../persistence/adminSessions.js";
+import type { PreflightDecision } from "../preflightDecisions.js";
 
 type Q = AdminQueryService;
 
@@ -59,11 +60,18 @@ export type RequestDetailShape = {
   events: ProxyEventShape[];
   compressionReceipts: CompressionReceiptModel[];
   healthSkips: unknown[];
+  preflightDecisions: PreflightDecision[];
 };
+export type PreflightDecisionModel = RequestDetailShape["preflightDecisions"][number];
 
 export type ApiKeyModel = Awaited<ReturnType<Q["apiKeys"]>>["data"][number];
 export type ApiKeyRoutingConfigRefModel = NonNullable<ApiKeyModel["routingConfig"]>;
 export type ApiKeyProviderBindingModel = ApiKeyModel["providerCredentials"][number];
+export type LimitsDashboardModel = Awaited<ReturnType<Q["limitsDashboard"]>>;
+export type WorkspaceLimitPolicyModel = LimitsDashboardModel["workspacePolicies"][number];
+export type ApiKeyLimitPolicyModel = LimitsDashboardModel["apiKeyPolicies"][number];
+export type ActiveRequestLimitModel = LimitsDashboardModel["activeRequests"][number];
+export type BudgetWindowModel = LimitsDashboardModel["budgetWindows"][number];
 
 export type ProviderAccountModel = Awaited<ReturnType<Q["providerAccounts"]>>["data"][number];
 export type ProviderRegistryEntryModel = Awaited<ReturnType<Q["providers"]>>["data"][number];

@@ -24,6 +24,14 @@ import {
 } from "./auth.js";
 import type { AppConfig } from "./config.js";
 import { jsonPayload, type EventService, type ProviderAttemptStore, type RequestStateStoreLike } from "./events.js";
+import { appendBudgetRejectedEvent, appendBudgetReservedEvent, appendBudgetSignalEvents, appendLimitRejectedEvent } from "./limitEvents.js";
+import type { ActiveRequestLimitReservation } from "./persistence/activeRequestLimits.js";
+import {
+  BudgetReservationRejectedError,
+  type BudgetReservationEntry,
+  type BudgetReservationRejection,
+  type BudgetSignal
+} from "./persistence/budgetWindows.js";
 import { extractResponseText, type PromptArtifactStore } from "./persistence/promptArtifacts.js";
 import {
   ProviderRegistryError,
@@ -60,11 +68,77 @@ type ActiveRequest = {
   harness?: RouteContext["harness"];
   harnessProfileId?: RouteContext["harnessProfileId"];
   transport?: RouteContext["transport"];
+  activeLimit?: Extract<ActiveRequestLimitReservation, { status: "reserved" }>;
 };
 
 // Structural subset of the Fastify/pino logger, so the proxy can warn without
 // depending on the logger implementation.
 type WsLogger = { warn: (obj: unknown, msg?: string) => void };
+
+type ActiveRequestLimiter = {
+  reserve(input: {
+    organizationId: string;
+    workspaceId: string;
+    apiKeyId?: string;
+    requestId: string;
+  }): Promise<ActiveRequestLimitReservation>;
+};
+
+type BudgetReservationPlanner = {
+  planRequestReservation(input: {
+    organizationId: string;
+    workspaceId: string;
+    apiKeyId?: string | null;
+    provider: string;
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    at: Date;
+  }): Promise<{ estimatedCostMicros: number; entries: BudgetReservationEntry[]; rejection?: BudgetReservationRejection }>;
+  pendingSignalsForRequest(input: {
+    organizationId: string;
+    requestId: string;
+    at: Date;
+  }): Promise<BudgetSignal[]>;
+};
+
+type RequestRateLimiter = {
+  check(input: {
+    organizationId: string;
+    workspaceId: string;
+    apiKeyId?: string;
+  }): Promise<
+    | { status: "disabled" }
+    | {
+        status: "rejected";
+        scope: "workspace" | "api_key";
+        reason: "request_rate_limit";
+        current: number;
+        limit: number;
+        resetAt: string;
+      }
+  >;
+};
+
+type TokenRateLimiter = {
+  check(input: {
+    organizationId: string;
+    workspaceId: string;
+    apiKeyId?: string;
+    requestId: string;
+    estimatedTokens: number;
+  }): Promise<
+    | { status: "disabled" }
+    | {
+        status: "rejected";
+        scope: "workspace" | "api_key";
+        reason: "token_rate_limit";
+        current: number;
+        limit: number;
+        resetAt: string;
+      }
+  >;
+};
 
 type ProviderCredentialResolver = {
   resolveForRequest(input: {
@@ -88,6 +162,10 @@ export class WebSocketRoutingProxy {
     private readonly promptArtifacts?: PromptArtifactStore,
     private readonly routingConfigs?: RoutingConfigResolverLike,
     private readonly sessionPrompts?: SessionSystemPromptStore,
+    private readonly budgetWindows?: BudgetReservationPlanner,
+    private readonly activeRequestLimits?: ActiveRequestLimiter,
+    private readonly requestRateLimits?: RequestRateLimiter,
+    private readonly tokenRateLimits?: TokenRateLimiter,
     private readonly log?: WsLogger
   ) {}
 
@@ -200,7 +278,7 @@ export class WebSocketRoutingProxy {
             });
             if (activeRequest === routedRequest) activeRequest = undefined;
           }
-          sendError(client, 500, error instanceof Error ? error.message : "websocket_routing_failed");
+          sendError(client, websocketErrorStatus(error), error instanceof Error ? error.message : "websocket_routing_failed");
         });
     });
 
@@ -245,6 +323,36 @@ export class WebSocketRoutingProxy {
       throw new Error("duplicate_websocket_request_active");
     }
 
+    const activeLimit = await this.reserveActiveRequestLimit(identity, requestId);
+    if (activeLimit.status === "rejected") {
+      await this.requestStates.finish(idempotencyKey, "failed", { requestId, error: activeLimit.reason });
+      await appendLimitRejectedEvent({
+        events: this.events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        rejection: activeLimit
+      });
+      throw websocketError(activeLimit.reason, 429);
+    }
+    const requestRateLimit = await this.checkRequestRateLimit(identity);
+    if (requestRateLimit.status === "rejected") {
+      await this.requestStates.finish(idempotencyKey, "failed", { requestId, error: requestRateLimit.reason });
+      await appendLimitRejectedEvent({
+        events: this.events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        rejection: requestRateLimit
+      });
+      throw websocketError(requestRateLimit.reason, 429);
+    }
+    const activeLimitLease = activeLimit.status === "reserved" ? activeLimit : undefined;
+    let handedOff = false;
+
+    try {
     await this.events.append({
       tenantId: identity.organizationId,
       workspaceId: identity.workspaceId,
@@ -307,10 +415,41 @@ export class WebSocketRoutingProxy {
       await this.requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
       throw new Error(decision.error ?? "websocket_request_rejected");
     }
+    const tokenRateLimit = await this.checkTokenRateLimit(
+      identity,
+      requestId,
+      context.estimatedInputTokens,
+      selectedOutputTokenCap(routeBody, decision)
+    );
+    if (tokenRateLimit.status === "rejected") {
+      await this.requestStates.finish(idempotencyKey, "failed", { requestId, error: tokenRateLimit.reason });
+      await appendLimitRejectedEvent({
+        events: this.events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        rejection: tokenRateLimit
+      });
+      throw websocketError(tokenRateLimit.reason, 429);
+    }
     await this.pinSystemPrompt(identity, requestId, context.sessionId, systemPrompt);
     const provider = routedProvider(decision);
     const credential = await this.resolveUpstreamCredential(identity, provider);
     const providerAccountId = credential?.providerAccountId;
+    const budgetReservation = await this.reserveBudget({
+      identity,
+      requestId,
+      idempotencyKey,
+      sessionId: context.sessionId,
+      inputTokens: context.estimatedInputTokens,
+      decision,
+      body: routeBody
+    });
+    if (budgetReservation.status === "rejected") {
+      await this.requestStates.finish(idempotencyKey, "failed", { requestId, error: budgetReservation.rejection.reason });
+      throw websocketError(budgetReservation.rejection.reason, 429);
+    }
 
     const { attempt } = this.attempts.create({
       idempotencyKey,
@@ -334,7 +473,8 @@ export class WebSocketRoutingProxy {
       sessionId: context.sessionId,
       harness: context.harness,
       harnessProfileId: context.harnessProfileId,
-      transport: context.transport
+      transport: context.transport,
+      activeLimit: activeLimitLease
     };
 
     let forwardedBody: unknown;
@@ -424,12 +564,16 @@ export class WebSocketRoutingProxy {
         providerAttemptId: attempt.id
       }
     });
+    handedOff = true;
     return {
       body: forwardedBody,
       decision,
       activeRequest,
       upstreamTarget
     };
+    } finally {
+      if (!handedOff) await this.releaseActiveRequestLimit(activeLimitLease, requestId);
+    }
   }
 
   private async appendProviderRequestForwarded(activeRequest: ActiveRequest, body: unknown) {
@@ -519,71 +663,94 @@ export class WebSocketRoutingProxy {
     usage: unknown,
     metadata: unknown
   ) {
-    const metadataPayload = jsonPayload(metadata) as JsonObject;
-    const error = status === "completed" ? undefined : terminalError(metadataPayload);
-    const payload: JsonObject = {
-      surface: openAIResponsesSurface.surface,
-      provider: activeRequest.provider,
-      selectedModel: activeRequest.decision.selectedModel ?? "unknown",
-      providerAttemptId: activeRequest.providerAttemptId,
-      terminalStatus: status,
-      upstreamStatus: status === "completed" ? 200 : 0,
-      usage: usage === undefined ? null : jsonPayload(usage)
-    };
-    Object.assign(
-      payload,
-      providerCompressionTerminalTelemetry(
-        activeRequest.compressionTelemetry,
-        activeRequest.providerRequestForwarded === true
-      )
-    );
-    if (error) payload.error = error;
-    if (activeRequest.providerAccountId) payload.providerAccountId = activeRequest.providerAccountId;
-    const healthClassification = classifyProviderTerminalHealth({
-      provider: activeRequest.provider,
-      model: activeRequest.decision.selectedModel ?? "unknown",
-      terminalStatus: status,
-      statusCode: status === "completed" ? 200 : 0,
-      error,
-      now: new Date()
-    });
-    if (healthClassification) payload.healthClassification = jsonPayload(healthClassification);
+    try {
+      const metadataPayload = jsonPayload(metadata) as JsonObject;
+      const error = status === "completed" ? undefined : terminalError(metadataPayload);
+      const payload: JsonObject = {
+        surface: openAIResponsesSurface.surface,
+        provider: activeRequest.provider,
+        selectedModel: activeRequest.decision.selectedModel ?? "unknown",
+        providerAttemptId: activeRequest.providerAttemptId,
+        terminalStatus: status,
+        upstreamStatus: status === "completed" ? 200 : 0,
+        usage: usage === undefined ? null : jsonPayload(usage)
+      };
+      Object.assign(
+        payload,
+        providerCompressionTerminalTelemetry(
+          activeRequest.compressionTelemetry,
+          activeRequest.providerRequestForwarded === true
+        )
+      );
+      if (error) payload.error = error;
+      if (activeRequest.providerAccountId) payload.providerAccountId = activeRequest.providerAccountId;
+      const healthClassification = classifyProviderTerminalHealth({
+        provider: activeRequest.provider,
+        model: activeRequest.decision.selectedModel ?? "unknown",
+        terminalStatus: status,
+        statusCode: status === "completed" ? 200 : 0,
+        error,
+        now: new Date()
+      });
+      if (healthClassification) payload.healthClassification = jsonPayload(healthClassification);
 
-    await this.events.append({
-      scopeType: "request",
-      scopeId: activeRequest.requestId,
-      correlationId: activeRequest.requestId,
-      idempotencyKey: activeRequest.idempotencyKey,
-      producer: "prompt-proxy.provider",
-      eventType: terminalEventType(status),
-      payload,
-      metadata: metadataPayload
-    });
-    await this.appendHealthEvent(activeRequest, healthClassification);
-    if (usage !== undefined) {
-      await this.events.append({
+      const terminalEvent = await this.events.append({
         scopeType: "request",
         scopeId: activeRequest.requestId,
         correlationId: activeRequest.requestId,
         idempotencyKey: activeRequest.idempotencyKey,
-        producer: "prompt-proxy.usage",
-        eventType: "usage.recorded",
-        payload: {
-          providerAttemptId: activeRequest.providerAttemptId,
-          usage: jsonPayload(usage)
-        }
+        producer: "prompt-proxy.provider",
+        eventType: terminalEventType(status),
+        payload,
+        metadata: metadataPayload
       });
+      await this.appendHealthEvent(activeRequest, healthClassification);
+      if (usage !== undefined) {
+        await this.events.append({
+          scopeType: "request",
+          scopeId: activeRequest.requestId,
+          correlationId: activeRequest.requestId,
+          idempotencyKey: activeRequest.idempotencyKey,
+          producer: "prompt-proxy.usage",
+          eventType: "usage.recorded",
+          payload: {
+            providerAttemptId: activeRequest.providerAttemptId,
+            usage: jsonPayload(usage)
+          }
+        });
+      }
+      await this.appendBudgetSignals(activeRequest, new Date(terminalEvent.createdAt));
+      this.attempts.update(activeRequest.providerAttemptId, {
+        terminalStatus: status,
+        usage: usage === undefined ? undefined : jsonPayload(usage),
+        error
+      });
+      await this.requestStates.finish(activeRequest.idempotencyKey, status, {
+        requestId: activeRequest.requestId,
+        providerAttemptId: activeRequest.providerAttemptId,
+        usage: usage === undefined ? undefined : jsonPayload(usage),
+        error
+      });
+    } finally {
+      await this.releaseActiveRequestLimit(activeRequest.activeLimit, activeRequest.requestId);
     }
-    this.attempts.update(activeRequest.providerAttemptId, {
-      terminalStatus: status,
-      usage: usage === undefined ? undefined : jsonPayload(usage),
-      error
-    });
-    await this.requestStates.finish(activeRequest.idempotencyKey, status, {
+  }
+
+  private async appendBudgetSignals(activeRequest: ActiveRequest, at: Date) {
+    if (!this.budgetWindows) return;
+    const signals = await this.budgetWindows.pendingSignalsForRequest({
+      organizationId: activeRequest.identity.organizationId,
       requestId: activeRequest.requestId,
-      providerAttemptId: activeRequest.providerAttemptId,
-      usage: usage === undefined ? undefined : jsonPayload(usage),
-      error
+      at
+    });
+    if (signals.length === 0) return;
+    await appendBudgetSignalEvents({
+      events: this.events,
+      organizationId: activeRequest.identity.organizationId,
+      requestId: activeRequest.requestId,
+      idempotencyKey: activeRequest.idempotencyKey,
+      sessionId: activeRequest.sessionId,
+      signals
     });
   }
 
@@ -803,6 +970,121 @@ export class WebSocketRoutingProxy {
       systemPrompt
     });
   }
+
+  private reserveActiveRequestLimit(
+    identity: RequestIdentity,
+    requestId: string
+  ) {
+    if (!this.activeRequestLimits) return Promise.resolve({ status: "disabled" as const });
+    return this.activeRequestLimits.reserve({
+      organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId,
+      apiKeyId: identity.apiKeyId,
+      requestId
+    });
+  }
+
+  private checkRequestRateLimit(identity: RequestIdentity) {
+    if (!this.requestRateLimits) return Promise.resolve({ status: "disabled" as const });
+    return this.requestRateLimits.check({
+      organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId,
+      apiKeyId: identity.apiKeyId
+    });
+  }
+
+  private checkTokenRateLimit(
+    identity: RequestIdentity,
+    requestId: string,
+    inputTokens: number,
+    outputTokens: number
+  ) {
+    if (!this.tokenRateLimits) return Promise.resolve({ status: "disabled" as const });
+    return this.tokenRateLimits.check({
+      organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId,
+      apiKeyId: identity.apiKeyId,
+      requestId,
+      estimatedTokens: inputTokens + outputTokens
+    });
+  }
+
+  private async reserveBudget(input: {
+    identity: RequestIdentity;
+    requestId: string;
+    idempotencyKey: string;
+    sessionId?: string;
+    inputTokens: number;
+    decision: RouteDecision;
+    body: unknown;
+  }): Promise<
+    | { status: "disabled" }
+    | { status: "reserved" }
+    | { status: "rejected"; rejection: BudgetReservationRejection; estimatedCostMicros: number }
+  > {
+    if (!this.budgetWindows || !input.decision.provider || !input.decision.selectedModel) {
+      return { status: "disabled" };
+    }
+    const plan = await this.budgetWindows.planRequestReservation({
+      organizationId: input.identity.organizationId,
+      workspaceId: input.identity.workspaceId,
+      apiKeyId: input.identity.apiKeyId,
+      provider: input.decision.provider,
+      model: input.decision.selectedModel,
+      inputTokens: input.inputTokens,
+      outputTokens: selectedOutputTokenCap(input.body, input.decision),
+      at: new Date()
+    });
+    if (plan.rejection) {
+      await appendBudgetRejectedEvent({
+        events: this.events,
+        identity: input.identity,
+        requestId: input.requestId,
+        idempotencyKey: input.idempotencyKey,
+        sessionId: input.sessionId,
+        rejection: plan.rejection,
+        estimatedCostMicros: plan.estimatedCostMicros
+      });
+      return { status: "rejected", rejection: plan.rejection, estimatedCostMicros: plan.estimatedCostMicros };
+    }
+    if (plan.entries.length === 0) return { status: "disabled" };
+    try {
+      await appendBudgetReservedEvent({
+        events: this.events,
+        identity: input.identity,
+        requestId: input.requestId,
+        idempotencyKey: input.idempotencyKey,
+        sessionId: input.sessionId,
+        entries: plan.entries,
+        estimatedCostMicros: plan.estimatedCostMicros
+      });
+    } catch (error) {
+      if (!(error instanceof BudgetReservationRejectedError)) throw error;
+      await appendBudgetRejectedEvent({
+        events: this.events,
+        identity: input.identity,
+        requestId: input.requestId,
+        idempotencyKey: input.idempotencyKey,
+        sessionId: input.sessionId,
+        rejection: error.rejection,
+        estimatedCostMicros: plan.estimatedCostMicros
+      });
+      return { status: "rejected", rejection: error.rejection, estimatedCostMicros: plan.estimatedCostMicros };
+    }
+    return { status: "reserved" };
+  }
+
+  private async releaseActiveRequestLimit(
+    activeLimit: Extract<ActiveRequestLimitReservation, { status: "reserved" }> | undefined,
+    requestId: string
+  ) {
+    if (!activeLimit) return;
+    try {
+      await activeLimit.release();
+    } catch (error) {
+      this.log?.warn({ err: error, requestId }, "active request limit release failed");
+    }
+  }
 }
 
 type WebSocketUpstreamTarget = {
@@ -869,6 +1151,21 @@ function pinnedRouteBody(body: unknown, connectionRoute: RouteName | undefined) 
   };
 }
 
+function outputTokenCap(body: unknown) {
+  if (!isRecord(body)) return 4096;
+  for (const key of ["max_output_tokens", "max_tokens", "max_completion_tokens"]) {
+    const value = body[key];
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.ceil(value);
+    }
+  }
+  return 4096;
+}
+
+function selectedOutputTokenCap(body: unknown, decision: RouteDecision) {
+  return decision.providerSettings?.maxOutputTokens ?? outputTokenCap(body);
+}
+
 function rejectUpgrade(socket: Duplex, status: number, message: string) {
   socket.write(`HTTP/1.1 ${status} ${message}\r\n\r\n`);
   socket.destroy();
@@ -884,6 +1181,17 @@ function sendError(client: WebSocket, status: number, message: string) {
       message
     }
   }));
+}
+
+function websocketError(message: string, statusCode: number) {
+  const error = new Error(message);
+  (error as Error & { statusCode: number }).statusCode = statusCode;
+  return error;
+}
+
+function websocketErrorStatus(error: unknown) {
+  const statusCode = (error as { statusCode?: unknown } | undefined)?.statusCode;
+  return typeof statusCode === "number" ? statusCode : 500;
 }
 
 function appendUpgradeHeader(

@@ -167,6 +167,22 @@ const PromptDetailViewDocument = graphql(`
         payload
         createdAt
       }
+      preflightDecisions {
+        id
+        eventType
+        kind
+        status
+        scopeType
+        scopeId
+        limitType
+        windowType
+        current
+        reserved
+        limit
+        estimatedCost
+        resetAt
+        createdAt
+      }
     }
   }
 `);
@@ -185,7 +201,7 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
   if (queryError) return <PageState title="Prompt" label={queryError.message} />;
   if (!queryData) return <PageState title="Prompt" label="No prompt data" />;
 
-  const { artifact, request, events, compressionReceipts, routeDecisions, providerAttempts } = queryData;
+  const { artifact, request, events, compressionReceipts, routeDecisions, providerAttempts, preflightDecisions } = queryData;
   const artifacts = queryData.requestArtifacts ?? [artifact];
   return (
     <div className="page page-enter">
@@ -215,7 +231,7 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
           <EventTimeline events={events} />
           <RawJsonCard artifact={artifact} request={request} />
         </div>
-        <FactsRail artifact={artifact} request={request} />
+        <FactsRail artifact={artifact} request={request} preflightDecisions={preflightDecisions} />
       </div>
     </div>
   );
