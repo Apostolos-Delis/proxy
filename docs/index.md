@@ -14,6 +14,7 @@
 - [Provider architecture scope](scopes/provider-architecture-v1/PLAN.md)
 - [Harness model translation scope](scopes/harness-model-translation-v1/PLAN.md)
 - [Proxy metrics scope](scopes/proxy-metrics-v1/PLAN.md)
+- [Reversible compression scope](scopes/reversible-compression-v1/PLAN.md)
 
 ## Research
 
@@ -70,6 +71,7 @@
 - [Provider architecture V1 tickets](scopes/provider-architecture-v1/TICKETS.md)
 - [Harness model translation V1 tickets](scopes/harness-model-translation-v1/TICKETS.md)
 - [Tool output compression tickets](scopes/router-research-roadmap-v1/tool-output-compression-tickets.md)
+- [Reversible compression V1 tickets](scopes/reversible-compression-v1/TICKETS.md)
 - [Proxy metrics V1 tickets](scopes/proxy-metrics-v1/TICKETS.md)
 - [Harness compatibility tests V1 tickets](scopes/router-research-roadmap-v1/harness-compatibility-tests-tickets.md)
 - [Routing configs runbook](runbooks/routing-configs.md)
