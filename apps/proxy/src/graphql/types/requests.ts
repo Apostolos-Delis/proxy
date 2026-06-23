@@ -66,6 +66,9 @@ export const CompressionReceipt = builder.objectRef<CompressionReceiptModel>("Co
     ruleId: t.exposeString("ruleId"),
     ruleVersion: t.exposeInt("ruleVersion"),
     status: t.exposeString("status"),
+    retrievalId: t.exposeString("retrievalId", { nullable: true }),
+    retrievalAvailable: t.exposeBoolean("retrievalAvailable"),
+    retrievalMarker: t.exposeString("retrievalMarker", { nullable: true }),
     originalChars: t.exposeInt("originalChars"),
     compressedChars: t.exposeInt("compressedChars"),
     savedChars: t.exposeInt("savedChars"),
@@ -83,6 +86,8 @@ export const CompressionReceipt = builder.objectRef<CompressionReceiptModel>("Co
     compressedSha256: t.exposeString("compressedSha256"),
     originalArtifactId: t.exposeString("originalArtifactId", { nullable: true }),
     compressedArtifactId: t.exposeString("compressedArtifactId", { nullable: true }),
+    originalArtifactExpiresAt: t.exposeString("originalArtifactExpiresAt", { nullable: true }),
+    compressedArtifactExpiresAt: t.exposeString("compressedArtifactExpiresAt", { nullable: true }),
     skipReason: t.exposeString("skipReason", { nullable: true }),
     eventId: t.exposeString("eventId"),
     createdAt: t.exposeString("createdAt")

@@ -1,14 +1,15 @@
 import { useMutation } from "@tanstack/react-query";
-import { Search, Zap } from "lucide-react";
+import { AlertTriangle, Search, Zap } from "lucide-react";
 import { useState } from "react";
 
-import { formatCompact } from "./format";
+import { compactId, formatCompact } from "./format";
+import { compressionSkipReasonLabel } from "./compressionSkipReasons";
 import { graphql } from "./gql";
 import type { CompressionPreviewPanelQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
 import { JsonEditor, JsonView } from "./jsonView";
 import type { EditableSettings } from "./settingsPageData";
-import { DataTable, Segmented, StatusBadge } from "./ui";
+import { Badge, DataTable, Segmented, StatusBadge } from "./ui";
 
 type Surface = "anthropic-messages" | "openai-responses" | "openai-chat";
 type PreviewResult = CompressionPreviewPanelQuery["compressionPreview"];
@@ -27,6 +28,9 @@ const CompressionPreviewPanelDocument = graphql(`
         ruleId
         status
         skipReason
+        retrievalId
+        retrievalAvailable
+        retrievalMarker
         originalBytes
         compressedBytes
         savedTokens
@@ -78,10 +82,26 @@ const defaultBodies: Record<Surface, string> = {
   }, null, 2)
 };
 
+const measureOnlyRuleLabels: Record<string, string> = {
+  "search-result-grouping": "search result grouping",
+  "diff-compaction": "diff compaction",
+  "log-output-compaction": "log output compaction",
+  "json-array-compaction": "JSON array compaction"
+};
+
+export function measureOnlyRuleWarnings(policy: EditableSettings["toolResultCompressionPolicy"]) {
+  if (policy.mode === "disabled") return [];
+  const enabled = new Set(policy.enabledRules);
+  return Object.entries(measureOnlyRuleLabels)
+    .filter(([ruleId]) => enabled.has(ruleId))
+    .map(([, label]) => label);
+}
+
 export function CompressionPreviewPanel({ policy }: { policy: EditableSettings["toolResultCompressionPolicy"] }) {
   const [surface, setSurface] = useState<Surface>("anthropic-messages");
   const [body, setBody] = useState(defaultBodies["anthropic-messages"]);
   const [parseError, setParseError] = useState<string | null>(null);
+  const warningRules = measureOnlyRuleWarnings(policy);
   const preview = useMutation({
     mutationFn: async (input: { surface: Surface; body: unknown }) =>
       (await gqlFetch(CompressionPreviewPanelDocument, {
@@ -114,6 +134,12 @@ export function CompressionPreviewPanel({ policy }: { policy: EditableSettings["
         <strong><Zap />Compression preview</strong>
         <Segmented options={surfaces} value={surface} onChange={selectSurface} />
       </div>
+      {warningRules.length > 0 ? (
+        <div className="settings-warning compression-rollout-warning">
+          <AlertTriangle />
+          <span>{warningRules.join(", ")} remain measurement-only; compress_lossless applies only lossless rules.</span>
+        </div>
+      ) : null}
       <JsonEditor value={body} onChange={setBody} />
       <div className="settings-preview-actions">
         <button type="button" className="btn btn-sm" disabled={preview.isPending} onClick={runPreview}>
@@ -145,6 +171,7 @@ function CompressionPreviewResult({ preview }: { preview: PreviewResult }) {
               <th>Tool</th>
               <th>Bytes</th>
               <th>Tokens</th>
+              <th>Retrieval</th>
             </tr>
           </thead>
           <tbody>
@@ -153,7 +180,7 @@ function CompressionPreviewResult({ preview }: { preview: PreviewResult }) {
                 <td><StatusBadge status={block.status} /></td>
                 <td>
                   <div className="mono">{block.ruleId}</div>
-                  {block.skipReason ? <div className="faint">{block.skipReason}</div> : null}
+                  {block.skipReason ? <div className="faint">{compressionSkipReasonLabel(block.skipReason)}</div> : null}
                 </td>
                 <td>
                   <div className="mono">{block.toolName}</div>
@@ -161,6 +188,7 @@ function CompressionPreviewResult({ preview }: { preview: PreviewResult }) {
                 </td>
                 <td className="mono">{formatCompact(block.originalBytes)} -&gt; {formatCompact(block.compressedBytes)}</td>
                 <td className="mono">{formatCompact(block.savedTokens)}</td>
+                <td><PreviewRetrieval block={block} /></td>
               </tr>
             ))}
           </tbody>
@@ -169,6 +197,20 @@ function CompressionPreviewResult({ preview }: { preview: PreviewResult }) {
         <div className="empty compact-empty">No compression candidates in this sample.</div>
       )}
       {firstWithDiff ? <JsonView value={firstWithDiff.diffSegments} maxHeight={220} /> : null}
+    </div>
+  );
+}
+
+function PreviewRetrieval({ block }: { block: PreviewResult["previewBlocks"][number] }) {
+  if (!block.retrievalId) return <span className="faint">not stored</span>;
+  return (
+    <div className="settings-preview-retrieval">
+      <Badge variant={block.retrievalAvailable ? "success" : undefined} dot>
+        {block.retrievalAvailable ? "available" : "unavailable"}
+      </Badge>
+      <span className="mono faint" title={block.retrievalMarker ?? block.retrievalId}>
+        {compactId(block.retrievalId, 8)}
+      </span>
     </div>
   );
 }

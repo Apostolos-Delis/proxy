@@ -150,6 +150,9 @@ const PromptDetailViewDocument = graphql(`
         ruleVersion
         status
         skipReason
+        retrievalId
+        retrievalAvailable
+        retrievalMarker
         originalBytes
         compressedBytes
         savedBytes
@@ -159,6 +162,10 @@ const PromptDetailViewDocument = graphql(`
         estimateSource
         originalSha256
         compressedSha256
+        originalArtifactId
+        compressedArtifactId
+        originalArtifactExpiresAt
+        compressedArtifactExpiresAt
       }
       events {
         eventId

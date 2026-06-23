@@ -9,6 +9,8 @@ export const ARTIFACT_KIND_ROLES: Record<string, { role: ArtifactRole; label: st
   injected_context: { role: "context", label: "Injected context" },
   tool_use: { role: "tool", label: "Tool call" },
   tool_result: { role: "tool", label: "Tool result" },
+  compression_original_tool_result: { role: "tool", label: "Original tool result" },
+  compression_compressed_tool_result: { role: "tool", label: "Compressed tool result" },
   assistant_response: { role: "assistant", label: "Assistant" }
 };
 

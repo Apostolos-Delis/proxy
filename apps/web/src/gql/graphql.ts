@@ -225,7 +225,7 @@ export type CompressionPreviewPanelQueryVariables = Exact<{
 }>;
 
 
-export type CompressionPreviewPanelQuery = { compressionPreview: { contentAvailable: boolean, contentRedactionReason: string | null, blocks: number, savedBytes: number, savedTokens: number, previewBlocks: Array<{ blockPath: string, toolName: string, ruleId: string, status: string, skipReason: string | null, originalBytes: number, compressedBytes: number, savedTokens: number, diffSegments: Array<{ side: string, text: string }> }> } };
+export type CompressionPreviewPanelQuery = { compressionPreview: { contentAvailable: boolean, contentRedactionReason: string | null, blocks: number, savedBytes: number, savedTokens: number, previewBlocks: Array<{ blockPath: string, toolName: string, ruleId: string, status: string, skipReason: string | null, retrievalId: string | null, retrievalAvailable: boolean, retrievalMarker: string | null, originalBytes: number, compressedBytes: number, savedTokens: number, diffSegments: Array<{ side: string, text: string }> }> } };
 
 export type InvitationsListQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -307,7 +307,7 @@ export type PromptDetailViewQueryVariables = Exact<{
 }>;
 
 
-export type PromptDetailViewQuery = { prompt: { artifact: { artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }, requestArtifacts: Array<{ artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }>, routeDecisions: Array<{ selectedProvider: string | null, selectedModel: string | null, classifierRoute: string | null, finalRoute: string | null, confidence: number | null, routeExecutionPlan: unknown, selectedCandidateId: string | null, translated: boolean, translatorId: string | null, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null }>, providerAttempts: Array<{ id: string, requestId: string, provider: string, model: string, terminalStatus: string, statusCode: number | null, error: string | null, routeCandidateId: string | null, attemptIndex: number | null, fallbackIndex: number | null, skipReason: string | null }>, request: { requestId: string, terminalStatus: string, finalRoute: string | null, requestedModel: string | null, selectedModel: string | null, provider: string | null, latencyMs: number | null, timeToFirstByteMs: number | null, selectedCost: number, classifier: unknown, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null } | null, compressionReceipts: Array<{ id: string, mode: string, surface: string, blockPath: string, toolName: string, command: string | null, commandClass: string | null, ruleId: string, ruleVersion: number, status: string, skipReason: string | null, originalBytes: number, compressedBytes: number, savedBytes: number, originalTokenEstimate: number, compressedTokenEstimate: number, savedTokens: number, estimateSource: string, originalSha256: string, compressedSha256: string }>, events: Array<{ eventId: string, eventType: string, producer: string, payload: unknown, createdAt: string }> } | null };
+export type PromptDetailViewQuery = { prompt: { artifact: { artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }, requestArtifacts: Array<{ artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }>, routeDecisions: Array<{ selectedProvider: string | null, selectedModel: string | null, classifierRoute: string | null, finalRoute: string | null, confidence: number | null, routeExecutionPlan: unknown, selectedCandidateId: string | null, translated: boolean, translatorId: string | null, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null }>, providerAttempts: Array<{ id: string, requestId: string, provider: string, model: string, terminalStatus: string, statusCode: number | null, error: string | null, routeCandidateId: string | null, attemptIndex: number | null, fallbackIndex: number | null, skipReason: string | null }>, request: { requestId: string, terminalStatus: string, finalRoute: string | null, requestedModel: string | null, selectedModel: string | null, provider: string | null, latencyMs: number | null, timeToFirstByteMs: number | null, selectedCost: number, classifier: unknown, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null } | null, compressionReceipts: Array<{ id: string, mode: string, surface: string, blockPath: string, toolName: string, command: string | null, commandClass: string | null, ruleId: string, ruleVersion: number, status: string, skipReason: string | null, retrievalId: string | null, retrievalAvailable: boolean, retrievalMarker: string | null, originalBytes: number, compressedBytes: number, savedBytes: number, originalTokenEstimate: number, compressedTokenEstimate: number, savedTokens: number, estimateSource: string, originalSha256: string, compressedSha256: string, originalArtifactId: string | null, compressedArtifactId: string | null, originalArtifactExpiresAt: string | null, compressedArtifactExpiresAt: string | null }>, events: Array<{ eventId: string, eventType: string, producer: string, payload: unknown, createdAt: string }> } | null };
 
 export type PromptsListQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -974,6 +974,9 @@ export const CompressionPreviewPanelDocument = new TypedDocumentString(`
       ruleId
       status
       skipReason
+      retrievalId
+      retrievalAvailable
+      retrievalMarker
       originalBytes
       compressedBytes
       savedTokens
@@ -1300,6 +1303,9 @@ export const PromptDetailViewDocument = new TypedDocumentString(`
       ruleVersion
       status
       skipReason
+      retrievalId
+      retrievalAvailable
+      retrievalMarker
       originalBytes
       compressedBytes
       savedBytes
@@ -1309,6 +1315,10 @@ export const PromptDetailViewDocument = new TypedDocumentString(`
       estimateSource
       originalSha256
       compressedSha256
+      originalArtifactId
+      compressedArtifactId
+      originalArtifactExpiresAt
+      compressedArtifactExpiresAt
     }
     events {
       eventId

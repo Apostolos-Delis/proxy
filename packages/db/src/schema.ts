@@ -765,6 +765,9 @@ export const compressionReceipts = pgTable(
       .notNull()
       .references(() => requests.id, { onDelete: "cascade" }),
     apiKeyId: text("api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
+    retrievalId: text("retrieval_id"),
+    retrievalAvailable: boolean("retrieval_available").notNull().default(false),
+    retrievalMarker: text("retrieval_marker"),
     mode: text("mode").notNull(),
     surface: text("surface").notNull(),
     blockPath: text("block_path").notNull(),
@@ -795,6 +798,12 @@ export const compressionReceipts = pgTable(
     uniqueIndex("compression_receipts_event_block_rule_idx").on(table.eventId, table.blockPath, table.ruleId, table.status),
     index("compression_receipts_request_id_idx").on(table.requestId),
     index("compression_receipts_org_workspace_request_idx").on(table.organizationId, table.workspaceId, table.requestId),
+    uniqueIndex("compression_receipts_retrieval_id_idx")
+      .on(table.retrievalId)
+      .where(sql`${table.retrievalId} IS NOT NULL`),
+    index("compression_receipts_org_workspace_retrieval_idx")
+      .on(table.organizationId, table.workspaceId, table.retrievalId)
+      .where(sql`${table.retrievalId} IS NOT NULL`),
     index("compression_receipts_api_key_idx").on(table.organizationId, table.workspaceId, table.apiKeyId),
     index("compression_receipts_org_workspace_created_idx").on(table.organizationId, table.workspaceId, table.createdAt)
   ]

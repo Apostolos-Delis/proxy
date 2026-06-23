@@ -33,7 +33,7 @@ import {
 } from "./metrics.js";
 import { ProviderMetrics } from "./providerMetrics.js";
 import { classifyProviderTerminalHealth } from "./providerHealth.js";
-import { sseObserverForDialect, type StreamObservation } from "./sseObserver.js";
+import { sseObserverForDialect, streamObservationEventMetadata, type StreamObservation } from "./sseObserver.js";
 import { providerCompressionTerminalTelemetry, requestBodyHash } from "./toolResultCompression.js";
 import { translators, type DialectTranslator } from "./translators/index.js";
 import type { JsonObject, Provider, RouteDecision, Surface, UpstreamCredential } from "./types.js";
@@ -922,8 +922,7 @@ function translateResponseText(text: string, translator: DialectTranslator) {
 }
 
 function withoutOutputText(observation: StreamObservation) {
-  const { outputText: _text, outputTextTruncated: _truncated, ...rest } = observation;
-  return rest;
+  return streamObservationEventMetadata(observation);
 }
 
 function onceDrain(stream: NodeJS.WritableStream) {

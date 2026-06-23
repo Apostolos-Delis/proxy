@@ -8,8 +8,27 @@ import {
 } from "@prompt-proxy/schema";
 
 import { bashOutputRule, bashOutputRuleForNames } from "./compressionRules/bashOutput.js";
+import { diffCompactionRule, diffCompactionRuleForNames } from "./compressionRules/diffCompaction.js";
+import { jsonArrayCompactionRule } from "./compressionRules/jsonArrayCompaction.js";
 import { jsonWhitespaceRule } from "./compressionRules/jsonWhitespace.js";
+import { logOutputCompactionRule, logOutputCompactionRuleForNames } from "./compressionRules/logOutput.js";
 import { mcpJsonRule } from "./compressionRules/mcpJson.js";
+import { searchResultGroupingRule, searchResultGroupingRuleForNames } from "./compressionRules/searchResults.js";
+import {
+  applyRetrievalMarkers,
+  attachCompressedCompressionArtifacts,
+  attachOriginalCompressionArtifacts,
+  clearRetrievalMarkerMetadata,
+  restoreCompressionRecords,
+  snapshotCompressionRecords,
+  type CompressionArtifactStore
+} from "./compressionArtifactLifecycle.js";
+import {
+  contentBytes,
+  contentChars,
+  contentSha256,
+  ROUGH_COMPRESSION_TOKEN_ESTIMATE_SOURCE
+} from "./compressionContent.js";
 import {
   classifyShellCommand,
   shellCommandFromInput,
@@ -87,24 +106,12 @@ export type CompressionRecord = {
   commandClass?: string;
   originalArtifactId?: string;
   compressedArtifactId?: string;
+  retrievalAvailable?: boolean;
+  retrievalId?: string;
+  retrievalMarker?: string;
 };
 
 export type CompressionResult = { body: unknown; records: CompressionRecord[]; transformedBody?: unknown };
-type CompressionArtifactStore = {
-  captureCompressionArtifact(input: {
-    organizationId: string;
-    workspaceId: string;
-    requestId: string;
-    surface: Surface;
-    kind: "compression_original_tool_result" | "compression_compressed_tool_result";
-    content: unknown;
-    blockPath: string;
-    toolName: string;
-    ruleId: string;
-    ruleVersion: number;
-    status: CompressionRecord["status"];
-  }): Promise<{ id: string } | undefined>;
-};
 export type CompressionForwardInput = {
   events: EventService;
   tenantId: string;
@@ -116,6 +123,7 @@ export type CompressionForwardInput = {
   body: unknown;
   policy: CompressionPolicy;
   deduplicateToolResults?: boolean;
+  frozenPrefixItems?: number;
   profile?: HarnessProfile;
   artifactStore?: CompressionArtifactStore;
   warn: (error: unknown, message: string) => void;
@@ -131,6 +139,7 @@ export type CompressionOptions = {
   profile?: HarnessProfile;
   minOriginalBytes?: number;
   minSavingsTokens?: number;
+  frozenPrefixItems?: number;
   measureOnly?: boolean;
   recordSkips?: boolean;
   tokenEstimator?: CompressionTokenEstimator;
@@ -142,22 +151,25 @@ export type CompressionTokenEstimator = {
 type TokenEstimate = {
   tokens: number;
   source: string;
+  reliable: boolean;
 };
 type DuplicateTracker = Set<string>;
 type CompressionSkipReason =
   | "below_min_original_bytes"
+  | "cache_hot_zone"
   | "no_matching_rule"
   | "below_min_savings"
   | "would_grow"
   | "tool_result_error"
   | "content_shape_unsupported"
+  | "token_estimate_unavailable"
   | "policy_disabled";
 
 // Only results above this size are eligible — keeps the transform off the hot
 // path for cheap calls and avoids touching small blocks where compression
 // cannot pay for itself.
 export const MIN_COMPRESSIBLE_CHARS = 2048;
-export const ROUGH_COMPRESSION_TOKEN_ESTIMATE_SOURCE = "rough_chars_per_4";
+export { ROUGH_COMPRESSION_TOKEN_ESTIMATE_SOURCE };
 
 // Registered rules, evaluated in order; first successful rewrite wins. Only
 // applied for orgs that have opted into tool-result compression.
@@ -168,6 +180,50 @@ export const compressionRules: CompressionRule[] = [
 ];
 
 export const compressionRuleCatalog: CompressionRuleCatalogEntry[] = [
+  {
+    id: "search-result-grouping",
+    displayName: "Search result path grouping",
+    version: 1,
+    classification: "lossy",
+    supportedSurfaces: [...SURFACE_NAMES],
+    eligibleToolNames: ["Bash", "bash", "shell", "local_shell", "run_terminal_cmd", "Search", "Grep", "grep", "rg", "ripgrep", "mcp__github__search*", "mcp__gitlab__search*"],
+    minOriginalBytes: 512,
+    minSavingsTokens: 0,
+    knownRisks: ["Reformats path-prefixed search hits into grouped path blocks; measure-only until provider prompt impact is validated."]
+  },
+  {
+    id: "log-output-compaction",
+    displayName: "Log output repeated-line compaction",
+    version: 1,
+    classification: "lossy",
+    supportedSurfaces: [...SURFACE_NAMES],
+    eligibleToolNames: ["Bash", "bash", "shell", "local_shell", "run_terminal_cmd"],
+    minOriginalBytes: 4096,
+    minSavingsTokens: 0,
+    knownRisks: ["Collapses repeated low-signal log lines while preserving errors, warnings, tracebacks, exit lines, and tail output; measure-only until provider prompt impact is validated."]
+  },
+  {
+    id: "diff-compaction",
+    displayName: "Unified diff hunk compaction",
+    version: 1,
+    classification: "lossy",
+    supportedSurfaces: [...SURFACE_NAMES],
+    eligibleToolNames: ["Bash", "bash", "shell", "local_shell", "run_terminal_cmd"],
+    minOriginalBytes: 4096,
+    minSavingsTokens: 0,
+    knownRisks: ["Collapses unchanged or repeated hunk body lines while preserving file headers, hunk headers, added/deleted counts, and error signals; measure-only until provider prompt impact is validated."]
+  },
+  {
+    id: "json-array-compaction",
+    displayName: "JSON object-array column compaction",
+    version: 1,
+    classification: "lossy",
+    supportedSurfaces: [...SURFACE_NAMES],
+    eligibleToolNames: ["*"],
+    minOriginalBytes: 512,
+    minSavingsTokens: 0,
+    knownRisks: ["Re-encodes uniform object arrays into a columnar envelope; measure-only until provider prompt impact is validated."]
+  },
   {
     id: "mcp-json-whitespace",
     displayName: "MCP JSON whitespace compaction",
@@ -218,9 +274,7 @@ export function availableCompressionRules(profile?: HarnessProfile): Compression
   return compressionRuleCatalog.map((rule) => ({
     ...rule,
     supportedSurfaces: [...rule.supportedSurfaces],
-    eligibleToolNames: (rule.id === "bash-output-noise" || rule.id === "shell-command-lossy-summary") && profile
-      ? [...profile.bashToolNames]
-      : [...rule.eligibleToolNames],
+    eligibleToolNames: eligibleToolNamesForRule(rule, profile),
     knownRisks: [...rule.knownRisks]
   }));
 }
@@ -232,10 +286,39 @@ export function compressionRulesForProfile(profile: HarnessProfile): Compression
 export function compressionRulesForPolicy(policy: CompressionPolicy, profile?: HarnessProfile): CompressionRule[] {
   const baseRules = profile ? compressionRulesForProfile(profile) : compressionRules;
   const allowLossy = policy.mode === "measure_only" || policy.mode === "compress_explicit_lossy";
-  const allowedRules = allowLossy ? withShellSummaryRule(baseRules) : baseRules;
+  const measureRules = policy.mode === "measure_only" ? withMeasureOnlyCandidateRules(baseRules, profile) : baseRules;
+  const allowedRules = allowLossy ? withShellSummaryRule(measureRules) : measureRules;
   if (policy.enabledRules === undefined) return allowedRules;
   const enabled = new Set<CompressionRuleId>(policy.enabledRules);
   return allowedRules.filter((rule) => enabled.has(rule.label as CompressionRuleId));
+}
+
+function withMeasureOnlyCandidateRules(rules: CompressionRule[], profile: HarnessProfile | undefined) {
+  const searchRule = profile ? searchResultGroupingRuleForNames(profile.bashToolNames) : searchResultGroupingRule;
+  const diffRule = profile ? diffCompactionRuleForNames(profile.bashToolNames) : diffCompactionRule;
+  const logRule = profile ? logOutputCompactionRuleForNames(profile.bashToolNames) : logOutputCompactionRule;
+  let next = rules;
+  if (!next.some((rule) => rule.label === jsonArrayCompactionRule.label)) next = [jsonArrayCompactionRule, ...next];
+  if (!next.some((rule) => rule.label === logRule.label)) next = [logRule, ...next];
+  if (!next.some((rule) => rule.label === diffRule.label)) next = [diffRule, ...next];
+  if (!next.some((rule) => rule.label === searchRule.label)) next = [searchRule, ...next];
+  return next;
+}
+
+function eligibleToolNamesForRule(rule: CompressionRuleCatalogEntry, profile: HarnessProfile | undefined) {
+  if ((rule.id === "bash-output-noise" || rule.id === "shell-command-lossy-summary") && profile) {
+    return [...profile.bashToolNames];
+  }
+  if (rule.id === "search-result-grouping" && profile) {
+    return [...profile.bashToolNames, "Search", "Grep", "grep", "rg", "ripgrep", "mcp__github__search*", "mcp__gitlab__search*"];
+  }
+  if (rule.id === "log-output-compaction" && profile) {
+    return [...profile.bashToolNames];
+  }
+  if (rule.id === "diff-compaction" && profile) {
+    return [...profile.bashToolNames];
+  }
+  return [...rule.eligibleToolNames];
 }
 
 function withShellSummaryRule(rules: CompressionRule[]) {
@@ -335,16 +418,18 @@ export async function compressForForwardWithResult(input: CompressionForwardInpu
     },
     {
       deduplicateToolResults: input.deduplicateToolResults === true,
+      frozenPrefixItems: input.frozenPrefixItems,
       profile: input.profile
     }
   );
-  const { body, records } = compression;
+  let { body } = compression;
+  const { records } = compression;
   let compressionEventId: string | undefined;
   let eventEmitFailed = false;
   if (records.length === 0) {
     return { body, records, receiptIds: [], eventEmitFailed, compressionFailed };
   }
-  await attachCompressionArtifacts({
+  await attachOriginalCompressionArtifacts({
     artifactStore: input.artifactStore,
     tenantId: input.tenantId,
     workspaceId: input.workspaceId,
@@ -352,7 +437,22 @@ export async function compressForForwardWithResult(input: CompressionForwardInpu
     surface: input.surface,
     policy: input.policy,
     originalBody: input.body,
-    transformedBody: compression.transformedBody ?? body,
+    records,
+    warn: input.warn
+  });
+  const markerSnapshots = snapshotCompressionRecords(records);
+  const bodyBeforeRetrievalMarkers = body;
+  if (compressionPolicyMutates(input.policy)) {
+    body = applyRetrievalMarkers(input.surface, body, records);
+  }
+  await attachCompressedCompressionArtifacts({
+    artifactStore: input.artifactStore,
+    tenantId: input.tenantId,
+    workspaceId: input.workspaceId,
+    requestId: input.requestId,
+    surface: input.surface,
+    policy: input.policy,
+    transformedBody: input.policy.mode === "measure_only" ? compression.transformedBody ?? body : body,
     records,
     warn: input.warn
   });
@@ -362,6 +462,7 @@ export async function compressForForwardWithResult(input: CompressionForwardInpu
   const afterBytes = records.reduce((sum, record) => sum + record.afterBytes, 0);
   const beforeEstimatedTokens = records.reduce((sum, record) => sum + record.beforeEstimatedTokens, 0);
   const afterEstimatedTokens = records.reduce((sum, record) => sum + record.afterEstimatedTokens, 0);
+  const skippedRecords = records.filter((record) => record.status === "skipped");
   const estimateSource = aggregateEstimateSource(records);
   const payload = {
     surface: input.surface,
@@ -382,6 +483,8 @@ export async function compressForForwardWithResult(input: CompressionForwardInpu
     blocks: records.length,
     candidates: records.filter((record) => record.status === "candidate").length,
     skipped: records.filter((record) => record.status === "skipped").length,
+    skippedBytes: skippedRecords.reduce((sum, record) => sum + record.beforeBytes, 0),
+    skippedEstimatedTokens: skippedRecords.reduce((sum, record) => sum + record.beforeEstimatedTokens, 0),
     policy: input.policy as unknown as JsonObject,
     byRule: records as unknown as JsonObject[]
   } as JsonObject;
@@ -439,6 +542,9 @@ export async function compressForForwardWithResult(input: CompressionForwardInpu
     }
   } catch (error) {
     eventEmitFailed = true;
+    body = bodyBeforeRetrievalMarkers;
+    restoreCompressionRecords(records, markerSnapshots);
+    clearRetrievalMarkerMetadata(records);
     input.warn(error, "compression event emit failed");
   }
   return {
@@ -476,6 +582,8 @@ export async function appendCompressionEvidence(input: {
     appliedBlocks: summary.appliedBlocks,
     candidateBlocks: summary.candidateBlocks,
     skippedBlocks: summary.skippedBlocks,
+    skippedBytes: summary.skippedBytes,
+    skippedEstimatedTokens: summary.skippedEstimatedTokens,
     savedEstimatedTokens: summary.savedEstimatedTokens,
     ruleIds: summary.ruleIds,
     receiptIds: input.result.receiptIds,
@@ -518,6 +626,8 @@ export function compressionForwardTelemetry(result: CompressionForwardResult, po
     compressionAppliedBlocks: summary.appliedBlocks,
     compressionCandidateBlocks: summary.candidateBlocks,
     compressionSkippedBlocks: summary.skippedBlocks,
+    compressionSkippedBytes: summary.skippedBytes,
+    compressionSkippedEstimatedTokens: summary.skippedEstimatedTokens,
     compressionSavedEstimatedTokens: summary.savedEstimatedTokens,
     compressionRuleIds: summary.ruleIds,
     compressionReceiptIds: result.receiptIds,
@@ -544,86 +654,15 @@ export function providerCompressionTerminalTelemetry(
   };
 }
 
-async function attachCompressionArtifacts(input: {
-  artifactStore?: CompressionArtifactStore;
-  tenantId: string;
-  workspaceId: string;
-  requestId: string;
-  surface: Surface;
-  policy: CompressionPolicy;
-  originalBody: unknown;
-  transformedBody: unknown;
-  records: CompressionRecord[];
-  warn: (error: unknown, message: string) => void;
-}) {
-  if (!input.artifactStore) return;
-  if (!input.policy.storeOriginalArtifact && !input.policy.storeCompressedArtifact) return;
-  for (const record of input.records) {
-    if (record.status === "skipped") continue;
-    const originalContent = contentAtBlockPath(input.surface, input.originalBody, record.blockPath);
-    const compressedContent = contentAtBlockPath(input.surface, input.transformedBody, record.blockPath);
-    try {
-      if (input.policy.storeOriginalArtifact) {
-        const artifact = await input.artifactStore.captureCompressionArtifact({
-          organizationId: input.tenantId,
-          workspaceId: input.workspaceId,
-          requestId: input.requestId,
-          surface: input.surface,
-          kind: "compression_original_tool_result",
-          content: originalContent,
-          blockPath: record.blockPath,
-          toolName: record.tool,
-          ruleId: record.rule,
-          ruleVersion: record.ruleVersion,
-          status: record.status
-        });
-        if (artifact) record.originalArtifactId = artifact.id;
-      }
-      if (input.policy.storeCompressedArtifact) {
-        const artifact = await input.artifactStore.captureCompressionArtifact({
-          organizationId: input.tenantId,
-          workspaceId: input.workspaceId,
-          requestId: input.requestId,
-          surface: input.surface,
-          kind: "compression_compressed_tool_result",
-          content: compressedContent,
-          blockPath: record.blockPath,
-          toolName: record.tool,
-          ruleId: record.rule,
-          ruleVersion: record.ruleVersion,
-          status: record.status
-        });
-        if (artifact) record.compressedArtifactId = artifact.id;
-      }
-    } catch (error) {
-      input.warn(error, "compression artifact capture failed");
-    }
-  }
-}
-
-function contentAtBlockPath(surface: Surface, body: unknown, blockPath: string) {
-  const block = valueAtPath(body, blockPath);
-  if (!isRecord(block)) return block;
-  if (surface === "anthropic-messages") return block.content;
-  if (surface === "openai-responses") return block.output;
-  if (surface === "openai-chat") return block.content;
-  return block;
-}
-
-function valueAtPath(value: unknown, path: string) {
-  return path.split(".").reduce<unknown>((current, part) => {
-    if (Array.isArray(current)) return current[Number(part)];
-    if (isRecord(current)) return current[part];
-    return undefined;
-  }, value);
-}
-
 function compressionRecordSummary(records: CompressionRecord[]) {
+  const skippedRecords = records.filter((record) => record.status === "skipped");
   return {
     evaluatedBlocks: records.length,
     appliedBlocks: records.filter((record) => record.status === "applied").length,
     candidateBlocks: records.filter((record) => record.status === "candidate").length,
-    skippedBlocks: records.filter((record) => record.status === "skipped").length,
+    skippedBlocks: skippedRecords.length,
+    skippedBytes: skippedRecords.reduce((sum, record) => sum + record.beforeBytes, 0),
+    skippedEstimatedTokens: skippedRecords.reduce((sum, record) => sum + record.beforeEstimatedTokens, 0),
     savedEstimatedTokens: records.reduce((sum, record) => sum + record.savedEstimatedTokens, 0),
     ruleIds: Array.from(new Set(records.map((record) => record.rule))).sort()
   };
@@ -662,6 +701,11 @@ function compressAnthropic(
       const toolUseId = stringField(block, "tool_use_id");
       const ref = toolUseId ? toolNames.get(toolUseId) : undefined;
       const toolName = ref?.name ?? "unknown";
+      if (isFrozenPrefixItem(messageIndex, options)) {
+        recordCacheHotZoneSkip(records, toolName, blockPath, block.content, options);
+        trackDuplicateContent(block.content, duplicates);
+        return block;
+      }
       const duplicate = applyDuplicateReference(toolName, block.content, records, duplicates, blockPath, options);
       if (duplicate !== undefined) {
         messageChanged = true;
@@ -698,6 +742,11 @@ function compressOpenAI(
     const callId = stringField(item, "call_id");
     const ref = callId ? callNames.get(callId) : undefined;
     const toolName = ref?.name ?? "unknown";
+    if (isFrozenPrefixItem(itemIndex, options)) {
+      recordCacheHotZoneSkip(records, toolName, blockPath, item.output, options);
+      trackDuplicateContent(item.output, duplicates);
+      return item;
+    }
     const duplicate = applyDuplicateReference(toolName, item.output, records, duplicates, blockPath, options);
     if (duplicate !== undefined) {
       changed = true;
@@ -730,6 +779,11 @@ function compressOpenAIChat(
     const toolCallId = stringField(message, "tool_call_id");
     const ref = toolCallId ? callRefs.get(toolCallId) : undefined;
     const toolName = ref?.name ?? "unknown";
+    if (isFrozenPrefixItem(messageIndex, options)) {
+      recordCacheHotZoneSkip(records, toolName, blockPath, message.content, options);
+      trackDuplicateContent(message.content, duplicates);
+      return message;
+    }
     const duplicate = applyDuplicateReference(toolName, message.content, records, duplicates, blockPath, options);
     if (duplicate !== undefined) {
       changed = true;
@@ -744,6 +798,31 @@ function compressOpenAIChat(
     return { ...message, content: replaced };
   });
   return changed ? { ...request, messages } : request;
+}
+
+function isFrozenPrefixItem(index: number, options: CompressionOptions) {
+  return index < (options.frozenPrefixItems ?? 0);
+}
+
+function recordCacheHotZoneSkip(
+  records: CompressionRecord[],
+  toolName: string,
+  blockPath: string,
+  content: unknown,
+  options: CompressionOptions
+) {
+  if (!options.recordSkips) return;
+  recordSkip({
+    records,
+    toolName,
+    blockPath,
+    content,
+    beforeChars: contentChars(content),
+    ruleLabel: "cache-hot-zone",
+    ruleVersion: 1,
+    reason: "cache_hot_zone",
+    tokenEstimator: options.tokenEstimator
+  });
 }
 
 // Apply the first rule that shrinks a tool-result content payload. Records the
@@ -764,6 +843,13 @@ function applyRules(
   let matchedFilterError: CompressionRule | undefined;
   let matchedUnsupported: CompressionRule | undefined;
   let matchedWouldGrow: { rule: CompressionRule; afterChars: number; afterContent: unknown } | undefined;
+  let matchedEstimateUnavailable: {
+    rule: CompressionRule;
+    afterChars: number;
+    afterContent: unknown;
+    beforeTokenEstimate: TokenEstimate;
+    afterTokenEstimate: TokenEstimate;
+  } | undefined;
   let matchedBelowSavings: {
     rule: CompressionRule;
     afterChars: number;
@@ -798,6 +884,10 @@ function applyRules(
     }
     const beforeTokenEstimate = estimateCompressionTokens(content, beforeChars, options.tokenEstimator);
     const afterTokenEstimate = estimateCompressionTokens(replaced, afterChars, options.tokenEstimator);
+    if (!beforeTokenEstimate.reliable || !afterTokenEstimate.reliable) {
+      matchedEstimateUnavailable ??= { rule, afterChars, afterContent: replaced, beforeTokenEstimate, afterTokenEstimate };
+      continue;
+    }
     const savedEstimatedTokens = beforeTokenEstimate.tokens - afterTokenEstimate.tokens;
     if (savedEstimatedTokens < (options.minSavingsTokens ?? 0)) {
       matchedBelowSavings ??= { rule, afterChars, afterContent: replaced, beforeTokenEstimate, afterTokenEstimate };
@@ -834,12 +924,12 @@ function applyRules(
       blockPath,
       content,
       beforeChars,
-      rule: matchedFilterError ?? matchedBelowSavings?.rule ?? matchedWouldGrow?.rule ?? matchedBelowMin ?? matchedUnsupported ?? matchedRule,
-      reason: skipReason(matchedRule, matchedBelowMin, matchedFilterError, matchedUnsupported, matchedWouldGrow, matchedBelowSavings),
-      afterChars: matchedBelowSavings?.afterChars ?? matchedWouldGrow?.afterChars,
-      afterContent: matchedBelowSavings?.afterContent ?? matchedWouldGrow?.afterContent,
-      beforeTokenEstimate: matchedBelowSavings?.beforeTokenEstimate,
-      afterTokenEstimate: matchedBelowSavings?.afterTokenEstimate,
+      rule: matchedFilterError ?? matchedEstimateUnavailable?.rule ?? matchedBelowSavings?.rule ?? matchedWouldGrow?.rule ?? matchedBelowMin ?? matchedUnsupported ?? matchedRule,
+      reason: skipReason(matchedRule, matchedBelowMin, matchedFilterError, matchedUnsupported, matchedWouldGrow, matchedEstimateUnavailable, matchedBelowSavings),
+      afterChars: matchedEstimateUnavailable?.afterChars ?? matchedBelowSavings?.afterChars ?? matchedWouldGrow?.afterChars,
+      afterContent: matchedEstimateUnavailable?.afterContent ?? matchedBelowSavings?.afterContent ?? matchedWouldGrow?.afterContent,
+      beforeTokenEstimate: matchedEstimateUnavailable?.beforeTokenEstimate ?? matchedBelowSavings?.beforeTokenEstimate,
+      afterTokenEstimate: matchedEstimateUnavailable?.afterTokenEstimate ?? matchedBelowSavings?.afterTokenEstimate,
       tokenEstimator: options.tokenEstimator,
       toolInput
     });
@@ -867,6 +957,25 @@ function applyDuplicateReference(
   const afterTokenEstimate = estimateCompressionTokens(replacement, afterChars, options.tokenEstimator);
   const savedEstimatedTokens = beforeTokenEstimate.tokens - afterTokenEstimate.tokens;
   const estimateSource = tokenEstimateSource(beforeTokenEstimate, afterTokenEstimate);
+  if (!beforeTokenEstimate.reliable || !afterTokenEstimate.reliable) {
+    if (options.recordSkips) {
+      recordSkip({
+        records,
+        toolName,
+        blockPath,
+        content,
+        beforeChars: fingerprint.chars,
+        ruleLabel: "duplicate-tool-result-reference",
+        ruleVersion: 1,
+        reason: "token_estimate_unavailable",
+        afterChars,
+        afterContent: replacement,
+        beforeTokenEstimate,
+        afterTokenEstimate
+      });
+    }
+    return undefined;
+  }
   if (savedEstimatedTokens < (options.minSavingsTokens ?? 0)) {
     if (options.recordSkips) {
       recordSkip({
@@ -915,6 +1024,13 @@ function skipReason(
   matchedFilterError: CompressionRule | undefined,
   matchedUnsupported: CompressionRule | undefined,
   matchedWouldGrow: { rule: CompressionRule; afterChars: number; afterContent: unknown } | undefined,
+  matchedEstimateUnavailable: {
+    rule: CompressionRule;
+    afterChars: number;
+    afterContent: unknown;
+    beforeTokenEstimate: TokenEstimate;
+    afterTokenEstimate: TokenEstimate;
+  } | undefined,
   matchedBelowSavings: {
     rule: CompressionRule;
     afterChars: number;
@@ -925,6 +1041,7 @@ function skipReason(
 ): CompressionSkipReason {
   if (!matchedRule) return "no_matching_rule";
   if (matchedFilterError) return "tool_result_error";
+  if (matchedEstimateUnavailable) return "token_estimate_unavailable";
   if (matchedBelowSavings) return "below_min_savings";
   if (matchedWouldGrow) return "would_grow";
   if (matchedBelowMin) return "below_min_original_bytes";
@@ -995,25 +1112,17 @@ function contentFingerprint(content: unknown) {
   return { hash, chars, key: `${hash}:${serialized.length}` };
 }
 
-function contentSha256(content: unknown) {
-  return `sha256:${createHash("sha256").update(serializedContent(content)).digest("hex")}`;
-}
-
-function contentBytes(content: unknown) {
-  return Buffer.byteLength(serializedContent(content));
-}
-
 function estimateCompressionTokens(
   content: unknown,
   chars: number,
   estimator: CompressionTokenEstimator | undefined
 ): TokenEstimate {
-  if (!estimator) return { tokens: roughTokenEstimate(chars), source: ROUGH_COMPRESSION_TOKEN_ESTIMATE_SOURCE };
+  if (!estimator) return { tokens: roughTokenEstimate(chars), source: ROUGH_COMPRESSION_TOKEN_ESTIMATE_SOURCE, reliable: true };
   const tokens = estimator.countTokens(content);
   if (tokens !== undefined && Number.isFinite(tokens) && tokens >= 0) {
-    return { tokens: Math.ceil(tokens), source: estimator.estimateSource };
+    return { tokens: Math.ceil(tokens), source: estimator.estimateSource, reliable: true };
   }
-  return { tokens: roughTokenEstimate(chars), source: ROUGH_COMPRESSION_TOKEN_ESTIMATE_SOURCE };
+  return { tokens: roughTokenEstimate(chars), source: ROUGH_COMPRESSION_TOKEN_ESTIMATE_SOURCE, reliable: false };
 }
 
 function tokenEstimateSource(before: TokenEstimate, after: TokenEstimate) {
@@ -1021,7 +1130,7 @@ function tokenEstimateSource(before: TokenEstimate, after: TokenEstimate) {
 }
 
 function shellCommandRecordFields(rule: CompressionRule | undefined, toolInput: unknown, content: unknown) {
-  if (rule?.label !== "bash-output-noise" && rule?.label !== "shell-command-lossy-summary") return {};
+  if (rule?.label !== "bash-output-noise" && rule?.label !== "shell-command-lossy-summary" && rule?.label !== "log-output-compaction") return {};
   const command = shellCommandFromInput(toolInput);
   const commandClass = classifyShellCommand(toolInput, typeof content === "string" ? content : "");
   return {
@@ -1033,11 +1142,6 @@ function shellCommandRecordFields(rule: CompressionRule | undefined, toolInput: 
 function aggregateEstimateSource(records: CompressionRecord[]) {
   const sources = new Set(records.map((record) => record.estimateSource));
   return sources.size === 1 ? records[0].estimateSource : "mixed";
-}
-
-function serializedContent(content: unknown) {
-  if (typeof content === "string") return content;
-  return JSON.stringify(content) ?? "null";
 }
 
 function duplicateReference(content: unknown, hash: string, originalChars: number) {
@@ -1109,10 +1213,4 @@ export function mapTextContent(
     return changed ? next : undefined;
   }
   return undefined;
-}
-
-function contentChars(value: unknown): number {
-  if (value === null || value === undefined) return 0;
-  if (typeof value === "string") return value.length;
-  return stableJson(value).length;
 }

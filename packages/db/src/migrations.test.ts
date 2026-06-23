@@ -107,6 +107,9 @@ describe("database migrations", () => {
       where table_name = 'compression_receipts'
         and column_name in (
           'organization_id',
+          'retrieval_available',
+          'retrieval_id',
+          'retrieval_marker',
           'workspace_id',
           'request_id',
           'api_key_id',
@@ -136,6 +139,16 @@ describe("database migrations", () => {
           'event_id'
         )
       order by column_name
+    `);
+    const compressionReceiptIndexes = await client.query<{ indexname: string; indexdef: string }>(`
+      select indexname, indexdef
+      from pg_indexes
+      where tablename = 'compression_receipts'
+        and indexname in (
+          'compression_receipts_org_workspace_retrieval_idx',
+          'compression_receipts_retrieval_id_idx'
+        )
+      order by indexname
     `);
     const invitationColumns = await client.query<{ column_name: string }>(`
       select column_name
@@ -307,6 +320,9 @@ describe("database migrations", () => {
       "original_estimated_tokens",
       "original_sha256",
       "request_id",
+      "retrieval_available",
+      "retrieval_id",
+      "retrieval_marker",
       "rule_id",
       "rule_version",
       "saved_chars",
@@ -317,6 +333,12 @@ describe("database migrations", () => {
       "tool_name",
       "workspace_id"
     ]);
+    expect(compressionReceiptIndexes.rows.map((row) => row.indexname)).toEqual([
+      "compression_receipts_org_workspace_retrieval_idx",
+      "compression_receipts_retrieval_id_idx"
+    ]);
+    expect(compressionReceiptIndexes.rows.find((row) => row.indexname === "compression_receipts_retrieval_id_idx")?.indexdef)
+      .toContain("CREATE UNIQUE INDEX");
     expect(invitationColumns.rows.map((row) => row.column_name)).toEqual([
       "accepted_user_id",
       "email",

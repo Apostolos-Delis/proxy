@@ -20,7 +20,7 @@ function makeSettings(overrides: Partial<EditableSettings> = {}): EditableSettin
       mode: "disabled",
       minOriginalBytes: 512,
       minSavingsTokens: 0,
-      enabledRules: ["mcp-json-whitespace", "json-whitespace", "bash-output-noise", "shell-command-lossy-summary"],
+      enabledRules: ["search-result-grouping", "diff-compaction", "log-output-compaction", "json-array-compaction", "mcp-json-whitespace", "json-whitespace", "bash-output-noise", "shell-command-lossy-summary"],
       storeOriginalArtifact: false,
       storeCompressedArtifact: false
     },

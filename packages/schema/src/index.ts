@@ -146,6 +146,10 @@ export const COMPRESSION_POLICY_MODES = [
 ] as const;
 
 export const COMPRESSION_RULE_IDS = [
+  "search-result-grouping",
+  "diff-compaction",
+  "log-output-compaction",
+  "json-array-compaction",
   "mcp-json-whitespace",
   "json-whitespace",
   "bash-output-noise",

@@ -54,6 +54,7 @@ export function shellCommandFromInput(toolInput: unknown): string | undefined {
 
 function summarizeShellOutput(text: string, commandClass: ShellCommandClass): string | undefined {
   if (commandClass === "unknown") return undefined;
+  if (hasConflictMarkers(text)) return undefined;
   const lines = text.split("\n");
   if (lines.length < 40 && text.length < 4096) return undefined;
   const important = lines.filter(importantShellLine);
@@ -63,6 +64,10 @@ function summarizeShellOutput(text: string, commandClass: ShellCommandClass): st
     ...retained
   ].join("\n");
   return summary.length < text.length ? summary : undefined;
+}
+
+function hasConflictMarkers(text: string) {
+  return /^[ +-]?(?:<<<<<<<|=======|>>>>>>>)/m.test(text);
 }
 
 function importantShellLine(line: string) {

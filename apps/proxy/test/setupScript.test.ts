@@ -27,6 +27,9 @@ describe("buildSetupScript", () => {
     expect(script).toContain('PP_TOKEN="${PROMPT_PROXY_TOKEN:-}"');
     expect(script).toContain('PP_HARNESSES="$PP_HARNESSES ${2:-}"');
     expect(script).toContain("read -r PP_TOKEN < /dev/tty");
+    expect(script).toContain('"$PP_BASE_URL" "$PP_TOKEN_PATH" "$PP_OPENCODE_CONFIG_MARKER_FILE"');
+    expect(script).not.toContain('"$PP_BASE_URL" "$PP_TOKEN" "$PP_OPENCODE_CONFIG_MARKER_FILE"');
+    expect(script).not.toContain("const token = process.argv[4];");
   });
 
   it("targets the requested base URL for Claude Code and Codex", () => {
@@ -37,8 +40,9 @@ describe("buildSetupScript", () => {
 
   it("keeps the idempotency and permission guards", () => {
     const script = buildSetupScript("https://proxy.example.com");
-    expect(script).toContain("grep -Eq");
-    expect(script).toContain('tmp_config="$(mktemp)"');
+    expect(script).toContain("pp_write_marked_block");
+    expect(script).toContain("PP_CODEX_PROVIDER_BEGIN");
+    expect(script).toContain("marker.json");
     expect(script).toContain('chmod 600 "$PP_TOKEN_PATH"');
   });
 
@@ -54,23 +58,33 @@ describe("buildSetupScript", () => {
     expect(script).not.toContain("PP_CODEX_HEADERS");
   });
 
-  it("selects and refreshes the Codex prompt_proxy provider for existing configs", () => {
+  it("selects and refreshes Prompt Proxy-owned Codex blocks for existing configs", () => {
     const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-"));
     try {
       const codexDir = join(home, ".codex");
       mkdirSync(codexDir, { recursive: true });
       writeFileSync(join(codexDir, "config.toml"), `# Existing Codex config
-model = "gpt-5.5"
+# >>> prompt-proxy codex defaults >>>
+model = "old-model"
+model_provider = "prompt_proxy"
+# <<< prompt-proxy codex defaults <<<
 
 [features]
 goals = true
 
+# >>> prompt-proxy codex provider prompt_proxy >>>
 [model_providers.prompt_proxy]
 name = "Old Proxy"
 base_url = "http://old-proxy/v1"
 env_key = "OLD_PROMPT_PROXY_TOKEN"
+# <<< prompt-proxy codex provider prompt_proxy <<<
 `);
-      writeFileSync(join(home, ".zshrc"), 'export PROMPT_PROXY_TOKEN="old-token"\n');
+      writeFileSync(join(home, ".zshrc"), [
+        "# >>> prompt-proxy codex PROMPT_PROXY_TOKEN >>>",
+        'export PROMPT_PROXY_TOKEN="old-token"',
+        "# <<< prompt-proxy codex PROMPT_PROXY_TOKEN <<<",
+        ""
+      ].join("\n"));
 
       const result = spawnSync("bash", ["-s", "--", "proxy-token"], {
         input: buildSetupScript("https://proxy.example.com"),
@@ -91,12 +105,86 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       expect(config).toContain('base_url = "https://proxy.example.com/v1"');
       expect(config).toContain('env_key = "PROMPT_PROXY_TOKEN"');
       expect(config).toContain("supports_websockets = false");
+      expect(config).toContain("# >>> prompt-proxy codex defaults >>>");
+      expect(config).toContain("# >>> prompt-proxy codex provider prompt_proxy >>>");
       expect(config).not.toContain("http_headers");
       expect(config).not.toContain("http://old-proxy/v1");
       expect(config).not.toContain("OLD_PROMPT_PROXY_TOKEN");
       const zshrc = readFileSync(join(home, ".zshrc"), "utf8");
+      expect(zshrc).toContain("# >>> prompt-proxy codex PROMPT_PROXY_TOKEN >>>");
       expect(zshrc).toContain('export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"');
       expect(zshrc).not.toContain("old-token");
+
+      const secondResult = spawnSync("bash", ["-s", "--", "proxy-token-2"], {
+        input: buildSetupScript("https://proxy2.example.com"),
+        env: { ...process.env, HOME: home, USER: "dev" }
+      });
+      expect(secondResult.status).toBe(0);
+      const secondConfig = readFileSync(join(codexDir, "config.toml"), "utf8");
+      expect(secondConfig).toContain('base_url = "https://proxy2.example.com/v1"');
+      expect(secondConfig.match(/# >>> prompt-proxy codex provider prompt_proxy >>>/g)).toHaveLength(1);
+      const secondZshrc = readFileSync(join(home, ".zshrc"), "utf8");
+      expect(secondZshrc.match(/# >>> prompt-proxy codex PROMPT_PROXY_TOKEN >>>/g)).toHaveLength(1);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("reports unmarked Codex blocks with matching names without clobbering them", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-unmarked-"));
+    try {
+      const codexDir = join(home, ".codex");
+      mkdirSync(codexDir, { recursive: true });
+      writeFileSync(join(codexDir, "config.toml"), `model = "user-model"
+model_provider = "prompt_proxy"
+
+[model_providers.prompt_proxy]
+name = "User Proxy"
+base_url = "http://user-managed/v1"
+env_key = "USER_TOKEN"
+`);
+      writeFileSync(join(home, ".zshrc"), 'export PROMPT_PROXY_TOKEN="user-token"\n');
+
+      const result = spawnSync("bash", ["-s", "--", "proxy-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: { ...process.env, HOME: home, USER: "dev" }
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stderr.toString()).toContain("found unmarked PROMPT_PROXY_TOKEN");
+      expect(result.stderr.toString()).toContain("found unmarked top-level model/model_provider");
+      expect(result.stderr.toString()).toContain("found unmarked [model_providers.prompt_proxy]");
+      const config = readFileSync(join(codexDir, "config.toml"), "utf8");
+      expect(config).toContain('base_url = "http://user-managed/v1"');
+      expect(config).not.toContain("https://proxy.example.com/v1");
+      expect(readFileSync(join(home, ".zshrc"), "utf8")).toBe('export PROMPT_PROXY_TOKEN="user-token"\n');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("does not select an unmarked Codex provider table when defaults are absent", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-provider-only-"));
+    try {
+      const codexDir = join(home, ".codex");
+      mkdirSync(codexDir, { recursive: true });
+      writeFileSync(join(codexDir, "config.toml"), `  [model_providers.prompt_proxy_codex] # user-managed
+name = "User Proxy"
+base_url = "http://user-managed/v1"
+env_key = "USER_TOKEN"
+`);
+
+      const result = spawnSync("bash", ["-s", "--", "--harness", "codex", "codex-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: { ...process.env, HOME: home, USER: "dev" }
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stderr.toString()).toContain("found unmarked [model_providers.prompt_proxy_codex]");
+      const config = readFileSync(join(codexDir, "config.toml"), "utf8");
+      expect(config).not.toContain('model_provider = "prompt_proxy_codex"');
+      expect(config).toContain('base_url = "http://user-managed/v1"');
+      expect(config).not.toContain("https://proxy.example.com/v1");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -112,17 +200,27 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       const managedCodexConfig = join(managedDir, "codex-config.toml");
       const managedZshrc = join(managedDir, "zshrc");
       writeFileSync(managedCodexConfig, `# Managed Codex config
-model = "gpt-5.5"
+# >>> prompt-proxy codex defaults >>>
+model = "old-model"
+model_provider = "prompt_proxy"
+# <<< prompt-proxy codex defaults <<<
 
 [features]
 goals = true
 
+# >>> prompt-proxy codex provider prompt_proxy >>>
 [model_providers.prompt_proxy]
 name = "Old Proxy"
 base_url = "http://old-proxy/v1"
 env_key = "OLD_PROMPT_PROXY_TOKEN"
+# <<< prompt-proxy codex provider prompt_proxy <<<
 `);
-      writeFileSync(managedZshrc, 'export PROMPT_PROXY_TOKEN="old-token"\n');
+      writeFileSync(managedZshrc, [
+        "# >>> prompt-proxy codex PROMPT_PROXY_TOKEN >>>",
+        'export PROMPT_PROXY_TOKEN="old-token"',
+        "# <<< prompt-proxy codex PROMPT_PROXY_TOKEN <<<",
+        ""
+      ].join("\n"));
       symlinkSync(managedCodexConfig, join(codexDir, "config.toml"));
       symlinkSync(managedZshrc, join(home, ".zshrc"));
 
@@ -143,6 +241,7 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       expect(config).toContain("supports_websockets = false");
       expect(config).not.toContain("http://old-proxy/v1");
       const zshrc = readFileSync(managedZshrc, "utf8");
+      expect(zshrc).toContain("# >>> prompt-proxy codex PROMPT_PROXY_TOKEN >>>");
       expect(zshrc).toContain('export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"');
       expect(zshrc).not.toContain("old-token");
     } finally {
@@ -153,7 +252,12 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
   it("configures a Codex-specific key without changing Claude Code", () => {
     const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-codex-"));
     try {
-      writeFileSync(join(home, ".zshrc"), 'export PROMPT_PROXY_CODEX_TOKEN="old-token"\n');
+      writeFileSync(join(home, ".zshrc"), [
+        "# >>> prompt-proxy codex PROMPT_PROXY_CODEX_TOKEN >>>",
+        'export PROMPT_PROXY_CODEX_TOKEN="old-token"',
+        "# <<< prompt-proxy codex PROMPT_PROXY_CODEX_TOKEN <<<",
+        ""
+      ].join("\n"));
 
       const result = spawnSync("bash", ["-s", "--", "--harness", "codex", "codex-token"], {
         input: buildSetupScript("https://proxy.example.com"),
@@ -175,6 +279,7 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       expect(config).toContain("supports_websockets = false");
       expect(config).not.toContain("http_headers");
       const zshrc = readFileSync(join(home, ".zshrc"), "utf8");
+      expect(zshrc).toContain("# >>> prompt-proxy codex PROMPT_PROXY_CODEX_TOKEN >>>");
       expect(zshrc).toContain('export PROMPT_PROXY_CODEX_TOKEN="$(cat ~/.prompt-proxy/codex.token)"');
       expect(zshrc).not.toContain("old-token");
       expect(spawnSync("test", ["!", "-e", join(home, ".claude", "settings.json")]).status).toBe(0);
@@ -225,6 +330,33 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       expect(settings.env.ANTHROPIC_BASE_URL).toBe("https://proxy.example.com");
       expect(settings.env.ANTHROPIC_CUSTOM_HEADERS).toBeUndefined();
       expect(spawnSync("test", ["!", "-e", join(home, ".codex", "config.toml")]).status).toBe(0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("reports unmarked Claude Code settings without clobbering them", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-claude-unmarked-"));
+    try {
+      mkdirSync(join(home, ".claude"), { recursive: true });
+      writeFileSync(join(home, ".claude", "settings.json"), JSON.stringify({
+        model: "user-claude-model",
+        env: { ANTHROPIC_BASE_URL: "https://anthropic.example.com" },
+        apiKeyHelper: "cat ~/.anthropic/key"
+      }));
+
+      const result = spawnSync("bash", ["-s", "--", "--harness=claude-code", "claude-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: { ...process.env, HOME: home }
+      });
+      const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
+
+      expect(result.status).toBe(0);
+      expect(result.stderr.toString()).toContain("user-managed settings outside Prompt Proxy marker");
+      expect(settings.model).toBe("user-claude-model");
+      expect(settings.env.ANTHROPIC_BASE_URL).toBe("https://anthropic.example.com");
+      expect(settings.apiKeyHelper).toBe("cat ~/.anthropic/key");
+      expect(settings.env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY).toBe("1");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -319,6 +451,69 @@ env_key = "OLD_PROMPT_PROXY_TOKEN"
       expect(auth["prompt-proxy-chat"]).toEqual({ type: "api", key: "open-token" });
       expect(spawnSync("test", ["!", "-e", join(home, ".codex", "config.toml")]).status).toBe(0);
       expect(spawnSync("test", ["!", "-e", join(home, ".claude", "settings.json")]).status).toBe(0);
+
+      config.provider["other-provider"] = { npm: "other", name: "Other", options: { baseURL: "http://other" } };
+      writeFileSync(join(xdgConfig, "opencode", "opencode.json"), JSON.stringify(config, null, 2));
+      const secondResult = spawnSync("bash", ["-s", "--", "--harness", "opencode", "open-token-2"], {
+        input: buildSetupScript("https://proxy2.example.com"),
+        env: {
+          ...process.env,
+          HOME: home,
+          XDG_CONFIG_HOME: xdgConfig,
+          XDG_DATA_HOME: xdgData,
+          USER: "dev"
+        }
+      });
+      expect(secondResult.status).toBe(0);
+      const secondConfig = JSON.parse(readFileSync(join(xdgConfig, "opencode", "opencode.json"), "utf8"));
+      expect(secondConfig.provider["other-provider"].options.baseURL).toBe("http://other");
+      expect(secondConfig.provider["prompt-proxy-chat"].options.baseURL).toBe("https://proxy2.example.com/v1");
+      const secondAuth = JSON.parse(readFileSync(join(xdgData, "opencode", "auth.json"), "utf8"));
+      expect(secondAuth["prompt-proxy-chat"]).toEqual({ type: "api", key: "open-token-2" });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("reports unmarked opencode provider and auth entries without clobbering them", () => {
+    const home = mkdtempSync(join(tmpdir(), "prompt-proxy-setup-opencode-unmarked-"));
+    const xdgConfig = join(home, "xdg-config");
+    const xdgData = join(home, "xdg-data");
+    try {
+      mkdirSync(join(xdgConfig, "opencode"), { recursive: true });
+      mkdirSync(join(xdgData, "opencode"), { recursive: true });
+      writeFileSync(join(xdgConfig, "opencode", "opencode.json"), JSON.stringify({
+        provider: {
+          "prompt-proxy-chat": {
+            npm: "@ai-sdk/openai-compatible",
+            name: "User Prompt Proxy",
+            options: { baseURL: "http://user-managed/v1" },
+            models: { "router-auto": { name: "User Router" } }
+          }
+        },
+        model: "prompt-proxy-chat/router-auto"
+      }));
+      writeFileSync(join(xdgData, "opencode", "auth.json"), JSON.stringify({
+        "prompt-proxy-chat": { type: "api", key: "user-token" }
+      }));
+
+      const result = spawnSync("bash", ["-s", "--", "--harness", "opencode", "open-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: {
+          ...process.env,
+          HOME: home,
+          XDG_CONFIG_HOME: xdgConfig,
+          XDG_DATA_HOME: xdgData,
+          USER: "dev"
+        }
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stderr.toString()).toContain("user-managed entries outside Prompt Proxy markers");
+      const config = JSON.parse(readFileSync(join(xdgConfig, "opencode", "opencode.json"), "utf8"));
+      expect(config.provider["prompt-proxy-chat"].options.baseURL).toBe("http://user-managed/v1");
+      const auth = JSON.parse(readFileSync(join(xdgData, "opencode", "auth.json"), "utf8"));
+      expect(auth["prompt-proxy-chat"]).toEqual({ type: "api", key: "user-token" });
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

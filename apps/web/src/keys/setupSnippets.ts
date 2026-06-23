@@ -97,7 +97,7 @@ function storeKeyStep(key: string, tokenPath: string): ManualStep {
 function claudeCodeStep(apiBase: string, tokenPath: string): ManualStep {
   return {
     title: "Point Claude Code at the proxy",
-    detail: "Merge these settings into ~/.claude/settings.json (create the file if it does not exist).",
+    detail: "Merge these settings into ~/.claude/settings.json. The hosted setup script tracks its owned fields in ~/.prompt-proxy/claude-code-settings.marker.json and reports unmarked conflicts.",
     snippet: JSON.stringify(
       {
         model: "claude-router-auto",
@@ -119,8 +119,12 @@ function codexExportStep(harnesses: HarnessSetupSelection): ManualStep {
   const tokenPath = tokenPathForHarnesses(harnesses);
   return {
     title: "Export the key for Codex",
-    detail: `Add this line to ~/.zshrc (or ~/.bashrc) so Codex can read ${envKey}.`,
-    snippet: `export ${envKey}="$(cat ${tokenPath})"`,
+    detail: `Add this Prompt Proxy-owned marker block to ~/.zshrc (or ~/.bashrc) so Codex can read ${envKey}.`,
+    snippet: [
+      `# >>> prompt-proxy codex ${envKey} >>>`,
+      `export ${envKey}="$(cat ${tokenPath})"`,
+      `# <<< prompt-proxy codex ${envKey} <<<`
+    ].join("\n"),
     language: "shell"
   };
 }
@@ -130,17 +134,21 @@ function codexProviderStep(apiBase: string, harnesses: HarnessSetupSelection): M
   const provider = codexProviderForHarnesses(harnesses);
   return {
     title: "Register the Codex provider",
-    detail: "Add this to ~/.codex/config.toml. If the file already has a model/model_provider, keep yours and add only the provider table.",
+    detail: "Add these Prompt Proxy-owned marker blocks to ~/.codex/config.toml. If you already manage model/model_provider or the same provider table outside these markers, keep yours and resolve the conflict manually.",
     snippet: [
+      `# >>> prompt-proxy codex defaults >>>`,
       `model = "router-auto"`,
       `model_provider = "${provider}"`,
+      `# <<< prompt-proxy codex defaults <<<`,
       "",
+      `# >>> prompt-proxy codex provider ${provider} >>>`,
       `[model_providers.${provider}]`,
       `name = "Prompt Proxy"`,
       `base_url = "${apiBase}/v1"`,
       `env_key = "${envKey}"`,
       `wire_api = "responses"`,
-      "supports_websockets = true"
+      "supports_websockets = true",
+      `# <<< prompt-proxy codex provider ${provider} <<<`
     ].join("\n"),
     language: "toml"
   };
@@ -149,7 +157,7 @@ function codexProviderStep(apiBase: string, harnesses: HarnessSetupSelection): M
 function opencodeConfigStep(apiBase: string): ManualStep {
   return {
     title: "Register the opencode provider",
-    detail: "Merge this into ~/.config/opencode/opencode.json, or into a project opencode.json if you want it scoped to one repo.",
+    detail: "Merge this into ~/.config/opencode/opencode.json, or into a project opencode.json. The hosted setup script tracks owned opencode provider/auth entries with sidecar markers in ~/.prompt-proxy/ and reports unmarked conflicts.",
     snippet: JSON.stringify(
       {
         $schema: "https://opencode.ai/config.json",

@@ -23,6 +23,12 @@ import {
   type RequestIdentity
 } from "./auth.js";
 import type { AppConfig } from "./config.js";
+import {
+  compressionCacheWindowEventPayload,
+  noCompressionCacheWindow,
+  type CompressionCacheWindow,
+  type CompressionCacheWindowResolver
+} from "./compressionCacheWindow.js";
 import { jsonPayload, type EventService, type ProviderAttemptStore, type RequestStateStoreLike } from "./events.js";
 import { extractResponseText, type PromptArtifactStore } from "./persistence/promptArtifacts.js";
 import {
@@ -88,6 +94,7 @@ export class WebSocketRoutingProxy {
     private readonly promptArtifacts?: PromptArtifactStore,
     private readonly routingConfigs?: RoutingConfigResolverLike,
     private readonly sessionPrompts?: SessionSystemPromptStore,
+    private readonly compressionCacheWindows?: CompressionCacheWindowResolver,
     private readonly log?: WsLogger
   ) {}
 
@@ -340,6 +347,15 @@ export class WebSocketRoutingProxy {
     let forwardedBody: unknown;
     let upstreamTarget: WebSocketUpstreamTarget;
     try {
+      const compressionCacheWindow = await this.appendCompressionCacheWindowResolved({
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        provider,
+        model: decision.selectedModel ?? "unknown",
+        body: routeBody
+      });
       const compression = await compressForForwardWithResult({
         events: this.events,
         tenantId: identity.organizationId,
@@ -351,6 +367,7 @@ export class WebSocketRoutingProxy {
         body: routeBody,
         policy: resolved.toolResultCompressionPolicy,
         deduplicateToolResults: resolved.duplicateToolResultReferences,
+        frozenPrefixItems: compressionCacheWindow.frozenPrefixItems,
         artifactStore: this.promptArtifacts,
         warn: (err, message) => this.log?.warn({ err, requestId }, message)
       });
@@ -802,6 +819,56 @@ export class WebSocketRoutingProxy {
       sessionId,
       systemPrompt
     });
+  }
+
+  private async appendCompressionCacheWindowResolved(input: {
+    identity: RequestIdentity;
+    requestId: string;
+    idempotencyKey: string;
+    sessionId: string | undefined;
+    provider: Provider;
+    model: string;
+    body: unknown;
+  }): Promise<CompressionCacheWindow> {
+    let window: CompressionCacheWindow;
+    try {
+      window = await this.compressionCacheWindows?.resolve({
+        organizationId: input.identity.organizationId,
+        workspaceId: input.identity.workspaceId,
+        sessionId: input.sessionId,
+        surface: openAIResponsesSurface.surface,
+        provider: input.provider,
+        model: input.model,
+        body: input.body
+      }) ?? noCompressionCacheWindow();
+    } catch (error) {
+      this.log?.warn({ err: error, requestId: input.requestId }, "compression cache window resolution failed");
+      return noCompressionCacheWindow();
+    }
+
+    try {
+      await this.events.append({
+        tenantId: input.identity.organizationId,
+        workspaceId: input.identity.workspaceId,
+        scopeType: "request",
+        scopeId: input.requestId,
+        sessionId: input.sessionId,
+        correlationId: input.requestId,
+        idempotencyKey: input.idempotencyKey,
+        actor: actorForIdentity(input.identity),
+        producer: "prompt-proxy.compression",
+        eventType: "compression.cache_window_resolved",
+        payload: {
+          surface: openAIResponsesSurface.surface,
+          provider: input.provider,
+          model: input.model,
+          ...compressionCacheWindowEventPayload(window)
+        }
+      });
+    } catch (error) {
+      this.log?.warn({ err: error, requestId: input.requestId }, "compression cache window event emit failed");
+    }
+    return window;
   }
 }
 

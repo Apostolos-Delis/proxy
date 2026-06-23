@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { MAX_OUTPUT_TEXT_CHARS, sseObserverForDialect } from "../src/sseObserver.js";
+import { MAX_OUTPUT_TEXT_CHARS, sseObserverForDialect, streamObservationEventMetadata } from "../src/sseObserver.js";
 import type { Dialect } from "../src/types.js";
 
 const CHUNK_SIZES = [3, 16, Number.MAX_SAFE_INTEGER];
@@ -36,6 +36,17 @@ describe("openai-responses observer", () => {
           total_tokens: 1245
         },
         upstreamResponseId: "resp_abc123",
+        streamMetadata: {
+          openaiResponses: {
+            outputItems: [{
+              outputIndex: 0,
+              itemId: "msg_item_1",
+              type: "message",
+              role: "assistant",
+              lifecycle: ["added"]
+            }]
+          }
+        },
         outputText: "Hello, wörld!"
       });
     }
@@ -48,6 +59,15 @@ describe("openai-responses observer", () => {
     expect(observation.status).toBe("failed");
     expect(observation.error).toBe("The server had an error while processing your request.");
     expect(observation.upstreamResponseId).toBe("resp_err1");
+    expect(observation.streamMetadata).toEqual({
+      openaiResponses: {
+        errors: [{
+          message: "The server had an error while processing your request.",
+          type: "error",
+          code: "server_error"
+        }]
+      }
+    });
   });
 
   it("captures nested response failure messages", () => {
@@ -65,6 +85,11 @@ describe("openai-responses observer", () => {
     expect(observation.status).toBe("failed");
     expect(observation.error).toBe("The model hit a provider-side failure.");
     expect(observation.upstreamResponseId).toBe("resp_failed1");
+    expect(observation.streamMetadata).toEqual({
+      openaiResponses: {
+        errors: [{ message: "The model hit a provider-side failure." }]
+      }
+    });
   });
 
   it("completes streams that omit terminal usage", async () => {
@@ -75,6 +100,66 @@ describe("openai-responses observer", () => {
     expect(observation.usage).toBeUndefined();
     expect(observation.upstreamResponseId).toBe("resp_no_usage");
     expect(observation.outputText).toBe("No usage, still done.");
+  });
+
+  it("tracks replay-relevant output items, tool args, reasoning summaries, and drift", async () => {
+    const bytes = await fixtureBytes("openai-responses-replay-deltas.sse");
+    const observation = observeInChunks("openai-responses", bytes, 3);
+
+    expect(observation.status).toBe("completed");
+    expect(observation.usage).toEqual({ input_tokens: 11, output_tokens: 7, total_tokens: 18 });
+    expect(observation.upstreamResponseId).toBe("resp_replay");
+    expect(observation.streamMetadata).toEqual({
+      openaiResponses: {
+        outputItems: [
+          {
+            outputIndex: 0,
+            itemId: "fc_1",
+            type: "function_call",
+            status: "completed",
+            name: "lookup",
+            namespace: "tools",
+            callId: "call_1",
+            lifecycle: ["added", "done"]
+          },
+          {
+            outputIndex: 1,
+            itemId: "rs_1",
+            type: "reasoning",
+            status: "in_progress",
+            lifecycle: ["added"]
+          }
+        ],
+        toolCalls: [{
+          outputIndex: 0,
+          itemId: "fc_1",
+          callId: "call_1",
+          name: "lookup",
+          namespace: "tools",
+          arguments: "{\"query\":\"café\"}"
+        }],
+        reasoningSummaries: [{
+          outputIndex: 1,
+          itemId: "rs_1",
+          summaryIndex: 0,
+          type: "summary_text",
+          text: "plan döne",
+          lifecycle: ["added", "done"]
+        }]
+      }
+    });
+    expect(observation.observerDrift).toEqual([{
+      reason: "unknown_event_type",
+      eventType: "response.future_delta",
+      keys: ["extra", "type"]
+    }]);
+
+    const eventMetadata = streamObservationEventMetadata(observation);
+    expect(JSON.stringify(eventMetadata)).not.toContain("café");
+    expect((eventMetadata.streamMetadata as any).openaiResponses.toolCalls[0].arguments).toEqual({
+      sha256: expect.stringMatching(/^sha256:/),
+      chars: 16
+    });
   });
 });
 
@@ -138,6 +223,67 @@ describe("anthropic-messages observer", () => {
       cache_creation_input_tokens: 0,
       cache_read_input_tokens: 0,
       output_tokens: 1
+    });
+    expect(observation.streamMetadata).toEqual({
+      anthropicMessages: {
+        errors: [{ message: "Overloaded", type: "overloaded_error" }]
+      }
+    });
+  });
+
+  it("tracks thinking, signatures, input JSON, citations, block indexes, and drift", async () => {
+    const bytes = await fixtureBytes("anthropic-messages-replay-deltas.sse");
+    const observation = observeInChunks("anthropic-messages", bytes, 3);
+
+    expect(observation.status).toBe("completed");
+    expect(observation.usage).toEqual({ input_tokens: 7, output_tokens: 5 });
+    expect(observation.upstreamResponseId).toBe("msg_replay");
+    expect(observation.streamMetadata).toEqual({
+      anthropicMessages: {
+        blocks: [
+          {
+            index: 0,
+            type: "thinking",
+            thinking: "first thøught",
+            signature: "sig_1",
+            stopped: true
+          },
+          {
+            index: 1,
+            type: "tool_use",
+            id: "toolu_1",
+            name: "shell",
+            inputJson: "{\"cmd\":\"ls\"}",
+            stopped: true
+          },
+          {
+            index: 2,
+            type: "text",
+            citations: [{
+              type: "webpage_location",
+              url: "https://example.com",
+              cited_text: "source"
+            }],
+            stopped: true
+          }
+        ]
+      }
+    });
+    expect(observation.observerDrift).toEqual([{
+      reason: "unknown_delta_type",
+      eventType: "content_block_delta",
+      deltaType: "future_delta",
+      keys: ["delta", "index", "type"]
+    }]);
+
+    const eventMetadata = streamObservationEventMetadata(observation);
+    const eventMetadataText = JSON.stringify(eventMetadata);
+    expect(eventMetadataText).not.toContain("thøught");
+    expect(eventMetadataText).not.toContain("sig_1");
+    expect(eventMetadataText).not.toContain("{\"cmd\":\"ls\"}");
+    expect((eventMetadata.streamMetadata as any).anthropicMessages.blocks[0].thinking).toEqual({
+      sha256: expect.stringMatching(/^sha256:/),
+      chars: 13
     });
   });
 });

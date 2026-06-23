@@ -1,4 +1,4 @@
-import { formatCompact, formatDurationMs } from "./format";
+import { compactId, formatCompact, formatDurationMs } from "./format";
 import type { PromptDetailViewQuery } from "./gql/graphql";
 
 export type PromptDetailResult = NonNullable<PromptDetailViewQuery["prompt"]>;
@@ -22,6 +22,7 @@ const EVENT_TONES: [string, string][] = [
   ["prompt_artifacts.", "event-capture"],
   ["routing.", "event-routing"],
   ["provider.", "event-provider"],
+  ["compression.", "event-compression"],
   ["usage.", "event-usage"]
 ];
 
@@ -30,6 +31,20 @@ const EVENT_FAILURE = /failed|rejected|error|timeout/;
 export function eventTone(eventType: string) {
   if (EVENT_FAILURE.test(eventType)) return "event-danger";
   return EVENT_TONES.find(([prefix]) => eventType.startsWith(prefix))?.[1] ?? "event-proxy";
+}
+
+export function compressionEventSummary(event: ProxyEvent) {
+  if (!event.eventType.startsWith("compression.")) return null;
+  if (!event.payload || typeof event.payload !== "object" || Array.isArray(event.payload)) return null;
+  const payload = event.payload as Record<string, unknown>;
+  const retrievalId = stringOrNull(payload.retrievalId);
+  const toolName = stringOrNull(payload.toolName);
+  const status = compressionEventStatus(event.eventType, payload);
+  return [
+    status,
+    retrievalId ? compactId(retrievalId, 11) : null,
+    toolName ? `${toolName}()` : null
+  ].filter(Boolean).join(" · ");
 }
 
 // Tool names land in capture metadata as toolName (one call) or toolNames (merged calls).
@@ -87,4 +102,10 @@ export function healthSkipsFromEvents(events: ProxyEvent[]): HealthSkipEvidence[
 
 function stringOrNull(value: unknown) {
   return typeof value === "string" ? value : null;
+}
+
+function compressionEventStatus(eventType: string, payload: Record<string, unknown>) {
+  if (eventType === "compression.retrieved") return "retrieved";
+  if (eventType === "compression.retrieval_failed") return `failed: ${stringOrNull(payload.failureReason) ?? "unknown"}`;
+  return stringOrNull(payload.status) ?? eventType.replace(/^compression\./, "");
 }

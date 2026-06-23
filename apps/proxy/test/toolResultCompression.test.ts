@@ -3,11 +3,21 @@ import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
-import { compressionReceipts, events as eventTable, promptArtifacts } from "@prompt-proxy/db";
+import {
+  agentSessions,
+  compressionReceipts,
+  defaultWorkspaceId,
+  events as eventTable,
+  promptArtifacts,
+  requests,
+  usageLedger
+} from "@prompt-proxy/db";
 import { defaultCompressionPolicy, type CompressionPolicy } from "@prompt-proxy/schema";
 
+import { compactJsonArrayTables } from "../src/compressionRules/jsonCompaction.js";
 import { EventService } from "../src/events.js";
 import { claudeCodeHarness, codexHarness, cursorHarness, opencodeHarness } from "../src/harness.js";
+import { sessionRowId } from "../src/persistence/identity.js";
 import {
   appendCompressionEvidence,
   availableCompressionRules,
@@ -18,6 +28,7 @@ import {
   MIN_COMPRESSIBLE_CHARS,
   ROUGH_COMPRESSION_TOKEN_ESTIMATE_SOURCE,
   compressionRules,
+  compressionRulesForPolicy,
   compressionRulesForProfile,
   type CompressionRule,
   type CompressionTokenEstimator
@@ -40,6 +51,7 @@ const esc = String.fromCharCode(27);
 const hashFor = (value: string) => createHash("sha256").update(value).digest("hex");
 const contentHashFor = (value: string) => `sha256:${hashFor(value)}`;
 const byteLengthFor = (value: string) => Buffer.byteLength(value);
+const compressionRetrievalIdPattern = /^cmp_[a-f0-9]{32}$/;
 const compressionPolicy = (mode: CompressionPolicy["mode"] = "compress_lossless"): CompressionPolicy => ({
   ...defaultCompressionPolicy(),
   mode
@@ -57,6 +69,30 @@ const pytestOutput = () => [
   "AssertionError: expected hard route",
   ...Array.from({ length: 20 }, (_, index) => `tail line ${index}`)
 ].join("\n");
+type ProtectedPath = readonly (string | number)[];
+type FrozenPrefix = { containerPath: ProtectedPath; frozenPrefixItems: number };
+const pathValue = (value: unknown, path: ProtectedPath): unknown =>
+  path.reduce<unknown>((current, part) => {
+    if (Array.isArray(current)) return current[Number(part)];
+    if (current && typeof current === "object") return (current as Record<string, unknown>)[String(part)];
+    return undefined;
+  }, value);
+const formatProtectedPath = (path: ProtectedPath) => path.map(String).join(".");
+const frozenPrefixPaths = (frozenPrefix?: FrozenPrefix): ProtectedPath[] =>
+  frozenPrefix
+    ? Array.from({ length: frozenPrefix.frozenPrefixItems }, (_, index) => [...frozenPrefix.containerPath, index])
+    : [];
+const expectProtectedPathsUnchanged = (
+  original: unknown,
+  forwarded: unknown,
+  paths: ProtectedPath[],
+  frozenPrefix?: FrozenPrefix
+) => {
+  for (const path of [...paths, ...frozenPrefixPaths(frozenPrefix)]) {
+    expect(pathValue(forwarded, path), `protected path ${formatProtectedPath(path)} changed`)
+      .toEqual(pathValue(original, path));
+  }
+};
 
 describe("compressToolResults", () => {
   it("builds shell compression rules from the harness profile", () => {
@@ -75,6 +111,50 @@ describe("compressToolResults", () => {
 
   it("exposes metadata for the available compression rules", () => {
     expect(availableCompressionRules()).toEqual([
+      expect.objectContaining({
+        id: "search-result-grouping",
+        displayName: "Search result path grouping",
+        version: 1,
+        classification: "lossy",
+        supportedSurfaces: ["openai-responses", "anthropic-messages", "openai-chat"],
+        eligibleToolNames: ["Bash", "bash", "shell", "local_shell", "run_terminal_cmd", "Search", "Grep", "grep", "rg", "ripgrep", "mcp__github__search*", "mcp__gitlab__search*"],
+        minOriginalBytes: 512,
+        minSavingsTokens: 0,
+        knownRisks: expect.arrayContaining(["Reformats path-prefixed search hits into grouped path blocks; measure-only until provider prompt impact is validated."])
+      }),
+      expect.objectContaining({
+        id: "log-output-compaction",
+        displayName: "Log output repeated-line compaction",
+        version: 1,
+        classification: "lossy",
+        supportedSurfaces: ["openai-responses", "anthropic-messages", "openai-chat"],
+        eligibleToolNames: ["Bash", "bash", "shell", "local_shell", "run_terminal_cmd"],
+        minOriginalBytes: 4096,
+        minSavingsTokens: 0,
+        knownRisks: expect.arrayContaining(["Collapses repeated low-signal log lines while preserving errors, warnings, tracebacks, exit lines, and tail output; measure-only until provider prompt impact is validated."])
+      }),
+      expect.objectContaining({
+        id: "diff-compaction",
+        displayName: "Unified diff hunk compaction",
+        version: 1,
+        classification: "lossy",
+        supportedSurfaces: ["openai-responses", "anthropic-messages", "openai-chat"],
+        eligibleToolNames: ["Bash", "bash", "shell", "local_shell", "run_terminal_cmd"],
+        minOriginalBytes: 4096,
+        minSavingsTokens: 0,
+        knownRisks: expect.arrayContaining(["Collapses unchanged or repeated hunk body lines while preserving file headers, hunk headers, added/deleted counts, and error signals; measure-only until provider prompt impact is validated."])
+      }),
+      expect.objectContaining({
+        id: "json-array-compaction",
+        displayName: "JSON object-array column compaction",
+        version: 1,
+        classification: "lossy",
+        supportedSurfaces: ["openai-responses", "anthropic-messages", "openai-chat"],
+        eligibleToolNames: ["*"],
+        minOriginalBytes: 512,
+        minSavingsTokens: 0,
+        knownRisks: expect.arrayContaining(["Re-encodes uniform object arrays into a columnar envelope; measure-only until provider prompt impact is validated."])
+      }),
       expect.objectContaining({
         id: "mcp-json-whitespace",
         displayName: "MCP JSON whitespace compaction",
@@ -101,6 +181,39 @@ describe("compressToolResults", () => {
       .toMatchObject({ eligibleToolNames: codexHarness.bashToolNames });
     expect(availableCompressionRules(codexHarness).find((rule) => rule.id === "shell-command-lossy-summary"))
       .toMatchObject({ eligibleToolNames: codexHarness.bashToolNames });
+    expect(availableCompressionRules(codexHarness).find((rule) => rule.id === "search-result-grouping"))
+      .toMatchObject({ eligibleToolNames: [...codexHarness.bashToolNames, "Search", "Grep", "grep", "rg", "ripgrep", "mcp__github__search*", "mcp__gitlab__search*"] });
+    expect(availableCompressionRules(codexHarness).find((rule) => rule.id === "log-output-compaction"))
+      .toMatchObject({ eligibleToolNames: codexHarness.bashToolNames });
+    expect(availableCompressionRules(codexHarness).find((rule) => rule.id === "diff-compaction"))
+      .toMatchObject({ eligibleToolNames: codexHarness.bashToolNames });
+  });
+
+  it("only enables measure-only candidate rules in measure-only mode", () => {
+    expect(compressionRulesForPolicy(testCompressionPolicy("measure_only")).map((rule) => rule.label))
+      .toContain("json-array-compaction");
+    expect(compressionRulesForPolicy(testCompressionPolicy("measure_only")).map((rule) => rule.label))
+      .toContain("search-result-grouping");
+    expect(compressionRulesForPolicy(testCompressionPolicy("measure_only")).map((rule) => rule.label))
+      .toContain("log-output-compaction");
+    expect(compressionRulesForPolicy(testCompressionPolicy("measure_only")).map((rule) => rule.label))
+      .toContain("diff-compaction");
+    expect(compressionRulesForPolicy(testCompressionPolicy("compress_lossless")).map((rule) => rule.label))
+      .not.toContain("json-array-compaction");
+    expect(compressionRulesForPolicy(testCompressionPolicy("compress_lossless")).map((rule) => rule.label))
+      .not.toContain("search-result-grouping");
+    expect(compressionRulesForPolicy(testCompressionPolicy("compress_lossless")).map((rule) => rule.label))
+      .not.toContain("log-output-compaction");
+    expect(compressionRulesForPolicy(testCompressionPolicy("compress_lossless")).map((rule) => rule.label))
+      .not.toContain("diff-compaction");
+    expect(compressionRulesForPolicy(testCompressionPolicy("compress_explicit_lossy")).map((rule) => rule.label))
+      .not.toContain("json-array-compaction");
+    expect(compressionRulesForPolicy(testCompressionPolicy("compress_explicit_lossy")).map((rule) => rule.label))
+      .not.toContain("search-result-grouping");
+    expect(compressionRulesForPolicy(testCompressionPolicy("compress_explicit_lossy")).map((rule) => rule.label))
+      .not.toContain("log-output-compaction");
+    expect(compressionRulesForPolicy(testCompressionPolicy("compress_explicit_lossy")).map((rule) => rule.label))
+      .not.toContain("diff-compaction");
   });
 
   it("does not evaluate disabled rules", () => {
@@ -123,7 +236,7 @@ describe("compressToolResults", () => {
     expect(result.body).toBe(body);
   });
 
-  it("gates lossy shell summaries by policy mode", () => {
+  it("gates lossy shell compression by policy mode", () => {
     const output = pytestOutput();
     const body = {
       messages: [
@@ -139,7 +252,7 @@ describe("compressToolResults", () => {
     expect(lossless.body).toBe(body);
     expect(measured.body).toBe(body);
     expect(measured.records[0]).toMatchObject({
-      rule: "shell-command-lossy-summary",
+      rule: "log-output-compaction",
       status: "candidate",
       command: "pytest -q",
       commandClass: "test_output"
@@ -466,6 +579,54 @@ ${items}
     expect(result.body.messages[1].content).toBe("xxxxxxxxxx…[truncated]");
   });
 
+  it.each([
+    {
+      label: "Anthropic Messages",
+      surface: "anthropic-messages" as const,
+      body: {
+        messages: [
+          { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: big }] }
+        ]
+      },
+      rewrittenPath: ["messages", 1, "content", 0, "content"] as const,
+      blockPath: "messages.1.content.0"
+    },
+    {
+      label: "OpenAI Responses",
+      surface: "openai-responses" as const,
+      body: {
+        input: [
+          { type: "function_call", call_id: "c1", name: "Bash", arguments: "{}" },
+          { type: "function_call_output", call_id: "c1", output: big }
+        ]
+      },
+      rewrittenPath: ["input", 1, "output"] as const,
+      blockPath: "input.1"
+    },
+    {
+      label: "OpenAI Chat",
+      surface: "openai-chat" as const,
+      body: {
+        messages: [
+          { role: "assistant", tool_calls: [{ id: "call_1", name: "Bash", arguments: {} }] },
+          { role: "tool", tool_call_id: "call_1", content: big }
+        ]
+      },
+      rewrittenPath: ["messages", 1, "content"] as const,
+      blockPath: "messages.1"
+    }
+  ])("keeps $label measure-only forwarding original while computing the same transformed body", ({ surface, body, rewrittenPath, blockPath }) => {
+    const measured = compressToolResults(surface, body, [truncateRule], { measureOnly: true }) as any;
+    const mutating = compressToolResults(surface, body, [truncateRule]) as any;
+
+    expect(measured.body).toBe(body);
+    expect(pathValue(measured.transformedBody, rewrittenPath)).toBe(truncatedBig);
+    expect(measured.transformedBody).toEqual(mutating.body);
+    expect(measured.records[0]).toMatchObject({ blockPath, status: "candidate" });
+    expect(mutating.records[0]).toMatchObject({ blockPath, status: "applied" });
+  });
+
   it("never grows a block: a rule that expands content is discarded", () => {
     const expandRule: CompressionRule = {
       label: "expand",
@@ -671,6 +832,43 @@ ${items}
     });
   });
 
+  it("skips rewrites when a configured token estimator cannot count the candidate", () => {
+    const compact = "compact".repeat(400);
+    const shorter = "short";
+    const shrinkingRule: CompressionRule = {
+      label: "needs-token-estimate",
+      version: 1,
+      matches: () => true,
+      filter: () => shorter
+    };
+    const tokenEstimator: CompressionTokenEstimator = {
+      estimateSource: "exact:test-unavailable",
+      countTokens: (content) => content === compact ? 100 : undefined
+    };
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: compact }] }
+      ]
+    };
+
+    const result = compressToolResults("anthropic-messages", body, [shrinkingRule], {
+      measureOnly: true,
+      recordSkips: true,
+      tokenEstimator
+    }) as any;
+
+    expect(result.body).toBe(body);
+    expect(result.transformedBody).toBe(body);
+    expect(result.records[0]).toMatchObject({
+      rule: "needs-token-estimate",
+      status: "skipped",
+      skipReason: "token_estimate_unavailable",
+      originalTokenEstimate: 100,
+      estimateSource: "exact:test-unavailable->rough_chars_per_4"
+    });
+  });
+
   it("skips duplicate references that grow exact token counts", () => {
     const compact = "compact".repeat(400);
     const tokenEstimator: CompressionTokenEstimator = {
@@ -705,6 +903,299 @@ ${items}
       estimateSource: "exact:test-whitespace"
     });
     expect(duplicateRecord.compressedTokenEstimate).toBeGreaterThan(1);
+  });
+
+  it("skips duplicate references when a configured token estimator cannot count the replacement", () => {
+    const compact = "compact".repeat(400);
+    const tokenEstimator: CompressionTokenEstimator = {
+      estimateSource: "exact:test-unavailable",
+      countTokens: (content) => content === compact ? 100 : undefined
+    };
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: compact }] },
+        { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Read", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: compact }] }
+      ]
+    };
+
+    const result = compressToolResults("anthropic-messages", body, [], {
+      deduplicateToolResults: true,
+      measureOnly: true,
+      recordSkips: true,
+      tokenEstimator
+    }) as any;
+
+    expect(result.body).toBe(body);
+    const duplicateRecord = result.records.find((record: any) => record.rule === "duplicate-tool-result-reference");
+    expect(duplicateRecord).toMatchObject({
+      rule: "duplicate-tool-result-reference",
+      status: "skipped",
+      skipReason: "token_estimate_unavailable",
+      originalTokenEstimate: 100,
+      estimateSource: "exact:test-unavailable->rough_chars_per_4"
+    });
+  });
+});
+
+async function seedCompressionCacheEvidence(fixture: PromptTestFixture, input: {
+  organizationId: string;
+  externalSessionId: string;
+  requestId: string;
+  provider: string;
+  model: string;
+}) {
+  const workspaceId = defaultWorkspaceId(input.organizationId);
+  const sessionId = sessionRowId(workspaceId, "anthropic-messages", input.externalSessionId);
+  const createdAt = new Date();
+  await fixture.db.insert(agentSessions).values({
+    id: sessionId,
+    organizationId: input.organizationId,
+    workspaceId,
+    surface: "anthropic-messages",
+    externalSessionId: input.externalSessionId,
+    startedAt: createdAt,
+    updatedAt: createdAt
+  }).onConflictDoNothing();
+  await fixture.db.insert(requests).values({
+    id: input.requestId,
+    organizationId: input.organizationId,
+    workspaceId,
+    sessionId,
+    surface: "anthropic-messages",
+    idempotencyKey: `${input.requestId}:idem`,
+    requestedModel: input.model,
+    inputHash: `${input.requestId}:hash`,
+    inputChars: 20_000,
+    status: "completed",
+    createdAt,
+    completedAt: createdAt
+  });
+  await fixture.db.insert(usageLedger).values({
+    id: `${input.requestId}:usage`,
+    organizationId: input.organizationId,
+    workspaceId,
+    sessionId,
+    requestId: input.requestId,
+    kind: "provider",
+    provider: input.provider,
+    model: input.model,
+    route: "hard",
+    inputTokens: 5_000,
+    cachedInputTokens: 3_072,
+    cacheCreationInputTokens: 128,
+    totalTokens: 5_000,
+    usage: {
+      inputTokens: 5_000,
+      cachedInputTokens: 3_072,
+      cacheCreationInputTokens: 128
+    },
+    createdAt
+  });
+}
+
+describe("compression protected-zone fixtures", () => {
+  it("fails when a protected path changes", () => {
+    const original = { messages: [{ role: "user", content: "keep this" }] };
+    const forwarded = { messages: [{ role: "user", content: "changed" }] };
+
+    expect(() => expectProtectedPathsUnchanged(original, forwarded, [["messages", 0, "content"]]))
+      .toThrow(/protected path messages\.0\.content changed/);
+  });
+
+  it("preserves protected Anthropic Messages zones while rewriting only tool-result content", () => {
+    const body = {
+      system: [{ type: "text", text: "system policy", cache_control: { type: "ephemeral" } }],
+      tools: [{ name: "Bash", input_schema: { type: "object" }, cache_control: { type: "ephemeral" } }],
+      metadata: { user_id: "user_1" },
+      messages: [
+        { role: "user", content: "user-authored text" },
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "private reasoning", signature: "sig_1", encrypted_content: "ciphertext" },
+            { type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "pytest" }, cache_control: { type: "ephemeral" } }
+          ]
+        },
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_1", content: big, is_error: false, cache_control: { type: "ephemeral" } }
+          ]
+        }
+      ]
+    };
+
+    const result = compressToolResults("anthropic-messages", body, [truncateRule]) as any;
+
+    expect(result.body.messages[2].content[0].content).toBe(truncatedBig);
+    expectProtectedPathsUnchanged(body, result.body, [
+      ["system"],
+      ["tools"],
+      ["metadata"],
+      ["messages", 1, "content", 0],
+      ["messages", 1, "content", 1, "id"],
+      ["messages", 1, "content", 1, "name"],
+      ["messages", 1, "content", 1, "input"],
+      ["messages", 1, "content", 1, "cache_control"],
+      ["messages", 2, "content", 0, "type"],
+      ["messages", 2, "content", 0, "tool_use_id"],
+      ["messages", 2, "content", 0, "is_error"],
+      ["messages", 2, "content", 0, "cache_control"]
+    ], { containerPath: ["messages"], frozenPrefixItems: 1 });
+  });
+
+  it("preserves protected OpenAI Responses zones while rewriting only function output", () => {
+    const body = {
+      instructions: "system instructions",
+      tools: [{ type: "function", name: "Bash", parameters: { type: "object" } }],
+      metadata: { user_id: "user_1" },
+      input: [
+        { type: "message", id: "msg_1", role: "user", content: [{ type: "input_text", text: "user-authored text" }] },
+        { type: "reasoning", id: "rs_1", summary: [{ type: "summary_text", text: "reasoning summary" }], encrypted_content: "ciphertext" },
+        { type: "function_call", id: "fc_1", call_id: "call_1", name: "Bash", arguments: "{\"command\":\"pytest\"}", status: "completed" },
+        { type: "function_call_output", id: "out_1", call_id: "call_1", output: big, status: "completed" }
+      ]
+    };
+
+    const result = compressToolResults("openai-responses", body, [truncateRule]) as any;
+
+    expect(result.body.input[3].output).toBe(truncatedBig);
+    expectProtectedPathsUnchanged(body, result.body, [
+      ["instructions"],
+      ["tools"],
+      ["metadata"],
+      ["input", 2],
+      ["input", 3, "type"],
+      ["input", 3, "id"],
+      ["input", 3, "call_id"],
+      ["input", 3, "status"]
+    ], { containerPath: ["input"], frozenPrefixItems: 2 });
+  });
+
+  it("preserves protected OpenAI Chat zones while rewriting only tool content", () => {
+    const body = {
+      tools: [{ type: "function", function: { name: "Bash", parameters: { type: "object" } } }],
+      metadata: { user_id: "user_1" },
+      messages: [
+        { role: "system", content: "system prompt" },
+        { role: "user", content: "user-authored text" },
+        {
+          role: "assistant",
+          content: "calling a tool",
+          tool_calls: [
+            { id: "call_1", type: "function", function: { name: "Bash", arguments: "{\"command\":\"pwd\"}" } }
+          ]
+        },
+        { role: "tool", tool_call_id: "call_1", name: "Bash", content: big, cache_control: { type: "ephemeral" } }
+      ]
+    };
+
+    const result = compressToolResults("openai-chat", body, [truncateRule]) as any;
+
+    expect(result.body.messages[3].content).toBe(truncatedBig);
+    expectProtectedPathsUnchanged(body, result.body, [
+      ["tools"],
+      ["metadata"],
+      ["messages", 2],
+      ["messages", 3, "role"],
+      ["messages", 3, "tool_call_id"],
+      ["messages", 3, "name"],
+      ["messages", 3, "cache_control"]
+    ], { containerPath: ["messages"], frozenPrefixItems: 2 });
+  });
+});
+
+describe("compression frozen prefixes", () => {
+  it("leaves frozen Anthropic Messages tool results untouched and rewrites the live frontier", () => {
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: big }] },
+        { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Bash", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: big }] }
+      ]
+    };
+
+    const result = compressToolResults("anthropic-messages", body, [truncateRule], { frozenPrefixItems: 2 }) as any;
+
+    expect(result.body.messages[1].content[0].content).toBe(big);
+    expect(result.body.messages[3].content[0].content).toBe(truncatedBig);
+    expect(result.records).toMatchObject([
+      { blockPath: "messages.3.content.0", status: "applied" }
+    ]);
+  });
+
+  it("records cache-hot-zone skips when skip evidence is enabled", () => {
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: big }] },
+        { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Bash", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: big }] }
+      ]
+    };
+
+    const result = compressToolResults("anthropic-messages", body, [truncateRule], {
+      frozenPrefixItems: 2,
+      measureOnly: true,
+      recordSkips: true
+    }) as any;
+
+    expect(result.body).toBe(body);
+    expect(result.transformedBody.messages[1].content[0].content).toBe(big);
+    expect(result.transformedBody.messages[3].content[0].content).toBe(truncatedBig);
+    expect(result.records).toMatchObject([
+      {
+        blockPath: "messages.1.content.0",
+        rule: "cache-hot-zone",
+        status: "skipped",
+        skipReason: "cache_hot_zone",
+        beforeBytes: byteLengthFor(big),
+        afterBytes: byteLengthFor(big),
+        savedEstimatedTokens: 0
+      },
+      { blockPath: "messages.3.content.0", status: "candidate" }
+    ]);
+  });
+
+  it("leaves frozen OpenAI Responses function outputs untouched and rewrites the live frontier", () => {
+    const body = {
+      input: [
+        { type: "function_call", call_id: "c1", name: "Bash", arguments: "{}" },
+        { type: "function_call_output", call_id: "c1", output: big },
+        { type: "function_call", call_id: "c2", name: "Bash", arguments: "{}" },
+        { type: "function_call_output", call_id: "c2", output: big }
+      ]
+    };
+
+    const result = compressToolResults("openai-responses", body, [truncateRule], { frozenPrefixItems: 2 }) as any;
+
+    expect(result.body.input[1].output).toBe(big);
+    expect(result.body.input[3].output).toBe(truncatedBig);
+    expect(result.records).toMatchObject([
+      { blockPath: "input.3", status: "applied" }
+    ]);
+  });
+
+  it("leaves frozen OpenAI Chat tool messages untouched and rewrites the live frontier", () => {
+    const body = {
+      messages: [
+        { role: "assistant", tool_calls: [{ id: "c1", type: "function", function: { name: "Bash", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "c1", content: big },
+        { role: "assistant", tool_calls: [{ id: "c2", type: "function", function: { name: "Bash", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "c2", content: big }
+      ]
+    };
+
+    const result = compressToolResults("openai-chat", body, [truncateRule], { frozenPrefixItems: 2 }) as any;
+
+    expect(result.body.messages[1].content).toBe(big);
+    expect(result.body.messages[3].content).toBe(truncatedBig);
+    expect(result.records).toMatchObject([
+      { blockPath: "messages.3", status: "applied" }
+    ]);
   });
 });
 
@@ -794,14 +1285,70 @@ describe("compressForForward", () => {
     expect(JSON.stringify(candidate?.payload)).not.toContain(big.slice(0, 50));
   });
 
-  it("returns the compressed body even when the event append fails", async () => {
+  it("returns the compressed body and marks the result when the event append fails", async () => {
     const failingSink = { append: async () => { throw new Error("sink down"); } };
     const events = new EventService(undefined, undefined, failingSink, "org_1");
     compressionRules.push(truncateForward);
     try {
-      const result = await compressForForward(forwardInput(events)) as any;
-      // Compression applied despite the event sink throwing.
-      expect(result.messages[1].content[0].content).toContain("[truncated]");
+      const result = await compressForForwardWithResult(forwardInput(events)) as any;
+      expect(result.body.messages[1].content[0].content).toContain("[truncated]");
+      expect(result.eventEmitFailed).toBe(true);
+      expect(result.compressionEventId).toBeUndefined();
+      expect(result.receiptIds).toEqual([]);
+    } finally {
+      compressionRules.pop();
+    }
+  });
+
+  it("does not forward retrieval markers when the compression event append fails", async () => {
+    const failingSink = { append: async () => { throw new Error("sink down"); } };
+    const events = new EventService(undefined, undefined, failingSink, "org_1");
+    let artifactIndex = 0;
+    const artifactStore = {
+      captureCompressionArtifact: async () => ({ id: `artifact_${artifactIndex++}` })
+    };
+    compressionRules.push(truncateForward);
+    try {
+      const result = await compressForForwardWithResult(forwardInput(events, {
+        artifactStore,
+        policy: { ...testCompressionPolicy(), storeOriginalArtifact: true, storeCompressedArtifact: true }
+      })) as any;
+      expect(result.body.messages[1].content[0].content).toBe(truncatedBig);
+      expect(result.body.messages[1].content[0].content).not.toContain("[prompt-proxy:compressed");
+      expect(result.records[0].originalArtifactId).toBe("artifact_0");
+      expect(result.records[0].compressedArtifactId).toBeUndefined();
+      expect(result.records[0].retrievalAvailable).toBeUndefined();
+      expect(result.records[0].retrievalMarker).toBeUndefined();
+      expect(result.eventEmitFailed).toBe(true);
+      expect(result.compressionEventId).toBeUndefined();
+    } finally {
+      compressionRules.pop();
+    }
+  });
+
+  it("returns the compressed body when artifact capture fails", async () => {
+    const events = new EventService(undefined, undefined, undefined, "org_1");
+    const warnings: string[] = [];
+    const artifactStore = {
+      captureCompressionArtifact: async () => {
+        throw new Error("artifact store down");
+      }
+    };
+    compressionRules.push(truncateForward);
+    try {
+      const result = await compressForForwardWithResult(forwardInput(events, {
+        artifactStore,
+        policy: { ...testCompressionPolicy(), storeOriginalArtifact: true, storeCompressedArtifact: true },
+        warn: (_error: unknown, message: string) => { warnings.push(message); }
+      })) as any;
+      expect(result.body.messages[1].content[0].content).toBe(truncatedBig);
+      expect(result.records[0].originalArtifactId).toBeUndefined();
+      expect(result.records[0].compressedArtifactId).toBeUndefined();
+      expect(result.records[0].retrievalAvailable).toBeUndefined();
+      expect(result.records[0].retrievalMarker).toBeUndefined();
+      expect(result.eventEmitFailed).toBe(false);
+      expect(result.compressionEventId).toBeDefined();
+      expect(warnings).toContain("compression artifact capture failed");
     } finally {
       compressionRules.pop();
     }
@@ -920,6 +1467,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
     2
   );
   const compactedVerbose = JSON.stringify(JSON.parse(verbose));
+  const jsonArrayCompactedVerbose = compactJsonArrayTables(verbose) ?? compactedVerbose;
 
   it("rewrites oversized mcp__ tool results in the forwarded Anthropic body when the org flag is on", async () => {
     fixture = await captureFixture("org_compress_http");
@@ -953,7 +1501,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
     expect(forwarded.length).toBeLessThan(verbose.length);
     expect(decision?.payload.compressionPolicy).toEqual(expect.objectContaining({
       mode: "compress_lossless",
-      enabledRules: ["mcp-json-whitespace", "json-whitespace", "bash-output-noise", "shell-command-lossy-summary"]
+      enabledRules: ["search-result-grouping", "diff-compaction", "log-output-compaction", "json-array-compaction", "mcp-json-whitespace", "json-whitespace", "bash-output-noise", "shell-command-lossy-summary"]
     }));
     expect(evidence?.payload).toMatchObject({
       mode: "compress_lossless",
@@ -982,9 +1530,15 @@ describe("toolResultCompression end to end (DB-backed)", () => {
     });
     expect(JSON.stringify(evidence?.payload)).not.toContain(verbose.slice(0, 50));
     expect(persistedReceipts).toHaveLength(1);
+    const [receipt] = persistedReceipts;
+    if (!receipt) throw new Error("missing compression receipt");
+    const retrievalId = receipt.retrievalId;
+    expect(retrievalId).toEqual(expect.stringMatching(compressionRetrievalIdPattern));
+    if (!retrievalId) throw new Error("missing compression retrieval id");
     expect(persistedReceipts[0]).toMatchObject({
       organizationId: "org_compress_http",
       workspaceId: "org_compress_http:workspace:default",
+      retrievalId,
       mode: "compress_lossless",
       surface: "anthropic-messages",
       blockPath: "messages.2.content.0",
@@ -1002,9 +1556,21 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       compressedSha256: contentHashFor(forwarded),
       originalArtifactId: null,
       compressedArtifactId: null,
+      retrievalAvailable: false,
+      retrievalMarker: null,
       skipReason: null,
       eventId: recorded?.id
     });
+    expect(retrievalId).not.toContain(receipt.id);
+    expect(retrievalId).not.toContain(receipt.requestId);
+    expect(retrievalId).not.toContain(receipt.workspaceId);
+    if (recorded?.id) expect(retrievalId).not.toContain(recorded.id);
+    await expect(fixture.db.insert(compressionReceipts).values({
+      ...receipt,
+      id: `${receipt.id}:duplicate`,
+      eventId: `${receipt.eventId}:duplicate`,
+      blockPath: `${receipt.blockPath}.duplicate`
+    })).rejects.toThrow();
     const detail = await adminGql(
       fixture.proxyUrl,
       fixture.adminHeaders,
@@ -1064,6 +1630,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
     ]);
     // Lossless: only formatting whitespace is gone.
     expect(JSON.parse(forwarded)).toEqual(JSON.parse(verbose));
+    expect(forwarded).not.toContain("[prompt-proxy:compressed");
   });
 
   it("rejects unknown compression rule ids before storing the policy", async () => {
@@ -1131,7 +1698,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
     expect(persistedEvents.some((event) => event.eventType === "compression.recorded")).toBe(false);
     expect(candidate?.payload.record).toMatchObject({
       tool: "mcp__linear__list_issues",
-      rule: "mcp-json-whitespace",
+      rule: "json-array-compaction",
       ruleVersion: 1,
       blockPath: "messages.2.content.0",
       status: "candidate"
@@ -1173,17 +1740,17 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       surface: "anthropic-messages",
       blockPath: "messages.2.content.0",
       toolName: "mcp__linear__list_issues",
-      ruleId: "mcp-json-whitespace",
+      ruleId: "json-array-compaction",
       ruleVersion: 1,
       status: "measured",
       originalBytes: byteLengthFor(verbose),
-      compressedBytes: byteLengthFor(compactedVerbose),
+      compressedBytes: byteLengthFor(jsonArrayCompactedVerbose),
       originalEstimatedTokens: estimatedTokens(verbose.length),
-      compressedEstimatedTokens: estimatedTokens(compactedVerbose.length),
-      savedEstimatedTokens: estimatedTokens(verbose.length) - estimatedTokens(compactedVerbose.length),
+      compressedEstimatedTokens: estimatedTokens(jsonArrayCompactedVerbose.length),
+      savedEstimatedTokens: estimatedTokens(verbose.length) - estimatedTokens(jsonArrayCompactedVerbose.length),
       estimateSource: ROUGH_COMPRESSION_TOKEN_ESTIMATE_SOURCE,
       originalSha256: contentHashFor(verbose),
-      compressedSha256: contentHashFor(compactedVerbose),
+      compressedSha256: contentHashFor(jsonArrayCompactedVerbose),
       originalArtifactId: null,
       compressedArtifactId: null,
       skipReason: null,
@@ -1193,7 +1760,92 @@ describe("toolResultCompression end to end (DB-backed)", () => {
     expect(JSON.stringify(measurement?.payload)).not.toContain(verbose.slice(0, 50));
   });
 
-  it("records shell command classifications for measure-only lossy candidates", async () => {
+  it("records cache-hot-zone skips as measure-only receipts", async () => {
+    const organizationId = "org_compress_cache_hot_measure";
+    fixture = await captureFixture(organizationId);
+    await fixture.persistence.organizationSettings.setToolResultCompressionPolicy(
+      organizationId,
+      compressionPolicy("measure_only")
+    );
+    await seedCompressionCacheEvidence(fixture, {
+      organizationId,
+      externalSessionId: "session_cache_hot_measure",
+      requestId: "request_cache_hot_prior",
+      provider: "anthropic",
+      model: "claude-sonnet-4-5"
+    });
+
+    await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json",
+        "x-claude-code-session-id": "session_cache_hot_measure"
+      },
+      body: JSON.stringify({
+        model: "claude-router-hard",
+        max_tokens: 256,
+        messages: [
+          { role: "user", content: "cached prompt" },
+          { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "mcp__linear__list_issues", input: {} }] },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: verbose }] },
+          { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "mcp__linear__list_issues", input: {} }] },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: verbose }] }
+        ]
+      })
+    });
+
+    const providerCall = fixture.anthropic.records.find((rec) => rec.path === "/messages");
+    const persistedEvents = await fixture.db.select().from(eventTable);
+    const measurement = persistedEvents.find((event) => event.eventType === "compression.measurement_recorded");
+    const evidence = persistedEvents.find((event) => event.eventType === "routing.compression_evidence_recorded");
+    const persistedReceipts = await fixture.db.select().from(compressionReceipts);
+    const cacheSkip = persistedReceipts.find((receipt) => receipt.skipReason === "cache_hot_zone");
+    const liveCandidate = persistedReceipts.find((receipt) => receipt.status === "measured");
+
+    expect(providerCall?.body.messages[2].content[0].content).toBe(verbose);
+    expect(providerCall?.body.messages[4].content[0].content).toBe(verbose);
+    expect(measurement?.payload).toMatchObject({
+      mode: "measure_only",
+      blocks: 2,
+      candidates: 1,
+      skipped: 1,
+      skippedBytes: byteLengthFor(verbose),
+      skippedEstimatedTokens: estimatedTokens(verbose.length)
+    });
+    expect(evidence?.payload).toMatchObject({
+      mode: "measure_only",
+      evaluatedBlocks: 2,
+      appliedBlocks: 0,
+      candidateBlocks: 1,
+      skippedBlocks: 1,
+      skippedBytes: byteLengthFor(verbose),
+      skippedEstimatedTokens: estimatedTokens(verbose.length),
+      providerWouldReceiveCompressedToolOutput: false,
+      forwardedToolOutputState: "original"
+    });
+    expect(cacheSkip).toMatchObject({
+      mode: "measure_only",
+      blockPath: "messages.2.content.0",
+      toolName: "mcp__linear__list_issues",
+      ruleId: "cache-hot-zone",
+      ruleVersion: 1,
+      status: "skipped",
+      skipReason: "cache_hot_zone",
+      originalBytes: byteLengthFor(verbose),
+      compressedBytes: byteLengthFor(verbose),
+      savedEstimatedTokens: 0
+    });
+    expect(liveCandidate).toMatchObject({
+      blockPath: "messages.4.content.0",
+      status: "measured",
+      skipReason: null
+    });
+    expect(JSON.stringify(measurement?.payload)).not.toContain(verbose.slice(0, 50));
+    expect(JSON.stringify(evidence?.payload)).not.toContain(verbose.slice(0, 50));
+  });
+
+  it("records shell command classifications for measure-only log candidates", async () => {
     fixture = await captureFixture("org_compress_shell_measure");
     await fixture.persistence.organizationSettings.setToolResultCompressionPolicy(
       "org_compress_shell_measure",
@@ -1227,7 +1879,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       toolName: "Bash",
       command: "pytest -q",
       commandClass: "test_output",
-      ruleId: "shell-command-lossy-summary",
+      ruleId: "log-output-compaction",
       status: "measured",
       originalSha256: contentHashFor(output),
       eventId: measurement?.id
@@ -1256,14 +1908,49 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       })
     });
 
+    const providerCall = fixture.anthropic.records.find((rec) => rec.path === "/messages");
     const [receipt] = await fixture.db.select().from(compressionReceipts);
+    const retrievalId = receipt.retrievalId;
+    expect(providerCall?.body.messages[2].content[0].content).toBe(verbose);
+    expect(retrievalId).toEqual(expect.stringMatching(compressionRetrievalIdPattern));
+    if (!retrievalId || !receipt.retrievalMarker) throw new Error("missing retrieval marker metadata");
     expect(receipt).toMatchObject({
       status: "measured",
       originalSha256: contentHashFor(verbose),
-      compressedSha256: contentHashFor(compactedVerbose),
+      compressedSha256: contentHashFor(jsonArrayCompactedVerbose),
       originalArtifactId: expect.any(String),
-      compressedArtifactId: expect.any(String)
+      compressedArtifactId: expect.any(String),
+      retrievalAvailable: true,
+      retrievalId,
+      retrievalMarker: `[prompt-proxy:compressed id=${retrievalId} sha256=${contentHashFor(verbose)}]`
     });
+    expect(receipt.retrievalMarker).not.toContain(receipt.id);
+    expect(receipt.retrievalMarker).not.toContain(receipt.requestId);
+    if (receipt.originalArtifactId) expect(receipt.retrievalMarker).not.toContain(receipt.originalArtifactId);
+    if (receipt.compressedArtifactId) expect(receipt.retrievalMarker).not.toContain(receipt.compressedArtifactId);
+    expect(receipt.retrievalMarker).not.toContain(verbose.slice(0, 50));
+    const detail = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query ReceiptRetrievalMarker($requestId: ID!) {
+        request(requestId: $requestId) {
+          compressionReceipts {
+            retrievalId
+            retrievalAvailable
+            retrievalMarker
+          }
+        }
+      }`,
+      { requestId: receipt.requestId }
+    );
+    expect(detail.errors).toBeUndefined();
+    expect(detail.data?.request?.compressionReceipts).toEqual([
+      expect.objectContaining({
+        retrievalId,
+        retrievalAvailable: true,
+        retrievalMarker: receipt.retrievalMarker
+      })
+    ]);
     const rows = await fixture.db.select().from(promptArtifacts);
     const original = rows.find((row) => row.id === receipt.originalArtifactId);
     const compressed = rows.find((row) => row.id === receipt.compressedArtifactId);
@@ -1273,19 +1960,66 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       rawText: verbose,
       metadata: expect.objectContaining({
         blockPath: "messages.2.content.0",
-        ruleId: "mcp-json-whitespace",
+        ruleId: "json-array-compaction",
         status: "candidate"
       })
     });
     expect(compressed).toMatchObject({
       kind: "compression_compressed_tool_result",
       storageMode: "raw_text",
-      rawText: compactedVerbose,
+      rawText: jsonArrayCompactedVerbose,
       metadata: expect.objectContaining({
         blockPath: "messages.2.content.0",
-        ruleId: "mcp-json-whitespace",
+        ruleId: "json-array-compaction",
         status: "candidate"
       })
+    });
+  });
+
+  it("adds retrieval markers to mutating compressed content after original artifact capture succeeds", async () => {
+    fixture = await captureFixture("org_compress_mutating_marker");
+    await fixture.persistence.organizationSettings.setToolResultCompressionPolicy(
+      "org_compress_mutating_marker",
+      { ...compressionPolicy(), storeOriginalArtifact: true, storeCompressedArtifact: true }
+    );
+
+    await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-router-hard",
+        max_tokens: 256,
+        messages: [
+          { role: "user", content: "list the open issues" },
+          { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "mcp__linear__list_issues", input: {} }] },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: verbose }] }
+        ]
+      })
+    });
+
+    const providerCall = fixture.anthropic.records.find((rec) => rec.path === "/messages");
+    const forwarded = providerCall?.body.messages[2].content[0].content;
+    const [receipt] = await fixture.db.select().from(compressionReceipts);
+    expect(typeof forwarded).toBe("string");
+    if (!receipt.retrievalId || !receipt.retrievalMarker) throw new Error("missing mutating retrieval marker");
+    expect(forwarded).toContain(compactedVerbose);
+    expect(receipt.retrievalAvailable).toBe(true);
+    expect(receipt.retrievalMarker).toEqual(`[prompt-proxy:compressed id=${receipt.retrievalId} sha256=${contentHashFor(verbose)}]`);
+    expect(forwarded).toContain(receipt.retrievalMarker);
+    expect(receipt).toMatchObject({
+      status: "applied",
+      originalSha256: contentHashFor(verbose),
+      compressedSha256: contentHashFor(forwarded),
+      compressedBytes: byteLengthFor(forwarded),
+      originalArtifactId: expect.any(String),
+      compressedArtifactId: expect.any(String)
+    });
+
+    const rows = await fixture.db.select().from(promptArtifacts);
+    const compressed = rows.find((row) => row.id === receipt.compressedArtifactId);
+    expect(compressed).toMatchObject({
+      kind: "compression_compressed_tool_result",
+      rawText: forwarded
     });
   });
 
@@ -1318,9 +2052,11 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       expect(persistedReceipts[0]).toMatchObject({
         status: "measured",
         originalSha256: contentHashFor(verbose),
-        compressedSha256: contentHashFor(compactedVerbose),
+        compressedSha256: contentHashFor(jsonArrayCompactedVerbose),
         originalArtifactId: null,
-        compressedArtifactId: null
+        compressedArtifactId: null,
+        retrievalAvailable: false,
+        retrievalMarker: null
       });
     }
   );
