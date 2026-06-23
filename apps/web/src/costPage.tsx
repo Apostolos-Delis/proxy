@@ -38,22 +38,31 @@ export function CostPage() {
   // Individual useQuery calls, not useQueries: useQueries matches observers by query
   // hash, so a dimension/range switch spins up fresh observers and keepPreviousData
   // has no previous data to keep — the skeleton swap collapses the page scroll.
-  const { error: dashboardQueryError, data: dashboardQueryData } = useQuery({
+  const {
+    error: dashboardQueryError,
+    data: dashboardQueryData,
+    isPlaceholderData: isDashboardPlaceholderData
+  } = useQuery({
     queryKey: ["usage-dashboard", dimension, start, end, interval],
     queryFn: () => fetchUsageDashboard(dimension, { start, end, interval }),
     placeholderData: keepPreviousData
   });
+  const dashboardReady = Boolean(dashboardQueryData) && !isDashboardPlaceholderData;
   const { data: lookupsQueryData } = useQuery({
     queryKey: ["usage-lookups"],
     queryFn: fetchUsageLookups,
-    enabled: isAdmin
+    enabled: isAdmin && dashboardReady
   });
-  const { data: unpricedQueryData } = useQuery({ queryKey: ["unpriced-models"], queryFn: fetchUnpricedModels });
+  const { data: unpricedQueryData } = useQuery({
+    queryKey: ["unpriced-models"],
+    queryFn: fetchUnpricedModels,
+    enabled: dashboardReady
+  });
   const { data: spendTabQueryData } = useQuery({
     queryKey: ["usage", spendTab, start, end],
     queryFn: () => fetchUsageReport(spendTab, { start, end }),
     placeholderData: keepPreviousData,
-    enabled: spendTab !== dimension
+    enabled: spendTab !== dimension && dashboardReady
   });
   const error = dashboardQueryError;
 
