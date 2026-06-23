@@ -214,6 +214,46 @@ describe("compressionSavings admin query", () => {
     expect(result.errors).toBeUndefined();
     expect(result.data?.compressionRules).toEqual([
       expect.objectContaining({
+        id: "search-result-grouping",
+        displayName: "Search result path grouping",
+        classification: "lossy",
+        supportedSurfaces: ["openai-responses", "anthropic-messages", "openai-chat"],
+        eligibleToolNames: ["Bash", "bash", "shell", "local_shell", "run_terminal_cmd", "Search", "Grep", "grep", "rg", "ripgrep", "mcp__github__search*", "mcp__gitlab__search*"],
+        minOriginalBytes: 512,
+        minSavingsTokens: 0,
+        knownRisks: expect.arrayContaining(["Reformats path-prefixed search hits into grouped path blocks; measure-only until provider prompt impact is validated."])
+      }),
+      expect.objectContaining({
+        id: "log-output-compaction",
+        displayName: "Log output repeated-line compaction",
+        classification: "lossy",
+        supportedSurfaces: ["openai-responses", "anthropic-messages", "openai-chat"],
+        eligibleToolNames: ["Bash", "bash", "shell", "local_shell", "run_terminal_cmd"],
+        minOriginalBytes: 4096,
+        minSavingsTokens: 0,
+        knownRisks: expect.arrayContaining(["Collapses repeated low-signal log lines while preserving errors, warnings, tracebacks, exit lines, and tail output; measure-only until provider prompt impact is validated."])
+      }),
+      expect.objectContaining({
+        id: "diff-compaction",
+        displayName: "Unified diff hunk compaction",
+        classification: "lossy",
+        supportedSurfaces: ["openai-responses", "anthropic-messages", "openai-chat"],
+        eligibleToolNames: ["Bash", "bash", "shell", "local_shell", "run_terminal_cmd"],
+        minOriginalBytes: 4096,
+        minSavingsTokens: 0,
+        knownRisks: expect.arrayContaining(["Collapses unchanged or repeated hunk body lines while preserving file headers, hunk headers, added/deleted counts, and error signals; measure-only until provider prompt impact is validated."])
+      }),
+      expect.objectContaining({
+        id: "json-array-compaction",
+        displayName: "JSON object-array column compaction",
+        classification: "lossy",
+        supportedSurfaces: ["openai-responses", "anthropic-messages", "openai-chat"],
+        eligibleToolNames: ["*"],
+        minOriginalBytes: 512,
+        minSavingsTokens: 0,
+        knownRisks: expect.arrayContaining(["Re-encodes uniform object arrays into a columnar envelope; measure-only until provider prompt impact is validated."])
+      }),
+      expect.objectContaining({
         id: "mcp-json-whitespace",
         displayName: "MCP JSON whitespace compaction",
         classification: "lossless",

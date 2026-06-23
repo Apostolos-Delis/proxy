@@ -15,6 +15,7 @@
 - [Harness model translation scope](scopes/harness-model-translation-v1/PLAN.md)
 - [Proxy metrics scope](scopes/proxy-metrics-v1/PLAN.md)
 - [Reversible compression scope](scopes/reversible-compression-v1/PLAN.md)
+- [Reversible compression retrieval tool injection spike](scopes/reversible-compression-v1/RETRIEVAL_TOOL_INJECTION_SPIKE.md)
 
 ## Research
 

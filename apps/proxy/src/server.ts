@@ -21,6 +21,11 @@ import {
   type RequestIdentity
 } from "./auth.js";
 import { loadConfig, type AppConfig } from "./config.js";
+import {
+  compressionCacheWindowEventPayload,
+  noCompressionCacheWindow,
+  type CompressionCacheWindow
+} from "./compressionCacheWindow.js";
 import { DefaultRoutingConfigResolver } from "./defaultRoutingConfig.js";
 import { LlmClassifier } from "./classifier.js";
 import { EmailService } from "./email.js";
@@ -37,6 +42,10 @@ import {
 } from "./metrics.js";
 import { SessionRouteStore } from "./policy.js";
 import { createPostgresPersistence } from "./persistence/index.js";
+import type {
+  CompressionRetrievalFailureReason,
+  CompressionRetrievalMetadata
+} from "./persistence/compressionReceipts.js";
 import { ConfigProviderRegistry } from "./persistence/providers.js";
 import { resolveRoutingSelection, type RoutingConfigResolverLike } from "./persistence/routingConfig.js";
 import { modelDiscoveryResponse } from "./modelDiscovery.js";
@@ -191,6 +200,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     persistence?.promptArtifacts,
     routingConfigs,
     persistence?.sessionPrompts,
+    persistence?.compressionCacheWindows,
     app.log
   );
   const projections = new ProjectionService(config);
@@ -226,6 +236,90 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     const identity = await optionalIdentity(auth, request.headers);
     const catalogModels = await persistence?.modelDiscovery.catalogModels(identity?.organizationId) ?? [];
     return modelDiscoveryResponse(catalogModels);
+  });
+
+  app.post("/v1/compression/retrieve", async (request, reply) => {
+    void reply.header("cache-control", "no-store");
+    const identity = await auth.resolve(request.headers);
+    if (!identity.apiKeyId) {
+      reply.code(401).send({ error: "Unauthorized" });
+      return;
+    }
+    if (!persistence?.compressionRetrieval) {
+      reply.code(503).send({ error: "compression_retrieval_unavailable" });
+      return;
+    }
+
+    const parsed = compressionRetrieveBody(request.body);
+    if (!parsed.ok) {
+      reply.code(400).send({ error: "invalid_request", message: parsed.message });
+      return;
+    }
+
+    const result = await persistence.compressionRetrieval.resolve({
+      organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId,
+      apiKeyId: identity.apiKeyId,
+      retrievalId: parsed.retrievalId
+    });
+    if (!result.ok) {
+      if (result.metadata) {
+        await events.append({
+          tenantId: identity.organizationId,
+          workspaceId: identity.workspaceId,
+          scopeType: "request",
+          scopeId: result.metadata.requestId,
+          correlationId: result.metadata.requestId,
+          actor: actorForIdentity(identity),
+          producer: "prompt-proxy.compression-retrieval",
+          eventType: "compression.retrieval_failed",
+          payload: compressionRetrievalEventPayload(result.metadata, "failed", result.reason)
+        });
+      }
+      reply.code(compressionRetrievalFailureStatus(result.reason)).send({
+        error: result.reason,
+        message: compressionRetrievalFailureMessage(result.reason)
+      });
+      return;
+    }
+
+    await persistence.promptAccessAudit.append({
+      organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId,
+      artifactId: result.audit.artifactId,
+      requestId: result.metadata.requestId,
+      userId: identity.userId,
+      accessPath: "/v1/compression/retrieve"
+    });
+    await events.append({
+      tenantId: identity.organizationId,
+      workspaceId: identity.workspaceId,
+      scopeType: "request",
+      scopeId: result.metadata.requestId,
+      correlationId: result.metadata.requestId,
+      actor: actorForIdentity(identity),
+      producer: "prompt-proxy.compression-retrieval",
+      eventType: "compression.retrieved",
+      payload: compressionRetrievalEventPayload(result.metadata, "retrieved")
+    });
+
+    return {
+      retrievalId: result.retrievalId,
+      content: result.content,
+      queryApplied: false,
+      metadata: {
+        surface: result.metadata.surface,
+        blockPath: result.metadata.blockPath,
+        toolName: result.metadata.toolName,
+        command: result.metadata.command,
+        commandClass: result.metadata.commandClass,
+        ruleId: result.metadata.ruleId,
+        ruleVersion: result.metadata.ruleVersion,
+        originalSha256: result.metadata.originalSha256,
+        compressedSha256: result.metadata.compressedSha256,
+        createdAt: result.metadata.createdAt
+      }
+    };
   });
 
   if (config.debugEndpointsEnabled) {
@@ -338,6 +432,19 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         return;
       }
       await pinSystemPrompt(persistence, identity, openAIResponsesSurface.surface, requestId, context.sessionId, systemPrompt);
+      const compressionCacheWindow = await appendCompressionCacheWindowResolved({
+        persistence,
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: openAIResponsesSurface.surface,
+        provider: routedProvider(decision),
+        model: decision.selectedModel ?? "unknown",
+        body: request.body,
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
 
       const compression = await compressForForwardWithResult({
         events,
@@ -350,6 +457,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         body: request.body,
         policy: resolved.toolResultCompressionPolicy,
         deduplicateToolResults: resolved.duplicateToolResultReferences,
+        frozenPrefixItems: compressionCacheWindow.frozenPrefixItems,
         profile: harnessProfileByName(context.harness),
         artifactStore: persistence?.promptArtifacts,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
@@ -482,6 +590,19 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         sendRejectedDecision(decision, reply);
         return;
       }
+      const compressionCacheWindow = await appendCompressionCacheWindowResolved({
+        persistence,
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: openAIChatSurface.surface,
+        provider: routedProvider(decision),
+        model: decision.selectedModel ?? "unknown",
+        body: request.body,
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
 
       const compression = await compressForForwardWithResult({
         events,
@@ -494,6 +615,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         body: request.body,
         policy: resolved.toolResultCompressionPolicy,
         deduplicateToolResults: resolved.duplicateToolResultReferences,
+        frozenPrefixItems: compressionCacheWindow.frozenPrefixItems,
         profile: harnessProfileByName(context.harness),
         artifactStore: persistence?.promptArtifacts,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
@@ -635,6 +757,19 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         return;
       }
       await pinSystemPrompt(persistence, identity, anthropicMessagesSurface.surface, requestId, context.sessionId, systemPrompt);
+      const compressionCacheWindow = await appendCompressionCacheWindowResolved({
+        persistence,
+        events,
+        identity,
+        requestId,
+        idempotencyKey,
+        sessionId: context.sessionId,
+        surface: anthropicMessagesSurface.surface,
+        provider: routedProvider(decision),
+        model: decision.selectedModel ?? "unknown",
+        body: request.body,
+        warn: (err, message) => app.log.warn({ err, requestId }, message)
+      });
 
       const compression = await compressForForwardWithResult({
         events,
@@ -647,6 +782,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         body: request.body,
         policy: resolved.toolResultCompressionPolicy,
         deduplicateToolResults: resolved.duplicateToolResultReferences,
+        frozenPrefixItems: compressionCacheWindow.frozenPrefixItems,
         profile: harnessProfileByName(context.harness),
         artifactStore: persistence?.promptArtifacts,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
@@ -900,6 +1036,60 @@ async function pinSystemPrompt(
   });
 }
 
+async function appendCompressionCacheWindowResolved(input: {
+  persistence: AppPersistence | undefined;
+  events: EventService;
+  identity: RequestIdentity;
+  requestId: string;
+  idempotencyKey: string;
+  sessionId: string | undefined;
+  surface: Surface;
+  provider: Provider;
+  model: string;
+  body: unknown;
+  warn: (err: unknown, message: string) => void;
+}): Promise<CompressionCacheWindow> {
+  let window: CompressionCacheWindow;
+  try {
+    window = await input.persistence?.compressionCacheWindows.resolve({
+      organizationId: input.identity.organizationId,
+      workspaceId: input.identity.workspaceId,
+      sessionId: input.sessionId,
+      surface: input.surface,
+      provider: input.provider,
+      model: input.model,
+      body: input.body
+    }) ?? noCompressionCacheWindow();
+  } catch (error) {
+    input.warn(error, "compression cache window resolution failed");
+    return noCompressionCacheWindow();
+  }
+
+  try {
+    await input.events.append({
+      tenantId: input.identity.organizationId,
+      workspaceId: input.identity.workspaceId,
+      scopeType: "request",
+      scopeId: input.requestId,
+      sessionId: input.sessionId,
+      correlationId: input.requestId,
+      idempotencyKey: input.idempotencyKey,
+      actor: actorForIdentity(input.identity),
+      producer: "prompt-proxy.compression",
+      eventType: "compression.cache_window_resolved",
+      payload: {
+        surface: input.surface,
+        provider: input.provider,
+        model: input.model,
+        ...compressionCacheWindowEventPayload(window)
+      }
+    });
+  } catch (error) {
+    input.warn(error, "compression cache window event emit failed");
+  }
+  return window;
+}
+
 function requireAuth(headers: Record<string, unknown>, token: string) {
   if (!token) {
     const error = new Error("Unauthorized");
@@ -914,6 +1104,64 @@ function requireAuth(headers: Record<string, unknown>, token: string) {
     (error as Error & { statusCode: number }).statusCode = 401;
     throw error;
   }
+}
+
+function compressionRetrieveBody(body: unknown):
+  | { ok: true; retrievalId: string; query?: string }
+  | { ok: false; message: string } {
+  if (!isRecord(body)) return { ok: false, message: "Request body must be a JSON object." };
+  if (typeof body.retrievalId !== "string" || !/^cmp_[a-f0-9]{32}$/.test(body.retrievalId)) {
+    return { ok: false, message: "retrievalId must be a cmp_ retrieval id." };
+  }
+  if (body.query !== undefined && typeof body.query !== "string") {
+    return { ok: false, message: "query must be a string when provided." };
+  }
+  return body.query === undefined
+    ? { ok: true, retrievalId: body.retrievalId }
+    : { ok: true, retrievalId: body.retrievalId, query: body.query };
+}
+
+function compressionRetrievalFailureStatus(reason: CompressionRetrievalFailureReason) {
+  if (reason === "not_found") return 404;
+  if (reason === "artifact_expired") return 410;
+  return 409;
+}
+
+function compressionRetrievalFailureMessage(reason: CompressionRetrievalFailureReason) {
+  switch (reason) {
+    case "not_found":
+      return "Compression retrieval id was not found.";
+    case "artifact_missing":
+      return "Compression original artifact is missing.";
+    case "artifact_expired":
+      return "Compression original artifact has expired.";
+    case "artifact_unavailable":
+      return "Compression original content is unavailable.";
+    case "hash_mismatch":
+      return "Compression original content failed integrity verification.";
+    default:
+      return "Compression retrieval failed.";
+  }
+}
+
+function compressionRetrievalEventPayload(
+  metadata: CompressionRetrievalMetadata,
+  status: "retrieved" | "failed",
+  failureReason?: CompressionRetrievalFailureReason
+) {
+  return {
+    retrievalId: metadata.retrievalId,
+    receiptId: metadata.receiptId,
+    requestId: metadata.requestId,
+    surface: metadata.surface,
+    blockPath: metadata.blockPath,
+    toolName: metadata.toolName,
+    ruleId: metadata.ruleId,
+    ruleVersion: metadata.ruleVersion,
+    status,
+    receiptStatus: metadata.receiptStatus,
+    failureReason: failureReason ?? null
+  };
 }
 
 function sendDuplicateRequest(
@@ -1014,6 +1262,7 @@ function routeFamilyForPath(config: AppConfig, path: string) {
   if (path === config.metricsPath) return "metrics";
   if (path === "/admin/graphql") return "graphql";
   if (path.startsWith("/admin") || path.startsWith("/api") || path.startsWith("/_debug") || path === "/setup.sh") return "admin";
+  if (path === "/v1/compression/retrieve") return "compression";
   if (path === "/v1/messages" || path === "/v1/messages/count_tokens") return "anthropic";
   if (path.startsWith("/v1/")) return "openai";
   return "unknown";

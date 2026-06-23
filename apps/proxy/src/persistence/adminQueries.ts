@@ -1848,7 +1848,27 @@ export class AdminQueryService {
         eq(compressionReceipts.requestId, requestId)
       ))
       .orderBy(asc(compressionReceipts.createdAt), asc(compressionReceipts.blockPath), asc(compressionReceipts.ruleId));
-    return rows.map(compressionReceiptSummary);
+    const artifactIds = [...new Set(rows.flatMap((row) => [
+      row.originalArtifactId,
+      row.compressedArtifactId
+    ]).filter((id): id is string => id !== null))];
+    const artifactExpiresAt = new Map<string, string | null>();
+    if (artifactIds.length > 0) {
+      const artifacts = await this.db
+        .select({
+          id: promptArtifacts.id,
+          expiresAt: promptArtifacts.expiresAt
+        })
+        .from(promptArtifacts)
+        .where(and(
+          this.scopedTo(promptArtifacts),
+          inArray(promptArtifacts.id, artifactIds)
+        ));
+      for (const artifact of artifacts) {
+        artifactExpiresAt.set(artifact.id, artifact.expiresAt?.toISOString() ?? null);
+      }
+    }
+    return rows.map((row) => compressionReceiptSummary(row, artifactExpiresAt));
   }
 
   private async eventsForSession(sessionId: string, requestIds: string[]) {
@@ -2003,7 +2023,10 @@ function routingConfigVersionDetail(row: RoutingConfigVersionRow, active: boolea
   };
 }
 
-function compressionReceiptSummary(row: typeof compressionReceipts.$inferSelect) {
+function compressionReceiptSummary(
+  row: typeof compressionReceipts.$inferSelect,
+  artifactExpiresAt: ReadonlyMap<string, string | null> = new Map()
+) {
   return {
     id: row.id,
     organizationId: row.organizationId,
@@ -2019,6 +2042,9 @@ function compressionReceiptSummary(row: typeof compressionReceipts.$inferSelect)
     ruleId: row.ruleId,
     ruleVersion: row.ruleVersion,
     status: row.status,
+    retrievalId: row.retrievalId,
+    retrievalAvailable: row.retrievalAvailable,
+    retrievalMarker: row.retrievalMarker,
     originalChars: row.originalChars,
     compressedChars: row.compressedChars,
     savedChars: row.savedChars,
@@ -2036,6 +2062,8 @@ function compressionReceiptSummary(row: typeof compressionReceipts.$inferSelect)
     compressedSha256: row.compressedSha256,
     originalArtifactId: row.originalArtifactId,
     compressedArtifactId: row.compressedArtifactId,
+    originalArtifactExpiresAt: row.originalArtifactId ? artifactExpiresAt.get(row.originalArtifactId) ?? null : null,
+    compressedArtifactExpiresAt: row.compressedArtifactId ? artifactExpiresAt.get(row.compressedArtifactId) ?? null : null,
     skipReason: row.skipReason,
     eventId: row.eventId,
     createdAt: row.createdAt.toISOString()

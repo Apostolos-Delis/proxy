@@ -62,8 +62,11 @@ describe("buildManualSteps", () => {
   });
 
   it("wires Codex through the shell export and provider table", () => {
-    expect(steps[2].snippet).toBe(`export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"`);
+    expect(steps[2].snippet).toContain(`export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"`);
+    expect(steps[2].snippet).toContain("# >>> prompt-proxy codex PROMPT_PROXY_TOKEN >>>");
     expect(steps[3].snippet).toContain("[model_providers.prompt_proxy]");
+    expect(steps[3].snippet).toContain("# >>> prompt-proxy codex defaults >>>");
+    expect(steps[3].snippet).toContain("# >>> prompt-proxy codex provider prompt_proxy >>>");
     expect(steps[3].snippet).toContain(`base_url = "${apiBase}/v1"`);
     expect(steps[3].snippet).toContain(`env_key = "PROMPT_PROXY_TOKEN"`);
   });
@@ -86,7 +89,8 @@ describe("buildManualSteps", () => {
       "Register the Codex provider"
     ]);
     expect(codexSteps[0].snippet).toContain("~/.prompt-proxy/codex.token");
-    expect(codexSteps[1].snippet).toBe(`export PROMPT_PROXY_CODEX_TOKEN="$(cat ~/.prompt-proxy/codex.token)"`);
+    expect(codexSteps[1].snippet).toContain(`export PROMPT_PROXY_CODEX_TOKEN="$(cat ~/.prompt-proxy/codex.token)"`);
+    expect(codexSteps[1].snippet).toContain("# >>> prompt-proxy codex PROMPT_PROXY_CODEX_TOKEN >>>");
     expect(codexSteps[2].snippet).toContain("[model_providers.prompt_proxy_codex]");
     expect(codexSteps[2].snippet).toContain(`env_key = "PROMPT_PROXY_CODEX_TOKEN"`);
   });
@@ -120,7 +124,7 @@ describe("buildManualSteps", () => {
   it("uses the shared token path when multiple harnesses are selected", () => {
     const multiSteps = buildManualSteps({ apiBase, secret: "pp_multi", harnesses: ["codex", "opencode"] });
     expect(multiSteps[0].snippet).toContain("~/.prompt-proxy/token");
-    expect(multiSteps[1].snippet).toBe(`export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"`);
+    expect(multiSteps[1].snippet).toContain(`export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"`);
     expect(multiSteps[2].snippet).toContain("[model_providers.prompt_proxy]");
     expect(multiSteps[2].snippet).toContain(`env_key = "PROMPT_PROXY_TOKEN"`);
   });

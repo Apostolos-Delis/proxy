@@ -68,7 +68,7 @@ describe("compressionPreview admin query", () => {
     });
     expect(result.data?.compressionPreview.previewBlocks[0]).toMatchObject({
       toolName: "mcp__linear__list_issues",
-      ruleId: "mcp-json-whitespace",
+      ruleId: "json-array-compaction",
       status: "candidate",
       skipReason: null
     });
@@ -134,7 +134,7 @@ describe("compressionPreview admin query", () => {
       blocks: 1
     });
     expect(result.data?.compressionPreview.previewBlocks[0]).toMatchObject({
-      ruleId: "mcp-json-whitespace",
+      ruleId: "json-array-compaction",
       status: "measured",
       diffSegments: []
     });
@@ -170,7 +170,7 @@ describe("compressionPreview admin query", () => {
     expect(detail.errors).toBeUndefined();
     expect(detail.data?.prompt?.compressionReceipts).toEqual([
       expect.objectContaining({
-        ruleId: "mcp-json-whitespace",
+        ruleId: "json-array-compaction",
         status: "measured",
         savedBytes: receipt.originalBytes - receipt.compressedBytes
       })

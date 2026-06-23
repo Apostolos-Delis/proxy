@@ -26,6 +26,9 @@ export type CompressionPreviewBlock = {
   ruleVersion: number;
   status: string;
   skipReason: string | null;
+  retrievalId: string | null;
+  retrievalAvailable: boolean;
+  retrievalMarker: string | null;
   originalChars: number;
   compressedChars: number;
   savedChars: number;
@@ -114,6 +117,9 @@ export function compressionReceiptPreviewBlock(receipt: {
   ruleVersion: number;
   status: string;
   skipReason?: string | null;
+  retrievalId?: string | null;
+  retrievalAvailable?: boolean;
+  retrievalMarker?: string | null;
   originalChars: number;
   compressedChars: number;
   savedChars: number;
@@ -136,6 +142,9 @@ export function compressionReceiptPreviewBlock(receipt: {
     ruleVersion: receipt.ruleVersion,
     status: receipt.status,
     skipReason: receipt.skipReason ?? null,
+    retrievalId: receipt.retrievalId ?? null,
+    retrievalAvailable: receipt.retrievalAvailable === true,
+    retrievalMarker: receipt.retrievalMarker ?? null,
     originalChars: receipt.originalChars,
     compressedChars: receipt.compressedChars,
     savedChars: receipt.savedChars,
@@ -180,6 +189,9 @@ function previewBlock(
     ruleVersion: record.ruleVersion,
     status: record.status,
     skipReason: record.skipReason ?? null,
+    retrievalId: record.retrievalId ?? null,
+    retrievalAvailable: record.retrievalAvailable === true,
+    retrievalMarker: record.retrievalMarker ?? null,
     originalChars: record.beforeChars,
     compressedChars: record.afterChars,
     savedChars: record.beforeChars - record.afterChars,

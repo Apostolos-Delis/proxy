@@ -112,6 +112,9 @@ type CompressionPreviewBlock {
   originalChars: Int!
   originalSha256: String!
   originalTokenEstimate: Int!
+  retrievalAvailable: Boolean!
+  retrievalId: String
+  retrievalMarker: String
   ruleId: String!
   ruleVersion: Int!
   savedBytes: Int!
@@ -139,6 +142,7 @@ type CompressionReceipt {
   blockPath: String!
   command: String
   commandClass: String
+  compressedArtifactExpiresAt: String
   compressedArtifactId: String
   compressedBytes: Int!
   compressedChars: Int!
@@ -151,6 +155,7 @@ type CompressionReceipt {
   id: String!
   mode: String!
   organizationId: String!
+  originalArtifactExpiresAt: String
   originalArtifactId: String
   originalBytes: Int!
   originalChars: Int!
@@ -158,6 +163,9 @@ type CompressionReceipt {
   originalSha256: String!
   originalTokenEstimate: Int!
   requestId: String!
+  retrievalAvailable: Boolean!
+  retrievalId: String
+  retrievalMarker: String
   ruleId: String!
   ruleVersion: Int!
   savedBytes: Int!

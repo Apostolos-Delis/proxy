@@ -244,6 +244,10 @@ Lossy rules require both:
 - `mode = "compress_explicit_lossy"`.
 - A retrievable original artifact for the block.
 
+The JSON array, search-result, log-output, and diff-compaction M4 rules remain measurement-only for V1 until quality telemetry proves a mutating rollout is safe. `compress_lossless` continues to apply only deterministic lossless rules.
+
+Provider-specific automatic retrieval tool injection is deferred for V1; see [Retrieval Tool Injection Spike](./RETRIEVAL_TOOL_INJECTION_SPIKE.md). Endpoint and console retrieval remain the recovery path.
+
 ## Stream Observer Hardening
 
 The compression scope depends on accurate evidence and prompt replay. Upgrade stream observers separately but in the same roadmap.
@@ -318,6 +322,7 @@ Use:
 
 Potential additive changes:
 
+- `compression_receipts.retrieval_id text unique`
 - `compression_receipts.retrieval_enabled boolean`
 - `compression_receipts.retrieval_marker text`
 - `compression_receipts.cache_zone text`

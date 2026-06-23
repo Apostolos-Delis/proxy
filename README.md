@@ -47,6 +47,7 @@ curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- <api-key>
 ```
 
 If `~/.codex/config.toml` or shell rc files are symlinked from a dotfiles repo, the setup script updates the symlink targets instead of replacing the links.
+Setup only replaces Prompt Proxy-owned marker blocks. Codex shell/TOML edits use inline `# >>> prompt-proxy ... >>>` blocks; Claude Code and opencode JSON edits use sidecar marker files under `~/.prompt-proxy/`. If setup finds an unmarked provider, auth, or model setting with the same name, it reports the conflict and leaves the user-managed value untouched.
 
 Use a harness-specific install when you want different API keys and routing configs per harness:
 
@@ -95,15 +96,19 @@ claude --model claude-router-auto
 In `~/.codex/config.toml`:
 
 ```toml
+# >>> prompt-proxy codex defaults >>>
 model = "router-auto"
 model_provider = "prompt_proxy"
+# <<< prompt-proxy codex defaults <<<
 
+# >>> prompt-proxy codex provider prompt_proxy >>>
 [model_providers.prompt_proxy]
 name = "Prompt Proxy"
 base_url = "http://127.0.0.1:8787/v1"
 env_key = "PROMPT_PROXY_TOKEN"
 wire_api = "responses"
 supports_websockets = true
+# <<< prompt-proxy codex provider prompt_proxy <<<
 ```
 
 ### opencode and Cursor

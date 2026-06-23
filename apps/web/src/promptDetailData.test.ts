@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { artifactToolNames, eventTone, exchangeMeta, healthSkipsFromEvents, type ProxyEvent } from "./promptDetailData";
+import { artifactToolNames, compressionEventSummary, eventTone, exchangeMeta, healthSkipsFromEvents, type ProxyEvent } from "./promptDetailData";
 
 describe("eventTone", () => {
   it("maps producer prefixes to tones", () => {
@@ -8,6 +8,7 @@ describe("eventTone", () => {
     expect(eventTone("prompt_artifacts.captured")).toBe("event-capture");
     expect(eventTone("routing.context_built")).toBe("event-routing");
     expect(eventTone("provider.response_completed")).toBe("event-provider");
+    expect(eventTone("compression.retrieved")).toBe("event-compression");
   });
 
   it("flags failure events even when a prefix tone matches", () => {
@@ -15,6 +16,29 @@ describe("eventTone", () => {
     expect(eventTone("routing.classification_failed")).toBe("event-danger");
     expect(eventTone("upstream.rejected")).toBe("event-danger");
     expect(eventTone("proxy.timeout")).toBe("event-danger");
+  });
+});
+
+describe("compressionEventSummary", () => {
+  it("summarizes retrieval events from sanitized fields", () => {
+    expect(compressionEventSummary(event("compression.retrieved", {
+      retrievalId: "cmp_123456789abcdef",
+      toolName: "mcp__linear__list_issues",
+      status: "retrieved",
+      rawText: "do not render"
+    }))).toBe("retrieved · cmp_123456789abcdef · mcp__linear__list_issues()");
+  });
+
+  it("shows typed retrieval failure reasons", () => {
+    expect(compressionEventSummary(event("compression.retrieval_failed", {
+      retrievalId: "cmp_123456789abcdef",
+      failureReason: "artifact_expired"
+    }))).toBe("failed: artifact_expired · cmp_123456789abcdef");
+  });
+
+  it("ignores non-compression and malformed payloads", () => {
+    expect(compressionEventSummary(event("routing.decision_recorded", {}))).toBeNull();
+    expect(compressionEventSummary(event("compression.retrieved", "bad"))).toBeNull();
   });
 });
 

@@ -21,6 +21,8 @@ curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness opencode <api-k
 It stores a copy of the key at `~/.prompt-proxy/opencode.token`, writes the `prompt-proxy-chat` provider to `~/.config/opencode/opencode.json`, and stores the credential in `~/.local/share/opencode/auth.json`. Create a separate Prompt Proxy API key for opencode when you want opencode to use a different routing config than Claude Code or Codex.
 Pass `--harness` more than once when opencode should share one Prompt Proxy API key with another local harness.
 
+The hosted setup script tracks the opencode provider and auth entries it owns with sidecar marker files under `~/.prompt-proxy/`. If `prompt-proxy-chat` already exists in opencode config or auth without those markers, setup reports the conflict and leaves the user-managed entry unchanged.
+
 ## Model IDs
 
 For OpenAI-compatible paths, use:

@@ -5,11 +5,13 @@ import {
 } from "@prompt-proxy/db";
 
 import type { AppConfig } from "../config.js";
+import { CompressionCacheWindowResolver } from "../compressionCacheWindow.js";
 import { ModelDiscoveryStore } from "../modelDiscovery.js";
 import { ModelCatalogRefreshJob } from "../jobs/modelCatalogRefresh.js";
 import { AdminQueryService, type AdminQueryConfig } from "./adminQueries.js";
 import { AdminSessionStore } from "./adminSessions.js";
 import { ApiKeyAdminService } from "./apiKeyAdmin.js";
+import { CompressionRetrievalResolver } from "./compressionReceipts.js";
 import { DatabaseEventSink } from "./eventSink.js";
 import { ApiKeyIdentityStore } from "./identity.js";
 import { ModelPricingAdminService } from "./modelPricingAdmin.js";
@@ -65,6 +67,8 @@ export function createDatabasePersistence(
     apiKeyAdmin: new ApiKeyAdminService(transactional),
     apiKeys: new ApiKeyIdentityStore(db),
     adminSessions: new AdminSessionStore(db),
+    compressionCacheWindows: new CompressionCacheWindowResolver(db),
+    compressionRetrieval: new CompressionRetrievalResolver(db),
     providerCredentials: new ProviderCredentialStore(db, credentialOptions),
     providerCredentialAdmin,
     providerCredentialOAuth: new ProviderCredentialOAuthService(providerCredentialAdmin),

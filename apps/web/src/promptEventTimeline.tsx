@@ -1,9 +1,12 @@
-import { ChevronRight, Clock3, ShieldAlert, Zap } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { ChevronRight, Clock3, FileSearch, ShieldAlert, Zap } from "lucide-react";
 import { useState } from "react";
 
+import { compressionSkipReasonLabel } from "./compressionSkipReasons";
 import { compactId, formatCompact, formatDateTime, formatDurationMs } from "./format";
 import { JsonView } from "./jsonView";
 import {
+  compressionEventSummary,
   eventTone,
   healthSkipsFromEvents,
   totalSpan,
@@ -52,16 +55,20 @@ export function CompressionReceiptsCard({ receipts }: { receipts: CompressionRec
               <th>Tool</th>
               <th>Bytes</th>
               <th>Tokens</th>
+              <th>Retrieval</th>
               <th>Hash</th>
             </tr>
           </thead>
           <tbody>
             {receipts.map((receipt) => (
               <tr key={receipt.id}>
-                <td><StatusBadge status={receipt.status} /></td>
+                <td>
+                  <StatusBadge status={receipt.status} />
+                  <div className="faint">{providerCompressionLabel(receipt)} · {providerForwardingLabel(receipt)}</div>
+                </td>
                 <td>
                   <div className="mono">{receipt.ruleId}</div>
-                  <div className="faint">v{receipt.ruleVersion}{receipt.skipReason ? ` · ${receipt.skipReason}` : ""}</div>
+                  <div className="faint">v{receipt.ruleVersion}{receipt.skipReason ? ` · ${compressionSkipReasonLabel(receipt.skipReason)}` : ""}</div>
                 </td>
                 <td>
                   <div className="mono">{receipt.toolName}</div>
@@ -69,6 +76,7 @@ export function CompressionReceiptsCard({ receipts }: { receipts: CompressionRec
                 </td>
                 <td className="mono">{formatCompact(receipt.originalBytes)} -&gt; {formatCompact(receipt.compressedBytes)}</td>
                 <td className="mono">{formatCompact(receipt.savedTokens)}</td>
+                <td><ReceiptRetrieval receipt={receipt} /></td>
                 <td className="mono" title={receipt.compressedSha256}>{compactId(receipt.compressedSha256, 9)}</td>
               </tr>
             ))}
@@ -77,6 +85,46 @@ export function CompressionReceiptsCard({ receipts }: { receipts: CompressionRec
       )}
     </GlassCard>
   );
+}
+
+function ReceiptRetrieval({ receipt }: { receipt: CompressionReceipt }) {
+  if (!receipt.retrievalId) return <span className="faint">not recorded</span>;
+  const originalArtifactId = receipt.retrievalAvailable ? receipt.originalArtifactId : null;
+  return (
+    <div className="receipt-retrieval-cell">
+      <Badge variant={receipt.retrievalAvailable ? "success" : undefined} dot>
+        {receipt.retrievalAvailable ? "available" : "unavailable"}
+      </Badge>
+      <span className="mono faint receipt-retrieval-id" title={receipt.retrievalMarker ?? receipt.retrievalId}>
+        {compactId(receipt.retrievalId, 8)}
+      </span>
+      {receipt.originalArtifactExpiresAt ? (
+        <span className="faint receipt-expiry" title={receipt.originalArtifactExpiresAt}>
+          expires {formatDateTime(receipt.originalArtifactExpiresAt)}
+        </span>
+      ) : null}
+      {originalArtifactId ? (
+        <Link
+          to="/prompts/$artifactId"
+          params={{ artifactId: originalArtifactId }}
+          className="btn btn-sm btn-ghost receipt-retrieve-link"
+          title="Open original compression artifact"
+        >
+          <FileSearch />Original
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+function providerCompressionLabel(receipt: CompressionReceipt) {
+  if (receipt.status !== "applied") return receipt.status === "skipped" ? "not compressed" : "not applied";
+  return receipt.mode === "measure_only" ? "measured only" : "compressed";
+}
+
+function providerForwardingLabel(receipt: CompressionReceipt) {
+  if (receipt.status !== "applied" || receipt.mode === "measure_only") return "provider saw original";
+  return "provider saw compressed";
 }
 
 function HealthSkipRows({ skips }: { skips: HealthSkipEvidence[] }) {
@@ -107,6 +155,7 @@ function EventRow({ event, start }: { event: ProxyEvent; start: number }) {
   const offset = new Date(event.createdAt).getTime() - start;
   const payload = event.payload && typeof event.payload === "object" ? event.payload as Record<string, unknown> : null;
   const hasPayload = payload !== null && Object.keys(payload).length > 0;
+  const compressionSummary = compressionEventSummary(event);
   return (
     <div className={`event-row ${eventTone(event.eventType)}`}>
       <span className="event-dot" aria-hidden />
@@ -119,6 +168,7 @@ function EventRow({ event, start }: { event: ProxyEvent; start: number }) {
       >
         {hasPayload ? <ChevronRight className={`event-chevron${open ? " open" : ""}`} /> : <span className="event-chevron-spacer" />}
         <span className="event-name mono">{event.eventType}</span>
+        {compressionSummary ? <span className="event-detail">{compressionSummary}</span> : null}
         <span className="event-producer">{event.producer.replace(/^prompt-proxy\./, "")}</span>
         <span className="event-offset mono" title={formatDateTime(event.createdAt)}>+{formatDurationMs(offset)}</span>
       </button>
