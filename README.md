@@ -1,17 +1,33 @@
 # Prompt Proxy
 
-Prompt Proxy is a model-routing gateway that sits between coding agents (Claude Code, Codex, anything OpenAI/Anthropic-compatible) and the model providers. Every request is classified by an LLM router and forwarded to the cheapest model that can handle it, and everything that happens — route decisions, provider attempts, token usage, full prompts — is captured durably and explorable in a web console.
+Prompt Proxy is an OpenAI/Anthropic-compatible routing gateway for coding agents. Point Codex, Claude Code, opencode, Cursor BYOK, or SDK callers at one base URL; Prompt Proxy classifies each request, routes it to an appropriate model tier, and records the route decision, provider attempts, usage, cost, sessions, and prompt artifacts in an operations console.
 
-**What you get:**
+It is built for teams that want to run agent traffic through a controllable gateway instead of hard-coding one model/provider into every harness.
 
-- **Drop-in API compatibility** — speaks OpenAI Responses (`/v1/responses`, HTTP + WebSocket), OpenAI Chat Completions (`/v1/chat/completions`), and Anthropic Messages (`/v1/messages`), so existing harnesses just point at a new base URL.
-- **Smart routing** — an LLM classifier sorts each request into a tier (`fast`, `balanced`, `hard`, `deep`) and the proxy picks the matching target from the active routing config. Users can also pin a tier explicitly (e.g. `router-hard` or `claude-router-hard`).
-- **Versioned routing configs** — routing rules and tier→model mappings live in immutable, versioned configs bound to API keys, editable from the console.
-- **An operations console** — dashboards for cost savings, usage, sessions, request logs, prompt capture, plus self-serve API keys, user invitations, and org settings.
-- **BYOK** — customers can bring their own provider keys, encrypted at rest, bound per API key.
-- **Multi-tenant by design** — every row and event is organization-scoped; orgs are switchable in the console.
+## Highlights
 
-## Quick start
+- **Drop-in API compatibility** for OpenAI Responses (`/v1/responses`, HTTP and WebSocket), OpenAI Chat Completions (`/v1/chat/completions`), and Anthropic Messages (`/v1/messages`).
+- **LLM-routed model selection** across `fast`, `balanced`, `hard`, and `deep` tiers, with explicit tier pinning through model aliases such as `router-hard` and `claude-router-hard`.
+- **Versioned routing configs** with immutable versions, API-key/workspace assignment, budget limits, and active-version auditability.
+- **Operations console** for usage, savings, sessions, request logs, prompt capture, API keys, provider credentials, routing configs, users, and org settings.
+- **BYOK provider credentials** encrypted at rest and bindable per Prompt Proxy API key.
+- **Multi-tenant data model** scoped by organization and workspace, with events as the audit/projection backbone.
+
+## Screenshots
+
+Demo data shown below was generated locally with the PGlite demo stack; it does not contain real traffic.
+
+![Prompt Proxy overview dashboard showing traffic, token volume, spend, and routing savings](docs/assets/prompt-proxy-overview.png)
+
+![Prompt Proxy logs page showing replayable agent sessions, models, routes, tokens, and cost](docs/assets/prompt-proxy-logs.png)
+
+## Quick Start
+
+Prerequisites:
+
+- Node.js and `pnpm` 10.x
+- Docker or Colima for the default local Postgres path
+- OpenAI and Anthropic keys when you want to route real model traffic
 
 ```shell
 pnpm install
@@ -20,36 +36,50 @@ pnpm dev:local
 
 `pnpm dev:local` boots a complete local workspace:
 
-| What | Where |
+| Component | URL / port |
 | --- | --- |
 | Proxy API | `http://127.0.0.1:8787` |
 | Web console | `http://127.0.0.1:5173` |
-| Postgres (Docker) | port `55432` (avoids system Postgres) |
+| Postgres | `localhost:55432` |
 
-It creates `.env` from `.env.example` if needed, starts or reuses Postgres, runs migrations, and seeds an organization, a user, provider placeholders, a default routing config, and a local API key (`PROMPT_PROXY_TOKEN`, default `dev-proxy-token`).
+The script creates `.env` from `.env.example` if needed, starts or reuses Postgres, runs migrations, and seeds an organization, default workspace, owner user, provider placeholders, a default routing config, and a local API key.
 
-In Conductor workspaces, the checked-in Run script still uses `pnpm dev:local`, but it derives isolated ports from `CONDUCTOR_PORT`: web on `CONDUCTOR_PORT`, proxy on `CONDUCTOR_PORT + 1`, and Postgres on `CONDUCTOR_PORT + 2`.
+Log into the console with the development credentials from `.env`:
 
-Log into the console with the dev credentials from `.env` — `ADMIN_DEV_LOGIN_EMAIL` / `ADMIN_DEV_LOGIN_PASSWORD` (defaults: `local@example.com` / `dev-password`).
+```text
+ADMIN_DEV_LOGIN_EMAIL=local@example.com
+ADMIN_DEV_LOGIN_PASSWORD=dev-password
+```
 
-To use real models, set `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` in `.env`. The proxy and console can also run separately with `pnpm dev:proxy` and `pnpm dev:web`.
+To forward real traffic, set provider keys in `.env`:
 
-For production (`NODE_ENV=production`), set explicit values for `PROMPT_PROXY_TOKEN`, `OPENAI_API_KEY`, and `ANTHROPIC_API_KEY`; the local development defaults are rejected at startup.
+```shell
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+```
 
-## Connect a coding agent
+The proxy and console can also run separately:
 
-### One-liner
+```shell
+pnpm dev:proxy
+pnpm dev:web
+```
 
-The proxy hosts its own setup script. By default it configures both Claude Code and Codex, stores the shared key at `~/.prompt-proxy/token`, and is idempotent:
+For production (`NODE_ENV=production`), Prompt Proxy rejects the development defaults for `PROMPT_PROXY_TOKEN`, `OPENAI_API_KEY`, and `ANTHROPIC_API_KEY`.
+
+### Conductor Workspaces
+
+In Conductor workspaces, the checked-in Run script still uses `pnpm dev:local`, but derives isolated ports from `CONDUCTOR_PORT`: web on `CONDUCTOR_PORT`, proxy on `CONDUCTOR_PORT + 1`, and Postgres on `CONDUCTOR_PORT + 2`.
+
+## Connect a Coding Agent
+
+The proxy hosts an idempotent setup script. By default it configures Claude Code, Codex, and opencode, stores the shared key at `~/.prompt-proxy/token`, and updates only Prompt Proxy-owned marker blocks.
 
 ```shell
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- <api-key>
 ```
 
-If `~/.codex/config.toml` or shell rc files are symlinked from a dotfiles repo, the setup script updates the symlink targets instead of replacing the links.
-Setup only replaces Prompt Proxy-owned marker blocks. Codex shell/TOML edits use inline `# >>> prompt-proxy ... >>>` blocks; Claude Code and opencode JSON edits use sidecar marker files under `~/.prompt-proxy/`. If setup finds an unmarked provider, auth, or model setting with the same name, it reports the conflict and leaves the user-managed value untouched.
-
-Use a harness-specific install when you want different API keys and routing configs per harness:
+Use harness-specific installs when you want different Prompt Proxy API keys or routing configs per harness:
 
 ```shell
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness codex <codex-api-key>
@@ -63,13 +93,11 @@ Pass `--harness` more than once to configure a selected set with one shared key:
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code --harness codex --harness opencode <api-key>
 ```
 
-Codex-specific installs use `~/.prompt-proxy/codex.token`, `PROMPT_PROXY_CODEX_TOKEN`, and a `prompt_proxy_codex` Codex provider. Claude Code-specific installs use `~/.prompt-proxy/claude-code.token`. opencode installs write the chat-compatible provider to `~/.config/opencode/opencode.json` and store the credential in opencode's normal auth file.
+The console's API-key screen lets you choose one or more harnesses during key creation and shows copyable setup snippets after the key is created.
 
-The console's API-keys screen lets you choose one or more harnesses during key creation and shows matching copyable snippets after you create a key.
+### Claude Code Manual Setup
 
-### Claude Code (manual)
-
-In `~/.claude/settings.json` (must be user-level or managed settings — Claude Code strips `ANTHROPIC_BASE_URL` from project-scoped settings):
+In `~/.claude/settings.json`:
 
 ```json
 {
@@ -82,7 +110,7 @@ In `~/.claude/settings.json` (must be user-level or managed settings — Claude 
 }
 ```
 
-`env` values are literal strings (no shell expansion), so the token goes through `apiKeyHelper`, whose output is sent as both `X-Api-Key` and `Authorization: Bearer`. For a one-off session without touching settings:
+Claude Code strips `ANTHROPIC_BASE_URL` from project-scoped settings, so this must be user-level or managed settings. For a one-off session:
 
 ```shell
 ANTHROPIC_BASE_URL=http://127.0.0.1:8787 \
@@ -91,7 +119,7 @@ CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1 \
 claude --model claude-router-auto
 ```
 
-### Codex (manual)
+### Codex Manual Setup
 
 In `~/.codex/config.toml`:
 
@@ -113,85 +141,90 @@ supports_websockets = true
 
 ### opencode and Cursor
 
-- [opencode setup](docs/harnesses/opencode.md) covers the OpenAI-compatible Chat path, the OpenAI Responses path, and the Anthropic Messages path.
+- [opencode setup](docs/harnesses/opencode.md) covers the OpenAI-compatible Chat path, OpenAI Responses path, and Anthropic Messages path.
 - [Cursor BYOK setup](docs/harnesses/cursor-byok.md) covers Cursor's OpenAI-compatible base-URL override and custom `router-*` model aliases.
+- [Harness compatibility matrix](docs/harnesses/compatibility-matrix.md) tracks currently supported harness surfaces.
 
-### Model aliases
+### Model Aliases
 
-`router-auto` works on OpenAI Responses and Chat Completions surfaces. `claude-router-auto` works on the Anthropic Messages surface. Both let the classifier pick the tier per request. To pin a tier, use `router-fast`, `router-balanced`, `router-hard`, `router-deep`, or the matching `claude-router-*` alias.
+`router-auto` works on OpenAI Responses and Chat Completions surfaces. `claude-router-auto` works on Anthropic Messages. Both let the classifier pick the tier per request.
 
-## How routing works
+To pin a tier, use `router-fast`, `router-balanced`, `router-hard`, `router-deep`, or the matching `claude-router-*` alias.
 
-1. A request arrives at `/v1/responses`, `/v1/chat/completions`, or `/v1/messages` and is authenticated by API key, which determines its workspace and user attribution.
-2. The proxy resolves a **routing config** for that key. Precedence: API-key assignment → workspace default → seeded default; the config's active immutable version supplies the rules.
-3. An LLM classifier (structured output with retry, `CLASSIFIER_*` env vars) assigns a tier, unless the caller pinned one via the model alias.
-4. The tier maps to an ordered list of provider targets. The first compatible target wins; native dialect endpoints are preferred, and registered same-family translators can bridge OpenAI Responses ↔ Chat when the route is otherwise compatible.
-5. The route decision, provider attempts, usage, and config identity (config id, version, hash) are persisted on the request for auditing.
+## How Routing Works
 
-Provider HTTP forwarding retries upstream `429` rate limits before sending response headers to the client. It honors `Retry-After`, then provider reset headers (`x-ratelimit-*` for OpenAI, `anthropic-ratelimit-*` for Anthropic), then falls back to jittered exponential backoff. Tune with `PROVIDER_RATE_LIMIT_MAX_ATTEMPTS`, `PROVIDER_RATE_LIMIT_BASE_DELAY_MS`, and `PROVIDER_RATE_LIMIT_MAX_DELAY_MS`; waits above the max delay cap are returned to the client with the provider's original 429 and headers.
+1. A request arrives at `/v1/responses`, `/v1/chat/completions`, or `/v1/messages` and is authenticated by Prompt Proxy API key.
+2. The API key resolves organization, workspace, user attribution, and routing config. Precedence is API-key assignment, then workspace default, then seeded default.
+3. An LLM classifier returns a structured tier decision unless the caller pinned a tier through the model alias.
+4. The active routing config maps the tier to ordered provider targets. Native dialect endpoints are preferred; registered same-family translators can bridge OpenAI Responses and Chat when compatible.
+5. The route decision, provider attempts, usage, routing config identity, and prompt artifacts are persisted for audit and console projections.
 
-Routing configs are edited in the console: saving creates a new immutable version, which can be activated in the same step. Environment variables like `OPENAI_FAST_MODEL` and `ANTHROPIC_HARD_MODEL` only seed local defaults — persisted runtime requests resolve from the database. See the [routing configs runbook](docs/runbooks/routing-configs.md) for assignment commands and troubleshooting.
+Provider HTTP forwarding retries upstream `429` responses before sending headers to the client. It honors `Retry-After`, provider reset headers, and then jittered exponential backoff. Tune with `PROVIDER_RATE_LIMIT_MAX_ATTEMPTS`, `PROVIDER_RATE_LIMIT_BASE_DELAY_MS`, and `PROVIDER_RATE_LIMIT_MAX_DELAY_MS`.
 
-Budget limits live in each routing config's `limits` block (`maxRoute`, `fallbackRoute`, optional `maxEstimatedInputTokens`, `routeEstimatedInputLimits`), edited on the Routing page; requests over an enabled limit are rejected before provider spend. The global request input cap is off by default so long-lived coding sessions can route normally. `MODEL_COSTS_JSON` remains an env-level pricing override.
+Routing configs are edited in the console. Saving creates a new immutable version, which can be activated in the same step. Environment variables such as `OPENAI_FAST_MODEL` and `ANTHROPIC_HARD_MODEL` seed local defaults only; persisted runtime requests resolve from the database.
 
-## Workspaces
+## Operations Console
 
-Each organization contains one or more workspaces (the Anthropic Console / OpenAI Platform model): membership, invitations, provider keys, and prompt-capture settings stay organization-wide, while API keys, routing configs, sessions, requests, usage, and prompt artifacts belong to a workspace. Every organization gets a seeded `Default` workspace and migrations move pre-workspace rows into it; the proxy derives each request's workspace and user from its API key, so traffic is attributed without any client identity headers. In the console, the switcher at the top of the sidebar changes the session's active workspace (`switchWorkspace`) and can create new workspaces inline (`createWorkspace`); every traffic screen shows only the active workspace.
+The web console at `:5173` is an org- and workspace-scoped operations surface with global search, workspace switching, and organization switching.
 
-## The console
-
-The web app at `:5173` is an org-scoped operations console (with a ⌘K global search palette, a workspace switcher, and an organization switcher):
-
-| Page | What it's for |
+| Page | Purpose |
 | --- | --- |
 | Overview | Savings story, route quality watchlist, traffic at a glance |
 | Usage / Cost | Per-dimension usage analytics and cost dashboards |
-| Sessions | Harness sessions with a replay timeline per session |
-| Logs | Request log with full route evidence per request |
+| Sessions / Logs | Harness sessions, replay timeline, request evidence |
 | Prompts | Captured prompt artifacts with syntax-highlighted JSON |
-| API keys | Create (multi-step wizard), revoke, assign routing configs and provider credentials, harness setup guide |
-| Model providers | Provider registry, BYOK keys, and subscription credentials |
-| Routing configs | Edit rules, tier models, and effort; versioned activation |
+| API keys | Key creation, revocation, routing config assignment, provider credential binding, setup snippets |
+| Model providers | Provider registry, BYOK keys, subscription credentials, account health |
+| Routing configs | Tier models, effort, limits, version history, activation |
 | Users | Invitations, roles, deactivation |
 | Settings | Runtime settings, prompt capture, org system prompt |
 
-### User management
+## Data and Security Model
 
-- **Invite** by email with a role (`owner`, `admin`, `member`, `viewer`). Owner/admin sessions can manage users, settings, routing configs, API keys, provider keys, prompt logs, and other sensitive console surfaces; lower roles are limited to non-sensitive read-only dashboards for now. Emails go through [Resend](https://resend.com) when `RESEND_API_KEY` is set; without a key the proxy logs the message and the console shows a copyable invite link.
-- Invite links point at `ADMIN_CONSOLE_URL/invite/<token>`. Tokens are stored as hashes only, rotate on resend, and expire after `INVITATION_TTL_SECONDS` (default 7 days).
-- **Deactivate** instead of delete: blocks console sessions but keeps the user row, API keys, and usage history. The last active owner can't be demoted or deactivated; admins can't deactivate themselves.
-- Every mutation appends a `user.*` audit event to the event log.
+- Every durable table and event is scoped by `organization_id` or in-memory `tenantId`.
+- Traffic-scoped tables are additionally scoped by `workspace_id`.
+- API keys are stored as hashes, never raw tokens.
+- Provider keys are stored as encrypted secret material or secret references.
+- Raw prompt text is supported for this test project, but full prompt content is stored only through `prompt_artifacts.raw_text`; event payloads should not contain full prompts.
+- Debug endpoints are development tools and must not be exposed with default development credentials.
 
-### Provider credentials (BYOK)
+Customer BYOK secrets are encrypted at rest with AES-256-GCM using `PROVIDER_SECRET_ENCRYPTION_KEY` (base64, 32 bytes):
 
-By default the proxy forwards builtin upstream calls with the company keys from env (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`). A customer can instead add their own key on the **Model providers** screen and bind it to one of their prompt-proxy API keys (at most one credential per provider per key). Requests authenticated with that key then forward using the customer's credential. Organization-defined provider rows require an attached credential unless they are explicitly configured with `auth_style: "none"`.
+```shell
+openssl rand -base64 32
+```
 
-Customer secrets are encrypted at rest with AES-256-GCM using `PROVIDER_SECRET_ENCRYPTION_KEY` (base64, 32 bytes — `openssl rand -base64 32`) and are never returned by the admin API, only a masked hint. BYOK applies to the HTTP forward surfaces; the OpenAI realtime WebSocket always uses the company key for now.
+## API Surface
 
-Provider account health is tracked from terminal provider attempts and manual probes. Active cooldowns, terminal credential state, and active provider-account/model lockouts are skipped before provider spend and shown in the Model providers console and request detail health evidence. See the [provider account health runbook](docs/runbooks/provider-account-health.md) for rollout and recovery steps.
-
-**Subscription credentials (internal-only):** an engineer can add a Claude Code or Codex subscription credential, then bind it to an API key they own. Claude subscription setup starts a browser sign-in from the console, captures the Claude Code OAuth callback on the proxy host, and stores the resulting `sk-ant-oat01-...` token; manual Claude `setup-token` paste remains available. The Codex flow can start an OpenAI device-code sign-in from the console, import auth from the proxy host's Codex auth JSON, or fall back to manual token/auth JSON paste. Claude subscription credentials are enabled by default and can be disabled with `SUBSCRIPTION_OAUTH_ENABLED=false`. Anthropic forwards as `Authorization: Bearer` instead of `x-api-key`; OpenAI HTTP Responses traffic forwards to `OPENAI_CHATGPT_BASE_URL` (default `https://chatgpt.com/backend-api/codex`) with `Authorization: Bearer` and `ChatGPT-Account-Id`. Codex refresh tokens are stored only inside the encrypted provider secret bundle and refreshed by the proxy. OAuth credentials are hard-rejected on keys the engineer doesn't own (no pooling). Disabling the flag disables Claude subscription credentials only; OpenAI Codex subscription credentials remain enabled. Read the [subscription auth runbook](docs/runbooks/subscription-auth.md) before use (scope: [local auth import](docs/scopes/subscription-local-auth-v1/PLAN.md)).
-
-## API surface
-
-**Proxy (API-key auth):**
+Proxy routes use API-key auth:
 
 - `GET /healthz`
 - `GET /v1/models`
-- `POST /v1/responses` and `WS /v1/responses` — OpenAI Responses (Codex)
-- `POST /v1/chat/completions` — OpenAI-compatible Chat Completions (opencode, Cursor BYOK, SDK callers)
-- `POST /v1/messages` and `POST /v1/messages/count_tokens` — Anthropic Messages (Claude Code)
-- `GET /setup.sh` — hosted harness setup script
+- `POST /v1/responses` and `WS /v1/responses`
+- `POST /v1/chat/completions`
+- `POST /v1/messages`
+- `POST /v1/messages/count_tokens`
+- `GET /setup.sh`
 
-**Admin (session-cookie auth):** everything the console reads or writes goes through the GraphQL API at `POST /admin/graphql`, including login/logout/org switching and the public invitation-accept flow (the only operations reachable without a session; anonymous introspection is rejected). The SDL lives at [`apps/proxy/schema.graphql`](apps/proxy/schema.graphql) (regenerate with `pnpm --filter @prompt-proxy/proxy schema:print`), and logged-in admins get GraphiQL by opening `/admin/graphql` in a browser.
+Admin routes use session-cookie auth:
 
-**Debug (local development, authenticated):** `GET /_debug/events`, `/_debug/provider-attempts`, `/_debug/outbox`, `/_debug/sessions`, `/_debug/projections`, `/_debug/route-quality`. These endpoints are enabled automatically only when `DATABASE_URL` is unset; set `DEBUG_ENDPOINTS_ENABLED=true` to enable them with persistence, and never expose them with the default development proxy token.
+- `POST /admin/graphql`
+- `GET /admin/graphql` for GraphiQL in development
+- `GET /admin/events` for console live updates
 
-**Operational metrics (disabled by default):** `GET /metrics` emits OpenMetrics/Prometheus text when `METRICS_ENABLED=true`, `METRICS_EXPORTER=prometheus`, and `METRICS_TOKEN` are configured. See the [proxy metrics runbook](docs/runbooks/proxy-metrics.md).
+The GraphQL SDL lives at [apps/proxy/schema.graphql](apps/proxy/schema.graphql). Regenerate it with:
+
+```shell
+pnpm --filter @prompt-proxy/proxy schema:print
+```
+
+Development debug routes include `/_debug/events`, `/_debug/provider-attempts`, `/_debug/outbox`, `/_debug/sessions`, `/_debug/projections`, and `/_debug/route-quality`. They are enabled automatically only when `DATABASE_URL` is unset; set `DEBUG_ENDPOINTS_ENABLED=true` to enable them with persistence.
+
+Operational metrics are disabled by default. `GET /metrics` emits OpenMetrics/Prometheus text when `METRICS_ENABLED=true`, `METRICS_EXPORTER=prometheus`, and `METRICS_TOKEN` are configured. See the [proxy metrics runbook](docs/runbooks/proxy-metrics.md).
 
 ## Persistence
 
-`packages/db` is a Drizzle/Postgres layer. When `DATABASE_URL` is set, every proxy event also persists durable current-state rows for requests, route decisions, provider attempts, usage, sessions, prompt artifacts, events, and outbox items — written in the same transaction.
+`packages/db` is the Drizzle/Postgres layer. When `DATABASE_URL` is set, proxy events and current-state rows for requests, route decisions, provider attempts, usage, sessions, prompt artifacts, events, and outbox items are written in the same transaction.
 
 ```shell
 pnpm db:up        # start Postgres via Docker Compose
@@ -201,23 +234,23 @@ pnpm db:console   # interactive Drizzle console with schema tables preloaded
 pnpm db:runner -- 'await db.select().from(organizations).limit(5)'
 ```
 
-Editable runtime settings live as JSON at `.prompt-proxy/settings.json` (or `PROMPT_PROXY_SETTINGS_PATH`); the `/settings` console page reads and writes that file. Environment variables take precedence, and classifier, budget, and route-quality changes apply after restart.
+Editable runtime settings live as JSON at `.prompt-proxy/settings.json` or `PROMPT_PROXY_SETTINGS_PATH`. Environment variables take precedence, and classifier, budget, and route-quality changes apply after restart.
 
 When seeding multiple organizations into one database, use a distinct `PROMPT_PROXY_TOKEN` per org.
 
-## Spend and routing savings
+## Spend Accounting
 
-Providers return token counts, not dollar amounts, so the proxy computes spend locally: every usage ledger row is priced as `uncached input + cache reads + cache writes + output`, each at its own per-MTok rate. Anthropic usage reports cache reads and writes outside `input_tokens`; the proxy folds them back in, so dashboard token totals always mean total input presented to the model. Routing savings compare each request's actual cost against replaying the same tokens through the balanced route model (the cost of not routing).
+Providers return token counts, not dollar amounts, so Prompt Proxy computes spend locally. Usage ledger rows price uncached input, cache reads, cache writes, and output at their own per-MTok rates. Routing savings compare the actual selected model cost against replaying the same tokens through the balanced route model.
 
-Pricing resolves in three layers, most specific wins per model:
+Pricing resolves in this order:
 
-1. Built-in defaults for the models the proxy ships configured with (`apps/proxy/src/pricing.ts`).
-2. `MODEL_COSTS_JSON` at boot, e.g. `{"claude-haiku-4-5": {"inputCostPerMtok": 1, "outputCostPerMtok": 5, "cacheReadCostPerMtok": 0.1, "cacheWriteCostPerMtok": 1.25}}`. Cache rates default to 10% and 125% of the input rate when omitted.
-3. Per-organization overrides edited live on the console's Billing page (stored in `model_catalog.pricing`), which also lists unpriced models seen in traffic.
+1. Built-in defaults in [apps/proxy/src/pricing.ts](apps/proxy/src/pricing.ts)
+2. `MODEL_COSTS_JSON` at boot
+3. Per-organization overrides edited live on the console's Billing page
 
-Dated identifiers such as `claude-sonnet-4-5-20250929` fall back to their undated pricing entry. Ledger rows keep the rates in effect when they were written; dashboards recompute baselines with current pricing.
+Ledger rows keep the rates in effect when they were written; dashboards recompute baselines with current pricing.
 
-## Verification
+## Development
 
 ```shell
 pnpm lint
@@ -228,7 +261,9 @@ pnpm smoke:harnesses
 pnpm build
 ```
 
-`pnpm smoke` spins up mock OpenAI and Anthropic upstreams, drives Codex-shaped and Claude Code-shaped requests through the proxy, and verifies routing-config resolution end to end — failures are labeled by phase (auth, config resolution, classifier, provider forwarding). `pnpm smoke:harnesses` runs the real installed `codex` and `claude` CLIs against the same mock-backed proxy. `pnpm smoke:deployed` targets a deployed environment via the `PROMPT_PROXY_DEPLOYED_*` env vars.
+`pnpm smoke` spins up mock OpenAI and Anthropic upstreams, drives Codex-shaped and Claude Code-shaped requests through the proxy, and verifies routing-config resolution end to end. `pnpm smoke:harnesses` runs the real installed `codex` and `claude` CLIs against the same mock-backed proxy.
+
+Architecture rules and conventions live in [AGENTS.md](AGENTS.md). The docs index is [docs/index.md](docs/index.md), starting with the [model routing proxy design](docs/model-routing-proxy.md).
 
 ## Deployment
 
@@ -238,26 +273,26 @@ A prod-like AWS deployment is defined with CDK in `infra/cdk`:
 pnpm cdk:synth
 pnpm cdk:diff
 pnpm cdk:deploy
-pnpm ops:migrate:aws   # run migrations as an operations task
-pnpm sync:web:aws      # publish console assets
+pnpm ops:migrate:aws
+pnpm sync:web:aws
 ```
 
-See the [AWS deployment runbook](docs/runbooks/aws-deployment.md) and the [deployment scope plan](docs/scopes/aws-prod-like-deployment-v1/PLAN.md).
+See the [AWS deployment runbook](docs/runbooks/aws-deployment.md) and [deployment scope plan](docs/scopes/aws-prod-like-deployment-v1/PLAN.md).
 
-## Repository layout
+## Repository Layout
 
-```
+```text
 apps/proxy/      Fastify proxy: routing, classifier, provider adapters, admin GraphQL
-apps/web/        TanStack (Router/Query/Table) operations console
+apps/web/        TanStack Router/Query/Table operations console
 packages/db/     Drizzle schema, migrations, persistence services
 packages/schema/ Shared constants and cross-package types
 infra/cdk/       AWS CDK stacks
 docs/            Architecture, scope plans, runbooks, future work
-scripts/         dev-local bootstrap, AWS operations helpers
+scripts/         Local bootstrap and operations helpers
 ```
-
-Architecture rules and conventions live in [AGENTS.md](AGENTS.md); the full docs index is at [docs/index.md](docs/index.md), starting with the [model routing proxy design](docs/model-routing-proxy.md).
 
 ## License
 
-Licensed under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (FSL-1.1-ALv2). You may use, copy, modify, and redistribute the software for any purpose other than offering it (or a substantially similar product or service) commercially. Each release converts to the Apache License 2.0 two years after it is made available. See [fsl.software](https://fsl.software) for details.
+Prompt Proxy is licensed under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (`FSL-1.1-ALv2`). Each release converts to Apache License 2.0 two years after it is made available.
+
+FSL is source-available and allows use, copying, modification, and redistribution for any purpose other than offering the software, or substantially similar functionality, as a competing commercial product or service. If you want an OSI-approved open-source license from day one, replace `LICENSE` and the `license` field in `package.json` before publishing the repository.
