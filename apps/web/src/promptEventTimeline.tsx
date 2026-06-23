@@ -3,7 +3,7 @@ import { ChevronRight, Clock3, FileSearch, ShieldAlert, Zap } from "lucide-react
 import { useState } from "react";
 
 import { compressionSkipReasonLabel } from "./compressionSkipReasons";
-import { compactId, formatCompact, formatDateTime, formatDurationMs } from "./format";
+import { compactId, formatCompact, formatDateTime, formatDurationMs, formatPercent } from "./format";
 import { JsonView } from "./jsonView";
 import {
   compressionEventSummary,
@@ -37,53 +37,148 @@ export function EventTimeline({ events }: { events: ProxyEvent[] }) {
 }
 
 export function CompressionReceiptsCard({ receipts }: { receipts: CompressionReceipt[] }) {
-  const savedTokens = receipts.reduce((sum, receipt) => sum + receipt.savedTokens, 0);
+  const summary = compressionReceiptSummary(receipts);
+  const headerTokens = summary.measuredSavedTokens > 0
+    ? `${formatCompact(summary.actualSavedTokens)} actual · ${formatCompact(summary.measuredSavedTokens)} measured`
+    : `${formatCompact(summary.actualSavedTokens)} actual tokens saved`;
   return (
     <GlassCard className="compression-receipts-card table-wrap">
       <div className="card-head">
         <div className="card-title"><Zap />Compression receipts</div>
-        <span className="faint mono">{receipts.length} blocks · {formatCompact(savedTokens)} tokens</span>
+        <span className="faint mono">{receipts.length} blocks · {headerTokens}</span>
       </div>
       {receipts.length === 0 ? (
         <div className="empty compact-empty">No compression receipts recorded for this request.</div>
       ) : (
-        <DataTable>
-          <thead>
-            <tr>
-              <th>Status</th>
-              <th>Rule</th>
-              <th>Tool</th>
-              <th>Bytes</th>
-              <th>Tokens</th>
-              <th>Retrieval</th>
-              <th>Hash</th>
-            </tr>
-          </thead>
-          <tbody>
-            {receipts.map((receipt) => (
-              <tr key={receipt.id}>
-                <td>
-                  <StatusBadge status={receipt.status} />
-                  <div className="faint">{providerCompressionLabel(receipt)} · {providerForwardingLabel(receipt)}</div>
-                </td>
-                <td>
-                  <div className="mono">{receipt.ruleId}</div>
-                  <div className="faint">v{receipt.ruleVersion}{receipt.skipReason ? ` · ${compressionSkipReasonLabel(receipt.skipReason)}` : ""}</div>
-                </td>
-                <td>
-                  <div className="mono">{receipt.toolName}</div>
-                  <div className="faint">{receipt.commandClass ?? receipt.blockPath}</div>
-                </td>
-                <td className="mono">{formatCompact(receipt.originalBytes)} -&gt; {formatCompact(receipt.compressedBytes)}</td>
-                <td className="mono">{formatCompact(receipt.savedTokens)}</td>
-                <td><ReceiptRetrieval receipt={receipt} /></td>
-                <td className="mono" title={receipt.compressedSha256}>{compactId(receipt.compressedSha256, 9)}</td>
+        <>
+          <CompressionSummaryStrip summary={summary} />
+          <DataTable>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Rule</th>
+                <th>Tool</th>
+                <th>Bytes</th>
+                <th>Tokens</th>
+                <th>Retrieval</th>
+                <th>Hash</th>
               </tr>
-            ))}
-          </tbody>
-        </DataTable>
+            </thead>
+            <tbody>
+              {receipts.map((receipt) => (
+                <tr key={receipt.id}>
+                  <td>
+                    <StatusBadge status={receipt.status} />
+                    <div className="faint">{providerCompressionLabel(receipt)} · {providerForwardingLabel(receipt)}</div>
+                  </td>
+                  <td>
+                    <div className="mono">{receipt.ruleId}</div>
+                    <div className="faint">v{receipt.ruleVersion}{receipt.skipReason ? ` · ${compressionSkipReasonLabel(receipt.skipReason)}` : ""}</div>
+                  </td>
+                  <td>
+                    <div className="mono">{receipt.toolName}</div>
+                    <div className="faint">{receipt.commandClass ?? receipt.blockPath}</div>
+                  </td>
+                  <td>
+                    <div className="mono">{formatCompact(receipt.originalBytes)} -&gt; {formatCompact(receipt.compressedBytes)}</div>
+                    <div className="faint">{compressionReductionLabel(receipt.savedBytes, receipt.originalBytes)}</div>
+                  </td>
+                  <td className="mono">{formatCompact(receipt.savedTokens)}</td>
+                  <td><ReceiptRetrieval receipt={receipt} /></td>
+                  <td className="mono" title={receipt.compressedSha256}>{compactId(receipt.compressedSha256, 9)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
+        </>
       )}
     </GlassCard>
+  );
+}
+
+type CompressionReceiptSummary = {
+  compressedCount: number;
+  measuredCount: number;
+  skippedCount: number;
+  providerCompressedCount: number;
+  providerOriginalCount: number;
+  actualOriginalBytes: number;
+  actualSavedBytes: number;
+  actualSavedTokens: number;
+  measuredOriginalBytes: number;
+  measuredSavedBytes: number;
+  measuredSavedTokens: number;
+};
+
+export function compressionReceiptSummary(receipts: CompressionReceipt[]): CompressionReceiptSummary {
+  const summary: CompressionReceiptSummary = {
+    compressedCount: 0,
+    measuredCount: 0,
+    skippedCount: 0,
+    providerCompressedCount: 0,
+    providerOriginalCount: 0,
+    actualOriginalBytes: 0,
+    actualSavedBytes: 0,
+    actualSavedTokens: 0,
+    measuredOriginalBytes: 0,
+    measuredSavedBytes: 0,
+    measuredSavedTokens: 0
+  };
+
+  for (const receipt of receipts) {
+    if (isProviderCompression(receipt)) {
+      summary.compressedCount += 1;
+      summary.providerCompressedCount += 1;
+      summary.actualOriginalBytes += receipt.originalBytes;
+      summary.actualSavedBytes += receipt.savedBytes;
+      summary.actualSavedTokens += receipt.savedTokens;
+    } else if (receipt.status === "applied" && receipt.mode === "measure_only") {
+      summary.measuredCount += 1;
+      summary.providerOriginalCount += 1;
+      summary.measuredOriginalBytes += receipt.originalBytes;
+      summary.measuredSavedBytes += receipt.savedBytes;
+      summary.measuredSavedTokens += receipt.savedTokens;
+    } else {
+      summary.skippedCount += 1;
+      summary.providerOriginalCount += 1;
+    }
+  }
+
+  return summary;
+}
+
+function CompressionSummaryStrip({ summary }: { summary: CompressionReceiptSummary }) {
+  return (
+    <div className="compression-summary-strip" aria-label="Compression receipt summary">
+      <CompressionSummaryItem label="Compressed" value={formatCompact(summary.compressedCount)} detail="provider saw compressed" />
+      <CompressionSummaryItem label="Measured" value={formatCompact(summary.measuredCount)} detail="potential only" />
+      <CompressionSummaryItem label="Skipped" value={formatCompact(summary.skippedCount)} detail="no rewrite" />
+      <CompressionSummaryItem
+        label="Actual savings"
+        value={`${formatCompact(summary.actualSavedBytes)} bytes`}
+        detail={`${formatCompact(summary.actualSavedTokens)} tokens · ${compressionReductionLabel(summary.actualSavedBytes, summary.actualOriginalBytes)}`}
+      />
+      <CompressionSummaryItem
+        label="Measured potential"
+        value={`${formatCompact(summary.measuredSavedBytes)} bytes`}
+        detail={`${formatCompact(summary.measuredSavedTokens)} tokens · ${compressionReductionLabel(summary.measuredSavedBytes, summary.measuredOriginalBytes)}`}
+      />
+      <CompressionSummaryItem
+        label="Provider input"
+        value={`${formatCompact(summary.providerCompressedCount)} / ${formatCompact(summary.providerOriginalCount)}`}
+        detail="compressed / original"
+      />
+    </div>
+  );
+}
+
+function CompressionSummaryItem({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="compression-summary-item">
+      <span>{label}</span>
+      <strong className="mono">{value}</strong>
+      <small>{detail}</small>
+    </div>
   );
 }
 
@@ -123,8 +218,16 @@ function providerCompressionLabel(receipt: CompressionReceipt) {
 }
 
 function providerForwardingLabel(receipt: CompressionReceipt) {
-  if (receipt.status !== "applied" || receipt.mode === "measure_only") return "provider saw original";
-  return "provider saw compressed";
+  return isProviderCompression(receipt) ? "provider saw compressed" : "provider saw original";
+}
+
+function isProviderCompression(receipt: CompressionReceipt) {
+  return receipt.status === "applied" && receipt.mode !== "measure_only";
+}
+
+function compressionReductionLabel(savedBytes: number, originalBytes: number) {
+  if (originalBytes <= 0) return "no byte baseline";
+  return `${formatPercent(Math.max(0, Math.min(1, savedBytes / originalBytes)))} smaller`;
 }
 
 function HealthSkipRows({ skips }: { skips: HealthSkipEvidence[] }) {
