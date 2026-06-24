@@ -19,7 +19,7 @@ type SearchGroup = {
 
 const DEFAULT_SHELL_TOOL_NAMES = ["Bash", "bash", "shell", "local_shell", "run_terminal_cmd"];
 const SEARCH_TOOL_NAMES = ["Search", "Grep", "grep", "rg", "ripgrep"];
-const FORMAT = "prompt-proxy.search-result-grouping.v1";
+const FORMAT = "prompt.search-result-grouping.v1";
 
 export const searchResultGroupingRule = searchResultGroupingRuleForNames(DEFAULT_SHELL_TOOL_NAMES);
 

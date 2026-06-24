@@ -17,7 +17,7 @@ function liveEvent(overrides: Partial<ProxyEvent> = {}): ProxyEvent {
     workspaceId: "ws_a",
     scopeType: "request",
     scopeId: "request_1",
-    actor: { type: "proxy", id: "prompt-proxy" },
+    actor: { type: "proxy", id: "proxy" },
     producer: "test",
     eventType: "proxy.request_received",
     payloadHash: "sha256:test",

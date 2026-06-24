@@ -8,6 +8,7 @@ import {
   canVisitStep,
   credentialModeLabel,
   createProviderCredentialSteps,
+  secretLabelForDraft,
   sourceLabelForDraft,
   stepRailState,
   withCredentialMode,

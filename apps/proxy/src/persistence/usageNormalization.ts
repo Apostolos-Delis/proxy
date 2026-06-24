@@ -1,6 +1,6 @@
 import { gt, sql } from "drizzle-orm";
 
-import { usageLedger, type PromptProxyDbSession } from "@prompt-proxy/db";
+import { usageLedger, type ProxyDbSession } from "@proxy/db";
 
 // Rows ingested before normalizeUsage existed carry Anthropic's wire shape:
 // input_tokens EXCLUSIVE of the cache_read/cache_creation counts. Under the
@@ -13,7 +13,7 @@ import { usageLedger, type PromptProxyDbSession } from "@prompt-proxy/db";
 // keep their ingest snapshot, matching repriceZeroCostUsage's rule that
 // priced rows never reprice. Folding makes the condition unsatisfiable, so
 // boot re-runs are no-ops.
-export async function normalizeLegacyCachedUsage(db: PromptProxyDbSession) {
+export async function normalizeLegacyCachedUsage(db: ProxyDbSession) {
   const cacheTokens = sql`${usageLedger.cachedInputTokens} + ${usageLedger.cacheCreationInputTokens}`;
   const healed = await db
     .update(usageLedger)

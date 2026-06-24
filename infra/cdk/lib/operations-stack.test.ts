@@ -2,13 +2,13 @@ import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, it } from "vitest";
 
 import { stackName } from "./config.js";
-import { PromptProxyOperationsStack } from "./operations-stack.js";
+import { ProxyOperationsStack } from "./operations-stack.js";
 import { createRuntimeStacks } from "./test-helpers.js";
 
-describe("PromptProxyOperationsStack", () => {
+describe("ProxyOperationsStack", () => {
   it("creates a public-subnet operations task for migrations and seed overrides", () => {
     const { config, database, foundation, network, runtimeSecrets } = createRuntimeStacks();
-    const operations = new PromptProxyOperationsStack(network.node.root, stackName(config, "operations-test"), {
+    const operations = new ProxyOperationsStack(network.node.root, stackName(config, "operations-test"), {
       config,
       database,
       env: {
@@ -23,10 +23,10 @@ describe("PromptProxyOperationsStack", () => {
     const template = Template.fromStack(operations);
 
     template.hasResourceProperties("AWS::ECS::Cluster", {
-      ClusterName: "prompt-proxy-staging-operations-cluster"
+      ClusterName: "proxy-staging-operations-cluster"
     });
     template.hasResourceProperties("AWS::ECS::TaskDefinition", {
-      Family: "prompt-proxy-staging-operations-task",
+      Family: "proxy-staging-operations-task",
       RuntimePlatform: {
         CpuArchitecture: "ARM64",
         OperatingSystemFamily: "LINUX"
@@ -37,13 +37,13 @@ describe("PromptProxyOperationsStack", () => {
           Command: ["pnpm", "db:migrate"],
           Secrets: Match.arrayWith([
             Match.objectLike({ Name: "DATABASE_URL" }),
-            Match.objectLike({ Name: "PROMPT_PROXY_TOKEN" })
+            Match.objectLike({ Name: "PROXY_TOKEN" })
           ])
         })
       ])
     });
     template.hasResourceProperties("AWS::ECS::TaskDefinition", {
-      Family: "prompt-proxy-staging-seed-task",
+      Family: "proxy-staging-seed-task",
       RuntimePlatform: {
         CpuArchitecture: "ARM64",
         OperatingSystemFamily: "LINUX"

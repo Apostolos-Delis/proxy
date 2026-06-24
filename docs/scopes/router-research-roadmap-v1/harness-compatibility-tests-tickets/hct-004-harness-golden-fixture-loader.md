@@ -21,7 +21,7 @@ Goal: Create the fixture format and assertions used by all compatibility tests.
 ## Validation
 
 - Add fixture loader tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 - Run `pnpm typecheck`.
 
 ## Likely Files

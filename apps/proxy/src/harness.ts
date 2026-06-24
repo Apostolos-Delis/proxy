@@ -1,4 +1,4 @@
-import type { HarnessCompatibilityProfileId } from "@prompt-proxy/schema";
+import type { HarnessCompatibilityProfileId } from "@proxy/schema";
 
 import type { Dialect, Surface } from "./types.js";
 import { isRecord } from "./util.js";

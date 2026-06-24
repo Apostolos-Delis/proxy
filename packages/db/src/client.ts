@@ -5,29 +5,29 @@ import postgres from "postgres";
 
 import * as schema from "./schema.js";
 
-export type PromptProxyPgliteDatabase = PgliteDatabase<typeof schema>;
-export type PromptProxyPostgresDatabase = PostgresJsDatabase<typeof schema>;
-export type PromptProxyDatabase = PromptProxyPgliteDatabase | PromptProxyPostgresDatabase;
-export type PromptProxyPgliteTransaction = Parameters<Parameters<PromptProxyPgliteDatabase["transaction"]>[0]>[0];
-export type PromptProxyPostgresTransaction = Parameters<Parameters<PromptProxyPostgresDatabase["transaction"]>[0]>[0];
-export type PromptProxyTransaction = PromptProxyPgliteTransaction | PromptProxyPostgresTransaction;
-export type PromptProxyDbSession = PromptProxyDatabase | PromptProxyTransaction;
-export type PromptProxyTransactionalDatabase = {
-  transaction<T>(callback: (tx: PromptProxyTransaction) => Promise<T>): Promise<T>;
+export type ProxyPgliteDatabase = PgliteDatabase<typeof schema>;
+export type ProxyPostgresDatabase = PostgresJsDatabase<typeof schema>;
+export type ProxyDatabase = ProxyPgliteDatabase | ProxyPostgresDatabase;
+export type ProxyPgliteTransaction = Parameters<Parameters<ProxyPgliteDatabase["transaction"]>[0]>[0];
+export type ProxyPostgresTransaction = Parameters<Parameters<ProxyPostgresDatabase["transaction"]>[0]>[0];
+export type ProxyTransaction = ProxyPgliteTransaction | ProxyPostgresTransaction;
+export type ProxyDbSession = ProxyDatabase | ProxyTransaction;
+export type ProxyTransactionalDatabase = {
+  transaction<T>(callback: (tx: ProxyTransaction) => Promise<T>): Promise<T>;
 };
 
-export function createPostgresDatabase(databaseUrl: string): PromptProxyPostgresDatabase {
+export function createPostgresDatabase(databaseUrl: string): ProxyPostgresDatabase {
   return drizzlePostgres(postgres(databaseUrl), { schema });
 }
 
-export function createPgliteDatabase(client = new PGlite()): PromptProxyPgliteDatabase {
+export function createPgliteDatabase(client = new PGlite()): ProxyPgliteDatabase {
   return drizzlePglite(client, { schema });
 }
 
-export function createTransactionalDatabase(db: PromptProxyDatabase): PromptProxyTransactionalDatabase {
+export function createTransactionalDatabase(db: ProxyDatabase): ProxyTransactionalDatabase {
   return {
-    transaction<T>(callback: (tx: PromptProxyTransaction) => Promise<T>) {
-      return db.transaction((tx) => callback(tx as PromptProxyTransaction));
+    transaction<T>(callback: (tx: ProxyTransaction) => Promise<T>) {
+      return db.transaction((tx) => callback(tx as ProxyTransaction));
     }
   };
 }

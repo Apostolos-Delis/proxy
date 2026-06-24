@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { compressionReceipts } from "@prompt-proxy/db";
+import { compressionReceipts } from "@proxy/db";
 
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 

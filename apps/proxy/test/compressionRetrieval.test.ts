@@ -10,8 +10,8 @@ import {
   promptAccessAudit,
   promptArtifacts,
   workspaces
-} from "@prompt-proxy/db";
-import { defaultCompressionPolicy } from "@prompt-proxy/schema";
+} from "@proxy/db";
+import { defaultCompressionPolicy } from "@proxy/schema";
 
 import { sha256 } from "../src/util.js";
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";

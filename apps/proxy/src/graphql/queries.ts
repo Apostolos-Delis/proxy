@@ -9,6 +9,7 @@ import {
 import { aggregateCompressionSavings } from "../persistence/compressionSavings.js";
 import { aggregateIdleGaps } from "../persistence/idleGaps.js";
 import { aggregateTokenAttribution } from "../persistence/tokenAttributionReport.js";
+import { harnessCompatibilityReport } from "../harnessCompatibilityReport.js";
 import { compareModelPricingEntries, staticPricingEntries } from "../pricing.js";
 import { readSettingsFile } from "../settings.js";
 import { availableCompressionRules } from "../toolResultCompression.js";
@@ -50,6 +51,7 @@ import {
 import { SearchResult } from "./types/search.js";
 import { SessionDetail, SessionSummary } from "./types/sessions.js";
 import { CompressionRuleCatalog, Settings } from "./types/settings.js";
+import { HarnessCompatibilityMatrixEntry } from "./types/harness.js";
 import { OrgMember, UserDetail, UserSummary } from "./types/users.js";
 import { Viewer } from "./types/viewer.js";
 
@@ -502,6 +504,14 @@ builder.queryFields((t) => ({
     resolve: (_root, _args, context) => {
       requireAdminRole(context);
       return availableCompressionRules();
+    }
+  }),
+
+  harnessCompatibilityMatrix: t.field({
+    type: [HarnessCompatibilityMatrixEntry],
+    resolve: (_root, _args, context) => {
+      requireAdminRole(context);
+      return harnessCompatibilityReport();
     }
   }),
 

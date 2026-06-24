@@ -6,7 +6,7 @@ import {
   events,
   modelCatalog,
   providers
-} from "@prompt-proxy/db";
+} from "@proxy/db";
 
 import { ModelCatalogRefreshJob } from "../src/jobs/modelCatalogRefresh.js";
 import { catalogPricingForModel } from "../src/persistence/modelPricing.js";

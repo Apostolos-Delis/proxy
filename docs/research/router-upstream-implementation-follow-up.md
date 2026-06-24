@@ -1,6 +1,6 @@
 # Router Upstream Implementation Follow-Up
 
-This is a second-pass code review of the upstream projects previously compared with Prompt Proxy. It focuses on implementation details that were either not captured in the first research pass or are now more useful because this branch already includes tool-result compression, provider registry work, translation wiring, and token/caching analytics.
+This is a second-pass code review of the upstream projects previously compared with Proxy. It focuses on implementation details that were either not captured in the first research pass or are now more useful because this branch already includes tool-result compression, provider registry work, translation wiring, and token/caching analytics.
 
 Sources reviewed:
 
@@ -9,9 +9,9 @@ Sources reviewed:
 - Kong: `.context/upstreams/kong`, commit `1730282ec2f8ed097cf6ad6a3d69e55b7ba9ebb6`
 - OmniRoute: `.context/upstreams/OmniRoute`, commit `dd5a3db55ed9bca1f71398e6e584da2983a70bea`
 
-## Current Prompt Proxy Baseline
+## Current Proxy Baseline
 
-Prompt Proxy has already implemented more of the token-compression roadmap than the original upstream research assumed:
+Proxy has already implemented more of the token-compression roadmap than the original upstream research assumed:
 
 - `apps/proxy/src/toolResultCompression.ts` walks Anthropic Messages, OpenAI Responses, and OpenAI Chat tool-result shapes.
 - `apps/proxy/src/compressionRules/mcpJson.ts` and `jsonWhitespace.ts` provide deterministic JSON whitespace compaction without parse/stringify reserialization.
@@ -43,7 +43,7 @@ Implementation lessons:
 - Health checks are bounded and mode-aware. Non-chat endpoints do not blindly receive chat-only params like `max_tokens`.
 - Fallback management is exposed as an operator API with separate general, context-window, and content-policy fallback types.
 
-What Prompt Proxy should borrow:
+What Proxy should borrow:
 
 - Convert provider health, model health, rate limits, and budget windows into route-plan filters with durable skip evidence.
 - Add pre-call limiter interfaces that can reject before classifier/provider spend and true up after usage.
@@ -78,7 +78,7 @@ Implementation lessons:
 - Combo routing reorders candidates by hard capability fit before fallback, which avoids trying a text-only model for a vision/PDF request.
 - The translator tree is organized by request/response direction and concern modules, making edge-case translation easier to test.
 
-What Prompt Proxy should borrow:
+What Proxy should borrow:
 
 - Add a measure-only pass for RTK-style filter candidates before applying any lossy or command-aware rule.
 - Record the detected output class and skipped reason even when no rule applies.
@@ -108,16 +108,16 @@ Implementation lessons:
 - Timing is captured per phase: rewrite, access, balancer, response, header filter, body filter, and log.
 - The runloop isolates plugin execution from core lifecycle work while preserving a single request context.
 
-What Prompt Proxy should borrow:
+What Proxy should borrow:
 
-- Add a built-in, typed phase ledger for Prompt Proxy's own request lifecycle: parse, auth, prompt capture, token attribution, routing, target planning, compression, translation, provider send, stream observation, usage, events, and metrics.
+- Add a built-in, typed phase ledger for Proxy's own request lifecycle: parse, auth, prompt capture, token attribution, routing, target planning, compression, translation, provider send, stream observation, usage, events, and metrics.
 - Record phase timings in events or bounded-cardinality metrics.
 - Make phase context explicit so route handlers stop owning policy sequencing directly.
 
 What not to borrow:
 
 - Do not add arbitrary third-party plugins in the hot path.
-- Do not generalize Prompt Proxy into a full API gateway.
+- Do not generalize Proxy into a full API gateway.
 
 ## OmniRoute Findings
 
@@ -138,18 +138,18 @@ Implementation lessons:
 
 - OmniRoute's compression system has useful operational pieces: engine registry, config schema, preview endpoint, analytics by engine, validation warnings, raw-output retention pointers, and per-engine breakdowns.
 - Its RTK engine uses command detection, filter catalogs, per-rule enable/disable config, raw-output retention modes, and max line/char caps.
-- Its tabular JSON encoder is a useful shape to study, but it parses JSON and can normalize numbers. Prompt Proxy's current JSON rule intentionally avoids that class of corruption.
+- Its tabular JSON encoder is a useful shape to study, but it parses JSON and can normalize numbers. Proxy's current JSON rule intentionally avoids that class of corruption.
 - The validation layer protects fenced code, inline code, URLs, markdown links, frontmatter, headings, tables, math blocks, versions, and constants during prose compression.
 - `quotaCache.ts` models quota snapshots separately from request failures and unblocks stale exhausted accounts after reset windows pass.
 - `costRules.ts` models budget windows, reset intervals, warning thresholds, and pending spend batches.
 - `assessment/assessor.ts` probes provider/model pairs and records status, latency, success rate, and coarse capability support.
 - Auto-combo scoring combines health, quota, cost, latency, task fit, exploration, and tier preferences.
 
-What Prompt Proxy should borrow:
+What Proxy should borrow:
 
 - Add compression preview and rule catalog APIs for operators.
 - Add block-level compression receipts and per-rule analytics rather than only aggregate `compression.recorded` payloads.
-- Add raw-output artifact pointers only under Prompt Proxy prompt-capture policy.
+- Add raw-output artifact pointers only under Proxy prompt-capture policy.
 - Add quota snapshots and reset-aware unblocking to provider account health.
 - Add model assessment jobs that feed route-plan evidence but do not silently rewrite routing configs.
 - Use auto-combo factors as explainable evidence, not as an opaque route selector.
@@ -179,7 +179,7 @@ The compression-specific tickets are in [Tool Output Compression Tickets](../sco
 
 ## Post-TOC-009 Re-Audit Addendum
 
-This addendum revisits the same local clones after Prompt Proxy gained policy-based compression, measure-only receipts, preview, shell classification, and request-level compression evidence.
+This addendum revisits the same local clones after Proxy gained policy-based compression, measure-only receipts, preview, shell classification, and request-level compression evidence.
 
 Additional source areas reviewed:
 
@@ -190,9 +190,9 @@ Additional source areas reviewed:
 
 ### Compression Quality And Rollback
 
-9router's RTK implementation is still valuable for output-shape coverage. It handles Anthropic `tool_result`, OpenAI Chat tool messages, OpenAI Responses `function_call_output`, and Kiro history. It skips explicit error tool results, rejects empty output, rejects output growth, and records simple hit stats. Prompt Proxy now matches the safe parts of this model, but should keep the difference that matters: no in-place mutation and no unreceipted lossy rewrite.
+9router's RTK implementation is still valuable for output-shape coverage. It handles Anthropic `tool_result`, OpenAI Chat tool messages, OpenAI Responses `function_call_output`, and Kiro history. It skips explicit error tool results, rejects empty output, rejects output growth, and records simple hit stats. Proxy now matches the safe parts of this model, but should keep the difference that matters: no in-place mutation and no unreceipted lossy rewrite.
 
-OmniRoute's RTK engine adds the operator controls Prompt Proxy still needs:
+OmniRoute's RTK engine adds the operator controls Proxy still needs:
 
 - Per-engine and per-filter enable/disable config.
 - `maxLinesPerResult` and `maxCharsPerResult` caps.
@@ -201,11 +201,11 @@ OmniRoute's RTK engine adds the operator controls Prompt Proxy still needs:
 - Raw-output retention modes: `never`, `failures`, and `always`.
 - Per-engine stats and preview support.
 
-Prompt Proxy should not copy OmniRoute's broad prose/code compression engines into default traffic. The transferable idea is the rollback surface: every rule needs a durable id/version, caps, kill switch, quality telemetry, and a scoped rollout path.
+Proxy should not copy OmniRoute's broad prose/code compression engines into default traffic. The transferable idea is the rollback surface: every rule needs a durable id/version, caps, kill switch, quality telemetry, and a scoped rollout path.
 
 LiteLLM's limiter and cooldown implementations make the rollback shape clearer. Budget, RPM/TPM, and cooldown checks are pre-call filters with explicit skip reasons, then success paths true up usage. Compression quality controls should follow that pattern: a disabled or risky rule should be filtered before provider send and recorded in the route evidence, not discovered only through dashboard correlation later.
 
-Kong's phase discipline should apply to compression as a named phase. Prompt Proxy now records `routing.compression_evidence_recorded`, but the longer-term policy pipeline should also track phase timing and make compression/translation/provider-send ordering explicit.
+Kong's phase discipline should apply to compression as a named phase. Proxy now records `routing.compression_evidence_recorded`, but the longer-term policy pipeline should also track phase timing and make compression/translation/provider-send ordering explicit.
 
 Concrete follow-ups:
 
@@ -219,10 +219,10 @@ Concrete follow-ups:
 
 9router includes Anthropic's `context-management-2025-06-27` beta in provider headers, but the reviewed code does not model provider-side context edits as first-class receipts. OmniRoute's closest related system is `context-relay`: it generates and stores handoff summaries when account rotation or model switching is likely, then injects those summaries into future requests. That is a local summarization/handoff feature, not provider-delegated context editing.
 
-Prompt Proxy should keep this separate from local tool-result compression:
+Proxy should keep this separate from local tool-result compression:
 
-- Local compression claims byte/token savings because Prompt Proxy changes the forwarded request body.
-- Provider-delegated context editing asks the upstream provider to alter retained context, so Prompt Proxy should record provider receipts and cache impact, not local savings.
+- Local compression claims byte/token savings because Proxy changes the forwarded request body.
+- Provider-delegated context editing asks the upstream provider to alter retained context, so Proxy should record provider receipts and cache impact, not local savings.
 - Handoff summaries are local prompt rewriting and should remain out of the compression roadmap unless a future product explicitly opts into session handoff.
 
 Concrete follow-ups:
@@ -230,4 +230,4 @@ Concrete follow-ups:
 1. Create a research spike for Anthropic-compatible provider context editing with explicit provider/dialect support.
 2. Record provider context-edit receipts separately from `compression_receipts`.
 3. Measure cache-hit/cache-write impact before enabling it for stateful sessions.
-4. Do not add broad handoff summarization to Prompt Proxy's hot path as part of compression.
+4. Do not add broad handoff summarization to Proxy's hot path as part of compression.

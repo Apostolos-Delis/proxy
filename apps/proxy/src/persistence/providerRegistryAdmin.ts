@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { providers, type PromptProxyTransaction, type PromptProxyTransactionalDatabase } from "@prompt-proxy/db";
-import { DIALECT_NAMES, EFFORTS, PROVIDER_AUTH_STYLES } from "@prompt-proxy/schema";
+import { providers, type ProxyTransaction, type ProxyTransactionalDatabase } from "@proxy/db";
+import { DIALECT_NAMES, EFFORTS, PROVIDER_AUTH_STYLES } from "@proxy/schema";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -44,7 +44,7 @@ export class ProviderRegistryAdminError extends AdminMutationError {}
 
 export class ProviderRegistryAdminService {
   constructor(
-    private readonly db: PromptProxyTransactionalDatabase,
+    private readonly db: ProxyTransactionalDatabase,
     private readonly networkPolicy: ProviderNetworkPolicy
   ) {}
 
@@ -86,7 +86,7 @@ export class ProviderRegistryAdminService {
         scopeId: providerId,
         correlationId: providerId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.providers",
+        producer: "proxy.admin.providers",
         eventType: "provider.created",
         payload: providerPayload(providerId, body.data),
         createdAt: now
@@ -132,7 +132,7 @@ export class ProviderRegistryAdminService {
         scopeId: input.providerId,
         correlationId: input.providerId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.providers",
+        producer: "proxy.admin.providers",
         eventType: "provider.updated",
         payload: {
           ...providerPayload(input.providerId, { ...body.data, slug: existing.slug }),
@@ -166,7 +166,7 @@ export class ProviderRegistryAdminService {
         scopeId: input.providerId,
         correlationId: input.providerId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.providers",
+        producer: "proxy.admin.providers",
         eventType: "provider.disabled",
         payload: {
           providerId: input.providerId,
@@ -202,7 +202,7 @@ async function validateProviderBody(
   }
 }
 
-async function orgProviderBySlug(tx: PromptProxyTransaction, organizationId: string, slug: string) {
+async function orgProviderBySlug(tx: ProxyTransaction, organizationId: string, slug: string) {
   const [provider] = await tx
     .select({ id: providers.id })
     .from(providers)
@@ -214,7 +214,7 @@ async function orgProviderBySlug(tx: PromptProxyTransaction, organizationId: str
   return provider;
 }
 
-async function editableProviderById(tx: PromptProxyTransaction, organizationId: string, providerId: string) {
+async function editableProviderById(tx: ProxyTransaction, organizationId: string, providerId: string) {
   const [provider] = await tx
     .select({
       id: providers.id,

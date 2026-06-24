@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   TRANSLATABLE_DIALECT_PAIRS,
   TRANSLATION_COMPATIBILITY_DIALECTS
-} from "@prompt-proxy/schema/translationCompatibility";
+} from "@proxy/schema/translationCompatibility";
 import { translators } from "../src/translators/index.js";
 
 async function fixture(name: string) {

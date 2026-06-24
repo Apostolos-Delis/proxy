@@ -15,8 +15,8 @@ import {
   usageLedger,
   users,
   workspaces
-} from "@prompt-proxy/db";
-import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
+} from "@proxy/db";
+import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
 
 import {
   adminGql,
@@ -141,7 +141,7 @@ describe("admin prompt APIs", () => {
       headers: {
         authorization: "Bearer proxy-token",
         "content-type": "application/json",
-        "x-prompt-proxy-user-id": "user_prompt_admin"
+        "x-proxy-user-id": "user_prompt_admin"
       },
       body: JSON.stringify({
         model: "router-auto",
@@ -288,7 +288,7 @@ describe("admin prompt APIs", () => {
         "content-type": "application/json",
         "anthropic-version": "2023-06-01",
         "x-claude-code-session-id": "claude-admin-session",
-        "x-prompt-proxy-user-id": "claude_user"
+        "x-proxy-user-id": "claude_user"
       },
       body: JSON.stringify({
         model: "claude-router-auto",
@@ -434,17 +434,17 @@ describe("admin prompt APIs", () => {
       organizationId: "org_api_key_identity",
       workspaceId: defaultWorkspaceId("org_api_key_identity"),
       userId: "api_owner",
-      keyHash: hashApiKey("owned-proxy-token"),
+      keyHash: hashApiKey("owned-token"),
       name: "Owned Proxy Token"
     });
 
     const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
       method: "POST",
       headers: {
-        authorization: "Bearer owned-proxy-token",
+        authorization: "Bearer owned-token",
         "content-type": "application/json",
-        "x-prompt-proxy-user-id": "spoofed_user",
-        "x-prompt-proxy-team-id": "spoofed_team",
+        "x-proxy-user-id": "spoofed_user",
+        "x-proxy-team-id": "spoofed_team",
         "x-codex-session-id": "api-key-session"
       },
       body: JSON.stringify({
@@ -495,7 +495,7 @@ describe("admin prompt APIs", () => {
     await seedDatabase(fixture.db, seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_seeded_key_identity",
       SEED_USER_ID: "local-user",
-      PROMPT_PROXY_TOKEN: "proxy-token",
+      PROXY_TOKEN: "proxy-token",
       OPENAI_BASE_URL: fixture.openai.url,
       ANTHROPIC_BASE_URL: fixture.anthropic.url
     }));
@@ -505,8 +505,8 @@ describe("admin prompt APIs", () => {
       headers: {
         authorization: "Bearer proxy-token",
         "content-type": "application/json",
-        "x-prompt-proxy-user-id": "codex_seeded_user",
-        "x-prompt-proxy-team-id": "codex_seeded_team",
+        "x-proxy-user-id": "codex_seeded_user",
+        "x-proxy-team-id": "codex_seeded_team",
         "x-codex-session-id": "seeded-api-key-session"
       },
       body: JSON.stringify({
@@ -545,7 +545,7 @@ describe("admin prompt APIs", () => {
     await seedDatabase(fixture.db, seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_admin_api_keys",
       SEED_USER_ID: "local-user",
-      PROMPT_PROXY_TOKEN: "proxy-token",
+      PROXY_TOKEN: "proxy-token",
       OPENAI_BASE_URL: fixture.openai.url,
       ANTHROPIC_BASE_URL: fixture.anthropic.url
     }));

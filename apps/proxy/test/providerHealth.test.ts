@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PROVIDER_HEALTH_MESSAGE_MAX_CHARS } from "@prompt-proxy/schema";
+import { PROVIDER_HEALTH_MESSAGE_MAX_CHARS } from "@proxy/schema";
 
 import { classifyProviderTerminalHealth } from "../src/providerHealth.js";
 

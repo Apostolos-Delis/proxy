@@ -10,10 +10,10 @@ import {
   type BuiltinProvider,
   type RouteName,
   type RoutingConfig
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import { hashApiKey } from "./apiKeyHash.js";
-import type { PromptProxyDbSession } from "./client.js";
+import type { ProxyDbSession } from "./client.js";
 import * as schema from "./schema.js";
 import {
   apiKeys,
@@ -70,7 +70,7 @@ const modelsDevSnapshot = JSON.parse(
   readFileSync(new URL("../data/models-dev-snapshot.json", import.meta.url), "utf8")
 ) as ModelsDevSnapshotEntry[];
 
-export async function seedDatabase(db: PromptProxyDbSession, options: SeedOptions) {
+export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
   const now = new Date();
   const organizationSlug = slug(options.organizationId);
   const workspaceId = defaultWorkspaceId(options.organizationId);
@@ -88,7 +88,7 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
 
   if (tokenOwner && tokenOwner.id !== defaultApiKeyId) {
     throw new Error(
-      `PROMPT_PROXY_TOKEN is already assigned to ${tokenOwner.id} in organization ${tokenOwner.organizationId}; set a unique PROMPT_PROXY_TOKEN for ${options.organizationId}.`
+      `PROXY_TOKEN is already assigned to ${tokenOwner.id} in organization ${tokenOwner.organizationId}; set a unique PROXY_TOKEN for ${options.organizationId}.`
     );
   }
 
@@ -401,7 +401,7 @@ export async function seedDatabase(db: PromptProxyDbSession, options: SeedOption
   };
 }
 
-async function upsertDefaultWorkspace(db: PromptProxyDbSession, organizationId: string, now: Date) {
+async function upsertDefaultWorkspace(db: ProxyDbSession, organizationId: string, now: Date) {
   await db
     .insert(workspaces)
     .values({
@@ -423,7 +423,7 @@ async function upsertDefaultWorkspace(db: PromptProxyDbSession, organizationId: 
     });
 }
 
-async function upsertBuiltinProviders(db: PromptProxyDbSession, options: SeedOptions, now: Date) {
+async function upsertBuiltinProviders(db: ProxyDbSession, options: SeedOptions, now: Date) {
   const rows = [
     {
       id: BUILTIN_PROVIDER_IDS.openai,
@@ -496,7 +496,7 @@ export function seedOptionsFromEnv(env: NodeJS.ProcessEnv): SeedOptions {
     replaceRoutingConfigVersion: booleanEnv(env.SEED_REPLACE_ROUTING_CONFIG),
     openaiBaseUrl: env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
     anthropicBaseUrl: env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1",
-    proxyToken: env.PROMPT_PROXY_TOKEN ?? "dev-proxy-token",
+    proxyToken: env.PROXY_TOKEN ?? "dev-token",
     models: [
       model("openai", env.OPENAI_FAST_MODEL ?? "gpt-5.4-mini", "fast", "openai-responses"),
       model("openai", env.OPENAI_FAST_MODEL ?? "gpt-5.4-mini", "fast", "openai-chat"),

@@ -9,7 +9,7 @@ export type TabularJsonSpikeCandidate = {
   rowCount: number;
 };
 
-const FORMAT = "prompt-proxy.tabular-json.v1";
+const FORMAT = "prompt.tabular-json.v1";
 
 export function tabularJsonSpikeCandidate(text: string): TabularJsonSpikeCandidate | undefined {
   const original = text.trim();

@@ -18,7 +18,7 @@ import type {
   RouteName,
   SessionPinnedSettings,
   UsageLedgerKind
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 export const organizations = pgTable(
   "organizations",

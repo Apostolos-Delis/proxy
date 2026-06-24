@@ -1,14 +1,14 @@
 # Claude Code Setup
 
-Claude Code reaches Prompt Proxy through the Anthropic Messages surface at `POST /v1/messages`.
+Claude Code reaches Proxy through the Anthropic Messages surface at `POST /v1/messages`.
 
 ## Prerequisites
 
-- Prompt Proxy is running, for example at `http://127.0.0.1:8787`.
-- You have a Prompt Proxy API key from the console's API keys page.
+- Proxy is running, for example at `http://127.0.0.1:8787`.
+- You have a Proxy API key from the console's API keys page.
 - The routing config assigned to that key has native Anthropic targets or translated OpenAI Chat/Responses targets.
 
-Use the Prompt Proxy API key in Claude Code. Upstream Anthropic or OpenAI keys belong in Prompt Proxy provider credentials, not in the harness, unless you intentionally want to bypass the proxy.
+Use the Proxy API key in Claude Code. Upstream Anthropic or OpenAI keys belong in Proxy provider credentials, not in the harness, unless you intentionally want to bypass the proxy.
 
 ## One-Liner Setup
 
@@ -18,16 +18,16 @@ Use a Claude Code-specific install when you want this key to have its own routin
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code <api-key>
 ```
 
-It stores the key at `~/.prompt-proxy/claude-code.token` and points `~/.claude/settings.json` at Prompt Proxy. The default setup command without `--harness` still configures one shared key for both Claude Code and Codex.
-Pass `--harness` more than once when Claude Code should share the same Prompt Proxy API key with another local harness.
+It stores the key at `~/.proxy/claude-code.token` and points `~/.claude/settings.json` at Proxy. The default setup command without `--harness` still configures one shared key for both Claude Code and Codex.
+Pass `--harness` more than once when Claude Code should share the same Proxy API key with another local harness.
 
-The hosted setup script tracks Claude Code fields it owns in `~/.prompt-proxy/claude-code-settings.marker.json`. If `model`, `apiKeyHelper`, or the relevant `env` entries already exist without that marker, setup reports the conflict and leaves those user-managed values unchanged.
+The hosted setup script tracks Claude Code fields it owns in `~/.proxy/claude-code-settings.marker.json`. If `model`, `apiKeyHelper`, or the relevant `env` entries already exist without that marker, setup reports the conflict and leaves those user-managed values unchanged.
 
 ## Environment
 
 ```shell
 export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
-export ANTHROPIC_API_KEY=<prompt-proxy-api-key>
+export ANTHROPIC_API_KEY=<proxy-api-key>
 ```
 
 Use router aliases as the model:
@@ -51,13 +51,13 @@ Route decisions include `translated_request:anthropic-messages_to_openai-chat` o
 
 ## Verify
 
-1. Start Prompt Proxy.
+1. Start Proxy.
 2. Run a small Claude Code prompt using one of the router aliases.
-3. In Prompt Proxy, open Logs and confirm the request surface is `anthropic-messages`.
+3. In Proxy, open Logs and confirm the request surface is `anthropic-messages`.
 4. Check the selected provider/model and route decision guardrail actions.
 
 ## Troubleshooting
 
-- `401` or auth errors: `ANTHROPIC_API_KEY` must be the Prompt Proxy API key.
-- Request reaches Anthropic directly: confirm `ANTHROPIC_BASE_URL` points to Prompt Proxy and includes `/v1`.
+- `401` or auth errors: `ANTHROPIC_API_KEY` must be the Proxy API key.
+- Request reaches Anthropic directly: confirm `ANTHROPIC_BASE_URL` points to Proxy and includes `/v1`.
 - Target unavailable: check provider enabled state, provider key binding, and whether the target exposes `anthropic-messages`, `openai-chat`, or `openai-responses`.

@@ -24,8 +24,8 @@ import {
   routingConfigVersions,
   users as usersTable,
   usageLedger,
-  type PromptProxyDbSession
-} from "@prompt-proxy/db";
+  type ProxyDbSession
+} from "@proxy/db";
 
 import { explicitAlias } from "../catalog.js";
 import {
@@ -43,7 +43,7 @@ import {
   type ModelPricingEntry,
   type ModelPricingTable
 } from "../pricing.js";
-import type { ProviderAccountAuthType } from "@prompt-proxy/schema";
+import type { ProviderAccountAuthType } from "@proxy/schema";
 
 import type { JsonObject, RouteName } from "../types.js";
 import { searchAdminEntities } from "./adminSearch.js";
@@ -159,7 +159,7 @@ export class AdminQueryService {
   private readonly summaryInputsCache = new WeakMap<object, Promise<SummaryInputs>>();
 
   constructor(
-    private readonly db: PromptProxyDbSession,
+    private readonly db: ProxyDbSession,
     private readonly organizationId: string,
     private readonly workspaceId: string,
     private readonly config: AdminQueryConfig,
@@ -759,17 +759,17 @@ export class AdminQueryService {
     const startedAtMs = performance.now();
     try {
       const result = await load();
-      this.metrics.observeHistogram("prompt_proxy_db_query_duration_seconds", (performance.now() - startedAtMs) / 1000, {
+      this.metrics.observeHistogram("proxy_db_query_duration_seconds", (performance.now() - startedAtMs) / 1000, {
         operation,
         outcome: "succeeded"
       });
       return result;
     } catch (error) {
-      this.metrics.observeHistogram("prompt_proxy_db_query_duration_seconds", (performance.now() - startedAtMs) / 1000, {
+      this.metrics.observeHistogram("proxy_db_query_duration_seconds", (performance.now() - startedAtMs) / 1000, {
         operation,
         outcome: "failed"
       });
-      this.metrics.incrementCounter("prompt_proxy_db_errors_total", {
+      this.metrics.incrementCounter("proxy_db_errors_total", {
         operation,
         error_class: "persistence"
       });

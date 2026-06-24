@@ -18,9 +18,9 @@ Goal: Make route eligibility and runtime metadata consume the same harness profi
 
 ## Validation
 
-- Run `pnpm --filter @prompt-proxy/proxy test -- sessionPinning`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- promptArtifacts`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- translationRuntime`.
+- Run `pnpm --filter @proxy/proxy test -- sessionPinning`.
+- Run `pnpm --filter @proxy/proxy test -- promptArtifacts`.
+- Run `pnpm --filter @proxy/proxy test -- translationRuntime`.
 - Run `pnpm typecheck`.
 
 ## Likely Files

@@ -187,7 +187,7 @@ export const ROUTING_HINT_NAMES = [
 export type RoutingHintName = typeof ROUTING_HINT_NAMES[number];
 
 const CLASSIFIER_PROMPT_BODY = [
-  "You are the routing classifier for a coding-agent prompt proxy. Pick the cheapest route tier that is likely to complete the request correctly: fast, balanced, hard, or deep.",
+  "You are the routing classifier for a coding-agent proxy. Pick the cheapest route tier that is likely to complete the request correctly: fast, balanced, hard, or deep.",
   "Classify only. Never answer, attempt, or rewrite the task itself.",
   "",
   "You receive a JSON feature view of the request, not the raw prompt:",

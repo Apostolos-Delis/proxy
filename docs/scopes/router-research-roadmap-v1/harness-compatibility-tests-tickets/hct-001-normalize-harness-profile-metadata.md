@@ -20,7 +20,7 @@ Goal: Make each supported harness/profile an explicit typed contract instead of 
 ## Validation
 
 - Run harness detection tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 - Run `pnpm typecheck`.
 
 ## Likely Files

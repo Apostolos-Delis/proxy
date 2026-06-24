@@ -272,7 +272,7 @@ function EventRow({ event, start }: { event: ProxyEvent; start: number }) {
         {hasPayload ? <ChevronRight className={`event-chevron${open ? " open" : ""}`} /> : <span className="event-chevron-spacer" />}
         <span className="event-name mono">{event.eventType}</span>
         {compressionSummary ? <span className="event-detail">{compressionSummary}</span> : null}
-        <span className="event-producer">{event.producer.replace(/^prompt-proxy\./, "")}</span>
+        <span className="event-producer">{event.producer.replace(/^proxy\./, "")}</span>
         <span className="event-offset mono" title={formatDateTime(event.createdAt)}>+{formatDurationMs(offset)}</span>
       </button>
       {open && hasPayload ? <div className="event-payload"><JsonView value={payload} maxHeight={300} /></div> : null}

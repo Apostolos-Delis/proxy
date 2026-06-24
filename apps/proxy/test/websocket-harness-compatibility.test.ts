@@ -10,8 +10,8 @@ import {
   providers,
   routingConfigs,
   routingConfigVersions
-} from "@prompt-proxy/db";
-import type { RoutingConfig } from "@prompt-proxy/schema";
+} from "@proxy/db";
+import type { RoutingConfig } from "@proxy/schema";
 
 import { buildOpenAIContext } from "../src/features.js";
 import {

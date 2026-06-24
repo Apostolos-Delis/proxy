@@ -4,10 +4,10 @@ import {
   organizationSettings,
   promptArtifacts,
   requests,
-  type PromptProxyDbSession,
-  type PromptProxyTransactionalDatabase
-} from "@prompt-proxy/db";
-import type { PromptCaptureMode } from "@prompt-proxy/schema";
+  type ProxyDbSession,
+  type ProxyTransactionalDatabase
+} from "@proxy/db";
+import type { PromptCaptureMode } from "@proxy/schema";
 
 import { promptBlockTagsForSurface } from "../harness.js";
 import type { RouteContext, Surface } from "../types.js";
@@ -41,8 +41,8 @@ export type CapturedPromptArtifact = typeof promptArtifacts.$inferInsert;
 
 export class PromptArtifactStore {
   constructor(
-    private readonly db: PromptProxyTransactionalDatabase,
-    private readonly readDb: PromptProxyDbSession
+    private readonly db: ProxyTransactionalDatabase,
+    private readonly readDb: ProxyDbSession
   ) {}
 
   async capture(input: PromptArtifactCaptureInput) {

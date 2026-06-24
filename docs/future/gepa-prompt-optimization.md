@@ -2,7 +2,7 @@
 
 ## Summary
 
-GEPA is useful inspiration for prompt-proxy, but it should not run in the hot request path.
+GEPA is useful inspiration for prompt, but it should not run in the hot request path.
 
 The right first use is an offline optimization loop for text artifacts the proxy already controls, especially the route classifier prompt. The proxy should continue to route live Codex and Claude Code requests with the currently promoted policy, then use logged outcomes to improve future classifier and rewrite artifacts asynchronously.
 

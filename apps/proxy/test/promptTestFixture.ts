@@ -15,8 +15,8 @@ import {
   organizations,
   users,
   workspaces
-} from "@prompt-proxy/db";
-import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
+} from "@proxy/db";
+import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
 
 import { loadConfig } from "../src/config.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
@@ -33,7 +33,7 @@ export function testEnv(overrides: NodeJS.ProcessEnv = {}) {
     ...process.env,
     DATABASE_URL: "",
     EVENT_STORE_PATH: "",
-    PROMPT_PROXY_TOKEN: "proxy-token",
+    PROXY_TOKEN: "proxy-token",
     OPENAI_API_KEY: "openai-upstream-key",
     OPENAI_BASE_URL: "http://127.0.0.1",
     OPENAI_CHATGPT_BASE_URL: "http://127.0.0.1",
@@ -128,7 +128,7 @@ export async function captureFixture(
     OPENAI_BASE_URL: openai.url,
     OPENAI_CHATGPT_BASE_URL: openaiChatgpt.url,
     ANTHROPIC_BASE_URL: anthropic.url,
-    PROMPT_PROXY_TOKEN: env.PROMPT_PROXY_TOKEN,
+    PROXY_TOKEN: env.PROXY_TOKEN,
     SEED_USER_ID: "local-user"
   }));
   await db

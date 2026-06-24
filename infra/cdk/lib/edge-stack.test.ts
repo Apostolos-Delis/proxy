@@ -2,11 +2,11 @@ import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 
 import { stackName } from "./config.js";
-import { PromptProxyEdgeStack } from "./edge-stack.js";
+import { ProxyEdgeStack } from "./edge-stack.js";
 import { createRuntimeStacks } from "./test-helpers.js";
-import { PromptProxyWebStack } from "./web-stack.js";
+import { ProxyWebStack } from "./web-stack.js";
 
-describe("PromptProxyEdgeStack", () => {
+describe("ProxyEdgeStack", () => {
   it("serves web assets and forwards API traffic through CloudFront", () => {
     const { edge } = createEdgeStack(["203.0.113.10/32"]);
     const template = Template.fromStack(edge);
@@ -92,14 +92,14 @@ function apiBehavior(pathPattern: string) {
 
 function createEdgeStack(adminAllowedCidrs: string[]) {
   const { app, config, network } = createRuntimeStacks();
-  const web = new PromptProxyWebStack(app, stackName(config, "web-test"), {
+  const web = new ProxyWebStack(app, stackName(config, "web-test"), {
     config,
     env: {
       account: config.awsAccountId,
       region: config.region
     }
   });
-  const edge = new PromptProxyEdgeStack(app, stackName(config, "edge-test"), {
+  const edge = new ProxyEdgeStack(app, stackName(config, "edge-test"), {
     adminAllowedCidrs,
     config,
     env: {

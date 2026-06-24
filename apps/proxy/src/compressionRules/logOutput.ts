@@ -7,7 +7,7 @@ export type LogOutputCompactionCandidate = {
 };
 
 const DEFAULT_SHELL_TOOL_NAMES = ["Bash", "bash", "shell", "local_shell", "run_terminal_cmd"];
-const FORMAT = "prompt-proxy.log-output-compaction.v1";
+const FORMAT = "prompt.log-output-compaction.v1";
 const MIN_LINES = 80;
 const TAIL_LINES = 40;
 const IMPORTANT_CONTEXT_LINES = 2;

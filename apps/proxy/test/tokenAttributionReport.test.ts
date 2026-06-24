@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { defaultWorkspaceId, events, organizations, workspaces } from "@prompt-proxy/db";
+import { defaultWorkspaceId, events, organizations, workspaces } from "@proxy/db";
 
 import { aggregateTokenAttribution } from "../src/persistence/tokenAttributionReport.js";
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
@@ -177,8 +177,8 @@ function attributionEvent(id: string, organizationId: string, requestId: string,
     scopeId: requestId,
     correlationId: requestId,
     actorType: "proxy",
-    actorId: "prompt-proxy",
-    producer: "prompt-proxy.attribution",
+    actorId: "proxy",
+    producer: "proxy.attribution",
     eventType: "tokens.attributed",
     payloadHash: `sha256:${id}`,
     sensitivity: "internal",

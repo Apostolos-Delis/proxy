@@ -2,7 +2,7 @@
 
 ## Decision
 
-Defer automatic `prompt_proxy_retrieve_compressed` tool injection for V1.
+Defer automatic `proxy_retrieve_compressed` tool injection for V1.
 
 The V1 recovery path remains:
 
@@ -18,8 +18,8 @@ Anthropic Messages candidate:
 
 ```json
 {
-  "name": "prompt_proxy_retrieve_compressed",
-  "description": "Retrieve original tool-result text for a prompt-proxy compression marker.",
+  "name": "proxy_retrieve_compressed",
+  "description": "Retrieve original tool-result text for a prompt compression marker.",
   "input_schema": {
     "type": "object",
     "additionalProperties": false,
@@ -37,8 +37,8 @@ OpenAI Responses candidate:
 ```json
 {
   "type": "function",
-  "name": "prompt_proxy_retrieve_compressed",
-  "description": "Retrieve original tool-result text for a prompt-proxy compression marker.",
+  "name": "proxy_retrieve_compressed",
+  "description": "Retrieve original tool-result text for a prompt compression marker.",
   "parameters": {
     "type": "object",
     "additionalProperties": false,
@@ -59,7 +59,7 @@ Harness tool ownership is unclear. Claude Code, Codex, Cursor, and opencode alre
 
 Translation paths are not a safe place to hide this behavior. A retrieval tool would need exact preservation through Anthropic Messages and OpenAI Responses native paths before any translated path can be trusted.
 
-Tool execution requires a new proxy responsibility. If the model calls `prompt_proxy_retrieve_compressed`, the proxy would need to pause the provider response loop, resolve the retrieval id under the original tenant/workspace/API-key context, append a provider-specific tool result, and continue the model turn. That is separate from the existing retrieval endpoint.
+Tool execution requires a new proxy responsibility. If the model calls `proxy_retrieve_compressed`, the proxy would need to pause the provider response loop, resolve the retrieval id under the original tenant/workspace/API-key context, append a provider-specific tool result, and continue the model turn. That is separate from the existing retrieval endpoint.
 
 ## UX Failure Modes
 

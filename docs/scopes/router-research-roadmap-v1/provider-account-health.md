@@ -4,7 +4,7 @@
 
 Track provider, provider account, and provider/model health as durable current state. Use that state during route planning and expose it in the console.
 
-This gives Prompt Proxy the operational maturity seen in LiteLLM and OmniRoute while preserving Prompt Proxy's audit model.
+This gives Proxy the operational maturity seen in LiteLLM and OmniRoute while preserving Proxy's audit model.
 
 ## Why This Matters
 
@@ -22,7 +22,7 @@ Today these can collapse into provider attempt failures and logs. The router nee
 
 ## Shipped V1 State
 
-Prompt Proxy now supports provider accounts, BYOK bindings, provider attempts, usage, route decisions, and provider account/model health current state. Provider HTTP forwarding retries upstream `429` responses with provider-aware delay handling, and terminal provider outcomes are classified into typed health state when persistence is enabled.
+Proxy now supports provider accounts, BYOK bindings, provider attempts, usage, route decisions, and provider account/model health current state. Provider HTTP forwarding retries upstream `429` responses with provider-aware delay handling, and terminal provider outcomes are classified into typed health state when persistence is enabled.
 
 Implemented V1 pieces:
 

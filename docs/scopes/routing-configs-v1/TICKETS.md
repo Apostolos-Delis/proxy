@@ -68,7 +68,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/db test`.
+- Run `pnpm --filter @proxy/db test`.
 - Run `pnpm db:migrate` against local Postgres.
 
 Likely files:
@@ -99,7 +99,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/db test`.
+- Run `pnpm --filter @proxy/db test`.
 - Run `pnpm db:seed`.
 
 Likely files:
@@ -130,7 +130,7 @@ Validation:
 
 Likely files:
 
-- `docs/model-routing-proxy.md`
+- `docs/model-routing.md`
 - `docs/scopes/persistence-admin-v1/PLAN.md`
 - `docs/scopes/tanstack-admin-app-v1/PLAN.md`
 - `docs/index.md`
@@ -157,7 +157,7 @@ Acceptance criteria:
 Validation:
 
 - Add or update proxy auth tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -187,7 +187,7 @@ Acceptance criteria:
 Validation:
 
 - Add resolver unit tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -216,7 +216,7 @@ Acceptance criteria:
 Validation:
 
 - Update classifier tests for config-driven model/instructions.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -246,7 +246,7 @@ Acceptance criteria:
 Validation:
 
 - Add OpenAI and Anthropic adapter tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 - Run `pnpm smoke:harnesses` when provider keys are configured.
 
 Likely files:
@@ -277,7 +277,7 @@ Acceptance criteria:
 Validation:
 
 - Update persistence and usage analytics tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -340,7 +340,7 @@ Acceptance criteria:
 Validation:
 
 - Add admin API tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -371,7 +371,7 @@ Acceptance criteria:
 Validation:
 
 - Add transaction and validation tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -401,7 +401,7 @@ Acceptance criteria:
 Validation:
 
 - Add API key admin tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -428,7 +428,7 @@ Acceptance criteria:
 Validation:
 
 - Add event sink/projector tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -457,7 +457,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/web typecheck`.
+- Run `pnpm --filter @proxy/web typecheck`.
 - Run the web app and inspect routing manually.
 
 Likely files:
@@ -486,7 +486,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/web typecheck`.
+- Run `pnpm --filter @proxy/web typecheck`.
 - Run `pnpm build`.
 
 Likely files:
@@ -515,7 +515,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/web typecheck`.
+- Run `pnpm --filter @proxy/web typecheck`.
 - Manual browser check against seeded data.
 
 Likely files:
@@ -544,7 +544,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/web typecheck`.
+- Run `pnpm --filter @proxy/web typecheck`.
 - Manual assignment flow against local API.
 
 Likely files:
@@ -571,7 +571,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/web typecheck`.
+- Run `pnpm --filter @proxy/web typecheck`.
 - Manual browser check on request logs with seeded data.
 
 Likely files:
@@ -602,7 +602,7 @@ Acceptance criteria:
 Validation:
 
 - Add resolver cache tests if cache is implemented.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -633,7 +633,7 @@ Validation:
 
 Likely files:
 
-- `apps/proxy/scripts/smoke-proxy.ts`
+- `apps/proxy/scripts/smoke.ts`
 - `apps/proxy/scripts/smoke-harnesses.ts`
 - `README.md`
 
@@ -662,7 +662,7 @@ Validation:
 Likely files:
 
 - `README.md`
-- `docs/model-routing-proxy.md`
+- `docs/model-routing.md`
 - `docs/scopes/routing-configs-v1/PLAN.md`
 - `docs/index.md`
 

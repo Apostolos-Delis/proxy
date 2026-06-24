@@ -4,15 +4,15 @@
 
 Add an operational metrics layer while keeping durable events as the source of truth.
 
-Metrics answer "what is happening right now?" Events answer "what happened and why?" Prompt Proxy needs both.
+Metrics answer "what is happening right now?" Events answer "what happened and why?" Proxy needs both.
 
 ## Why This Matters
 
-Kong's strongest operations lesson is first-class metrics. LiteLLM, 9router, and OmniRoute all expose useful operational counters and dashboards. Prompt Proxy already has durable events and projections; it should add bounded-cardinality metrics for live monitoring and alerting.
+Kong's strongest operations lesson is first-class metrics. LiteLLM, 9router, and OmniRoute all expose useful operational counters and dashboards. Proxy already has durable events and projections; it should add bounded-cardinality metrics for live monitoring and alerting.
 
 ## Current State
 
-Prompt Proxy records durable request, route, provider attempt, usage, prompt artifact, event, and outbox data. The console can query projections. There is not yet a formal metrics surface for:
+Proxy records durable request, route, provider attempt, usage, prompt artifact, event, and outbox data. The console can query projections. There is not yet a formal metrics surface for:
 
 - request latency
 - time to first token
@@ -46,10 +46,10 @@ V1 can start with Prometheus-style metrics if it fits the deployment better. The
 ### Requests
 
 ```text
-prompt_proxy_requests_total
+proxy_requests_total
 labels: organization_scope, workspace_id_or_bucket, surface, route, status
 
-prompt_proxy_request_duration_ms
+proxy_request_duration_ms
 labels: surface, route, status
 ```
 
@@ -58,36 +58,36 @@ Workspace labels should be configurable. In high-cardinality environments, bucke
 ### Provider Attempts
 
 ```text
-prompt_proxy_provider_attempts_total
+proxy_provider_attempts_total
 labels: provider, model_bucket, surface, terminal_status, translated
 
-prompt_proxy_provider_latency_ms
+proxy_provider_latency_ms
 labels: provider, model_bucket, translated
 
-prompt_proxy_provider_ttft_ms
+proxy_provider_ttft_ms
 labels: provider, model_bucket, translated
 ```
 
 ### Routing
 
 ```text
-prompt_proxy_route_decisions_total
+proxy_route_decisions_total
 labels: route, surface, translated
 
-prompt_proxy_target_skips_total
+proxy_target_skips_total
 labels: route, provider, reason
 
-prompt_proxy_fallbacks_total
+proxy_fallbacks_total
 labels: route, from_provider, to_provider, reason
 ```
 
 ### Usage And Cost
 
 ```text
-prompt_proxy_tokens_total
+proxy_tokens_total
 labels: provider, model_bucket, token_type, route
 
-prompt_proxy_cost_usd_total
+proxy_cost_usd_total
 labels: provider, model_bucket, route
 ```
 
@@ -104,36 +104,36 @@ reasoning
 ### Limits
 
 ```text
-prompt_proxy_limit_rejections_total
+proxy_limit_rejections_total
 labels: scope, limit_type, route
 
-prompt_proxy_budget_reserved_usd
+proxy_budget_reserved_usd
 labels: scope
 
-prompt_proxy_budget_actual_usd
+proxy_budget_actual_usd
 labels: scope
 ```
 
 ### Provider Health
 
 ```text
-prompt_proxy_provider_account_cooldowns
+proxy_provider_account_cooldowns
 labels: provider, reason
 
-prompt_proxy_provider_model_lockouts
+proxy_provider_model_lockouts
 labels: provider, reason
 
-prompt_proxy_provider_breaker_state
+proxy_provider_breaker_state
 labels: provider, state
 ```
 
 ### Runtime Config
 
 ```text
-prompt_proxy_active_routing_config_version
+proxy_active_routing_config_version
 labels: organization_bucket, workspace_bucket
 
-prompt_proxy_routing_graph_info
+proxy_routing_graph_info
 labels: hash, status
 ```
 

@@ -8,7 +8,7 @@ Limits should reject or reserve before provider spend, true up after actual usag
 
 ## Why This Matters
 
-LiteLLM and OmniRoute both show that serious routing gateways need budget and rate controls. Prompt Proxy currently has routing-config limits and cost tracking, but it needs stronger controls for organization use:
+LiteLLM and OmniRoute both show that serious routing gateways need budget and rate controls. Proxy currently has routing-config limits and cost tracking, but it needs stronger controls for organization use:
 
 - prevent runaway spend
 - isolate noisy API keys
@@ -18,7 +18,7 @@ LiteLLM and OmniRoute both show that serious routing gateways need budget and ra
 
 ## Current State
 
-Prompt Proxy computes spend from normalized usage and model pricing. Routing configs have a `limits` block for route and estimated input guardrails. Provider forwarding handles upstream rate-limit retry behavior.
+Proxy computes spend from normalized usage and model pricing. Routing configs have a `limits` block for route and estimated input guardrails. Provider forwarding handles upstream rate-limit retry behavior.
 
 Missing:
 

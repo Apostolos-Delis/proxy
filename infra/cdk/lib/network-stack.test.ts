@@ -4,12 +4,12 @@ import { describe, expect, it } from "vitest";
 
 import { environments } from "../config/environments.js";
 import { stackName } from "./config.js";
-import { PromptProxyNetworkStack } from "./network-stack.js";
+import { ProxyNetworkStack } from "./network-stack.js";
 
 const config = environments[0];
 const prodConfig = environments[1];
 
-describe("PromptProxyNetworkStack", () => {
+describe("ProxyNetworkStack", () => {
   it("synthesizes without NAT gateways", () => {
     const template = networkTemplate();
 
@@ -32,7 +32,7 @@ describe("PromptProxyNetworkStack", () => {
     })).toEqual({});
   });
 
-  it("allows only ALB-to-proxy and service-to-database ingress", () => {
+  it("allows only ALB-to and service-to-database ingress", () => {
     const template = networkTemplate();
     const ingressRules = template.findResources("AWS::EC2::SecurityGroupIngress");
 
@@ -52,7 +52,7 @@ describe("PromptProxyNetworkStack", () => {
 
 function networkTemplate(environmentConfig = config) {
   const app = new App();
-  const stack = new PromptProxyNetworkStack(app, stackName(environmentConfig, "network-test"), {
+  const stack = new ProxyNetworkStack(app, stackName(environmentConfig, "network-test"), {
     config: environmentConfig,
     env: {
       account: environmentConfig.awsAccountId,

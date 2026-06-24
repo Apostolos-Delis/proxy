@@ -273,13 +273,13 @@ For persistence-enabled environments:
 Validation used for this scope:
 
 ```bash
-pnpm --filter @prompt-proxy/schema test
-pnpm --filter @prompt-proxy/db test
-pnpm --filter @prompt-proxy/proxy schema:print
-pnpm --filter @prompt-proxy/web codegen
-pnpm --filter @prompt-proxy/proxy typecheck
-pnpm --filter @prompt-proxy/web typecheck
-pnpm --filter @prompt-proxy/web test
+pnpm --filter @proxy/schema test
+pnpm --filter @proxy/db test
+pnpm --filter @proxy/proxy schema:print
+pnpm --filter @proxy/web codegen
+pnpm --filter @proxy/proxy typecheck
+pnpm --filter @proxy/web typecheck
+pnpm --filter @proxy/web test
 pnpm --dir apps/proxy exec vitest run test/persistence.test.ts test/routingConfigRuntime.test.ts test/adminAuthorization.test.ts
 ```
 

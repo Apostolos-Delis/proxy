@@ -1,4 +1,4 @@
-import type { PromptProxyEnvironmentConfig } from "../lib/config.js";
+import type { ProxyEnvironmentConfig } from "../lib/config.js";
 
 export const environments = [
   {
@@ -6,7 +6,7 @@ export const environments = [
     awsAccountId: "459063349068",
     region: "us-east-1",
     availabilityZones: ["us-east-1a", "us-east-1b"],
-    githubRepository: "Apostolos-Delis/prompt-proxy",
+    githubRepository: "Apostolos-Delis/proxy",
     githubDeployBranch: "main",
     githubOidcProviderArn: "arn:aws:iam::459063349068:oidc-provider/token.actions.githubusercontent.com",
     cloudFrontOriginFacingPrefixListId: "pl-3b927c52",
@@ -26,7 +26,7 @@ export const environments = [
       isolatedSubnetIds: ["subnet-0f6a1c640d11d5121", "subnet-0cebde9218c56cdb6"],
       isolatedSubnetRouteTableIds: ["rtb-0e110ff464d35ba27", "rtb-082de63434dc59f09"]
     },
-    githubRepository: "Apostolos-Delis/prompt-proxy",
+    githubRepository: "Apostolos-Delis/proxy",
     githubDeployBranch: "main",
     githubOidcProviderArn: "arn:aws:iam::459063349068:oidc-provider/token.actions.githubusercontent.com",
     cloudFrontOriginFacingPrefixListId: "pl-3b927c52",
@@ -34,4 +34,4 @@ export const environments = [
     databaseInstanceClass: "db.t4g.micro",
     databaseAllocatedStorageGb: 20
   }
-] satisfies PromptProxyEnvironmentConfig[];
+] satisfies ProxyEnvironmentConfig[];

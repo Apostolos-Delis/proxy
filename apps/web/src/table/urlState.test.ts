@@ -16,8 +16,8 @@ import {
 const config: ConsoleTableUrlConfig = {
   prefix: "",
   filterIds: ["user", "model", "status"],
-  advancedFieldIds: ["prompt", "model"],
-  columnIds: ["prompt", "user", "model", "tokens"],
+  advancedFieldIds: ["proxy", "model"],
+  columnIds: ["proxy", "user", "model", "tokens"],
   initialPageSize: 10,
   pageSizeOptions: [10, 25, 50]
 };
@@ -61,22 +61,22 @@ describe("readConsoleTableUrlState", () => {
 
   it("coerces non-string advanced rule values and drops malformed shapes", () => {
     const state = readConsoleTableUrlState(
-      { adv: [["prompt", "contains", 42, "and"], ["model", "equals", null, "or"], ["prompt", "contains", "x", "and", "extra"]] },
+      { adv: [["proxy", "contains", 42, "and"], ["model", "equals", null, "or"], ["proxy", "contains", "x", "and", "extra"]] },
       config
     );
     expect(state.advancedRules).toEqual([
-      { id: "url-0", fieldId: "prompt", operator: "contains", value: "42", join: "and" },
+      { id: "url-0", fieldId: "proxy", operator: "contains", value: "42", join: "and" },
       { id: "url-1", fieldId: "model", operator: "equals", value: "", join: "or" }
     ]);
   });
 
   it("reads valid advanced rules and drops malformed entries", () => {
     const state = readConsoleTableUrlState(
-      { adv: [["prompt", "contains", "routing", "and"], ["nope", "contains", "x", "and"], ["model", "explodes", "x", "and"], ["model", "equals", "gpt", "nor"], "junk"] },
+      { adv: [["proxy", "contains", "routing", "and"], ["nope", "contains", "x", "and"], ["model", "explodes", "x", "and"], ["model", "equals", "gpt", "nor"], "junk"] },
       config
     );
     expect(state.advancedRules).toEqual([
-      { id: "url-0", fieldId: "prompt", operator: "contains", value: "routing", join: "and" }
+      { id: "url-0", fieldId: "proxy", operator: "contains", value: "routing", join: "and" }
     ]);
   });
 

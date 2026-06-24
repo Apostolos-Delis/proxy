@@ -4,8 +4,8 @@ import { z } from "zod";
 import {
   modelCatalog,
   providers,
-  type PromptProxyDbSession
-} from "@prompt-proxy/db";
+  type ProxyDbSession
+} from "@proxy/db";
 
 import { completeModelPricing, undatedModel, type ModelPricing } from "../pricing.js";
 
@@ -26,7 +26,7 @@ export function pricingFromRow(value: unknown): ModelPricing | undefined {
 }
 
 export async function catalogPricingForModel(
-  db: PromptProxyDbSession,
+  db: ProxyDbSession,
   organizationId: string,
   provider: string,
   model: string
@@ -41,7 +41,7 @@ export async function catalogPricingForModel(
 }
 
 async function providerForSlug(
-  db: PromptProxyDbSession,
+  db: ProxyDbSession,
   organizationId: string,
   slug: string
 ) {
@@ -67,7 +67,7 @@ async function providerForSlug(
 }
 
 async function pricingForProviderModels(
-  db: PromptProxyDbSession,
+  db: ProxyDbSession,
   organizationId: string | null,
   providerId: string,
   candidates: string[]

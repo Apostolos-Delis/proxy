@@ -1,4 +1,4 @@
-import { modelCatalog, providers, type PromptProxyDbSession } from "@prompt-proxy/db";
+import { modelCatalog, providers, type ProxyDbSession } from "@proxy/db";
 import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 
 import { modelAliasIds } from "./catalog.js";
@@ -17,7 +17,7 @@ type ModelListEntry = {
 };
 
 export class ModelDiscoveryStore {
-  constructor(private readonly db: PromptProxyDbSession) {}
+  constructor(private readonly db: ProxyDbSession) {}
 
   async catalogModels(organizationId?: string): Promise<CatalogModel[]> {
     const providerRows = await this.effectiveProviders(organizationId);
@@ -123,7 +123,7 @@ function aliasEntry(id: string): ModelListEntry {
   return {
     id,
     object: "model",
-    owned_by: "prompt-proxy"
+    owned_by: "proxy"
   };
 }
 

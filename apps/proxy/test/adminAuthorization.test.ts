@@ -8,8 +8,8 @@ import {
   requests,
   routeDecisions,
   users
-} from "@prompt-proxy/db";
-import { ORGANIZATION_MEMBER_ROLES, type OrganizationMemberRole } from "@prompt-proxy/schema";
+} from "@proxy/db";
+import { ORGANIZATION_MEMBER_ROLES, type OrganizationMemberRole } from "@proxy/schema";
 
 import { adminGql, captureFixture, sessionEvent, usageDecision, usageRequest, type PromptTestFixture } from "./promptTestFixture.js";
 

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 
-import { defaultWorkspaceId, routeDecisions, type PromptProxyTransaction } from "@prompt-proxy/db";
+import { defaultWorkspaceId, routeDecisions, type ProxyTransaction } from "@proxy/db";
 
 import { createId } from "../util.js";
 import {
@@ -16,7 +16,7 @@ import {
   stringValue
 } from "./values.js";
 
-export async function persistRouteDecision(tx: PromptProxyTransaction, event: {
+export async function persistRouteDecision(tx: ProxyTransaction, event: {
   tenantId: string;
   workspaceId?: string;
   scopeId: string;
@@ -113,7 +113,7 @@ export async function persistRouteDecision(tx: PromptProxyTransaction, event: {
     });
 }
 
-export async function routeForRequest(tx: PromptProxyTransaction, requestId: string) {
+export async function routeForRequest(tx: ProxyTransaction, requestId: string) {
   const [decision] = await tx
     .select()
     .from(routeDecisions)

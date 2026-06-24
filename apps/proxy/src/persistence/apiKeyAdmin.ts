@@ -6,8 +6,8 @@ import { z } from "zod";
 import {
   apiKeys,
   hashApiKey,
-  type PromptProxyTransactionalDatabase
-} from "@prompt-proxy/db";
+  type ProxyTransactionalDatabase
+} from "@proxy/db";
 
 import { createId } from "../util.js";
 import { AdminMutationError } from "./adminErrors.js";
@@ -25,7 +25,7 @@ const createApiKeyBodySchema = z.object({
 export class ApiKeyAdminError extends AdminMutationError {}
 
 export class ApiKeyAdminService {
-  constructor(private readonly db: PromptProxyTransactionalDatabase) {}
+  constructor(private readonly db: ProxyTransactionalDatabase) {}
 
   async createApiKey(input: {
     organizationId: string;
@@ -72,7 +72,7 @@ export class ApiKeyAdminService {
         scopeId: apiKeyId,
         correlationId: apiKeyId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.api-keys",
+        producer: "proxy.admin.api-keys",
         eventType: "api_key.created",
         payload: {
           apiKeyId,
@@ -128,7 +128,7 @@ export class ApiKeyAdminService {
         scopeId: input.apiKeyId,
         correlationId: input.apiKeyId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.api-keys",
+        producer: "proxy.admin.api-keys",
         eventType: "api_key.revoked",
         payload: {
           apiKeyId: input.apiKeyId,

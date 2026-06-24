@@ -4,11 +4,11 @@ services:
     ports:
       - "${POSTGRES_PORT:-55432}:5432"
     environment:
-      POSTGRES_USER: prompt_proxy
-      POSTGRES_PASSWORD: prompt_proxy
-      POSTGRES_DB: prompt_proxy
+      POSTGRES_USER: proxy
+      POSTGRES_PASSWORD: proxy
+      POSTGRES_DB: proxy
     volumes:
-      - prompt_proxy_postgres:/var/lib/postgresql/data
+      - proxy_postgres:/var/lib/postgresql/data
 
 volumes:
-  prompt_proxy_postgres:
+  proxy_postgres:

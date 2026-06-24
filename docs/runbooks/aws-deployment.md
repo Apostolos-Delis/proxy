@@ -1,6 +1,6 @@
 # AWS Deployment Runbook
 
-This runbook deploys Prompt Proxy to the CDK-managed AWS environment described in `docs/scopes/aws-prod-like-deployment-v1/PLAN.md`.
+This runbook deploys Proxy to the CDK-managed AWS environment described in `docs/scopes/aws-prod-like-deployment-v1/PLAN.md`.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ This runbook deploys Prompt Proxy to the CDK-managed AWS environment described i
 - Optional: current public IPv4/IPv6 CIDRs if you intentionally want to make `/admin/*` private behind a temporary WAF allowlist. Leave this blank for public app-authenticated staging.
 
 ```shell
-export PROMPT_PROXY_DEPLOY_ENV=staging
+export PROXY_DEPLOY_ENV=staging
 export AWS_REGION=us-east-1
 export ADMIN_ALLOWED_CIDR=""
 export IMAGE_TAG="$(git rev-parse --short HEAD)"
@@ -33,16 +33,16 @@ fi
 Deploy the foundation stack first. This creates ECR and the GitHub Actions deploy role. The GitHub workflow expects this stack to exist.
 
 ```shell
-pnpm --filter @prompt-proxy/infra-cdk cdk deploy \
+pnpm --filter @proxy/infra-cdk cdk deploy \
   --require-approval never \
-  "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-foundation"
+  "proxy-${PROXY_DEPLOY_ENV}-foundation"
 ```
 
 Build and push the proxy image.
 
 ```shell
 export PROXY_REPOSITORY_URI="$(aws ecr describe-repositories \
-  --repository-names "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-proxy" \
+  --repository-names "proxy-${PROXY_DEPLOY_ENV}" \
   --query 'repositories[0].repositoryUri' \
   --output text)"
 
@@ -62,26 +62,26 @@ ECR image tags are immutable. If this tag already exists, either reuse it by ski
 Deploy base infrastructure and runtime secret containers.
 
 ```shell
-pnpm --filter @prompt-proxy/infra-cdk cdk deploy \
+pnpm --filter @proxy/infra-cdk cdk deploy \
   --require-approval never \
   -c "runtimeImageTag=${IMAGE_TAG}" \
-  -c "${PROMPT_PROXY_DEPLOY_ENV}AdminAllowedCidrs=${ADMIN_ALLOWED_CIDR}" \
-  "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-network" \
-  "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-database" \
-  "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-runtime-secrets" \
-  "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-operations" \
-  "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-web"
+  -c "${PROXY_DEPLOY_ENV}AdminAllowedCidrs=${ADMIN_ALLOWED_CIDR}" \
+  "proxy-${PROXY_DEPLOY_ENV}-network" \
+  "proxy-${PROXY_DEPLOY_ENV}-database" \
+  "proxy-${PROXY_DEPLOY_ENV}-runtime-secrets" \
+  "proxy-${PROXY_DEPLOY_ENV}-operations" \
+  "proxy-${PROXY_DEPLOY_ENV}-web"
 ```
 
 Populate provider secrets before starting the service.
 
 ```shell
 aws secretsmanager put-secret-value \
-  --secret-id "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-openai-api-key" \
+  --secret-id "proxy-${PROXY_DEPLOY_ENV}-openai-api-key" \
   --secret-string "$OPENAI_API_KEY"
 
 aws secretsmanager put-secret-value \
-  --secret-id "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-anthropic-api-key" \
+  --secret-id "proxy-${PROXY_DEPLOY_ENV}-anthropic-api-key" \
   --secret-string "$ANTHROPIC_API_KEY"
 ```
 
@@ -95,12 +95,12 @@ pnpm ops:seed:aws
 Deploy the service and edge.
 
 ```shell
-pnpm --filter @prompt-proxy/infra-cdk cdk deploy \
+pnpm --filter @proxy/infra-cdk cdk deploy \
   --require-approval never \
   -c "runtimeImageTag=${IMAGE_TAG}" \
-  -c "${PROMPT_PROXY_DEPLOY_ENV}AdminAllowedCidrs=${ADMIN_ALLOWED_CIDR}" \
-  "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-service" \
-  "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-edge"
+  -c "${PROXY_DEPLOY_ENV}AdminAllowedCidrs=${ADMIN_ALLOWED_CIDR}" \
+  "proxy-${PROXY_DEPLOY_ENV}-service" \
+  "proxy-${PROXY_DEPLOY_ENV}-edge"
 ```
 
 Build and sync the web app.
@@ -108,8 +108,8 @@ Build and sync the web app.
 ```shell
 pnpm build:web:aws
 
-export PROMPT_PROXY_WEB_BUCKET="$(aws cloudformation describe-stacks \
-  --stack-name "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-web" \
+export PROXY_WEB_BUCKET="$(aws cloudformation describe-stacks \
+  --stack-name "proxy-${PROXY_DEPLOY_ENV}-web" \
   --query "Stacks[0].Outputs[?OutputKey=='WebAssetsBucketName'].OutputValue" \
   --output text)"
 
@@ -119,13 +119,13 @@ pnpm sync:web:aws
 Invalidate CloudFront.
 
 ```shell
-export PROMPT_PROXY_CLOUDFRONT_DISTRIBUTION_ID="$(aws cloudformation describe-stacks \
-  --stack-name "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-edge" \
+export PROXY_CLOUDFRONT_DISTRIBUTION_ID="$(aws cloudformation describe-stacks \
+  --stack-name "proxy-${PROXY_DEPLOY_ENV}-edge" \
   --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" \
   --output text)"
 
 aws cloudfront create-invalidation \
-  --distribution-id "$PROMPT_PROXY_CLOUDFRONT_DISTRIBUTION_ID" \
+  --distribution-id "$PROXY_CLOUDFRONT_DISTRIBUTION_ID" \
   --paths "/*"
 ```
 
@@ -147,24 +147,24 @@ The workflow runs typecheck, tests, image build/push, base CDK deploy, migration
 Run the full smoke from an authenticated workstation.
 
 ```shell
-export PROMPT_PROXY_DEPLOYED_BASE_URL="https://$(aws cloudformation describe-stacks \
-  --stack-name "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-edge" \
+export PROXY_DEPLOYED_BASE_URL="https://$(aws cloudformation describe-stacks \
+  --stack-name "proxy-${PROXY_DEPLOY_ENV}-edge" \
   --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomainName'].OutputValue" \
   --output text)"
 
-export PROMPT_PROXY_DEPLOYED_API_KEY="$(aws secretsmanager get-secret-value \
-  --secret-id "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-proxy-token" \
+export PROXY_DEPLOYED_API_KEY="$(aws secretsmanager get-secret-value \
+  --secret-id "proxy-${PROXY_DEPLOY_ENV}-token" \
   --query SecretString \
   --output text)"
 
 export ADMIN_CREDENTIALS="$(aws secretsmanager get-secret-value \
-  --secret-id "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-admin-credentials" \
+  --secret-id "proxy-${PROXY_DEPLOY_ENV}-admin-credentials" \
   --query SecretString \
   --output text)"
 
-export PROMPT_PROXY_DEPLOYED_ADMIN_EMAIL="$(node -e 'const v = JSON.parse(process.env.ADMIN_CREDENTIALS); process.stdout.write(v.email)')"
-export PROMPT_PROXY_DEPLOYED_ADMIN_PASSWORD="$(node -e 'const v = JSON.parse(process.env.ADMIN_CREDENTIALS); process.stdout.write(v.password)')"
-export PROMPT_PROXY_DEPLOYED_ORGANIZATION_ID="prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}"
+export PROXY_DEPLOYED_ADMIN_EMAIL="$(node -e 'const v = JSON.parse(process.env.ADMIN_CREDENTIALS); process.stdout.write(v.email)')"
+export PROXY_DEPLOYED_ADMIN_PASSWORD="$(node -e 'const v = JSON.parse(process.env.ADMIN_CREDENTIALS); process.stdout.write(v.password)')"
+export PROXY_DEPLOYED_ORGANIZATION_ID="proxy-${PROXY_DEPLOY_ENV}"
 
 pnpm smoke:deployed
 ```
@@ -177,13 +177,13 @@ Use the CloudFront domain as the OpenAI-compatible base URL.
 
 ```toml
 model = "gpt-5.5"
-model_provider = "prompt_proxy_aws"
+model_provider = "proxy_aws"
 model_reasoning_effort = "high"
 
-[model_providers.prompt_proxy_aws]
-name = "Prompt Proxy AWS"
+[model_providers.proxy_aws]
+name = "Proxy AWS"
 base_url = "https://REPLACE_WITH_CLOUDFRONT_DOMAIN/v1"
-env_key = "PROMPT_PROXY_DEPLOYED_API_KEY"
+env_key = "PROXY_DEPLOYED_API_KEY"
 wire_api = "responses"
 supports_websockets = false
 ```
@@ -201,7 +201,7 @@ Add to `~/.claude/settings.json` (user-level or managed settings only; Claude Co
     "ANTHROPIC_BASE_URL": "https://REPLACE_WITH_CLOUDFRONT_DOMAIN",
     "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"
   },
-  "apiKeyHelper": "echo \"$PROMPT_PROXY_DEPLOYED_API_KEY\""
+  "apiKeyHelper": "echo \"$PROXY_DEPLOYED_API_KEY\""
 }
 ```
 
@@ -209,7 +209,7 @@ Then run `claude` with no extra flags. For a one-off session without touching se
 
 ```shell
 export ANTHROPIC_BASE_URL="https://REPLACE_WITH_CLOUDFRONT_DOMAIN"
-export ANTHROPIC_API_KEY="$PROMPT_PROXY_DEPLOYED_API_KEY"
+export ANTHROPIC_API_KEY="$PROXY_DEPLOYED_API_KEY"
 export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
 claude --model claude-router-auto
 ```
@@ -219,13 +219,13 @@ claude --model claude-router-auto
 Proxy logs:
 
 ```shell
-aws logs tail "/aws/ecs/prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-proxy" --follow
+aws logs tail "/aws/ecs/proxy-${PROXY_DEPLOY_ENV}" --follow
 ```
 
 Operations logs:
 
 ```shell
-aws logs tail "/aws/ecs/prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-operations" --follow
+aws logs tail "/aws/ecs/proxy-${PROXY_DEPLOY_ENV}-operations" --follow
 ```
 
 No raw prompts should appear in CloudWatch logs. Raw prompt text belongs in Postgres `prompt_artifacts.raw_text`.
@@ -235,12 +235,12 @@ No raw prompts should appear in CloudWatch logs. Raw prompt text belongs in Post
 Runtime rollback:
 
 ```shell
-pnpm --filter @prompt-proxy/infra-cdk cdk deploy \
+pnpm --filter @proxy/infra-cdk cdk deploy \
   --require-approval never \
   -c "runtimeImageTag=PREVIOUS_IMAGE_TAG" \
-  -c "${PROMPT_PROXY_DEPLOY_ENV}AdminAllowedCidrs=${ADMIN_ALLOWED_CIDR}" \
-  "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-service" \
-  "prompt-proxy-${PROMPT_PROXY_DEPLOY_ENV}-edge"
+  -c "${PROXY_DEPLOY_ENV}AdminAllowedCidrs=${ADMIN_ALLOWED_CIDR}" \
+  "proxy-${PROXY_DEPLOY_ENV}-service" \
+  "proxy-${PROXY_DEPLOY_ENV}-edge"
 ```
 
 Web rollback:
@@ -250,7 +250,7 @@ git checkout PREVIOUS_SHA -- apps/web
 pnpm build:web:aws
 pnpm sync:web:aws
 aws cloudfront create-invalidation \
-  --distribution-id "$PROMPT_PROXY_CLOUDFRONT_DISTRIBUTION_ID" \
+  --distribution-id "$PROXY_CLOUDFRONT_DISTRIBUTION_ID" \
   --paths "/*"
 ```
 

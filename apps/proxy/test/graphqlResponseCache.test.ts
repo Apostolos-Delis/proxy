@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { organizationMembers, users } from "@prompt-proxy/db";
+import { organizationMembers, users } from "@proxy/db";
 
 import { adminGql, captureFixture, loginAdmin, type PromptTestFixture } from "./promptTestFixture.js";
 

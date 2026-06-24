@@ -230,7 +230,7 @@ The hash should be computed from the normalized access profile policy so histori
 
 ## Policy Shape
 
-Add a typed schema in `@prompt-proxy/schema` rather than storing arbitrary policy JSON without validation:
+Add a typed schema in `@proxy/schema` rather than storing arbitrary policy JSON without validation:
 
 ```json
 {

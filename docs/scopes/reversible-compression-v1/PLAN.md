@@ -4,7 +4,7 @@
 
 Turn the current deterministic tool-result compression implementation into a cache-safe, reversible product surface.
 
-This scope is inspired by the Headroom analysis in `.context/headroom-analysis.md`, but it is not a Headroom integration. Prompt Proxy should keep compression inside its existing TypeScript, multi-tenant, event-backed architecture.
+This scope is inspired by the Headroom analysis in `.context/headroom-analysis.md`, but it is not a Headroom integration. Proxy should keep compression inside its existing TypeScript, multi-tenant, event-backed architecture.
 
 V1 adds three missing properties to the current system:
 
@@ -14,7 +14,7 @@ V1 adds three missing properties to the current system:
 
 ## Current State
 
-Prompt Proxy already has the right foundation:
+Proxy already has the right foundation:
 
 - `apps/proxy/src/toolResultCompression.ts` walks Anthropic Messages, OpenAI Chat, and OpenAI Responses tool-result shapes.
 - Compression is deterministic and rule-versioned.
@@ -106,7 +106,7 @@ Retrieval uses existing durable state instead of a new store.
 When a block is compressed and `storeOriginalArtifact` is true, the replacement includes a compact marker:
 
 ```text
-[prompt-proxy:compressed id=cmp_... sha256=...]
+[prompt:compressed id=cmp_... sha256=...]
 ```
 
 For structured outputs, the marker should be a sibling text block or a suffix in the rewritten tool-result content, depending on provider shape. It must not add custom fields to provider-owned objects.
@@ -168,7 +168,7 @@ When the target surface supports tools and compression markers are present, inje
 Tool name:
 
 ```text
-prompt_proxy_retrieve_compressed
+proxy_retrieve_compressed
 ```
 
 Inputs:

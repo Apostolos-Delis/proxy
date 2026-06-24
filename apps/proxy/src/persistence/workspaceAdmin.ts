@@ -3,8 +3,8 @@ import { z } from "zod";
 
 import {
   workspaces,
-  type PromptProxyTransactionalDatabase
-} from "@prompt-proxy/db";
+  type ProxyTransactionalDatabase
+} from "@proxy/db";
 
 import { createId } from "../util.js";
 import { AdminMutationError } from "./adminErrors.js";
@@ -20,7 +20,7 @@ const createWorkspaceBodySchema = z.object({
 export class WorkspaceAdminError extends AdminMutationError {}
 
 export class WorkspaceAdminService {
-  constructor(private readonly db: PromptProxyTransactionalDatabase) {}
+  constructor(private readonly db: ProxyTransactionalDatabase) {}
 
   async createWorkspace(input: {
     organizationId: string;
@@ -60,7 +60,7 @@ export class WorkspaceAdminService {
         scopeId: workspaceId,
         correlationId: workspaceId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.workspaces",
+        producer: "proxy.admin.workspaces",
         eventType: "workspace.created",
         payload: {
           workspaceId,

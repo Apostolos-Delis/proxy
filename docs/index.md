@@ -1,8 +1,8 @@
-# Prompt Proxy Docs
+# Proxy Docs
 
 ## Architecture
 
-- [Model routing proxy design](model-routing-proxy.md)
+- [Model routing proxy design](model-routing.md)
 - [Frontend guidelines](frontend-guidelines.md)
 - [Persistence and admin console scope](scopes/persistence-admin-v1/PLAN.md)
 - [TanStack admin app scope](scopes/tanstack-admin-app-v1/PLAN.md)

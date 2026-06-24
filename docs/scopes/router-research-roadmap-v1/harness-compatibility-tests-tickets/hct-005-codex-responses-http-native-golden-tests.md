@@ -19,8 +19,8 @@ Goal: Fixture-back the Codex HTTP -> OpenAI Responses native path.
 
 ## Validation
 
-- Run `pnpm --filter @prompt-proxy/proxy test -- harness-compatibility`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- translationRuntime`.
+- Run `pnpm --filter @proxy/proxy test -- harness-compatibility`.
+- Run `pnpm --filter @proxy/proxy test -- translationRuntime`.
 
 ## Likely Files
 

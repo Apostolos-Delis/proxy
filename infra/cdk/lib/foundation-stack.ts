@@ -10,16 +10,16 @@ import {
 } from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
+import { resourceName, type ProxyEnvironmentConfig } from "./config.js";
 
-export type PromptProxyFoundationStackProps = StackProps & {
-  config: PromptProxyEnvironmentConfig;
+export type ProxyFoundationStackProps = StackProps & {
+  config: ProxyEnvironmentConfig;
 };
 
-export class PromptProxyFoundationStack extends Stack {
+export class ProxyFoundationStack extends Stack {
   readonly proxyRepository: Repository;
 
-  constructor(scope: Construct, id: string, props: PromptProxyFoundationStackProps) {
+  constructor(scope: Construct, id: string, props: ProxyFoundationStackProps) {
     super(scope, id, props);
 
     const { config } = props;
@@ -48,7 +48,7 @@ export class PromptProxyFoundationStack extends Stack {
     new CfnOutput(this, "GitHubActionsDeployRoleArn", { value: githubRole.roleArn });
   }
 
-  private createRepository(config: PromptProxyEnvironmentConfig) {
+  private createRepository(config: ProxyEnvironmentConfig) {
     const repository = new Repository(this, "ProxyRepository", {
       repositoryName: resourceName(config, "proxy"),
       imageScanOnPush: true,
@@ -65,7 +65,7 @@ export class PromptProxyFoundationStack extends Stack {
     return repository;
   }
 
-  private createGithubDeployRole(config: PromptProxyEnvironmentConfig, provider: IOpenIdConnectProvider) {
+  private createGithubDeployRole(config: ProxyEnvironmentConfig, provider: IOpenIdConnectProvider) {
     return new Role(this, "GitHubActionsDeployRole", {
       roleName: resourceName(config, "github-actions-deploy"),
       assumedBy: new OpenIdConnectPrincipal(provider).withConditions({
@@ -80,7 +80,7 @@ export class PromptProxyFoundationStack extends Stack {
     });
   }
 
-  private addDeployWorkflowPolicy(config: PromptProxyEnvironmentConfig, role: Role) {
+  private addDeployWorkflowPolicy(config: ProxyEnvironmentConfig, role: Role) {
     const partition = Stack.of(this).partition;
     const webBucketArn = `arn:${partition}:s3:::${resourceName(config, "web-assets")}-${config.awsAccountId}-${config.region}`;
 
@@ -92,7 +92,7 @@ export class PromptProxyFoundationStack extends Stack {
     role.addToPolicy(new PolicyStatement({
       effect: Effect.ALLOW,
       actions: ["cloudformation:DescribeStacks"],
-      resources: [`arn:${partition}:cloudformation:${config.region}:${config.awsAccountId}:stack/prompt-proxy-${config.envName}-*/*`]
+      resources: [`arn:${partition}:cloudformation:${config.region}:${config.awsAccountId}:stack/proxy-${config.envName}-*/*`]
     }));
     role.addToPolicy(new PolicyStatement({
       effect: Effect.ALLOW,
@@ -134,7 +134,7 @@ export class PromptProxyFoundationStack extends Stack {
   }
 }
 
-function githubProviderFor(scope: Construct, config: PromptProxyEnvironmentConfig): IOpenIdConnectProvider {
+function githubProviderFor(scope: Construct, config: ProxyEnvironmentConfig): IOpenIdConnectProvider {
   if (config.githubOidcProviderArn) {
     return OpenIdConnectProvider.fromOpenIdConnectProviderArn(
       scope,
@@ -149,7 +149,7 @@ function githubProviderFor(scope: Construct, config: PromptProxyEnvironmentConfi
   });
 }
 
-function githubSubjectClaims(config: PromptProxyEnvironmentConfig) {
+function githubSubjectClaims(config: ProxyEnvironmentConfig) {
   if (config.envName === "prod") {
     return [`repo:${config.githubRepository}:environment:${config.envName}`];
   }

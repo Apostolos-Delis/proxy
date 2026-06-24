@@ -46,7 +46,7 @@ Unavailable for Codex stateful Responses.
 
 ## Current State
 
-Prompt Proxy already has the right seams:
+Proxy already has the right seams:
 
 - `packages/schema/src/index.ts` defines three surfaces/dialects: `openai-responses`, `openai-chat`, and `anthropic-messages`.
 - `apps/proxy/src/translators/index.ts` has a registry with `request`, `response`, and `sseTransform` hooks.
@@ -97,7 +97,7 @@ from inbound dialect
   -> to outbound dialect
 ```
 
-Prompt Proxy can do the same behind its existing `DialectTranslator` registry, while preserving richer harness-specific behavior where needed.
+Proxy can do the same behind its existing `DialectTranslator` registry, while preserving richer harness-specific behavior where needed.
 
 ## Design
 
@@ -371,7 +371,7 @@ This makes the actual routing behavior inspectable without duplicating route con
 
 ### 5. Docs
 
-- Update `docs/model-routing-proxy.md` after implementation lands.
+- Update `docs/model-routing.md` after implementation lands.
 - Update `docs/runbooks/routing-configs.md` with the new operator flow.
 - Add harness-specific caveats to `docs/harnesses/opencode.md` and future Claude Code setup docs.
 

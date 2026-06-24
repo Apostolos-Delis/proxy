@@ -13,9 +13,9 @@ import {
   routingConfigs,
   routingConfigVersions,
   usageLedger
-} from "@prompt-proxy/db";
-import { harnessCompatibilityForTarget } from "@prompt-proxy/schema";
-import type { Dialect, RoutingConfig } from "@prompt-proxy/schema";
+} from "@proxy/db";
+import { harnessCompatibilityForTarget } from "@proxy/schema";
+import type { Dialect, RoutingConfig } from "@proxy/schema";
 
 import { scopedIdempotencyKey } from "../src/auth.js";
 import { idempotencyFrom } from "../src/util.js";

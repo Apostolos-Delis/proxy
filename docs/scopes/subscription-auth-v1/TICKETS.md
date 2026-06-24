@@ -83,8 +83,8 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/proxy schema:print` then `pnpm --filter @prompt-proxy/web codegen`.
-- Run `pnpm --filter @prompt-proxy/proxy test` and `pnpm --filter @prompt-proxy/web typecheck`.
+- Run `pnpm --filter @proxy/proxy schema:print` then `pnpm --filter @proxy/web codegen`.
+- Run `pnpm --filter @proxy/proxy test` and `pnpm --filter @proxy/web typecheck`.
 
 Likely files:
 
@@ -123,8 +123,8 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/proxy schema:print` then `pnpm --filter @prompt-proxy/web codegen`.
-- Add create-path unit tests; run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy schema:print` then `pnpm --filter @proxy/web codegen`.
+- Add create-path unit tests; run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -155,7 +155,7 @@ Acceptance criteria:
 
 Validation:
 
-- Add bind guardrail unit tests (two distinct users, two keys); run `pnpm --filter @prompt-proxy/proxy test`.
+- Add bind guardrail unit tests (two distinct users, two keys); run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -186,7 +186,7 @@ Acceptance criteria:
 
 Validation:
 
-- Add resolver unit tests; run `pnpm --filter @prompt-proxy/proxy test`.
+- Add resolver unit tests; run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -217,7 +217,7 @@ Acceptance criteria:
 Validation:
 
 - Add `headersFor` unit tests covering oauth on/off, api_key, and count-tokens; run
-  `pnpm --filter @prompt-proxy/proxy test`.
+  `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -249,7 +249,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/web typecheck` and `pnpm build`.
+- Run `pnpm --filter @proxy/web typecheck` and `pnpm build`.
 - Manual check of the create + list flow against a local proxy with the flag on.
 
 Likely files:
@@ -282,7 +282,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime` then `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm build:runtime` then `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 

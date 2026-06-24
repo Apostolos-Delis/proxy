@@ -6,9 +6,9 @@ import {
   routingConfigs,
   routingConfigVersions,
   workspaces,
-  type PromptProxyDbSession
-} from "@prompt-proxy/db";
-import { defaultCompressionPolicy, routingConfigSchema, type CompressionPolicy, type RoutingConfig } from "@prompt-proxy/schema";
+  type ProxyDbSession
+} from "@proxy/db";
+import { defaultCompressionPolicy, routingConfigSchema, type CompressionPolicy, type RoutingConfig } from "@proxy/schema";
 import { CACHE_TTL_POLICY_LOOKBACK_MS } from "../cacheWindows.js";
 import type { RoutingConfigSelection, RoutingConfigSnapshot } from "../types.js";
 import { aggregateIdleGaps, IDLE_GAP_SAMPLE_CAP } from "./idleGaps.js";
@@ -47,7 +47,7 @@ export type RoutingConfigResolverLike = {
 export class RoutingConfigResolver implements RoutingConfigResolverLike {
   private readonly cacheTtlPolicy = new Map<string, { eligible: boolean; expiresAt: number }>();
 
-  constructor(private readonly db: PromptProxyDbSession) {}
+  constructor(private readonly db: ProxyDbSession) {}
 
   async resolve(input: {
     organizationId: string;

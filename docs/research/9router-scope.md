@@ -3,15 +3,15 @@
 Source: https://github.com/decolua/9router
 Local clone reviewed: `.context/upstreams/9router`
 Commit reviewed: `f2a7ae20309b4af55023eb11d1c02f63be1b80d1` from 2026-06-18
-Compared system: Prompt Proxy in this repository
+Compared system: Proxy in this repository
 
 ## Executive Summary
 
 9router is a local-first AI routing gateway aimed directly at coding agents and developer tools. It exposes OpenAI-compatible and Anthropic-compatible endpoints, translates among OpenAI Chat, OpenAI Responses, Claude, Gemini, and other formats, and routes across many providers, credentials, and local subscription accounts. Its product center is practical developer convenience: one local endpoint, many providers, automatic fallback, account rotation, combo models, and token compression.
 
-9router is closer to Prompt Proxy's harness focus than LiteLLM, but its trust model is very different. It optimizes for a local single-user router that can aggressively mutate requests, compress tool outputs, fall back silently, and store provider credentials locally. Prompt Proxy is an organization/workspace-scoped gateway with durable audit, BYOK, versioned routing configs, and event-backed observability.
+9router is closer to Proxy's harness focus than LiteLLM, but its trust model is very different. It optimizes for a local single-user router that can aggressively mutate requests, compress tool outputs, fall back silently, and store provider credentials locally. Proxy is an organization/workspace-scoped gateway with durable audit, BYOK, versioned routing configs, and event-backed observability.
 
-The strongest takeaways for Prompt Proxy are translator testing discipline, harness-specific compatibility coverage, provider capability metadata, account-level fallback, and explicit token-compression features. The main cautions are silent behavior changes, weak enterprise secret posture, and local current-state logging instead of auditable event streams.
+The strongest takeaways for Proxy are translator testing discipline, harness-specific compatibility coverage, provider capability metadata, account-level fallback, and explicit token-compression features. The main cautions are silent behavior changes, weak enterprise secret posture, and local current-state logging instead of auditable event streams.
 
 ## Architecture
 
@@ -56,7 +56,7 @@ The chat request flow is:
 9. The executor sends the upstream request.
 10. Usage and request detail logging are persisted locally.
 
-Prompt Proxy has a similar high-level need but should keep transport handlers thinner. 9router's request path is dense because it performs most product features inline.
+Proxy has a similar high-level need but should keep transport handlers thinner. 9router's request path is dense because it performs most product features inline.
 
 ### Translation Architecture
 
@@ -73,7 +73,7 @@ The translator registry is 9router's most valuable technical contribution. It ha
 - Thinking/reasoning fields.
 - Finish reason and usage normalization.
 
-9router also has many targeted translator tests and snapshots. This is directly relevant to Prompt Proxy. Our translator registry should have a harness-profile matrix and golden tests before we rely on translated routes broadly.
+9router also has many targeted translator tests and snapshots. This is directly relevant to Proxy. Our translator registry should have a harness-profile matrix and golden tests before we rely on translated routes broadly.
 
 ### Provider Registry
 
@@ -89,7 +89,7 @@ The translator registry is 9router's most valuable technical contribution. It ha
 - Pricing.
 - Media and service kind metadata.
 
-This is useful as a code-organization pattern, but Prompt Proxy should not use static code as the operational source of truth. The better design is:
+This is useful as a code-organization pattern, but Proxy should not use static code as the operational source of truth. The better design is:
 
 - Seed provider and model definitions from a catalog.
 - Store active provider registry rows and provider accounts in Postgres.
@@ -109,7 +109,7 @@ This is useful as a code-organization pattern, but Prompt Proxy should not use s
 - Capability-aware model selection.
 - Subscription/free-provider priority patterns.
 
-The useful Prompt Proxy concept is an explicit fallback chain attached to the route decision. The risky 9router behavior is broad silent fallback. Prompt Proxy should return the selected route and all fallback evidence through durable events and dashboard views.
+The useful Proxy concept is an explicit fallback chain attached to the route decision. The risky 9router behavior is broad silent fallback. Proxy should return the selected route and all fallback evidence through durable events and dashboard views.
 
 ### RTK Compression
 
@@ -132,22 +132,22 @@ The strongest idea is not the exact filters; it is the contract:
 - Preserve enough structure for the model to reason.
 - Measure token savings.
 
-Prompt Proxy can implement this as an explicit route-config feature, not an implicit mutation.
+Proxy can implement this as an explicit route-config feature, not an implicit mutation.
 
 ### Persistence
 
 9router uses local storage for settings, provider connections, provider nodes, proxy pools, API keys, combos, aliases, pricing, usage history, daily aggregates, and request details.
 
-This is pragmatic for a local tool but weaker than Prompt Proxy's durable model:
+This is pragmatic for a local tool but weaker than Proxy's durable model:
 
 - No organization/workspace scoping equivalent.
 - Request logs are local operational records, not event streams with outbox semantics.
 - Secrets live in a local app database.
 - Full request logging is a local toggle rather than an org/workspace prompt-capture policy.
 
-Prompt Proxy should borrow the local UX clarity, not the storage trust model.
+Proxy should borrow the local UX clarity, not the storage trust model.
 
-## Pros Compared To Prompt Proxy
+## Pros Compared To Proxy
 
 - Very focused on coding-agent integration.
 - Broad compatibility with real harness quirks.
@@ -155,21 +155,21 @@ Prompt Proxy should borrow the local UX clarity, not the storage trust model.
 - Provider registry includes capability and display metadata close to transport behavior.
 - Account fallback and cooldown are practical and user-visible.
 - Combo models are a strong product primitive for ordered fallback and load sharing.
-- RTK compression targets exactly the tool-heavy sessions Prompt Proxy expects.
+- RTK compression targets exactly the tool-heavy sessions Proxy expects.
 - Local dashboard and CLI setup helpers reduce onboarding friction.
 - Supports many practical provider/auth shapes.
 
-## Cons And Risks Compared To Prompt Proxy
+## Cons And Risks Compared To Proxy
 
 - Local-first security model is not enough for organization-scoped gateway use.
-- Full request/header/body logs can easily violate Prompt Proxy's raw prompt storage boundary.
+- Full request/header/body logs can easily violate Proxy's raw prompt storage boundary.
 - Silent fallback can obscure which model actually handled a request.
 - Aggressive translation and request mutation can break harness assumptions.
 - Provider and capability data are mostly code/static config rather than durable, versioned operational state.
 - Account fallback defaults may mask credential or policy errors.
 - Subscription/free-provider routing and tool cloaking behaviors are not aligned with a conservative enterprise posture.
 
-## What Prompt Proxy Should Borrow
+## What Proxy Should Borrow
 
 ### Harness Compatibility Matrix
 
@@ -234,7 +234,7 @@ Use capability metadata to improve the routing config UI:
 - Max context and max output.
 - Known unsupported params.
 
-## What Prompt Proxy Should Avoid
+## What Proxy Should Avoid
 
 - Do not silently rewrite or compress prompts without a route decision field.
 - Do not store raw prompts in ordinary request logs.
@@ -251,8 +251,8 @@ Use capability metadata to improve the routing config UI:
 4. Add tool-output compression as a measured, opt-in policy.
 5. Add model capability metadata to provider registry and routing config screens.
 6. Add combo-like ordered fallback plans, but only as auditable route execution plans.
-7. Add request detail artifacts that respect Prompt Proxy's prompt artifact boundary.
+7. Add request detail artifacts that respect Proxy's prompt artifact boundary.
 
 ## Bottom Line
 
-9router is the best comparison for coding-agent compatibility and practical local routing. Prompt Proxy should adopt its discipline around translator edge cases, account fallback, and token compression. It should reject the parts that conflict with organization-grade audit: silent mutation, weak secret boundaries, and local logs as the source of truth.
+9router is the best comparison for coding-agent compatibility and practical local routing. Proxy should adopt its discipline around translator edge cases, account fallback, and token compression. It should reject the parts that conflict with organization-grade audit: silent mutation, weak secret boundaries, and local logs as the source of truth.

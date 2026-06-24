@@ -1,7 +1,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { defaultWorkspaceId } from "@prompt-proxy/db";
+import { defaultWorkspaceId } from "@proxy/db";
 import { z } from "zod";
 
 import {
@@ -118,7 +118,7 @@ export class EventService {
       causationId: input.causationId,
       correlationId: input.correlationId,
       idempotencyKey: input.idempotencyKey,
-      actor: input.actor ?? { type: "proxy", id: "prompt-proxy" },
+      actor: input.actor ?? { type: "proxy", id: "proxy" },
       producer: input.producer,
       eventType: input.eventType,
       payloadHash: sha256(stableJson(payload)),
@@ -171,8 +171,8 @@ export class EventService {
         await appendFile(this.filePath, `${JSON.stringify(event)}\n`);
       }
 
-      this.metrics.incrementCounter("prompt_proxy_event_appends_total", { outcome: "succeeded", error_class: "none" });
-      this.metrics.incrementCounter("prompt_proxy_event_outbox_items_total", { outcome: "queued", error_class: "none" });
+      this.metrics.incrementCounter("proxy_event_appends_total", { outcome: "succeeded", error_class: "none" });
+      this.metrics.incrementCounter("proxy_event_outbox_items_total", { outcome: "queued", error_class: "none" });
       if (!this.persistentSink) this.recordOutboxHealth();
       appendSucceeded = true;
 
@@ -183,7 +183,7 @@ export class EventService {
       return event;
     } catch (error) {
       if (!appendSucceeded) {
-        this.metrics.incrementCounter("prompt_proxy_event_appends_total", { outcome: "failed", error_class: "persistence" });
+        this.metrics.incrementCounter("proxy_event_appends_total", { outcome: "failed", error_class: "persistence" });
         if (!this.persistentSink) this.recordOutboxHealth();
       }
       throw error;
@@ -209,18 +209,18 @@ export class EventService {
     for (const item of this.outbox) {
       if (item.status !== "queued") continue;
       item.status = "processing";
-      this.metrics.incrementCounter("prompt_proxy_event_outbox_items_total", { outcome: "processing", error_class: "none" });
+      this.metrics.incrementCounter("proxy_event_outbox_items_total", { outcome: "processing", error_class: "none" });
       const event = this.events.find((candidate) => candidate.eventId === item.eventId);
       try {
         if (!event) throw new Error("Outbox event not found.");
         await handler(event);
         item.status = "succeeded";
         delete item.error;
-        this.metrics.incrementCounter("prompt_proxy_event_outbox_items_total", { outcome: "succeeded", error_class: "none" });
+        this.metrics.incrementCounter("proxy_event_outbox_items_total", { outcome: "succeeded", error_class: "none" });
       } catch (error) {
         item.status = "failed";
         item.error = error instanceof Error ? error.message : "Outbox handler failed.";
-        this.metrics.incrementCounter("prompt_proxy_event_outbox_items_total", { outcome: "failed", error_class: "unknown" });
+        this.metrics.incrementCounter("proxy_event_outbox_items_total", { outcome: "failed", error_class: "unknown" });
       }
     }
     if (!this.persistentSink) this.recordOutboxHealth();
@@ -228,13 +228,13 @@ export class EventService {
 
   private recordOutboxHealth() {
     const queued = this.outbox.filter((item) => item.status === "queued");
-    this.metrics.setGauge("prompt_proxy_outbox_backlog", queued.length);
+    this.metrics.setGauge("proxy_outbox_backlog", queued.length);
     const oldestQueuedAt = queued
       .map((item) => new Date(item.queuedAt).getTime())
       .filter((time) => Number.isFinite(time))
       .sort((left, right) => left - right)[0];
     this.metrics.setGauge(
-      "prompt_proxy_outbox_oldest_item_age_seconds",
+      "proxy_outbox_oldest_item_age_seconds",
       oldestQueuedAt === undefined ? 0 : Math.max(0, (Date.now() - oldestQueuedAt) / 1000)
     );
   }

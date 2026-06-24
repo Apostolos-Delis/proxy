@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { WebSocketServer } from "ws";
 
-import { defaultWorkspaceId } from "@prompt-proxy/db";
+import { defaultWorkspaceId } from "@proxy/db";
 
 import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
@@ -31,7 +31,7 @@ const smokeEnv = {
   ...process.env,
   DATABASE_URL: "",
   EVENT_STORE_PATH: "",
-  PROMPT_PROXY_TOKEN: "proxy-token",
+  PROXY_TOKEN: "proxy-token",
   OPENAI_API_KEY: "openai-upstream-key",
   ANTHROPIC_API_KEY: "anthropic-upstream-key",
   OPENAI_BASE_URL: openai.url,
@@ -149,23 +149,23 @@ async function runOptionalHarnessSmoke(
 }
 
 async function runCodex(proxyUrl: string) {
-  const codexHome = await mkdtemp(join(tmpdir(), "prompt-proxy-codex-"));
-  const workdir = await mkdtemp(join(tmpdir(), "prompt-proxy-workdir-"));
+  const codexHome = await mkdtemp(join(tmpdir(), "proxy-codex-"));
+  const workdir = await mkdtemp(join(tmpdir(), "proxy-workdir-"));
   await writeFile(
     join(codexHome, "config.toml"),
     [
       'model = "router-auto"',
-      'model_provider = "prompt_proxy"',
+      'model_provider = "proxy"',
       "",
-      "[model_providers.prompt_proxy]",
-      'name = "Prompt Proxy"',
+      "[model_providers.proxy]",
+      'name = "Proxy"',
       `base_url = "${proxyUrl}/v1"`,
-      'env_key = "PROMPT_PROXY_TOKEN"',
+      'env_key = "PROXY_TOKEN"',
       'wire_api = "responses"',
       "supports_websockets = false",
       "request_max_retries = 0",
       "stream_max_retries = 0",
-      'env_http_headers = { authorization = "PROMPT_PROXY_AUTHORIZATION" }',
+      'env_http_headers = { authorization = "PROXY_AUTHORIZATION" }',
       ""
     ].join("\n")
   );
@@ -179,8 +179,8 @@ async function runCodex(proxyUrl: string) {
     "Reply with the exact text OK. Do not call tools."
   ], {
     CODEX_HOME: codexHome,
-    PROMPT_PROXY_TOKEN: "proxy-token",
-    PROMPT_PROXY_AUTHORIZATION: "Bearer proxy-token"
+    PROXY_TOKEN: "proxy-token",
+    PROXY_AUTHORIZATION: "Bearer proxy-token"
   });
 }
 

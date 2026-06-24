@@ -1,14 +1,14 @@
 # opencode Setup
 
-opencode can reach Prompt Proxy through three supported wire paths. Use the chat-compatible path for new setups; the Responses and Anthropic paths are available when you deliberately want those dialects.
+opencode can reach Proxy through three supported wire paths. Use the chat-compatible path for new setups; the Responses and Anthropic paths are available when you deliberately want those dialects.
 
 ## Prerequisites
 
-- Prompt Proxy is running, for example at `http://127.0.0.1:8787`.
-- You have a Prompt Proxy API key from the console's API keys page.
+- Proxy is running, for example at `http://127.0.0.1:8787`.
+- You have a Proxy API key from the console's API keys page.
 - The routing config assigned to that API key has targets compatible with the path you choose.
 
-Use the Prompt Proxy API key in opencode. Do not put your upstream OpenAI, Anthropic, or custom-provider key directly in opencode unless you intentionally want to bypass the proxy. Upstream BYOK belongs in the Prompt Proxy console under Model providers, then gets bound to the Prompt Proxy API key.
+Use the Proxy API key in opencode. Do not put your upstream OpenAI, Anthropic, or custom-provider key directly in opencode unless you intentionally want to bypass the proxy. Upstream BYOK belongs in the Proxy console under Model providers, then gets bound to the Proxy API key.
 
 ## One-Liner Setup
 
@@ -18,10 +18,10 @@ For the default OpenAI-compatible Chat path, the hosted setup script can configu
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness opencode <api-key>
 ```
 
-It stores a copy of the key at `~/.prompt-proxy/opencode.token`, writes the `prompt-proxy-chat` provider to `~/.config/opencode/opencode.json`, and stores the credential in `~/.local/share/opencode/auth.json`. Create a separate Prompt Proxy API key for opencode when you want opencode to use a different routing config than Claude Code or Codex.
-Pass `--harness` more than once when opencode should share one Prompt Proxy API key with another local harness.
+It stores a copy of the key at `~/.proxy/opencode.token`, writes the `prompt-chat` provider to `~/.config/opencode/opencode.json`, and stores the credential in `~/.local/share/opencode/auth.json`. Create a separate Proxy API key for opencode when you want opencode to use a different routing config than Claude Code or Codex.
+Pass `--harness` more than once when opencode should share one Proxy API key with another local harness.
 
-The hosted setup script tracks the opencode provider and auth entries it owns with sidecar marker files under `~/.prompt-proxy/`. If `prompt-proxy-chat` already exists in opencode config or auth without those markers, setup reports the conflict and leaves the user-managed entry unchanged.
+The hosted setup script tracks the opencode provider and auth entries it owns with sidecar marker files under `~/.proxy/`. If `prompt-chat` already exists in opencode config or auth without those markers, setup reports the conflict and leaves the user-managed entry unchanged.
 
 ## Model IDs
 
@@ -45,19 +45,19 @@ For the Anthropic Messages path, use:
 
 ## Key Setup
 
-If you do not use the setup script, run `/connect` in opencode, add a custom provider credential whose provider ID matches the `provider` key from the config you choose below, and paste the Prompt Proxy API key.
+If you do not use the setup script, run `/connect` in opencode, add a custom provider credential whose provider ID matches the `provider` key from the config you choose below, and paste the Proxy API key.
 
 The examples use these provider IDs:
 
-- `prompt-proxy-chat`
-- `prompt-proxy-responses`
-- `prompt-proxy-anthropic`
+- `prompt-chat`
+- `prompt-responses`
+- `prompt-anthropic`
 
 If you use a different ID, update both the `/connect` credential and the `model` / `small_model` prefixes.
 
 ## Path 1: OpenAI-Compatible Chat
 
-This is the default path for opencode and other OpenAI-compatible clients. It calls Prompt Proxy at `POST /v1/chat/completions`.
+This is the default path for opencode and other OpenAI-compatible clients. It calls Proxy at `POST /v1/chat/completions`.
 
 `opencode.json`:
 
@@ -65,9 +65,9 @@ This is the default path for opencode and other OpenAI-compatible clients. It ca
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "prompt-proxy-chat": {
+    "prompt-chat": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "Prompt Proxy Chat",
+      "name": "Proxy Chat",
       "options": {
         "baseURL": "http://127.0.0.1:8787/v1"
       },
@@ -80,8 +80,8 @@ This is the default path for opencode and other OpenAI-compatible clients. It ca
       }
     }
   },
-  "model": "prompt-proxy-chat/router-auto",
-  "small_model": "prompt-proxy-chat/router-fast"
+  "model": "prompt-chat/router-auto",
+  "small_model": "prompt-chat/router-fast"
 }
 ```
 
@@ -89,7 +89,7 @@ Use this path for OSS or hosted OpenAI-compatible chat providers such as vLLM, O
 
 ## Path 2: OpenAI Responses
 
-Use this path when your opencode setup is intentionally using an OpenAI provider adapter that sends Responses API requests. It calls Prompt Proxy at `POST /v1/responses`.
+Use this path when your opencode setup is intentionally using an OpenAI provider adapter that sends Responses API requests. It calls Proxy at `POST /v1/responses`.
 
 `opencode.json`:
 
@@ -97,9 +97,9 @@ Use this path when your opencode setup is intentionally using an OpenAI provider
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "prompt-proxy-responses": {
+    "prompt-responses": {
       "npm": "@ai-sdk/openai",
-      "name": "Prompt Proxy Responses",
+      "name": "Proxy Responses",
       "options": {
         "baseURL": "http://127.0.0.1:8787/v1"
       },
@@ -112,8 +112,8 @@ Use this path when your opencode setup is intentionally using an OpenAI provider
       }
     }
   },
-  "model": "prompt-proxy-responses/router-auto",
-  "small_model": "prompt-proxy-responses/router-fast"
+  "model": "prompt-responses/router-auto",
+  "small_model": "prompt-responses/router-fast"
 }
 ```
 
@@ -121,7 +121,7 @@ This path can target native Responses endpoints. It can also target chat-only pr
 
 ## Path 3: Anthropic Messages
 
-Use this path when opencode is configured through an Anthropic provider adapter. It calls Prompt Proxy at `POST /v1/messages`.
+Use this path when opencode is configured through an Anthropic provider adapter. It calls Proxy at `POST /v1/messages`.
 
 `opencode.json`:
 
@@ -129,9 +129,9 @@ Use this path when opencode is configured through an Anthropic provider adapter.
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "prompt-proxy-anthropic": {
+    "prompt-anthropic": {
       "npm": "@ai-sdk/anthropic",
-      "name": "Prompt Proxy Anthropic",
+      "name": "Proxy Anthropic",
       "options": {
         "baseURL": "http://127.0.0.1:8787/v1"
       },
@@ -144,8 +144,8 @@ Use this path when opencode is configured through an Anthropic provider adapter.
       }
     }
   },
-  "model": "prompt-proxy-anthropic/claude-router-auto",
-  "small_model": "prompt-proxy-anthropic/claude-router-fast"
+  "model": "prompt-anthropic/claude-router-auto",
+  "small_model": "prompt-anthropic/claude-router-fast"
 }
 ```
 
@@ -156,14 +156,14 @@ This path can target native Anthropic Messages endpoints, including custom provi
 1. Restart opencode after changing provider config.
 2. Run `/models` and confirm the provider and aliases appear.
 3. Send a small prompt.
-4. In Prompt Proxy, open Logs and confirm the request surface:
+4. In Proxy, open Logs and confirm the request surface:
    - Path 1: `openai-chat`
    - Path 2: `openai-responses`
    - Path 3: `anthropic-messages`
 
 ## Troubleshooting
 
-- `401` or auth errors: the opencode provider credential must be the Prompt Proxy API key, not an upstream provider key.
+- `401` or auth errors: the opencode provider credential must be the Proxy API key, not an upstream provider key.
 - Model not found: the model ID in opencode must exactly match one of the configured aliases.
 - Request reaches the wrong surface: check the provider package and base URL. The base URL should end at `/v1`, not `/v1/chat/completions`, `/v1/responses`, or `/v1/messages`.
 - Translated target skipped for a Responses request: Codex WebSocket traffic and requests with `previous_response_id` require a native Responses endpoint.

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add production operational metrics for Prompt Proxy so operators can answer health questions without scraping logs:
+Add production operational metrics for Proxy so operators can answer health questions without scraping logs:
 
 - Is the proxy accepting and completing harness traffic?
 - Are failures coming from auth, routing/classification, providers, clients, or persistence?
@@ -29,7 +29,7 @@ Use two collection paths:
 | Direct runtime instrumentation | HTTP route health, process state, in-flight request gauges, database query timing, metrics endpoint health | These facts either are not durable events or need immediate process visibility. |
 | Event/outbox-derived observation | Request lifecycle, routing decisions, classifier outcomes, provider terminal outcomes, usage/cost counters, terminal-pending reconciliation | Prefer this where the event already exists so metrics match durable state. |
 
-Metrics recording must never fail a proxied request. Sink errors should increment `prompt_proxy_metrics_sink_errors_total` and be logged with redaction.
+Metrics recording must never fail a proxied request. Sink errors should increment `proxy_metrics_sink_errors_total` and be logged with redaction.
 
 ## Label Policy
 
@@ -58,7 +58,7 @@ Allowed labels must come from bounded enums or normalized buckets:
 | `operation` | Bounded code-owned operation names such as `event_append`, `outbox_poll`, `usage_rollup`, `admin_list_requests` |
 | `stage` | Bounded lifecycle stages such as `before_provider`, `after_headers`, `after_bytes`, `unknown` |
 | `reason` | Bounded reason codes owned by code, not exception messages or provider text |
-| `version`, `commit`, `environment` | Static process metadata for `prompt_proxy_build_info`; omit unavailable values |
+| `version`, `commit`, `environment` | Static process metadata for `proxy_build_info`; omit unavailable values |
 
 Forbidden labels:
 
@@ -75,61 +75,61 @@ Forbidden labels:
 
 | Metric | Type | Unit | Labels | Source | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `prompt_proxy_up` | gauge | boolean | none | direct | `1` after server startup; `0` only when exported by a terminating process or external wrapper. |
-| `prompt_proxy_build_info` | gauge | count | `version`, `commit`, `environment` | direct | Static labels only; omit unknown values rather than using dynamic build metadata. |
-| `prompt_proxy_http_requests_total` | counter | requests | `route_family`, `method`, `status_class`, `error_class` | direct | Includes admin, health, GraphQL, metrics, and proxy surfaces. |
-| `prompt_proxy_http_request_duration_seconds` | histogram | seconds | `route_family`, `method`, `status_class` | direct | End-to-end HTTP handler duration, including non-model routes. |
-| `prompt_proxy_model_requests_in_flight` | gauge | requests | `surface`, `stream` | direct | Increment before provider/routing work, decrement exactly once. |
-| `prompt_proxy_model_requests_total` | counter | requests | `surface`, `stream`, `terminal_status`, `error_class` | event-derived | Model traffic only. |
-| `prompt_proxy_model_request_duration_seconds` | histogram | seconds | `surface`, `stream`, `terminal_status` | event-derived | Request receipt to terminal event when available. |
-| `prompt_proxy_client_cancellations_total` | counter | requests | `surface`, `stream`, `stage` | direct/event-derived | `stage` is bounded: `before_provider`, `after_headers`, `after_bytes`, `unknown`. |
+| `proxy_up` | gauge | boolean | none | direct | `1` after server startup; `0` only when exported by a terminating process or external wrapper. |
+| `proxy_build_info` | gauge | count | `version`, `commit`, `environment` | direct | Static labels only; omit unknown values rather than using dynamic build metadata. |
+| `proxy_http_requests_total` | counter | requests | `route_family`, `method`, `status_class`, `error_class` | direct | Includes admin, health, GraphQL, metrics, and proxy surfaces. |
+| `proxy_http_request_duration_seconds` | histogram | seconds | `route_family`, `method`, `status_class` | direct | End-to-end HTTP handler duration, including non-model routes. |
+| `proxy_model_requests_in_flight` | gauge | requests | `surface`, `stream` | direct | Increment before provider/routing work, decrement exactly once. |
+| `proxy_model_requests_total` | counter | requests | `surface`, `stream`, `terminal_status`, `error_class` | event-derived | Model traffic only. |
+| `proxy_model_request_duration_seconds` | histogram | seconds | `surface`, `stream`, `terminal_status` | event-derived | Request receipt to terminal event when available. |
+| `proxy_client_cancellations_total` | counter | requests | `surface`, `stream`, `stage` | direct/event-derived | `stage` is bounded: `before_provider`, `after_headers`, `after_bytes`, `unknown`. |
 
 ### Routing And Classifier
 
 | Metric | Type | Unit | Labels | Source | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `prompt_proxy_routing_decisions_total` | counter | decisions | `surface`, `requested_route`, `final_route`, `provider`, `model`, `guardrail_action` | event-derived | Emitted from persisted route decisions. |
-| `prompt_proxy_routing_rejections_total` | counter | rejections | `surface`, `requested_route`, `error_class`, `guardrail_action` | event-derived | Budget, capability, credential, and translation rejections. |
-| `prompt_proxy_classifier_attempts_total` | counter | attempts | `provider`, `model`, `outcome`, `error_class` | event-derived | Counts each classifier attempt, not just final requests. |
-| `prompt_proxy_classifier_duration_seconds` | histogram | seconds | `provider`, `model`, `outcome` | event-derived | Attempt duration. |
-| `prompt_proxy_classifier_retries_total` | counter | retries | `provider`, `model`, `error_class` | event-derived | Retry count before final classifier outcome. |
-| `prompt_proxy_classifier_tokens_total` | counter | tokens | `provider`, `model`, `usage_kind` | event-derived | Uses normalized usage conventions. |
-| `prompt_proxy_classifier_cost_usd_total` | counter | USD | `provider`, `model`, `cost_kind` | event-derived | Cost is useful for rate alerts, not billing truth. |
+| `proxy_routing_decisions_total` | counter | decisions | `surface`, `requested_route`, `final_route`, `provider`, `model`, `guardrail_action` | event-derived | Emitted from persisted route decisions. |
+| `proxy_routing_rejections_total` | counter | rejections | `surface`, `requested_route`, `error_class`, `guardrail_action` | event-derived | Budget, capability, credential, and translation rejections. |
+| `proxy_classifier_attempts_total` | counter | attempts | `provider`, `model`, `outcome`, `error_class` | event-derived | Counts each classifier attempt, not just final requests. |
+| `proxy_classifier_duration_seconds` | histogram | seconds | `provider`, `model`, `outcome` | event-derived | Attempt duration. |
+| `proxy_classifier_retries_total` | counter | retries | `provider`, `model`, `error_class` | event-derived | Retry count before final classifier outcome. |
+| `proxy_classifier_tokens_total` | counter | tokens | `provider`, `model`, `usage_kind` | event-derived | Uses normalized usage conventions. |
+| `proxy_classifier_cost_usd_total` | counter | USD | `provider`, `model`, `cost_kind` | event-derived | Cost is useful for rate alerts, not billing truth. |
 
 ### Provider And Streams
 
 | Metric | Type | Unit | Labels | Source | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `prompt_proxy_provider_attempts_total` | counter | attempts | `surface`, `provider`, `model`, `stream`, `terminal_status`, `status_class`, `error_class` | event-derived | Counts upstream attempts. |
-| `prompt_proxy_provider_attempt_duration_seconds` | histogram | seconds | `surface`, `provider`, `model`, `stream`, `terminal_status` | event-derived | Provider request start to terminal state. |
-| `prompt_proxy_provider_time_to_first_byte_seconds` | histogram | seconds | `surface`, `provider`, `model`, `stream` | direct/event-derived | Only for stream or byte-producing responses. |
-| `prompt_proxy_provider_stream_bytes_total` | counter | bytes | `surface`, `provider`, `model`, `terminal_status` | direct | Count bytes forwarded, not buffered payloads. |
-| `prompt_proxy_provider_stream_disconnects_total` | counter | disconnects | `surface`, `provider`, `model`, `error_class` | direct/event-derived | Separate client disconnects from upstream disconnects. |
-| `prompt_proxy_sse_observer_parse_failures_total` | counter | failures | `surface`, `provider`, `model`, `error_class` | direct | Observer failure must not affect passthrough. |
-| `prompt_proxy_provider_protocol_mismatches_total` | counter | mismatches | `surface`, `provider`, `model`, `stream` | direct/event-derived | Example: non-SSE body returned for requested SSE stream. |
+| `proxy_provider_attempts_total` | counter | attempts | `surface`, `provider`, `model`, `stream`, `terminal_status`, `status_class`, `error_class` | event-derived | Counts upstream attempts. |
+| `proxy_provider_attempt_duration_seconds` | histogram | seconds | `surface`, `provider`, `model`, `stream`, `terminal_status` | event-derived | Provider request start to terminal state. |
+| `proxy_provider_time_to_first_byte_seconds` | histogram | seconds | `surface`, `provider`, `model`, `stream` | direct/event-derived | Only for stream or byte-producing responses. |
+| `proxy_provider_stream_bytes_total` | counter | bytes | `surface`, `provider`, `model`, `terminal_status` | direct | Count bytes forwarded, not buffered payloads. |
+| `proxy_provider_stream_disconnects_total` | counter | disconnects | `surface`, `provider`, `model`, `error_class` | direct/event-derived | Separate client disconnects from upstream disconnects. |
+| `proxy_sse_observer_parse_failures_total` | counter | failures | `surface`, `provider`, `model`, `error_class` | direct | Observer failure must not affect passthrough. |
+| `proxy_provider_protocol_mismatches_total` | counter | mismatches | `surface`, `provider`, `model`, `stream` | direct/event-derived | Example: non-SSE body returned for requested SSE stream. |
 
 ### Usage And Cost Rates
 
 | Metric | Type | Unit | Labels | Source | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `prompt_proxy_usage_tokens_total` | counter | tokens | `surface`, `provider`, `model`, `usage_kind` | event-derived | Mirrors `usage_ledger` normalization, but is not billing truth. |
-| `prompt_proxy_cost_usd_total` | counter | USD | `surface`, `provider`, `model`, `cost_kind` | event-derived | Derived from the same pricing path as usage ledger rows. |
-| `prompt_proxy_missing_usage_total` | counter | requests | `surface`, `provider`, `model`, `reason` | event-derived | `reason` is bounded: `provider_omitted`, `observer_failed`, `terminal_pending`, `unknown`. |
+| `proxy_usage_tokens_total` | counter | tokens | `surface`, `provider`, `model`, `usage_kind` | event-derived | Mirrors `usage_ledger` normalization, but is not billing truth. |
+| `proxy_cost_usd_total` | counter | USD | `surface`, `provider`, `model`, `cost_kind` | event-derived | Derived from the same pricing path as usage ledger rows. |
+| `proxy_missing_usage_total` | counter | requests | `surface`, `provider`, `model`, `reason` | event-derived | `reason` is bounded: `provider_omitted`, `observer_failed`, `terminal_pending`, `unknown`. |
 
 ### Persistence, Workers, And Database
 
 | Metric | Type | Unit | Labels | Source | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `prompt_proxy_persistence_enabled` | gauge | boolean | none | direct | `1` when database persistence is active. |
-| `prompt_proxy_event_appends_total` | counter | events | `outcome`, `error_class` | direct/event-derived | Count event append attempts. |
-| `prompt_proxy_event_outbox_items_total` | counter | items | `outcome`, `error_class` | direct/event-derived | Count enqueue and processing outcomes. |
-| `prompt_proxy_outbox_backlog` | gauge | items | none | direct | Current queued item count. |
-| `prompt_proxy_outbox_oldest_item_age_seconds` | gauge | seconds | none | direct | Age of oldest queued item. |
-| `prompt_proxy_projection_lag_seconds` | gauge | seconds | `projection` | direct | Cursor lag for projection workers. |
-| `prompt_proxy_terminal_pending_provider_attempts` | gauge | attempts | `surface`, `provider` | direct | Reconciliation health signal. |
-| `prompt_proxy_db_query_duration_seconds` | histogram | seconds | `operation`, `outcome` | direct | Operation names are code-owned enums. |
-| `prompt_proxy_db_errors_total` | counter | errors | `operation`, `error_class` | direct | No raw SQL or exception messages in labels. |
-| `prompt_proxy_metrics_sink_errors_total` | counter | errors | `error_class` | direct | Metrics failure visibility. |
+| `proxy_persistence_enabled` | gauge | boolean | none | direct | `1` when database persistence is active. |
+| `proxy_event_appends_total` | counter | events | `outcome`, `error_class` | direct/event-derived | Count event append attempts. |
+| `proxy_event_outbox_items_total` | counter | items | `outcome`, `error_class` | direct/event-derived | Count enqueue and processing outcomes. |
+| `proxy_outbox_backlog` | gauge | items | none | direct | Current queued item count. |
+| `proxy_outbox_oldest_item_age_seconds` | gauge | seconds | none | direct | Age of oldest queued item. |
+| `proxy_projection_lag_seconds` | gauge | seconds | `projection` | direct | Cursor lag for projection workers. |
+| `proxy_terminal_pending_provider_attempts` | gauge | attempts | `surface`, `provider` | direct | Reconciliation health signal. |
+| `proxy_db_query_duration_seconds` | histogram | seconds | `operation`, `outcome` | direct | Operation names are code-owned enums. |
+| `proxy_db_errors_total` | counter | errors | `operation`, `error_class` | direct | No raw SQL or exception messages in labels. |
+| `proxy_metrics_sink_errors_total` | counter | errors | `error_class` | direct | Metrics failure visibility. |
 
 ## Histogram Buckets
 

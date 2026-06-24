@@ -12,7 +12,7 @@ type JsonArrayTable = {
   rows: unknown[][];
 };
 
-const ARRAY_COMPACTION_FORMAT = "prompt-proxy.json-array-compaction.v1";
+const ARRAY_COMPACTION_FORMAT = "prompt.json-array-compaction.v1";
 const MAX_CELL_JSON_CHARS = 2048;
 
 export function compactJsonString(text: string): string | undefined {

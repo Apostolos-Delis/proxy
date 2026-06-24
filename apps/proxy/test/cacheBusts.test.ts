@@ -9,7 +9,7 @@ import {
   requests,
   usageLedger,
   users
-} from "@prompt-proxy/db";
+} from "@proxy/db";
 
 import { detectCacheBusts, type CacheBustLedgerRow } from "../src/persistence/cacheBusts.js";
 import {

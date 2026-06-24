@@ -2,9 +2,9 @@
 
 ## Goal
 
-Define hard product boundaries for Prompt Proxy as it borrows ideas from LiteLLM, 9router, Kong, and OmniRoute.
+Define hard product boundaries for Proxy as it borrows ideas from LiteLLM, 9router, Kong, and OmniRoute.
 
-This scope is a guardrail. It prevents the roadmap from turning Prompt Proxy into a generic gateway, local free-tier router, prompt mutation engine, or opaque plugin host.
+This scope is a guardrail. It prevents the roadmap from turning Proxy into a generic gateway, local free-tier router, prompt mutation engine, or opaque plugin host.
 
 ## Why This Matters
 
@@ -15,7 +15,7 @@ The upstream projects are useful but pull in different directions:
 - Kong optimizes for generic API gateway extensibility.
 - OmniRoute optimizes for free/subscription aggregation and a very broad local product.
 
-Prompt Proxy has a narrower, stronger product:
+Proxy has a narrower, stronger product:
 
 ```text
 an organization-scoped, protocol-aware model-routing gateway for coding-agent traffic with durable audit
@@ -96,7 +96,7 @@ Not allowed:
 
 ### Generic API Gateway
 
-Prompt Proxy should not become Kong.
+Proxy should not become Kong.
 
 Out of scope:
 
@@ -114,7 +114,7 @@ Borrow:
 
 ### Free-Tier Aggregator
 
-Prompt Proxy should not become a free-provider optimizer.
+Proxy should not become a free-provider optimizer.
 
 Out of scope:
 
@@ -132,7 +132,7 @@ Borrow:
 
 ### Local Personal Credential Router
 
-Prompt Proxy is organization/workspace scoped.
+Proxy is organization/workspace scoped.
 
 Out of scope:
 
@@ -149,7 +149,7 @@ Borrow:
 
 ### Arbitrary Hot-Path Plugins
 
-Prompt Proxy should not expose arbitrary user plugins in the request path yet.
+Proxy should not expose arbitrary user plugins in the request path yet.
 
 Out of scope:
 
@@ -165,7 +165,7 @@ Borrow:
 
 ### General Prompt Rewriting
 
-Prompt Proxy should not become a prompt rewriting engine by default.
+Proxy should not become a prompt rewriting engine by default.
 
 Out of scope:
 

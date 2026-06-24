@@ -1,6 +1,6 @@
 # Frontend Guidelines
 
-These rules apply to `apps/web`, the Prompt Proxy TanStack operations console.
+These rules apply to `apps/web`, the Proxy TanStack operations console.
 
 ## Architecture
 

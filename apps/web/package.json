@@ -1,5 +1,5 @@
 {
-  "name": "@prompt-proxy/web",
+  "name": "@proxy/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@prompt-proxy/schema": "workspace:*",
+    "@proxy/schema": "workspace:*",
     "@tanstack/react-query": "5.100.8",
     "@tanstack/react-router": "1.169.1",
     "@tanstack/react-table": "^8.21.3",

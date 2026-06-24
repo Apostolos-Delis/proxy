@@ -18,8 +18,8 @@ import { join } from "node:path";
 import { AddressInfo } from "node:net";
 
 import { PGlite } from "@electric-sql/pglite";
-import { createPgliteDatabase, defaultWorkspaceId } from "@prompt-proxy/db";
-import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
+import { createPgliteDatabase, defaultWorkspaceId } from "@proxy/db";
+import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
 
 import { loadConfig } from "../src/config.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
@@ -182,7 +182,7 @@ const demoEnv = {
   DATABASE_URL: "",
   EVENT_STORE_PATH: "",
   PORT: "8899",
-  PROMPT_PROXY_TOKEN: "demo-default-token",
+  PROXY_TOKEN: "demo-default-token",
   OPENAI_API_KEY: "openai-upstream-key",
   ANTHROPIC_API_KEY: "anthropic-upstream-key",
   OPENAI_BASE_URL: openai.url,

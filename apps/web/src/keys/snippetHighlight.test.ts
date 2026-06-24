@@ -45,24 +45,24 @@ describe("highlightSnippet", () => {
   });
 
   it("marks shell assignments after export", () => {
-    const marked = tokens(highlightSnippet(`export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"`, "shell"));
+    const marked = tokens(highlightSnippet(`export PROXY_TOKEN="$(cat ~/.proxy/token)"`, "shell"));
     expect(marked).toContainEqual({ className: "json-key", text: "export" });
-    expect(marked).toContainEqual({ className: "json-key", text: "PROMPT_PROXY_TOKEN=" });
-    expect(marked).toContainEqual({ className: "json-string", text: `"$(cat ~/.prompt-proxy/token)"` });
+    expect(marked).toContainEqual({ className: "json-key", text: "PROXY_TOKEN=" });
+    expect(marked).toContainEqual({ className: "json-string", text: `"$(cat ~/.proxy/token)"` });
   });
 
   it("resets the command position after each line", () => {
-    const marked = tokens(highlightSnippet("mkdir -p ~/.prompt-proxy\nchmod 600 ~/.prompt-proxy/token", "shell"));
+    const marked = tokens(highlightSnippet("mkdir -p ~/.proxy\nchmod 600 ~/.proxy/token", "shell"));
     expect(marked).toContainEqual({ className: "json-key", text: "mkdir" });
     expect(marked).toContainEqual({ className: "json-key", text: "chmod" });
     expect(marked).toContainEqual({ className: "json-number", text: "600" });
   });
 
   it("marks toml tables, keys, and values", () => {
-    const marked = tokens(highlightSnippet('[model_providers.prompt_proxy]\nname = "Prompt Proxy"\nsupports_websockets = true', "toml"));
-    expect(marked).toContainEqual({ className: "json-literal", text: "[model_providers.prompt_proxy]" });
+    const marked = tokens(highlightSnippet('[model_providers.proxy]\nname = "Proxy"\nsupports_websockets = true', "toml"));
+    expect(marked).toContainEqual({ className: "json-literal", text: "[model_providers.proxy]" });
     expect(marked).toContainEqual({ className: "json-key", text: "name" });
-    expect(marked).toContainEqual({ className: "json-string", text: '"Prompt Proxy"' });
+    expect(marked).toContainEqual({ className: "json-string", text: '"Proxy"' });
     expect(marked).toContainEqual({ className: "json-literal", text: "true" });
   });
 });

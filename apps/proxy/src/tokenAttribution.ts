@@ -113,7 +113,7 @@ export async function appendTokensAttributed(input: {
       correlationId: input.requestId,
       idempotencyKey: input.idempotencyKey,
       actor: actorForIdentity(input.identity),
-      producer: "prompt-proxy.attribution",
+      producer: "proxy.attribution",
       eventType: "tokens.attributed",
       redactionState: "not_applicable",
       payload: jsonPayload({ ...attribution, sessionId: input.sessionId }) as JsonObject

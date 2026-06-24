@@ -31,7 +31,7 @@ pnpm dev:web
 - default API key `${DEFAULT_ORGANIZATION_ID}:api-key:default`
 - assignment from the default API key to the default routing config
 
-Use the seeded token through `PROMPT_PROXY_TOKEN`.
+Use the seeded token through `PROXY_TOKEN`.
 
 ## Config Precedence
 
@@ -97,7 +97,7 @@ The same flow is available through the admin GraphQL API at `/admin/graphql`
 (logged-in admins can also use GraphiQL there). First create a dev session:
 
 ```shell
-curl -sS -c /tmp/prompt-proxy.cookies \
+curl -sS -c /tmp/prompt.cookies \
   -H 'content-type: application/json' \
   -X POST http://127.0.0.1:8787/admin/graphql \
   -d "{\"query\":\"mutation { login(email: \\\"${ADMIN_DEV_LOGIN_EMAIL:-local@example.com}\\\", password: \\\"${ADMIN_DEV_LOGIN_PASSWORD:-dev-password}\\\") { organizationId } }\"}"
@@ -106,7 +106,7 @@ curl -sS -c /tmp/prompt-proxy.cookies \
 List routing configs and API keys:
 
 ```shell
-curl -sS -b /tmp/prompt-proxy.cookies \
+curl -sS -b /tmp/prompt.cookies \
   -H 'content-type: application/json' \
   -X POST http://127.0.0.1:8787/admin/graphql \
   -d '{"query":"{ routingConfigs { id name status activeVersion { version } } apiKeys { id name routingConfigId } }"}'
@@ -115,7 +115,7 @@ curl -sS -b /tmp/prompt-proxy.cookies \
 Assign a config:
 
 ```shell
-curl -sS -b /tmp/prompt-proxy.cookies \
+curl -sS -b /tmp/prompt.cookies \
   -H 'content-type: application/json' \
   -X POST http://127.0.0.1:8787/admin/graphql \
   -d '{"query":"mutation { assignApiKeyRoutingConfig(apiKeyId: \"local:api-key:default\", routingConfigId: \"local:routing-config:default\") { id routingConfigId } }"}'
@@ -124,7 +124,7 @@ curl -sS -b /tmp/prompt-proxy.cookies \
 Clear a key-level assignment and fall back to the organization default:
 
 ```shell
-curl -sS -b /tmp/prompt-proxy.cookies \
+curl -sS -b /tmp/prompt.cookies \
   -H 'content-type: application/json' \
   -X PATCH http://127.0.0.1:8787/admin/api-keys/local:api-key:default/routing-config \
   -d '{"routingConfigId":null}'
@@ -135,7 +135,7 @@ curl -sS -b /tmp/prompt-proxy.cookies \
 Create a new config:
 
 ```shell
-curl -sS -b /tmp/prompt-proxy.cookies \
+curl -sS -b /tmp/prompt.cookies \
   -H 'content-type: application/json' \
   -X POST http://127.0.0.1:8787/admin/routing-configs \
   -d @routing-config.json
@@ -157,7 +157,7 @@ The `config` object must include the full classifier, routes, limits, and sessio
 Create a draft version for an existing config:
 
 ```shell
-curl -sS -b /tmp/prompt-proxy.cookies \
+curl -sS -b /tmp/prompt.cookies \
   -H 'content-type: application/json' \
   -X POST http://127.0.0.1:8787/admin/routing-configs/local:routing-config:default/versions \
   -d @routing-config-version.json
@@ -168,7 +168,7 @@ curl -sS -b /tmp/prompt-proxy.cookies \
 Activate a version:
 
 ```shell
-curl -sS -b /tmp/prompt-proxy.cookies \
+curl -sS -b /tmp/prompt.cookies \
   -X POST http://127.0.0.1:8787/admin/routing-configs/local:routing-config:default/versions/local:routing-config:default:v1/activate
 ```
 
@@ -187,7 +187,7 @@ pnpm smoke:harnesses
 
 ## Troubleshooting
 
-- `auth failed`: check `PROMPT_PROXY_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, Codex `env_key`, and Claude `ANTHROPIC_API_KEY`.
+- `auth failed`: check `PROXY_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, Codex `env_key`, and Claude `ANTHROPIC_API_KEY`.
 - `config resolution failed`: check the API key assignment, organization default, active version id, config status, and config schema validity.
 - `classifier failed`: check `classifier.provider`, `classifier.model`, upstream OpenAI credentials/base URL, timeout, and max attempts in the active config.
 - `provider forwarding failed`: check the selected provider model, provider credentials, base URL, and surface compatibility.

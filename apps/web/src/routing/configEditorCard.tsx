@@ -123,7 +123,7 @@ export function ConfigEditorCard({ configId, version }: { configId: string; vers
           </>
         ) : (
           <div className="config-json-editor">
-            <p className="prompt-editor-helper">
+            <p className="proxy-editor-helper">
               The full config document — classifier, route tiers, limits, and session policy. Edits here cover settings the form does not expose and are validated server-side on save.
             </p>
             <JsonEditor value={jsonText} onChange={setJsonText} />

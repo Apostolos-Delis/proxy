@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { usageLedger } from "@prompt-proxy/db";
+import { usageLedger } from "@proxy/db";
 
 import { EventService } from "../src/events.js";
 import { normalizeLegacyCachedUsage } from "../src/persistence/usageNormalization.js";

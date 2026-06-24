@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PROMPT_CAPTURE_MODES } from "@prompt-proxy/schema";
+import { PROMPT_CAPTURE_MODES } from "@proxy/schema";
 
 import {
   events,
@@ -18,7 +18,7 @@ import {
   userSessions
 } from "./schema.js";
 
-describe("prompt proxy database schema", () => {
+describe("proxy database schema", () => {
   it("exposes the core durable tables", () => {
     expect(events).toBeTruthy();
     expect(providerAccountHealth).toBeTruthy();

@@ -1,16 +1,16 @@
 import { eq, sql } from "drizzle-orm";
 
-import { organizationSettings, type PromptProxyDbSession } from "@prompt-proxy/db";
+import { organizationSettings, type ProxyDbSession } from "@proxy/db";
 import {
   compressionPolicySchema,
   defaultCompressionPolicy,
   type CompressionPolicy
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import { defaultCostBaseline, type CostBaseline } from "../pricing.js";
 
 export async function orgCostBaseline(
-  db: PromptProxyDbSession,
+  db: ProxyDbSession,
   organizationId: string
 ): Promise<CostBaseline> {
   const [row] = await db
@@ -58,7 +58,7 @@ function normalizeCompressionPolicy(policy: CompressionPolicy): CompressionPolic
 }
 
 export class OrganizationSettingsStore {
-  constructor(private readonly db: PromptProxyDbSession) {}
+  constructor(private readonly db: ProxyDbSession) {}
 
   async setSystemPrompt(organizationId: string, systemPrompt: string | null) {
     const patch = { systemPrompt, updatedAt: new Date() };

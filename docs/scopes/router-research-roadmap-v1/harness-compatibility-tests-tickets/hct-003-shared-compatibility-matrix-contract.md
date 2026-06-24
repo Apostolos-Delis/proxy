@@ -20,8 +20,8 @@ Goal: Produce native, translated, blocked, and unsupported statuses from one sha
 ## Validation
 
 - Add unit tests for the matrix generator.
-- Run `pnpm --filter @prompt-proxy/schema test` if the contract lives in schema.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/schema test` if the contract lives in schema.
+- Run `pnpm --filter @proxy/proxy test`.
 - Run `pnpm typecheck`.
 
 ## Likely Files

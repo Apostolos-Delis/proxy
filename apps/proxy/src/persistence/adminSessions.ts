@@ -9,9 +9,9 @@ import {
   userSessions,
   users,
   workspaces,
-  type PromptProxyDbSession
-} from "@prompt-proxy/db";
-import type { OrganizationMemberRole } from "@prompt-proxy/schema";
+  type ProxyDbSession
+} from "@proxy/db";
+import type { OrganizationMemberRole } from "@proxy/schema";
 
 import { createId, sha256 } from "../util.js";
 
@@ -26,7 +26,7 @@ export type AdminSessionIdentity = {
 };
 
 export class AdminSessionStore {
-  constructor(private readonly db: PromptProxyDbSession) {}
+  constructor(private readonly db: ProxyDbSession) {}
 
   async create(input: {
     organizationId: string;

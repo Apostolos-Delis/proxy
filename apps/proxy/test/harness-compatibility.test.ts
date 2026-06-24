@@ -14,8 +14,8 @@ import {
   routingConfigs,
   routingConfigVersions,
   usageLedger
-} from "@prompt-proxy/db";
-import type { Dialect, RoutingConfig } from "@prompt-proxy/schema";
+} from "@proxy/db";
+import type { Dialect, RoutingConfig } from "@proxy/schema";
 
 import { buildAnthropicContext, buildOpenAIChatContext, buildOpenAIContext } from "../src/features.js";
 import { listHarnessFixtureManifests } from "../src/harnessFixtureCounts.js";
@@ -208,8 +208,8 @@ describe("Codex Responses HTTP native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactJson(body, fixture.expectedClientResponse);
     expect(providerCall?.headers["x-codex-turn-state"]).toBe("golden-turn-state");
@@ -250,8 +250,8 @@ describe("Codex Responses HTTP native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expect(providerCall?.headers["x-codex-turn-state"]).toBe("golden-turn-state");
@@ -295,7 +295,7 @@ describe("Claude Code Messages native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactJson(body, fixture.expectedClientResponse);
     expect(providerCall?.headers["x-api-key"]).toBe("anthropic-upstream-key");
@@ -342,7 +342,7 @@ describe("Claude Code Messages native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectExactSse(body, fixture.upstreamSse ?? "");
@@ -393,8 +393,8 @@ describe("OpenAI Chat native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactJson(body, fixture.expectedClientResponse);
     expect(providerCall?.headers.authorization).toBe("Bearer openai-upstream-key");
@@ -440,8 +440,8 @@ describe("OpenAI Chat native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expect(providerCall?.headers.authorization).toBe("Bearer openai-upstream-key");
@@ -486,8 +486,8 @@ describe("OpenAI Chat native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expect(providerCall?.headers.authorization).toBe("Bearer openai-upstream-key");
@@ -536,8 +536,8 @@ describe("Same-family OpenAI translated golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
@@ -581,8 +581,8 @@ describe("Same-family OpenAI translated golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
@@ -634,8 +634,8 @@ describe("Cross-family translated golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
@@ -680,8 +680,8 @@ describe("Cross-family translated golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
@@ -724,8 +724,8 @@ describe("Cross-family translated golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
@@ -774,8 +774,8 @@ describe("Cross-family translated golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);

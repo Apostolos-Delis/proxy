@@ -3,13 +3,13 @@
 Source: https://github.com/BerriAI/litellm
 Local clone reviewed: `.context/upstreams/litellm`
 Commit reviewed: `e4a53f50de24701c0d0c9334c2fb0ab5e770e828` from 2026-06-18
-Compared system: Prompt Proxy in this repository
+Compared system: Proxy in this repository
 
 ## Executive Summary
 
 LiteLLM is the most mature AI-gateway comparison point in this research set. It is both a Python SDK that normalizes many providers behind a common API and a FastAPI proxy that layers gateway behavior on top of that SDK: authentication, virtual keys, budgets, provider fallback, spend tracking, callbacks, guardrails, and a broad admin dashboard.
 
-The strongest lesson for Prompt Proxy is operational maturity. LiteLLM has already crossed the boundary from "route a request" into "operate a fleet of provider deployments with budgets, users, teams, cooldowns, fallbacks, health, and reporting." Prompt Proxy should borrow those operating concepts, but not its broad SDK-normalization approach as the core request path. Prompt Proxy's current advantage is native harness fidelity, durable event/current-state writes, and narrower product intent. Losing that by adopting a single SDK-shaped intermediate request model would undermine the proxy's main design constraint.
+The strongest lesson for Proxy is operational maturity. LiteLLM has already crossed the boundary from "route a request" into "operate a fleet of provider deployments with budgets, users, teams, cooldowns, fallbacks, health, and reporting." Proxy should borrow those operating concepts, but not its broad SDK-normalization approach as the core request path. Proxy's current advantage is native harness fidelity, durable event/current-state writes, and narrower product intent. Losing that by adopting a single SDK-shaped intermediate request model would undermine the proxy's main design constraint.
 
 ## Architecture
 
@@ -46,7 +46,7 @@ The high-level request flow is:
 6. Success or failure callbacks compute usage, cost, spend logs, and budget updates.
 7. Spend updates are batched and written to Postgres or queued through Redis-backed update paths.
 
-Prompt Proxy has a thinner intended boundary: surface handlers should authenticate, parse envelopes, and delegate. LiteLLM shows how quickly a gateway can accumulate business logic in the request path when product scope grows.
+Proxy has a thinner intended boundary: surface handlers should authenticate, parse envelopes, and delegate. LiteLLM shows how quickly a gateway can accumulate business logic in the request path when product scope grows.
 
 ### Routing Model
 
@@ -63,13 +63,13 @@ LiteLLM's `Router` is broad. It supports:
 - Several routing strategies: simple shuffle, least busy, usage-based routing, latency-based routing, cost-based routing, health-check routing, weighted failover, and budget-aware provider routing.
 - Adaptive and quality-aware routing experiments.
 
-The key design distinction is that LiteLLM often routes among provider deployments that already share a user-selected model group. Prompt Proxy first classifies the request into an effort tier, then resolves that tier through a versioned routing config. That classifier-first design should remain. The LiteLLM lesson is to make the selected tier produce a richer execution plan: ordered targets, skip reasons, retry policy, cooldown rules, and terminal evidence.
+The key design distinction is that LiteLLM often routes among provider deployments that already share a user-selected model group. Proxy first classifies the request into an effort tier, then resolves that tier through a versioned routing config. That classifier-first design should remain. The LiteLLM lesson is to make the selected tier produce a richer execution plan: ordered targets, skip reasons, retry policy, cooldown rules, and terminal evidence.
 
 ### Adaptive Router
 
 LiteLLM's adaptive router classifies request type, tracks quality signals, and uses a bandit-style score by request type and model. It combines quality, cost, and request category. It also explicitly acknowledges limitations: small sample windows, coarse quality signals, owner-cache assumptions, regex-based output scoring, and missing latency in early scoring.
 
-Prompt Proxy should not begin with adaptive routing as a black box. A better sequence is:
+Proxy should not begin with adaptive routing as a black box. A better sequence is:
 
 1. Persist route outcomes and provider-attempt quality labels.
 2. Add eval-backed route quality views.
@@ -88,13 +88,13 @@ Spend tracking is a major strength:
 - Redis queues can absorb high write volume.
 - Daily spend and aggregate spend updates are separated from request handling.
 
-The tradeoff is consistency. LiteLLM optimizes for throughput and gateway practicality. Prompt Proxy's rule is stricter: when persistence is enabled, event row, outbox row, and matching current-state mutation should happen in the same transaction. We should borrow LiteLLM's attribution dimensions and batching ideas for projections, not weaken the request event contract.
+The tradeoff is consistency. LiteLLM optimizes for throughput and gateway practicality. Proxy's rule is stricter: when persistence is enabled, event row, outbox row, and matching current-state mutation should happen in the same transaction. We should borrow LiteLLM's attribution dimensions and batching ideas for projections, not weaken the request event contract.
 
 ### Admin And Operations
 
 LiteLLM's dashboard is a full operations surface. It includes model hub, key lifecycle, users, teams, guardrails, spend, settings, provider info, SSO, MCP, pricing, and many enterprise controls.
 
-For Prompt Proxy, the main lesson is not "copy every page." The useful pattern is that every runtime control has an operator-facing workflow:
+For Proxy, the main lesson is not "copy every page." The useful pattern is that every runtime control has an operator-facing workflow:
 
 - Create and revoke virtual keys.
 - Attach budgets and limits.
@@ -103,9 +103,9 @@ For Prompt Proxy, the main lesson is not "copy every page." The useful pattern i
 - Inspect provider health and spend.
 - Configure guardrails and integrations.
 
-Prompt Proxy already has a TanStack operations console. It should keep the dense internal-console style but expand toward these operational workflows where they support routing reliability.
+Proxy already has a TanStack operations console. It should keep the dense internal-console style but expand toward these operational workflows where they support routing reliability.
 
-## Pros Compared To Prompt Proxy
+## Pros Compared To Proxy
 
 - Much broader provider coverage and endpoint coverage.
 - Mature virtual-key, team, project, organization, and budget model.
@@ -116,16 +116,16 @@ Prompt Proxy already has a TanStack operations console. It should keep the dense
 - Many provider integrations and callback integrations already exercised in production-like use.
 - Health checks, cooldowns, Redis cache, and background spend writers address real gateway load.
 
-## Cons And Risks Compared To Prompt Proxy
+## Cons And Risks Compared To Proxy
 
 - The request path is much more complex. Logic spans proxy endpoints, auth hooks, router, SDK, callbacks, spend writers, and provider handlers.
-- SDK-shaped normalization can perturb client wire behavior. Prompt Proxy is intentionally protocol-aware and native-first for Codex and Claude Code.
-- Spend writes are optimized for eventual consistency. Prompt Proxy's event/outbox/current-state transaction rule is stricter and better for replayable audit.
+- SDK-shaped normalization can perturb client wire behavior. Proxy is intentionally protocol-aware and native-first for Codex and Claude Code.
+- Spend writes are optimized for eventual consistency. Proxy's event/outbox/current-state transaction rule is stricter and better for replayable audit.
 - The configuration surface is powerful but sprawling: YAML, database rows, environment variables, model groups, callback hooks, and enterprise-only behavior.
-- The product has far broader concerns than Prompt Proxy: generic AI gateway, SDK compatibility, enterprise features, and a commercial split.
+- The product has far broader concerns than Proxy: generic AI gateway, SDK compatibility, enterprise features, and a commercial split.
 - Adaptive quality signals are useful but currently rely on approximations that would be risky as routing authority without better ground truth.
 
-## What Prompt Proxy Should Borrow
+## What Proxy Should Borrow
 
 ### Deployment-Level Health And Cooldown
 
@@ -142,7 +142,7 @@ Every skip should become route-decision evidence, not an invisible in-memory bra
 
 ### Budget And Rate-Limit Controls
 
-Prompt Proxy has routing-config limits, but LiteLLM shows the operator controls expected from a serious gateway:
+Proxy has routing-config limits, but LiteLLM shows the operator controls expected from a serious gateway:
 
 - Per-key request and token limits.
 - Per-key and per-workspace budget windows.
@@ -164,7 +164,7 @@ Keep the LLM classifier as the route tier authority, but make the selected route
 - Provider credential selected.
 - Terminal target and attempt outcomes.
 
-This gives Prompt Proxy the reliability of LiteLLM fallbacks without adding deterministic classifier fallback logic.
+This gives Proxy the reliability of LiteLLM fallbacks without adding deterministic classifier fallback logic.
 
 ### Spend Attribution
 
@@ -181,7 +181,7 @@ Borrow LiteLLM's attribution breadth:
 - Harness surface.
 - Tool names when present.
 
-Prompt Proxy should keep raw prompt text only in `prompt_artifacts.raw_text`, but usage and route metadata should be rich enough to answer spend questions without reading prompts.
+Proxy should keep raw prompt text only in `prompt_artifacts.raw_text`, but usage and route metadata should be rich enough to answer spend questions without reading prompts.
 
 ### Admin Workflows
 
@@ -194,7 +194,7 @@ Add operator workflows around:
 - Failed provider attempts and cooldowns.
 - Unpriced or unknown models.
 
-## What Prompt Proxy Should Avoid
+## What Proxy Should Avoid
 
 - Do not make an SDK-normalized request shape the default internal contract. Keep surface dialects explicit.
 - Do not put raw prompt text in event payloads.
@@ -216,4 +216,4 @@ Add operator workflows around:
 
 ## Bottom Line
 
-LiteLLM is the benchmark for gateway operating maturity. Prompt Proxy should use it to raise the bar on budgets, health, fallback evidence, key management, and admin workflows. It should not copy LiteLLM's broad SDK-first architecture, because Prompt Proxy's differentiator is native harness fidelity plus durable, replayable routing audit.
+LiteLLM is the benchmark for gateway operating maturity. Proxy should use it to raise the bar on budgets, health, fallback evidence, key management, and admin workflows. It should not copy LiteLLM's broad SDK-first architecture, because Proxy's differentiator is native harness fidelity plus durable, replayable routing audit.

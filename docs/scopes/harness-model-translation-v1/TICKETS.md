@@ -37,7 +37,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 - Run `pnpm typecheck`.
 
 Likely files:
@@ -66,7 +66,7 @@ Acceptance criteria:
 Validation:
 
 - Add backend unit tests for compatibility outcomes.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 - Run `pnpm typecheck`.
 
 Likely files:
@@ -108,7 +108,7 @@ Validation:
 - Add translator unit tests.
 - Add runtime test routing `/v1/messages` to an OpenAI Chat-only provider.
 - Add runtime test routing `/v1/messages` to an OpenAI Responses-only provider.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -140,7 +140,7 @@ Validation:
 
 - Add translator unit tests.
 - Add runtime test routing `/v1/chat/completions` to an Anthropic-only provider.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -175,7 +175,7 @@ Validation:
 
 - Add translator unit tests for text, tool-call, usage, and error cases.
 - Add runtime non-streaming tests for both directions.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -211,7 +211,7 @@ Validation:
 
 - Add golden SSE fixtures for both directions.
 - Add runtime streaming tests for both directions.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -246,7 +246,7 @@ Acceptance criteria:
 Validation:
 
 - Extend `translationRuntime.test.ts`.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 - Run `pnpm typecheck`.
 
 Likely files:
@@ -277,7 +277,7 @@ Acceptance criteria:
 Validation:
 
 - Add focused tests for usage/caching/prompt capture paths.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -310,7 +310,7 @@ Acceptance criteria:
 Validation:
 
 - Add GraphQL resolver tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 - Run `pnpm --dir apps/web typecheck`.
 
 Likely files:
@@ -343,7 +343,7 @@ Validation:
 
 - Add React/data tests for coverage rendering and preview mode behavior.
 - Run `pnpm --dir apps/web typecheck`.
-- Run `pnpm --filter @prompt-proxy/web test`.
+- Run `pnpm --filter @proxy/web test`.
 
 Likely files:
 
@@ -360,7 +360,7 @@ Goal: Document the shipped HTTP translation behavior and operator workflow.
 
 Scope:
 
-- Update `docs/model-routing-proxy.md` after implementation lands.
+- Update `docs/model-routing.md` after implementation lands.
 - Update `docs/runbooks/routing-configs.md` with target coverage and harness preview behavior.
 - Update opencode setup docs with Anthropic target support through translation.
 - Add Claude Code setup docs if none exist by then.
@@ -380,7 +380,7 @@ Validation:
 
 Likely files:
 
-- `docs/model-routing-proxy.md`
+- `docs/model-routing.md`
 - `docs/runbooks/routing-configs.md`
 - `docs/harnesses/opencode.md`
 - `docs/harnesses/claude-code.md` (new, if needed)

@@ -1,4 +1,4 @@
-import { SURFACE_NAMES } from "@prompt-proxy/schema";
+import { SURFACE_NAMES } from "@proxy/schema";
 import { describe, expect, it } from "vitest";
 
 import { knownSurfaceValue, normalizeUsage, providerValue, surfaceValue } from "../src/persistence/values.js";

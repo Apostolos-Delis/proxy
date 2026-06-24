@@ -1,4 +1,4 @@
-import { ORGANIZATION_MEMBER_ROLES, type OrganizationMemberRole } from "@prompt-proxy/schema";
+import { ORGANIZATION_MEMBER_ROLES, type OrganizationMemberRole } from "@proxy/schema";
 
 import type { GraphQLContext } from "./context.js";
 import { adminGraphQLError } from "./errors.js";

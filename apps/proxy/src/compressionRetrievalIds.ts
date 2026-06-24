@@ -18,5 +18,5 @@ export function compressionRetrievalMarker(input: {
   retrievalId: string;
   originalSha256: string;
 }) {
-  return `[prompt-proxy:compressed id=${input.retrievalId} sha256=${input.originalSha256}]`;
+  return `[prompt:compressed id=${input.retrievalId} sha256=${input.originalSha256}]`;
 }

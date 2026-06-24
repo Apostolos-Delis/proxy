@@ -53,7 +53,7 @@ export function requestFilters(rows: PromptLogRow[]): ConsoleTableFilter<PromptL
     { id: "surface", label: "Surface", allLabel: "All surfaces", icon: <Layers />, options: optionItems(rows.map((row) => row.prompt.surface)), getValue: (row) => row.prompt.surface },
     { id: "model", label: "Model", allLabel: "All models", icon: <Boxes />, options: optionItems(rows.map(selectedModel)), getValue: selectedModel },
     { id: "translation", label: "Translation", allLabel: "All modes", icon: <Languages />, options: optionItems(rows.map(translationMode)), getValue: translationMode },
-    { id: "skipReason", label: "Skip reason", allLabel: "All skips", icon: <TriangleAlert />, options: uniqueOptionItems(rows.flatMap((row) => row.request?.routeSkipReasons.map(skipReasonLabel) ?? [])), getValue: (row) => row.request?.routeSkipReasons.map(skipReasonLabel) ?? [] },
+    { id: "skipReason", label: "Skip reason", allLabel: "All skips", icon: <TriangleAlert />, options: optionItems(rows.flatMap((row) => row.request?.routeSkipReasons.map(skipReasonLabel) ?? [])), getValue: (row) => row.request?.routeSkipReasons.map(skipReasonLabel) ?? [] },
     { id: "status", label: "Status", allLabel: "All statuses", icon: <Shield />, options: optionItems(rows.map(terminalStatus)), getValue: terminalStatus }
   ];
 }

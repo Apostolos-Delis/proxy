@@ -7,7 +7,7 @@ import {
   settingsToEnv
 } from "./settings.js";
 
-const DEFAULT_PROXY_TOKEN = "dev-proxy-token";
+const DEFAULT_PROXY_TOKEN = "dev-token";
 const DEFAULT_OPENAI_API_KEY = "test-openai-key";
 const DEFAULT_ANTHROPIC_API_KEY = "test-anthropic-key";
 
@@ -54,8 +54,8 @@ const modelCostsSchema = z.preprocess((value) => {
 const configSchema = z.object({
   NODE_ENV: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(8787),
-  PROMPT_PROXY_TOKEN: z.string().min(1).default(DEFAULT_PROXY_TOKEN),
-  PROMPT_PROXY_SETTINGS_PATH: z.string().optional(),
+  PROXY_TOKEN: z.string().min(1).default(DEFAULT_PROXY_TOKEN),
+  PROXY_SETTINGS_PATH: z.string().optional(),
   OPENAI_API_KEY: z.string().min(1).default(DEFAULT_OPENAI_API_KEY),
   OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   OPENAI_CHATGPT_BASE_URL: z.string().url().default("https://chatgpt.com/backend-api/codex"),
@@ -104,7 +104,7 @@ const configSchema = z.object({
   ADMIN_GRAPHIQL_ENABLED: optionalBooleanEnvSchema,
   ADMIN_DEV_LOGIN_EMAIL: z.string().email().default("local@example.com"),
   ADMIN_DEV_LOGIN_PASSWORD: z.string().min(1).default("dev-password"),
-  ADMIN_SESSION_COOKIE_NAME: z.string().min(1).default("prompt_proxy_session"),
+  ADMIN_SESSION_COOKIE_NAME: z.string().min(1).default("proxy_session"),
   ADMIN_SESSION_COOKIE_SECURE: optionalBooleanEnvSchema,
   ADMIN_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 8),
   SEED_USER_ID: z.string().min(1).default("local-user"),
@@ -117,7 +117,7 @@ const configSchema = z.object({
   METRICS_TOKEN: optionalNonEmptyStringSchema,
   RESEND_API_KEY: z.string().optional(),
   RESEND_BASE_URL: z.string().url().default("https://api.resend.com"),
-  EMAIL_FROM: z.string().min(1).default("Prompt Proxy <onboarding@resend.dev>"),
+  EMAIL_FROM: z.string().min(1).default("Proxy <onboarding@resend.dev>"),
   INVITATION_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 7),
   LOG_LEVEL: z.string().default("info")
 });
@@ -130,13 +130,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const parsed = configSchema.parse({
     ...settingsToEnv(fileSettings),
     ...env,
-    PROMPT_PROXY_SETTINGS_PATH: settingsPath
+    PROXY_SETTINGS_PATH: settingsPath
   });
   const production = parsed.NODE_ENV === "production";
   const metricsExporter = parsed.METRICS_ENABLED ? parsed.METRICS_EXPORTER : "none";
   const debugEndpointsEnabled = parsed.DEBUG_ENDPOINTS_ENABLED || (!production && !parsed.DATABASE_URL);
-  if (production && parsed.PROMPT_PROXY_TOKEN === DEFAULT_PROXY_TOKEN) {
-    throw new Error("PROMPT_PROXY_TOKEN must be changed in production.");
+  if (production && parsed.PROXY_TOKEN === DEFAULT_PROXY_TOKEN) {
+    throw new Error("PROXY_TOKEN must be changed in production.");
   }
   if (production && parsed.OPENAI_API_KEY === DEFAULT_OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY must be set in production.");
@@ -156,7 +156,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 
   return {
     port: parsed.PORT,
-    proxyToken: parsed.PROMPT_PROXY_TOKEN,
+    proxyToken: parsed.PROXY_TOKEN,
     settingsPath,
     openaiApiKey: parsed.OPENAI_API_KEY,
     openaiBaseUrl: trimTrailingSlash(parsed.OPENAI_BASE_URL),

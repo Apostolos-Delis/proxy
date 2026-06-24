@@ -11,28 +11,28 @@ import {
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
-import type { PromptProxyDatabaseStack } from "./database-stack.js";
-import type { PromptProxyFoundationStack } from "./foundation-stack.js";
-import type { PromptProxyNetworkStack } from "./network-stack.js";
+import { resourceName, type ProxyEnvironmentConfig } from "./config.js";
+import type { ProxyDatabaseStack } from "./database-stack.js";
+import type { ProxyFoundationStack } from "./foundation-stack.js";
+import type { ProxyNetworkStack } from "./network-stack.js";
 import { runtimeEnvironment, runtimeSecretEnvironment } from "./proxy-service-stack.js";
-import type { PromptProxyRuntimeSecretsStack } from "./runtime-secrets-stack.js";
+import type { ProxyRuntimeSecretsStack } from "./runtime-secrets-stack.js";
 
-export type PromptProxyOperationsStackProps = StackProps & {
-  config: PromptProxyEnvironmentConfig;
-  foundation: PromptProxyFoundationStack;
-  network: PromptProxyNetworkStack;
-  database: PromptProxyDatabaseStack;
-  runtimeSecrets: PromptProxyRuntimeSecretsStack;
+export type ProxyOperationsStackProps = StackProps & {
+  config: ProxyEnvironmentConfig;
+  foundation: ProxyFoundationStack;
+  network: ProxyNetworkStack;
+  database: ProxyDatabaseStack;
+  runtimeSecrets: ProxyRuntimeSecretsStack;
   runtimeImageTag: string;
 };
 
-export class PromptProxyOperationsStack extends Stack {
+export class ProxyOperationsStack extends Stack {
   readonly cluster: Cluster;
   readonly migrationTaskDefinition: FargateTaskDefinition;
   readonly seedTaskDefinition: FargateTaskDefinition;
 
-  constructor(scope: Construct, id: string, props: PromptProxyOperationsStackProps) {
+  constructor(scope: Construct, id: string, props: ProxyOperationsStackProps) {
     super(scope, id, props);
 
     const { config, database, foundation, network, runtimeImageTag, runtimeSecrets } = props;

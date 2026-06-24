@@ -17,6 +17,7 @@ function account(provider: ProviderName, overrides: Partial<ProviderAccountSumma
     boundKeyCount: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
     lastUsedAt: null,
+    health: null,
     ...overrides
   };
 }

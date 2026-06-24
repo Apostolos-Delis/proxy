@@ -3,8 +3,8 @@ import { and, eq, sql } from "drizzle-orm";
 import {
   eventOutbox,
   events,
-  type PromptProxyTransaction
-} from "@prompt-proxy/db";
+  type ProxyTransaction
+} from "@proxy/db";
 
 import { createId, sha256, stableJson } from "../util.js";
 
@@ -23,7 +23,7 @@ export type AdminAuditEventInput = {
   createdAt?: Date;
 };
 
-export async function appendAdminAuditEvent(tx: PromptProxyTransaction, input: AdminAuditEventInput) {
+export async function appendAdminAuditEvent(tx: ProxyTransaction, input: AdminAuditEventInput) {
   const createdAt = input.createdAt ?? new Date();
   const eventId = createId("event");
   const payload = input.payload;
@@ -54,7 +54,7 @@ export async function appendAdminAuditEvent(tx: PromptProxyTransaction, input: A
 }
 
 async function nextEventSequence(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   organizationId: string,
   scopeType: string,
   scopeId: string

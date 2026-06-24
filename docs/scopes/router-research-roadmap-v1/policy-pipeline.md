@@ -8,7 +8,7 @@ The pipeline should keep route handlers thin, centralize policy decisions, and m
 
 ## Why This Matters
 
-Prompt Proxy's architecture rule says transport handlers are boundaries. As provider health, budgets, fallback, translation, compression, and metrics grow, the request path needs structure or business logic will leak into route handlers and provider adapters.
+Proxy's architecture rule says transport handlers are boundaries. As provider health, budgets, fallback, translation, compression, and metrics grow, the request path needs structure or business logic will leak into route handlers and provider adapters.
 
 A phase-based pipeline gives each concern a named place:
 
@@ -26,7 +26,7 @@ A phase-based pipeline gives each concern a named place:
 
 ## Current State
 
-Prompt Proxy already has services for routing, provider forwarding, persistence, pricing, prompt artifacts, and events. The issue is not absence of primitives; it is that future policy features need a stable orchestration contract.
+Proxy already has services for routing, provider forwarding, persistence, pricing, prompt artifacts, and events. The issue is not absence of primitives; it is that future policy features need a stable orchestration contract.
 
 ## Target Pipeline
 

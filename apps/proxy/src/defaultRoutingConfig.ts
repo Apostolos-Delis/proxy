@@ -5,7 +5,7 @@ import {
   routingConfigSchema,
   type RouteName,
   type RoutingConfig
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import type { AppConfig } from "./config.js";
 import type { ResolvedRoutingConfig } from "./persistence/routingConfig.js";

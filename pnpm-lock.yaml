@@ -41,10 +41,10 @@ importers:
       '@pothos/core':
         specifier: ^4.12.0
         version: 4.12.0(graphql@16.14.2)
-      '@prompt-proxy/db':
+      '@proxy/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@prompt-proxy/schema':
+      '@proxy/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       drizzle-orm:
@@ -90,7 +90,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@prompt-proxy/schema':
+      '@proxy/schema':
         specifier: workspace:*
         version: link:../../packages/schema
       '@tanstack/react-query':
@@ -170,7 +170,7 @@ importers:
       '@electric-sql/pglite':
         specifier: 0.4.5
         version: 0.4.5
-      '@prompt-proxy/schema':
+      '@proxy/schema':
         specifier: workspace:*
         version: link:../schema
       drizzle-orm:

@@ -4,7 +4,7 @@ import {
   SURFACE_NAMES,
   type RouteExecutionPlan,
   type RouteSkipReason
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import type { JsonObject, RoutingConfigSnapshot } from "../types.js";
 import type { Surface } from "../types.js";

@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { PROVIDERS } from "@prompt-proxy/schema";
+import { PROVIDERS } from "@proxy/schema";
 
 import {
   extractChatGPTAccountIdFromJwt,
@@ -19,7 +19,7 @@ const ANTHROPIC_OAUTH_AUTHORIZE_URL = "https://claude.com/cai/oauth/authorize";
 const ANTHROPIC_OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
 const ANTHROPIC_OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const ANTHROPIC_OAUTH_SUCCESS_URL = "https://platform.claude.com/oauth/code/success?app=claude-code";
-const ANTHROPIC_OAUTH_ERROR_URL = "https://platform.claude.com/oauth/code/success?app=claude-code&error=prompt-proxy";
+const ANTHROPIC_OAUTH_ERROR_URL = "https://platform.claude.com/oauth/code/success?app=claude-code&error=prompt";
 const ANTHROPIC_OAUTH_SCOPE = "user:inference";
 const CLAUDE_CODE_SETUP_TOKEN_EXPIRES_IN_SECONDS = 365 * 24 * 60 * 60;
 

@@ -19,8 +19,8 @@ Goal: Lock Codex WebSocket traffic to native OpenAI Responses behavior.
 
 ## Validation
 
-- Run `pnpm --filter @prompt-proxy/proxy test -- websocket`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- routingConfigRuntime`.
+- Run `pnpm --filter @proxy/proxy test -- websocket`.
+- Run `pnpm --filter @proxy/proxy test -- routingConfigRuntime`.
 
 ## Likely Files
 

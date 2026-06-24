@@ -1,4 +1,4 @@
-import { ROUTING_HINT_NAMES, type RoutingHintName } from "@prompt-proxy/schema";
+import { ROUTING_HINT_NAMES, type RoutingHintName } from "@proxy/schema";
 
 import type { RouteContext } from "./types.js";
 import { explicitAlias } from "./catalog.js";
@@ -58,8 +58,8 @@ export function buildOpenAIContext(
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
     sessionId: profile.sessionId(request, headers),
-    userId: headers["x-prompt-proxy-user-id"] ?? headers["x-user-id"],
-    teamId: headers["x-prompt-proxy-team-id"] ?? headers["x-team-id"],
+    userId: headers["x-proxy-user-id"] ?? headers["x-user-id"],
+    teamId: headers["x-proxy-team-id"] ?? headers["x-team-id"],
     explicitAlias: explicitAlias(surface, requestedModel)
   };
 }
@@ -106,8 +106,8 @@ export function buildOpenAIChatContext(
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
     sessionId: profile.sessionId(request, headers),
-    userId: headers["x-prompt-proxy-user-id"] ?? headers["x-user-id"],
-    teamId: headers["x-prompt-proxy-team-id"] ?? headers["x-team-id"],
+    userId: headers["x-proxy-user-id"] ?? headers["x-user-id"],
+    teamId: headers["x-proxy-team-id"] ?? headers["x-team-id"],
     explicitAlias: explicitAlias(surface, requestedModel)
   };
 }
@@ -155,8 +155,8 @@ export function buildAnthropicContext(
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
     sessionId: profile.sessionId(request, headers),
-    userId: headers["x-prompt-proxy-user-id"] ?? headers["x-user-id"],
-    teamId: headers["x-prompt-proxy-team-id"] ?? headers["x-team-id"],
+    userId: headers["x-proxy-user-id"] ?? headers["x-user-id"],
+    teamId: headers["x-proxy-team-id"] ?? headers["x-team-id"],
     explicitAlias: explicitAlias(surface, requestedModel)
   };
 }

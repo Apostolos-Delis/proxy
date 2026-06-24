@@ -1,6 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 
-import type { PromptProxyDbSession } from "@prompt-proxy/db";
+import type { ProxyDbSession } from "@proxy/db";
 
 // SQL-side aggregation for the usage/cost analytics. The previous
 // implementation loaded every request, decision, attempt, and ledger row in
@@ -254,7 +254,7 @@ function reportSelect(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: SQL | n
 }
 
 export async function usageRollupReportRows(
-  db: PromptProxyDbSession,
+  db: ProxyDbSession,
   scope: UsageRollupScope,
   groupBy: UsageRollupGroupBy
 ): Promise<UsageRollupReport> {
@@ -263,7 +263,7 @@ export async function usageRollupReportRows(
 }
 
 export async function usageBucketRollupReportRows(
-  db: PromptProxyDbSession,
+  db: ProxyDbSession,
   scope: UsageRollupScope,
   groupBy: UsageRollupGroupBy,
   stepMs: number,
@@ -280,7 +280,7 @@ type RawRow = Record<string, unknown>;
 
 // drizzle's execute() returns a bare row array for postgres-js and a
 // { rows } result object for PGlite.
-async function executeRows(db: PromptProxyDbSession, query: SQL): Promise<RawRow[]> {
+async function executeRows(db: ProxyDbSession, query: SQL): Promise<RawRow[]> {
   const result = await (db as { execute(query: SQL): Promise<unknown> }).execute(query);
   if (Array.isArray(result)) return result as RawRow[];
   return (result as { rows: RawRow[] }).rows;

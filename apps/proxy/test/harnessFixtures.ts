@@ -7,7 +7,7 @@ import {
   TRANSLATION_COMPATIBILITY_DIALECTS,
   type HarnessCompatibilityProfileId,
   type TranslationDialect
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 import { expect } from "vitest";
 
 export const harnessFixtureRoot = fileURLToPath(new URL("./fixtures/harnesses", import.meta.url));

@@ -4,9 +4,9 @@ import {
   compressionReceipts,
   promptArtifacts,
   requests,
-  type PromptProxyDbSession,
-  type PromptProxyTransaction
-} from "@prompt-proxy/db";
+  type ProxyDbSession,
+  type ProxyTransaction
+} from "@proxy/db";
 
 import type { ProxyEvent } from "../events.js";
 import { compressionRetrievalId } from "../compressionRetrievalIds.js";
@@ -63,7 +63,7 @@ export type CompressionRetrievalResult =
   };
 
 export async function resolveCompressionRetrieval(
-  db: PromptProxyDbSession,
+  db: ProxyDbSession,
   input: CompressionRetrievalInput
 ): Promise<CompressionRetrievalResult> {
   const [row] = await db
@@ -152,14 +152,14 @@ export async function resolveCompressionRetrieval(
 }
 
 export class CompressionRetrievalResolver {
-  constructor(private readonly db: PromptProxyDbSession) {}
+  constructor(private readonly db: ProxyDbSession) {}
 
   resolve(input: CompressionRetrievalInput) {
     return resolveCompressionRetrieval(this.db, input);
   }
 }
 
-export async function persistCompressionReceipts(tx: PromptProxyTransaction, event: ProxyEvent) {
+export async function persistCompressionReceipts(tx: ProxyTransaction, event: ProxyEvent) {
   const payload = event.payload;
   const records = recordArray(payload.byRule);
   await tx.delete(compressionReceipts).where(eq(compressionReceipts.eventId, event.eventId));

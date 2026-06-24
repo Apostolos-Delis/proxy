@@ -380,7 +380,7 @@ Acceptance criteria:
 - Revoked or expired API keys are rejected before route classification or provider spend.
 - Request persistence uses `api_keys.organization_id` and `api_keys.user_id`.
 - `api_keys.last_used_at` updates on successful auth.
-- `PROMPT_PROXY_TOKEN` remains only as an explicit local-development fallback.
+- `PROXY_TOKEN` remains only as an explicit local-development fallback.
 - Harness-supplied user/team headers are stored as metadata unless a later org setting marks them trusted.
 
 Dependencies: PP-002, PP-004.

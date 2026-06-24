@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process";
 
-const envName = process.env.PROMPT_PROXY_DEPLOY_ENV ?? process.argv[2] ?? "staging";
-const operation = process.env.PROMPT_PROXY_OPERATION ?? process.argv[3] ?? "migrate";
+const envName = process.env.PROXY_DEPLOY_ENV ?? process.argv[2] ?? "staging";
+const operation = process.env.PROXY_OPERATION ?? process.argv[3] ?? "migrate";
 if (operation !== "migrate" && operation !== "seed") {
   throw new Error("Operation must be migrate or seed.");
 }
 
-const stackName = `prompt-proxy-${envName}-operations`;
+const stackName = `proxy-${envName}-operations`;
 const outputPrefix = operation === "seed" ? "Seed" : "Migration";
 const outputs = stackOutputs(stackName);
 const cluster = requiredOutput(outputs, "OperationsClusterName");

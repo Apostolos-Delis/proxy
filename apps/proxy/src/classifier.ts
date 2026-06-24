@@ -3,7 +3,7 @@ import { performance } from "node:perf_hooks";
 import {
   composeClassifierInstructions,
   type RoutingConfigClassifier
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import type { AppConfig } from "./config.js";
 import {
@@ -86,7 +86,7 @@ export class LlmClassifier {
         lastError = error;
         this.recordClassifierAttempt(settings, startedAtMs, "failed", "classifier");
         if (attempt < settings.maxAttempts) {
-          this.metrics.incrementCounter("prompt_proxy_classifier_retries_total", {
+          this.metrics.incrementCounter("proxy_classifier_retries_total", {
             provider: settings.providerId,
             model: settings.model,
             error_class: "classifier"
@@ -156,8 +156,8 @@ export class LlmClassifier {
       outcome,
       error_class: errorClass
     };
-    this.metrics.incrementCounter("prompt_proxy_classifier_attempts_total", labels);
-    this.metrics.observeHistogram("prompt_proxy_classifier_duration_seconds", (performance.now() - startedAtMs) / 1000, {
+    this.metrics.incrementCounter("proxy_classifier_attempts_total", labels);
+    this.metrics.observeHistogram("proxy_classifier_duration_seconds", (performance.now() - startedAtMs) / 1000, {
       provider: settings.providerId,
       model: settings.model,
       outcome
@@ -171,14 +171,14 @@ export class LlmClassifier {
       provider: settings.providerId,
       model: settings.model
     };
-    this.metrics.incrementCounter("prompt_proxy_classifier_tokens_total", { ...labels, usage_kind: "input" }, normalized.inputTokens);
-    this.metrics.incrementCounter("prompt_proxy_classifier_tokens_total", { ...labels, usage_kind: "cached_input" }, normalized.cachedInputTokens);
-    this.metrics.incrementCounter("prompt_proxy_classifier_tokens_total", { ...labels, usage_kind: "cache_creation_input" }, normalized.cacheCreationInputTokens);
-    this.metrics.incrementCounter("prompt_proxy_classifier_tokens_total", { ...labels, usage_kind: "output" }, normalized.outputTokens);
-    this.metrics.incrementCounter("prompt_proxy_classifier_tokens_total", { ...labels, usage_kind: "reasoning" }, normalized.reasoningTokens);
-    this.metrics.incrementCounter("prompt_proxy_classifier_tokens_total", { ...labels, usage_kind: "total" }, normalized.totalTokens);
+    this.metrics.incrementCounter("proxy_classifier_tokens_total", { ...labels, usage_kind: "input" }, normalized.inputTokens);
+    this.metrics.incrementCounter("proxy_classifier_tokens_total", { ...labels, usage_kind: "cached_input" }, normalized.cachedInputTokens);
+    this.metrics.incrementCounter("proxy_classifier_tokens_total", { ...labels, usage_kind: "cache_creation_input" }, normalized.cacheCreationInputTokens);
+    this.metrics.incrementCounter("proxy_classifier_tokens_total", { ...labels, usage_kind: "output" }, normalized.outputTokens);
+    this.metrics.incrementCounter("proxy_classifier_tokens_total", { ...labels, usage_kind: "reasoning" }, normalized.reasoningTokens);
+    this.metrics.incrementCounter("proxy_classifier_tokens_total", { ...labels, usage_kind: "total" }, normalized.totalTokens);
     const cost = usageCostMicros(pricingForProviderModel(this.config.modelCosts, settings.providerId, settings.model), normalized);
-    this.metrics.incrementCounter("prompt_proxy_classifier_cost_usd_total", {
+    this.metrics.incrementCounter("proxy_classifier_cost_usd_total", {
       ...labels,
       cost_kind: "classifier"
     }, cost.totalCostMicros / 1_000_000);

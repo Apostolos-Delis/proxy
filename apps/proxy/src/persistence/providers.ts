@@ -1,8 +1,8 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
-import { providers, type PromptProxyDbSession } from "@prompt-proxy/db";
-import type { Dialect, Provider } from "@prompt-proxy/schema";
+import { providers, type ProxyDbSession } from "@proxy/db";
+import type { Dialect, Provider } from "@proxy/schema";
 import { and, eq, isNull } from "drizzle-orm";
 
 import type { AppConfig } from "../config.js";
@@ -58,7 +58,7 @@ export type ProviderNetworkPolicy = Pick<AppConfig, "allowedPrivateUpstreamCidrs
 
 export class ProviderRegistryStore implements ProviderRegistryResolver {
   constructor(
-    private readonly db: PromptProxyDbSession,
+    private readonly db: ProxyDbSession,
     private readonly networkPolicy: ProviderNetworkPolicy
   ) {}
 

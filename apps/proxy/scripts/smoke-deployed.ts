@@ -20,27 +20,27 @@ type AdminProof = {
 };
 
 const baseUrl = normalizeBaseUrl(requiredEnv([
-  "PROMPT_PROXY_DEPLOYED_BASE_URL",
-  "PROMPT_PROXY_BASE_URL"
+  "PROXY_DEPLOYED_BASE_URL",
+  "PROXY_BASE_URL"
 ]));
 const apiKey = requiredEnv([
-  "PROMPT_PROXY_DEPLOYED_API_KEY",
-  "PROMPT_PROXY_TOKEN"
+  "PROXY_DEPLOYED_API_KEY",
+  "PROXY_TOKEN"
 ]);
 const expectedOrganizationId = optionalEnv([
-  "PROMPT_PROXY_DEPLOYED_ORGANIZATION_ID",
+  "PROXY_DEPLOYED_ORGANIZATION_ID",
   "DEFAULT_ORGANIZATION_ID"
 ]);
-const adminCookie = optionalEnv(["PROMPT_PROXY_DEPLOYED_ADMIN_COOKIE"]);
+const adminCookie = optionalEnv(["PROXY_DEPLOYED_ADMIN_COOKIE"]);
 const adminEmail = optionalEnv([
-  "PROMPT_PROXY_DEPLOYED_ADMIN_EMAIL",
+  "PROXY_DEPLOYED_ADMIN_EMAIL",
   "ADMIN_DEV_LOGIN_EMAIL"
 ]);
 const adminPassword = optionalEnv([
-  "PROMPT_PROXY_DEPLOYED_ADMIN_PASSWORD",
+  "PROXY_DEPLOYED_ADMIN_PASSWORD",
   "ADMIN_DEV_LOGIN_PASSWORD"
 ]);
-const skipAdmin = booleanEnv(process.env.PROMPT_PROXY_DEPLOYED_SKIP_ADMIN);
+const skipAdmin = booleanEnv(process.env.PROXY_DEPLOYED_SKIP_ADMIN);
 const marker = `deployed-smoke-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 try {
@@ -106,8 +106,8 @@ async function smokeOpenAIResponses(parentMarker: string): Promise<SmokeResult> 
     surface: "openai-responses",
     transport: "sse",
     sessionId,
-    route: requiredHeader(response, "x-prompt-proxy-route", "OpenAI Responses SSE"),
-    model: requiredHeader(response, "x-prompt-proxy-model", "OpenAI Responses SSE")
+    route: requiredHeader(response, "x-proxy-route", "OpenAI Responses SSE"),
+    model: requiredHeader(response, "x-proxy-model", "OpenAI Responses SSE")
   };
 }
 
@@ -201,8 +201,8 @@ async function smokeAnthropicMessages(parentMarker: string): Promise<SmokeResult
     surface: "anthropic-messages",
     transport: "sse",
     sessionId,
-    route: requiredHeader(response, "x-prompt-proxy-route", "Anthropic Messages SSE"),
-    model: requiredHeader(response, "x-prompt-proxy-model", "Anthropic Messages SSE")
+    route: requiredHeader(response, "x-proxy-route", "Anthropic Messages SSE"),
+    model: requiredHeader(response, "x-proxy-model", "Anthropic Messages SSE")
   };
 }
 
@@ -306,7 +306,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 async function loginAdmin() {
   if (!adminEmail || !adminPassword) {
-    throw new Error("admin smoke requires PROMPT_PROXY_DEPLOYED_ADMIN_COOKIE or PROMPT_PROXY_DEPLOYED_ADMIN_EMAIL/PROMPT_PROXY_DEPLOYED_ADMIN_PASSWORD. Set PROMPT_PROXY_DEPLOYED_SKIP_ADMIN=true to skip persistence checks.");
+    throw new Error("admin smoke requires PROXY_DEPLOYED_ADMIN_COOKIE or PROXY_DEPLOYED_ADMIN_EMAIL/PROXY_DEPLOYED_ADMIN_PASSWORD. Set PROXY_DEPLOYED_SKIP_ADMIN=true to skip persistence checks.");
   }
   const response = await fetch(`${baseUrl}/admin/graphql`, {
     method: "POST",

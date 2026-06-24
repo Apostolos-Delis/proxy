@@ -10,7 +10,7 @@ import type {
   Surface as SchemaSurface,
   HarnessCompatibilityProfileId,
   Verbosity as RoutingVerbosity
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 export type Surface = SchemaSurface;
 

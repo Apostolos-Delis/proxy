@@ -4,10 +4,10 @@ import {
   agentSessions,
   defaultWorkspaceId,
   promptArtifacts,
-  type PromptProxyDbSession,
-  type PromptProxyTransaction
-} from "@prompt-proxy/db";
-import { sessionPinnedSettingsSchema } from "@prompt-proxy/schema";
+  type ProxyDbSession,
+  type ProxyTransaction
+} from "@proxy/db";
+import { sessionPinnedSettingsSchema } from "@proxy/schema";
 
 import type { SessionPinLoader } from "../policy.js";
 import type { Surface } from "../types.js";
@@ -17,7 +17,7 @@ import { recordValue, routeValue, stringValue, surfaceValue } from "./values.js"
 
 export type PinnedSystemPrompt = { pinned: true; systemPrompt?: string };
 
-export async function persistSessionRoute(tx: PromptProxyTransaction, event: {
+export async function persistSessionRoute(tx: ProxyTransaction, event: {
   tenantId: string;
   workspaceId?: string;
   createdAt: string;
@@ -75,7 +75,7 @@ export async function persistSessionRoute(tx: PromptProxyTransaction, event: {
     .where(eq(agentSessions.id, dbSessionId));
 }
 
-export function createSessionPinLoader(db: PromptProxyDbSession): SessionPinLoader {
+export function createSessionPinLoader(db: ProxyDbSession): SessionPinLoader {
   return async ({ workspaceId, surface, sessionId }) => {
     const [row] = await db
       .select({
@@ -109,7 +109,7 @@ export function createSessionPinLoader(db: PromptProxyDbSession): SessionPinLoad
 }
 
 export class SessionSystemPromptStore {
-  constructor(private readonly db: PromptProxyDbSession) {}
+  constructor(private readonly db: ProxyDbSession) {}
 
   async resolve(input: {
     organizationId: string;

@@ -19,8 +19,8 @@ Goal: Show operators which harness/provider combinations are safe, translated, b
 
 ## Validation
 
-- Run `pnpm --filter @prompt-proxy/proxy test`.
-- Run `pnpm --filter @prompt-proxy/web test` if available.
+- Run `pnpm --filter @proxy/proxy test`.
+- Run `pnpm --filter @proxy/web test` if available.
 - Run `pnpm typecheck`.
 - Run `pnpm lint`.
 

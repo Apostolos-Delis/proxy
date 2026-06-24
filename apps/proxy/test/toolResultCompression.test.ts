@@ -11,8 +11,8 @@ import {
   promptArtifacts,
   requests,
   usageLedger
-} from "@prompt-proxy/db";
-import { defaultCompressionPolicy, type CompressionPolicy } from "@prompt-proxy/schema";
+} from "@proxy/db";
+import { defaultCompressionPolicy, type CompressionPolicy } from "@proxy/schema";
 
 import { compactJsonArrayTables } from "../src/compressionRules/jsonCompaction.js";
 import { EventService } from "../src/events.js";
@@ -1314,7 +1314,7 @@ describe("compressForForward", () => {
         policy: { ...testCompressionPolicy(), storeOriginalArtifact: true, storeCompressedArtifact: true }
       })) as any;
       expect(result.body.messages[1].content[0].content).toBe(truncatedBig);
-      expect(result.body.messages[1].content[0].content).not.toContain("[prompt-proxy:compressed");
+      expect(result.body.messages[1].content[0].content).not.toContain("[prompt:compressed");
       expect(result.records[0].originalArtifactId).toBe("artifact_0");
       expect(result.records[0].compressedArtifactId).toBeUndefined();
       expect(result.records[0].retrievalAvailable).toBeUndefined();
@@ -1630,7 +1630,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
     ]);
     // Lossless: only formatting whitespace is gone.
     expect(JSON.parse(forwarded)).toEqual(JSON.parse(verbose));
-    expect(forwarded).not.toContain("[prompt-proxy:compressed");
+    expect(forwarded).not.toContain("[prompt:compressed");
   });
 
   it("rejects unknown compression rule ids before storing the policy", async () => {
@@ -1922,7 +1922,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       compressedArtifactId: expect.any(String),
       retrievalAvailable: true,
       retrievalId,
-      retrievalMarker: `[prompt-proxy:compressed id=${retrievalId} sha256=${contentHashFor(verbose)}]`
+      retrievalMarker: `[prompt:compressed id=${retrievalId} sha256=${contentHashFor(verbose)}]`
     });
     expect(receipt.retrievalMarker).not.toContain(receipt.id);
     expect(receipt.retrievalMarker).not.toContain(receipt.requestId);
@@ -2004,7 +2004,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
     if (!receipt.retrievalId || !receipt.retrievalMarker) throw new Error("missing mutating retrieval marker");
     expect(forwarded).toContain(compactedVerbose);
     expect(receipt.retrievalAvailable).toBe(true);
-    expect(receipt.retrievalMarker).toEqual(`[prompt-proxy:compressed id=${receipt.retrievalId} sha256=${contentHashFor(verbose)}]`);
+    expect(receipt.retrievalMarker).toEqual(`[prompt:compressed id=${receipt.retrievalId} sha256=${contentHashFor(verbose)}]`);
     expect(forwarded).toContain(receipt.retrievalMarker);
     expect(receipt).toMatchObject({
       status: "applied",

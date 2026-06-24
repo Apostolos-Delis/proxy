@@ -1,4 +1,4 @@
-export type PromptProxyEnvironmentConfig = {
+export type ProxyEnvironmentConfig = {
   envName: "staging" | "prod";
   awsAccountId: string;
   region: string;
@@ -24,10 +24,10 @@ export type PromptProxyEnvironmentConfig = {
   };
 };
 
-export function stackName(config: PromptProxyEnvironmentConfig, suffix: string) {
-  return `prompt-proxy-${config.envName}-${suffix}`;
+export function stackName(config: ProxyEnvironmentConfig, suffix: string) {
+  return `proxy-${config.envName}-${suffix}`;
 }
 
-export function resourceName(config: PromptProxyEnvironmentConfig, name: string) {
-  return `prompt-proxy-${config.envName}-${name}`;
+export function resourceName(config: ProxyEnvironmentConfig, name: string) {
+  return `proxy-${config.envName}-${name}`;
 }

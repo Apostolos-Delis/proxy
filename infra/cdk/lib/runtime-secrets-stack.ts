@@ -2,20 +2,20 @@ import { CfnOutput, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import { CfnSecret, Secret, type ISecret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
+import { resourceName, type ProxyEnvironmentConfig } from "./config.js";
 
-export type PromptProxyRuntimeSecretsStackProps = StackProps & {
-  config: PromptProxyEnvironmentConfig;
+export type ProxyRuntimeSecretsStackProps = StackProps & {
+  config: ProxyEnvironmentConfig;
 };
 
-export class PromptProxyRuntimeSecretsStack extends Stack {
+export class ProxyRuntimeSecretsStack extends Stack {
   readonly proxyTokenSecret: Secret;
   readonly adminCredentialsSecret: Secret;
   readonly adminSessionSecret: Secret;
   readonly openAiApiKeySecret: ISecret;
   readonly anthropicApiKeySecret: ISecret;
 
-  constructor(scope: Construct, id: string, props: PromptProxyRuntimeSecretsStackProps) {
+  constructor(scope: Construct, id: string, props: ProxyRuntimeSecretsStackProps) {
     super(scope, id, props);
 
     const { config } = props;
@@ -25,7 +25,7 @@ export class PromptProxyRuntimeSecretsStack extends Stack {
     this.adminCredentialsSecret = new Secret(this, "AdminCredentials", {
       secretName: resourceName(config, "admin-credentials"),
       generateSecretString: {
-        secretStringTemplate: JSON.stringify({ email: "admin@prompt-proxy.local" }),
+        secretStringTemplate: JSON.stringify({ email: "admin@prompt.local" }),
         generateStringKey: "password",
         excludePunctuation: true,
         passwordLength: 32
@@ -42,7 +42,7 @@ export class PromptProxyRuntimeSecretsStack extends Stack {
     new CfnOutput(this, "AnthropicApiKeySecretArn", { value: this.anthropicApiKeySecret.secretArn });
   }
 
-  private operatorSecret(config: PromptProxyEnvironmentConfig, name: string, removalPolicy: RemovalPolicy) {
+  private operatorSecret(config: ProxyEnvironmentConfig, name: string, removalPolicy: RemovalPolicy) {
     const secret = new CfnSecret(this, `${name}Secret`, {
       name: resourceName(config, name),
       secretString: "OPERATOR_POPULATES_BEFORE_USE"
@@ -55,7 +55,7 @@ export class PromptProxyRuntimeSecretsStack extends Stack {
 
 function generatedSecret(
   scope: Construct,
-  config: PromptProxyEnvironmentConfig,
+  config: ProxyEnvironmentConfig,
   name: string,
   removalPolicy: RemovalPolicy,
   passwordLength: number

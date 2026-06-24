@@ -12,8 +12,8 @@ import {
   organizationSettings,
   routingConfigs,
   routingConfigVersions
-} from "@prompt-proxy/db";
-import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
+} from "@proxy/db";
+import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
 
 import { loadConfig } from "../src/config.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
@@ -213,7 +213,7 @@ describe("routing config resolver guardrails", () => {
     await seedDatabase(fixture.db, seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: organizationId,
       SEED_USER_ID: userId,
-      PROMPT_PROXY_TOKEN: proxyToken
+      PROXY_TOKEN: proxyToken
     }));
   }
 

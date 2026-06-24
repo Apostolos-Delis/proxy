@@ -13,7 +13,7 @@ This should feel like Trace and Atlas: dense, operational, event-aware, and buil
 
 ## Current State
 
-Prompt Proxy already has the right backbone:
+Proxy already has the right backbone:
 
 ```text
 apps/proxy/        routing proxy and admin API
@@ -111,7 +111,7 @@ Do not copy direct `useEffect` patterns. Use TanStack Router loaders, TanStack Q
 Sidebar groups:
 
 ```text
-Prompt Proxy
+Proxy
   Overview
   Usage
   Prompts
@@ -232,7 +232,7 @@ GET /admin/sessions
 GET /admin/sessions/:sessionId
 GET /admin/prompts
 GET /admin/prompts/:artifactId
-GET /admin/prompt-access-audit
+GET /admin/proxy-access-audit
 GET /admin/requests
 GET /admin/requests/:requestId
 GET /admin/settings
@@ -259,7 +259,7 @@ revoked_at
 Rules:
 
 - store only hashed session tokens
-- set an HttpOnly `prompt_proxy_session` cookie
+- set an HttpOnly `proxy_session` cookie
 - resolve current user through `/api/auth/me`
 - scope every admin query to organizations where the user has active membership
 - reject org IDs that the current user does not belong to
@@ -297,7 +297,7 @@ Proxy request auth:
 - reject revoked or expired keys
 - use the key's `organization_id` and `user_id` for persistence
 - update `last_used_at`
-- keep `PROMPT_PROXY_TOKEN` only as an explicit local fallback for seeded development
+- keep `PROXY_TOKEN` only as an explicit local fallback for seeded development
 
 Harness-supplied user/team headers should not authorize organization or user ownership. Store them as request metadata unless a later org setting explicitly allows trusted upstream identity headers.
 

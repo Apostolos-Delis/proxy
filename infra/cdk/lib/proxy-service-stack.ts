@@ -14,26 +14,26 @@ import { ApplicationProtocol } from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
-import type { PromptProxyDatabaseStack } from "./database-stack.js";
-import type { PromptProxyFoundationStack } from "./foundation-stack.js";
-import type { PromptProxyNetworkStack } from "./network-stack.js";
-import type { PromptProxyRuntimeSecretsStack } from "./runtime-secrets-stack.js";
+import { resourceName, type ProxyEnvironmentConfig } from "./config.js";
+import type { ProxyDatabaseStack } from "./database-stack.js";
+import type { ProxyFoundationStack } from "./foundation-stack.js";
+import type { ProxyNetworkStack } from "./network-stack.js";
+import type { ProxyRuntimeSecretsStack } from "./runtime-secrets-stack.js";
 
-export type PromptProxyServiceStackProps = StackProps & {
-  config: PromptProxyEnvironmentConfig;
-  foundation: PromptProxyFoundationStack;
-  network: PromptProxyNetworkStack;
-  database: PromptProxyDatabaseStack;
-  runtimeSecrets: PromptProxyRuntimeSecretsStack;
+export type ProxyServiceStackProps = StackProps & {
+  config: ProxyEnvironmentConfig;
+  foundation: ProxyFoundationStack;
+  network: ProxyNetworkStack;
+  database: ProxyDatabaseStack;
+  runtimeSecrets: ProxyRuntimeSecretsStack;
   runtimeImageTag: string;
 };
 
-export class PromptProxyServiceStack extends Stack {
+export class ProxyServiceStack extends Stack {
   readonly cluster: Cluster;
   readonly service: FargateService;
 
-  constructor(scope: Construct, id: string, props: PromptProxyServiceStackProps) {
+  constructor(scope: Construct, id: string, props: ProxyServiceStackProps) {
     super(scope, id, props);
 
     const { config, database, foundation, network, runtimeImageTag, runtimeSecrets } = props;
@@ -108,13 +108,13 @@ export class PromptProxyServiceStack extends Stack {
   }
 }
 
-export function runtimeEnvironment(config: PromptProxyEnvironmentConfig) {
+export function runtimeEnvironment(config: ProxyEnvironmentConfig) {
   return {
     ADMIN_CORS_ORIGIN: "",
     ADMIN_DEV_LOGIN_ENABLED: config.envName === "prod" ? "false" : "true",
     ADMIN_GRAPHIQL_ENABLED: config.envName === "prod" ? "false" : "true",
     ADMIN_SESSION_COOKIE_SECURE: "true",
-    ADMIN_SESSION_COOKIE_NAME: "prompt_proxy_session",
+    ADMIN_SESSION_COOKIE_NAME: "proxy_session",
     ADMIN_SESSION_TTL_SECONDS: "28800",
     ALLOW_DEV_PROXY_TOKEN_FALLBACK: "false",
     ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
@@ -123,20 +123,20 @@ export function runtimeEnvironment(config: PromptProxyEnvironmentConfig) {
     CLASSIFIER_MODEL: "gpt-5-nano-2025-08-07",
     CLASSIFIER_PROVIDER: "openai",
     CLASSIFIER_TIMEOUT_MS: "30000",
-    DEFAULT_ORGANIZATION_ID: `prompt-proxy-${config.envName}`,
+    DEFAULT_ORGANIZATION_ID: `proxy-${config.envName}`,
     DEBUG_ENDPOINTS_ENABLED: "false",
     LOG_LEVEL: "info",
     NODE_ENV: "production",
     OPENAI_BASE_URL: "https://api.openai.com/v1",
     PORT: "8787",
     SEED_REPLACE_ROUTING_CONFIG: "true",
-    SEED_USER_ID: `prompt-proxy-${config.envName}-admin`
+    SEED_USER_ID: `proxy-${config.envName}-admin`
   };
 }
 
 export function runtimeSecretEnvironment(
-  database: PromptProxyDatabaseStack,
-  runtimeSecrets: PromptProxyRuntimeSecretsStack
+  database: ProxyDatabaseStack,
+  runtimeSecrets: ProxyRuntimeSecretsStack
 ) {
   return {
     ADMIN_DEV_LOGIN_EMAIL: EcsSecret.fromSecretsManager(runtimeSecrets.adminCredentialsSecret, "email"),
@@ -144,6 +144,6 @@ export function runtimeSecretEnvironment(
     ANTHROPIC_API_KEY: EcsSecret.fromSecretsManager(runtimeSecrets.anthropicApiKeySecret),
     DATABASE_URL: EcsSecret.fromSecretsManager(database.databaseUrl),
     OPENAI_API_KEY: EcsSecret.fromSecretsManager(runtimeSecrets.openAiApiKeySecret),
-    PROMPT_PROXY_TOKEN: EcsSecret.fromSecretsManager(runtimeSecrets.proxyTokenSecret)
+    PROXY_TOKEN: EcsSecret.fromSecretsManager(runtimeSecrets.proxyTokenSecret)
   };
 }

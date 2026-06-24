@@ -2,7 +2,7 @@
 
 ## Goal
 
-Deploy Prompt Proxy to AWS in a production-like shape that is reliable enough for internal company usage, cheap enough to keep running continuously, and close enough to production that the same path can later be hardened instead of replaced.
+Deploy Proxy to AWS in a production-like shape that is reliable enough for internal company usage, cheap enough to keep running continuously, and close enough to production that the same path can later be hardened instead of replaced.
 
 The first AWS environment should support:
 
@@ -26,7 +26,7 @@ Atlas has the right V1 cost posture:
 - No NAT Gateways or interface VPC endpoints for the first cloud-test environment.
 - An operations ECS task for migrations and private smoke checks.
 
-Mortgages is useful for production guardrails, but its EKS/Terraform/Redis posture is larger than Prompt Proxy needs right now. Borrow the database protections, migration discipline, resource sizing, health checks, and environment overlays. Do not copy the whole platform shape unless there is an organizational requirement to standardize on EKS.
+Mortgages is useful for production guardrails, but its EKS/Terraform/Redis posture is larger than Proxy needs right now. Borrow the database protections, migration discipline, resource sizing, health checks, and environment overlays. Do not copy the whole platform shape unless there is an organizational requirement to standardize on EKS.
 
 ## Target Topology
 
@@ -42,7 +42,7 @@ CloudFront distribution
 Application Load Balancer
         |
         v
-ECS Fargate: prompt-proxy service
+ECS Fargate: prompt service
         |
         +-- RDS Postgres in isolated subnets
         +-- Secrets Manager runtime secrets
@@ -95,7 +95,7 @@ Stacks:
 - `RuntimeSecretsStack`
   - Secret containers for:
     - `DATABASE_URL`
-    - `PROMPT_PROXY_TOKEN`
+    - `PROXY_TOKEN`
     - `OPENAI_API_KEY`
     - `ANTHROPIC_API_KEY`
     - `ADMIN_SESSION_SECRET` once added
@@ -107,7 +107,7 @@ Stacks:
   - Private S3 bucket for `apps/web/dist`.
   - Web asset deployment/prefixing.
   - Export S3 bucket origin metadata for `EdgeStack`.
-  - Build the web app with same-origin API paths, ideally `VITE_PROMPT_PROXY_API_BASE=""`.
+  - Build the web app with same-origin API paths, ideally `VITE_PROXY_API_BASE=""`.
 
 - `ProxyServiceStack`
   - ECS cluster.
@@ -155,7 +155,7 @@ ALB idle timeout and CloudFront origin settings must support long-running SSE an
 
 ## Runtime Packaging
 
-Prompt Proxy does not currently have production Docker packaging. Add it before deploying.
+Proxy does not currently have production Docker packaging. Add it before deploying.
 
 Required changes:
 
@@ -163,7 +163,7 @@ Required changes:
 - Production script for proxy startup, for example `pnpm start:prod:proxy`.
 - Compile TypeScript during image build.
 - Run `node` against built JavaScript in production, not `tsx`.
-- Hard-cut package exports and scripts for `@prompt-proxy/proxy`, `@prompt-proxy/db`, and `@prompt-proxy/schema` to built `dist` JavaScript, including migrate, seed, smoke, and proxy startup scripts.
+- Hard-cut package exports and scripts for `@proxy/proxy`, `@proxy/db`, and `@proxy/schema` to built `dist` JavaScript, including migrate, seed, smoke, and proxy startup scripts.
 - Keep web build separate from the proxy runtime image unless we intentionally choose to serve static assets from Fastify later.
 
 Suggested image shape:
@@ -184,7 +184,7 @@ Runtime service:
 - `PORT=8787`
 - `DATABASE_URL` from Secrets Manager
 - `DEFAULT_ORGANIZATION_ID`
-- `PROMPT_PROXY_TOKEN` from Secrets Manager for the seeded/internal API key path
+- `PROXY_TOKEN` from Secrets Manager for the seeded/internal API key path
 - `ALLOW_DEV_PROXY_TOKEN_FALLBACK=false`
 - `OPENAI_API_KEY` from Secrets Manager
 - `OPENAI_BASE_URL`
@@ -207,7 +207,7 @@ Runtime service:
 
 Web build:
 
-- `VITE_PROMPT_PROXY_API_BASE=""` for same-origin CloudFront routing, or the full public API origin if we intentionally split console and API domains.
+- `VITE_PROXY_API_BASE=""` for same-origin CloudFront routing, or the full public API origin if we intentionally split console and API domains.
 
 Seed/migration task:
 
@@ -288,7 +288,7 @@ Cost controls:
 - Do not log raw prompt text in CloudWatch.
 - Keep raw prompts in Postgres only, through `prompt_artifacts.raw_text`.
 - Use AWS Budgets for the account or project tag.
-- Tag all resources with `app=prompt-proxy`, `environment`, and `owner`.
+- Tag all resources with `app=prompt`, `environment`, and `owner`.
 
 ## Security Baseline
 

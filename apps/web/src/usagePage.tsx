@@ -43,7 +43,7 @@ const layoutOptions = [
 
 type UsageLayout = (typeof layoutOptions)[number]["value"];
 
-const LAYOUT_STORAGE_KEY = "prompt-proxy.usage.layout";
+const LAYOUT_STORAGE_KEY = "prompt.usage.layout";
 
 function storedLayout(): UsageLayout {
   try {

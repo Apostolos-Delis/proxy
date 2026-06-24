@@ -1,8 +1,8 @@
 import {
   createPostgresDatabase,
   createTransactionalDatabase,
-  type PromptProxyDatabase
-} from "@prompt-proxy/db";
+  type ProxyDatabase
+} from "@proxy/db";
 
 import type { AppConfig } from "../config.js";
 import { CompressionCacheWindowResolver } from "../compressionCacheWindow.js";
@@ -47,7 +47,7 @@ export function createPostgresPersistence(databaseUrl: string, config: AppConfig
 }
 
 export function createDatabasePersistence(
-  db: PromptProxyDatabase,
+  db: ProxyDatabase,
   config: DatabasePersistenceConfig,
   useAdvisoryLocks: boolean,
   metrics?: MetricsCollector

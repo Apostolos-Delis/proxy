@@ -7,7 +7,7 @@ import {
   TRANSLATION_COMPATIBILITY_DIALECTS,
   type HarnessCompatibilityProfileId,
   type TranslationDialect
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 export type HarnessFixtureMode = "native" | "translated" | "unsupported";
 

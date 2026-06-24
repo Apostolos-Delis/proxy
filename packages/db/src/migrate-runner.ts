@@ -17,7 +17,7 @@ export async function runDatabaseMigrations(input: RunDatabaseMigrationsInput) {
 
   try {
     await sql`
-      CREATE TABLE IF NOT EXISTS prompt_proxy_schema_migrations (
+      CREATE TABLE IF NOT EXISTS proxy_schema_migrations (
         filename text PRIMARY KEY,
         applied_at timestamp with time zone NOT NULL DEFAULT now()
       )
@@ -28,7 +28,7 @@ export async function runDatabaseMigrations(input: RunDatabaseMigrationsInput) {
     for (const file of files) {
       const applied = await sql`
         SELECT filename
-        FROM prompt_proxy_schema_migrations
+        FROM proxy_schema_migrations
         WHERE filename = ${file}
         LIMIT 1
       `;
@@ -38,7 +38,7 @@ export async function runDatabaseMigrations(input: RunDatabaseMigrationsInput) {
       await sql.begin(async (transaction) => {
         await transaction.unsafe(migration);
         await transaction`
-          INSERT INTO prompt_proxy_schema_migrations (filename)
+          INSERT INTO proxy_schema_migrations (filename)
           VALUES (${file})
         `;
       });

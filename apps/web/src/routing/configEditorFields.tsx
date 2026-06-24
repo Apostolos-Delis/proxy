@@ -35,12 +35,12 @@ export function RequestBudgetEditor({ draft, onChange }: {
   const enabled = draft.maxEstimatedInputTokensEnabled;
   return (
     <section className="request-budget-editor">
-      <div className="prompt-editor-title">
+      <div className="proxy-editor-title">
         <Gauge />
         <strong>Request budget</strong>
         <span className="code-pill">{enabled ? "cap enabled" : "uncapped"}</span>
       </div>
-      <p className="prompt-editor-helper">
+      <p className="proxy-editor-helper">
         Optional guardrail on the full request envelope. Leave it off for long-lived coding sessions; enable it only when a key should reject oversized history before provider spend.
       </p>
       <div className="request-budget-controls">
@@ -93,12 +93,12 @@ function PromptEditor({ icon, title, tag, helper, value, rows, placeholder, onCh
 }) {
   return (
     <section className="prompt-editor">
-      <div className="prompt-editor-title">
+      <div className="proxy-editor-title">
         {icon}
         <strong>{title}</strong>
         <span className="code-pill">{tag}</span>
       </div>
-      <p className="prompt-editor-helper">{helper}</p>
+      <p className="proxy-editor-helper">{helper}</p>
       <textarea
         value={value}
         rows={rows}

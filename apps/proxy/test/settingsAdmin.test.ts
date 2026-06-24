@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { defaultCompressionPolicy, type CompressionPolicy, type PromptCaptureMode } from "@prompt-proxy/schema";
+import { defaultCompressionPolicy, type CompressionPolicy, type PromptCaptureMode } from "@proxy/schema";
 
 import { loadConfig } from "../src/config.js";
 import { buildServer } from "../src/server.js";
@@ -34,7 +34,7 @@ describe("persistent settings admin APIs", () => {
     }), "utf8");
 
     const config = loadConfig({
-      PROMPT_PROXY_SETTINGS_PATH: settingsPath,
+      PROXY_SETTINGS_PATH: settingsPath,
       CLASSIFIER_MODEL: "env-classifier"
     });
 
@@ -56,7 +56,7 @@ describe("persistent settings admin APIs", () => {
       promptCapture: {}
     }), "utf8");
 
-    const config = loadConfig({ PROMPT_PROXY_SETTINGS_PATH: settingsPath });
+    const config = loadConfig({ PROXY_SETTINGS_PATH: settingsPath });
 
     expect(config.classifierModel).toBe("legacy-classifier");
   });
@@ -66,7 +66,7 @@ describe("persistent settings admin APIs", () => {
     const promptCapture = { promptCaptureMode: "raw_text" as PromptCaptureMode, retentionDays: 30 };
     const orgSystemPrompt = { value: null as string | null };
     const app = buildServer(loadConfig({
-      PROMPT_PROXY_SETTINGS_PATH: settingsPath,
+      PROXY_SETTINGS_PATH: settingsPath,
       DEFAULT_ORGANIZATION_ID: "org_settings_file",
       LOG_LEVEL: "fatal"
     }), { persistence: fakePersistence(promptCapture, "org_settings_file", orgSystemPrompt) });
@@ -136,7 +136,7 @@ describe("persistent settings admin APIs", () => {
   it("rejects unpriced baseline models before writing settings", async () => {
     const settingsPath = await tempSettingsPath();
     const app = buildServer(loadConfig({
-      PROMPT_PROXY_SETTINGS_PATH: settingsPath,
+      PROXY_SETTINGS_PATH: settingsPath,
       LOG_LEVEL: "fatal"
     }), { persistence: fakePersistence() });
 
@@ -182,7 +182,7 @@ describe("persistent settings admin APIs", () => {
   it("rejects invalid settings without writing them", async () => {
     const settingsPath = await tempSettingsPath();
     const app = buildServer(loadConfig({
-      PROMPT_PROXY_SETTINGS_PATH: settingsPath,
+      PROXY_SETTINGS_PATH: settingsPath,
       LOG_LEVEL: "fatal"
     }), { persistence: fakePersistence() });
 
@@ -270,13 +270,13 @@ describe("persistent settings admin APIs", () => {
   });
 
   async function tempSettingsPath() {
-    tempDir = await mkdtemp(join(tmpdir(), "prompt-proxy-settings-"));
+    tempDir = await mkdtemp(join(tmpdir(), "proxy-settings-"));
     return join(tempDir, "settings.json");
   }
 });
 
 function adminHeaders() {
-  return { cookie: "prompt_proxy_session=test-admin-session" };
+  return { cookie: "proxy_session=test-admin-session" };
 }
 
 function fakePersistence(

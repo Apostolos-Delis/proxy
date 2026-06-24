@@ -99,7 +99,7 @@ export function LogoutButton({ icon }: { icon?: ReactNode }) {
 function HeaderText() {
   return (
     <header>
-      <p>Prompt Proxy</p>
+      <p>Proxy</p>
       <h1>Admin Login</h1>
     </header>
   );

@@ -11,7 +11,7 @@ Scope:
 - Add a root Dockerfile for the proxy runtime image.
 - Add `start:prod:proxy`.
 - Compile TypeScript during build.
-- Hard-cut workspace package exports and runtime scripts to built `dist` JavaScript for `@prompt-proxy/proxy`, `@prompt-proxy/db`, and `@prompt-proxy/schema`.
+- Hard-cut workspace package exports and runtime scripts to built `dist` JavaScript for `@proxy/proxy`, `@proxy/db`, and `@proxy/schema`.
 - Make migrate, seed, proxy start, and smoke scripts work from the production image.
 
 Likely files:
@@ -230,7 +230,7 @@ Dependencies: Ticket 3.
 Scope:
 
 - Add private S3 bucket for `apps/web/dist`.
-- Build web with `VITE_PROMPT_PROXY_API_BASE=""`.
+- Build web with `VITE_PROXY_API_BASE=""`.
 - Add S3 asset sync/prefixing.
 - Export bucket/origin metadata to `EdgeStack`.
 
@@ -248,7 +248,7 @@ Acceptance:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/web build`
+- `pnpm --filter @proxy/web build`
 - CDK synth
 - S3 sync dry run where possible
 

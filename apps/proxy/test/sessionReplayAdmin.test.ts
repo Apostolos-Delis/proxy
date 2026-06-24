@@ -13,7 +13,7 @@ import {
   usageLedger,
   users,
   workspaces
-} from "@prompt-proxy/db";
+} from "@proxy/db";
 
 import {
   adminGql,
@@ -309,7 +309,7 @@ describe("session replay admin APIs", () => {
         authorization: "Bearer proxy-token",
         "content-type": "application/json",
         "x-codex-session-id": "codex-session-real",
-        "x-prompt-proxy-user-id": "codex_real_user"
+        "x-proxy-user-id": "codex_real_user"
       },
       body: JSON.stringify({
         model: "router-auto",
@@ -324,7 +324,7 @@ describe("session replay admin APIs", () => {
       headers: {
         authorization: "Bearer proxy-token",
         "content-type": "application/json",
-        "x-prompt-proxy-user-id": "fallback_user"
+        "x-proxy-user-id": "fallback_user"
       },
       body: JSON.stringify({
         model: "router-auto",

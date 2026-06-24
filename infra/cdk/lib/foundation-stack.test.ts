@@ -4,11 +4,11 @@ import { describe, expect, it } from "vitest";
 
 import { environments } from "../config/environments.js";
 import { stackName } from "./config.js";
-import { PromptProxyFoundationStack } from "./foundation-stack.js";
+import { ProxyFoundationStack } from "./foundation-stack.js";
 
 const config = environments[0];
 
-describe("PromptProxyFoundationStack", () => {
+describe("ProxyFoundationStack", () => {
   it("allows the deploy workflow to inspect immutable image tags", () => {
     const template = foundationTemplate();
 
@@ -42,7 +42,7 @@ describe("PromptProxyFoundationStack", () => {
 
 function foundationTemplate() {
   const app = new App();
-  const stack = new PromptProxyFoundationStack(app, stackName(config, "foundation-test"), {
+  const stack = new ProxyFoundationStack(app, stackName(config, "foundation-test"), {
     config,
     env: {
       account: config.awsAccountId,

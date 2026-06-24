@@ -73,7 +73,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     bodyLimit: 1024 * 1024 * 50
   });
   const metrics = options.metrics ?? createMetricsCollector(config);
-  metrics.setGauge("prompt_proxy_up", 1);
+  metrics.setGauge("proxy_up", 1);
   const modelRequestsInFlight = new Map<string, { labels: Record<string, string>; value: number }>();
   const requestMetrics = new WeakMap<FastifyRequest, RequestMetricsState>();
 
@@ -90,13 +90,13 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     const durationSeconds = (performance.now() - state.startedAtMs) / 1000;
     const statusClass = metricStatusClassFor(reply.statusCode);
     const errorClass = state.errorClass ?? metricErrorClassForStatus(reply.statusCode);
-    metrics.incrementCounter("prompt_proxy_http_requests_total", {
+    metrics.incrementCounter("proxy_http_requests_total", {
       route_family: state.routeFamily,
       method: request.method,
       status_class: statusClass,
       error_class: errorClass
     });
-    metrics.observeHistogram("prompt_proxy_http_request_duration_seconds", durationSeconds, {
+    metrics.observeHistogram("proxy_http_request_duration_seconds", durationSeconds, {
       route_family: state.routeFamily,
       method: request.method,
       status_class: statusClass
@@ -120,7 +120,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   const persistence = options.persistence ?? (config.databaseUrl
     ? createPostgresPersistence(config.databaseUrl, config, metrics)
     : undefined);
-  metrics.setGauge("prompt_proxy_persistence_enabled", persistence ? 1 : 0);
+  metrics.setGauge("proxy_persistence_enabled", persistence ? 1 : 0);
   const routingConfigs = persistence?.routingConfigs ?? new DefaultRoutingConfigResolver(config);
   const events = new EventService(
     config.eventStorePath,
@@ -271,7 +271,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           scopeId: result.metadata.requestId,
           correlationId: result.metadata.requestId,
           actor: actorForIdentity(identity),
-          producer: "prompt-proxy.compression-retrieval",
+          producer: "proxy.compression-retrieval",
           eventType: "compression.retrieval_failed",
           payload: compressionRetrievalEventPayload(result.metadata, "failed", result.reason)
         });
@@ -298,7 +298,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       scopeId: result.metadata.requestId,
       correlationId: result.metadata.requestId,
       actor: actorForIdentity(identity),
-      producer: "prompt-proxy.compression-retrieval",
+      producer: "proxy.compression-retrieval",
       eventType: "compression.retrieved",
       payload: compressionRetrievalEventPayload(result.metadata, "retrieved")
     });
@@ -372,7 +372,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         correlationId: requestId,
         idempotencyKey,
         actor: actorForIdentity(identity),
-        producer: "prompt-proxy.surface.openai-responses",
+        producer: "proxy.surface.openai-responses",
         eventType: "proxy.request_received",
         payload: requestReceivedPayload("openai-responses", context, rawContext, identity)
       });
@@ -538,7 +538,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         correlationId: requestId,
         idempotencyKey,
         actor: actorForIdentity(identity),
-        producer: "prompt-proxy.surface.openai-chat",
+        producer: "proxy.surface.openai-chat",
         eventType: "proxy.request_received",
         payload: requestReceivedPayload(openAIChatSurface.surface, context, rawContext, identity)
       });
@@ -697,7 +697,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         correlationId: requestId,
         idempotencyKey,
         actor: actorForIdentity(identity),
-        producer: "prompt-proxy.surface.anthropic-messages",
+        producer: "proxy.surface.anthropic-messages",
         eventType: "proxy.request_received",
         payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
       });
@@ -863,7 +863,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         correlationId: requestId,
         idempotencyKey,
         actor: actorForIdentity(identity),
-        producer: "prompt-proxy.surface.anthropic-messages",
+        producer: "proxy.surface.anthropic-messages",
         eventType: "proxy.request_received",
         payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
       });
@@ -1075,7 +1075,7 @@ async function appendCompressionCacheWindowResolved(input: {
       correlationId: input.requestId,
       idempotencyKey: input.idempotencyKey,
       actor: actorForIdentity(input.identity),
-      producer: "prompt-proxy.compression",
+      producer: "proxy.compression",
       eventType: "compression.cache_window_resolved",
       payload: {
         surface: input.surface,
@@ -1287,7 +1287,7 @@ function adjustModelRequestsInFlight(
   const current = inFlight.get(key) ?? { labels, value: 0 };
   const next = Math.max(0, current.value + delta);
   inFlight.set(key, { labels, value: next });
-  metrics.setGauge("prompt_proxy_model_requests_in_flight", next, labels);
+  metrics.setGauge("proxy_model_requests_in_flight", next, labels);
 }
 
 function finishModelRequestMetrics(
@@ -1305,13 +1305,13 @@ function finishModelRequestMetrics(
   if (state.modelRecorded) return;
 
   const durationSeconds = (performance.now() - state.startedAtMs) / 1000;
-  metrics.incrementCounter("prompt_proxy_model_requests_total", {
+  metrics.incrementCounter("proxy_model_requests_total", {
     surface: state.surface,
     stream: state.stream,
     terminal_status: terminalStatus,
     error_class: errorClass
   });
-  metrics.observeHistogram("prompt_proxy_model_request_duration_seconds", durationSeconds, {
+  metrics.observeHistogram("proxy_model_request_duration_seconds", durationSeconds, {
     surface: state.surface,
     stream: state.stream,
     terminal_status: terminalStatus
