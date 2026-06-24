@@ -360,7 +360,7 @@ Goal: Document the shipped HTTP translation behavior and operator workflow.
 
 Scope:
 
-- Update `docs/model-routing.md` after implementation lands.
+- Update `docs/model-routing-proxy.md` after implementation lands.
 - Update `docs/runbooks/routing-configs.md` with target coverage and harness preview behavior.
 - Update opencode setup docs with Anthropic target support through translation.
 - Add Claude Code setup docs if none exist by then.
@@ -380,7 +380,7 @@ Validation:
 
 Likely files:
 
-- `docs/model-routing.md`
+- `docs/model-routing-proxy.md`
 - `docs/runbooks/routing-configs.md`
 - `docs/harnesses/opencode.md`
 - `docs/harnesses/claude-code.md` (new, if needed)

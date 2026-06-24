@@ -1,8 +1,19 @@
 # Proxy Docs
 
+## User Guide
+
+- [Proxy user guide](user-guide/README.md)
+- [Quickstart](user-guide/quickstart.md)
+- [API keys and harness setup](user-guide/api-keys.md)
+- [Provider auth](user-guide/provider-auth.md)
+- [Monitoring](user-guide/monitoring.md)
+- [Sessions and request replay](user-guide/sessions.md)
+- [Analytics and spend](user-guide/analytics.md)
+- [Token compression](user-guide/token-compression.md)
+
 ## Architecture
 
-- [Model routing proxy design](model-routing.md)
+- [Model routing proxy design](model-routing-proxy.md)
 - [Frontend guidelines](frontend-guidelines.md)
 - [Persistence and admin console scope](scopes/persistence-admin-v1/PLAN.md)
 - [TanStack admin app scope](scopes/tanstack-admin-app-v1/PLAN.md)
@@ -25,28 +36,6 @@
 - [Kong scoping review](research/kong-scope.md)
 - [OmniRoute scoping review](research/omniroute-scope.md)
 - [Router upstream implementation follow-up](research/router-upstream-implementation-follow-up.md)
-
-## Router Research Scopes
-
-- [Router research roadmap index](scopes/router-research-roadmap-v1/README.md)
-- [Route execution plan scope](scopes/router-research-roadmap-v1/route-execution-plan.md)
-- [Provider account health scope](scopes/router-research-roadmap-v1/provider-account-health.md)
-- [Auditable fallback scope](scopes/router-research-roadmap-v1/auditable-fallback.md)
-- [Provider registry V2 scope](scopes/router-research-roadmap-v1/provider-registry-v2.md)
-- [Harness compatibility tests scope](scopes/router-research-roadmap-v1/harness-compatibility-tests.md)
-- [Policy pipeline scope](scopes/router-research-roadmap-v1/policy-pipeline.md)
-- [Limits and budgets scope](scopes/router-research-roadmap-v1/limits-and-budgets.md)
-- [Tool output compression scope](scopes/router-research-roadmap-v1/tool-output-compression.md)
-- [Metrics and events scope](scopes/router-research-roadmap-v1/metrics-and-events.md)
-- [Product boundaries scope](scopes/router-research-roadmap-v1/product-boundaries.md)
-
-## Research
-
-- [Router research aggregate recommendations](research/router-research-recommendations.md)
-- [LiteLLM scoping review](research/litellm-scope.md)
-- [9router scoping review](research/9router-scope.md)
-- [Kong scoping review](research/kong-scope.md)
-- [OmniRoute scoping review](research/omniroute-scope.md)
 
 ## Router Research Scopes
 

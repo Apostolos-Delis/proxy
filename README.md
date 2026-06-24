@@ -21,6 +21,10 @@ Demo data shown below was generated locally with the PGlite demo stack; it does 
 
 ![Proxy logs page showing replayable agent sessions, models, routes, tokens, and cost](docs/assets/proxy-logs.png)
 
+## User Guide
+
+For the end-to-end operator path, start with the [Proxy user guide](docs/user-guide/README.md). It walks through local setup, API keys, harness setup, provider auth, monitoring, sessions, analytics, and token compression.
+
 ## Quick Start
 
 Prerequisites:
@@ -124,19 +128,19 @@ claude --model claude-router-auto
 In `~/.codex/config.toml`:
 
 ```toml
-# >>> prompt codex defaults >>>
+# >>> proxy codex defaults >>>
 model = "router-auto"
 model_provider = "proxy"
-# <<< prompt codex defaults <<<
+# <<< proxy codex defaults <<<
 
-# >>> prompt codex provider proxy >>>
+# >>> proxy codex provider proxy >>>
 [model_providers.proxy]
 name = "Proxy"
 base_url = "http://127.0.0.1:8787/v1"
 env_key = "PROXY_TOKEN"
 wire_api = "responses"
 supports_websockets = true
-# <<< prompt codex provider proxy <<<
+# <<< proxy codex provider proxy <<<
 ```
 
 ### opencode and Cursor
@@ -263,7 +267,7 @@ pnpm build
 
 `pnpm smoke` spins up mock OpenAI and Anthropic upstreams, drives Codex-shaped and Claude Code-shaped requests through the proxy, and verifies routing-config resolution end to end. `pnpm smoke:harnesses` runs the real installed `codex` and `claude` CLIs against the same mock-backed proxy.
 
-Architecture rules and conventions live in [AGENTS.md](AGENTS.md). The docs index is [docs/index.md](docs/index.md), starting with the [model routing proxy design](docs/model-routing.md).
+Architecture rules and conventions live in [AGENTS.md](AGENTS.md). The docs index is [docs/index.md](docs/index.md), starting with the [model routing proxy design](docs/model-routing-proxy.md).
 
 ## Deployment
 

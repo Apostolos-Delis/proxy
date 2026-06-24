@@ -64,25 +64,25 @@ describe("buildSetupScript", () => {
       const codexDir = join(home, ".codex");
       mkdirSync(codexDir, { recursive: true });
       writeFileSync(join(codexDir, "config.toml"), `# Existing Codex config
-# >>> prompt codex defaults >>>
+# >>> proxy codex defaults >>>
 model = "old-model"
 model_provider = "proxy"
-# <<< prompt codex defaults <<<
+# <<< proxy codex defaults <<<
 
 [features]
 goals = true
 
-# >>> prompt codex provider proxy >>>
+# >>> proxy codex provider proxy >>>
 [model_providers.proxy]
 name = "Old Proxy"
 base_url = "http://old/v1"
 env_key = "OLD_PROXY_TOKEN"
-# <<< prompt codex provider proxy <<<
+# <<< proxy codex provider proxy <<<
 `);
       writeFileSync(join(home, ".zshrc"), [
-        "# >>> prompt codex PROXY_TOKEN >>>",
+        "# >>> proxy codex PROXY_TOKEN >>>",
         'export PROXY_TOKEN="old-token"',
-        "# <<< prompt codex PROXY_TOKEN <<<",
+        "# <<< proxy codex PROXY_TOKEN <<<",
         ""
       ].join("\n"));
 
@@ -105,13 +105,13 @@ env_key = "OLD_PROXY_TOKEN"
       expect(config).toContain('base_url = "https://proxy.example.com/v1"');
       expect(config).toContain('env_key = "PROXY_TOKEN"');
       expect(config).toContain("supports_websockets = false");
-      expect(config).toContain("# >>> prompt codex defaults >>>");
-      expect(config).toContain("# >>> prompt codex provider proxy >>>");
+      expect(config).toContain("# >>> proxy codex defaults >>>");
+      expect(config).toContain("# >>> proxy codex provider proxy >>>");
       expect(config).not.toContain("http_headers");
       expect(config).not.toContain("http://old/v1");
       expect(config).not.toContain("OLD_PROXY_TOKEN");
       const zshrc = readFileSync(join(home, ".zshrc"), "utf8");
-      expect(zshrc).toContain("# >>> prompt codex PROXY_TOKEN >>>");
+      expect(zshrc).toContain("# >>> proxy codex PROXY_TOKEN >>>");
       expect(zshrc).toContain('export PROXY_TOKEN="$(cat ~/.proxy/token)"');
       expect(zshrc).not.toContain("old-token");
 
@@ -122,9 +122,9 @@ env_key = "OLD_PROXY_TOKEN"
       expect(secondResult.status).toBe(0);
       const secondConfig = readFileSync(join(codexDir, "config.toml"), "utf8");
       expect(secondConfig).toContain('base_url = "https://proxy2.example.com/v1"');
-      expect(secondConfig.match(/# >>> prompt codex provider proxy >>>/g)).toHaveLength(1);
+      expect(secondConfig.match(/# >>> proxy codex provider proxy >>>/g)).toHaveLength(1);
       const secondZshrc = readFileSync(join(home, ".zshrc"), "utf8");
-      expect(secondZshrc.match(/# >>> prompt codex PROXY_TOKEN >>>/g)).toHaveLength(1);
+      expect(secondZshrc.match(/# >>> proxy codex PROXY_TOKEN >>>/g)).toHaveLength(1);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -200,25 +200,25 @@ env_key = "USER_TOKEN"
       const managedCodexConfig = join(managedDir, "codex-config.toml");
       const managedZshrc = join(managedDir, "zshrc");
       writeFileSync(managedCodexConfig, `# Managed Codex config
-# >>> prompt codex defaults >>>
+# >>> proxy codex defaults >>>
 model = "old-model"
 model_provider = "proxy"
-# <<< prompt codex defaults <<<
+# <<< proxy codex defaults <<<
 
 [features]
 goals = true
 
-# >>> prompt codex provider proxy >>>
+# >>> proxy codex provider proxy >>>
 [model_providers.proxy]
 name = "Old Proxy"
 base_url = "http://old/v1"
 env_key = "OLD_PROXY_TOKEN"
-# <<< prompt codex provider proxy <<<
+# <<< proxy codex provider proxy <<<
 `);
       writeFileSync(managedZshrc, [
-        "# >>> prompt codex PROXY_TOKEN >>>",
+        "# >>> proxy codex PROXY_TOKEN >>>",
         'export PROXY_TOKEN="old-token"',
-        "# <<< prompt codex PROXY_TOKEN <<<",
+        "# <<< proxy codex PROXY_TOKEN <<<",
         ""
       ].join("\n"));
       symlinkSync(managedCodexConfig, join(codexDir, "config.toml"));
@@ -241,7 +241,7 @@ env_key = "OLD_PROXY_TOKEN"
       expect(config).toContain("supports_websockets = false");
       expect(config).not.toContain("http://old/v1");
       const zshrc = readFileSync(managedZshrc, "utf8");
-      expect(zshrc).toContain("# >>> prompt codex PROXY_TOKEN >>>");
+      expect(zshrc).toContain("# >>> proxy codex PROXY_TOKEN >>>");
       expect(zshrc).toContain('export PROXY_TOKEN="$(cat ~/.proxy/token)"');
       expect(zshrc).not.toContain("old-token");
     } finally {
@@ -253,9 +253,9 @@ env_key = "OLD_PROXY_TOKEN"
     const home = mkdtempSync(join(tmpdir(), "proxy-setup-codex-"));
     try {
       writeFileSync(join(home, ".zshrc"), [
-        "# >>> prompt codex PROXY_CODEX_TOKEN >>>",
+        "# >>> proxy codex PROXY_CODEX_TOKEN >>>",
         'export PROXY_CODEX_TOKEN="old-token"',
-        "# <<< prompt codex PROXY_CODEX_TOKEN <<<",
+        "# <<< proxy codex PROXY_CODEX_TOKEN <<<",
         ""
       ].join("\n"));
 
@@ -279,7 +279,7 @@ env_key = "OLD_PROXY_TOKEN"
       expect(config).toContain("supports_websockets = false");
       expect(config).not.toContain("http_headers");
       const zshrc = readFileSync(join(home, ".zshrc"), "utf8");
-      expect(zshrc).toContain("# >>> prompt codex PROXY_CODEX_TOKEN >>>");
+      expect(zshrc).toContain("# >>> proxy codex PROXY_CODEX_TOKEN >>>");
       expect(zshrc).toContain('export PROXY_CODEX_TOKEN="$(cat ~/.proxy/codex.token)"');
       expect(zshrc).not.toContain("old-token");
       expect(spawnSync("test", ["!", "-e", join(home, ".claude", "settings.json")]).status).toBe(0);

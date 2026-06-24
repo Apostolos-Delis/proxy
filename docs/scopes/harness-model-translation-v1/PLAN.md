@@ -371,7 +371,7 @@ This makes the actual routing behavior inspectable without duplicating route con
 
 ### 5. Docs
 
-- Update `docs/model-routing.md` after implementation lands.
+- Update `docs/model-routing-proxy.md` after implementation lands.
 - Update `docs/runbooks/routing-configs.md` with the new operator flow.
 - Add harness-specific caveats to `docs/harnesses/opencode.md` and future Claude Code setup docs.
 

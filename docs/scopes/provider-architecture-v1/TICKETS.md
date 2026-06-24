@@ -808,7 +808,7 @@ Validation:
 Likely files:
 
 - `README.md`
-- `docs/model-routing.md`
+- `docs/model-routing-proxy.md`
 - `docs/harnesses/*.md` (new)
 - `docs/index.md`
 

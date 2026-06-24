@@ -130,7 +130,7 @@ Validation:
 
 Likely files:
 
-- `docs/model-routing.md`
+- `docs/model-routing-proxy.md`
 - `docs/scopes/persistence-admin-v1/PLAN.md`
 - `docs/scopes/tanstack-admin-app-v1/PLAN.md`
 - `docs/index.md`
@@ -662,7 +662,7 @@ Validation:
 Likely files:
 
 - `README.md`
-- `docs/model-routing.md`
+- `docs/model-routing-proxy.md`
 - `docs/scopes/routing-configs-v1/PLAN.md`
 - `docs/index.md`
 
