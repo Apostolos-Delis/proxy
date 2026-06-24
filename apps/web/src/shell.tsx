@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, Layers, Logs, Moon, PanelLeft, PanelLeftClose, Search, ServerCog, Settings, Sun, Users } from "lucide-react";
+import { BarChart3, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, Layers, Logs, Moon, PanelLeft, PanelLeftClose, Search, ServerCog, Settings, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -10,6 +10,7 @@ import { OrgSwitcher } from "./orgSwitcher";
 import { SearchPalette } from "./search/SearchPalette";
 import { useSearchShortcut } from "./search/useSearchShortcut";
 import { fetchMe } from "./session";
+import { ProxyLogo } from "./ui";
 import { WorkspaceSwitcher } from "./workspaceSwitcher";
 
 type NavPath =
@@ -139,7 +140,7 @@ function Brand({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => vo
     <div className="brand">
       {collapsed ? null : (
         <div className="brand-lockup">
-          <div className="brand-mark"><Boxes /></div>
+          <div className="brand-mark"><ProxyLogo size={20} /></div>
           <div className="brand-text">
             <div className="brand-name">proxy</div>
             <div className="brand-sub">platform console</div>

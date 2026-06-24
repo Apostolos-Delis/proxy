@@ -20,6 +20,14 @@
   box-shadow: var(--shadow);
 }
 
+.login-mark {
+  color: var(--accent-text);
+  filter: drop-shadow(0 0 8px var(--accent-glow));
+  margin-bottom: 18px;
+  line-height: 0;
+}
+[data-theme="light"] .login-mark { filter: none; }
+
 .login-panel header p {
   margin: 0 0 8px;
   color: var(--accent-2);
