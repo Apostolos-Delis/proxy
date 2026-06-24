@@ -40,11 +40,11 @@ export const emptyProxySettings: ProxySettings = {
 };
 
 export function defaultSettingsPath(cwd = process.cwd()) {
-  return resolve(cwd, ".prompt-proxy", "settings.json");
+  return resolve(cwd, ".proxy", "settings.json");
 }
 
 export function settingsPathFromEnv(env: NodeJS.ProcessEnv = process.env) {
-  return resolve(env.PROMPT_PROXY_SETTINGS_PATH?.trim() || defaultSettingsPath());
+  return resolve(env.PROXY_SETTINGS_PATH?.trim() || defaultSettingsPath());
 }
 
 export function readSettingsFileSync(path: string): ProxySettings {

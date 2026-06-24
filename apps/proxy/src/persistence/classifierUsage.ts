@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 
-import { requests, usageLedger, type PromptProxyTransaction } from "@prompt-proxy/db";
+import { requests, usageLedger, type ProxyTransaction } from "@proxy/db";
 
 import { usageCostMicros } from "../pricing.js";
 import { catalogPricingForModel } from "./modelPricing.js";
@@ -12,7 +12,7 @@ import { normalizeUsage, providerValue, recordValue, stringValue } from "./value
 // dedicated ledger row (kind = "classifier") rather than folded into the
 // request's provider usage — keeping it out of token totals and the baseline
 // counterfactual while still counting toward what the proxy actually spends.
-export async function persistClassifierUsage(tx: PromptProxyTransaction, event: {
+export async function persistClassifierUsage(tx: ProxyTransaction, event: {
   tenantId: string;
   scopeId: string;
   payload: Record<string, unknown>;

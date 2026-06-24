@@ -1,6 +1,6 @@
 # Proxy Metrics Runbook
 
-Prompt Proxy exposes operational metrics for alerting and production diagnosis. Metrics are not the billing or audit source of truth; durable events, current-state tables, `usage_ledger`, and SQL rollups remain authoritative for usage analytics and replay.
+Proxy exposes operational metrics for alerting and production diagnosis. Metrics are not the billing or audit source of truth; durable events, current-state tables, `usage_ledger`, and SQL rollups remain authoritative for usage analytics and replay.
 
 The metric taxonomy and label policy live in [the proxy metrics scope](../scopes/proxy-metrics-v1/PLAN.md).
 
@@ -34,20 +34,20 @@ curl -fsS http://127.0.0.1:8787/healthz >/dev/null
 
 curl -fsS \
   -H "Authorization: Bearer ${METRICS_TOKEN}" \
-  http://127.0.0.1:8787/metrics | rg "prompt_proxy_http_requests_total|prompt_proxy_http_request_duration_seconds"
+  http://127.0.0.1:8787/metrics | rg "proxy_http_requests_total|proxy_http_request_duration_seconds"
 ```
 
 Expected:
 
-- `prompt_proxy_http_requests_total` includes a `route_family="health"` sample.
-- `prompt_proxy_http_request_duration_seconds` includes histogram buckets.
-- `prompt_proxy_persistence_enabled` is `1` when `DATABASE_URL` is active, otherwise `0`.
+- `proxy_http_requests_total` includes a `route_family="health"` sample.
+- `proxy_http_request_duration_seconds` includes histogram buckets.
+- `proxy_persistence_enabled` is `1` when `DATABASE_URL` is active, otherwise `0`.
 
 Run focused automated coverage with:
 
 ```shell
 pnpm build:runtime
-pnpm --filter @prompt-proxy/proxy exec vitest run test/metrics.test.ts
+pnpm --filter @proxy/proxy exec vitest run test/metrics.test.ts
 ```
 
 ## Scrape Configuration
@@ -56,7 +56,7 @@ Prometheus example:
 
 ```yaml
 scrape_configs:
-  - job_name: prompt-proxy
+  - job_name: prompt
     metrics_path: /metrics
     scheme: https
     authorization:
@@ -64,10 +64,10 @@ scrape_configs:
       credentials: ${METRICS_TOKEN}
     static_configs:
       - targets:
-          - prompt-proxy.example.com
+          - prompt.example.com
 ```
 
-For CloudWatch Agent, Grafana Agent, or another collector, use the same bearer token and preserve the OpenMetrics content type. Do not forward user cookies, admin session cookies, provider keys, or prompt-proxy API keys to the metrics endpoint.
+For CloudWatch Agent, Grafana Agent, or another collector, use the same bearer token and preserve the OpenMetrics content type. Do not forward user cookies, admin session cookies, provider keys, or prompt API keys to the metrics endpoint.
 
 ## Dashboard Panels
 
@@ -75,19 +75,19 @@ Suggested first dashboard:
 
 | Panel | Metrics |
 | --- | --- |
-| Request rate | `rate(prompt_proxy_http_requests_total[5m])` grouped by `route_family`, `status_class` |
-| Model request rate | `rate(prompt_proxy_model_requests_total[5m])` grouped by `surface`, `terminal_status` |
-| Error rate | `rate(prompt_proxy_http_requests_total{error_class!="none"}[5m]) / rate(prompt_proxy_http_requests_total[5m])` |
-| p95 HTTP latency | `histogram_quantile(0.95, sum by (le, route_family) (rate(prompt_proxy_http_request_duration_seconds_bucket[5m])))` |
-| p95 provider latency | `histogram_quantile(0.95, sum by (le, provider, model) (rate(prompt_proxy_provider_attempt_duration_seconds_bucket[5m])))` |
-| p95 time to first byte | `histogram_quantile(0.95, sum by (le, provider, model) (rate(prompt_proxy_provider_time_to_first_byte_seconds_bucket[5m])))` |
-| Classifier health | `rate(prompt_proxy_classifier_attempts_total[5m])` grouped by `outcome`, `error_class` |
-| Provider health | `rate(prompt_proxy_provider_attempts_total[5m])` grouped by `provider`, `terminal_status`, `error_class` |
-| Stream health | `rate(prompt_proxy_provider_stream_disconnects_total[5m])`, `rate(prompt_proxy_sse_observer_parse_failures_total[5m])`, `rate(prompt_proxy_provider_protocol_mismatches_total[5m])` |
-| Outbox health | `prompt_proxy_outbox_backlog`, `prompt_proxy_outbox_oldest_item_age_seconds` |
-| Database latency/errors | p95 `prompt_proxy_db_query_duration_seconds`, `rate(prompt_proxy_db_errors_total[5m])` |
-| Token and cost rate | `rate(prompt_proxy_usage_tokens_total[5m])`, `rate(prompt_proxy_cost_usd_total[5m])` |
-| Reconciliation risk | `prompt_proxy_terminal_pending_provider_attempts` |
+| Request rate | `rate(proxy_http_requests_total[5m])` grouped by `route_family`, `status_class` |
+| Model request rate | `rate(proxy_model_requests_total[5m])` grouped by `surface`, `terminal_status` |
+| Error rate | `rate(proxy_http_requests_total{error_class!="none"}[5m]) / rate(proxy_http_requests_total[5m])` |
+| p95 HTTP latency | `histogram_quantile(0.95, sum by (le, route_family) (rate(proxy_http_request_duration_seconds_bucket[5m])))` |
+| p95 provider latency | `histogram_quantile(0.95, sum by (le, provider, model) (rate(proxy_provider_attempt_duration_seconds_bucket[5m])))` |
+| p95 time to first byte | `histogram_quantile(0.95, sum by (le, provider, model) (rate(proxy_provider_time_to_first_byte_seconds_bucket[5m])))` |
+| Classifier health | `rate(proxy_classifier_attempts_total[5m])` grouped by `outcome`, `error_class` |
+| Provider health | `rate(proxy_provider_attempts_total[5m])` grouped by `provider`, `terminal_status`, `error_class` |
+| Stream health | `rate(proxy_provider_stream_disconnects_total[5m])`, `rate(proxy_sse_observer_parse_failures_total[5m])`, `rate(proxy_provider_protocol_mismatches_total[5m])` |
+| Outbox health | `proxy_outbox_backlog`, `proxy_outbox_oldest_item_age_seconds` |
+| Database latency/errors | p95 `proxy_db_query_duration_seconds`, `rate(proxy_db_errors_total[5m])` |
+| Token and cost rate | `rate(proxy_usage_tokens_total[5m])`, `rate(proxy_cost_usd_total[5m])` |
+| Reconciliation risk | `proxy_terminal_pending_provider_attempts` |
 
 ## Alerts
 
@@ -96,14 +96,14 @@ Initial thresholds should be tuned after a few days of baseline traffic.
 | Alert | Initial threshold | First checks |
 | --- | --- | --- |
 | Proxy unavailable | `up == 0` or scrape missing for 2 intervals | ECS/process health, deploy status, load balancer target health |
-| High 5xx rate | 5xx `prompt_proxy_http_requests_total` over 2% for 10m | Proxy logs, recent deploy, database connectivity |
+| High 5xx rate | 5xx `proxy_http_requests_total` over 2% for 10m | Proxy logs, recent deploy, database connectivity |
 | Auth failure spike | `error_class="auth"` request rate doubles baseline | API key rollout, client config, token rotation |
-| Classifier failure spike | `rate(prompt_proxy_classifier_attempts_total{outcome="failed"}[5m])` over 5% | Classifier provider key/base URL, structured output errors, timeout settings |
-| Provider failure spike | `rate(prompt_proxy_provider_attempts_total{terminal_status="failed"}[5m])` over 5% by provider | Provider status, selected model availability, BYOK credential bindings |
+| Classifier failure spike | `rate(proxy_classifier_attempts_total{outcome="failed"}[5m])` over 5% | Classifier provider key/base URL, structured output errors, timeout settings |
+| Provider failure spike | `rate(proxy_provider_attempts_total{terminal_status="failed"}[5m])` over 5% by provider | Provider status, selected model availability, BYOK credential bindings |
 | Provider p95 latency high | p95 provider duration above 60s for 10m | Provider latency, route mix, streaming clients |
 | Stream disconnect spike | Disconnect/protocol mismatch rate above baseline | Client cancellations, proxy/load balancer idle timeout, provider SSE behavior |
-| Outbox stuck | `prompt_proxy_outbox_backlog > 0` and oldest age over 5m | Event handler errors, projection worker health |
-| DB slow/erroring | DB p95 above 2s or any sustained `prompt_proxy_db_errors_total` | Postgres CPU/locks, migration status, usage rollup query plans |
+| Outbox stuck | `proxy_outbox_backlog > 0` and oldest age over 5m | Event handler errors, projection worker health |
+| DB slow/erroring | DB p95 above 2s or any sustained `proxy_db_errors_total` | Postgres CPU/locks, migration status, usage rollup query plans |
 | Terminal pending attempts | Gauge remains above 0 for 10m | Reconciliation path, provider terminal append errors, stream disconnects |
 
 ## Troubleshooting
@@ -120,11 +120,11 @@ Initial thresholds should be tuned after a few days of baseline traffic.
 After enabling metrics in a deployed environment:
 
 ```shell
-curl -fsS "${PROMPT_PROXY_DEPLOYED_BASE_URL}/healthz" >/dev/null
+curl -fsS "${PROXY_DEPLOYED_BASE_URL}/healthz" >/dev/null
 
 curl -fsS \
   -H "Authorization: Bearer ${METRICS_TOKEN}" \
-  "${PROMPT_PROXY_DEPLOYED_BASE_URL}/metrics" | rg "prompt_proxy_http_requests_total|prompt_proxy_persistence_enabled"
+  "${PROXY_DEPLOYED_BASE_URL}/metrics" | rg "proxy_http_requests_total|proxy_persistence_enabled"
 ```
 
 This verifies the edge path preserves auth headers and that the endpoint is reachable. Full request-path behavior is covered by `pnpm smoke:deployed`; metrics-specific endpoint behavior is covered by `apps/proxy/test/metrics.test.ts`.

@@ -4,7 +4,7 @@ apps/*/dist/
 packages/*/dist/
 infra/cdk/cdk.out/
 .vite/
-.prompt-proxy/
+.proxy/
 .env
 .env.*
 !.env.example

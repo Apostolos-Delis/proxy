@@ -1,7 +1,7 @@
 import type { IncomingHttpHeaders, IncomingMessage, Server } from "node:http";
 import type { LookupFunction } from "node:net";
 import type { Duplex } from "node:stream";
-import type { ProviderHealthClassification } from "@prompt-proxy/schema";
+import type { ProviderHealthClassification } from "@proxy/schema";
 
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
@@ -105,7 +105,7 @@ export class WebSocketRoutingProxy {
   }
 
   private async handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer) {
-    const pathname = new URL(request.url ?? "/", "http://prompt-proxy.local").pathname;
+    const pathname = new URL(request.url ?? "/", "http://prompt.local").pathname;
     if (pathname !== "/v1/responses") {
       rejectUpgrade(socket, 404, "Not Found");
       return;
@@ -261,7 +261,7 @@ export class WebSocketRoutingProxy {
       correlationId: requestId,
       idempotencyKey,
       actor: actorForIdentity(identity),
-      producer: "prompt-proxy.surface.openai-responses.websocket",
+      producer: "proxy.surface.openai-responses.websocket",
       eventType: "proxy.request_received",
       payload: requestReceivedPayload("openai-responses", context, rawContext, identity, {
         transport: "websocket"
@@ -408,7 +408,7 @@ export class WebSocketRoutingProxy {
         sessionId: context.sessionId,
         correlationId: requestId,
         idempotencyKey,
-        producer: "prompt-proxy.provider",
+        producer: "proxy.provider",
         eventType: "provider.request_started",
         payload: providerRequestStartedPayload
       });
@@ -432,7 +432,7 @@ export class WebSocketRoutingProxy {
       sessionId: context.sessionId,
       correlationId: requestId,
       idempotencyKey,
-      producer: "prompt-proxy.provider",
+      producer: "proxy.provider",
       eventType: "provider.stream_started",
       payload: {
         surface: openAIResponsesSurface.surface,
@@ -456,7 +456,7 @@ export class WebSocketRoutingProxy {
       sessionId: activeRequest.sessionId,
       correlationId: activeRequest.requestId,
       idempotencyKey: `${activeRequest.idempotencyKey}:provider-forwarded`,
-      producer: "prompt-proxy.provider",
+      producer: "proxy.provider",
       eventType: "provider.request_forwarded",
       payload: {
         surface: openAIResponsesSurface.surface,
@@ -571,7 +571,7 @@ export class WebSocketRoutingProxy {
       scopeId: activeRequest.requestId,
       correlationId: activeRequest.requestId,
       idempotencyKey: activeRequest.idempotencyKey,
-      producer: "prompt-proxy.provider",
+      producer: "proxy.provider",
       eventType: terminalEventType(status),
       payload,
       metadata: metadataPayload
@@ -583,7 +583,7 @@ export class WebSocketRoutingProxy {
         scopeId: activeRequest.requestId,
         correlationId: activeRequest.requestId,
         idempotencyKey: activeRequest.idempotencyKey,
-        producer: "prompt-proxy.usage",
+        producer: "proxy.usage",
         eventType: "usage.recorded",
         payload: {
           providerAttemptId: activeRequest.providerAttemptId,
@@ -624,7 +624,7 @@ export class WebSocketRoutingProxy {
         : `${activeRequest.providerAccountId}:${selectedModel}`,
       correlationId: activeRequest.requestId,
       idempotencyKey: activeRequest.idempotencyKey,
-      producer: "prompt-proxy.provider-health",
+      producer: "proxy.provider-health",
       eventType,
       payload: {
         provider: activeRequest.provider,
@@ -856,7 +856,7 @@ export class WebSocketRoutingProxy {
         correlationId: input.requestId,
         idempotencyKey: input.idempotencyKey,
         actor: actorForIdentity(input.identity),
-        producer: "prompt-proxy.compression",
+        producer: "proxy.compression",
         eventType: "compression.cache_window_resolved",
         payload: {
           surface: openAIResponsesSurface.surface,
@@ -947,7 +947,7 @@ function sendError(client: WebSocket, status: number, message: string) {
     type: "error",
     status,
     error: {
-      code: "prompt_proxy_error",
+      code: "proxy_error",
       message
     }
   }));

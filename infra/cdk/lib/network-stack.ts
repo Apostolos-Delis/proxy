@@ -11,13 +11,13 @@ import {
 import { ApplicationLoadBalancer } from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
+import { resourceName, type ProxyEnvironmentConfig } from "./config.js";
 
-export type PromptProxyNetworkStackProps = StackProps & {
-  config: PromptProxyEnvironmentConfig;
+export type ProxyNetworkStackProps = StackProps & {
+  config: ProxyEnvironmentConfig;
 };
 
-export class PromptProxyNetworkStack extends Stack {
+export class ProxyNetworkStack extends Stack {
   readonly vpc: IVpc;
   readonly loadBalancer: ApplicationLoadBalancer;
   readonly albSecurityGroup: SecurityGroup;
@@ -25,7 +25,7 @@ export class PromptProxyNetworkStack extends Stack {
   readonly operationsSecurityGroup: SecurityGroup;
   readonly databaseSecurityGroup: SecurityGroup;
 
-  constructor(scope: Construct, id: string, props: PromptProxyNetworkStackProps) {
+  constructor(scope: Construct, id: string, props: ProxyNetworkStackProps) {
     super(scope, id, props);
 
     const { config } = props;
@@ -67,7 +67,7 @@ export class PromptProxyNetworkStack extends Stack {
   }
 
   private securityGroup(
-    config: PromptProxyEnvironmentConfig,
+    config: ProxyEnvironmentConfig,
     name: string,
     description: string,
     allowAllOutbound = true
@@ -81,7 +81,7 @@ export class PromptProxyNetworkStack extends Stack {
   }
 }
 
-function vpcFor(scope: Construct, config: PromptProxyEnvironmentConfig): IVpc {
+function vpcFor(scope: Construct, config: ProxyEnvironmentConfig): IVpc {
   if (config.existingVpc) {
     return Vpc.fromVpcAttributes(scope, "Vpc", {
       vpcId: config.existingVpc.vpcId,

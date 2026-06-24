@@ -72,7 +72,7 @@ export function PromptsPage() {
 
 const promptColumns: ConsoleTableColumn<PromptSummary>[] = [
   {
-    id: "prompt",
+    id: "proxy",
     header: "Prompt",
     size: 380,
     accessorFn: (prompt) => prompt.preview ?? "",
@@ -103,7 +103,7 @@ const promptColumns: ConsoleTableColumn<PromptSummary>[] = [
 ];
 
 const promptAdvancedFields: ConsoleTableAdvancedField<PromptSummary>[] = [
-  { id: "prompt", label: "Prompt", getValue: (prompt) => prompt.preview },
+  { id: "proxy", label: "Prompt", getValue: (prompt) => prompt.preview },
   { id: "user", label: "User", getValue: (prompt) => prompt.userId },
   { id: "session", label: "Session", getValue: (prompt) => prompt.sessionId },
   { id: "surface", label: "Surface", getValue: (prompt) => prompt.surface },

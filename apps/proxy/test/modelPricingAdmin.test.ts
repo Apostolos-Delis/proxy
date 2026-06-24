@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { providers, usageLedger } from "@prompt-proxy/db";
+import { providers, usageLedger } from "@proxy/db";
 
 import { EventService } from "../src/events.js";
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";

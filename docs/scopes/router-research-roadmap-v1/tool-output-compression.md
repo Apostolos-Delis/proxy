@@ -8,13 +8,13 @@ V1 starts with measurement. It detects compressible tool results, estimates savi
 
 ## Why This Matters
 
-9router and OmniRoute both show that tool-heavy coding sessions waste many tokens on repetitive shell output, logs, diffs, and directory listings. Prompt Proxy sits in the only place that can observe these tokens across harnesses and providers.
+9router and OmniRoute both show that tool-heavy coding sessions waste many tokens on repetitive shell output, logs, diffs, and directory listings. Proxy sits in the only place that can observe these tokens across harnesses and providers.
 
 The risk is hidden prompt mutation. Compression must be opt-in, explainable, and reversible through artifacts where policy allows.
 
 ## Current State
 
-Prompt Proxy has future docs for token cost reduction and tool-result compression ideas. It also has prompt artifact boundaries and usage/cost accounting.
+Proxy has future docs for token cost reduction and tool-result compression ideas. It also has prompt artifact boundaries and usage/cost accounting.
 
 Missing:
 

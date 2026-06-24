@@ -134,7 +134,7 @@ function InviteShell({ heading, children }: { heading: string; children: ReactNo
     <section className="login-page">
       <div className="login-panel">
         <header>
-          <p>Prompt Proxy</p>
+          <p>Proxy</p>
           <h1>{heading}</h1>
         </header>
         {children}

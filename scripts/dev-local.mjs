@@ -8,9 +8,9 @@ const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const cwd = process.cwd();
 const env = await localEnv();
 env.POSTGRES_PORT ??= "55432";
-const defaultDatabaseUrl = `postgres://prompt_proxy:prompt_proxy@localhost:${env.POSTGRES_PORT}/prompt_proxy`;
+const defaultDatabaseUrl = `postgres://proxy:proxy@localhost:${env.POSTGRES_PORT}/proxy`;
 env.DATABASE_URL ??= defaultDatabaseUrl;
-env.PROMPT_PROXY_TOKEN ??= "dev-proxy-token";
+env.PROXY_TOKEN ??= "dev-token";
 env.ALLOW_DEV_PROXY_TOKEN_FALLBACK ??= "true";
 env.DEFAULT_ORGANIZATION_ID ??= "local";
 const databaseUrl = env.DATABASE_URL;
@@ -21,7 +21,7 @@ const children = new Set();
 let shuttingDown = false;
 
 function log(message) {
-  console.log(`[prompt-proxy-local] ${message}`);
+  console.log(`[prompt-local] ${message}`);
 }
 
 async function localEnv() {
@@ -46,11 +46,11 @@ function conductorPortEnv(value) {
   return {
     PORT: String(basePort + 1),
     POSTGRES_PORT: postgresPort,
-    DATABASE_URL: `postgres://prompt_proxy:prompt_proxy@localhost:${postgresPort}/prompt_proxy`,
+    DATABASE_URL: `postgres://proxy:proxy@localhost:${postgresPort}/proxy`,
     ADMIN_CORS_ORIGIN: `${webUrl},http://localhost:${basePort}`,
     ADMIN_CONSOLE_URL: webUrl,
-    VITE_PROMPT_PROXY_API_BASE: proxyUrl,
-    VITE_PROMPT_PROXY_WEB_URL: webUrl
+    VITE_PROXY_API_BASE: proxyUrl,
+    VITE_PROXY_WEB_URL: webUrl
   };
 }
 
@@ -86,7 +86,7 @@ async function readEnvFile(path) {
 }
 
 function webDevUrl(localEnv) {
-  const base = new URL(localEnv.VITE_PROMPT_PROXY_WEB_URL ?? "http://127.0.0.1:5173");
+  const base = new URL(localEnv.VITE_PROXY_WEB_URL ?? "http://127.0.0.1:5173");
   return base.toString().replace(/\/$/, "");
 }
 
@@ -133,13 +133,13 @@ function spawnLongRunning(label, args, childEnv = env) {
     children.delete(child);
     if (shuttingDown) return;
     const reason = signal ? `${label} exited from signal ${signal}` : `${label} exited with code ${code ?? 1}`;
-    console.error(`[prompt-proxy-local] ${reason}`);
+    console.error(`[prompt-local] ${reason}`);
     void shutdown(code ?? 1);
   });
 
   child.on("error", (error) => {
     if (shuttingDown) return;
-    console.error(`[prompt-proxy-local] failed to start ${label}:`, error);
+    console.error(`[prompt-local] failed to start ${label}:`, error);
     void shutdown(1);
   });
 
@@ -243,12 +243,12 @@ process.on("SIGTERM", () => {
 });
 
 process.on("uncaughtException", (error) => {
-  console.error("[prompt-proxy-local] uncaught exception:", error);
+  console.error("[prompt-local] uncaught exception:", error);
   void shutdown(1);
 });
 
 process.on("unhandledRejection", (error) => {
-  console.error("[prompt-proxy-local] unhandled rejection:", error);
+  console.error("[prompt-local] unhandled rejection:", error);
   void shutdown(1);
 });
 
@@ -270,11 +270,11 @@ async function main() {
   log("starting web app");
   spawnLongRunning(
     "web",
-    ["--filter", "@prompt-proxy/web", "dev", "--", "--port", webPort, "--strictPort"],
+    ["--filter", "@proxy/web", "dev", "--", "--port", webPort, "--strictPort"],
     {
       ...env,
-      VITE_PROMPT_PROXY_API_BASE: env.VITE_PROMPT_PROXY_API_BASE ?? proxyUrl,
-      VITE_PROMPT_PROXY_TOKEN: env.VITE_PROMPT_PROXY_TOKEN ?? env.PROMPT_PROXY_TOKEN ?? "dev-proxy-token"
+      VITE_PROXY_API_BASE: env.VITE_PROXY_API_BASE ?? proxyUrl,
+      VITE_PROXY_TOKEN: env.VITE_PROXY_TOKEN ?? env.PROXY_TOKEN ?? "dev-token"
     }
   );
 
@@ -294,6 +294,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error("[prompt-proxy-local] failed to start local mode:", error);
+  console.error("[prompt-local] failed to start local mode:", error);
   void shutdown(1);
 });

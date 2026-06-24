@@ -9,7 +9,7 @@ import {
   invitations,
   organizationMembers,
   users
-} from "@prompt-proxy/db";
+} from "@proxy/db";
 
 import { sha256 } from "../src/util.js";
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
@@ -403,7 +403,7 @@ describe("user admin APIs", () => {
     const fixture = await setup("org_user_admin_email", {
       RESEND_API_KEY: "test-resend-key",
       RESEND_BASE_URL: resendMock.url,
-      EMAIL_FROM: "Prompt Proxy <invites@example.com>",
+      EMAIL_FROM: "Proxy <invites@example.com>",
       ADMIN_CONSOLE_URL: "https://console.example.com"
     });
 
@@ -418,9 +418,9 @@ describe("user admin APIs", () => {
     expect(resendMock.records).toHaveLength(1);
     expect(resendMock.records[0].headers.authorization).toBe("Bearer test-resend-key");
     expect(resendMock.records[0].body).toEqual(expect.objectContaining({
-      from: "Prompt Proxy <invites@example.com>",
+      from: "Proxy <invites@example.com>",
       to: ["mail@example.com"],
-      subject: "You're invited to join org_user_admin_email on Prompt Proxy"
+      subject: "You're invited to join org_user_admin_email on Proxy"
     }));
     expect(resendMock.records[0].body.html).toContain(createdBody.inviteUrl);
     expect(resendMock.records[0].body.text).toContain(createdBody.inviteUrl);

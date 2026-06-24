@@ -55,7 +55,7 @@ export function CreatedCredentialStep({ created, embedded, onClose }: {
       <p className="provider-credential-next">
         {embedded
           ? "Selected for the API key you are creating."
-          : "Bind it to a Prompt Proxy API key you own before traffic can use it."}
+          : "Bind it to a Proxy API key you own before traffic can use it."}
       </p>
       {embedded ? null : (
         <Link to="/api-keys" className="btn btn-primary provider-credential-bind-link" onClick={onClose}>

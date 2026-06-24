@@ -1,4 +1,4 @@
-CREATE FUNCTION __prompt_proxy_v2_anthropic_target(block jsonb)
+CREATE FUNCTION __proxy_v2_anthropic_target(block jsonb)
 RETURNS jsonb
 LANGUAGE sql
 IMMUTABLE
@@ -13,7 +13,7 @@ AS $$
   ));
 $$;
 
-CREATE FUNCTION __prompt_proxy_v2_openai_target(block jsonb)
+CREATE FUNCTION __proxy_v2_openai_target(block jsonb)
 RETURNS jsonb
 LANGUAGE sql
 IMMUTABLE
@@ -28,7 +28,7 @@ AS $$
   ));
 $$;
 
-CREATE FUNCTION __prompt_proxy_v2_route(route jsonb)
+CREATE FUNCTION __proxy_v2_route(route jsonb)
 RETURNS jsonb
 LANGUAGE sql
 IMMUTABLE
@@ -38,17 +38,17 @@ AS $$
     'targets', coalesce((
       SELECT jsonb_agg(target)
       FROM (
-        SELECT __prompt_proxy_v2_anthropic_target(route->'anthropic') AS target
+        SELECT __proxy_v2_anthropic_target(route->'anthropic') AS target
         WHERE route ? 'anthropic' AND route->'anthropic' <> 'null'::jsonb
         UNION ALL
-        SELECT __prompt_proxy_v2_openai_target(route->'openai') AS target
+        SELECT __proxy_v2_openai_target(route->'openai') AS target
         WHERE route ? 'openai' AND route->'openai' <> 'null'::jsonb
       ) targets
     ), '[]'::jsonb)
   ));
 $$;
 
-CREATE FUNCTION __prompt_proxy_v2_config(config jsonb)
+CREATE FUNCTION __proxy_v2_config(config jsonb)
 RETURNS jsonb
 LANGUAGE sql
 IMMUTABLE
@@ -68,29 +68,29 @@ AS $$
       'structuredOutput', coalesce(config#>'{classifier,structuredOutput}', '{"mode":"json_schema"}'::jsonb)
     )),
     'routes', jsonb_build_object(
-      'fast', __prompt_proxy_v2_route(config#>'{routes,fast}'),
-      'balanced', __prompt_proxy_v2_route(config#>'{routes,balanced}'),
-      'hard', __prompt_proxy_v2_route(config#>'{routes,hard}'),
-      'deep', __prompt_proxy_v2_route(config#>'{routes,deep}')
+      'fast', __proxy_v2_route(config#>'{routes,fast}'),
+      'balanced', __proxy_v2_route(config#>'{routes,balanced}'),
+      'hard', __proxy_v2_route(config#>'{routes,hard}'),
+      'deep', __proxy_v2_route(config#>'{routes,deep}')
     ),
     'limits', config->'limits',
     'session', config->'session'
   ));
 $$;
 
-CREATE TEMP TABLE __prompt_proxy_routing_config_v2 ON COMMIT DROP AS
+CREATE TEMP TABLE __proxy_routing_config_v2 ON COMMIT DROP AS
 SELECT
   id,
   organization_id,
   workspace_id,
-  __prompt_proxy_v2_config(config) AS config
+  __proxy_v2_config(config) AS config
 FROM routing_config_versions
 WHERE config->>'schemaVersion' = '1';
 
-ALTER TABLE __prompt_proxy_routing_config_v2
+ALTER TABLE __proxy_routing_config_v2
   ADD COLUMN config_hash text;
 
-UPDATE __prompt_proxy_routing_config_v2
+UPDATE __proxy_routing_config_v2
 SET config_hash = encode(sha256(convert_to(config::text, 'UTF8')), 'hex');
 
 DO $$
@@ -100,10 +100,10 @@ BEGIN
     FROM (
       SELECT organization_id, workspace_id, config_hash
       FROM routing_config_versions
-      WHERE id NOT IN (SELECT id FROM __prompt_proxy_routing_config_v2)
+      WHERE id NOT IN (SELECT id FROM __proxy_routing_config_v2)
       UNION ALL
       SELECT organization_id, workspace_id, config_hash
-      FROM __prompt_proxy_routing_config_v2
+      FROM __proxy_routing_config_v2
     ) hashes
     GROUP BY organization_id, workspace_id, config_hash
     HAVING count(*) > 1
@@ -117,7 +117,7 @@ UPDATE routing_config_versions version
 SET
   config = migrated.config,
   config_hash = migrated.config_hash
-FROM __prompt_proxy_routing_config_v2 migrated
+FROM __proxy_routing_config_v2 migrated
 WHERE version.id = migrated.id;
 
 UPDATE agent_sessions
@@ -138,7 +138,7 @@ SET settings =
 WHERE settings ? 'costBaselineAnthropicModel'
    OR settings ? 'costBaselineOpenaiModel';
 
-DROP FUNCTION __prompt_proxy_v2_config(jsonb);
-DROP FUNCTION __prompt_proxy_v2_route(jsonb);
-DROP FUNCTION __prompt_proxy_v2_openai_target(jsonb);
-DROP FUNCTION __prompt_proxy_v2_anthropic_target(jsonb);
+DROP FUNCTION __proxy_v2_config(jsonb);
+DROP FUNCTION __proxy_v2_route(jsonb);
+DROP FUNCTION __proxy_v2_openai_target(jsonb);
+DROP FUNCTION __proxy_v2_anthropic_target(jsonb);

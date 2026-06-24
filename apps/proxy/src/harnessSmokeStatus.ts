@@ -1,4 +1,4 @@
-import type { HarnessCompatibilityProfileId, TranslationDialect } from "@prompt-proxy/schema";
+import type { HarnessCompatibilityProfileId, TranslationDialect } from "@proxy/schema";
 
 import { harnessCompatibilityReport, type HarnessCompatibilitySupport } from "./harnessCompatibilityReport.js";
 import {

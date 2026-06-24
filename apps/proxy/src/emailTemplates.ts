@@ -21,23 +21,23 @@ export type InvitationEmailInput = {
 export function invitationEmail(input: InvitationEmailInput) {
   const inviter = input.inviterName?.trim() || "An administrator";
   const expires = formatExpiry(input.expiresAt);
-  const subject = `You're invited to join ${input.organizationName} on Prompt Proxy`;
+  const subject = `You're invited to join ${input.organizationName} on Proxy`;
   const heading = `Join ${input.organizationName}`;
-  const intro = `${escapeHtml(inviter)} invited you to join <strong>${escapeHtml(input.organizationName)}</strong> on Prompt Proxy as ${roleLabel(input.role)}.`;
+  const intro = `${escapeHtml(inviter)} invited you to join <strong>${escapeHtml(input.organizationName)}</strong> on Proxy as ${roleLabel(input.role)}.`;
   const html = emailLayout({
-    preheader: `${inviter} invited you to join ${input.organizationName} on Prompt Proxy.`,
+    preheader: `${inviter} invited you to join ${input.organizationName} on Proxy.`,
     heading,
     bodyHtml: `
       <p style="margin: 0 0 12px; color: ${palette.text}; font-size: 15px; line-height: 24px;">${intro}</p>
       <p style="margin: 0 0 28px; color: ${palette.muted}; font-size: 14px; line-height: 22px;">
-        Prompt Proxy is the operations console for model routing, usage, and prompt observability.
+        Proxy is the operations console for model routing, usage, and prompt observability.
         Accept the invitation to activate your membership.
       </p>`,
     cta: { label: "Accept invitation", url: input.acceptUrl },
     footerNote: `This invitation expires on ${expires}. If you weren't expecting it, you can safely ignore this email.`
   });
   const text = [
-    `You're invited to join ${input.organizationName} on Prompt Proxy`,
+    `You're invited to join ${input.organizationName} on Proxy`,
     "",
     `${inviter} invited you to join ${input.organizationName} as ${roleLabel(input.role)}.`,
     "",
@@ -90,7 +90,7 @@ export function emailLayout(input: {
             <tr>
               <td style="background: ${palette.header}; border-radius: 8px 8px 0 0; padding: 20px 32px;">
                 <span style="font-family: ${fontStack}; font-size: 15px; font-weight: 700; letter-spacing: 0.4px; color: ${palette.headerText};">
-                  <span style="color: ${palette.accent};">&#9670;</span>&nbsp; Prompt Proxy
+                  <span style="color: ${palette.accent};">&#9670;</span>&nbsp; Proxy
                 </span>
               </td>
             </tr>

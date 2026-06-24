@@ -7,10 +7,10 @@ import {
   createTransactionalDatabase,
   eventOutbox,
   events,
-  type PromptProxyDatabase,
-  type PromptProxyTransaction,
-  type PromptProxyTransactionalDatabase
-} from "@prompt-proxy/db";
+  type ProxyDatabase,
+  type ProxyTransaction,
+  type ProxyTransactionalDatabase
+} from "@proxy/db";
 
 import type { OutboxItem, PersistentEventSink, ProxyEvent } from "../events.js";
 import { ensureOrganization } from "./identity.js";
@@ -25,13 +25,13 @@ export function createPostgresEventSink(databaseUrl: string) {
   return new DatabaseEventSink(createTransactionalDatabase(db), true);
 }
 
-export function createDatabaseEventSink(db: PromptProxyDatabase) {
+export function createDatabaseEventSink(db: ProxyDatabase) {
   return new DatabaseEventSink(createTransactionalDatabase(db), false);
 }
 
 export class DatabaseEventSink implements PersistentEventSink {
   constructor(
-    private readonly db: PromptProxyTransactionalDatabase,
+    private readonly db: ProxyTransactionalDatabase,
     private readonly useAdvisoryLocks: boolean,
     private readonly metrics: MetricsCollector = new NoopMetricsCollector()
   ) {}
@@ -74,17 +74,17 @@ export class DatabaseEventSink implements PersistentEventSink {
           status: outbox.status
         });
       });
-      this.metrics.observeHistogram("prompt_proxy_db_query_duration_seconds", (performance.now() - startedAtMs) / 1000, {
+      this.metrics.observeHistogram("proxy_db_query_duration_seconds", (performance.now() - startedAtMs) / 1000, {
         operation: "event_append",
         outcome: "succeeded"
       });
       await this.recordDurableOutboxHealth();
     } catch (error) {
-      this.metrics.observeHistogram("prompt_proxy_db_query_duration_seconds", (performance.now() - startedAtMs) / 1000, {
+      this.metrics.observeHistogram("proxy_db_query_duration_seconds", (performance.now() - startedAtMs) / 1000, {
         operation: "event_append",
         outcome: "failed"
       });
-      this.metrics.incrementCounter("prompt_proxy_db_errors_total", {
+      this.metrics.incrementCounter("proxy_db_errors_total", {
         operation: "event_append",
         error_class: "persistence"
       });
@@ -106,19 +106,19 @@ export class DatabaseEventSink implements PersistentEventSink {
           .orderBy(asc(eventOutbox.createdAt))
           .limit(1);
 
-        this.metrics.setGauge("prompt_proxy_outbox_backlog", Number(countRow?.backlog ?? 0));
+        this.metrics.setGauge("proxy_outbox_backlog", Number(countRow?.backlog ?? 0));
         const oldestCreatedAt = oldest?.createdAt === undefined
           ? undefined
           : new Date(oldest.createdAt).getTime();
         this.metrics.setGauge(
-          "prompt_proxy_outbox_oldest_item_age_seconds",
+          "proxy_outbox_oldest_item_age_seconds",
           oldestCreatedAt === undefined || !Number.isFinite(oldestCreatedAt)
             ? 0
             : Math.max(0, (Date.now() - oldestCreatedAt) / 1000)
         );
       });
     } catch {
-      this.metrics.incrementCounter("prompt_proxy_db_errors_total", {
+      this.metrics.incrementCounter("proxy_db_errors_total", {
         operation: "outbox_health",
         error_class: "persistence"
       });
@@ -127,7 +127,7 @@ export class DatabaseEventSink implements PersistentEventSink {
 }
 
 async function nextEventSequence(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   event: ProxyEvent,
   useAdvisoryLocks: boolean
 ) {

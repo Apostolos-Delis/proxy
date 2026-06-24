@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { promptArtifacts } from "@prompt-proxy/db";
+import { promptArtifacts } from "@proxy/db";
 import { eq } from "drizzle-orm";
 
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";

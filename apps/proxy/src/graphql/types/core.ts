@@ -1,4 +1,4 @@
-import { PROVIDER_ACCOUNT_AUTH_TYPES } from "@prompt-proxy/schema";
+import { PROVIDER_ACCOUNT_AUTH_TYPES } from "@proxy/schema";
 
 import { builder } from "../builder.js";
 import type {

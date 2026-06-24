@@ -9,9 +9,9 @@ import {
   organizations,
   users,
   workspaces,
-  type PromptProxyDbSession,
-  type PromptProxyTransaction
-} from "@prompt-proxy/db";
+  type ProxyDbSession,
+  type ProxyTransaction
+} from "@proxy/db";
 import { eq } from "drizzle-orm";
 
 import type { RouteName } from "../types.js";
@@ -25,7 +25,7 @@ export type ResolvedApiKeyIdentity = {
 };
 
 export class ApiKeyIdentityStore {
-  constructor(private readonly db: PromptProxyDbSession) {}
+  constructor(private readonly db: ProxyDbSession) {}
 
   async resolve(secret: string, now = new Date()): Promise<ResolvedApiKeyIdentity | undefined> {
     const [row] = await this.db
@@ -53,7 +53,7 @@ export class ApiKeyIdentityStore {
   }
 }
 
-export async function ensureOrganization(tx: PromptProxyTransaction, organizationId: string) {
+export async function ensureOrganization(tx: ProxyTransaction, organizationId: string) {
   await tx
     .insert(organizations)
     .values({
@@ -81,7 +81,7 @@ export async function ensureOrganization(tx: PromptProxyTransaction, organizatio
     .onConflictDoNothing();
 }
 
-export async function ensureUser(tx: PromptProxyTransaction, userId: string | undefined) {
+export async function ensureUser(tx: ProxyTransaction, userId: string | undefined) {
   if (!userId) return;
   await tx
     .insert(users)
@@ -92,7 +92,7 @@ export async function ensureUser(tx: PromptProxyTransaction, userId: string | un
     .onConflictDoNothing();
 }
 
-export async function ensureSession(tx: PromptProxyTransaction, input: {
+export async function ensureSession(tx: ProxyTransaction, input: {
   organizationId: string;
   workspaceId: string;
   surface: string | undefined;

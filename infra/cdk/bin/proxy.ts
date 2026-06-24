@@ -3,19 +3,19 @@ import { App, Tags } from "aws-cdk-lib";
 
 import { environments } from "../config/environments.js";
 import { stackName } from "../lib/config.js";
-import { PromptProxyDatabaseStack } from "../lib/database-stack.js";
-import { PromptProxyEdgeStack } from "../lib/edge-stack.js";
-import { PromptProxyFoundationStack } from "../lib/foundation-stack.js";
-import { PromptProxyNetworkStack } from "../lib/network-stack.js";
-import { PromptProxyOperationsStack } from "../lib/operations-stack.js";
-import { PromptProxyServiceStack } from "../lib/proxy-service-stack.js";
-import { PromptProxyRuntimeSecretsStack } from "../lib/runtime-secrets-stack.js";
-import { PromptProxyWebStack } from "../lib/web-stack.js";
+import { ProxyDatabaseStack } from "../lib/database-stack.js";
+import { ProxyEdgeStack } from "../lib/edge-stack.js";
+import { ProxyFoundationStack } from "../lib/foundation-stack.js";
+import { ProxyNetworkStack } from "../lib/network-stack.js";
+import { ProxyOperationsStack } from "../lib/operations-stack.js";
+import { ProxyServiceStack } from "../lib/proxy-service-stack.js";
+import { ProxyRuntimeSecretsStack } from "../lib/runtime-secrets-stack.js";
+import { ProxyWebStack } from "../lib/web-stack.js";
 
 const app = new App();
 const runtimeImageTag = String(app.node.tryGetContext("runtimeImageTag") ?? "local-synth");
 
-Tags.of(app).add("Project", "prompt-proxy");
+Tags.of(app).add("Project", "proxy");
 
 for (const config of environments) {
   const stackEnv = {
@@ -23,28 +23,28 @@ for (const config of environments) {
     region: config.region
   };
 
-  const foundation = new PromptProxyFoundationStack(app, stackName(config, "foundation"), {
+  const foundation = new ProxyFoundationStack(app, stackName(config, "foundation"), {
     config,
     env: stackEnv
   });
 
-  const network = new PromptProxyNetworkStack(app, stackName(config, "network"), {
+  const network = new ProxyNetworkStack(app, stackName(config, "network"), {
     config,
     env: stackEnv
   });
 
-  const database = new PromptProxyDatabaseStack(app, stackName(config, "database"), {
+  const database = new ProxyDatabaseStack(app, stackName(config, "database"), {
     config,
     env: stackEnv,
     network
   });
 
-  const runtimeSecrets = new PromptProxyRuntimeSecretsStack(app, stackName(config, "runtime-secrets"), {
+  const runtimeSecrets = new ProxyRuntimeSecretsStack(app, stackName(config, "runtime-secrets"), {
     config,
     env: stackEnv
   });
 
-  new PromptProxyOperationsStack(app, stackName(config, "operations"), {
+  new ProxyOperationsStack(app, stackName(config, "operations"), {
     config,
     database,
     env: stackEnv,
@@ -54,7 +54,7 @@ for (const config of environments) {
     runtimeSecrets
   });
 
-  const service = new PromptProxyServiceStack(app, stackName(config, "service"), {
+  const service = new ProxyServiceStack(app, stackName(config, "service"), {
     config,
     database,
     env: stackEnv,
@@ -64,12 +64,12 @@ for (const config of environments) {
     runtimeSecrets
   });
 
-  const web = new PromptProxyWebStack(app, stackName(config, "web"), {
+  const web = new ProxyWebStack(app, stackName(config, "web"), {
     config,
     env: stackEnv
   });
 
-  const edge = new PromptProxyEdgeStack(app, stackName(config, "edge"), {
+  const edge = new ProxyEdgeStack(app, stackName(config, "edge"), {
     adminAllowedCidrs: adminAllowedCidrsFor(config.envName),
     config,
     env: stackEnv,

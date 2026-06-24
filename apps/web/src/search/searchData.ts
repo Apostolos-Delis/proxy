@@ -163,7 +163,7 @@ export function matchSegments(text: string, query: string): MatchSegment[] {
   return segments;
 }
 
-const RECENTS_STORAGE_KEY = "prompt-proxy.search.recents";
+const RECENTS_STORAGE_KEY = "prompt.search.recents";
 const RECENTS_LIMIT = 6;
 
 export function loadRecents(): RecentSearchEntry[] {

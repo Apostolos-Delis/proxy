@@ -4,7 +4,7 @@ import { AdminAuthService } from "../src/adminAuth.js";
 import { loadConfig } from "../src/config.js";
 
 const productionSecrets = {
-  PROMPT_PROXY_TOKEN: "prod-proxy-token",
+  PROXY_TOKEN: "prod-token",
   OPENAI_API_KEY: "prod-openai-key",
   ANTHROPIC_API_KEY: "prod-anthropic-key"
 };
@@ -13,7 +13,7 @@ describe("security-sensitive config defaults", () => {
   it("disables debug endpoints when DATABASE_URL is configured unless explicitly enabled", () => {
     const config = loadConfig({
       NODE_ENV: "production",
-      DATABASE_URL: "postgres://user:pass@localhost:5432/prompt_proxy",
+      DATABASE_URL: "postgres://user:pass@localhost:5432/proxy",
       ...productionSecrets
     });
 
@@ -34,22 +34,22 @@ describe("security-sensitive config defaults", () => {
   it("rejects the default proxy token in production", () => {
     expect(() => loadConfig({
       NODE_ENV: "production",
-      DATABASE_URL: "postgres://user:pass@localhost:5432/prompt_proxy",
+      DATABASE_URL: "postgres://user:pass@localhost:5432/proxy",
       OPENAI_API_KEY: "prod-openai-key",
       ANTHROPIC_API_KEY: "prod-anthropic-key"
-    })).toThrow("PROMPT_PROXY_TOKEN must be changed in production.");
+    })).toThrow("PROXY_TOKEN must be changed in production.");
   });
 
   it("rejects default upstream provider keys in production", () => {
     expect(() => loadConfig({
       NODE_ENV: "production",
-      PROMPT_PROXY_TOKEN: "prod-proxy-token",
+      PROXY_TOKEN: "prod-token",
       ANTHROPIC_API_KEY: "prod-anthropic-key"
     })).toThrow("OPENAI_API_KEY must be set in production.");
 
     expect(() => loadConfig({
       NODE_ENV: "production",
-      PROMPT_PROXY_TOKEN: "prod-proxy-token",
+      PROXY_TOKEN: "prod-token",
       OPENAI_API_KEY: "prod-openai-key"
     })).toThrow("ANTHROPIC_API_KEY must be set in production.");
   });
@@ -57,7 +57,7 @@ describe("security-sensitive config defaults", () => {
   it("rejects dev login with DATABASE_URL and the default password", () => {
     expect(() => loadConfig({
       NODE_ENV: "production",
-      DATABASE_URL: "postgres://user:pass@localhost:5432/prompt_proxy",
+      DATABASE_URL: "postgres://user:pass@localhost:5432/proxy",
       ...productionSecrets,
       ADMIN_DEV_LOGIN_ENABLED: "true"
     })).toThrow("ADMIN_DEV_LOGIN_PASSWORD must be changed before enabling dev login with DATABASE_URL.");

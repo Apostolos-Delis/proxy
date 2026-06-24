@@ -45,8 +45,8 @@ describe("buildManualSteps", () => {
   });
 
   it("stores the secret with restricted permissions", () => {
-    expect(steps[0].snippet).toContain("printf '%s\\n' 'pp_abc123' > ~/.prompt-proxy/token");
-    expect(steps[0].snippet).toContain("chmod 600 ~/.prompt-proxy/token");
+    expect(steps[0].snippet).toContain("printf '%s\\n' 'pp_abc123' > ~/.proxy/token");
+    expect(steps[0].snippet).toContain("chmod 600 ~/.proxy/token");
   });
 
   it("renders valid Claude Code settings JSON pointing at the proxy", () => {
@@ -57,23 +57,23 @@ describe("buildManualSteps", () => {
         ANTHROPIC_BASE_URL: apiBase,
         CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
       },
-      apiKeyHelper: "cat ~/.prompt-proxy/token"
+      apiKeyHelper: "cat ~/.proxy/token"
     });
   });
 
   it("wires Codex through the shell export and provider table", () => {
-    expect(steps[2].snippet).toContain(`export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"`);
-    expect(steps[2].snippet).toContain("# >>> prompt-proxy codex PROMPT_PROXY_TOKEN >>>");
-    expect(steps[3].snippet).toContain("[model_providers.prompt_proxy]");
-    expect(steps[3].snippet).toContain("# >>> prompt-proxy codex defaults >>>");
-    expect(steps[3].snippet).toContain("# >>> prompt-proxy codex provider prompt_proxy >>>");
+    expect(steps[2].snippet).toContain(`export PROXY_TOKEN="$(cat ~/.proxy/token)"`);
+    expect(steps[2].snippet).toContain("# >>> prompt codex PROXY_TOKEN >>>");
+    expect(steps[3].snippet).toContain("[model_providers.proxy]");
+    expect(steps[3].snippet).toContain("# >>> prompt codex defaults >>>");
+    expect(steps[3].snippet).toContain("# >>> prompt codex provider proxy >>>");
     expect(steps[3].snippet).toContain(`base_url = "${apiBase}/v1"`);
-    expect(steps[3].snippet).toContain(`env_key = "PROMPT_PROXY_TOKEN"`);
+    expect(steps[3].snippet).toContain(`env_key = "PROXY_TOKEN"`);
   });
 
   it("does not stamp per-request identity headers", () => {
-    expect(steps[1].snippet).not.toContain("x-prompt-proxy-user-id");
-    expect(steps[3].snippet).not.toContain("x-prompt-proxy-user-id");
+    expect(steps[1].snippet).not.toContain("x-proxy-user-id");
+    expect(steps[3].snippet).not.toContain("x-proxy-user-id");
   });
 
   it("uses the placeholder when there is no secret", () => {
@@ -88,11 +88,11 @@ describe("buildManualSteps", () => {
       "Export the key for Codex",
       "Register the Codex provider"
     ]);
-    expect(codexSteps[0].snippet).toContain("~/.prompt-proxy/codex.token");
-    expect(codexSteps[1].snippet).toContain(`export PROMPT_PROXY_CODEX_TOKEN="$(cat ~/.prompt-proxy/codex.token)"`);
-    expect(codexSteps[1].snippet).toContain("# >>> prompt-proxy codex PROMPT_PROXY_CODEX_TOKEN >>>");
-    expect(codexSteps[2].snippet).toContain("[model_providers.prompt_proxy_codex]");
-    expect(codexSteps[2].snippet).toContain(`env_key = "PROMPT_PROXY_CODEX_TOKEN"`);
+    expect(codexSteps[0].snippet).toContain("~/.proxy/codex.token");
+    expect(codexSteps[1].snippet).toContain(`export PROXY_CODEX_TOKEN="$(cat ~/.proxy/codex.token)"`);
+    expect(codexSteps[1].snippet).toContain("# >>> prompt codex PROXY_CODEX_TOKEN >>>");
+    expect(codexSteps[2].snippet).toContain("[model_providers.proxy_codex]");
+    expect(codexSteps[2].snippet).toContain(`env_key = "PROXY_CODEX_TOKEN"`);
   });
 
   it("builds Claude Code-specific steps with a separate token", () => {
@@ -102,8 +102,8 @@ describe("buildManualSteps", () => {
       "Point Claude Code at the proxy"
     ]);
     const settings = JSON.parse(claudeSteps[1].snippet);
-    expect(claudeSteps[0].snippet).toContain("~/.prompt-proxy/claude-code.token");
-    expect(settings.apiKeyHelper).toBe("cat ~/.prompt-proxy/claude-code.token");
+    expect(claudeSteps[0].snippet).toContain("~/.proxy/claude-code.token");
+    expect(settings.apiKeyHelper).toBe("cat ~/.proxy/claude-code.token");
   });
 
   it("builds opencode steps with a custom provider config", () => {
@@ -114,18 +114,18 @@ describe("buildManualSteps", () => {
       "Connect opencode credentials"
     ]);
     const config = JSON.parse(opencodeSteps[1].snippet);
-    expect(config.provider["prompt-proxy-chat"].npm).toBe("@ai-sdk/openai-compatible");
-    expect(config.provider["prompt-proxy-chat"].options.baseURL).toBe(`${apiBase}/v1`);
-    expect(config.model).toBe("prompt-proxy-chat/router-auto");
-    expect(opencodeSteps[2].snippet).toContain("prompt-proxy-chat");
+    expect(config.provider["prompt-chat"].npm).toBe("@ai-sdk/openai-compatible");
+    expect(config.provider["prompt-chat"].options.baseURL).toBe(`${apiBase}/v1`);
+    expect(config.model).toBe("prompt-chat/router-auto");
+    expect(opencodeSteps[2].snippet).toContain("prompt-chat");
     expect(opencodeSteps[2].snippet).toContain("pp_open");
   });
 
   it("uses the shared token path when multiple harnesses are selected", () => {
     const multiSteps = buildManualSteps({ apiBase, secret: "pp_multi", harnesses: ["codex", "opencode"] });
-    expect(multiSteps[0].snippet).toContain("~/.prompt-proxy/token");
-    expect(multiSteps[1].snippet).toContain(`export PROMPT_PROXY_TOKEN="$(cat ~/.prompt-proxy/token)"`);
-    expect(multiSteps[2].snippet).toContain("[model_providers.prompt_proxy]");
-    expect(multiSteps[2].snippet).toContain(`env_key = "PROMPT_PROXY_TOKEN"`);
+    expect(multiSteps[0].snippet).toContain("~/.proxy/token");
+    expect(multiSteps[1].snippet).toContain(`export PROXY_TOKEN="$(cat ~/.proxy/token)"`);
+    expect(multiSteps[2].snippet).toContain("[model_providers.proxy]");
+    expect(multiSteps[2].snippet).toContain(`env_key = "PROXY_TOKEN"`);
   });
 });

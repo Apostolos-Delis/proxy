@@ -7,7 +7,7 @@ and disabled with `SUBSCRIPTION_OAUTH_ENABLED=false`.
 
 > **Provider boundary (read first).** Use provider-owned auth flows for accounts the engineer owns:
 > console/browser OAuth, `codex login`, or Codex access tokens for OpenAI, and Claude browser OAuth
-> or `claude setup-token` for Anthropic. Prompt Proxy stores provider secrets encrypted at rest;
+> or `claude setup-token` for Anthropic. Proxy stores provider secrets encrypted at rest;
 > OpenAI console sign-in and Codex auth JSON imports store refresh tokens only inside the encrypted
 > provider secret bundle. Claude browser OAuth stores the same long-lived setup-token form that
 > Claude Code uses for `CLAUDE_CODE_OAUTH_TOKEN`. This feature is still an
@@ -46,7 +46,7 @@ stops affected Anthropic traffic.
    validates the resulting `sk-ant-oat01-` token, encrypts it, and never returns it.
 3. Browser sign-in must run on the same machine as the proxy callback listener. If that is not true,
    use the manual fallback below.
-4. Bind the credential to a prompt-proxy API key **you own** on the **API keys** page. Binding is
+4. Bind the credential to a prompt API key **you own** on the **API keys** page. Binding is
    hard-rejected (`provider_credential_owner_mismatch`) when the key belongs to someone else or has
    no owner.
 5. Point Claude Code at the proxy with that API key. Requests forward with
@@ -59,7 +59,7 @@ stops affected Anthropic traffic.
 1. Run `claude setup-token` while signed into the Claude account that should pay for this traffic.
 2. Console → **Model providers** → **Add credential** → **Claude subscription** → source
    **Paste setup token** → paste the printed `sk-ant-oat01-...` value.
-3. Bind the credential to a prompt-proxy API key **you own** on the **API keys** page. Binding is
+3. Bind the credential to a prompt API key **you own** on the **API keys** page. Binding is
    hard-rejected (`provider_credential_owner_mismatch`) when the key belongs to someone else or has
    no owner.
 4. Point Claude Code at the proxy with that API key. Requests forward with
@@ -72,10 +72,10 @@ stops affected Anthropic traffic.
 1. Console → **Model providers** → **Add credential** → **Codex subscription** → source
    **Sign in with OpenAI**.
 2. Start sign-in, open the OpenAI device-code link, and enter the one-time code shown in the wizard.
-3. After OpenAI confirms the login, Prompt Proxy exchanges the code for Codex OAuth tokens and stores
+3. After OpenAI confirms the login, Proxy exchanges the code for Codex OAuth tokens and stores
    the access and refresh tokens inside the encrypted provider secret bundle. The ChatGPT account ID
    is stored as provider metadata for the upstream `ChatGPT-Account-Id` header.
-4. Bind the credential to a prompt-proxy API key **you own** on the **API keys** page. The same
+4. Bind the credential to a prompt API key **you own** on the **API keys** page. The same
    `provider_credential_owner_mismatch` guardrail applies to OpenAI subscription credentials.
 5. Point Codex at the proxy with that API key. Requests forward to `OPENAI_CHATGPT_BASE_URL`
    (default `https://chatgpt.com/backend-api/codex`) with `Authorization: Bearer <token>` and
@@ -83,10 +83,10 @@ stops affected Anthropic traffic.
 
 ## OpenAI: Local Import
 
-1. Run `codex login` on the proxy host as the same OS user that runs Prompt Proxy. If browser login
+1. Run `codex login` on the proxy host as the same OS user that runs Proxy. If browser login
    cannot complete there, run `codex login --device-auth`.
 2. Confirm the auth cache exists at `~/.codex/auth.json`. If it lives somewhere else, set
-   `PROMPT_PROXY_CODEX_AUTH_FILE=/path/to/auth.json` where the proxy runs, then restart the proxy.
+   `PROXY_CODEX_AUTH_FILE=/path/to/auth.json` where the proxy runs, then restart the proxy.
 3. Console → **Model providers** → **Add credential** → **Codex subscription** → source
    **Import from Codex** → save. The server reads the auth JSON and stores the same encrypted token
    bundle used by the console sign-in flow when a refresh token is present.

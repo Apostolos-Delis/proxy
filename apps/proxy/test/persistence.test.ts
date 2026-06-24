@@ -24,8 +24,8 @@ import {
   routingConfigVersions,
   usageLedger,
   workspaces
-} from "@prompt-proxy/db";
-import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
+} from "@proxy/db";
+import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
 
 import { loadConfig } from "../src/config.js";
 import { EventService } from "../src/events.js";
@@ -858,7 +858,7 @@ describe("postgres persistence", () => {
     await seedDatabase(fixture.db, seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_seed_identity",
       SEED_USER_ID: "seed_identity_user",
-      PROMPT_PROXY_TOKEN: "seeded-secret-token"
+      PROXY_TOKEN: "seeded-secret-token"
     }));
 
     const identity = await fixture.persistence.apiKeys.resolve("seeded-secret-token");
@@ -876,7 +876,7 @@ describe("postgres persistence", () => {
     await seedDatabase(fixture.db, seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_assigned_config",
       SEED_USER_ID: "seed_config_user",
-      PROMPT_PROXY_TOKEN: "seeded-config-token"
+      PROXY_TOKEN: "seeded-config-token"
     }));
     const defaultVersion = await activeVersion(fixture, "org_assigned_config:routing-config:default:v1");
     const assignedConfigId = "org_assigned_config:routing-config:assigned";
@@ -932,7 +932,7 @@ describe("postgres persistence", () => {
     await seedDatabase(fixture.db, seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_default_config",
       SEED_USER_ID: "seed_default_config_user",
-      PROMPT_PROXY_TOKEN: "seeded-default-config-token"
+      PROXY_TOKEN: "seeded-default-config-token"
     }));
 
     const orgDefault = await fixture.persistence.routingConfigs.resolve({
@@ -961,7 +961,7 @@ describe("postgres persistence", () => {
     await seedDatabase(fixture.db, seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_missing_active_config",
       SEED_USER_ID: "seed_missing_active_user",
-      PROMPT_PROXY_TOKEN: "seeded-missing-active-token"
+      PROXY_TOKEN: "seeded-missing-active-token"
     }));
     await fixture.db
       .update(routingConfigs)
@@ -980,7 +980,7 @@ describe("postgres persistence", () => {
     await seedDatabase(fixture.db, seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_invalid_config",
       SEED_USER_ID: "seed_invalid_config_user",
-      PROMPT_PROXY_TOKEN: "seeded-invalid-config-token"
+      PROXY_TOKEN: "seeded-invalid-config-token"
     }));
     await fixture.db
       .update(routingConfigVersions)

@@ -1,6 +1,6 @@
 import { and, eq, gt } from "drizzle-orm";
 
-import { usageLedger, type PromptProxyDbSession } from "@prompt-proxy/db";
+import { usageLedger, type ProxyDbSession } from "@proxy/db";
 
 import {
   undatedModel,
@@ -22,7 +22,7 @@ export type RepriceScope = {
 // additions shipped in code, and after setPricing for org overrides. Rows
 // priced at ingest keep their snapshot; only the never-priced ones heal.
 export async function repriceZeroCostUsage(
-  db: PromptProxyDbSession,
+  db: ProxyDbSession,
   scope?: RepriceScope
 ) {
   const conditions = [eq(usageLedger.totalCostMicros, 0), gt(usageLedger.totalTokens, 0)];

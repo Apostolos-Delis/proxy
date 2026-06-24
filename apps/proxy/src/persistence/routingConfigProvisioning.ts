@@ -6,9 +6,9 @@ import {
   routingConfigs,
   routingConfigVersions,
   workspaces,
-  type PromptProxyTransaction
-} from "@prompt-proxy/db";
-import { routingConfigSchema, type RoutingConfig } from "@prompt-proxy/schema";
+  type ProxyTransaction
+} from "@proxy/db";
+import { routingConfigSchema, type RoutingConfig } from "@proxy/schema";
 
 import { createId } from "../util.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
@@ -24,7 +24,7 @@ function seededDefaultRoutingConfigId(organizationId: string) {
 // identically. Returns null when there is nothing to do (workspace already has
 // a config) or nothing to clone from (organization was never seeded).
 export async function ensureWorkspaceDefaultRoutingConfig(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   input: { organizationId: string; workspaceId: string; actorUserId: string }
 ): Promise<{ configId: string; versionId: string } | null> {
   const [existing] = await tx
@@ -89,7 +89,7 @@ export async function ensureWorkspaceDefaultRoutingConfig(
     scopeId: configId,
     correlationId: versionId,
     actorUserId: input.actorUserId,
-    producer: "prompt-proxy.admin.routing-configs",
+    producer: "proxy.admin.routing-configs",
     eventType: "routing_config.created",
     payload: { configId, versionId, version: 1, configHash: hash, slug: "default", status: "active" },
     createdAt: now
@@ -101,7 +101,7 @@ export async function ensureWorkspaceDefaultRoutingConfig(
     scopeId: configId,
     correlationId: versionId,
     actorUserId: input.actorUserId,
-    producer: "prompt-proxy.admin.routing-configs",
+    producer: "proxy.admin.routing-configs",
     eventType: "routing_config.version_created",
     payload: { configId, versionId, version: 1, configHash: hash, status: "active" },
     createdAt: now
@@ -110,7 +110,7 @@ export async function ensureWorkspaceDefaultRoutingConfig(
   return { configId, versionId };
 }
 
-async function sourceConfig(tx: PromptProxyTransaction, organizationId: string): Promise<RoutingConfig | null> {
+async function sourceConfig(tx: ProxyTransaction, organizationId: string): Promise<RoutingConfig | null> {
   const [row] = await tx
     .select({ config: routingConfigVersions.config })
     .from(routingConfigs)

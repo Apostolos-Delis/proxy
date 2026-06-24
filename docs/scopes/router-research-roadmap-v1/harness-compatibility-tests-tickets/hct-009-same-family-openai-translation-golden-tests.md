@@ -18,9 +18,9 @@ Goal: Fixture-back OpenAI Responses HTTP <-> OpenAI Chat translated paths.
 
 ## Validation
 
-- Run `pnpm --filter @prompt-proxy/proxy test -- openAITranslators`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- translationRuntime`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- harness-compatibility`.
+- Run `pnpm --filter @proxy/proxy test -- openAITranslators`.
+- Run `pnpm --filter @proxy/proxy test -- translationRuntime`.
+- Run `pnpm --filter @proxy/proxy test -- harness-compatibility`.
 
 ## Likely Files
 

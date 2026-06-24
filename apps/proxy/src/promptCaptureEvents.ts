@@ -28,7 +28,7 @@ export async function appendPromptCaptureEvent(input: {
     correlationId: input.requestId,
     idempotencyKey: input.idempotencyKey,
     actor: actorForIdentity(input.identity),
-    producer: "prompt-proxy.prompt-artifacts",
+    producer: "proxy.prompt-artifacts",
     eventType: "prompt_artifacts.captured",
     payload: jsonPayload(promptCaptureEventPayload({
       surface: input.surface,

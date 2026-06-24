@@ -7,7 +7,7 @@ import {
   organizationSettings,
   requests,
   users
-} from "@prompt-proxy/db";
+} from "@proxy/db";
 
 import { rewriteSurfaceRequest, rewriteTokenCountRequest } from "../src/adapters.js";
 import { buildServer } from "../src/server.js";
@@ -292,7 +292,7 @@ describe("cacheTtlUpgrade in proxy request flow (no-persistence path)", () => {
         ...process.env,
         DATABASE_URL: "",
         EVENT_STORE_PATH: "",
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         ANTHROPIC_BASE_URL: anthropic.url,
         OPENAI_API_KEY: "openai-key",

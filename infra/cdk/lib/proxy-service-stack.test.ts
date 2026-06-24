@@ -5,14 +5,14 @@ import { environments } from "../config/environments.js";
 import { runtimeEnvironment } from "./proxy-service-stack.js";
 import { createRuntimeStacks } from "./test-helpers.js";
 
-describe("PromptProxyServiceStack", () => {
+describe("ProxyServiceStack", () => {
   it("runs the proxy behind the ALB with public-subnet egress", () => {
     const { network, service } = createRuntimeStacks();
     const serviceTemplate = Template.fromStack(service);
     const networkTemplate = Template.fromStack(network);
 
     serviceTemplate.hasResourceProperties("AWS::ECS::Service", {
-      ServiceName: "prompt-proxy-staging-proxy",
+      ServiceName: "proxy-staging-proxy",
       DesiredCount: 1,
       NetworkConfiguration: {
         AwsvpcConfiguration: Match.objectLike({
@@ -32,7 +32,7 @@ describe("PromptProxyServiceStack", () => {
     const template = Template.fromStack(service);
 
     template.hasResourceProperties("AWS::ECS::TaskDefinition", {
-      Family: "prompt-proxy-staging-proxy",
+      Family: "proxy-staging-proxy",
       RuntimePlatform: {
         CpuArchitecture: "ARM64",
         OperatingSystemFamily: "LINUX"
@@ -46,7 +46,7 @@ describe("PromptProxyServiceStack", () => {
         })
       ])
     });
-    for (const name of ["PROMPT_PROXY_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]) {
+    for (const name of ["PROXY_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]) {
       template.hasResourceProperties("AWS::ECS::TaskDefinition", {
         ContainerDefinitions: Match.arrayWith([
           Match.objectLike({

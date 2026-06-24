@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
-import { createPgliteDatabase } from "@prompt-proxy/db";
+import { createPgliteDatabase } from "@proxy/db";
 import { describe, expect, it } from "vitest";
 
 import { buildServer } from "../src/server.js";
@@ -21,7 +21,7 @@ import {
 } from "../src/metrics.js";
 
 const productionSecrets = {
-  PROMPT_PROXY_TOKEN: "prod-proxy-token",
+  PROXY_TOKEN: "prod-token",
   OPENAI_API_KEY: "prod-openai-key",
   ANTHROPIC_API_KEY: "prod-anthropic-key"
 };
@@ -30,29 +30,29 @@ describe("metrics collector", () => {
   it("records counters, gauges, and histograms in memory", () => {
     const metrics = new InMemoryMetricsCollector({
       histogramBuckets: {
-        prompt_proxy_http_request_duration_seconds: [0.1, 1]
+        proxy_http_request_duration_seconds: [0.1, 1]
       }
     });
 
-    metrics.incrementCounter("prompt_proxy_http_requests_total", { method: "GET", route_family: "health" });
-    metrics.incrementCounter("prompt_proxy_http_requests_total", { route_family: "health", method: "GET" }, 2);
-    metrics.setGauge("prompt_proxy_model_requests_in_flight", 3, { stream: true, surface: "openai-responses" });
-    metrics.observeHistogram("prompt_proxy_http_request_duration_seconds", 0.05, { route_family: "health" });
-    metrics.observeHistogram("prompt_proxy_http_request_duration_seconds", 2, { route_family: "health" });
+    metrics.incrementCounter("proxy_http_requests_total", { method: "GET", route_family: "health" });
+    metrics.incrementCounter("proxy_http_requests_total", { route_family: "health", method: "GET" }, 2);
+    metrics.setGauge("proxy_model_requests_in_flight", 3, { stream: true, surface: "openai-responses" });
+    metrics.observeHistogram("proxy_http_request_duration_seconds", 0.05, { route_family: "health" });
+    metrics.observeHistogram("proxy_http_request_duration_seconds", 2, { route_family: "health" });
 
     expect(metrics.snapshot()).toEqual({
       counters: [{
-        name: "prompt_proxy_http_requests_total",
+        name: "proxy_http_requests_total",
         labels: { method: "GET", route_family: "health" },
         value: 3
       }],
       gauges: [{
-        name: "prompt_proxy_model_requests_in_flight",
+        name: "proxy_model_requests_in_flight",
         labels: { stream: "true", surface: "openai-responses" },
         value: 3
       }],
       histograms: [{
-        name: "prompt_proxy_http_request_duration_seconds",
+        name: "proxy_http_request_duration_seconds",
         labels: { route_family: "health" },
         count: 2,
         sum: 2.05,
@@ -68,25 +68,25 @@ describe("metrics collector", () => {
   it("renders deterministic OpenMetrics text", () => {
     const metrics = new InMemoryMetricsCollector({
       histogramBuckets: {
-        prompt_proxy_classifier_duration_seconds: [0.5]
+        proxy_classifier_duration_seconds: [0.5]
       }
     });
 
-    metrics.incrementCounter("prompt_proxy_classifier_attempts_total", {
+    metrics.incrementCounter("proxy_classifier_attempts_total", {
       error_class: "none",
       model: "gpt \"nano\"",
       provider: "openai"
     });
-    metrics.observeHistogram("prompt_proxy_classifier_duration_seconds", 0.25, { provider: "openai" });
+    metrics.observeHistogram("proxy_classifier_duration_seconds", 0.25, { provider: "openai" });
 
     expect(metrics.renderOpenMetrics()).toBe([
-      "# TYPE prompt_proxy_classifier_attempts_total counter",
-      "prompt_proxy_classifier_attempts_total{error_class=\"none\",model=\"gpt \\\"nano\\\"\",provider=\"openai\"} 1",
-      "# TYPE prompt_proxy_classifier_duration_seconds histogram",
-      "prompt_proxy_classifier_duration_seconds_bucket{provider=\"openai\",le=\"0.5\"} 1",
-      "prompt_proxy_classifier_duration_seconds_bucket{provider=\"openai\",le=\"+Inf\"} 1",
-      "prompt_proxy_classifier_duration_seconds_sum{provider=\"openai\"} 0.25",
-      "prompt_proxy_classifier_duration_seconds_count{provider=\"openai\"} 1",
+      "# TYPE proxy_classifier_attempts_total counter",
+      "proxy_classifier_attempts_total{error_class=\"none\",model=\"gpt \\\"nano\\\"\",provider=\"openai\"} 1",
+      "# TYPE proxy_classifier_duration_seconds histogram",
+      "proxy_classifier_duration_seconds_bucket{provider=\"openai\",le=\"0.5\"} 1",
+      "proxy_classifier_duration_seconds_bucket{provider=\"openai\",le=\"+Inf\"} 1",
+      "proxy_classifier_duration_seconds_sum{provider=\"openai\"} 0.25",
+      "proxy_classifier_duration_seconds_count{provider=\"openai\"} 1",
       "# EOF",
       ""
     ].join("\n"));
@@ -95,9 +95,9 @@ describe("metrics collector", () => {
   it("uses a noop collector when metrics are disabled", () => {
     const metrics = createMetricsCollector({ metricsEnabled: false, metricsExporter: "prometheus" });
 
-    metrics.incrementCounter("prompt_proxy_http_requests_total");
-    metrics.setGauge("prompt_proxy_up", 1);
-    metrics.observeHistogram("prompt_proxy_http_request_duration_seconds", 0.1);
+    metrics.incrementCounter("proxy_http_requests_total");
+    metrics.setGauge("proxy_up", 1);
+    metrics.observeHistogram("proxy_http_request_duration_seconds", 0.1);
 
     expect(metrics.snapshot()).toEqual({ counters: [], gauges: [], histograms: [] });
     expect(metrics.renderOpenMetrics()).toBe("# EOF\n");
@@ -106,12 +106,12 @@ describe("metrics collector", () => {
   it("uses contract buckets for known histogram families", () => {
     const metrics = new InMemoryMetricsCollector();
 
-    metrics.observeHistogram("prompt_proxy_provider_attempt_duration_seconds", 90);
-    metrics.observeHistogram("prompt_proxy_db_query_duration_seconds", 0.002);
+    metrics.observeHistogram("proxy_provider_attempt_duration_seconds", 90);
+    metrics.observeHistogram("proxy_db_query_duration_seconds", 0.002);
 
     const snapshot = metrics.snapshot();
-    const provider = histogramByName(snapshot.histograms, "prompt_proxy_provider_attempt_duration_seconds");
-    const db = histogramByName(snapshot.histograms, "prompt_proxy_db_query_duration_seconds");
+    const provider = histogramByName(snapshot.histograms, "proxy_provider_attempt_duration_seconds");
+    const db = histogramByName(snapshot.histograms, "proxy_db_query_duration_seconds");
 
     expect(provider?.buckets).toEqual(expect.arrayContaining([
       { le: 60, count: 0 },
@@ -127,12 +127,12 @@ describe("metrics collector", () => {
   it("catches sink failures without throwing", () => {
     const metrics = new SafeMetricsCollector(new ThrowingMetricsCollector());
 
-    expect(() => metrics.incrementCounter("prompt_proxy_http_requests_total")).not.toThrow();
-    expect(() => metrics.setGauge("prompt_proxy_up", 1)).not.toThrow();
-    expect(() => metrics.observeHistogram("prompt_proxy_http_request_duration_seconds", 0.1)).not.toThrow();
+    expect(() => metrics.incrementCounter("proxy_http_requests_total")).not.toThrow();
+    expect(() => metrics.setGauge("proxy_up", 1)).not.toThrow();
+    expect(() => metrics.observeHistogram("proxy_http_request_duration_seconds", 0.1)).not.toThrow();
 
     expect(metrics.snapshot().counters).toEqual([{
-      name: "prompt_proxy_metrics_sink_errors_total",
+      name: "proxy_metrics_sink_errors_total",
       labels: { error_class: "unknown" },
       value: 4
     }]);
@@ -194,14 +194,14 @@ describe("server metrics", () => {
     const app = buildServer(loadConfig({ LOG_LEVEL: "fatal" }), { metrics });
     await app.close();
 
-    expect(sampleValue(metrics.snapshot().gauges, "prompt_proxy_up", {})).toBe(1);
-    expect(sampleValue(metrics.snapshot().gauges, "prompt_proxy_persistence_enabled", {})).toBe(0);
+    expect(sampleValue(metrics.snapshot().gauges, "proxy_up", {})).toBe(1);
+    expect(sampleValue(metrics.snapshot().gauges, "proxy_persistence_enabled", {})).toBe(0);
   });
 
   it("records HTTP route metrics", async () => {
     const metrics = new InMemoryMetricsCollector({
       histogramBuckets: {
-        prompt_proxy_http_request_duration_seconds: [10]
+        proxy_http_request_duration_seconds: [10]
       }
     });
     const app = buildServer(loadConfig({ LOG_LEVEL: "fatal" }), { metrics });
@@ -210,14 +210,14 @@ describe("server metrics", () => {
     await app.close();
 
     expect(response.statusCode).toBe(200);
-    expect(sampleValue(metrics.snapshot().counters, "prompt_proxy_http_requests_total", {
+    expect(sampleValue(metrics.snapshot().counters, "proxy_http_requests_total", {
       error_class: "none",
       method: "GET",
       route_family: "health",
       status_class: "2xx"
     })).toBe(1);
     expect(metrics.snapshot().histograms).toContainEqual(expect.objectContaining({
-      name: "prompt_proxy_http_request_duration_seconds",
+      name: "proxy_http_request_duration_seconds",
       labels: { method: "GET", route_family: "health", status_class: "2xx" },
       count: 1
     }));
@@ -226,7 +226,7 @@ describe("server metrics", () => {
   it("records unauthenticated model requests as auth failures", async () => {
     const metrics = new InMemoryMetricsCollector({
       histogramBuckets: {
-        prompt_proxy_model_request_duration_seconds: [10]
+        proxy_model_request_duration_seconds: [10]
       }
     });
     const app = buildServer(loadConfig({ LOG_LEVEL: "fatal" }), { metrics });
@@ -240,19 +240,19 @@ describe("server metrics", () => {
     const snapshot = metrics.snapshot();
 
     expect(response.statusCode).toBe(401);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_http_requests_total", {
+    expect(sampleValue(snapshot.counters, "proxy_http_requests_total", {
       error_class: "auth",
       method: "POST",
       route_family: "openai",
       status_class: "4xx"
     })).toBe(1);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_model_requests_total", {
+    expect(sampleValue(snapshot.counters, "proxy_model_requests_total", {
       error_class: "auth",
       stream: "unknown",
       surface: "openai-responses",
       terminal_status: "failed"
     })).toBe(1);
-    expect(sampleValue(snapshot.gauges, "prompt_proxy_model_requests_in_flight", {
+    expect(sampleValue(snapshot.gauges, "proxy_model_requests_in_flight", {
       stream: "unknown",
       surface: "openai-responses"
     })).toBe(0);
@@ -266,7 +266,7 @@ describe("server metrics", () => {
       method: "POST",
       url: "/v1/messages",
       headers: {
-        authorization: "Bearer dev-proxy-token",
+        authorization: "Bearer dev-token",
         "content-type": "application/json"
       },
       payload: "{"
@@ -274,7 +274,7 @@ describe("server metrics", () => {
     await app.close();
 
     expect(response.statusCode).toBe(400);
-    expect(sampleValue(metrics.snapshot().counters, "prompt_proxy_model_requests_total", {
+    expect(sampleValue(metrics.snapshot().counters, "proxy_model_requests_total", {
       error_class: "validation",
       stream: "unknown",
       surface: "anthropic-messages",
@@ -295,7 +295,7 @@ describe("metrics endpoint", () => {
 
   it("requires the configured metrics token", async () => {
     const metrics = new InMemoryMetricsCollector();
-    metrics.setGauge("prompt_proxy_up", 1);
+    metrics.setGauge("proxy_up", 1);
     const app = buildServer(loadConfig({
       LOG_LEVEL: "fatal",
       METRICS_ENABLED: "true",
@@ -311,12 +311,12 @@ describe("metrics endpoint", () => {
     await app.close();
 
     expect(unauthorized.statusCode).toBe(401);
-    expect(unauthorized.body).not.toContain("prompt_proxy_up");
+    expect(unauthorized.body).not.toContain("proxy_up");
     expect(authorized.statusCode).toBe(200);
     expect(authorized.headers["content-type"]).toContain("application/openmetrics-text");
     expect(authorized.headers["cache-control"]).toBe("no-store");
-    expect(authorized.body).toContain("# TYPE prompt_proxy_up gauge");
-    expect(authorized.body).toContain("prompt_proxy_up 1");
+    expect(authorized.body).toContain("# TYPE proxy_up gauge");
+    expect(authorized.body).toContain("proxy_up 1");
   });
 
   it("does not allow token auth metrics without a token", async () => {
@@ -366,18 +366,18 @@ describe("routing and provider metrics", () => {
     }
 
     const snapshot = metrics.snapshot();
-    expect(sampleValue(snapshot.counters, "prompt_proxy_classifier_attempts_total", {
+    expect(sampleValue(snapshot.counters, "proxy_classifier_attempts_total", {
       error_class: "none",
       model: "route-classifier-cheap",
       outcome: "succeeded",
       provider: "openai"
     })).toBe(1);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_classifier_tokens_total", {
+    expect(sampleValue(snapshot.counters, "proxy_classifier_tokens_total", {
       model: "route-classifier-cheap",
       provider: "openai",
       usage_kind: "total"
     })).toBe(12);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_routing_decisions_total", {
+    expect(sampleValue(snapshot.counters, "proxy_routing_decisions_total", {
       final_route: "hard",
       guardrail_action: "none",
       model: "gpt-routed-hard-test",
@@ -385,7 +385,7 @@ describe("routing and provider metrics", () => {
       requested_route: "hard",
       surface: "openai-responses"
     })).toBe(1);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_provider_attempts_total", {
+    expect(sampleValue(snapshot.counters, "proxy_provider_attempts_total", {
       error_class: "none",
       model: "gpt-routed-hard-test",
       provider: "openai",
@@ -394,29 +394,29 @@ describe("routing and provider metrics", () => {
       surface: "openai-responses",
       terminal_status: "succeeded"
     })).toBe(1);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_usage_tokens_total", {
+    expect(sampleValue(snapshot.counters, "proxy_usage_tokens_total", {
       model: "gpt-routed-hard-test",
       provider: "openai",
       surface: "openai-responses",
       usage_kind: "total"
     })).toBe(120);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_cost_usd_total", {
+    expect(sampleValue(snapshot.counters, "proxy_cost_usd_total", {
       cost_kind: "provider",
       model: "gpt-routed-hard-test",
       provider: "openai",
       surface: "openai-responses"
     })).toBeGreaterThan(0);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_provider_stream_bytes_total", {
+    expect(sampleValue(snapshot.counters, "proxy_provider_stream_bytes_total", {
       model: "gpt-routed-hard-test",
       provider: "openai",
       surface: "openai-responses",
       terminal_status: "succeeded"
     })).toBeGreaterThan(0);
-    expect(sampleValue(snapshot.gauges, "prompt_proxy_terminal_pending_provider_attempts", {
+    expect(sampleValue(snapshot.gauges, "proxy_terminal_pending_provider_attempts", {
       provider: "openai",
       surface: "openai-responses"
     })).toBe(0);
-    expect(sampleValue(snapshot.gauges, "prompt_proxy_model_requests_in_flight", {
+    expect(sampleValue(snapshot.gauges, "proxy_model_requests_in_flight", {
       stream: "true",
       surface: "openai-responses"
     })).toBe(0);
@@ -451,7 +451,7 @@ describe("routing and provider metrics", () => {
     }
 
     const snapshot = metrics.snapshot();
-    expect(sampleValue(snapshot.counters, "prompt_proxy_provider_attempts_total", {
+    expect(sampleValue(snapshot.counters, "proxy_provider_attempts_total", {
       error_class: "provider",
       model: "gpt-routed-hard-test",
       provider: "openai",
@@ -460,13 +460,13 @@ describe("routing and provider metrics", () => {
       surface: "openai-responses",
       terminal_status: "failed"
     })).toBe(1);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_provider_stream_bytes_total", {
+    expect(sampleValue(snapshot.counters, "proxy_provider_stream_bytes_total", {
       model: "gpt-routed-hard-test",
       provider: "openai",
       surface: "openai-responses",
       terminal_status: "failed"
     })).toBeGreaterThan(0);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_model_requests_total", {
+    expect(sampleValue(snapshot.counters, "proxy_model_requests_total", {
       error_class: "provider",
       stream: "true",
       surface: "openai-responses",
@@ -489,24 +489,24 @@ describe("event and outbox metrics", () => {
     await events.processOutbox(async () => {});
 
     const snapshot = metrics.snapshot();
-    expect(sampleValue(snapshot.counters, "prompt_proxy_event_appends_total", {
+    expect(sampleValue(snapshot.counters, "proxy_event_appends_total", {
       error_class: "none",
       outcome: "succeeded"
     })).toBe(1);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_event_outbox_items_total", {
+    expect(sampleValue(snapshot.counters, "proxy_event_outbox_items_total", {
       error_class: "none",
       outcome: "queued"
     })).toBe(1);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_event_outbox_items_total", {
+    expect(sampleValue(snapshot.counters, "proxy_event_outbox_items_total", {
       error_class: "none",
       outcome: "processing"
     })).toBe(1);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_event_outbox_items_total", {
+    expect(sampleValue(snapshot.counters, "proxy_event_outbox_items_total", {
       error_class: "none",
       outcome: "succeeded"
     })).toBe(1);
-    expect(sampleValue(snapshot.gauges, "prompt_proxy_outbox_backlog", {})).toBe(0);
-    expect(sampleValue(snapshot.gauges, "prompt_proxy_outbox_oldest_item_age_seconds", {})).toBe(0);
+    expect(sampleValue(snapshot.gauges, "proxy_outbox_backlog", {})).toBe(0);
+    expect(sampleValue(snapshot.gauges, "proxy_outbox_oldest_item_age_seconds", {})).toBe(0);
   });
 
   it("records failed event appends and failed outbox processing", async () => {
@@ -535,11 +535,11 @@ describe("event and outbox metrics", () => {
     });
 
     const snapshot = metrics.snapshot();
-    expect(sampleValue(snapshot.counters, "prompt_proxy_event_appends_total", {
+    expect(sampleValue(snapshot.counters, "proxy_event_appends_total", {
       error_class: "persistence",
       outcome: "failed"
     })).toBe(1);
-    expect(sampleValue(snapshot.counters, "prompt_proxy_event_outbox_items_total", {
+    expect(sampleValue(snapshot.counters, "proxy_event_outbox_items_total", {
       error_class: "unknown",
       outcome: "failed"
     })).toBe(1);
@@ -563,8 +563,8 @@ describe("event and outbox metrics", () => {
       });
 
       const snapshot = metrics.snapshot();
-      expect(sampleValue(snapshot.gauges, "prompt_proxy_outbox_backlog", {})).toBe(1);
-      expect(sampleValue(snapshot.gauges, "prompt_proxy_outbox_oldest_item_age_seconds", {})).toBeGreaterThanOrEqual(0);
+      expect(sampleValue(snapshot.gauges, "proxy_outbox_backlog", {})).toBe(1);
+      expect(sampleValue(snapshot.gauges, "proxy_outbox_oldest_item_age_seconds", {})).toBeGreaterThanOrEqual(0);
     } finally {
       await client.close();
     }
@@ -609,7 +609,7 @@ function proxyTestEnv(openaiUrl: string) {
   return {
     DATABASE_URL: "",
     EVENT_STORE_PATH: "",
-    PROMPT_PROXY_TOKEN: "proxy-token",
+    PROXY_TOKEN: "proxy-token",
     OPENAI_API_KEY: "openai-upstream-key",
     OPENAI_BASE_URL: openaiUrl,
     OPENAI_HARD_MODEL: "gpt-routed-hard-test",

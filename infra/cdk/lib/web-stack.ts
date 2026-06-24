@@ -7,16 +7,16 @@ import {
 } from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
+import { resourceName, type ProxyEnvironmentConfig } from "./config.js";
 
-export type PromptProxyWebStackProps = StackProps & {
-  config: PromptProxyEnvironmentConfig;
+export type ProxyWebStackProps = StackProps & {
+  config: ProxyEnvironmentConfig;
 };
 
-export class PromptProxyWebStack extends Stack {
+export class ProxyWebStack extends Stack {
   readonly bucket: Bucket;
 
-  constructor(scope: Construct, id: string, props: PromptProxyWebStackProps) {
+  constructor(scope: Construct, id: string, props: ProxyWebStackProps) {
     super(scope, id, props);
 
     const { config } = props;

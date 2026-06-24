@@ -1,6 +1,6 @@
 import type { FastifyReply } from "fastify";
 import { performance } from "node:perf_hooks";
-import type { ProviderHealthClassification } from "@prompt-proxy/schema";
+import type { ProviderHealthClassification } from "@proxy/schema";
 
 import type { ProviderAdapter, ProviderForwardInput } from "./adapters.js";
 import { bufferedStreamResponse, collectStreamResponse } from "./bufferedStreamResponse.js";
@@ -112,7 +112,7 @@ export class ProviderProxy implements ProviderAdapter {
       scopeId: input.requestId,
       correlationId: input.requestId,
       idempotencyKey: input.idempotencyKey,
-      producer: "prompt-proxy.provider",
+      producer: "proxy.provider",
       eventType: "provider.request_started",
       payload: providerRequestStartedPayload
     });
@@ -224,10 +224,10 @@ export class ProviderProxy implements ProviderAdapter {
 
     copyResponseHeaders(upstream, input.reply);
     input.reply.code(upstream.status);
-    input.reply.header("x-prompt-proxy-model", selectedModel);
-    input.reply.header("x-prompt-proxy-route", input.decision.finalRoute ?? "");
+    input.reply.header("x-proxy-model", selectedModel);
+    input.reply.header("x-proxy-route", input.decision.finalRoute ?? "");
     if (input.decision.reasoningEffort) {
-      input.reply.header("x-prompt-proxy-reasoning-effort", input.decision.reasoningEffort);
+      input.reply.header("x-proxy-reasoning-effort", input.decision.reasoningEffort);
     }
 
     if (!isSse || !upstream.body) {
@@ -274,7 +274,7 @@ export class ProviderProxy implements ProviderAdapter {
       scopeId: input.requestId,
       correlationId: input.requestId,
       idempotencyKey: input.idempotencyKey,
-      producer: "prompt-proxy.provider",
+      producer: "proxy.provider",
       eventType: "provider.stream_started",
       payload: {
         provider: input.provider,
@@ -359,7 +359,7 @@ export class ProviderProxy implements ProviderAdapter {
             scopeId: input.requestId,
             correlationId: input.requestId,
             idempotencyKey: input.idempotencyKey,
-            producer: "prompt-proxy.provider",
+            producer: "proxy.provider",
             eventType: "provider.terminal_reconcile_scheduled",
             payload: {
               providerAttemptId: attempt.id
@@ -373,10 +373,10 @@ export class ProviderProxy implements ProviderAdapter {
     input.reply.hijack();
     input.reply.raw.statusCode = upstream.status;
     input.reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
-    input.reply.raw.setHeader("x-prompt-proxy-model", selectedModel);
-    input.reply.raw.setHeader("x-prompt-proxy-route", input.decision.finalRoute ?? "");
+    input.reply.raw.setHeader("x-proxy-model", selectedModel);
+    input.reply.raw.setHeader("x-proxy-route", input.decision.finalRoute ?? "");
     if (input.decision.reasoningEffort) {
-      input.reply.raw.setHeader("x-prompt-proxy-reasoning-effort", input.decision.reasoningEffort);
+      input.reply.raw.setHeader("x-proxy-reasoning-effort", input.decision.reasoningEffort);
     }
     try {
       let observation: StreamObservation;
@@ -475,7 +475,7 @@ export class ProviderProxy implements ProviderAdapter {
           scopeId: input.requestId,
           correlationId: input.requestId,
           idempotencyKey: input.idempotencyKey,
-          producer: "prompt-proxy.provider",
+          producer: "proxy.provider",
           eventType: "provider.terminal_reconcile_scheduled",
           payload: {
             providerAttemptId: attempt.id
@@ -534,7 +534,7 @@ export class ProviderProxy implements ProviderAdapter {
         scopeId: input.requestId,
         correlationId: input.requestId,
         idempotencyKey: input.idempotencyKey,
-        producer: "prompt-proxy.provider",
+        producer: "proxy.provider",
         eventType: terminalEventType(status),
         payload,
         metadata: metadataPayload
@@ -547,7 +547,7 @@ export class ProviderProxy implements ProviderAdapter {
           scopeId: input.requestId,
           correlationId: input.requestId,
           idempotencyKey: input.idempotencyKey,
-          producer: "prompt-proxy.usage",
+          producer: "proxy.usage",
           eventType: "usage.recorded",
           payload: {
             providerAttemptId,
@@ -600,7 +600,7 @@ export class ProviderProxy implements ProviderAdapter {
       scopeId: classification.scope === "provider_account" ? providerAccountId : `${providerAccountId}:${selectedModel}`,
       correlationId: input.requestId,
       idempotencyKey: input.idempotencyKey,
-      producer: "prompt-proxy.provider-health",
+      producer: "proxy.provider-health",
       eventType,
       payload: {
         provider: input.provider,
@@ -656,7 +656,7 @@ export class ProviderProxy implements ProviderAdapter {
         scopeId: input.requestId,
         correlationId: input.requestId,
         idempotencyKey: `${input.idempotencyKey}:provider-forwarded:${upstreamAttempt}`,
-        producer: "prompt-proxy.provider",
+        producer: "proxy.provider",
         eventType: "provider.request_forwarded",
         payload: {
           surface: input.surface,
@@ -711,7 +711,7 @@ export class ProviderProxy implements ProviderAdapter {
         scopeId: input.requestId,
         correlationId: input.requestId,
         idempotencyKey: input.idempotencyKey,
-        producer: "prompt-proxy.provider",
+        producer: "proxy.provider",
         eventType: "provider.rate_limit_retry_scheduled",
         payload: {
           surface: input.surface,

@@ -18,10 +18,10 @@ type LiveUpdatesState = {
 };
 
 type LiveUpdatesGlobal = typeof globalThis & {
-  __promptProxyLiveUpdates?: LiveUpdatesState;
+  __proxyLiveUpdates?: LiveUpdatesState;
 };
 
-const state = ((globalThis as LiveUpdatesGlobal).__promptProxyLiveUpdates ??= {});
+const state = ((globalThis as LiveUpdatesGlobal).__proxyLiveUpdates ??= {});
 
 /**
  * Holds one SSE connection to the proxy that emits coalesced invalidation

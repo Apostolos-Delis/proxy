@@ -32,7 +32,7 @@ async function main() {
 
   try {
     if (isUsingDefaultDatabaseUrl()) {
-      console.error("DATABASE_URL is not set; using the local Prompt Proxy Postgres default.");
+      console.error("DATABASE_URL is not set; using the local Proxy Postgres default.");
     }
 
     const result = options.mode === "file"

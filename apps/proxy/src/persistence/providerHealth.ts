@@ -4,14 +4,14 @@ import {
   providerAccountHealth,
   providerModelHealth,
   providers,
-  type PromptProxyDbSession,
-  type PromptProxyTransaction
-} from "@prompt-proxy/db";
+  type ProxyDbSession,
+  type ProxyTransaction
+} from "@proxy/db";
 import {
   providerHealthClassificationSchema,
   type ProviderHealthClassification,
   type ProviderHealthStatus
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import { classifyProviderTerminalHealth } from "../providerHealth.js";
 import type { Provider, ProviderHealthSkip } from "../types.js";
@@ -26,7 +26,7 @@ export type ProviderHealthTarget = {
 };
 
 export class ProviderHealthStore {
-  constructor(private readonly db: PromptProxyDbSession) {}
+  constructor(private readonly db: ProxyDbSession) {}
 
   async skipsForTargets(input: {
     organizationId: string;
@@ -142,7 +142,7 @@ function healthSkip(
   };
 }
 
-export async function projectProviderHealthTerminal(tx: PromptProxyTransaction, event: {
+export async function projectProviderHealthTerminal(tx: ProxyTransaction, event: {
   tenantId: string;
   workspaceId?: string;
   createdAt: string;
@@ -204,7 +204,7 @@ export async function projectProviderHealthTerminal(tx: PromptProxyTransaction, 
   });
 }
 
-export async function projectProviderHealthProbe(tx: PromptProxyTransaction, event: {
+export async function projectProviderHealthProbe(tx: ProxyTransaction, event: {
   tenantId: string;
   workspaceId?: string;
   createdAt: string;
@@ -254,7 +254,7 @@ export async function projectProviderHealthProbe(tx: PromptProxyTransaction, eve
   }
 }
 
-async function recordHealthSuccess(tx: PromptProxyTransaction, input: {
+async function recordHealthSuccess(tx: ProxyTransaction, input: {
   organizationId: string;
   workspaceId?: string;
   providerAccountId: string;
@@ -318,7 +318,7 @@ async function recordHealthSuccess(tx: PromptProxyTransaction, input: {
   });
 }
 
-async function recordAccountFailure(tx: PromptProxyTransaction, input: {
+async function recordAccountFailure(tx: ProxyTransaction, input: {
   organizationId: string;
   workspaceId?: string;
   providerAccountId: string;
@@ -355,7 +355,7 @@ async function recordAccountFailure(tx: PromptProxyTransaction, input: {
   });
 }
 
-async function recordModelFailure(tx: PromptProxyTransaction, input: {
+async function recordModelFailure(tx: ProxyTransaction, input: {
   organizationId: string;
   workspaceId?: string;
   providerAccountId: string;
@@ -411,7 +411,7 @@ function timestamp(value: string | null) {
   return value ? new Date(value) : null;
 }
 
-async function providerForSlug(tx: PromptProxyTransaction, organizationId: string, slug: string) {
+async function providerForSlug(tx: ProxyTransaction, organizationId: string, slug: string) {
   const [orgProvider] = await tx
     .select({ id: providers.id })
     .from(providers)

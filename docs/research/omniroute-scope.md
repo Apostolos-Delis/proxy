@@ -3,15 +3,15 @@
 Source: https://github.com/diegosouzapw/OmniRoute
 Local clone reviewed: `.context/upstreams/OmniRoute`
 Commit reviewed: `dd5a3db55ed9bca1f71398e6e584da2983a70bea` from 2026-06-17
-Compared system: Prompt Proxy in this repository
+Compared system: Proxy in this repository
 
 ## Executive Summary
 
 OmniRoute is a local-first AI gateway and dashboard aimed at coding agents, free/subscription provider aggregation, automatic fallback, RTK plus prompt compression, MCP/A2A, CLI setup, evals, plugins, memory, and many provider integrations. It overlaps heavily with 9router in architecture and goals, but it is larger and more feature-heavy.
 
-The useful parts for Prompt Proxy are its explicit resilience vocabulary, quota preflight work, auto-combo scoring factors, continuous model assessment, compression harnesses, and extensive compatibility tests. The risky parts are the same features taken too far: very broad request-path complexity, aggressive provider hopping, local-secret trust model, product features that encourage using fragile unofficial provider surfaces, and a large static provider catalog.
+The useful parts for Proxy are its explicit resilience vocabulary, quota preflight work, auto-combo scoring factors, continuous model assessment, compression harnesses, and extensive compatibility tests. The risky parts are the same features taken too far: very broad request-path complexity, aggressive provider hopping, local-secret trust model, product features that encourage using fragile unofficial provider surfaces, and a large static provider catalog.
 
-Prompt Proxy should treat OmniRoute as a catalog of product ideas and edge-case handling patterns, not as an architecture to replicate.
+Proxy should treat OmniRoute as a catalog of product ideas and edge-case handling patterns, not as an architecture to replicate.
 
 ## Architecture
 
@@ -59,7 +59,7 @@ The primary request path is:
 7. Single-model handling resolves model/provider, credential, health gates, quota constraints, cooldown-aware retry, and proxy settings.
 8. `handleChatCore` performs provider-specific request mutation, translation, plugin hook, compression, semantic/idempotency cache, upstream execution, streaming readiness checks, response translation, usage, cost, guardrails, memory extraction, call logs, and quota consumption.
 
-This is a very capable path but also a warning. Prompt Proxy should avoid letting every feature live in the hot path without a strict phase model and typed context.
+This is a very capable path but also a warning. Proxy should avoid letting every feature live in the hot path without a strict phase model and typed context.
 
 ### Domain Modules
 
@@ -75,7 +75,7 @@ OmniRoute has extracted some domain modules that are useful reference points:
 - `degradation.ts`: full/reduced/default capability tracking for dependent services.
 - `assessment/*`: model/provider probing for status, latency, capability, and health.
 
-These modules are smaller and more reusable than the larger request handler. Prompt Proxy should borrow the domain boundaries, not the exact local storage approach.
+These modules are smaller and more reusable than the larger request handler. Proxy should borrow the domain boundaries, not the exact local storage approach.
 
 ### Provider Registry
 
@@ -92,7 +92,7 @@ OmniRoute's provider registry is extensive. Each provider entry can include:
 - Model capabilities such as tools, reasoning, vision, context, target format, unsupported params.
 - Passthrough model behavior and provider defaults.
 
-The registry is useful as a seed catalog. It is not a good production source of truth for Prompt Proxy because:
+The registry is useful as a seed catalog. It is not a good production source of truth for Proxy because:
 
 - Operational provider accounts need workspace and organization scoping.
 - Secrets need encrypted storage or references.
@@ -119,7 +119,7 @@ Auto-combo scoring considers factors such as:
 - Reset-window affinity.
 - Connection pool density.
 
-Prompt Proxy should not adopt auto-combo wholesale. It should use these factors as route-decision evidence and optional target ordering inside a configured route. The LLM classifier should remain the primary tier selector.
+Proxy should not adopt auto-combo wholesale. It should use these factors as route-decision evidence and optional target ordering inside a configured route. The LLM classifier should remain the primary tier selector.
 
 ### Quota And Resilience
 
@@ -136,7 +136,7 @@ OmniRoute has useful resilience distinctions:
 - Account extra-key health.
 - Session/account affinity.
 
-This vocabulary maps well to Prompt Proxy's provider-attempt model. We should represent each as durable current state and event-backed route evidence.
+This vocabulary maps well to Proxy's provider-attempt model. We should represent each as durable current state and event-backed route evidence.
 
 ### Translation And Streaming
 
@@ -152,7 +152,7 @@ It also includes important streaming edge-case handling:
 - Client disconnect handling.
 - Time-to-first-token recording.
 
-Prompt Proxy should borrow this testing and streaming-edge discipline while keeping native paths byte-preserving where possible.
+Proxy should borrow this testing and streaming-edge discipline while keeping native paths byte-preserving where possible.
 
 ### Compression
 
@@ -165,13 +165,13 @@ OmniRoute has a broad compression system:
 - Benchmark and replay harnesses.
 - Token savings analytics.
 
-For Prompt Proxy, RTK-style tool result compression is the most appropriate first feature. Prompt rewriting and general prompt compression are higher risk because they can change user intent and harness behavior.
+For Proxy, RTK-style tool result compression is the most appropriate first feature. Prompt rewriting and general prompt compression are higher risk because they can change user intent and harness behavior.
 
 ### Persistence
 
 OmniRoute uses SQLite and migrations for local state. It stores provider connections, provider nodes, key-value settings, combos, API keys, usage history, call logs, proxy logs, fallback chains, budgets, cost history, lockout state, circuit breakers, semantic cache, quota snapshots, plugins, evals, and many more product tables.
 
-This is sophisticated for a local app. Prompt Proxy should not use it as a production model because Prompt Proxy already has:
+This is sophisticated for a local app. Proxy should not use it as a production model because Proxy already has:
 
 - Postgres.
 - Drizzle schema and migrations.
@@ -183,9 +183,9 @@ The lesson is schema breadth, not storage architecture.
 
 ### Tests And Quality Gates
 
-OmniRoute has many targeted tests for translation, combos, quota, resilience, chat pipeline, auto-combo, compression, and edge cases. This level of regression coverage is a major strength. Prompt Proxy should match this approach for the smaller set of behaviors it intentionally supports.
+OmniRoute has many targeted tests for translation, combos, quota, resilience, chat pipeline, auto-combo, compression, and edge cases. This level of regression coverage is a major strength. Proxy should match this approach for the smaller set of behaviors it intentionally supports.
 
-## Pros Compared To Prompt Proxy
+## Pros Compared To Proxy
 
 - Strong coding-agent product focus.
 - Very broad provider, executor, and protocol coverage.
@@ -197,7 +197,7 @@ OmniRoute has many targeted tests for translation, combos, quota, resilience, ch
 - Dashboard, CLI helpers, monitoring, webhooks, evals, and docs are broad.
 - Local-first onboarding can be very fast.
 
-## Cons And Risks Compared To Prompt Proxy
+## Cons And Risks Compared To Proxy
 
 - Request path is too broad and feature-heavy for a clean auditable gateway.
 - Local SQLite and local credential storage are not enough for organization-scoped BYOK.
@@ -205,9 +205,9 @@ OmniRoute has many targeted tests for translation, combos, quota, resilience, ch
 - Aggressive compression, memory injection, plugins, and tool execution are risky in a proxy that must preserve prompt integrity.
 - Silent fallback and provider hopping can hide policy and quality changes.
 - Static provider catalog is too large to govern manually as production truth.
-- The product goal of maximizing free/subscription quota is not Prompt Proxy's goal.
+- The product goal of maximizing free/subscription quota is not Proxy's goal.
 
-## What Prompt Proxy Should Borrow
+## What Proxy Should Borrow
 
 ### Resilience Vocabulary
 
@@ -275,7 +275,7 @@ Add tests for:
 - Terminal usage missing.
 - Responses stateful request rejection on translated paths.
 
-## What Prompt Proxy Should Avoid
+## What Proxy Should Avoid
 
 - Do not adopt free-provider/subscription-draining as product strategy.
 - Do not add MITM or tool-cloaking behavior.
@@ -297,4 +297,4 @@ Add tests for:
 
 ## Bottom Line
 
-OmniRoute is a wide product map for coding-agent routing. Prompt Proxy should borrow the resilience taxonomy, assessment loops, test coverage patterns, and compression harnesses. It should avoid copying the large hot path, local trust model, free-provider orientation, and aggressive mutation features.
+OmniRoute is a wide product map for coding-agent routing. Proxy should borrow the resilience taxonomy, assessment loops, test coverage patterns, and compression harnesses. It should avoid copying the large hot path, local trust model, free-provider orientation, and aggressive mutation features.

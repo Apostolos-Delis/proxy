@@ -1,4 +1,4 @@
-import type { ProviderHealthClassification } from "@prompt-proxy/schema";
+import type { ProviderHealthClassification } from "@proxy/schema";
 
 import type { AppConfig } from "./config.js";
 import { jsonPayload, type EventService } from "./events.js";
@@ -188,7 +188,7 @@ async function appendProbeResult(
     scopeId: input.providerAccountId,
     correlationId: result.probeId,
     actor: { type: "user", id: input.actorUserId },
-    producer: "prompt-proxy.provider-health",
+    producer: "proxy.provider-health",
     eventType: "provider_account.health_probe_completed",
     payload: {
       probeId: result.probeId,

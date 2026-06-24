@@ -1,4 +1,4 @@
-import type { CompressionPolicy } from "@prompt-proxy/schema";
+import type { CompressionPolicy } from "@proxy/schema";
 
 import {
   contentBytes,

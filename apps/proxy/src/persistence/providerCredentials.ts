@@ -5,9 +5,9 @@ import {
   encryptSecret,
   providers,
   providerAccounts,
-  type PromptProxyDbSession
-} from "@prompt-proxy/db";
-import { PROVIDER_ACCOUNT_STATUSES, PROVIDERS } from "@prompt-proxy/schema";
+  type ProxyDbSession
+} from "@proxy/db";
+import { PROVIDER_ACCOUNT_STATUSES, PROVIDERS } from "@proxy/schema";
 import { and, eq, isNull } from "drizzle-orm";
 
 import type { Provider, UpstreamCredential } from "../types.js";
@@ -53,7 +53,7 @@ export class ProviderCredentialStore {
   private readonly cache = new Map<string, CacheEntry>();
 
   constructor(
-    private readonly db: PromptProxyDbSession,
+    private readonly db: ProxyDbSession,
     private readonly options: ProviderCredentialOptions
   ) {}
 
@@ -207,7 +207,7 @@ function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
 
-async function providerBySlug(db: PromptProxyDbSession, organizationId: string, slug: string) {
+async function providerBySlug(db: ProxyDbSession, organizationId: string, slug: string) {
   const [orgProvider] = await db
     .select({ id: providers.id, slug: providers.slug })
     .from(providers)

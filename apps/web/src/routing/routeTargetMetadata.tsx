@@ -3,7 +3,7 @@ import {
   translationCompatibilityForDialects,
   type TranslationDialect,
   type TranslationCompatibilityResult
-} from "@prompt-proxy/schema/translationCompatibility";
+} from "@proxy/schema/translationCompatibility";
 
 import type { RouteTargetDraft, RoutingEditorCatalog } from "../routingConfigEditor";
 import { emptyRouteTarget } from "../routingConfigEditor";

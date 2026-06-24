@@ -9,8 +9,8 @@ import {
   organizations,
   routingConfigs,
   workspaces
-} from "@prompt-proxy/db";
-import type { RoutingConfig } from "@prompt-proxy/schema";
+} from "@proxy/db";
+import type { RoutingConfig } from "@proxy/schema";
 
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 

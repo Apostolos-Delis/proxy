@@ -78,7 +78,7 @@ function launchInstruction(harnesses: HarnessSetupSelection) {
     return <>Open a new terminal and run <span className="code-pill">codex</span>.</>;
   }
   if (harnesses.length === 1 && harnesses[0] === "opencode") {
-    return <>Open opencode, run <span className="code-pill">/models</span>, and select <span className="code-pill">prompt-proxy-chat/router-auto</span>.</>;
+    return <>Open opencode, run <span className="code-pill">/models</span>, and select <span className="code-pill">prompt-chat/router-auto</span>.</>;
   }
   const terminalCommands: string[] = [];
   if (harnesses.includes("claude-code")) terminalCommands.push("claude");
@@ -98,7 +98,7 @@ function launchInstruction(harnesses: HarnessSetupSelection) {
         </>
       ) : null}
       {harnesses.includes("opencode") ? (
-        <> Open opencode, run <span className="code-pill">/models</span>, and select <span className="code-pill">prompt-proxy-chat/router-auto</span>.</>
+        <> Open opencode, run <span className="code-pill">/models</span>, and select <span className="code-pill">prompt-chat/router-auto</span>.</>
       ) : null}
     </>
   );

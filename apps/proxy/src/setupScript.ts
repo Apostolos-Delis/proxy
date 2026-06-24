@@ -10,7 +10,7 @@ export function buildSetupScript(baseUrl: string) {
   }
   const base = escapeDoubleQuoted(baseUrl);
   return `#!/usr/bin/env bash
-# Prompt Proxy setup.
+# Proxy setup.
 #
 # Usage:
 #   curl -fsSL ${baseUrl}/setup.sh | bash -s -- <api-key>
@@ -44,7 +44,7 @@ Usage: setup.sh [--harness codex] [--harness claude-code] [--harness opencode] <
 
 Without --harness, setup.sh configures Claude Code and Codex with one shared key.
 Pass --harness more than once to configure multiple harnesses with one shared key.
-Setup updates only Prompt Proxy-owned marker blocks and reports unmarked conflicts.
+Setup updates only Proxy-owned marker blocks and reports unmarked conflicts.
 PP_HELP_EOF
       exit 0
       ;;
@@ -99,10 +99,10 @@ if [ "$PP_HARNESS_COUNT" -eq 0 ]; then
 fi
 
 if [ -z "$PP_TOKEN" ]; then
-  PP_TOKEN="\${PROMPT_PROXY_TOKEN:-}"
+  PP_TOKEN="\${PROXY_TOKEN:-}"
 fi
 if [ -z "$PP_TOKEN" ] && ( : < /dev/tty ) 2>/dev/null; then
-  printf "Paste your Prompt Proxy API key: " > /dev/tty
+  printf "Paste your Proxy API key: " > /dev/tty
   IFS= read -r PP_TOKEN < /dev/tty
 fi
 if [ -z "$PP_TOKEN" ]; then
@@ -115,25 +115,25 @@ if [ -z "$PP_TOKEN" ]; then
 fi
 
 if [ "$PP_HARNESS_COUNT" -gt 1 ]; then
-  PP_TOKEN_PATH="$HOME/.prompt-proxy/token"
-  PP_TOKEN_PATH_DISPLAY="~/.prompt-proxy/token"
+  PP_TOKEN_PATH="$HOME/.proxy/token"
+  PP_TOKEN_PATH_DISPLAY="~/.proxy/token"
 elif [ "$PP_SETUP_CODEX" -eq 1 ]; then
-  PP_TOKEN_PATH="$HOME/.prompt-proxy/codex.token"
-  PP_TOKEN_PATH_DISPLAY="~/.prompt-proxy/codex.token"
+  PP_TOKEN_PATH="$HOME/.proxy/codex.token"
+  PP_TOKEN_PATH_DISPLAY="~/.proxy/codex.token"
 elif [ "$PP_SETUP_CLAUDE" -eq 1 ]; then
-  PP_TOKEN_PATH="$HOME/.prompt-proxy/claude-code.token"
-  PP_TOKEN_PATH_DISPLAY="~/.prompt-proxy/claude-code.token"
+  PP_TOKEN_PATH="$HOME/.proxy/claude-code.token"
+  PP_TOKEN_PATH_DISPLAY="~/.proxy/claude-code.token"
 else
-  PP_TOKEN_PATH="$HOME/.prompt-proxy/opencode.token"
-  PP_TOKEN_PATH_DISPLAY="~/.prompt-proxy/opencode.token"
+  PP_TOKEN_PATH="$HOME/.proxy/opencode.token"
+  PP_TOKEN_PATH_DISPLAY="~/.proxy/opencode.token"
 fi
 
 if [ "$PP_SETUP_CODEX" -eq 1 ] && [ "$PP_HARNESS_COUNT" -eq 1 ]; then
-  PP_CODEX_ENV="PROMPT_PROXY_CODEX_TOKEN"
-  PP_CODEX_PROVIDER="prompt_proxy_codex"
+  PP_CODEX_ENV="PROXY_CODEX_TOKEN"
+  PP_CODEX_PROVIDER="proxy_codex"
 else
-  PP_CODEX_ENV="PROMPT_PROXY_TOKEN"
-  PP_CODEX_PROVIDER="prompt_proxy"
+  PP_CODEX_ENV="PROXY_TOKEN"
+  PP_CODEX_PROVIDER="proxy"
 fi
 
 pp_resolved_write_path() {
@@ -265,7 +265,7 @@ pp_toml_has_table() {
   ' "$write_path"
 }
 
-mkdir -p "$HOME/.prompt-proxy"
+mkdir -p "$HOME/.proxy"
 printf '%s\\n' "$PP_TOKEN" > "$PP_TOKEN_PATH"
 chmod 600 "$PP_TOKEN_PATH"
 echo "key: stored at $PP_TOKEN_PATH_DISPLAY"
@@ -273,7 +273,7 @@ echo "key: stored at $PP_TOKEN_PATH_DISPLAY"
 if [ "$PP_SETUP_CLAUDE" -eq 1 ]; then
   if command -v node >/dev/null 2>&1; then
     mkdir -p "$HOME/.claude"
-    PP_CLAUDE_MARKER_FILE="$HOME/.prompt-proxy/claude-code-settings.marker.json"
+    PP_CLAUDE_MARKER_FILE="$HOME/.proxy/claude-code-settings.marker.json"
     node -e '
 const fs = require("fs");
 const file = process.env.HOME + "/.claude/settings.json";
@@ -323,7 +323,7 @@ if (isObject(settings.env) && typeof settings.env.ANTHROPIC_CUSTOM_HEADERS === "
   const customHeaders = settings.env.ANTHROPIC_CUSTOM_HEADERS
     .split(",")
     .map((header) => header.trim())
-    .filter((header) => header && !/^x-prompt-proxy-user-id\\s*:/i.test(header));
+    .filter((header) => header && !/^x-proxy-user-id\\s*:/i.test(header));
   if (customHeaders.length > 0) {
     settings.env.ANTHROPIC_CUSTOM_HEADERS = customHeaders.join(", ");
   } else {
@@ -331,7 +331,7 @@ if (isObject(settings.env) && typeof settings.env.ANTHROPIC_CUSTOM_HEADERS === "
   }
 }
 if (conflicts.length > 0) {
-  console.error("claude: found user-managed settings outside Prompt Proxy marker: " + conflicts.join(", ") + "; leaving them unchanged");
+  console.error("claude: found user-managed settings outside Proxy marker: " + conflicts.join(", ") + "; leaving them unchanged");
 }
 if (nextManaged.length > 0) {
   fs.writeFileSync(markerFile, JSON.stringify({ version: 1, harness: "claude-code", fields: nextManaged }, null, 2) + "\\n", { mode: 0o600 });
@@ -348,8 +348,8 @@ fi
 if [ "$PP_SETUP_CODEX" -eq 1 ]; then
   [ -f "$HOME/.zshrc" ] || [ -f "$HOME/.bashrc" ] || touch "$HOME/.zshrc"
   PP_TOKEN_EXPORT="export \${PP_CODEX_ENV}=\\"\\$(cat \${PP_TOKEN_PATH_DISPLAY})\\""
-  PP_RC_BEGIN="# >>> prompt-proxy codex $PP_CODEX_ENV >>>"
-  PP_RC_END="# <<< prompt-proxy codex $PP_CODEX_ENV <<<"
+  PP_RC_BEGIN="# >>> prompt codex $PP_CODEX_ENV >>>"
+  PP_RC_END="# <<< prompt codex $PP_CODEX_ENV <<<"
   tmp_rc_block="$(mktemp)"
   printf '%s\\n' "$PP_TOKEN_EXPORT" > "$tmp_rc_block"
   for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
@@ -373,10 +373,10 @@ if [ "$PP_SETUP_CODEX" -eq 1 ]; then
   codex_config="$PP_CODEX_HOME/config.toml"
   codex_config_existed=0
   [ -s "$codex_config" ] && codex_config_existed=1
-  PP_CODEX_DEFAULTS_BEGIN="# >>> prompt-proxy codex defaults >>>"
-  PP_CODEX_DEFAULTS_END="# <<< prompt-proxy codex defaults <<<"
-  PP_CODEX_PROVIDER_BEGIN="# >>> prompt-proxy codex provider $PP_CODEX_PROVIDER >>>"
-  PP_CODEX_PROVIDER_END="# <<< prompt-proxy codex provider $PP_CODEX_PROVIDER <<<"
+  PP_CODEX_DEFAULTS_BEGIN="# >>> prompt codex defaults >>>"
+  PP_CODEX_DEFAULTS_END="# <<< prompt codex defaults <<<"
+  PP_CODEX_PROVIDER_BEGIN="# >>> prompt codex provider $PP_CODEX_PROVIDER >>>"
+  PP_CODEX_PROVIDER_END="# <<< prompt codex provider $PP_CODEX_PROVIDER <<<"
   tmp_codex_defaults="$(mktemp)"
   cat > "$tmp_codex_defaults" <<${heredocDelimiter}
 model = "gpt-5.5"
@@ -386,7 +386,7 @@ ${heredocDelimiter}
   cat > "$tmp_codex_provider" <<${heredocDelimiter}
 
 [model_providers.$PP_CODEX_PROVIDER]
-name = "Prompt Proxy"
+name = "Proxy"
 base_url = "$PP_BASE_URL/v1"
 env_key = "$PP_CODEX_ENV"
 wire_api = "responses"
@@ -426,7 +426,7 @@ ${heredocDelimiter}
   if [ "$codex_config_existed" -eq 0 ]; then
     echo "codex: wrote $PP_CODEX_CONFIG_DISPLAY"
   else
-    echo "codex: updated Prompt Proxy-owned Codex blocks for $PP_CODEX_PROVIDER"
+    echo "codex: updated Proxy-owned Codex blocks for $PP_CODEX_PROVIDER"
   fi
 fi
 
@@ -436,8 +436,8 @@ if [ "$PP_SETUP_OPENCODE" -eq 1 ]; then
     PP_OPENCODE_DATA_DIR="\${XDG_DATA_HOME:-$HOME/.local/share}/opencode"
     PP_OPENCODE_CONFIG_FILE="$PP_OPENCODE_CONFIG_DIR/opencode.json"
     PP_OPENCODE_AUTH_FILE="$PP_OPENCODE_DATA_DIR/auth.json"
-    PP_OPENCODE_CONFIG_MARKER_FILE="$HOME/.prompt-proxy/opencode-config.prompt-proxy-chat.marker.json"
-    PP_OPENCODE_AUTH_MARKER_FILE="$HOME/.prompt-proxy/opencode-auth.prompt-proxy-chat.marker.json"
+    PP_OPENCODE_CONFIG_MARKER_FILE="$HOME/.proxy/opencode-config.proxy-chat.marker.json"
+    PP_OPENCODE_AUTH_MARKER_FILE="$HOME/.proxy/opencode-auth.proxy-chat.marker.json"
     mkdir -p "$PP_OPENCODE_CONFIG_DIR" "$PP_OPENCODE_DATA_DIR"
     node -e '
 const fs = require("fs");
@@ -447,7 +447,7 @@ const baseUrl = process.argv[3];
 const tokenFile = process.argv[4];
 const configMarkerFile = process.argv[5];
 const authMarkerFile = process.argv[6];
-const providerId = "prompt-proxy-chat";
+const providerId = "prompt-chat";
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return {}; }
 }
@@ -472,7 +472,7 @@ if (isObject(config.provider)) {
     config.provider = Object.assign({}, config.provider, {
       [providerId]: Object.assign({}, isObject(existingProvider) ? existingProvider : {}, {
     npm: "@ai-sdk/openai-compatible",
-    name: "Prompt Proxy Chat",
+    name: "Proxy Chat",
         options: Object.assign({}, isObject(existingProvider?.options) ? existingProvider.options : {}, { baseURL: baseUrl + "/v1" }),
         models: Object.assign({}, isObject(existingProvider?.models) ? existingProvider.models : {}, {
       "router-auto": { name: "Router Auto" },
@@ -491,11 +491,11 @@ if (isObject(config.provider)) {
   conflicts.push("provider");
 }
 if (config.model === undefined || managedConfig.has("model")) {
-  config.model = "prompt-proxy-chat/router-auto";
+  config.model = "prompt-chat/router-auto";
   nextManagedConfig.push("model");
 }
 if (config.small_model === undefined || managedConfig.has("small_model")) {
-  config.small_model = "prompt-proxy-chat/router-fast";
+  config.small_model = "prompt-chat/router-fast";
   nextManagedConfig.push("small_model");
 }
 if (nextManagedConfig.length > 0) {
@@ -512,7 +512,7 @@ if (auth[providerId] === undefined || fs.existsSync(authMarkerFile)) {
   conflicts.push("auth." + providerId);
 }
 if (conflicts.length > 0) {
-  console.error("opencode: found user-managed entries outside Prompt Proxy markers: " + conflicts.join(", ") + "; leaving them unchanged");
+  console.error("opencode: found user-managed entries outside Proxy markers: " + conflicts.join(", ") + "; leaving them unchanged");
 }
 fs.writeFileSync(authFile, JSON.stringify(auth, null, 2) + "\\n", { mode: 0o600 });
 fs.chmodSync(authFile, 0o600);
@@ -529,7 +529,7 @@ if [ "$PP_HARNESS_COUNT" -eq 1 ] && [ "$PP_SETUP_CODEX" -eq 1 ]; then
 elif [ "$PP_HARNESS_COUNT" -eq 1 ] && [ "$PP_SETUP_CLAUDE" -eq 1 ]; then
   echo "Done. Open a new terminal and run: claude"
 elif [ "$PP_HARNESS_COUNT" -eq 1 ] && [ "$PP_SETUP_OPENCODE" -eq 1 ]; then
-  echo "Done. Open opencode and select prompt-proxy-chat/router-auto from /models"
+  echo "Done. Open opencode and select prompt-chat/router-auto from /models"
 else
   PP_LAUNCH=""
   [ "$PP_SETUP_CLAUDE" -eq 1 ] && PP_LAUNCH="claude"
@@ -547,7 +547,7 @@ else
     esac
   fi
   if [ "$PP_SETUP_OPENCODE" -eq 1 ]; then
-    echo "Open opencode and select prompt-proxy-chat/router-auto from /models"
+    echo "Open opencode and select prompt-chat/router-auto from /models"
   fi
 fi
 `;

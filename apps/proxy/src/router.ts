@@ -4,7 +4,7 @@ import {
   type HarnessCompatibilityProfileId,
   type RoutingConfig,
   type RouteTarget
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import {
   anthropicEffortForModel,
@@ -144,7 +144,7 @@ export class RoutingService {
       scopeId: requestId,
       correlationId: requestId,
       idempotencyKey,
-      producer: "prompt-proxy.routing",
+      producer: "proxy.routing",
       eventType: "routing.context_built",
       payload: {
         surface: context.surface,
@@ -313,7 +313,7 @@ export class RoutingService {
         sessionId: decision.session.sessionId,
         correlationId: requestId,
         idempotencyKey,
-        producer: "prompt-proxy.session",
+        producer: "proxy.session",
         eventType: "session.route_memory_recorded",
         payload: jsonPayload({
           ...decision.session,
@@ -400,7 +400,7 @@ export class RoutingService {
         scopeId: requestId,
         correlationId: requestId,
         idempotencyKey,
-        producer: "prompt-proxy.classifier",
+        producer: "proxy.classifier",
         eventType: "routing.classification_failed",
         payload: {
           model: classifierSettings.model,
@@ -465,7 +465,7 @@ export class RoutingService {
       scopeId: requestId,
       correlationId: requestId,
       idempotencyKey,
-      producer: "prompt-proxy.classifier",
+      producer: "proxy.classifier",
       eventType: "routing.classification_recorded",
       payload: {
         model: classifierSettings.model,
@@ -667,7 +667,7 @@ export class RoutingService {
       scopeId: requestId,
       correlationId: requestId,
       idempotencyKey,
-      producer: "prompt-proxy.routing",
+      producer: "proxy.routing",
       eventType: "routing.plan_recorded",
       payload: jsonPayload({
         requestedModel: decision.requestedModel,
@@ -846,7 +846,7 @@ export class RoutingService {
       scopeId: requestId,
       correlationId: requestId,
       idempotencyKey,
-      producer: "prompt-proxy.routing",
+      producer: "proxy.routing",
       eventType: "routing.decision_recorded",
       payload: jsonPayload(payload) as JsonObject
     });
@@ -887,7 +887,7 @@ export class RoutingService {
     const requestedRoute = requestedRouteLabel(decision);
     const guardrailAction = decision.guardrailActions[0] ?? "none";
     if (decision.outcome === "reject") {
-      this.metrics.incrementCounter("prompt_proxy_routing_rejections_total", {
+      this.metrics.incrementCounter("proxy_routing_rejections_total", {
         surface: decision.surface,
         requested_route: requestedRoute,
         error_class: "routing",
@@ -896,7 +896,7 @@ export class RoutingService {
       return;
     }
 
-    this.metrics.incrementCounter("prompt_proxy_routing_decisions_total", {
+    this.metrics.incrementCounter("proxy_routing_decisions_total", {
       surface: decision.surface,
       requested_route: requestedRoute,
       final_route: decision.finalRoute ?? "none",
@@ -917,16 +917,16 @@ function requestedRouteLabel(decision: RouteDecision) {
 
 function rejectionMessage(error: string, check: NonNullable<RouteDecision["budgetChecks"]>[number] | undefined) {
   if (error === "request_estimated_input_limit" && check) {
-    return `Prompt Proxy rejected this request before routing because the full request is estimated at ${formatCount(check.current)} input tokens, above the active routing config limit of ${formatCount(check.limit)}. This estimate includes the full session envelope and history, not just the latest user message. Start a compacted or new session, or disable/raise limits.maxEstimatedInputTokens in the routing config.`;
+    return `Proxy rejected this request before routing because the full request is estimated at ${formatCount(check.current)} input tokens, above the active routing config limit of ${formatCount(check.limit)}. This estimate includes the full session envelope and history, not just the latest user message. Start a compacted or new session, or disable/raise limits.maxEstimatedInputTokens in the routing config.`;
   }
   if (error === "route_estimated_input_limit" && check) {
-    return `Prompt Proxy rejected this request because the selected route's input limit is ${formatCount(check.limit)} estimated tokens and the full request is estimated at ${formatCount(check.current)}. Adjust limits.routeEstimatedInputLimits for this route or use a smaller session.`;
+    return `Proxy rejected this request because the selected route's input limit is ${formatCount(check.limit)} estimated tokens and the full request is estimated at ${formatCount(check.current)}. Adjust limits.routeEstimatedInputLimits for this route or use a smaller session.`;
   }
   if (error === "route_limit" && check) {
-    return `Prompt Proxy rejected this request because route ${String(check.current)} exceeds the active routing config maxRoute ${String(check.limit)}.`;
+    return `Proxy rejected this request because route ${String(check.current)} exceeds the active routing config maxRoute ${String(check.limit)}.`;
   }
   if (error === "provider_health_unavailable") {
-    return "Prompt Proxy rejected this request because every eligible provider target is currently unhealthy, cooling down, or locked out. Check provider health before retrying.";
+    return "Proxy rejected this request because every eligible provider target is currently unhealthy, cooling down, or locked out. Check provider health before retrying.";
   }
   return error;
 }

@@ -7,7 +7,7 @@ export type DiffCompactionCandidate = {
 };
 
 const DEFAULT_SHELL_TOOL_NAMES = ["Bash", "bash", "shell", "local_shell", "run_terminal_cmd"];
-const FORMAT = "prompt-proxy.diff-compaction.v1";
+const FORMAT = "prompt.diff-compaction.v1";
 const MIN_REPEATED_RUN = 6;
 const MIN_CONTEXT_RUN = 12;
 

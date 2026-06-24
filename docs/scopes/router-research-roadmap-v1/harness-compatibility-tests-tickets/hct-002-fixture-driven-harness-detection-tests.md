@@ -18,8 +18,8 @@ Goal: Lock harness detection, session extraction, and header selection to real c
 
 ## Validation
 
-- Run `pnpm --filter @prompt-proxy/proxy test -- features`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- session`.
+- Run `pnpm --filter @proxy/proxy test -- features`.
+- Run `pnpm --filter @proxy/proxy test -- session`.
 
 ## Likely Files
 

@@ -2,15 +2,15 @@
 
 ## Goal
 
-Add provider fallback while preserving Prompt Proxy's audit guarantees.
+Add provider fallback while preserving Proxy's audit guarantees.
 
 Fallback means trying another eligible target after a selected target fails before the response has become committed to the client. It must be explicit in the route execution plan, provider attempts, events, and console.
 
 ## Why This Matters
 
-LiteLLM, 9router, and OmniRoute all rely on fallback for reliability. Prompt Proxy needs the same reliability, but silent fallback would undermine cost, quality, and compliance analysis.
+LiteLLM, 9router, and OmniRoute all rely on fallback for reliability. Proxy needs the same reliability, but silent fallback would undermine cost, quality, and compliance analysis.
 
-The rule for Prompt Proxy:
+The rule for Proxy:
 
 ```text
 fallback is allowed only when the configured route plan allows it, and every fallback is durable evidence
@@ -20,7 +20,7 @@ Classifier failure behavior does not change. If classification fails after confi
 
 ## Current State
 
-Prompt Proxy routes to a selected provider target and records provider attempts. Provider forwarding can retry upstream rate limits before response headers are sent, but there is no comprehensive cross-target fallback plan.
+Proxy routes to a selected provider target and records provider attempts. Provider forwarding can retry upstream rate limits before response headers are sent, but there is no comprehensive cross-target fallback plan.
 
 Existing constraints:
 
@@ -157,7 +157,7 @@ Fallback selection uses the existing route execution plan. It should not invent 
 
 ## Idempotency
 
-Fallback can create duplicate upstream work if a provider received the request but failed before Prompt Proxy observed a terminal response. V1 should:
+Fallback can create duplicate upstream work if a provider received the request but failed before Proxy observed a terminal response. V1 should:
 
 - compute or accept an idempotency key before provider work
 - include idempotency headers where providers support them

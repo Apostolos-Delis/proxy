@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { HARNESS_COMPATIBILITY_PROFILE_IDS, TRANSLATION_COMPATIBILITY_DIALECTS } from "@prompt-proxy/schema";
+import { HARNESS_COMPATIBILITY_PROFILE_IDS, TRANSLATION_COMPATIBILITY_DIALECTS } from "@proxy/schema";
 
 import { harnessCompatibilityReport } from "../src/harnessCompatibilityReport.js";
 import { listHarnessFixtureManifests } from "../src/harnessFixtureCounts.js";

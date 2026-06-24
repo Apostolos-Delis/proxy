@@ -4,7 +4,7 @@ export {
   anthropicEffortForModel,
   anthropicReasoningEffortsForModel,
   supportsAnthropicAdaptiveThinking
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 export const routeOrder: RouteName[] = ["fast", "balanced", "hard", "deep"];
 export const reasoningEffortOrder: ReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh", "max", "ultracode"];

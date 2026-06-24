@@ -10,6 +10,7 @@ import "./types/routing.js";
 import "./types/invitations.js";
 import "./types/search.js";
 import "./types/settings.js";
+import "./types/harness.js";
 import "./queries.js";
 import "./mutations.js";
 

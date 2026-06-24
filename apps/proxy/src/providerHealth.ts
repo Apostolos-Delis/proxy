@@ -4,7 +4,7 @@ import {
   type ProviderHealthClassificationSource,
   type ProviderHealthErrorType,
   type ProviderHealthScope
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import type { Provider } from "./types.js";
 

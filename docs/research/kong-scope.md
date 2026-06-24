@@ -3,13 +3,13 @@
 Source: https://github.com/Kong/kong
 Local clone reviewed: `.context/upstreams/kong`
 Commit reviewed: `1730282ec2f8ed097cf6ad6a3d69e55b7ba9ebb6` from 2026-06-17
-Compared system: Prompt Proxy in this repository
+Compared system: Proxy in this repository
 
 ## Executive Summary
 
-Kong is not primarily an LLM router. It is a mature API gateway built on OpenResty and Lua, with a router, plugin system, admin API, declarative configuration, load balancing, upstream health, rate limiting, observability, vault references, and hybrid control-plane/data-plane operation. Recent Kong versions include AI gateway plugins such as `ai-proxy`, AI prompt tools, and LLM analytics.
+Kong is not primarily an LLM router. It is a mature API gateway built on OpenResty and Lua, with a router, plugin system, admin API, declarative configuration, load balancing, upstream health, rate limiting, observability, vault references, and hybrid control-plane/data-plane operation. Recent Kong versions include AI gateway plugins such as `ai`, AI prompt tools, and LLM analytics.
 
-The most valuable lessons for Prompt Proxy are architectural rather than provider-specific:
+The most valuable lessons for Proxy are architectural rather than provider-specific:
 
 - A gateway should have a small core request path and a clear policy/plugin phase model.
 - Runtime configuration should be versioned, validated, hot-reloadable, and safe to reject without taking down the current router.
@@ -17,7 +17,7 @@ The most valuable lessons for Prompt Proxy are architectural rather than provide
 - Metrics should be first-class and standardized.
 - Control-plane and data-plane concerns should be separable once deployment scale requires it.
 
-Prompt Proxy should not copy Kong's general-purpose gateway scope or Lua/OpenResty execution model. It should borrow the gateway operating primitives that fit an LLM-specific TypeScript service.
+Proxy should not copy Kong's general-purpose gateway scope or Lua/OpenResty execution model. It should borrow the gateway operating primitives that fit an LLM-specific TypeScript service.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ Important reviewed areas:
 - `kong/runloop/balancer/init.lua`
 - `kong/db/declarative/*`
 - `kong/clustering/*`
-- `kong/plugins/ai-proxy/*`
+- `kong/plugins/ai/*`
 - `kong/llm/*`
 - `kong/plugins/prometheus/*`
 - `kong/plugins/rate-limiting/*`
@@ -46,7 +46,7 @@ Important reviewed areas:
 
 Kong builds a versioned router from route and service entities. The runloop watches core-cache version keys and rebuilds the router and plugin iterator when configuration changes. If a rebuild fails, Kong can keep using the previous router rather than dropping traffic onto a broken config.
 
-This is directly applicable to Prompt Proxy's routing configs:
+This is directly applicable to Proxy's routing configs:
 
 - Validate new config versions before activation.
 - Compute a config hash.
@@ -54,13 +54,13 @@ This is directly applicable to Prompt Proxy's routing configs:
 - Reject bad reloads without affecting in-flight requests.
 - Record which route-config version and hash served each request.
 
-Prompt Proxy already stores routing configs durably. The Kong lesson is to make the in-memory routing graph an explicit, versioned runtime artifact with safe reload semantics.
+Proxy already stores routing configs durably. The Kong lesson is to make the in-memory routing graph an explicit, versioned runtime artifact with safe reload semantics.
 
 ### Plugin Phase Model
 
 Kong plugins run in ordered phases such as certificate, rewrite, access, response, header filter, body filter, and log. The plugin iterator builds the applicable plugin list by route, service, consumer, and global scope. Precedence is explicit, including combinations such as route plus service plus consumer.
 
-Prompt Proxy should not expose arbitrary plugins early, but it should define internal policy phases:
+Proxy should not expose arbitrary plugins early, but it should define internal policy phases:
 
 1. Parse and authenticate.
 2. Prompt capture and redaction decision.
@@ -84,7 +84,7 @@ Kong's core entities are general gateway primitives:
 - Services define upstream protocol, host, port, path, retries, timeouts, TLS, and enabled state.
 - Plugins attach at route, service, consumer, or global scope.
 
-Prompt Proxy's equivalent entities should remain LLM-specific:
+Proxy's equivalent entities should remain LLM-specific:
 
 - Surfaces and dialects.
 - Provider registry rows.
@@ -101,7 +101,7 @@ The lesson is not to copy route/service names. The lesson is to keep matching, u
 
 Kong supports DB-backed and DB-less modes. In DB-less mode, `/config` accepts a declarative config payload, parses and validates it, computes a hash, loads it into cache/LMDB, and returns errors without replacing the active config if validation fails.
 
-Prompt Proxy should apply the same activation discipline to routing configs and provider registry changes:
+Proxy should apply the same activation discipline to routing configs and provider registry changes:
 
 - Parse.
 - Validate references and capabilities.
@@ -114,20 +114,20 @@ Prompt Proxy should apply the same activation discipline to routing configs and 
 
 Kong's hybrid mode separates control-plane config from data-plane request serving. Data planes connect by mTLS/RPC, report status, receive deltas or full sync, validate config, and keep serving from local LMDB.
 
-Prompt Proxy does not need this immediately. But it suggests a future deployment path:
+Proxy does not need this immediately. But it suggests a future deployment path:
 
 - Admin API and console can be control-plane oriented.
 - Proxy workers can cache active config and provider registry snapshots.
 - Config distribution can be versioned and hash-checked.
 - Workers can report active config version, health, and last sync.
 
-This matters if Prompt Proxy runs multiple proxy instances behind a load balancer.
+This matters if Proxy runs multiple proxy instances behind a load balancer.
 
 ### Balancer And Health
 
 Kong's balancer manages upstream targets, health checks, hash strategies, failover, and no-healthy-peer handling. It supports consistent hashing on consumer, IP, header, cookie, path, query arg, or URI capture.
 
-Prompt Proxy's LLM equivalent is provider-account and deployment selection:
+Proxy's LLM equivalent is provider-account and deployment selection:
 
 - Target identity should be stable and visible.
 - Health and cooldown should influence selection.
@@ -136,7 +136,7 @@ Prompt Proxy's LLM equivalent is provider-account and deployment selection:
 
 ### AI Proxy Plugin
 
-Kong's `ai-proxy` plugin is implemented through an LLM plugin base with named filters. It has stages for request introspection, request transformation, response introspection, response transformation, streaming, and logging. Drivers such as OpenAI and Anthropic map an internal Kong LLM shape to provider requests and normalize responses.
+Kong's `ai` plugin is implemented through an LLM plugin base with named filters. It has stages for request introspection, request transformation, response introspection, response transformation, streaming, and logging. Drivers such as OpenAI and Anthropic map an internal Kong LLM shape to provider requests and normalize responses.
 
 Useful patterns:
 
@@ -145,13 +145,13 @@ Useful patterns:
 - LLM analytics are extracted through shared context.
 - The plugin schema validates incompatible options such as streaming and provider formats.
 
-Prompt Proxy already has an LLM-specific core, so it does not need AI as a plugin. But the phase/filter structure is a good way to organize forwarding, translation, streaming observers, and accounting.
+Proxy already has an LLM-specific core, so it does not need AI as a plugin. But the phase/filter structure is a good way to organize forwarding, translation, streaming observers, and accounting.
 
 ### Observability
 
 The Prometheus plugin exposes standard gateway metrics and AI-specific metrics. AI metrics include request totals, cost totals, token totals, provider latency, cache status, provider, model, and workspace labels.
 
-Prompt Proxy should add a similar metrics layer in addition to durable events:
+Proxy should add a similar metrics layer in addition to durable events:
 
 - Request count by surface, route tier, provider, model, workspace, status.
 - Provider latency and time to first token.
@@ -166,7 +166,7 @@ Events are the audit backbone. Metrics are the operations heartbeat.
 
 ### Rate Limiting
 
-Kong's rate-limiting plugin supports multiple identifier types, periods, Redis/local/cluster policies, standard headers, and fault-tolerant behavior. Prompt Proxy needs a smaller LLM-aware version:
+Kong's rate-limiting plugin supports multiple identifier types, periods, Redis/local/cluster policies, standard headers, and fault-tolerant behavior. Proxy needs a smaller LLM-aware version:
 
 - API key.
 - Workspace.
@@ -179,7 +179,7 @@ Kong's rate-limiting plugin supports multiple identifier types, periods, Redis/l
 
 Rate-limit decisions should be represented in route decision events.
 
-## Pros Compared To Prompt Proxy
+## Pros Compared To Proxy
 
 - Mature gateway separation of router, service, plugin, balancer, cache, admin API, and observability.
 - Safe runtime config reload model.
@@ -191,15 +191,15 @@ Rate-limit decisions should be represented in route decision events.
 - Vault/reference pattern for secrets.
 - AI plugin shows LLM behavior can fit a gateway phase model.
 
-## Cons And Risks Compared To Prompt Proxy
+## Cons And Risks Compared To Proxy
 
-- Kong is far broader than Prompt Proxy's product goal.
+- Kong is far broader than Proxy's product goal.
 - Lua/OpenResty architecture does not map directly to the existing TypeScript/Fastify codebase.
 - General gateway plugins can become too dynamic and hard to reason about for LLM prompt security.
 - Kong's LLM support is generic AI gateway behavior, not specifically optimized for Codex and Claude Code harness fidelity.
-- Adopting general route/service/plugin terminology could obscure Prompt Proxy's LLM-specific concepts.
+- Adopting general route/service/plugin terminology could obscure Proxy's LLM-specific concepts.
 
-## What Prompt Proxy Should Borrow
+## What Proxy Should Borrow
 
 ### Phase-Based Policy Engine
 
@@ -217,7 +217,7 @@ Add a runtime routing graph:
 
 ### Typed Request Context
 
-Kong's LLM context uses typed accessors and namespaced fields. Prompt Proxy should use a typed per-request context for:
+Kong's LLM context uses typed accessors and namespaced fields. Proxy should use a typed per-request context for:
 
 - Request id.
 - Organization and workspace.
@@ -245,7 +245,7 @@ Add Prometheus or OpenTelemetry metrics derived from the same facts events persi
 
 Keep today's app simple, but design provider registry and routing config activation so future proxy workers can consume a versioned snapshot.
 
-## What Prompt Proxy Should Avoid
+## What Proxy Should Avoid
 
 - Do not implement arbitrary user plugins in the request path yet.
 - Do not broaden into a general API gateway.
@@ -265,4 +265,4 @@ Keep today's app simple, but design provider registry and routing config activat
 
 ## Bottom Line
 
-Kong is the benchmark for gateway architecture and operations discipline. Prompt Proxy should not become Kong. It should adopt Kong's safe config reloads, phase model, typed context, metrics, and eventual control-plane/data-plane readiness while staying an LLM routing gateway optimized for coding harnesses.
+Kong is the benchmark for gateway architecture and operations discipline. Proxy should not become Kong. It should adopt Kong's safe config reloads, phase model, typed context, metrics, and eventual control-plane/data-plane readiness while staying an LLM routing gateway optimized for coding harnesses.

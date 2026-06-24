@@ -2,7 +2,7 @@
 
 ## Summary
 
-Prompt Proxy is a protocol-aware LLM gateway for coding harnesses. It supports Codex through the OpenAI Responses API, OpenAI-compatible callers through Chat Completions, and Claude Code through the Anthropic Messages API. The proxy receives the request, chooses the appropriate route target, rewrites only routing fields, and forwards the request through the provider registry.
+Proxy is a protocol-aware LLM gateway for coding harnesses. It supports Codex through the OpenAI Responses API, OpenAI-compatible callers through Chat Completions, and Claude Code through the Anthropic Messages API. The proxy receives the request, chooses the appropriate route target, rewrites only routing fields, and forwards the request through the provider registry.
 
 The goal is cost reduction without breaking harness behavior. Same-dialect paths preserve the provider wire shape. Translated HTTP paths are available when a route target exposes a different compatible dialect:
 
@@ -15,17 +15,17 @@ Codex WebSocket traffic and OpenAI Responses requests with `previous_response_id
 ```text
 Codex CLI / IDE
   -> POST /v1/responses
-  -> prompt-proxy routing service
+  -> proxy routing service
   -> OpenAI Responses API
 
 OpenAI-compatible SDKs / opencode / Cursor BYOK
   -> POST /v1/chat/completions
-  -> prompt-proxy routing service
+  -> proxy routing service
   -> OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages API
 
 Claude Code
   -> POST /v1/messages
-  -> prompt-proxy routing service
+  -> proxy routing service
   -> Anthropic Messages, OpenAI Chat Completions, or OpenAI Responses API
 ```
 
@@ -116,7 +116,7 @@ This design was checked against local clones of Codex, Claude Code, RTK, Fia, an
 
 Codex findings:
 
-- Codex's TypeScript SDK tests already include a small Responses API test proxy that records requests and emits `text/event-stream` fixtures. The prompt-proxy test harness should follow that pattern.
+- Codex's TypeScript SDK tests already include a small Responses API test proxy that records requests and emits `text/event-stream` fixtures. The prompt test harness should follow that pattern.
 - Codex builds Responses requests with `stream: true`, `tool_choice: "auto"`, `parallel_tool_calls`, `prompt_cache_key`, `client_metadata`, `reasoning`, `text`, and `include: ["reasoning.encrypted_content"]` when reasoning is active.
 - Codex uses a per-turn sticky routing header, `x-codex-turn-state`, received from the server and replayed for subsequent requests in the same turn. The proxy must preserve this header in both directions.
 - Codex has explicit stream failure categories for failed SSE connection, mid-turn disconnect, and too many failed attempts. The proxy should not hide or normalize those failures into generic JSON errors.
@@ -133,28 +133,28 @@ Claude Code findings:
 
 RTK findings:
 
-- RTK keeps tool-specific integrations thin and delegates decisions to one core rewrite command. Prompt-proxy should do the same: one routing engine, thin surface adapters.
-- RTK uses an exit-code style decision contract for allow, ask, deny, and passthrough. Prompt-proxy should define explicit route decision outcomes instead of burying behavior in ad hoc booleans.
-- RTK trust-gates project-local policy files. Prompt-proxy should not let repository-local routing overrides redirect company model traffic unless the override is explicitly trusted.
-- RTK tracks savings and has a discover mode for missed opportunities. Prompt-proxy should measure actual savings and identify calls that could have used a cheaper route.
+- RTK keeps tool-specific integrations thin and delegates decisions to one core rewrite command. Proxy should do the same: one routing engine, thin surface adapters.
+- RTK uses an exit-code style decision contract for allow, ask, deny, and passthrough. Proxy should define explicit route decision outcomes instead of burying behavior in ad hoc booleans.
+- RTK trust-gates project-local policy files. Proxy should not let repository-local routing overrides redirect company model traffic unless the override is explicitly trusted.
+- RTK tracks savings and has a discover mode for missed opportunities. Proxy should measure actual savings and identify calls that could have used a cheaper route.
 
 Fia findings:
 
-- Fia uses typed, scoped event envelopes with sequence numbers, actor, producer, causation/correlation IDs, payload hashes, sensitivity, and redaction state. Prompt-proxy should adopt the same shape so route decisions are replayable without putting raw prompts in events.
+- Fia uses typed, scoped event envelopes with sequence numbers, actor, producer, causation/correlation IDs, payload hashes, sensitivity, and redaction state. Proxy should adopt the same shape so route decisions are replayable without putting raw prompts in events.
 - Fia is event-driven without being strict pure event sourcing. It keeps current-state tables for resume/read efficiency and uses events for durable transitions, replay, debugging, and future automation.
-- Fia appends events and outbox records in the same transaction, with expected-sequence conflict handling per scope. Prompt-proxy should use the same pattern for request, session, route, and provider scopes.
-- Fia treats large or sensitive model inputs, chunks, and outputs as artifact references. Prompt-proxy should not put raw prompts, tool outputs, or SSE chunks in normal event payloads; prompt text belongs in `prompt_artifacts` when capture is enabled.
+- Fia appends events and outbox records in the same transaction, with expected-sequence conflict handling per scope. Proxy should use the same pattern for request, session, route, and provider scopes.
+- Fia treats large or sensitive model inputs, chunks, and outputs as artifact references. Proxy should not put raw prompts, tool outputs, or SSE chunks in normal event payloads; prompt text belongs in `prompt_artifacts` when capture is enabled.
 
 Trace findings:
 
-- Trace treats HTTP/GraphQL as transport and lets services produce events. Prompt-proxy should keep `/v1/responses` thin and put shared behavior in routing/proxy services.
-- Trace uses scoped events instead of one global stream. Prompt-proxy should scope events by request, turn, session, provider request, and policy.
-- Trace separates realtime PubSub from durable worker streams, and trims high-volume session output for broad streams. Prompt-proxy should publish small lifecycle events broadly and keep full request/response material out of the default stream.
-- Trace clients and workers recover from missed live events by querying/backfilling the event store. Prompt-proxy dashboards and reports should consume projections built from durable events rather than relying on logs.
+- Trace treats HTTP/GraphQL as transport and lets services produce events. Proxy should keep `/v1/responses` thin and put shared behavior in routing/proxy services.
+- Trace uses scoped events instead of one global stream. Proxy should scope events by request, turn, session, provider request, and policy.
+- Trace separates realtime PubSub from durable worker streams, and trims high-volume session output for broad streams. Proxy should publish small lifecycle events broadly and keep full request/response material out of the default stream.
+- Trace clients and workers recover from missed live events by querying/backfilling the event store. Proxy dashboards and reports should consume projections built from durable events rather than relying on logs.
 
 ## Event-Driven Architecture
 
-Prompt-proxy should be event-driven from the first implementation, but the event system should stay small. The routing decision still happens inline because Codex is waiting on the HTTP response. Everything that does not need to block the model stream should consume events asynchronously.
+Proxy should be event-driven from the first implementation, but the event system should stay small. The routing decision still happens inline because Codex is waiting on the HTTP response. Everything that does not need to block the model stream should consume events asynchronously.
 
 Recommended shape:
 
@@ -189,7 +189,7 @@ Use one typed envelope for every event:
   "correlation_id": "corr_...",
   "idempotency_key": "idem_...",
   "actor": { "type": "user", "id": "user_..." },
-  "producer": "prompt-proxy.routing",
+  "producer": "proxy.routing",
   "event_type": "routing.decision_recorded",
   "payload_hash": "sha256:...",
   "sensitivity": "internal",
@@ -399,11 +399,11 @@ Returns router aliases that clients can select for explicit control. Clients may
 {
   "object": "list",
   "data": [
-    { "id": "router-auto", "object": "model", "owned_by": "prompt-proxy" },
-    { "id": "router-fast", "object": "model", "owned_by": "prompt-proxy" },
-    { "id": "router-balanced", "object": "model", "owned_by": "prompt-proxy" },
-    { "id": "router-hard", "object": "model", "owned_by": "prompt-proxy" },
-    { "id": "router-deep", "object": "model", "owned_by": "prompt-proxy" }
+    { "id": "router-auto", "object": "model", "owned_by": "proxy" },
+    { "id": "router-fast", "object": "model", "owned_by": "proxy" },
+    { "id": "router-balanced", "object": "model", "owned_by": "proxy" },
+    { "id": "router-hard", "object": "model", "owned_by": "proxy" },
+    { "id": "router-deep", "object": "model", "owned_by": "proxy" }
   ]
 }
 ```
@@ -489,15 +489,15 @@ Codex can point at a proxy with either `openai_base_url` or a custom model provi
 
 ```toml
 model = "gpt-5.5"
-model_provider = "prompt-proxy"
+model_provider = "proxy"
 model_context_window = 400000
 model_reasoning_effort = "medium"
 model_verbosity = "low"
 
-[model_providers.prompt-proxy]
-name = "Prompt Proxy"
+[model_providers.proxy]
+name = "Proxy"
 base_url = "http://127.0.0.1:8787/v1"
-env_key = "PROMPT_PROXY_TOKEN"
+env_key = "PROXY_TOKEN"
 wire_api = "responses"
 supports_websockets = false
 ```
@@ -509,8 +509,8 @@ model = "gpt-5.5"
 openai_base_url = "http://127.0.0.1:8787/v1"
 ```
 
-The proxy accepts Codex's request as-is, authenticates the caller, resolves a provider target from the active routing config, and forwards with the selected provider credential. Builtin OpenAI targets use the operator key unless the Prompt Proxy API key is bound to a BYOK credential.
-Use an OpenAI model id such as `gpt-5.5` for Codex metadata; Prompt Proxy still treats non-alias model names like `router-auto` for routing. Keep Responses WebSockets disabled for mixed or Anthropic-only routing configs because those requests cannot be translated statefully. OpenAI-only deployments can opt back into WebSockets for lower replay overhead.
+The proxy accepts Codex's request as-is, authenticates the caller, resolves a provider target from the active routing config, and forwards with the selected provider credential. Builtin OpenAI targets use the operator key unless the Proxy API key is bound to a BYOK credential.
+Use an OpenAI model id such as `gpt-5.5` for Codex metadata; Proxy still treats non-alias model names like `router-auto` for routing. Keep Responses WebSockets disabled for mixed or Anthropic-only routing configs because those requests cannot be translated statefully. OpenAI-only deployments can opt back into WebSockets for lower replay overhead.
 
 Codex-specific compatibility requirements:
 
@@ -887,7 +887,7 @@ The proxy should have a `discover`-style report later. It should identify routin
 
 The proxy should separate caller auth from provider auth.
 
-- Callers authenticate with `PROMPT_PROXY_TOKEN` or company SSO/JWT later.
+- Callers authenticate with `PROXY_TOKEN` or company SSO/JWT later.
 - The proxy injects the upstream `OPENAI_API_KEY`.
 - Incoming `Authorization` should not be forwarded upstream as-is.
 - Logs must redact auth headers and cookies.
@@ -1022,9 +1022,9 @@ The mocked upstream should be modeled after Codex's own Responses test proxy:
 Manual Codex smoke tests:
 
 ```shell
-codex exec --profile prompt-proxy "Explain this repo"
-codex exec --profile prompt-proxy "Make a one-line README typo fix"
-codex exec --profile prompt-proxy "Review this project for security issues"
+codex exec --profile prompt "Explain this repo"
+codex exec --profile prompt "Make a one-line README typo fix"
+codex exec --profile prompt "Review this project for security issues"
 ```
 
 ## Claude Code Surface
@@ -1081,7 +1081,7 @@ Adopt these patterns:
 - Explicit decision outcomes. Use `route`, `passthrough`, `reject`, and `escalate` instead of hidden booleans.
 - Fail safe. If a policy cannot be parsed, trusted, or validated, skip it and use central defaults.
 - Track value. Record savings, missed savings, and low-quality savings where cheaper routing caused retries.
-- Add recovery paths. RTK saves full output when compacting command output; prompt-proxy should keep request IDs, route logs, and upstream IDs so developers can debug without prompt logs.
+- Add recovery paths. RTK saves full output when compacting command output; prompt should keep request IDs, route logs, and upstream IDs so developers can debug without prompt logs.
 - Support local development without weakening enterprise defaults.
 
 ## OpenRouter Inspiration

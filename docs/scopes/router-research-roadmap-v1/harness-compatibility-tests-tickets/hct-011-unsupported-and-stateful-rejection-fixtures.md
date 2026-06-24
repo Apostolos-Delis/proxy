@@ -21,9 +21,9 @@ Goal: Prove unsupported paths are blocked before provider selection and explain 
 
 ## Validation
 
-- Run `pnpm --filter @prompt-proxy/proxy test -- translationRuntime`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- routingConfigRuntime`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- harness-compatibility`.
+- Run `pnpm --filter @proxy/proxy test -- translationRuntime`.
+- Run `pnpm --filter @proxy/proxy test -- routingConfigRuntime`.
+- Run `pnpm --filter @proxy/proxy test -- harness-compatibility`.
 
 ## Likely Files
 

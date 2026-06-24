@@ -2,7 +2,7 @@ import {
   compressionPolicySchema,
   defaultCompressionPolicy,
   type CompressionPolicy
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import {
   compressToolResults,

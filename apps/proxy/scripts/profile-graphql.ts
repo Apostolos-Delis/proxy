@@ -2,7 +2,7 @@
  * Profiles every admin GraphQL operation against a seeded PGlite database:
  * wall time (median of 3 runs) plus SQL statements issued per request.
  *
- *   pnpm --filter @prompt-proxy/proxy profile:graphql
+ *   pnpm --filter @proxy/proxy profile:graphql
  */
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
 
-import { createPgliteDatabase } from "@prompt-proxy/db";
+import { createPgliteDatabase } from "@proxy/db";
 import {
   agentSessions,
   apiKeys,
@@ -28,8 +28,8 @@ import {
   usageLedger,
   users,
   workspaces
-} from "@prompt-proxy/db";
-import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
+} from "@proxy/db";
+import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
 
 import { loadConfig } from "../src/config.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
@@ -84,7 +84,7 @@ async function createFixture() {
     ...process.env,
     DATABASE_URL: "",
     EVENT_STORE_PATH: "",
-    PROMPT_PROXY_TOKEN: "proxile-token",
+    PROXY_TOKEN: "proxile-token",
     OPENAI_API_KEY: "k",
     OPENAI_BASE_URL: "http://127.0.0.1:1",
     ANTHROPIC_API_KEY: "k",
@@ -310,7 +310,7 @@ const operations: Operation[] = [
   { name: "requests", query: "query { requests { requestId sessionId finalRoute selectedModel terminalStatus latencyMs selectedCost usage { totalTokens } routingConfig { configId configName version configHash } } }" },
   { name: "request", query: "query { request(requestId: \"request_10\") { request { requestId terminalStatus } events { eventId eventType payload } } }" },
   { name: "prompts", query: "query { prompts { data { artifactId requestId userId preview kind finalRoute selectedModel cost { selected } routingConfig { configId configName } } pagination { limit offset count } } }" },
-  { name: "prompt", query: "query { prompt(artifactId: \"artifact_10\") { artifact { artifactId rawText } request { requestId } requestArtifacts { artifactId kind } events { eventId eventType } } }" },
+  { name: "proxy", query: "query { prompt(artifactId: \"artifact_10\") { artifact { artifactId rawText } request { requestId } requestArtifacts { artifactId kind } events { eventId eventType } } }" },
   { name: "promptAccessAudit", query: "query { promptAccessAudit { id artifactId accessPath createdAt } }" },
   { name: "usage(route)", query: `query { usage(groupBy: route, start: "${RANGE.start}", end: "${RANGE.end}") { groupBy data ${usageGroupSelection} totals ${usageGroupSelection} } }` },
   { name: "usageTimeseries(model)", query: `query { usageTimeseries(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { groupBy interval start end groups ${usageGroupSelection} points { ts totals ${usageGroupSelection} groups } } }` },

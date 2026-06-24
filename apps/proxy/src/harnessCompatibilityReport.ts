@@ -6,7 +6,7 @@ import {
   type TranslationCompatibilityStatus,
   type TranslationDialect,
   type TranslationPair
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import {
   harnessFixtureCountForPath,

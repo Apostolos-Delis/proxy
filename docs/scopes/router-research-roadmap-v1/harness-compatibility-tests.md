@@ -4,7 +4,7 @@
 
 Create a harness compatibility matrix and golden test suite for every supported native and translated request path.
 
-This scope turns the 9router and OmniRoute lesson into Prompt Proxy practice: translation and streaming behavior must be fixture-backed before it becomes product behavior.
+This scope turns the 9router and OmniRoute lesson into Proxy practice: translation and streaming behavior must be fixture-backed before it becomes product behavior.
 
 ## Why This Matters
 
@@ -16,11 +16,11 @@ Coding harnesses are strict about protocol details:
 - Tools and streaming deltas are easy to subtly corrupt.
 - Provider usage metadata is inconsistent.
 
-Prompt Proxy should not rely on ad hoc manual testing for these paths.
+Proxy should not rely on ad hoc manual testing for these paths.
 
 ## Current State
 
-Prompt Proxy has smoke tests for mock OpenAI and Anthropic upstreams and harness smoke commands. It also has translator architecture for supported dialect paths.
+Proxy has smoke tests for mock OpenAI and Anthropic upstreams and harness smoke commands. It also has translator architecture for supported dialect paths.
 
 Missing:
 

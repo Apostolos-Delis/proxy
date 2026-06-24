@@ -18,9 +18,9 @@ import {
   providerModelHealth,
   routingConfigs,
   routingConfigVersions
-} from "@prompt-proxy/db";
-import { seedDatabase, seedOptionsFromEnv } from "@prompt-proxy/db/seed";
-import { composeClassifierInstructions, type RoutingConfig } from "@prompt-proxy/schema";
+} from "@proxy/db";
+import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
+import { composeClassifierInstructions, type RoutingConfig } from "@proxy/schema";
 
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
@@ -41,7 +41,7 @@ describe("routing config runtime resolution", () => {
     await seedDatabase(activeFixture.db, seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: organizationId,
       SEED_USER_ID: "local-user",
-      PROMPT_PROXY_TOKEN: "proxy-token"
+      PROXY_TOKEN: "proxy-token"
     }));
     await activeFixture.db
       .update(routingConfigVersions)
@@ -160,7 +160,7 @@ describe("routing config runtime resolution", () => {
     expect(response.status).toBe(200);
     // Classifier failure falls back to the routing config's limits.fallbackRoute
     // (seeded as "hard"), not the no-config "balanced" constant.
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
     expect(activeFixture.openai.records.filter((record) =>
       record.body.model === "route-classifier-retry-once"
     )).toHaveLength(1);
@@ -196,7 +196,7 @@ describe("routing config runtime resolution", () => {
     await response.text();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
+    expect(response.headers.get("x-proxy-route")).toBe("fast");
   });
 
   it("escalates past fallback-route surface gaps when the classifier fails", async () => {
@@ -229,7 +229,7 @@ describe("routing config runtime resolution", () => {
     await response.text();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
+    expect(response.headers.get("x-proxy-route")).toBe("fast");
   });
 
   it("uses OpenAI route tier settings from the assigned routing config", async () => {
@@ -295,8 +295,8 @@ describe("routing config runtime resolution", () => {
     );
 
     expect(response.status, body).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("xhigh");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("xhigh");
     expect(providerCall).toBeTruthy();
     expect(providerCall?.body.reasoning.effort).toBe("xhigh");
     expect(providerCall?.body.text.verbosity).toBe("high");
@@ -568,7 +568,7 @@ describe("routing config runtime resolution", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBeNull();
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBeNull();
     expect(providerCall).toBeTruthy();
     expect(providerCall?.body.reasoning).toBeUndefined();
   });
@@ -801,8 +801,8 @@ describe("routing config runtime resolution", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("deep");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("xhigh");
+    expect(response.headers.get("x-proxy-route")).toBe("deep");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("xhigh");
     expect(providerCall).toBeTruthy();
     expect(providerCall?.body.thinking).toEqual({ type: "adaptive", display: "summarized" });
     expect(providerCall?.body.output_config.effort).toBe("xhigh");
@@ -902,15 +902,15 @@ describe("routing config runtime resolution", () => {
       })
     });
 
-    const first = await sendRequest("prompt-pin-session", "debug the first failing test");
+    const first = await sendRequest("proxy-pin-session", "debug the first failing test");
     await first.text();
     await activeFixture.db
       .update(organizationSettings)
       .set({ systemPrompt: "Updated proxy policy." })
       .where(eq(organizationSettings.organizationId, organizationId));
-    const second = await sendRequest("prompt-pin-session", "debug the second failing test");
+    const second = await sendRequest("proxy-pin-session", "debug the second failing test");
     await second.text();
-    const third = await sendRequest("prompt-pin-session-new", "debug the third failing test");
+    const third = await sendRequest("proxy-pin-session-new", "debug the third failing test");
     await third.text();
 
     const providerCalls = activeFixture.openai.records.filter((record) =>
@@ -919,7 +919,7 @@ describe("routing config runtime resolution", () => {
     const [sessionRow] = await activeFixture.db
       .select({ metadata: agentSessions.metadata })
       .from(agentSessions)
-      .where(eq(agentSessions.externalSessionId, "prompt-pin-session"))
+      .where(eq(agentSessions.externalSessionId, "proxy-pin-session"))
       .limit(1);
     const artifactId = sessionRow?.metadata.pinnedSystemPromptArtifactId;
     const [pinnedArtifact] = typeof artifactId === "string"

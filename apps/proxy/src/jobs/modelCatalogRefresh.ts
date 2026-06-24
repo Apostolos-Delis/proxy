@@ -6,9 +6,9 @@ import {
   events,
   modelCatalog,
   providers,
-  type PromptProxyTransaction,
-  type PromptProxyTransactionalDatabase
-} from "@prompt-proxy/db";
+  type ProxyTransaction,
+  type ProxyTransactionalDatabase
+} from "@proxy/db";
 
 import type { Dialect } from "../types.js";
 import { createId, sha256, stableJson } from "../util.js";
@@ -104,7 +104,7 @@ export class ModelCatalogRefreshJob {
   private readonly now: () => Date;
 
   constructor(
-    private readonly db: PromptProxyTransactionalDatabase,
+    private readonly db: ProxyTransactionalDatabase,
     private readonly options: ModelCatalogRefreshOptions
   ) {
     this.sourceUrl = options.sourceUrl ?? MODELS_DEV_API_URL;
@@ -190,7 +190,7 @@ function parseModelsDevPayload(payload: unknown) {
   return rows;
 }
 
-async function applyRefresh(tx: PromptProxyTransaction, rows: RefreshModel[], now: Date) {
+async function applyRefresh(tx: ProxyTransaction, rows: RefreshModel[], now: Date) {
   const providerRows = await tx
     .select({ id: providers.id, slug: providers.slug, endpoints: providers.endpoints })
     .from(providers)
@@ -370,7 +370,7 @@ function effortValues(value: unknown) {
 }
 
 async function appendRefreshAudit(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   organizationId: string,
   payload: Record<string, unknown>
 ) {
@@ -384,7 +384,7 @@ async function appendRefreshAudit(
     scopeId: "models.dev",
     actorType: "system",
     actorId: "models.dev-refresh",
-    producer: "prompt-proxy.jobs.model-catalog-refresh",
+    producer: "proxy.jobs.model-catalog-refresh",
     eventType: payload.status === "completed"
       ? "model_catalog.refresh_completed"
       : "model_catalog.refresh_failed",
@@ -401,7 +401,7 @@ async function appendRefreshAudit(
   });
 }
 
-async function nextEventSequence(tx: PromptProxyTransaction, organizationId: string) {
+async function nextEventSequence(tx: ProxyTransaction, organizationId: string) {
   const [row] = await tx
     .select({
       sequence: sql<number>`coalesce(max(${events.sequence}), 0) + 1`

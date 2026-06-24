@@ -63,7 +63,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 ## RC-002: Enforce Measure-Only And Failure Forwarding Invariants
 
@@ -92,7 +92,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 Dependencies: RC-001.
 
@@ -124,8 +124,8 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/db test`
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/db test`
+- `pnpm --filter @proxy/proxy test`
 
 ## RC-004: Implement Compression Retrieval Resolver
 
@@ -154,7 +154,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 Dependencies: RC-003.
 
@@ -187,7 +187,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 Dependencies: RC-004.
 
@@ -219,7 +219,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 Dependencies: RC-005.
 
@@ -251,7 +251,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 Dependencies: RC-003, RC-004.
 
@@ -263,7 +263,7 @@ Goal: Let compressed blocks advertise recoverable originals when policy allows.
 
 Scope:
 
-- Emit `[prompt-proxy:compressed id=cmp_... sha256=...]` in eligible compressed blocks.
+- Emit `[prompt:compressed id=cmp_... sha256=...]` in eligible compressed blocks.
 - Add the marker only after original artifact storage succeeds.
 - Do not add custom provider-owned fields.
 - Choose provider-safe placement for Anthropic Messages, OpenAI Chat, and OpenAI Responses.
@@ -282,7 +282,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 Dependencies: RC-005, RC-007.
 
@@ -314,8 +314,8 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
-- `pnpm --filter @prompt-proxy/web test`
+- `pnpm --filter @proxy/proxy test`
+- `pnpm --filter @proxy/web test`
 
 Dependencies: RC-006, RC-007.
 
@@ -348,7 +348,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 Dependencies: RC-001.
 
@@ -380,7 +380,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 Dependencies: RC-010.
 
@@ -410,8 +410,8 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
-- `pnpm --filter @prompt-proxy/web test`
+- `pnpm --filter @proxy/proxy test`
+- `pnpm --filter @proxy/web test`
 
 Dependencies: RC-011.
 
@@ -442,7 +442,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 Dependencies: RC-001.
 
@@ -473,7 +473,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 Dependencies: RC-001.
 
@@ -504,7 +504,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 Dependencies: RC-001.
 
@@ -535,7 +535,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 Dependencies: RC-001.
 
@@ -567,7 +567,7 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 - `pnpm test`
 
 Dependencies: RC-013, RC-014, RC-015, RC-016.
@@ -580,7 +580,7 @@ Goal: Decide whether automatic model retrieval should ship in V1 or wait.
 
 Scope:
 
-- Prototype `prompt_proxy_retrieve_compressed` for Anthropic Messages and OpenAI Responses.
+- Prototype `proxy_retrieve_compressed` for Anthropic Messages and OpenAI Responses.
 - Verify tool-list stability across a session.
 - Verify translators and harnesses preserve the injected tool.
 - Document UX failure modes when the model calls the internal tool.
@@ -631,13 +631,13 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`
 
 ## RC-020: Use Marker-Owned Blocks In Harness Setup Edits
 
 Labels: `area:harnesses`, `area:setup`, `type:safety`
 
-Goal: Make setup edits safe by only replacing config blocks Prompt Proxy owns.
+Goal: Make setup edits safe by only replacing config blocks Proxy owns.
 
 Scope:
 
@@ -648,7 +648,7 @@ Scope:
 
 Acceptance criteria:
 
-- Re-running setup updates Prompt Proxy-owned blocks idempotently.
+- Re-running setup updates Proxy-owned blocks idempotently.
 - User-managed blocks with the same names are reported, not clobbered.
 - Generated snippets document marker behavior.
 
@@ -660,4 +660,4 @@ Likely files:
 
 Validation:
 
-- `pnpm --filter @prompt-proxy/proxy test`
+- `pnpm --filter @proxy/proxy test`

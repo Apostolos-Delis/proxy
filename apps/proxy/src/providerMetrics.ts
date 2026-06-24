@@ -46,7 +46,7 @@ export class ProviderMetrics {
   }
 
   recordTimeToFirstByte(input: ProviderMetricLabels & { stream: boolean; seconds: number }) {
-    this.metrics.observeHistogram("prompt_proxy_provider_time_to_first_byte_seconds", input.seconds, {
+    this.metrics.observeHistogram("proxy_provider_time_to_first_byte_seconds", input.seconds, {
       surface: input.surface,
       provider: input.provider,
       model: input.model,
@@ -55,7 +55,7 @@ export class ProviderMetrics {
   }
 
   recordProtocolMismatch(input: ProviderMetricLabels & { stream: boolean }) {
-    this.metrics.incrementCounter("prompt_proxy_provider_protocol_mismatches_total", {
+    this.metrics.incrementCounter("proxy_provider_protocol_mismatches_total", {
       surface: input.surface,
       provider: input.provider,
       model: input.model,
@@ -68,7 +68,7 @@ export class ProviderMetrics {
     bytes: number;
   }) {
     if (input.bytes <= 0) return;
-    this.metrics.incrementCounter("prompt_proxy_provider_stream_bytes_total", {
+    this.metrics.incrementCounter("proxy_provider_stream_bytes_total", {
       surface: input.surface,
       provider: input.provider,
       model: input.model,
@@ -81,7 +81,7 @@ export class ProviderMetrics {
     stream: boolean;
     stage: "before_provider" | "after_headers" | "after_bytes" | "unknown";
   }) {
-    this.metrics.incrementCounter("prompt_proxy_client_cancellations_total", {
+    this.metrics.incrementCounter("proxy_client_cancellations_total", {
       surface: input.surface,
       stream: input.stream ? "true" : "false",
       stage: input.stage
@@ -104,7 +104,7 @@ export class ProviderMetrics {
     const startedAtMs = this.providerAttemptStartedAtMs.get(input.providerAttemptId);
     const stream = this.providerAttemptStream.get(input.providerAttemptId) ?? "unknown";
 
-    this.metrics.incrementCounter("prompt_proxy_provider_attempts_total", {
+    this.metrics.incrementCounter("proxy_provider_attempts_total", {
       surface: input.surface,
       provider: input.provider,
       model,
@@ -114,7 +114,7 @@ export class ProviderMetrics {
       error_class: errorClass
     });
     if (startedAtMs !== undefined) {
-      this.metrics.observeHistogram("prompt_proxy_provider_attempt_duration_seconds", (performance.now() - startedAtMs) / 1000, {
+      this.metrics.observeHistogram("proxy_provider_attempt_duration_seconds", (performance.now() - startedAtMs) / 1000, {
         surface: input.surface,
         provider: input.provider,
         model,
@@ -123,7 +123,7 @@ export class ProviderMetrics {
       });
     }
     if (typeof input.metadata.observerError === "string") {
-      this.metrics.incrementCounter("prompt_proxy_sse_observer_parse_failures_total", {
+      this.metrics.incrementCounter("proxy_sse_observer_parse_failures_total", {
         surface: input.surface,
         provider: input.provider,
         model,
@@ -131,7 +131,7 @@ export class ProviderMetrics {
       });
     }
     if (input.status === "cancelled") {
-      this.metrics.incrementCounter("prompt_proxy_provider_stream_disconnects_total", {
+      this.metrics.incrementCounter("proxy_provider_stream_disconnects_total", {
         surface: input.surface,
         provider: input.provider,
         model,
@@ -139,7 +139,7 @@ export class ProviderMetrics {
       });
     }
     if (input.status === "completed" && input.usage === undefined) {
-      this.metrics.incrementCounter("prompt_proxy_missing_usage_total", {
+      this.metrics.incrementCounter("proxy_missing_usage_total", {
         surface: input.surface,
         provider: input.provider,
         model,
@@ -164,14 +164,14 @@ export class ProviderMetrics {
       provider: input.provider,
       model
     };
-    this.metrics.incrementCounter("prompt_proxy_usage_tokens_total", { ...usageLabels, usage_kind: "input" }, normalized.inputTokens);
-    this.metrics.incrementCounter("prompt_proxy_usage_tokens_total", { ...usageLabels, usage_kind: "cached_input" }, normalized.cachedInputTokens);
-    this.metrics.incrementCounter("prompt_proxy_usage_tokens_total", { ...usageLabels, usage_kind: "cache_creation_input" }, normalized.cacheCreationInputTokens);
-    this.metrics.incrementCounter("prompt_proxy_usage_tokens_total", { ...usageLabels, usage_kind: "output" }, normalized.outputTokens);
-    this.metrics.incrementCounter("prompt_proxy_usage_tokens_total", { ...usageLabels, usage_kind: "reasoning" }, normalized.reasoningTokens);
-    this.metrics.incrementCounter("prompt_proxy_usage_tokens_total", { ...usageLabels, usage_kind: "total" }, normalized.totalTokens);
+    this.metrics.incrementCounter("proxy_usage_tokens_total", { ...usageLabels, usage_kind: "input" }, normalized.inputTokens);
+    this.metrics.incrementCounter("proxy_usage_tokens_total", { ...usageLabels, usage_kind: "cached_input" }, normalized.cachedInputTokens);
+    this.metrics.incrementCounter("proxy_usage_tokens_total", { ...usageLabels, usage_kind: "cache_creation_input" }, normalized.cacheCreationInputTokens);
+    this.metrics.incrementCounter("proxy_usage_tokens_total", { ...usageLabels, usage_kind: "output" }, normalized.outputTokens);
+    this.metrics.incrementCounter("proxy_usage_tokens_total", { ...usageLabels, usage_kind: "reasoning" }, normalized.reasoningTokens);
+    this.metrics.incrementCounter("proxy_usage_tokens_total", { ...usageLabels, usage_kind: "total" }, normalized.totalTokens);
     const cost = usageCostMicros(pricingForProviderModel(this.config.modelCosts, input.provider, model), normalized);
-    this.metrics.incrementCounter("prompt_proxy_cost_usd_total", {
+    this.metrics.incrementCounter("proxy_cost_usd_total", {
       ...usageLabels,
       cost_kind: "provider"
     }, cost.totalCostMicros / 1_000_000);
@@ -184,7 +184,7 @@ export class ProviderMetrics {
       attempt.provider === provider &&
       attempt.terminalStatus === "pending"
     ).length;
-    this.metrics.setGauge("prompt_proxy_terminal_pending_provider_attempts", count, { surface, provider });
+    this.metrics.setGauge("proxy_terminal_pending_provider_attempts", count, { surface, provider });
   }
 }
 

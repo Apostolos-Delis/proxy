@@ -8,14 +8,14 @@ import {
   organizationMembers,
   organizations,
   users,
-  type PromptProxyTransaction,
-  type PromptProxyTransactionalDatabase
-} from "@prompt-proxy/db";
+  type ProxyTransaction,
+  type ProxyTransactionalDatabase
+} from "@proxy/db";
 import {
   INVITATION_STATUSES,
   ORGANIZATION_MEMBER_ROLES,
   ORGANIZATION_MEMBER_STATUSES
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import { createId, sha256 } from "../util.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
@@ -42,7 +42,7 @@ const updateMemberRoleBodySchema = z.object({
   role: memberRoleSchema
 }).strict();
 
-const USER_ADMIN_PRODUCER = "prompt-proxy.admin.users";
+const USER_ADMIN_PRODUCER = "proxy.admin.users";
 
 export class UserAdminError extends Error {
   constructor(
@@ -56,7 +56,7 @@ export class UserAdminError extends Error {
 
 export class UserAdminService {
   constructor(
-    private readonly db: PromptProxyTransactionalDatabase,
+    private readonly db: ProxyTransactionalDatabase,
     private readonly options: { invitationTtlSeconds: number }
   ) {}
 
@@ -425,7 +425,7 @@ function newInvitationToken() {
   return randomBytes(32).toString("base64url");
 }
 
-async function rejectActiveMemberEmail(tx: PromptProxyTransaction, organizationId: string, email: string) {
+async function rejectActiveMemberEmail(tx: ProxyTransaction, organizationId: string, email: string) {
   const [member] = await tx
     .select({ userId: organizationMembers.userId })
     .from(organizationMembers)
@@ -440,7 +440,7 @@ async function rejectActiveMemberEmail(tx: PromptProxyTransaction, organizationI
 }
 
 async function rejectPendingInvitation(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   organizationId: string,
   email: string,
   now: Date
@@ -458,7 +458,7 @@ async function rejectPendingInvitation(
   if (pending) throw new UserAdminError("invitation_already_pending", 409);
 }
 
-async function rejectLastActiveOwner(tx: PromptProxyTransaction, organizationId: string, userId: string) {
+async function rejectLastActiveOwner(tx: ProxyTransaction, organizationId: string, userId: string) {
   const [other] = await tx
     .select({ userId: organizationMembers.userId })
     .from(organizationMembers)
@@ -472,7 +472,7 @@ async function rejectLastActiveOwner(tx: PromptProxyTransaction, organizationId:
   if (!other) throw new UserAdminError("last_owner", 409);
 }
 
-async function lockedInvitationById(tx: PromptProxyTransaction, organizationId: string, invitationId: string) {
+async function lockedInvitationById(tx: ProxyTransaction, organizationId: string, invitationId: string) {
   await tx.execute(sql`
     select id
     from invitations
@@ -491,7 +491,7 @@ async function lockedInvitationById(tx: PromptProxyTransaction, organizationId: 
   return invitation ?? null;
 }
 
-async function lockedInvitationByTokenHash(tx: PromptProxyTransaction, tokenHash: string) {
+async function lockedInvitationByTokenHash(tx: ProxyTransaction, tokenHash: string) {
   await tx.execute(sql`
     select id
     from invitations
@@ -507,7 +507,7 @@ async function lockedInvitationByTokenHash(tx: PromptProxyTransaction, tokenHash
 }
 
 async function upsertInvitedUser(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   email: string,
   name: string | null,
   now: Date
@@ -539,7 +539,7 @@ async function upsertInvitedUser(
 }
 
 async function upsertMembership(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   organizationId: string,
   userId: string,
   role: typeof memberRoleSchema._output,
@@ -565,7 +565,7 @@ async function upsertMembership(
     });
 }
 
-async function memberById(tx: PromptProxyTransaction, organizationId: string, userId: string) {
+async function memberById(tx: ProxyTransaction, organizationId: string, userId: string) {
   const [member] = await tx
     .select()
     .from(organizationMembers)

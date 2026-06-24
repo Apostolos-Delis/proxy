@@ -86,7 +86,7 @@ function storeKeyStep(key: string, tokenPath: string): ManualStep {
     title: "Store the key",
     detail: "The selected harness setup reads this file.",
     snippet: [
-      "mkdir -p ~/.prompt-proxy",
+      "mkdir -p ~/.proxy",
       `printf '%s\\n' ${singleQuote(key)} > ${tokenPath}`,
       `chmod 600 ${tokenPath}`
     ].join("\n"),
@@ -97,7 +97,7 @@ function storeKeyStep(key: string, tokenPath: string): ManualStep {
 function claudeCodeStep(apiBase: string, tokenPath: string): ManualStep {
   return {
     title: "Point Claude Code at the proxy",
-    detail: "Merge these settings into ~/.claude/settings.json. The hosted setup script tracks its owned fields in ~/.prompt-proxy/claude-code-settings.marker.json and reports unmarked conflicts.",
+    detail: "Merge these settings into ~/.claude/settings.json. The hosted setup script tracks its owned fields in ~/.proxy/claude-code-settings.marker.json and reports unmarked conflicts.",
     snippet: JSON.stringify(
       {
         model: "claude-router-auto",
@@ -119,11 +119,11 @@ function codexExportStep(harnesses: HarnessSetupSelection): ManualStep {
   const tokenPath = tokenPathForHarnesses(harnesses);
   return {
     title: "Export the key for Codex",
-    detail: `Add this Prompt Proxy-owned marker block to ~/.zshrc (or ~/.bashrc) so Codex can read ${envKey}.`,
+    detail: `Add this Proxy-owned marker block to ~/.zshrc (or ~/.bashrc) so Codex can read ${envKey}.`,
     snippet: [
-      `# >>> prompt-proxy codex ${envKey} >>>`,
+      `# >>> prompt codex ${envKey} >>>`,
       `export ${envKey}="$(cat ${tokenPath})"`,
-      `# <<< prompt-proxy codex ${envKey} <<<`
+      `# <<< prompt codex ${envKey} <<<`
     ].join("\n"),
     language: "shell"
   };
@@ -134,21 +134,21 @@ function codexProviderStep(apiBase: string, harnesses: HarnessSetupSelection): M
   const provider = codexProviderForHarnesses(harnesses);
   return {
     title: "Register the Codex provider",
-    detail: "Add these Prompt Proxy-owned marker blocks to ~/.codex/config.toml. If you already manage model/model_provider or the same provider table outside these markers, keep yours and resolve the conflict manually.",
+    detail: "Add these Proxy-owned marker blocks to ~/.codex/config.toml. If you already manage model/model_provider or the same provider table outside these markers, keep yours and resolve the conflict manually.",
     snippet: [
-      `# >>> prompt-proxy codex defaults >>>`,
+      `# >>> prompt codex defaults >>>`,
       `model = "router-auto"`,
       `model_provider = "${provider}"`,
-      `# <<< prompt-proxy codex defaults <<<`,
+      `# <<< prompt codex defaults <<<`,
       "",
-      `# >>> prompt-proxy codex provider ${provider} >>>`,
+      `# >>> prompt codex provider ${provider} >>>`,
       `[model_providers.${provider}]`,
-      `name = "Prompt Proxy"`,
+      `name = "Proxy"`,
       `base_url = "${apiBase}/v1"`,
       `env_key = "${envKey}"`,
       `wire_api = "responses"`,
       "supports_websockets = true",
-      `# <<< prompt-proxy codex provider ${provider} <<<`
+      `# <<< prompt codex provider ${provider} <<<`
     ].join("\n"),
     language: "toml"
   };
@@ -157,14 +157,14 @@ function codexProviderStep(apiBase: string, harnesses: HarnessSetupSelection): M
 function opencodeConfigStep(apiBase: string): ManualStep {
   return {
     title: "Register the opencode provider",
-    detail: "Merge this into ~/.config/opencode/opencode.json, or into a project opencode.json. The hosted setup script tracks owned opencode provider/auth entries with sidecar markers in ~/.prompt-proxy/ and reports unmarked conflicts.",
+    detail: "Merge this into ~/.config/opencode/opencode.json, or into a project opencode.json. The hosted setup script tracks owned opencode provider/auth entries with sidecar markers in ~/.proxy/ and reports unmarked conflicts.",
     snippet: JSON.stringify(
       {
         $schema: "https://opencode.ai/config.json",
         provider: {
-          "prompt-proxy-chat": {
+          "prompt-chat": {
             npm: "@ai-sdk/openai-compatible",
-            name: "Prompt Proxy Chat",
+            name: "Proxy Chat",
             options: {
               baseURL: `${apiBase}/v1`
             },
@@ -177,8 +177,8 @@ function opencodeConfigStep(apiBase: string): ManualStep {
             }
           }
         },
-        model: "prompt-proxy-chat/router-auto",
-        small_model: "prompt-proxy-chat/router-fast"
+        model: "prompt-chat/router-auto",
+        small_model: "prompt-chat/router-fast"
       },
       null,
       2
@@ -190,11 +190,11 @@ function opencodeConfigStep(apiBase: string): ManualStep {
 function opencodeAuthStep(key: string): ManualStep {
   return {
     title: "Connect opencode credentials",
-    detail: "Run /connect in opencode, choose prompt-proxy-chat, and paste this key. opencode stores it in ~/.local/share/opencode/auth.json.",
+    detail: "Run /connect in opencode, choose prompt-chat, and paste this key. opencode stores it in ~/.local/share/opencode/auth.json.",
     snippet: [
       "opencode",
       "/connect",
-      "prompt-proxy-chat",
+      "prompt-chat",
       key
     ].join("\n"),
     language: "shell"
@@ -203,18 +203,18 @@ function opencodeAuthStep(key: string): ManualStep {
 
 export function tokenPathForHarnesses(harnesses: HarnessSetupSelection = defaultHarnessSetupSelection) {
   const selected = selectedHarnesses(harnesses);
-  if (selected.length !== 1) return "~/.prompt-proxy/token";
+  if (selected.length !== 1) return "~/.proxy/token";
   const [harness] = selected;
-  if (harness === "codex") return "~/.prompt-proxy/codex.token";
-  if (harness === "claude-code") return "~/.prompt-proxy/claude-code.token";
-  if (harness === "opencode") return "~/.prompt-proxy/opencode.token";
-  return "~/.prompt-proxy/token";
+  if (harness === "codex") return "~/.proxy/codex.token";
+  if (harness === "claude-code") return "~/.proxy/claude-code.token";
+  if (harness === "opencode") return "~/.proxy/opencode.token";
+  return "~/.proxy/token";
 }
 
 function codexEnvForHarnesses(harnesses: HarnessSetupSelection) {
-  return harnesses.length === 1 && harnesses[0] === "codex" ? "PROMPT_PROXY_CODEX_TOKEN" : "PROMPT_PROXY_TOKEN";
+  return harnesses.length === 1 && harnesses[0] === "codex" ? "PROXY_CODEX_TOKEN" : "PROXY_TOKEN";
 }
 
 function codexProviderForHarnesses(harnesses: HarnessSetupSelection) {
-  return harnesses.length === 1 && harnesses[0] === "codex" ? "prompt_proxy_codex" : "prompt_proxy";
+  return harnesses.length === 1 && harnesses[0] === "codex" ? "proxy_codex" : "proxy";
 }

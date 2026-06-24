@@ -20,7 +20,7 @@ Goal: Keep compatibility claims from drifting after the golden suite lands.
 ## Validation
 
 - Run `pnpm smoke:harnesses`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- harness-compatibility`.
+- Run `pnpm --filter @proxy/proxy test -- harness-compatibility`.
 - Run `pnpm lint`.
 
 ## Likely Files

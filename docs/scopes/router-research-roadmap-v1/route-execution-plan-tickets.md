@@ -2,7 +2,7 @@
 
 These tickets break the route execution plan scope into PR-sized units.
 
-The intended delivery shape is evidence first: record a durable plan for the routing behavior Prompt Proxy already has, then add richer candidate evaluation, provider-attempt linkage, and console visibility. This scope does not add fallback behavior, adaptive target ordering, new providers, or broad translation expansion.
+The intended delivery shape is evidence first: record a durable plan for the routing behavior Proxy already has, then add richer candidate evaluation, provider-attempt linkage, and console visibility. This scope does not add fallback behavior, adaptive target ordering, new providers, or broad translation expansion.
 
 ## Delivery Rules
 
@@ -70,7 +70,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/db test`.
+- Run `pnpm --filter @proxy/db test`.
 - Run `pnpm db:migrate` against local Postgres.
 
 Likely files:
@@ -102,7 +102,7 @@ Acceptance criteria:
 Validation:
 
 - Add or update event projection tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -136,7 +136,7 @@ Acceptance criteria:
 Validation:
 
 - Add route plan builder unit tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -167,7 +167,7 @@ Acceptance criteria:
 Validation:
 
 - Add ordering tests around proxy request execution.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 - Run `pnpm smoke` when local services are available.
 
 Likely files:
@@ -199,7 +199,7 @@ Acceptance criteria:
 Validation:
 
 - Add persistence tests for provider attempt linkage.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -233,7 +233,7 @@ Validation:
 
 - Add route plan builder tests for multi-target configs.
 - Add integration coverage that stored config hashes survive later config updates.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -264,8 +264,8 @@ Acceptance criteria:
 Validation:
 
 - Add route plan tests for compatibility skip reasons.
-- Run `pnpm --filter @prompt-proxy/schema test`.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/schema test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -296,7 +296,7 @@ Acceptance criteria:
 Validation:
 
 - Add unit tests for candidate factor serialization.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -328,7 +328,7 @@ Acceptance criteria:
 Validation:
 
 - Add or update GraphQL/admin serializer tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -360,7 +360,7 @@ Acceptance criteria:
 Validation:
 
 - Add or update web data/component tests.
-- Run `pnpm --filter @prompt-proxy/web test`.
+- Run `pnpm --filter @proxy/web test`.
 - Run `pnpm typecheck`.
 
 Likely files:
@@ -393,8 +393,8 @@ Validation:
 
 - Add admin query tests for each supported filter.
 - Add web data tests for filter serialization.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
-- Run `pnpm --filter @prompt-proxy/web test`.
+- Run `pnpm --filter @proxy/proxy test`.
+- Run `pnpm --filter @proxy/web test`.
 
 Likely files:
 

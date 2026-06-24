@@ -5,10 +5,10 @@ import {
   providerAttempts,
   requests,
   usageLedger,
-  type PromptProxyDbSession,
-  type PromptProxyTransaction,
-  type PromptProxyTransactionalDatabase
-} from "@prompt-proxy/db";
+  type ProxyDbSession,
+  type ProxyTransaction,
+  type ProxyTransactionalDatabase
+} from "@proxy/db";
 
 import { jsonPayload, type RequestState, type RequestStateGate, type RequestStateStoreLike } from "../events.js";
 import type { RouteContext } from "../types.js";
@@ -18,8 +18,8 @@ import { knownSurfaceValue, numberValue, routingConfigSnapshotValue, stringValue
 
 export class PersistentRequestStateStore implements RequestStateStoreLike {
   constructor(
-    private readonly db: PromptProxyTransactionalDatabase,
-    private readonly readDb: PromptProxyDbSession,
+    private readonly db: ProxyTransactionalDatabase,
+    private readonly readDb: ProxyDbSession,
     private readonly organizationId: string
   ) {}
 
@@ -190,7 +190,7 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
   }
 }
 
-export async function persistRequestReceived(tx: PromptProxyTransaction, event: {
+export async function persistRequestReceived(tx: ProxyTransaction, event: {
   tenantId: string;
   workspaceId?: string;
   scopeId: string;
@@ -245,7 +245,7 @@ export async function persistRequestReceived(tx: PromptProxyTransaction, event: 
     });
 }
 
-export async function persistRoutingContext(tx: PromptProxyTransaction, event: {
+export async function persistRoutingContext(tx: ProxyTransaction, event: {
   scopeId: string;
   payload: Record<string, unknown>;
 }) {

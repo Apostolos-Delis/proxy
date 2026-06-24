@@ -10,10 +10,10 @@ import {
   routingConfigs,
   routingConfigVersions,
   workspaces,
-  type PromptProxyTransaction,
-  type PromptProxyTransactionalDatabase
-} from "@prompt-proxy/db";
-import { routingConfigSchema, type RoutingConfig } from "@prompt-proxy/schema";
+  type ProxyTransaction,
+  type ProxyTransactionalDatabase
+} from "@proxy/db";
+import { routingConfigSchema, type RoutingConfig } from "@proxy/schema";
 
 import { createId } from "../util.js";
 import { AdminMutationError } from "./adminErrors.js";
@@ -37,7 +37,7 @@ const assignApiKeyRoutingConfigBodySchema = z.object({
 export class RoutingConfigAdminError extends AdminMutationError {}
 
 export class RoutingConfigAdminService {
-  constructor(private readonly db: PromptProxyTransactionalDatabase) {}
+  constructor(private readonly db: ProxyTransactionalDatabase) {}
 
   async createConfig(input: {
     organizationId: string;
@@ -99,7 +99,7 @@ export class RoutingConfigAdminService {
         scopeId: configId,
         correlationId: versionId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.routing-configs",
+        producer: "proxy.admin.routing-configs",
         eventType: "routing_config.created",
         payload: {
           configId,
@@ -118,7 +118,7 @@ export class RoutingConfigAdminService {
         scopeId: configId,
         correlationId: versionId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.routing-configs",
+        producer: "proxy.admin.routing-configs",
         eventType: "routing_config.version_created",
         payload: {
           configId,
@@ -192,7 +192,7 @@ export class RoutingConfigAdminService {
         scopeId: input.configId,
         correlationId: versionId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.routing-configs",
+        producer: "proxy.admin.routing-configs",
         eventType: "routing_config.version_created",
         payload: {
           configId: input.configId,
@@ -265,7 +265,7 @@ export class RoutingConfigAdminService {
         scopeId: input.configId,
         correlationId: input.versionId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.routing-configs",
+        producer: "proxy.admin.routing-configs",
         eventType: "routing_config.version_activated",
         payload: {
           configId: input.configId,
@@ -339,7 +339,7 @@ export class RoutingConfigAdminService {
         scopeId: input.apiKeyId,
         correlationId: routingConfigId ?? input.apiKeyId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.api-keys",
+        producer: "proxy.admin.api-keys",
         eventType: "routing_config.api_key_assignment_changed",
         payload: {
           apiKeyId: input.apiKeyId,
@@ -394,7 +394,7 @@ export class RoutingConfigAdminService {
         scopeId: input.configId,
         correlationId: configRow.activeVersionId ?? input.configId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.routing-configs",
+        producer: "proxy.admin.routing-configs",
         eventType: "routing_config.archived",
         payload: {
           configId: input.configId,
@@ -415,7 +415,7 @@ export class RoutingConfigAdminService {
   }
 }
 
-async function lockedConfig(tx: PromptProxyTransaction, organizationId: string, workspaceId: string, configId: string) {
+async function lockedConfig(tx: ProxyTransaction, organizationId: string, workspaceId: string, configId: string) {
   await tx.execute(sql`
     select id
     from routing_configs
@@ -436,7 +436,7 @@ async function lockedConfig(tx: PromptProxyTransaction, organizationId: string, 
   return config ?? null;
 }
 
-async function nextVersion(tx: PromptProxyTransaction, organizationId: string, configId: string) {
+async function nextVersion(tx: ProxyTransaction, organizationId: string, configId: string) {
   const [row] = await tx
     .select({
       version: sql<number>`coalesce(max(${routingConfigVersions.version}), 0) + 1`
@@ -449,7 +449,7 @@ async function nextVersion(tx: PromptProxyTransaction, organizationId: string, c
   return Number(row?.version ?? 1);
 }
 
-async function rejectDuplicateSlug(tx: PromptProxyTransaction, organizationId: string, workspaceId: string, slug: string) {
+async function rejectDuplicateSlug(tx: ProxyTransaction, organizationId: string, workspaceId: string, slug: string) {
   const [existing] = await tx
     .select({ id: routingConfigs.id })
     .from(routingConfigs)
@@ -463,7 +463,7 @@ async function rejectDuplicateSlug(tx: PromptProxyTransaction, organizationId: s
 }
 
 async function validateClassifierProvider(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   organizationId: string,
   config: RoutingConfig
 ) {
@@ -490,7 +490,7 @@ async function validateClassifierProvider(
 }
 
 async function validateRoutingConfigPublishability(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   organizationId: string,
   config: RoutingConfig
 ) {
@@ -528,7 +528,7 @@ function canServeCurrentSurface(endpoints: { dialect: string; path: string }[]) 
 }
 
 async function hasProviderCredential(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   organizationId: string,
   providerId: string
 ) {
@@ -545,7 +545,7 @@ async function hasProviderCredential(
 }
 
 async function providerForSlug(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   organizationId: string,
   slug: string
 ) {
@@ -571,7 +571,7 @@ async function providerForSlug(
 }
 
 export async function routingConfigForAssignment(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   organizationId: string,
   workspaceId: string,
   configId: string
@@ -599,7 +599,7 @@ export async function routingConfigForAssignment(
 }
 
 async function routingConfigVersion(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   organizationId: string,
   configId: string,
   versionId: string
@@ -617,7 +617,7 @@ async function routingConfigVersion(
 }
 
 async function routingConfigInUse(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   organizationId: string,
   workspaceId: string,
   configId: string

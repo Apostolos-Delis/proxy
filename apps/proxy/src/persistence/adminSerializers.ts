@@ -4,8 +4,8 @@ import {
   providerAttempts,
   routeDecisions,
   usageLedger
-} from "@prompt-proxy/db";
-import { ROUTE_NAMES, type RouteTarget, type RoutingConfig } from "@prompt-proxy/schema";
+} from "@proxy/db";
+import { ROUTE_NAMES, type RouteTarget, type RoutingConfig } from "@proxy/schema";
 
 import { anthropicEffortForModel, nearestReasoningEffort, reasoningEffortsFromCapabilities } from "../catalog.js";
 import type { JsonObject } from "../types.js";

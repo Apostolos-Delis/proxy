@@ -1,4 +1,4 @@
-import { anthropicEffortForModel, type Effort } from "@prompt-proxy/schema";
+import { anthropicEffortForModel, type Effort } from "@proxy/schema";
 
 export type RoutingConfigThinking = {
   type?: string;

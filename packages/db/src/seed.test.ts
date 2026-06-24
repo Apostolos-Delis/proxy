@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { eq, isNull } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import type { RoutingConfig } from "@prompt-proxy/schema";
+import type { RoutingConfig } from "@proxy/schema";
 
 import { hashApiKey } from "./apiKeyHash.js";
 import { createPgliteDatabase } from "./client.js";
@@ -46,7 +46,7 @@ describe("database seed", () => {
       SEED_USER_NAME: "Seed User",
       ANTHROPIC_BALANCED_MODEL: "claude-sonnet-seed",
       ANTHROPIC_HARD_MODEL: "claude-sonnet-seed",
-      PROMPT_PROXY_TOKEN: "seed-proxy-token"
+      PROXY_TOKEN: "seed-token"
     });
 
     await seedDatabase(db, options);
@@ -223,8 +223,8 @@ describe("database seed", () => {
     expect(keyRows[0]?.workspaceId).toBe(defaultWorkspaceId("org_seed"));
     expect(keyRows[0]?.routingConfigId).toBe("org_seed:routing-config:default");
     expect(keyRows[0]?.userId).toBe("user_seed");
-    expect(keyRows[0]?.keyHash).not.toBe("seed-proxy-token");
-    expect(keyRows[0]?.keyHash).toBe(hashApiKey("seed-proxy-token"));
+    expect(keyRows[0]?.keyHash).not.toBe("seed-token");
+    expect(keyRows[0]?.keyHash).toBe(hashApiKey("seed-token"));
     expect(keyRows[0]?.keyHash).toMatch(/^sha256:[a-f0-9]{64}$/);
   });
 
@@ -381,7 +381,7 @@ describe("database seed", () => {
     await expect(seedDatabase(db, seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_token_b",
       SEED_USER_ID: "user_token_b"
-    }))).rejects.toThrow("set a unique PROMPT_PROXY_TOKEN");
+    }))).rejects.toThrow("set a unique PROXY_TOKEN");
 
     const orgRows = await db.select().from(organizations).where(eq(organizations.id, "org_token_b"));
     await client.close();

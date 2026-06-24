@@ -67,7 +67,7 @@ Acceptance criteria:
 Validation:
 
 - Add unit tests for enabled, disabled, and sink-failure behavior.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 - Run `pnpm typecheck`.
 
 Likely files:
@@ -100,7 +100,7 @@ Acceptance criteria:
 Validation:
 
 - Add integration tests that exercise success, auth failure, malformed body, and cancellation/error paths.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -131,7 +131,7 @@ Acceptance criteria:
 Validation:
 
 - Add tests for explicit route, auto-classified route, classifier failure, provider failure, successful stream, malformed stream event, and client cancellation.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -165,7 +165,7 @@ Acceptance criteria:
 Validation:
 
 - Add endpoint tests for disabled, authorized, unauthorized, and content-type behavior.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 - Run `pnpm smoke` if the smoke profile starts the proxy.
 
 Likely files:
@@ -200,8 +200,8 @@ Acceptance criteria:
 Validation:
 
 - Add unit/integration tests for outbox metric updates and database error paths where practical.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
-- Run `pnpm --filter @prompt-proxy/db test` if schema or migration code changes.
+- Run `pnpm --filter @proxy/proxy test`.
+- Run `pnpm --filter @proxy/db test` if schema or migration code changes.
 
 Likely files:
 

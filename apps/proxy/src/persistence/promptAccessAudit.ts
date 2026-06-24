@@ -2,14 +2,14 @@ import { desc, eq } from "drizzle-orm";
 
 import {
   promptAccessAudit,
-  type PromptProxyDbSession
-} from "@prompt-proxy/db";
-import type { RouteName } from "@prompt-proxy/schema";
+  type ProxyDbSession
+} from "@proxy/db";
+import type { RouteName } from "@proxy/schema";
 
 import { createId } from "../util.js";
 
 export class PromptAccessAuditStore {
-  constructor(private readonly db: PromptProxyDbSession) {}
+  constructor(private readonly db: ProxyDbSession) {}
 
   async append(input: {
     organizationId: string;

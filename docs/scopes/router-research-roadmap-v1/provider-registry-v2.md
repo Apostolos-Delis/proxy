@@ -8,7 +8,7 @@ Provider Registry V2 builds on [Provider Architecture V1](../provider-architectu
 
 ## Why This Matters
 
-LiteLLM, 9router, and OmniRoute show that provider count grows quickly. Static provider code works for a local router, but Prompt Proxy needs organization-scoped governance:
+LiteLLM, 9router, and OmniRoute show that provider count grows quickly. Static provider code works for a local router, but Proxy needs organization-scoped governance:
 
 - provider credentials must be encrypted or referenced
 - org-defined providers must not receive operator env keys
@@ -20,7 +20,7 @@ LiteLLM, 9router, and OmniRoute show that provider count grows quickly. Static p
 
 ## Current State
 
-Prompt Proxy has provider/account concepts and existing architecture docs for provider decoupling. Runtime still needs a durable registry that fully owns:
+Proxy has provider/account concepts and existing architecture docs for provider decoupling. Runtime still needs a durable registry that fully owns:
 
 - provider endpoint dialects
 - auth style

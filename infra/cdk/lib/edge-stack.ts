@@ -19,22 +19,22 @@ import { Bucket, CfnBucketPolicy } from "aws-cdk-lib/aws-s3";
 import { CfnIPSet, CfnWebACL } from "aws-cdk-lib/aws-wafv2";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
-import type { PromptProxyNetworkStack } from "./network-stack.js";
-import type { PromptProxyWebStack } from "./web-stack.js";
+import { resourceName, type ProxyEnvironmentConfig } from "./config.js";
+import type { ProxyNetworkStack } from "./network-stack.js";
+import type { ProxyWebStack } from "./web-stack.js";
 
-export type PromptProxyEdgeStackProps = StackProps & {
-  config: PromptProxyEnvironmentConfig;
-  network: PromptProxyNetworkStack;
-  web: PromptProxyWebStack;
+export type ProxyEdgeStackProps = StackProps & {
+  config: ProxyEnvironmentConfig;
+  network: ProxyNetworkStack;
+  web: ProxyWebStack;
   adminAllowedCidrs: string[];
 };
 
-export class PromptProxyEdgeStack extends Stack {
+export class ProxyEdgeStack extends Stack {
   readonly distribution: Distribution;
   readonly webAcl: CfnWebACL;
 
-  constructor(scope: Construct, id: string, props: PromptProxyEdgeStackProps) {
+  constructor(scope: Construct, id: string, props: ProxyEdgeStackProps) {
     super(scope, id, props);
 
     const { adminAllowedCidrs, config, network, web } = props;
@@ -142,7 +142,7 @@ function handler(event) {
     new CfnOutput(this, "WebAclArn", { value: webAcl.attrArn });
   }
 
-  private createWebAcl(config: PromptProxyEnvironmentConfig, adminAllowedCidrs: string[]) {
+  private createWebAcl(config: ProxyEnvironmentConfig, adminAllowedCidrs: string[]) {
     const rules: CfnWebACL.RuleProperty[] = [
       {
         name: "RateLimit",
@@ -178,7 +178,7 @@ function handler(event) {
   }
 }
 
-function adminAccessStatement(scope: Construct, config: PromptProxyEnvironmentConfig, cidrs: string[]) {
+function adminAccessStatement(scope: Construct, config: ProxyEnvironmentConfig, cidrs: string[]) {
   const ipv4Cidrs = cidrs.filter((cidr) => !cidr.includes(":"));
   const ipv6Cidrs = cidrs.filter((cidr) => cidr.includes(":"));
   const allowedIpStatements: CfnWebACL.StatementProperty[] = [];

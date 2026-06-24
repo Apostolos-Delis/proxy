@@ -60,7 +60,7 @@ function summarizeShellOutput(text: string, commandClass: ShellCommandClass): st
   const important = lines.filter(importantShellLine);
   const retained = uniqueLines([...important.slice(-80), ...lines.slice(-40)]);
   const summary = [
-    `[prompt-proxy lossy shell summary; commandClass=${commandClass}; originalLines=${lines.length}; originalChars=${text.length}]`,
+    `[prompt lossy shell summary; commandClass=${commandClass}; originalLines=${lines.length}; originalChars=${text.length}]`,
     ...retained
   ].join("\n");
   return summary.length < text.length ? summary : undefined;

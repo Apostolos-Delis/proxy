@@ -9,7 +9,7 @@
 ## Goal
 
 Let a user authenticate upstream Anthropic traffic with a **Claude Pro/Max/Team/Enterprise
-subscription token** instead of a pay-as-you-go API key, bound per prompt-proxy API key the same way
+subscription token** instead of a pay-as-you-go API key, bound per prompt API key the same way
 BYOK provider keys already are.
 
 Scope of V1 is deliberately narrow:
@@ -219,7 +219,7 @@ dropped when the branch is split).
 
 ```text
 POST /v1/messages   AND   POST /v1/messages/count_tokens     (both forward via proxy.headersFor)
-  -> authenticate prompt-proxy API key -> org, workspace, api_key, owner
+  -> authenticate prompt API key -> org, workspace, api_key, owner
   -> ProviderCredentialStore.resolveForRequest({ org, apiKey, provider: "anthropic" })
        -> cache hit (30s by account.id) -> return cached credential   (flag re-checked downstream in headersFor)
        -> binding -> load provider_account
@@ -285,7 +285,7 @@ The admin API must continue to **never return the token** — only `secret_hint`
 latter is already on the `ProviderAccount` output type).
 
 Because `CreateProviderCredentialInput` and the `Settings` type change, **regenerate the schema + client**:
-`pnpm --filter @prompt-proxy/proxy schema:print` then the web `codegen`, before the web code will compile.
+`pnpm --filter @proxy/proxy schema:print` then the web `codegen`, before the web code will compile.
 
 ## Web App Scope
 
@@ -354,7 +354,7 @@ A real `sk-ant-oat01-` token is required; none of the below can be proven from c
 
 ```text
 1. Mint a token via `claude setup-token` on a Pro/Max account.
-2. Bind it to a personal prompt-proxy API key with the flag ON.
+2. Bind it to a personal prompt API key with the flag ON.
 3. Run a real Claude Code request through the proxy and confirm a 200 from api.anthropic.com.
 4. Confirm whether the org system-prompt prepend / classifier rewrite trips any fingerprint check, and
    whether a specific anthropic-beta / minimum anthropic-version is required.

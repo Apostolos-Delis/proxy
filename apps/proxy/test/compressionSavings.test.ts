@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { compressionReceipts, defaultWorkspaceId, organizations, requests, workspaces } from "@prompt-proxy/db";
+import { compressionReceipts, defaultWorkspaceId, organizations, requests, workspaces } from "@proxy/db";
 
 import { aggregateCompressionSavings } from "../src/persistence/compressionSavings.js";
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";

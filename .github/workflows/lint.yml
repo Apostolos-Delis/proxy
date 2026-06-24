@@ -32,7 +32,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:runtime
-      - run: pnpm --filter @prompt-proxy/proxy schema:print
-      - run: pnpm --filter @prompt-proxy/web codegen
+      - run: pnpm --filter @proxy/proxy schema:print
+      - run: pnpm --filter @proxy/web codegen
       - name: Fail if committed GraphQL artifacts are stale
         run: git diff --exit-code apps/proxy/schema.graphql apps/web/src/gql

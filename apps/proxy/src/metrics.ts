@@ -60,12 +60,12 @@ const TIME_TO_FIRST_BYTE_BUCKETS = [0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 
 const CLASSIFIER_DURATION_BUCKETS = [0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30];
 const DB_DURATION_BUCKETS = [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10];
 const DEFAULT_HISTOGRAM_BUCKETS_BY_METRIC: Record<string, number[]> = {
-  prompt_proxy_http_request_duration_seconds: HTTP_DURATION_BUCKETS,
-  prompt_proxy_model_request_duration_seconds: MODEL_DURATION_BUCKETS,
-  prompt_proxy_provider_attempt_duration_seconds: MODEL_DURATION_BUCKETS,
-  prompt_proxy_provider_time_to_first_byte_seconds: TIME_TO_FIRST_BYTE_BUCKETS,
-  prompt_proxy_classifier_duration_seconds: CLASSIFIER_DURATION_BUCKETS,
-  prompt_proxy_db_query_duration_seconds: DB_DURATION_BUCKETS
+  proxy_http_request_duration_seconds: HTTP_DURATION_BUCKETS,
+  proxy_model_request_duration_seconds: MODEL_DURATION_BUCKETS,
+  proxy_provider_attempt_duration_seconds: MODEL_DURATION_BUCKETS,
+  proxy_provider_time_to_first_byte_seconds: TIME_TO_FIRST_BYTE_BUCKETS,
+  proxy_classifier_duration_seconds: CLASSIFIER_DURATION_BUCKETS,
+  proxy_db_query_duration_seconds: DB_DURATION_BUCKETS
 };
 
 export class NoopMetricsCollector implements MetricsCollector {
@@ -212,7 +212,7 @@ export class SafeMetricsCollector implements MetricsCollector {
   }
 
   private recordSinkError() {
-    this.sinkErrors.incrementCounter("prompt_proxy_metrics_sink_errors_total", { error_class: "unknown" });
+    this.sinkErrors.incrementCounter("proxy_metrics_sink_errors_total", { error_class: "unknown" });
   }
 }
 

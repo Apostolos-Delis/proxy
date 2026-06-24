@@ -2,13 +2,13 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
-const bucket = process.env.PROMPT_PROXY_WEB_BUCKET;
-const prefix = (process.env.PROMPT_PROXY_WEB_PREFIX ?? "").replace(/^\/+|\/+$/g, "");
-const dist = process.env.PROMPT_PROXY_WEB_DIST ?? "apps/web/dist";
-const dryRun = process.env.PROMPT_PROXY_WEB_SYNC_DRY_RUN === "true";
+const bucket = process.env.PROXY_WEB_BUCKET;
+const prefix = (process.env.PROXY_WEB_PREFIX ?? "").replace(/^\/+|\/+$/g, "");
+const dist = process.env.PROXY_WEB_DIST ?? "apps/web/dist";
+const dryRun = process.env.PROXY_WEB_SYNC_DRY_RUN === "true";
 
 if (!bucket) {
-  throw new Error("PROMPT_PROXY_WEB_BUCKET is required.");
+  throw new Error("PROXY_WEB_BUCKET is required.");
 }
 
 if (!existsSync(join(dist, "index.html"))) {

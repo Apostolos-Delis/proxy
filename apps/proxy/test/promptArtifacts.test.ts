@@ -4,7 +4,7 @@ import {
   agentSessions,
   events,
   promptArtifacts
-} from "@prompt-proxy/db";
+} from "@proxy/db";
 
 import { adminGql, captureFixture, eventPayloadText, type PromptTestFixture } from "./promptTestFixture.js";
 

@@ -6,7 +6,7 @@ import {
   events as eventTable,
   requests,
   usageLedger
-} from "@prompt-proxy/db";
+} from "@proxy/db";
 
 import {
   CompressionCacheWindowResolver,

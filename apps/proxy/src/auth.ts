@@ -1,4 +1,4 @@
-import { defaultWorkspaceId } from "@prompt-proxy/db";
+import { defaultWorkspaceId } from "@proxy/db";
 
 import type { AppConfig } from "./config.js";
 import type { ApiKeyIdentityStore, ResolvedApiKeyIdentity } from "./persistence/identity.js";
@@ -64,7 +64,7 @@ export function contextForIdentity(context: RouteContext, identity: RequestIdent
 export function actorForIdentity(identity: RequestIdentity) {
   if (identity.userId) return { type: "user" as const, id: identity.userId };
   if (identity.apiKeyId) return { type: "system" as const, id: identity.apiKeyId };
-  return { type: "proxy" as const, id: "prompt-proxy" };
+  return { type: "proxy" as const, id: "proxy" };
 }
 
 export function requestReceivedPayload(

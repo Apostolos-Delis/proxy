@@ -2,7 +2,7 @@
   "type": "error",
   "status": 400,
   "error": {
-    "code": "prompt_proxy_error",
+    "code": "proxy_error",
     "message": "binary_websocket_requests_are_not_supported"
   }
 }

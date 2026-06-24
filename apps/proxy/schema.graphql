@@ -320,6 +320,33 @@ type EmailDelivery {
   transport: String!
 }
 
+type HarnessCompatibilityMatrixEntry {
+  displayName: String!
+  effectiveDialect: String
+  harness: String!
+  lastSmokeStatus: HarnessSmokeStatus
+  nativeSupport: Boolean!
+  profileId: String!
+  reasonCodes: [String!]!
+  statefulFeatures: [String!]!
+  status: String!
+  support: String!
+  surface: String!
+  targetDialect: String!
+  testedFixtureCount: Int!
+  translatedFrom: String!
+  translatedSupport: Boolean!
+  translatedTo: String
+  transport: String!
+  unsupportedStatefulFeatures: [String!]!
+}
+
+type HarnessSmokeStatus {
+  checkedAt: String
+  detail: String
+  status: String!
+}
+
 type IdleGapBucket {
   count: Float!
   key: String!
@@ -757,6 +784,7 @@ type Query {
   compressionPreview(input: CompressionPreviewInput!): CompressionPreview!
   compressionRules: [CompressionRuleCatalog!]!
   compressionSavings(end: String, start: String): CompressionSavingsReport!
+  harnessCompatibilityMatrix: [HarnessCompatibilityMatrixEntry!]!
   idleGaps(end: String, start: String): IdleGapReport!
   invitations: [Invitation!]!
   members: [OrgMember!]!

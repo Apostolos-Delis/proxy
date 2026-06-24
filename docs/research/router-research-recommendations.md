@@ -8,13 +8,13 @@ Sources reviewed:
 - [OmniRoute](omniroute-scope.md)
 - [Second-pass implementation follow-up](router-upstream-implementation-follow-up.md)
 
-Compared system: Prompt Proxy in this repository
+Compared system: Proxy in this repository
 
 ## Executive Summary
 
-The four upstream projects point toward the same conclusion: Prompt Proxy should become more operationally mature without becoming a broad, opaque AI gateway.
+The four upstream projects point toward the same conclusion: Proxy should become more operationally mature without becoming a broad, opaque AI gateway.
 
-Prompt Proxy's strongest current advantages are:
+Proxy's strongest current advantages are:
 
 - Classifier-first routing with no deterministic fallback when classification fails.
 - Native harness fidelity for Codex, Claude Code, and OpenAI/Anthropic-compatible clients.
@@ -27,7 +27,7 @@ The main gap is operating depth. LiteLLM and OmniRoute show mature provider-acco
 
 The recommended direction is:
 
-1. Keep Prompt Proxy's core routing philosophy.
+1. Keep Proxy's core routing philosophy.
 2. Add a typed policy pipeline and route execution plan.
 3. Add provider/account/model health, cooldown, quota, and fallback evidence.
 4. Add translator golden tests and harness profiles before broad cross-dialect expansion.
@@ -51,11 +51,11 @@ LiteLLM, 9router, and OmniRoute all support many providers. The hard part is not
 - Cost and usage normalization.
 - Operator trust boundaries.
 
-Prompt Proxy should prioritize durable provider account state and capability metadata before racing to provider count.
+Proxy should prioritize durable provider account state and capability metadata before racing to provider count.
 
 ### Fallback Must Be Observable
 
-All comparison routers use fallback heavily. Prompt Proxy should add fallback, but never silently. Every fallback decision should answer:
+All comparison routers use fallback heavily. Proxy should add fallback, but never silently. Every fallback decision should answer:
 
 - What target was planned?
 - What target was skipped?
@@ -72,19 +72,19 @@ This should be captured in route decisions, provider attempts, and events.
 
 9router and OmniRoute show the large cost of translating among OpenAI Chat, OpenAI Responses, Claude, Gemini, Cursor, Kiro, and related shapes. Translation is valuable, but native pass-through paths are safer for coding harnesses.
 
-Prompt Proxy should continue to prefer native endpoints, then allow translated paths only when the routing config and translator registry declare compatibility.
+Proxy should continue to prefer native endpoints, then allow translated paths only when the routing config and translator registry declare compatibility.
 
 ### Events Are Better Than Logs For This Product
 
-LiteLLM, 9router, and OmniRoute all have useful request and usage logging. Kong has strong metrics. Prompt Proxy's event-backed model is still stronger for replay, audit, and governance. The improvement is to add the missing operational event types and projections, not to replace events with logs.
+LiteLLM, 9router, and OmniRoute all have useful request and usage logging. Kong has strong metrics. Proxy's event-backed model is still stronger for replay, audit, and governance. The improvement is to add the missing operational event types and projections, not to replace events with logs.
 
 ### Policy Needs A Phase Model
 
-Kong has the cleanest answer: request handling should have named phases. Prompt Proxy does not need arbitrary plugins yet, but it does need a built-in phase model so auth, budgets, classification, target resolution, translation, streaming, and accounting do not keep spreading across handlers and helpers.
+Kong has the cleanest answer: request handling should have named phases. Proxy does not need arbitrary plugins yet, but it does need a built-in phase model so auth, budgets, classification, target resolution, translation, streaming, and accounting do not keep spreading across handlers and helpers.
 
 ## Recommended Product Shape
 
-Prompt Proxy should remain a protocol-aware model-routing gateway for organizations and workspaces. It should not become:
+Proxy should remain a protocol-aware model-routing gateway for organizations and workspaces. It should not become:
 
 - A generic API gateway.
 - A free-tier aggregator.
@@ -121,7 +121,7 @@ The plan should include:
 - Retry and fallback policy.
 - Final selected provider attempt id.
 
-This is the anchor that lets Prompt Proxy add LiteLLM/OmniRoute-style resilience without losing auditability.
+This is the anchor that lets Proxy add LiteLLM/OmniRoute-style resilience without losing auditability.
 
 ### 2. Provider Registry And Capability Catalog
 
@@ -230,7 +230,7 @@ Start with tool results, not general prompt rewriting. For each compression acti
 - Savings estimate.
 - Whether raw original was retained under prompt-capture policy.
 
-This borrows from 9router and OmniRoute while respecting Prompt Proxy's audit model.
+This borrows from 9router and OmniRoute while respecting Proxy's audit model.
 
 ### 8. Model Assessment Jobs
 
@@ -392,7 +392,7 @@ Build an in-memory active routing graph from provider registry, model catalog, p
 
 ## Final Recommendation
 
-Prompt Proxy should take the operating maturity of LiteLLM, the harness compatibility discipline of 9router, the gateway phase/config discipline of Kong, and the resilience/test vocabulary of OmniRoute.
+Proxy should take the operating maturity of LiteLLM, the harness compatibility discipline of 9router, the gateway phase/config discipline of Kong, and the resilience/test vocabulary of OmniRoute.
 
 The architecture should stay hard-edged:
 
@@ -403,4 +403,4 @@ The architecture should stay hard-edged:
 - Workspace-scoped governance.
 - No silent mutation.
 
-That combination gives Prompt Proxy the best chance to become a serious production router without losing the properties that make it safer and easier to reason about than the broader upstream gateways.
+That combination gives Proxy the best chance to become a serious production router without losing the properties that make it safer and easier to reason about than the broader upstream gateways.

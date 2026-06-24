@@ -4,9 +4,9 @@ import { z } from "zod";
 import {
   modelCatalog,
   providers,
-  type PromptProxyTransaction,
-  type PromptProxyTransactionalDatabase
-} from "@prompt-proxy/db";
+  type ProxyTransaction,
+  type ProxyTransactionalDatabase
+} from "@proxy/db";
 
 import { completeModelPricing } from "../pricing.js";
 import { createId } from "../util.js";
@@ -31,7 +31,7 @@ const clearPricingBodySchema = z.object({
 export class ModelPricingAdminError extends AdminMutationError {}
 
 export class ModelPricingAdminService {
-  constructor(private readonly db: PromptProxyTransactionalDatabase) {}
+  constructor(private readonly db: ProxyTransactionalDatabase) {}
 
   async setPricing(input: {
     organizationId: string;
@@ -70,7 +70,7 @@ export class ModelPricingAdminService {
         scopeType: "model_pricing",
         scopeId: `${provider}:${model}`,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.model-pricing",
+        producer: "proxy.admin.model-pricing",
         eventType: "model_pricing.updated",
         payload: {
           provider,
@@ -123,7 +123,7 @@ export class ModelPricingAdminService {
         scopeType: "model_pricing",
         scopeId: `${provider}:${model}`,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.model-pricing",
+        producer: "proxy.admin.model-pricing",
         eventType: "model_pricing.cleared",
         payload: {
           provider,
@@ -137,7 +137,7 @@ export class ModelPricingAdminService {
 }
 
 async function providerBySlug(
-  tx: PromptProxyTransaction,
+  tx: ProxyTransaction,
   organizationId: string,
   slug: string
 ) {

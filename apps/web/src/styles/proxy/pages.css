@@ -681,11 +681,11 @@
   padding-bottom: 18px;
 }
 
-.prompt-cell {
+.proxy-cell {
   max-width: 420px;
 }
 
-.prompt-cell .mono.faint {
+.proxy-cell .mono.faint {
   margin-top: 2px;
   font-size: 11px;
 }
@@ -786,7 +786,7 @@ button.table-link {
   text-underline-offset: 3px;
 }
 
-.prompt-preview {
+.proxy-preview {
   max-width: 460px;
 }
 
@@ -3788,30 +3788,30 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 /* ---------- explicit prompt editors ---------- */
-.prompt-editors {
+.proxy-editors {
   display: grid;
   gap: 20px;
 }
 
-.prompt-editor {
+.proxy-editor {
   display: grid;
   gap: 8px;
 }
 
-.prompt-editor-title {
+.proxy-editor-title {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13.5px;
 }
 
-.prompt-editor-title svg {
+.proxy-editor-title svg {
   width: 15px;
   height: 15px;
   color: var(--accent-2);
 }
 
-.prompt-editor-helper {
+.proxy-editor-helper {
   margin: 0;
   max-width: 760px;
   color: var(--fg-faint);
@@ -3819,7 +3819,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
   line-height: 1.5;
 }
 
-.prompt-editor textarea {
+.proxy-editor textarea {
   width: 100%;
   min-width: 0;
   resize: vertical;
@@ -3833,14 +3833,14 @@ input[type="checkbox"][role="switch"]:focus-visible {
   line-height: 1.6;
 }
 
-.prompt-editor textarea:focus {
+.proxy-editor textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
   outline: none;
   background: var(--glass-2);
 }
 
-.prompt-editor textarea::placeholder {
+.proxy-editor textarea::placeholder {
   color: var(--fg-faint);
 }
 

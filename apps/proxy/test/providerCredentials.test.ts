@@ -20,7 +20,7 @@ import {
   providerAttempts,
   providerModelHealth,
   users
-} from "@prompt-proxy/db";
+} from "@proxy/db";
 
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 import { startAnthropicMock, startOpenAIMock } from "./helpers.js";
@@ -1110,13 +1110,13 @@ describe("subscription oauth credentials", () => {
   let activeFixture: PromptTestFixture | undefined;
   const savedEnv = {
     CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
-    PROMPT_PROXY_CODEX_AUTH_FILE: process.env.PROMPT_PROXY_CODEX_AUTH_FILE,
+    PROXY_CODEX_AUTH_FILE: process.env.PROXY_CODEX_AUTH_FILE,
     CODEX_HOME: process.env.CODEX_HOME
   };
 
   afterEach(async () => {
     restoreEnv("CLAUDE_CODE_OAUTH_TOKEN", savedEnv.CLAUDE_CODE_OAUTH_TOKEN);
-    restoreEnv("PROMPT_PROXY_CODEX_AUTH_FILE", savedEnv.PROMPT_PROXY_CODEX_AUTH_FILE);
+    restoreEnv("PROXY_CODEX_AUTH_FILE", savedEnv.PROXY_CODEX_AUTH_FILE);
     restoreEnv("CODEX_HOME", savedEnv.CODEX_HOME);
     await activeFixture?.close();
     activeFixture = undefined;
@@ -1262,7 +1262,7 @@ describe("subscription oauth credentials", () => {
   });
 
   it("imports Codex auth JSON from the proxy host with encrypted refresh tokens", async () => {
-    const authDir = await mkdtemp(join(tmpdir(), "prompt-proxy-codex-auth-"));
+    const authDir = await mkdtemp(join(tmpdir(), "proxy-codex-auth-"));
     const authPath = join(authDir, "auth.json");
     await writeFile(authPath, JSON.stringify({
       auth_mode: "chatgpt",
@@ -1272,7 +1272,7 @@ describe("subscription oauth credentials", () => {
         account_id: CHATGPT_ACCOUNT_ID
       }
     }));
-    process.env.PROMPT_PROXY_CODEX_AUTH_FILE = authPath;
+    process.env.PROXY_CODEX_AUTH_FILE = authPath;
     const fixture = await setup("org_oauth_local_openai", { SUBSCRIPTION_OAUTH_ENABLED: "false" });
 
     try {

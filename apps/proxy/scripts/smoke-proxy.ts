@@ -1,12 +1,12 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { AddressInfo } from "node:net";
 
-import { defaultWorkspaceId } from "@prompt-proxy/db";
+import { defaultWorkspaceId } from "@proxy/db";
 
 import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
 import { createSmokePersistence } from "./smoke-persistence.js";
-import type { RoutingConfig } from "@prompt-proxy/schema";
+import type { RoutingConfig } from "@proxy/schema";
 import { assertPersistedRoutingDecision } from "./smoke-routing-assertions.js";
 
 type Recorded = {
@@ -23,7 +23,7 @@ const smokeEnv = {
   ...process.env,
   DATABASE_URL: "",
   EVENT_STORE_PATH: "",
-  PROMPT_PROXY_TOKEN: "proxy-token",
+  PROXY_TOKEN: "proxy-token",
   OPENAI_API_KEY: "openai-upstream-key",
   ANTHROPIC_API_KEY: "anthropic-upstream-key",
   OPENAI_BASE_URL: openai.url,

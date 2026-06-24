@@ -28,7 +28,7 @@ import postgres, { type Sql } from "postgres";
 
 import * as schema from "./schema.js";
 
-const DEFAULT_DATABASE_URL = "postgres://prompt_proxy:prompt_proxy@localhost:5432/prompt_proxy";
+const DEFAULT_DATABASE_URL = "postgres://proxy:proxy@localhost:5432/proxy";
 
 const operators = {
   and,
@@ -213,7 +213,7 @@ Helpers:
 }
 
 export function printConsoleBanner(context: ReturnType<typeof createDbConsoleContext>) {
-  console.log("Prompt Proxy DB console");
+  console.log("Proxy DB console");
   console.log(`Connected to ${displayDatabaseUrl(context.databaseUrl)}`);
   console.log(`Loaded ${context.tableInfo.length} tables. Run showTables(), help(), or .tables.`);
   console.log("Examples:");

@@ -7,14 +7,14 @@ Each row is one harness profile against one provider endpoint dialect.
 ## Support States
 
 - `native`: the provider endpoint accepts the harness surface without translation.
-- `translated`: Prompt Proxy can translate the harness surface to the provider dialect.
+- `translated`: Proxy can translate the harness surface to the provider dialect.
 - `blocked`: a translator may exist, but the path is unsafe for this profile because of stateful features, WebSocket transport, prior-response state, or unsupported request fields.
 - `unsupported`: no compatible provider dialect or translator is available.
 
 ## Columns
 
 - `profileId` and `displayName` identify the detected harness profile.
-- `surface` and `transport` describe the inbound protocol Prompt Proxy receives.
+- `surface` and `transport` describe the inbound protocol Proxy receives.
 - `targetDialect` is the provider endpoint dialect being evaluated.
 - `nativeSupport` and `translatedSupport` are booleans derived from the shared compatibility engine.
 - `unsupportedStatefulFeatures` lists profile features that require native handling on translated paths.

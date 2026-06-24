@@ -1,4 +1,4 @@
-import { providerAttempts, usageLedger } from "@prompt-proxy/db";
+import { providerAttempts, usageLedger } from "@proxy/db";
 
 type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
 type UsageLedgerRow = typeof usageLedger.$inferSelect;

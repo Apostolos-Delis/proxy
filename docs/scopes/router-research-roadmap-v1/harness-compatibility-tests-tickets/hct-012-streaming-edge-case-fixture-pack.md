@@ -21,9 +21,9 @@ Goal: Cover the streaming cases most likely to corrupt harness behavior.
 
 ## Validation
 
-- Run `pnpm --filter @prompt-proxy/proxy test -- sseObserver`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- bufferedStreamResponse`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- translationRuntime`.
+- Run `pnpm --filter @proxy/proxy test -- sseObserver`.
+- Run `pnpm --filter @proxy/proxy test -- bufferedStreamResponse`.
+- Run `pnpm --filter @proxy/proxy test -- translationRuntime`.
 
 ## Likely Files
 

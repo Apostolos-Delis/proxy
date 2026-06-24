@@ -1,6 +1,6 @@
-# Prompt Proxy
+# Proxy
 
-Prompt Proxy is an OpenAI/Anthropic-compatible routing gateway for coding agents. Point Codex, Claude Code, opencode, Cursor BYOK, or SDK callers at one base URL; Prompt Proxy classifies each request, routes it to an appropriate model tier, and records the route decision, provider attempts, usage, cost, sessions, and prompt artifacts in an operations console.
+Proxy is an OpenAI/Anthropic-compatible routing gateway for coding agents. Point Codex, Claude Code, opencode, Cursor BYOK, or SDK callers at one base URL; Proxy classifies each request, routes it to an appropriate model tier, and records the route decision, provider attempts, usage, cost, sessions, and prompt artifacts in an operations console.
 
 It is built for teams that want to run agent traffic through a controllable gateway instead of hard-coding one model/provider into every harness.
 
@@ -10,16 +10,16 @@ It is built for teams that want to run agent traffic through a controllable gate
 - **LLM-routed model selection** across `fast`, `balanced`, `hard`, and `deep` tiers, with explicit tier pinning through model aliases such as `router-hard` and `claude-router-hard`.
 - **Versioned routing configs** with immutable versions, API-key/workspace assignment, budget limits, and active-version auditability.
 - **Operations console** for usage, savings, sessions, request logs, prompt capture, API keys, provider credentials, routing configs, users, and org settings.
-- **BYOK provider credentials** encrypted at rest and bindable per Prompt Proxy API key.
+- **BYOK provider credentials** encrypted at rest and bindable per Proxy API key.
 - **Multi-tenant data model** scoped by organization and workspace, with events as the audit/projection backbone.
 
 ## Screenshots
 
 Demo data shown below was generated locally with the PGlite demo stack; it does not contain real traffic.
 
-![Prompt Proxy overview dashboard showing traffic, token volume, spend, and routing savings](docs/assets/prompt-proxy-overview.png)
+![Proxy overview dashboard showing traffic, token volume, spend, and routing savings](docs/assets/proxy-overview.png)
 
-![Prompt Proxy logs page showing replayable agent sessions, models, routes, tokens, and cost](docs/assets/prompt-proxy-logs.png)
+![Proxy logs page showing replayable agent sessions, models, routes, tokens, and cost](docs/assets/proxy-logs.png)
 
 ## Quick Start
 
@@ -65,7 +65,7 @@ pnpm dev:proxy
 pnpm dev:web
 ```
 
-For production (`NODE_ENV=production`), Prompt Proxy rejects the development defaults for `PROMPT_PROXY_TOKEN`, `OPENAI_API_KEY`, and `ANTHROPIC_API_KEY`.
+For production (`NODE_ENV=production`), Proxy rejects the development defaults for `PROXY_TOKEN`, `OPENAI_API_KEY`, and `ANTHROPIC_API_KEY`.
 
 ### Conductor Workspaces
 
@@ -73,13 +73,13 @@ In Conductor workspaces, the checked-in Run script still uses `pnpm dev:local`, 
 
 ## Connect a Coding Agent
 
-The proxy hosts an idempotent setup script. By default it configures Claude Code, Codex, and opencode, stores the shared key at `~/.prompt-proxy/token`, and updates only Prompt Proxy-owned marker blocks.
+The proxy hosts an idempotent setup script. By default it configures Claude Code, Codex, and opencode, stores the shared key at `~/.proxy/token`, and updates only Proxy-owned marker blocks.
 
 ```shell
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- <api-key>
 ```
 
-Use harness-specific installs when you want different Prompt Proxy API keys or routing configs per harness:
+Use harness-specific installs when you want different Proxy API keys or routing configs per harness:
 
 ```shell
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness codex <codex-api-key>
@@ -106,7 +106,7 @@ In `~/.claude/settings.json`:
     "ANTHROPIC_BASE_URL": "http://127.0.0.1:8787",
     "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"
   },
-  "apiKeyHelper": "cat ~/.prompt-proxy/token"
+  "apiKeyHelper": "cat ~/.proxy/token"
 }
 ```
 
@@ -114,7 +114,7 @@ Claude Code strips `ANTHROPIC_BASE_URL` from project-scoped settings, so this mu
 
 ```shell
 ANTHROPIC_BASE_URL=http://127.0.0.1:8787 \
-ANTHROPIC_API_KEY=$PROMPT_PROXY_TOKEN \
+ANTHROPIC_API_KEY=$PROXY_TOKEN \
 CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1 \
 claude --model claude-router-auto
 ```
@@ -124,19 +124,19 @@ claude --model claude-router-auto
 In `~/.codex/config.toml`:
 
 ```toml
-# >>> prompt-proxy codex defaults >>>
+# >>> prompt codex defaults >>>
 model = "router-auto"
-model_provider = "prompt_proxy"
-# <<< prompt-proxy codex defaults <<<
+model_provider = "proxy"
+# <<< prompt codex defaults <<<
 
-# >>> prompt-proxy codex provider prompt_proxy >>>
-[model_providers.prompt_proxy]
-name = "Prompt Proxy"
+# >>> prompt codex provider proxy >>>
+[model_providers.proxy]
+name = "Proxy"
 base_url = "http://127.0.0.1:8787/v1"
-env_key = "PROMPT_PROXY_TOKEN"
+env_key = "PROXY_TOKEN"
 wire_api = "responses"
 supports_websockets = true
-# <<< prompt-proxy codex provider prompt_proxy <<<
+# <<< prompt codex provider proxy <<<
 ```
 
 ### opencode and Cursor
@@ -153,7 +153,7 @@ To pin a tier, use `router-fast`, `router-balanced`, `router-hard`, `router-deep
 
 ## How Routing Works
 
-1. A request arrives at `/v1/responses`, `/v1/chat/completions`, or `/v1/messages` and is authenticated by Prompt Proxy API key.
+1. A request arrives at `/v1/responses`, `/v1/chat/completions`, or `/v1/messages` and is authenticated by Proxy API key.
 2. The API key resolves organization, workspace, user attribution, and routing config. Precedence is API-key assignment, then workspace default, then seeded default.
 3. An LLM classifier returns a structured tier decision unless the caller pinned a tier through the model alias.
 4. The active routing config maps the tier to ordered provider targets. Native dialect endpoints are preferred; registered same-family translators can bridge OpenAI Responses and Chat when compatible.
@@ -215,7 +215,7 @@ Admin routes use session-cookie auth:
 The GraphQL SDL lives at [apps/proxy/schema.graphql](apps/proxy/schema.graphql). Regenerate it with:
 
 ```shell
-pnpm --filter @prompt-proxy/proxy schema:print
+pnpm --filter @proxy/proxy schema:print
 ```
 
 Development debug routes include `/_debug/events`, `/_debug/provider-attempts`, `/_debug/outbox`, `/_debug/sessions`, `/_debug/projections`, and `/_debug/route-quality`. They are enabled automatically only when `DATABASE_URL` is unset; set `DEBUG_ENDPOINTS_ENABLED=true` to enable them with persistence.
@@ -234,13 +234,13 @@ pnpm db:console   # interactive Drizzle console with schema tables preloaded
 pnpm db:runner -- 'await db.select().from(organizations).limit(5)'
 ```
 
-Editable runtime settings live as JSON at `.prompt-proxy/settings.json` or `PROMPT_PROXY_SETTINGS_PATH`. Environment variables take precedence, and classifier, budget, and route-quality changes apply after restart.
+Editable runtime settings live as JSON at `.proxy/settings.json` or `PROXY_SETTINGS_PATH`. Environment variables take precedence, and classifier, budget, and route-quality changes apply after restart.
 
-When seeding multiple organizations into one database, use a distinct `PROMPT_PROXY_TOKEN` per org.
+When seeding multiple organizations into one database, use a distinct `PROXY_TOKEN` per org.
 
 ## Spend Accounting
 
-Providers return token counts, not dollar amounts, so Prompt Proxy computes spend locally. Usage ledger rows price uncached input, cache reads, cache writes, and output at their own per-MTok rates. Routing savings compare the actual selected model cost against replaying the same tokens through the balanced route model.
+Providers return token counts, not dollar amounts, so Proxy computes spend locally. Usage ledger rows price uncached input, cache reads, cache writes, and output at their own per-MTok rates. Routing savings compare the actual selected model cost against replaying the same tokens through the balanced route model.
 
 Pricing resolves in this order:
 
@@ -263,7 +263,7 @@ pnpm build
 
 `pnpm smoke` spins up mock OpenAI and Anthropic upstreams, drives Codex-shaped and Claude Code-shaped requests through the proxy, and verifies routing-config resolution end to end. `pnpm smoke:harnesses` runs the real installed `codex` and `claude` CLIs against the same mock-backed proxy.
 
-Architecture rules and conventions live in [AGENTS.md](AGENTS.md). The docs index is [docs/index.md](docs/index.md), starting with the [model routing proxy design](docs/model-routing-proxy.md).
+Architecture rules and conventions live in [AGENTS.md](AGENTS.md). The docs index is [docs/index.md](docs/index.md), starting with the [model routing proxy design](docs/model-routing.md).
 
 ## Deployment
 
@@ -293,6 +293,6 @@ scripts/         Local bootstrap and operations helpers
 
 ## License
 
-Prompt Proxy is licensed under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (`FSL-1.1-ALv2`). Each release converts to Apache License 2.0 two years after it is made available.
+Proxy is licensed under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (`FSL-1.1-ALv2`). Each release converts to Apache License 2.0 two years after it is made available.
 
 FSL is source-available and allows use, copying, modification, and redistribution for any purpose other than offering the software, or substantially similar functionality, as a competing commercial product or service. If you want an OSI-approved open-source license from day one, replace `LICENSE` and the `license` field in `package.json` before publishing the repository.

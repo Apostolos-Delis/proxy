@@ -1,10 +1,10 @@
 import type { TypedDocumentString } from "./gql/graphql";
 
-export const apiBase = import.meta.env.VITE_PROMPT_PROXY_API_BASE ?? "http://127.0.0.1:8787";
+export const apiBase = import.meta.env.VITE_PROXY_API_BASE ?? "http://127.0.0.1:8787";
 export const adminApiBase = import.meta.env.DEV ? "" : apiBase;
 const GRAPHQL_CACHE_SCOPE_PARAM = "gqlCacheScope";
 const GRAPHQL_CACHE_EPOCH_PARAM = "gqlCacheEpoch";
-const GRAPHQL_CACHE_EPOCH_STORAGE_KEY = "prompt-proxy:gql-cache-epoch";
+const GRAPHQL_CACHE_EPOCH_STORAGE_KEY = "prompt:gql-cache-epoch";
 const MAX_GRAPHQL_GET_URL_LENGTH = 7_500;
 type GraphQLOperationType = "query" | "mutation" | "subscription" | "unknown";
 

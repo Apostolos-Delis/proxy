@@ -2,7 +2,7 @@
   "type": "error",
   "status": 500,
   "error": {
-    "code": "prompt_proxy_error",
+    "code": "proxy_error",
     "message": "route_not_available_for_surface"
   }
 }

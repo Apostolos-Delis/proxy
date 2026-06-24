@@ -18,8 +18,8 @@ Goal: Fixture-back OpenAI Chat native behavior for generic SDK, opencode, and Cu
 
 ## Validation
 
-- Run `pnpm --filter @prompt-proxy/proxy test -- harness-compatibility`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- openAIChatRewrite`.
+- Run `pnpm --filter @proxy/proxy test -- harness-compatibility`.
+- Run `pnpm --filter @proxy/proxy test -- openAIChatRewrite`.
 
 ## Likely Files
 

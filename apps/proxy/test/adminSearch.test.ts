@@ -11,7 +11,7 @@ import {
   routingConfigs,
   users,
   workspaces
-} from "@prompt-proxy/db";
+} from "@proxy/db";
 
 import {
   adminGql,

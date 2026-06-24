@@ -1,5 +1,5 @@
 {
-  "name": "@prompt-proxy/db",
+  "name": "@proxy/db",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,16 +13,16 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm copy:migrations",
     "copy:migrations": "mkdir -p dist/migrations dist/data && cp migrations/*.sql dist/migrations/ && cp data/*.json dist/data/",
-    "console": "pnpm --filter @prompt-proxy/schema build && tsx --env-file-if-exists=../../.env src/console.ts",
+    "console": "pnpm --filter @proxy/schema build && tsx --env-file-if-exists=../../.env src/console.ts",
     "migrate": "node --env-file-if-exists=../../.env dist/src/migrate.js",
-    "runner": "pnpm --filter @prompt-proxy/schema build && tsx --env-file-if-exists=../../.env src/runner.ts",
+    "runner": "pnpm --filter @proxy/schema build && tsx --env-file-if-exists=../../.env src/runner.ts",
     "seed": "node --env-file-if-exists=../../.env dist/src/seed.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.4.5",
-    "@prompt-proxy/schema": "workspace:*",
+    "@proxy/schema": "workspace:*",
     "drizzle-orm": "0.45.2",
     "postgres": "3.4.7"
   },

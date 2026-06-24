@@ -1,5 +1,5 @@
 import type { FastifyReply } from "fastify";
-import type { HarnessCompatibilityProfileId } from "@prompt-proxy/schema";
+import type { HarnessCompatibilityProfileId } from "@proxy/schema";
 
 import { buildAnthropicContext, buildOpenAIChatContext, buildOpenAIContext } from "./features.js";
 import { anthropicEffortForModel, supportsAnthropicAdaptiveThinking } from "./catalog.js";

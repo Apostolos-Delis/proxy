@@ -5,7 +5,7 @@ import {
   defaultCompressionPolicy,
   type CompressionPolicy,
   type CompressionRuleId
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import { bashOutputRule, bashOutputRuleForNames } from "./compressionRules/bashOutput.js";
 import { diffCompactionRule, diffCompactionRuleForNames } from "./compressionRules/diffCompaction.js";
@@ -499,7 +499,7 @@ export async function compressForForwardWithResult(input: CompressionForwardInpu
           sessionId: input.sessionId,
           correlationId: input.requestId,
           idempotencyKey: `${input.idempotencyKey}:compression-candidate:${index}`,
-          producer: "prompt-proxy.compression",
+          producer: "proxy.compression",
           eventType: "compression.candidate_recorded",
           redactionState: "not_applicable",
           payload: {
@@ -518,7 +518,7 @@ export async function compressForForwardWithResult(input: CompressionForwardInpu
         sessionId: input.sessionId,
         correlationId: input.requestId,
         idempotencyKey: `${input.idempotencyKey}:compression-measurement`,
-        producer: "prompt-proxy.compression",
+        producer: "proxy.compression",
         eventType: "compression.measurement_recorded",
         redactionState: "not_applicable",
         payload
@@ -533,7 +533,7 @@ export async function compressForForwardWithResult(input: CompressionForwardInpu
         sessionId: input.sessionId,
         correlationId: input.requestId,
         idempotencyKey: input.idempotencyKey,
-        producer: "prompt-proxy.compression",
+        producer: "proxy.compression",
         eventType: "compression.recorded",
         redactionState: "not_applicable",
         payload
@@ -607,7 +607,7 @@ export async function appendCompressionEvidence(input: {
       sessionId: input.sessionId,
       correlationId: input.requestId,
       idempotencyKey: `${input.idempotencyKey}:compression-evidence`,
-      producer: "prompt-proxy.routing",
+      producer: "proxy.routing",
       eventType: "routing.compression_evidence_recorded",
       redactionState: "not_applicable",
       payload

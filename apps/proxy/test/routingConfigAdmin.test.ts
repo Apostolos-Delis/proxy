@@ -9,8 +9,8 @@ import {
   routingConfigs,
   routingConfigVersions,
   workspaces
-} from "@prompt-proxy/db";
-import type { RoutingConfig } from "@prompt-proxy/schema";
+} from "@proxy/db";
+import type { RoutingConfig } from "@proxy/schema";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";

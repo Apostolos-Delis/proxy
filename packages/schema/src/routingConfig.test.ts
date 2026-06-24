@@ -203,7 +203,7 @@ describe("routingConfigSchema", () => {
   it("rejects the pre-cutover top-level systemPrompt field", () => {
     const result = routingConfigSchema.safeParse({
       ...validConfig,
-      systemPrompt: "You are assisting through the organization's prompt proxy."
+      systemPrompt: "You are assisting through the organization's proxy."
     });
 
     expect(result.success).toBe(false);

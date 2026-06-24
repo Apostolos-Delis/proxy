@@ -10,37 +10,37 @@ import {
 import { Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
 
-import { resourceName, type PromptProxyEnvironmentConfig } from "./config.js";
-import type { PromptProxyNetworkStack } from "./network-stack.js";
+import { resourceName, type ProxyEnvironmentConfig } from "./config.js";
+import type { ProxyNetworkStack } from "./network-stack.js";
 
-export type PromptProxyDatabaseStackProps = StackProps & {
-  config: PromptProxyEnvironmentConfig;
-  network: PromptProxyNetworkStack;
+export type ProxyDatabaseStackProps = StackProps & {
+  config: ProxyEnvironmentConfig;
+  network: ProxyNetworkStack;
 };
 
-export class PromptProxyDatabaseStack extends Stack {
+export class ProxyDatabaseStack extends Stack {
   readonly database: DatabaseInstance;
   readonly databaseCredentials: DatabaseSecret;
   readonly databaseUrl: Secret;
 
-  constructor(scope: Construct, id: string, props: PromptProxyDatabaseStackProps) {
+  constructor(scope: Construct, id: string, props: ProxyDatabaseStackProps) {
     super(scope, id, props);
 
     const { config, network } = props;
     const removalPolicy = config.envName === "prod" ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY;
 
     this.databaseCredentials = new DatabaseSecret(this, "DatabaseCredentials", {
-      username: "prompt_proxy",
-      dbname: "prompt_proxy",
+      username: "proxy",
+      dbname: "proxy",
       secretName: resourceName(config, "postgres-credentials")
     });
     this.databaseCredentials.applyRemovalPolicy(removalPolicy);
 
     this.database = new DatabaseInstance(this, "Postgres", {
-      databaseName: "prompt_proxy",
+      databaseName: "proxy",
       instanceIdentifier: resourceName(config, "postgres"),
       engine: DatabaseInstanceEngine.postgres({ version: PostgresEngineVersion.VER_16_10 }),
-      credentials: Credentials.fromSecret(this.databaseCredentials, "prompt_proxy"),
+      credentials: Credentials.fromSecret(this.databaseCredentials, "proxy"),
       vpc: network.vpc,
       vpcSubnets: { subnetType: SubnetType.PRIVATE_ISOLATED },
       securityGroups: [network.databaseSecurityGroup],
@@ -58,7 +58,7 @@ export class PromptProxyDatabaseStack extends Stack {
     this.databaseUrl = new Secret(this, "DatabaseUrl", {
       secretName: resourceName(config, "database-url"),
       secretStringValue: SecretValue.unsafePlainText(
-        `postgresql://prompt_proxy:${this.databaseCredentials.secretValueFromJson("password")}@${this.database.dbInstanceEndpointAddress}:${this.database.dbInstanceEndpointPort}/prompt_proxy?sslmode=require`
+        `postgresql://proxy:${this.databaseCredentials.secretValueFromJson("password")}@${this.database.dbInstanceEndpointAddress}:${this.database.dbInstanceEndpointPort}/proxy?sslmode=require`
       ),
       removalPolicy
     });

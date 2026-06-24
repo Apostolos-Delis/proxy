@@ -1,4 +1,4 @@
-import type { RoutingConfigLimits } from "@prompt-proxy/schema";
+import type { RoutingConfigLimits } from "@proxy/schema";
 
 import { routeOrder } from "./catalog.js";
 import { hasUserSignal } from "./features.js";

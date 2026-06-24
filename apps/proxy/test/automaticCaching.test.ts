@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { organizationSettings } from "@prompt-proxy/db";
+import { organizationSettings } from "@proxy/db";
 
 import { rewriteSurfaceRequest } from "../src/adapters.js";
 import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";

@@ -90,7 +90,7 @@ describe("gqlFetch", () => {
   });
 
   it("merges a stored cache epoch before bumping", async () => {
-    const store = new Map([["prompt-proxy:gql-cache-epoch", "41"]]);
+    const store = new Map([["prompt:gql-cache-epoch", "41"]]);
     vi.stubGlobal("window", {
       localStorage: {
         getItem: (key: string) => store.get(key) ?? null,

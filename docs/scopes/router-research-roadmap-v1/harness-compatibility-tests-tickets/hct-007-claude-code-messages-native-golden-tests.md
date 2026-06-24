@@ -19,8 +19,8 @@ Goal: Fixture-back the Claude Code -> Anthropic Messages native path.
 
 ## Validation
 
-- Run `pnpm --filter @prompt-proxy/proxy test -- harness-compatibility`.
-- Run `pnpm --filter @prompt-proxy/proxy test -- sseObserver`.
+- Run `pnpm --filter @proxy/proxy test -- harness-compatibility`.
+- Run `pnpm --filter @proxy/proxy test -- sseObserver`.
 
 ## Likely Files
 

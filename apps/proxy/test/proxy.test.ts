@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
-import { ROUTING_CLASSIFIER_BASE_INSTRUCTIONS } from "@prompt-proxy/schema";
+import { ROUTING_CLASSIFIER_BASE_INSTRUCTIONS } from "@proxy/schema";
 
 import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
@@ -12,7 +12,7 @@ function testEnv(overrides: NodeJS.ProcessEnv = {}) {
     ...process.env,
     DATABASE_URL: "",
     EVENT_STORE_PATH: "",
-    PROMPT_PROXY_TOKEN: "proxy-token",
+    PROXY_TOKEN: "proxy-token",
     OPENAI_API_KEY: "openai-upstream-key",
     OPENAI_BASE_URL: "http://127.0.0.1",
     OPENAI_FAST_MODEL: "gpt-5.4-mini",
@@ -33,7 +33,7 @@ function testEnv(overrides: NodeJS.ProcessEnv = {}) {
   };
 }
 
-describe("prompt proxy", () => {
+describe("proxy", () => {
   let openai: MockServer;
   let anthropic: MockServer;
 
@@ -51,14 +51,14 @@ describe("prompt proxy", () => {
     const config = loadConfig({
       ...testEnv(),
       NODE_ENV: "production",
-      PROMPT_PROXY_TOKEN: "prod-proxy-token",
+      PROXY_TOKEN: "prod-token",
       LOG_LEVEL: "fatal"
     });
     const app = buildServer(config);
     const proxyUrl = await listen(app);
 
     const debugResponse = await fetch(`${proxyUrl}/_debug/events`, {
-      headers: { authorization: "Bearer prod-proxy-token" }
+      headers: { authorization: "Bearer prod-token" }
     });
     await debugResponse.text();
     await app.close();
@@ -101,7 +101,7 @@ describe("prompt proxy", () => {
     expect(body.data.find((model: any) => model.id === "router-auto")).toEqual({
       id: "router-auto",
       object: "model",
-      owned_by: "prompt-proxy"
+      owned_by: "proxy"
     });
     expect(body.data.find((model: any) => model.id === "claude-router-auto")).toEqual({
       id: "claude-router-auto",
@@ -114,7 +114,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -152,8 +152,8 @@ describe("prompt proxy", () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expect(body).toContain("response.completed");
 
     const classifierCall = openai.records.find((record) => record.body.model === "route-classifier-cheap");
@@ -202,7 +202,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -381,7 +381,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -437,7 +437,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -467,8 +467,8 @@ describe("prompt proxy", () => {
     await app.close();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("low");
+    expect(response.headers.get("x-proxy-route")).toBe("fast");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("low");
     expect(providerCall).toBeTruthy();
   });
 
@@ -476,7 +476,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -523,8 +523,8 @@ describe("prompt proxy", () => {
     await app.close();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("high");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expect(body).toContain("chatcmpl_mock");
     expect(providerCall).toBeTruthy();
     expect(providerCall?.headers.authorization).toBe("Bearer openai-upstream-key");
@@ -569,7 +569,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -621,8 +621,8 @@ describe("prompt proxy", () => {
 
     expect(opencode.status).toBe(200);
     expect(cursor.status).toBe(200);
-    expect(opencode.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(cursor.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(opencode.headers.get("x-proxy-route")).toBe("hard");
+    expect(cursor.headers.get("x-proxy-route")).toBe("hard");
     expect(new Set(sessions.map((session: any) => session.sessionId))).toEqual(new Set([
       "opencode-session-1234",
       "cursor-session-1234"
@@ -645,7 +645,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -700,7 +700,7 @@ describe("prompt proxy", () => {
     await app.close();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
+    expect(response.headers.get("x-proxy-route")).toBe("fast");
     expect(providerCall).toBeTruthy();
     expect(classifierInput.routing_basis).toBe("latest_user_message");
     expect(classifierInput.content_mode).toBe("redacted_excerpt");
@@ -729,7 +729,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -787,7 +787,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -816,7 +816,7 @@ describe("prompt proxy", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-encoding")).toBeNull();
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBe("low");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("low");
     expect(body.id).toBe("resp_mock");
   });
 
@@ -831,7 +831,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -864,7 +864,7 @@ describe("prompt proxy", () => {
   it("routes Claude Code-style Anthropic Messages requests through the classifier", async () => {
     const config = loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -904,8 +904,8 @@ describe("prompt proxy", () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBeNull();
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBeNull();
     expect(body).toContain("message_stop");
 
     const providerCall = anthropic.records.find((record) => record.path === "/messages");
@@ -945,7 +945,7 @@ describe("prompt proxy", () => {
     });
     const config = loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -977,8 +977,8 @@ describe("prompt proxy", () => {
 
     const providerCall = anthropic.records.find((record) => record.path === "/messages");
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("fast");
-    expect(response.headers.get("x-prompt-proxy-reasoning-effort")).toBeNull();
+    expect(response.headers.get("x-proxy-route")).toBe("fast");
+    expect(response.headers.get("x-proxy-reasoning-effort")).toBeNull();
     expect(providerCall?.body.model).toBe(config.anthropicFastModel);
     expect(providerCall?.body.thinking).toBeUndefined();
     expect(providerCall?.body.output_config).toBeUndefined();
@@ -987,7 +987,7 @@ describe("prompt proxy", () => {
   it("rewrites Claude Code token counting aliases before forwarding upstream", async () => {
     const config = loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -1028,7 +1028,7 @@ describe("prompt proxy", () => {
   it("routes non-router token counting models without classifier spend", async () => {
     const config = loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -1068,7 +1068,7 @@ describe("prompt proxy", () => {
   it("uses configured Anthropic upstream model IDs", async () => {
     const config = loadConfig({
       ...testEnv(),
-      PROMPT_PROXY_TOKEN: "proxy-token",
+      PROXY_TOKEN: "proxy-token",
       OPENAI_API_KEY: "openai-upstream-key",
       ANTHROPIC_API_KEY: "anthropic-upstream-key",
       OPENAI_BASE_URL: openai.url,
@@ -1118,7 +1118,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: safetyOpenAI.url,
@@ -1156,7 +1156,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: failingOpenAI.url,
@@ -1190,7 +1190,7 @@ describe("prompt proxy", () => {
     await failingOpenAI.close();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
     const decision = eventRows.find((event: { eventType: string }) => event.eventType === "routing.decision_recorded");
     expect(decision?.payload?.reasonCodes).toEqual(["classifier_failure_fallback"]);
     expect(decision?.payload?.guardrailActions).toContain("classifier_failure_fallback");
@@ -1210,7 +1210,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: flakyOpenAI.url,
@@ -1246,7 +1246,7 @@ describe("prompt proxy", () => {
 
     expect(first.status).toBe(500);
     expect(second.status).toBe(200);
-    expect(second.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(second.headers.get("x-proxy-route")).toBe("hard");
     expect(secondBody).toContain("response.completed");
     const providerCalls = flakyOpenAI.records.filter(
       (record) => record.body.model !== "route-classifier-cheap"
@@ -1267,7 +1267,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -1324,7 +1324,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -1378,7 +1378,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -1428,7 +1428,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: slowOpenAI.url,
@@ -1476,7 +1476,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: openai.url,
@@ -1524,7 +1524,7 @@ describe("prompt proxy", () => {
   it("does not collide idempotency between Anthropic messages and token counting", async () => {
     const config = loadConfig({
       ...testEnv(),
-      PROMPT_PROXY_TOKEN: "proxy-token",
+      PROXY_TOKEN: "proxy-token",
       OPENAI_API_KEY: "openai-upstream-key",
       ANTHROPIC_API_KEY: "anthropic-upstream-key",
       OPENAI_BASE_URL: openai.url,
@@ -1572,7 +1572,7 @@ describe("prompt proxy", () => {
   it("keeps configured model catalogs isolated between live servers", async () => {
     const firstConfig = loadConfig({
       ...testEnv(),
-      PROMPT_PROXY_TOKEN: "proxy-token",
+      PROXY_TOKEN: "proxy-token",
       OPENAI_API_KEY: "openai-upstream-key",
       ANTHROPIC_API_KEY: "anthropic-upstream-key",
       OPENAI_BASE_URL: openai.url,
@@ -1584,7 +1584,7 @@ describe("prompt proxy", () => {
     });
     const secondConfig = loadConfig({
       ...testEnv(),
-      PROMPT_PROXY_TOKEN: "proxy-token",
+      PROXY_TOKEN: "proxy-token",
       OPENAI_API_KEY: "openai-upstream-key",
       ANTHROPIC_API_KEY: "anthropic-upstream-key",
       OPENAI_BASE_URL: openai.url,
@@ -1632,8 +1632,8 @@ describe("prompt proxy", () => {
     await firstApp.close();
     await secondApp.close();
 
-    expect(secondResponse.headers.get("x-prompt-proxy-model")).toBe("claude-hard-second-test");
-    expect(firstResponse.headers.get("x-prompt-proxy-model")).toBe("claude-hard-first-test");
+    expect(secondResponse.headers.get("x-proxy-model")).toBe("claude-hard-second-test");
+    expect(firstResponse.headers.get("x-proxy-model")).toBe("claude-hard-first-test");
     expect(anthropic.records.some((record) => record.body.model === "claude-hard-first-test")).toBe(true);
     expect(anthropic.records.some((record) => record.body.model === "claude-hard-second-test")).toBe(true);
   });
@@ -1664,7 +1664,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: sessionOpenAI.url,
@@ -1715,8 +1715,8 @@ describe("prompt proxy", () => {
     await app.close();
     await sessionOpenAI.close();
 
-    expect(first.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(second.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(first.headers.get("x-proxy-route")).toBe("hard");
+    expect(second.headers.get("x-proxy-route")).toBe("hard");
     expect(sessions[0].currentRoute).toBe("hard");
     expect(events.map((event: any) => event.eventType)).toContain("session.route_memory_recorded");
   });
@@ -1747,7 +1747,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: scopedOpenAI.url,
@@ -1765,8 +1765,8 @@ describe("prompt proxy", () => {
         authorization: "Bearer proxy-token",
         "content-type": "application/json",
         "x-codex-session-id": "shared-session-id",
-        "x-prompt-proxy-user-id": "c",
-        "x-prompt-proxy-team-id": "a:b"
+        "x-proxy-user-id": "c",
+        "x-proxy-team-id": "a:b"
       },
       body: JSON.stringify({
         model: "router-auto",
@@ -1782,8 +1782,8 @@ describe("prompt proxy", () => {
         authorization: "Bearer proxy-token",
         "content-type": "application/json",
         "x-codex-session-id": "shared-session-id",
-        "x-prompt-proxy-user-id": "b:c",
-        "x-prompt-proxy-team-id": "a"
+        "x-proxy-user-id": "b:c",
+        "x-proxy-team-id": "a"
       },
       body: JSON.stringify({
         model: "router-auto",
@@ -1802,8 +1802,8 @@ describe("prompt proxy", () => {
     await app.close();
     await scopedOpenAI.close();
 
-    expect(first.headers.get("x-prompt-proxy-route")).toBe("hard");
-    expect(second.headers.get("x-prompt-proxy-route")).toBe("hard");
+    expect(first.headers.get("x-proxy-route")).toBe("hard");
+    expect(second.headers.get("x-proxy-route")).toBe("hard");
     expect(sessions).toHaveLength(1);
     const sessionEvents = events.filter((event: any) => event.eventType === "session.route_memory_recorded");
     expect(new Set(sessionEvents.map((event: any) => event.scopeId)).size).toBe(1);
@@ -1824,7 +1824,7 @@ describe("prompt proxy", () => {
     const app = buildServer(
       loadConfig({
         ...testEnv(),
-        PROMPT_PROXY_TOKEN: "proxy-token",
+        PROXY_TOKEN: "proxy-token",
         OPENAI_API_KEY: "openai-upstream-key",
         ANTHROPIC_API_KEY: "anthropic-upstream-key",
         OPENAI_BASE_URL: qualityOpenAI.url,

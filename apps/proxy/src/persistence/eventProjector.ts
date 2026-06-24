@@ -1,4 +1,4 @@
-import type { PromptProxyTransaction } from "@prompt-proxy/db";
+import type { ProxyTransaction } from "@proxy/db";
 
 import type { ProxyEvent } from "../events.js";
 import { persistClassifierUsage } from "./classifierUsage.js";
@@ -9,7 +9,7 @@ import { persistRequestReceived, persistRoutingContext } from "./requestState.js
 import { persistRouteDecision } from "./routeDecision.js";
 import { persistSessionRoute } from "./sessionRoute.js";
 
-export async function projectEvent(tx: PromptProxyTransaction, event: ProxyEvent) {
+export async function projectEvent(tx: ProxyTransaction, event: ProxyEvent) {
   if (event.eventType === "proxy.request_received") {
     await persistRequestReceived(tx, event);
     return;

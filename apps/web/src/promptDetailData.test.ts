@@ -141,7 +141,7 @@ function event(eventType: string, payload: unknown): ProxyEvent {
   return {
     eventId: `event_${eventType}`,
     eventType,
-    producer: "prompt-proxy.routing",
+    producer: "proxy.routing",
     payload,
     createdAt: "2026-06-18T12:00:00.000Z"
   } as ProxyEvent;

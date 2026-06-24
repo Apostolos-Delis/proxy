@@ -158,16 +158,16 @@ function detailsHeadCopy(draft: CreateProviderCredentialDraft, browserOAuth: boo
     return {
       title: "Sign in with Claude",
       sub: browserOAuth
-        ? "Sign into Claude in your browser. Prompt Proxy saves the credential, then you bind it to an API key."
-        : "Connect your Claude subscription so Prompt Proxy can use it for Claude Code traffic."
+        ? "Sign into Claude in your browser. Proxy saves the credential, then you bind it to an API key."
+        : "Connect your Claude subscription so Proxy can use it for Claude Code traffic."
     };
   }
   if (draft.mode === "codex_subscription") {
     return {
       title: "Sign in with OpenAI",
       sub: browserOAuth
-        ? "Authorize Codex access with OpenAI. Prompt Proxy saves the credential, then you bind it to an API key."
-        : "Connect your ChatGPT (Codex) subscription so Prompt Proxy can use it for Codex traffic."
+        ? "Authorize Codex access with OpenAI. Proxy saves the credential, then you bind it to an API key."
+        : "Connect your ChatGPT (Codex) subscription so Proxy can use it for Codex traffic."
     };
   }
   return {

@@ -12,15 +12,15 @@ import {
   providers,
   providerAccounts,
   secretHint,
-  type PromptProxyTransaction,
-  type PromptProxyTransactionalDatabase
-} from "@prompt-proxy/db";
+  type ProxyTransaction,
+  type ProxyTransactionalDatabase
+} from "@proxy/db";
 import {
   CLAUDE_SUBSCRIPTION_TOKEN_PREFIX,
   PROVIDER_ACCOUNT_AUTH_TYPES,
   PROVIDER_ACCOUNT_STATUSES,
   PROVIDERS
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import {
   extractChatGPTAccountIdFromJwt,
@@ -58,7 +58,7 @@ export class ProviderCredentialAdminError extends AdminMutationError {}
 
 export class ProviderCredentialAdminService {
   constructor(
-    private readonly db: PromptProxyTransactionalDatabase,
+    private readonly db: ProxyTransactionalDatabase,
     private readonly options: ProviderCredentialOptions
   ) {}
 
@@ -128,7 +128,7 @@ export class ProviderCredentialAdminService {
         scopeId: providerAccountId,
         correlationId: providerAccountId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.provider-accounts",
+        producer: "proxy.admin.provider-accounts",
         eventType: "provider_account.created",
         payload: {
           providerAccountId,
@@ -201,7 +201,7 @@ export class ProviderCredentialAdminService {
         scopeId: input.providerAccountId,
         correlationId: input.providerAccountId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.provider-accounts",
+        producer: "proxy.admin.provider-accounts",
         eventType: "provider_account.revoked",
         payload: {
           providerAccountId: input.providerAccountId,
@@ -289,7 +289,7 @@ export class ProviderCredentialAdminService {
         scopeId: input.apiKeyId,
         correlationId: providerAccountId ?? input.apiKeyId,
         actorUserId: input.actorUserId,
-        producer: "prompt-proxy.admin.api-keys",
+        producer: "proxy.admin.api-keys",
         eventType: "provider_account.api_key_assignment_changed",
         payload: {
           apiKeyId: input.apiKeyId,
@@ -305,7 +305,7 @@ export class ProviderCredentialAdminService {
   }
 }
 
-async function byokAccount(tx: PromptProxyTransaction, organizationId: string, providerAccountId: string) {
+async function byokAccount(tx: ProxyTransaction, organizationId: string, providerAccountId: string) {
   const [account] = await tx
     .select({
       id: providerAccounts.id,
@@ -410,7 +410,7 @@ async function readLocalOAuthCredential(provider: LocalOAuthProvider) {
     throw new ProviderCredentialAdminError("local_codex_auth_not_found", 400, [
       {
         path: "provider",
-        message: `Run \`codex login\` on the proxy host, or set PROMPT_PROXY_CODEX_AUTH_FILE to the Codex auth JSON path. Checked ${path}.`
+        message: `Run \`codex login\` on the proxy host, or set PROXY_CODEX_AUTH_FILE to the Codex auth JSON path. Checked ${path}.`
       }
     ]);
   }
@@ -428,7 +428,7 @@ async function readLocalOAuthCredential(provider: LocalOAuthProvider) {
 }
 
 function localCodexAuthPath() {
-  const explicitPath = process.env.PROMPT_PROXY_CODEX_AUTH_FILE?.trim();
+  const explicitPath = process.env.PROXY_CODEX_AUTH_FILE?.trim();
   if (explicitPath) return explicitPath;
   const codexHome = process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
   return join(codexHome, "auth.json");
@@ -486,7 +486,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-async function providerBySlug(tx: PromptProxyTransaction, organizationId: string, slug: string) {
+async function providerBySlug(tx: ProxyTransaction, organizationId: string, slug: string) {
   const [orgProvider] = await tx
     .select({ id: providers.id, slug: providers.slug })
     .from(providers)

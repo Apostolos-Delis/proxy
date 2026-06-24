@@ -20,13 +20,13 @@ function runReplCommand(server: repl.REPLServer, task: () => Promise<void> | voi
 const context = createDbConsoleContext();
 
 if (isUsingDefaultDatabaseUrl()) {
-  console.log("DATABASE_URL is not set; using the local Prompt Proxy Postgres default.");
+  console.log("DATABASE_URL is not set; using the local Proxy Postgres default.");
 }
 
 printConsoleBanner(context);
 
 const server = repl.start({
-  prompt: "prompt-proxy(db)> ",
+  prompt: "prompt(db)> ",
   useColors: true,
   ignoreUndefined: true,
   preview: true

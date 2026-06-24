@@ -10,8 +10,8 @@ import {
   routeDecisions,
   routingConfigs,
   users as usersTable,
-  type PromptProxyDbSession
-} from "@prompt-proxy/db";
+  type ProxyDbSession
+} from "@proxy/db";
 
 import { workspaceScope } from "./scope.js";
 
@@ -51,7 +51,7 @@ type SearchPatterns = {
 };
 
 export async function searchAdminEntities(
-  db: PromptProxyDbSession,
+  db: ProxyDbSession,
   organizationId: string,
   workspaceId: string,
   rawQuery: string
@@ -78,7 +78,7 @@ function anyOf(conditions: (SQL | null)[]) {
   return or(...conditions.flatMap((condition) => condition ? [condition] : []));
 }
 
-async function searchSessions(db: PromptProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns) {
+async function searchSessions(db: ProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns) {
   const rows = await db
     .select()
     .from(agentSessions)
@@ -104,7 +104,7 @@ async function searchSessions(db: PromptProxyDbSession, organizationId: string, 
   }));
 }
 
-async function searchLogs(db: PromptProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns, query: string) {
+async function searchLogs(db: ProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns, query: string) {
   const rows = await db
     .select({
       artifact: promptArtifacts,
@@ -152,7 +152,7 @@ async function searchLogs(db: PromptProxyDbSession, organizationId: string, work
   });
 }
 
-async function searchUsers(db: PromptProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns) {
+async function searchUsers(db: ProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns) {
   const requestRows = db
     .select({ one: sql`1` })
     .from(requests)
@@ -200,7 +200,7 @@ async function searchUsers(db: PromptProxyDbSession, organizationId: string, wor
   });
 }
 
-async function searchRoutingConfigs(db: PromptProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns) {
+async function searchRoutingConfigs(db: ProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns) {
   const rows = await db
     .select()
     .from(routingConfigs)
@@ -227,7 +227,7 @@ async function searchRoutingConfigs(db: PromptProxyDbSession, organizationId: st
   }));
 }
 
-async function searchApiKeys(db: PromptProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns) {
+async function searchApiKeys(db: ProxyDbSession, organizationId: string, workspaceId: string, patterns: SearchPatterns) {
   const rows = await db
     .select({
       apiKey: apiKeys,

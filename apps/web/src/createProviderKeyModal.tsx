@@ -224,7 +224,7 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
       className="provider-key-modal"
       label="Add provider credential"
       title="Add provider credential"
-      subtitle="Create the upstream credential first, then bind it to a Prompt Proxy API key that should use it."
+      subtitle="Create the upstream credential first, then bind it to a Proxy API key that should use it."
       onClose={requestClose}
     >
       <div className="provider-key-wizard">

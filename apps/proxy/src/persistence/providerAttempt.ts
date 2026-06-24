@@ -5,8 +5,8 @@ import {
   providerAttempts,
   requests,
   usageLedger,
-  type PromptProxyTransaction
-} from "@prompt-proxy/db";
+  type ProxyTransaction
+} from "@proxy/db";
 
 import { usageCostMicros } from "../pricing.js";
 import { createId } from "../util.js";
@@ -22,7 +22,7 @@ import {
   surfaceValue
 } from "./values.js";
 
-export async function persistProviderStarted(tx: PromptProxyTransaction, event: {
+export async function persistProviderStarted(tx: ProxyTransaction, event: {
   tenantId: string;
   workspaceId?: string;
   scopeId: string;
@@ -56,7 +56,7 @@ export async function persistProviderStarted(tx: PromptProxyTransaction, event: 
     .onConflictDoNothing();
 }
 
-export async function persistStreamStarted(tx: PromptProxyTransaction, event: {
+export async function persistStreamStarted(tx: ProxyTransaction, event: {
   createdAt: string;
   payload: Record<string, unknown>;
 }) {
@@ -68,7 +68,7 @@ export async function persistStreamStarted(tx: PromptProxyTransaction, event: {
     .where(eq(providerAttempts.id, providerAttemptId));
 }
 
-export async function persistProviderTerminal(tx: PromptProxyTransaction, event: {
+export async function persistProviderTerminal(tx: ProxyTransaction, event: {
   tenantId: string;
   scopeId: string;
   createdAt: string;

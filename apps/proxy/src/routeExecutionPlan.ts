@@ -1,4 +1,4 @@
-import { defaultWorkspaceId } from "@prompt-proxy/db";
+import { defaultWorkspaceId } from "@proxy/db";
 import {
   routeSkipReasonForCompatibilityReason,
   type RouteCandidateEvaluation,
@@ -6,7 +6,7 @@ import {
   type RoutePolicyResult,
   type RoutingConfig,
   type RouteTarget
-} from "@prompt-proxy/schema";
+} from "@proxy/schema";
 
 import type { ClassifierSettings } from "./classifier.js";
 import type {

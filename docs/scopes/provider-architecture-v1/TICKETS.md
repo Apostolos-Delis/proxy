@@ -41,7 +41,7 @@ Acceptance criteria:
 Validation:
 
 - Add unit tests for `surfaceValue`/`providerValue` and the call-site behaviors.
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -70,7 +70,7 @@ Acceptance criteria:
 Validation:
 
 - Add unit tests covering all three usage shapes.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -94,7 +94,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -121,7 +121,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/db test`.
+- Run `pnpm --filter @proxy/db test`.
 - Run `pnpm db:migrate && pnpm db:seed` against local Postgres.
 
 Likely files:
@@ -150,8 +150,8 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/db test`.
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/db test`.
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -180,7 +180,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/db test`.
+- Run `pnpm --filter @proxy/db test`.
 - Run `pnpm db:migrate && pnpm db:seed`.
 
 Likely files:
@@ -210,7 +210,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/schema test`.
+- Run `pnpm --filter @proxy/schema test`.
 - Run `pnpm typecheck`.
 
 Likely files:
@@ -236,7 +236,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test`.
 - Run `pnpm smoke` when local services are available.
 
 Likely files:
@@ -265,7 +265,7 @@ Acceptance criteria:
 Validation:
 
 - Add focused unit tests for credential resolution and URL/redirect guards.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -295,7 +295,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/schema test`.
+- Run `pnpm --filter @proxy/schema test`.
 - Run `pnpm typecheck` (downstream breakage is expected and fixed in PA-012/PA-013/PA-019; sequence within the 1b batch).
 
 Likely files:
@@ -325,7 +325,7 @@ Acceptance criteria:
 Validation:
 
 - Add migration tests with fixture v1 documents (including `thinking: {type: "adaptive", display: "omitted"}` defaults).
-- Run `pnpm --filter @prompt-proxy/db test`.
+- Run `pnpm --filter @proxy/db test`.
 - Run `pnpm db:migrate` against local Postgres seeded with v1 data.
 
 Likely files:
@@ -355,7 +355,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -382,7 +382,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test` (includes `cacheTtlUpgrade` suite).
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test` (includes `cacheTtlUpgrade` suite).
 
 Likely files:
 
@@ -408,7 +408,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test` (includes `tokenAttribution` suite).
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test` (includes `tokenAttribution` suite).
 
 Likely files:
 
@@ -437,7 +437,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -461,7 +461,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -490,7 +490,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -516,7 +516,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test` (includes usage analytics suites).
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test` (includes usage analytics suites).
 
 Likely files:
 
@@ -542,8 +542,8 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test`.
-- Run the repo's schema:print → codegen flow and `pnpm --filter @prompt-proxy/web typecheck`.
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test`.
+- Run the repo's schema:print → codegen flow and `pnpm --filter @proxy/web typecheck`.
 
 Likely files:
 
@@ -569,7 +569,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/web typecheck` and `pnpm build`.
+- Run `pnpm --filter @proxy/web typecheck` and `pnpm build`.
 - Manual browser check against seeded data.
 
 Likely files:
@@ -592,7 +592,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -618,8 +618,8 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test`.
-- Run the repo's schema:print → codegen flow and `pnpm --filter @prompt-proxy/web typecheck`.
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test`.
+- Run the repo's schema:print → codegen flow and `pnpm --filter @proxy/web typecheck`.
 
 Likely files:
 
@@ -646,7 +646,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/web typecheck` and `pnpm build`.
+- Run `pnpm --filter @proxy/web typecheck` and `pnpm build`.
 - Manual browser check against seeded data.
 
 Likely files:
@@ -675,7 +675,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test`.
 - Run `pnpm smoke:harnesses` when provider keys are configured.
 
 Likely files:
@@ -702,7 +702,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -725,7 +725,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -748,8 +748,8 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test`.
-- Run `pnpm --filter @prompt-proxy/web typecheck`; manual console check.
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test`.
+- Run `pnpm --filter @proxy/web typecheck`; manual console check.
 
 Likely files:
 
@@ -779,7 +779,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -808,7 +808,7 @@ Validation:
 Likely files:
 
 - `README.md`
-- `docs/model-routing-proxy.md`
+- `docs/model-routing.md`
 - `docs/harnesses/*.md` (new)
 - `docs/index.md`
 
@@ -829,7 +829,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm build:runtime && pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm build:runtime && pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -851,7 +851,7 @@ Acceptance criteria:
 
 Validation:
 
-- Run `pnpm --filter @prompt-proxy/proxy test` with a fixture payload.
+- Run `pnpm --filter @proxy/proxy test` with a fixture payload.
 
 Likely files:
 

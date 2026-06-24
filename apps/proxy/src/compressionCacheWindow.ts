@@ -3,8 +3,8 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import {
   requests,
   usageLedger,
-  type PromptProxyDbSession
-} from "@prompt-proxy/db";
+  type ProxyDbSession
+} from "@proxy/db";
 
 import { CACHE_TTL_DEFAULT_MS } from "./cacheWindows.js";
 import { sessionRowId } from "./persistence/identity.js";
@@ -35,7 +35,7 @@ type ResolveCompressionCacheWindowInput = {
 };
 
 export class CompressionCacheWindowResolver {
-  constructor(private readonly db: PromptProxyDbSession) {}
+  constructor(private readonly db: ProxyDbSession) {}
 
   async resolve(input: ResolveCompressionCacheWindowInput): Promise<CompressionCacheWindow> {
     const empty = noCompressionCacheWindow();

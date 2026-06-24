@@ -1,6 +1,6 @@
 # Tool Output Compression Tickets
 
-These tickets start from the current implementation, not a greenfield plan. Prompt Proxy already compresses large tool-result blocks with deterministic JSON whitespace compaction, shell terminal-noise stripping, duplicate references, `compression.recorded` events, analytics, and tests.
+These tickets start from the current implementation, not a greenfield plan. Proxy already compresses large tool-result blocks with deterministic JSON whitespace compaction, shell terminal-noise stripping, duplicate references, `compression.recorded` events, analytics, and tests.
 
 The remaining work is to turn that implementation into an explicit, auditable product surface and to safely evaluate higher-savings rules from 9router and OmniRoute.
 
@@ -56,7 +56,7 @@ Validation:
 
 - Add schema tests.
 - Add resolver tests.
-- Run `pnpm typecheck` and `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm typecheck` and `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -97,7 +97,7 @@ Validation:
 
 - Add unit tests proving body identity or byte-equivalent JSON for measure-only.
 - Add integration test with provider mock proving original body reaches provider.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -139,8 +139,8 @@ Validation:
 
 - Add migration and schema tests.
 - Add projection tests.
-- Run `pnpm --filter @prompt-proxy/db test`.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/db test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -175,7 +175,7 @@ Validation:
 
 - Add fixture tests.
 - Add benchmark script or test helper.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -215,7 +215,7 @@ Validation:
 
 - Add rule catalog unit tests.
 - Add GraphQL/admin query tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -254,7 +254,7 @@ Validation:
 
 - Add benchmark fixtures.
 - Add round-trip or semantic-preservation tests where safe.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -295,7 +295,7 @@ Validation:
 
 - Add fixtures from pytest, vitest, tsc, eslint, git diff, git status, rg, and package install logs.
 - Add no-growth and error-preservation tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -328,8 +328,8 @@ Validation:
 
 - Add GraphQL/admin tests.
 - Add frontend component tests where existing patterns allow.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
-- Run `pnpm --filter @prompt-proxy/web test` if available.
+- Run `pnpm --filter @proxy/proxy test`.
+- Run `pnpm --filter @proxy/web test` if available.
 
 Likely files:
 
@@ -366,7 +366,7 @@ Validation:
 
 - Add route decision tests.
 - Add admin query tests.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 
@@ -413,7 +413,7 @@ Validation:
 - Add settings/admin tests.
 - Add analytics tests.
 - Add cap-hit tests proving forwarded bytes stay deterministic.
-- Run `pnpm --filter @prompt-proxy/proxy test`.
+- Run `pnpm --filter @proxy/proxy test`.
 
 Likely files:
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { defaultCompressionPolicy } from "@prompt-proxy/schema";
+import { defaultCompressionPolicy } from "@proxy/schema";
 
 import { benchmarkCompressionFixtures } from "../src/compressionBenchmark.js";
 import { expandJsonArrayCompaction } from "../src/compressionRules/jsonCompaction.js";
@@ -277,7 +277,7 @@ const searchResultFixtures: CompressionFixture[] = [
     toolName: "Bash",
     content: rgSearchOutput,
     assertOutput: (output) => {
-      expect(output).toContain("[prompt-proxy.search-result-grouping.v1]");
+      expect(output).toContain("[prompt.search-result-grouping.v1]");
       expect(output.match(/apps\/proxy\/src\/toolResultCompression\.ts/g) ?? []).toHaveLength(1);
       expect(output).toContain("  120:7: const groupedHit0");
       expect(output).toContain("  64:3: return groupedHit44;");
@@ -312,7 +312,7 @@ const logOutputFixtures: CompressionFixture[] = [
     toolName: "Bash",
     content: pytestLogOutput,
     assertOutput: (output) => {
-      expect(output).toContain("[prompt-proxy.log-output-compaction.v1;");
+      expect(output).toContain("[prompt.log-output-compaction.v1;");
       expect(output).toContain("FAILED tests/test_router.py::test_routes");
       expect(output).toContain("tests/test_router.py:42: AssertionError");
       expect(output).toContain("Traceback (most recent call last):");
@@ -366,7 +366,7 @@ const diffOutputFixtures: CompressionFixture[] = [
     toolName: "Bash",
     content: gitDiffOutput,
     assertOutput: (output) => {
-      expect(output).toContain("[prompt-proxy.diff-compaction.v1;");
+      expect(output).toContain("[prompt.diff-compaction.v1;");
       expect(output).toContain("diff --git a/apps/proxy/src/generated.ts b/apps/proxy/src/generated.ts");
       expect(output).toContain("@@ -1,80 +1,141 @@");
       expect(output).toContain("[hunk stats: added=81; deleted=20]");
@@ -538,7 +538,7 @@ describe("compression fixture corpus", () => {
       rule: "mcp-json-whitespace",
       status: "candidate"
     });
-    expect(result.output).not.toContain("prompt-proxy.json-array-compaction");
+    expect(result.output).not.toContain("prompt.json-array-compaction");
   });
 
   it.each(searchResultFixtures)("records measure-only search grouping candidates for $name", (fixture) => {

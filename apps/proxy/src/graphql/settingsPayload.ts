@@ -1,4 +1,4 @@
-import { defaultCompressionPolicy, type PromptCaptureMode } from "@prompt-proxy/schema";
+import { defaultCompressionPolicy, type PromptCaptureMode } from "@proxy/schema";
 
 import type { AppConfig } from "../config.js";
 import { defaultCostBaseline } from "../pricing.js";
