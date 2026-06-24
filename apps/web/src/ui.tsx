@@ -4,6 +4,17 @@ import { ArrowDownRight, ArrowUpRight, Box, Copy, Info } from "lucide-react";
 import { compactId } from "./format";
 import { TierGauge } from "./routing/tierViz";
 
+export function ProxyLogo({ size = 24, className }: { size?: number; className?: string }) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17 11 H11 V37 H17" />
+      <path d="M31 11 H37 V37 H31" />
+      <path d="M20 24 H27" />
+      <path d="M23.5 19 L28.5 24 L23.5 29" />
+    </svg>
+  );
+}
+
 export type ConsoleMetric = {
   label: string;
   value: string;

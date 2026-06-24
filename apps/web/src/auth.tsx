@@ -7,7 +7,7 @@ import { useState } from "react";
 import { isAdminRole } from "./access";
 import { startLiveUpdates, stopLiveUpdates } from "./liveUpdates";
 import { applyGraphQLCacheScope, fetchMe, login, logout, type AuthMe } from "./session";
-import { ConsoleButton } from "./ui";
+import { ConsoleButton, ProxyLogo } from "./ui";
 
 export type RouterContext = {
   queryClient: QueryClient;
@@ -99,6 +99,7 @@ export function LogoutButton({ icon }: { icon?: ReactNode }) {
 function HeaderText() {
   return (
     <header>
+      <div className="login-mark"><ProxyLogo size={28} /></div>
       <p>Proxy</p>
       <h1>Admin Login</h1>
     </header>

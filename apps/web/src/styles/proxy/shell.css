@@ -36,9 +36,10 @@
 .brand-mark {
   width: 30px; height: 30px; border-radius: 7px; flex: none;
   display: grid; place-items: center;
-  background: var(--accent);
-  position: relative; overflow: hidden;
+  color: var(--accent-text);
+  filter: drop-shadow(0 0 6px var(--accent-glow));
 }
+[data-theme="light"] .brand-mark { filter: none; }
 .brand-mark svg { position: relative; z-index: 1; }
 .brand-name { font-family: var(--mono); font-weight: 500; font-size: 15px; letter-spacing: 0; }
 .brand-sub { font-size: 11px; color: var(--fg-faint); letter-spacing: 0.02em; white-space: nowrap; }
