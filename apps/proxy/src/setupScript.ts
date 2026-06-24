@@ -348,8 +348,8 @@ fi
 if [ "$PP_SETUP_CODEX" -eq 1 ]; then
   [ -f "$HOME/.zshrc" ] || [ -f "$HOME/.bashrc" ] || touch "$HOME/.zshrc"
   PP_TOKEN_EXPORT="export \${PP_CODEX_ENV}=\\"\\$(cat \${PP_TOKEN_PATH_DISPLAY})\\""
-  PP_RC_BEGIN="# >>> prompt codex $PP_CODEX_ENV >>>"
-  PP_RC_END="# <<< prompt codex $PP_CODEX_ENV <<<"
+  PP_RC_BEGIN="# >>> proxy codex $PP_CODEX_ENV >>>"
+  PP_RC_END="# <<< proxy codex $PP_CODEX_ENV <<<"
   tmp_rc_block="$(mktemp)"
   printf '%s\\n' "$PP_TOKEN_EXPORT" > "$tmp_rc_block"
   for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
@@ -373,10 +373,10 @@ if [ "$PP_SETUP_CODEX" -eq 1 ]; then
   codex_config="$PP_CODEX_HOME/config.toml"
   codex_config_existed=0
   [ -s "$codex_config" ] && codex_config_existed=1
-  PP_CODEX_DEFAULTS_BEGIN="# >>> prompt codex defaults >>>"
-  PP_CODEX_DEFAULTS_END="# <<< prompt codex defaults <<<"
-  PP_CODEX_PROVIDER_BEGIN="# >>> prompt codex provider $PP_CODEX_PROVIDER >>>"
-  PP_CODEX_PROVIDER_END="# <<< prompt codex provider $PP_CODEX_PROVIDER <<<"
+  PP_CODEX_DEFAULTS_BEGIN="# >>> proxy codex defaults >>>"
+  PP_CODEX_DEFAULTS_END="# <<< proxy codex defaults <<<"
+  PP_CODEX_PROVIDER_BEGIN="# >>> proxy codex provider $PP_CODEX_PROVIDER >>>"
+  PP_CODEX_PROVIDER_END="# <<< proxy codex provider $PP_CODEX_PROVIDER <<<"
   tmp_codex_defaults="$(mktemp)"
   cat > "$tmp_codex_defaults" <<${heredocDelimiter}
 model = "gpt-5.5"
