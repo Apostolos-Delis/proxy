@@ -1,3 +1,5 @@
+<img src="docs/assets/proxy-logo.svg" alt="Proxy logo" width="72" height="72" />
+
 # Proxy
 
 Proxy is an OpenAI/Anthropic-compatible routing gateway for coding agents. Point Codex, Claude Code, opencode, Cursor BYOK, or SDK callers at one base URL; Proxy classifies each request, routes it to an appropriate model tier, and records the route decision, provider attempts, usage, cost, sessions, and prompt artifacts in an operations console.
