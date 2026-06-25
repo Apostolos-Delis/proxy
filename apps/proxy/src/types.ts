@@ -6,6 +6,8 @@ import type {
   ProviderAccountAuthType,
   RouteExecutionPlan,
   RoutingConfig,
+  RoutingConfigRetryPolicy,
+  SelectedDeployment,
   SessionPinnedSettings,
   Surface as SchemaSurface,
   HarnessCompatibilityProfileId,
@@ -119,6 +121,9 @@ export type RouteDecision = {
   finalRoute?: RouteName;
   selectedModel?: string;
   provider?: Provider;
+  deployment?: SelectedDeployment;
+  providerAttempts?: RouteProviderAttempt[];
+  retryPolicy?: RoutingConfigRetryPolicy;
   reasoningEffort?: ProviderEffort;
   verbosity?: Verbosity;
   providerSettings?: SelectedRouteSettings;
@@ -165,6 +170,16 @@ export type RouteDecision = {
 };
 
 export type SelectedRouteSettings = SessionPinnedSettings;
+
+export type RouteProviderAttempt = {
+  readonly route: RouteName;
+  readonly selectedModel: string;
+  readonly provider: Provider;
+  readonly deployment: SelectedDeployment;
+  readonly reasoningEffort?: ProviderEffort;
+  readonly verbosity?: Verbosity;
+  readonly providerSettings: SelectedRouteSettings;
+};
 
 export type RoutingConfigSnapshot = {
   configId: string;

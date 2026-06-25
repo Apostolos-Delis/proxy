@@ -15,13 +15,39 @@ export type RoutingConfigRouteTarget = {
   metadata?: Record<string, unknown>;
 };
 
+export type RoutingConfigDeploymentSettings = {
+  provider?: string;
+  model?: string;
+  baseUrl?: string;
+  providerAccountId?: string;
+  order?: number;
+  weight?: number;
+  timeoutMs?: number;
+  reasoning?: { effort?: string };
+  text?: { verbosity?: string };
+  thinking?: RoutingConfigThinking;
+  output_config?: { effort?: string };
+  maxOutputTokens?: number;
+  maxTokens?: number;
+  metadata?: Record<string, unknown>;
+};
+
+export type RoutingConfigProviderSettings = {
+  deployments?: RoutingConfigDeploymentSettings[];
+};
+
 export type RoutingConfigRoute = {
   description?: string;
-  targets: RoutingConfigRouteTarget[];
+  retry?: {
+    maxAttempts?: number;
+    retryableStatusCodes?: number[];
+  };
+  openai?: RoutingConfigProviderSettings;
+  anthropic?: RoutingConfigProviderSettings;
 };
 
 export type RoutingConfigDocument = {
-  schemaVersion: 2;
+  schemaVersion: number;
   displayName: string;
   description?: string;
   classifier: {
@@ -93,15 +119,7 @@ export function draftFromConfig(config: RoutingConfigDocument): ConfigEditorDraf
   for (const route of editorRouteOrder) {
     const tier = config.routes[route];
     routes[route] = {
-      targets: (tier?.targets ?? []).map((target) => ({
-        providerId: target.providerId ?? "",
-        model: target.model ?? "",
-        effort: target.effort ?? "",
-        thinking: target.thinking,
-        maxOutputTokens: target.maxOutputTokens,
-        verbosity: target.verbosity,
-        metadata: target.metadata
-      }))
+      targets: routeTargetsFromConfig(tier)
     };
   }
   const maxEstimatedInputTokens = numberLimit(config.limits.maxEstimatedInputTokens);
@@ -116,16 +134,11 @@ export function draftFromConfig(config: RoutingConfigDocument): ConfigEditorDraf
 export function applyDraft(base: RoutingConfigDocument, draft: ConfigEditorDraft): RoutingConfigDocument {
   const routes: RoutingConfigDocument["routes"] = { ...base.routes };
   for (const route of editorRouteOrder) {
-    const baseRoute = base.routes[route] ?? { targets: [] };
-    routes[route] = {
-      ...baseRoute,
-      targets: draft.routes[route].targets
-        .map(routeTargetFromDraft)
-        .filter((target): target is RoutingConfigRouteTarget => Boolean(target))
-    };
+    routes[route] = routeFromDraft(base.routes[route] ?? {}, draft.routes[route].targets);
   }
   const next = {
     ...base,
+    schemaVersion: 3,
     limits: { ...base.limits },
     routes,
     classifier: { ...base.classifier }
@@ -157,6 +170,12 @@ export function draftError(draft: ConfigEditorDraft): string | undefined {
     );
     if (incompleteIndex >= 0) {
       return `${route} target ${incompleteIndex + 1} needs both a provider and model.`;
+    }
+    const unsupportedIndex = draft.routes[route].targets.findIndex((target) =>
+      target.providerId.trim() !== "openai" && target.providerId.trim() !== "anthropic"
+    );
+    if (unsupportedIndex >= 0) {
+      return `${route} target ${unsupportedIndex + 1} must use openai or anthropic.`;
     }
   }
   return undefined;
@@ -241,6 +260,108 @@ function routeTargetFromDraft(target: RouteTargetDraft) {
   if (target.verbosity) next.verbosity = target.verbosity;
   if (target.metadata) next.metadata = target.metadata;
   return next;
+}
+
+function routeTargetsFromConfig(route: RoutingConfigRoute | undefined): RouteTargetDraft[] {
+  return [
+    ...deploymentsFromConfig("openai", route?.openai),
+    ...deploymentsFromConfig("anthropic", route?.anthropic)
+  ]
+    .sort((left, right) => left.order - right.order)
+    .map(({ order: _order, ...target }) => target);
+}
+
+function deploymentsFromConfig(
+  providerId: "openai" | "anthropic",
+  settings: RoutingConfigProviderSettings | undefined
+): Array<RouteTargetDraft & { order: number }> {
+  return sortedDeployments(settings).map((deployment, index) => ({
+    providerId,
+    model: deployment.model ?? "",
+    effort: providerId === "openai"
+      ? deployment.reasoning?.effort ?? ""
+      : deployment.output_config?.effort ?? "",
+    thinking: providerId === "anthropic" ? deployment.thinking : undefined,
+    maxOutputTokens: providerId === "openai" ? deployment.maxOutputTokens : deployment.maxTokens,
+    verbosity: providerId === "openai" ? deployment.text?.verbosity : undefined,
+    metadata: deployment.metadata,
+    order: deployment.order ?? index
+  }));
+}
+
+function routeFromDraft(baseRoute: RoutingConfigRoute, targets: RouteTargetDraft[]): RoutingConfigRoute {
+  const normalizedTargets = targets
+    .map((target, order) => {
+      const next = routeTargetFromDraft(target);
+      return next ? { ...next, order } : undefined;
+    })
+    .filter((target): target is RoutingConfigRouteTarget & { order: number } => Boolean(target));
+  const nextRoute: RoutingConfigRoute = {};
+  if (baseRoute.description !== undefined) nextRoute.description = baseRoute.description;
+  if (baseRoute.retry !== undefined) nextRoute.retry = baseRoute.retry;
+  const openai = providerBlock(
+    baseRoute.openai,
+    "openai",
+    normalizedTargets.filter((target) => target.providerId === "openai")
+  );
+  const anthropic = providerBlock(
+    baseRoute.anthropic,
+    "anthropic",
+    normalizedTargets.filter((target) => target.providerId === "anthropic")
+  );
+  if (openai) nextRoute.openai = openai;
+  if (anthropic) nextRoute.anthropic = anthropic;
+  return nextRoute;
+}
+
+function providerBlock(
+  base: RoutingConfigProviderSettings | undefined,
+  provider: "openai" | "anthropic",
+  targets: Array<RoutingConfigRouteTarget & { order: number }>
+): RoutingConfigProviderSettings | undefined {
+  if (targets.length === 0) return undefined;
+  const baseDeployments = sortedDeployments(base);
+  return {
+    ...base,
+    deployments: targets.map((target, index) =>
+      deploymentFromTarget(target, provider, baseDeployments[index])
+    )
+  };
+}
+
+function deploymentFromTarget(
+  target: RoutingConfigRouteTarget & { order: number },
+  provider: "openai" | "anthropic",
+  base: RoutingConfigDeploymentSettings | undefined
+): RoutingConfigDeploymentSettings {
+  const deployment: RoutingConfigDeploymentSettings = {
+    ...base,
+    provider,
+    model: target.model,
+    order: target.order,
+    weight: base?.weight ?? 1,
+    timeoutMs: base?.timeoutMs ?? 60000
+  };
+  const effort = target.effort?.trim();
+  if (provider === "openai") {
+    if (effort) deployment.reasoning = { ...deployment.reasoning, effort };
+    else delete deployment.reasoning;
+    if (target.verbosity) deployment.text = { ...deployment.text, verbosity: target.verbosity };
+    else delete deployment.text;
+    if (target.maxOutputTokens) deployment.maxOutputTokens = target.maxOutputTokens;
+  } else {
+    if (effort) deployment.output_config = { ...deployment.output_config, effort };
+    else delete deployment.output_config;
+    if (target.thinking) deployment.thinking = target.thinking;
+    else delete deployment.thinking;
+    if (target.maxOutputTokens) deployment.maxTokens = target.maxOutputTokens;
+  }
+  if (target.metadata) deployment.metadata = target.metadata;
+  return deployment;
+}
+
+function sortedDeployments(settings: RoutingConfigProviderSettings | undefined) {
+  return [...(settings?.deployments ?? [])].sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
 }
 
 function nearestEffort(value: string, supported: readonly string[]) {

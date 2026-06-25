@@ -2,12 +2,12 @@ import type { FastifyReply } from "fastify";
 import { performance } from "node:perf_hooks";
 import type { ProviderHealthClassification } from "@proxy/schema";
 
-import type { ProviderAdapter, ProviderForwardInput } from "./adapters.js";
+import type { ProviderAdapter, ProviderForwardAttemptInput, ProviderForwardInput, ProviderForwardResult } from "./adapters.js";
 import { bufferedStreamResponse, collectStreamResponse } from "./bufferedStreamResponse.js";
 import type { AppConfig } from "./config.js";
 import {
+  type EventAppender,
   jsonPayload,
-  type EventService,
   type ProviderAttemptStore,
   type RequestStateStoreLike
 } from "./events.js";
@@ -32,11 +32,12 @@ import {
   NoopMetricsCollector
 } from "./metrics.js";
 import { ProviderMetrics } from "./providerMetrics.js";
+import { ProviderDeploymentHealthStore, type ProviderDeploymentFailureReason } from "./providerDeploymentHealth.js";
 import { classifyProviderTerminalHealth } from "./providerHealth.js";
 import { sseObserverForDialect, streamObservationEventMetadata, type StreamObservation } from "./sseObserver.js";
 import { providerCompressionTerminalTelemetry, requestBodyHash } from "./toolResultCompression.js";
 import { translators, type DialectTranslator } from "./translators/index.js";
-import type { JsonObject, Provider, RouteDecision, Surface, UpstreamCredential } from "./types.js";
+import type { JsonObject, Provider, RouteDecision, RouteProviderAttempt, Surface, UpstreamCredential } from "./types.js";
 import {
   fetchWithPinnedAddress,
   providerRequestPinnedAddress,
@@ -50,32 +51,79 @@ export class ProviderProxy implements ProviderAdapter {
 
   constructor(
     private readonly config: AppConfig,
-    private readonly events: EventService,
+    private readonly events: EventAppender,
     private readonly attempts: ProviderAttemptStore,
     private readonly requestStates: RequestStateStoreLike,
     private readonly providerRegistry: ProviderRegistryResolver,
-    metrics: MetricsCollector = new NoopMetricsCollector()
+    metrics: MetricsCollector = new NoopMetricsCollector(),
+    private readonly deploymentHealth = new ProviderDeploymentHealthStore()
   ) {
     this.providerMetrics = new ProviderMetrics(config, attempts, metrics);
   }
 
-  async forward(input: ProviderForwardInput) {
-    if (!input.decision.selectedModel) {
+  async forward(input: ProviderForwardInput): Promise<ProviderForwardResult> {
+    const attempts = providerForwardAttempts(input);
+    if (attempts.length === 0) {
       input.reply.code(500).send({ error: "Missing selected model." });
-      return;
+      return "rejected";
     }
-    if (!input.decision.providerSettings) {
+
+    const maxAttempts = Math.max(1, Math.min(input.retryPolicy?.maxAttempts ?? 1, attempts.length));
+    let lastError: unknown;
+    for (let index = 0; index < maxAttempts; index += 1) {
+      const selected = attempts[index];
+      const providerLimitLease = await input.acquireProviderLimit?.(selected);
+      if (input.acquireProviderLimit && !providerLimitLease) return "rejected";
+      try {
+        const result = await this.forwardProviderAttempt(input, selected, index, maxAttempts, index + 1 < maxAttempts);
+        if (result.retry) {
+          lastError = result.error;
+          continue;
+        }
+        return "forwarded";
+      } finally {
+        providerLimitLease?.release();
+      }
+    }
+    if (lastError) throw lastError;
+    return "forwarded";
+  }
+
+  private async forwardProviderAttempt(
+    input: ProviderForwardInput,
+    selected: ProviderForwardAttemptInput,
+    attemptIndex: number,
+    maxAttempts: number,
+    retryAvailable: boolean
+  ): Promise<{ retry: boolean; error?: unknown }> {
+    const providerSettings = selected.providerSettings ?? input.decision.providerSettings;
+    if (!providerSettings) {
       input.reply.code(500).send({ error: "Missing selected provider settings." });
-      return;
+      return { retry: false };
     }
-    const selectedModel = input.decision.selectedModel;
-    const targetDialect = input.decision.providerSettings.dialect;
+    const selectedModel = selected.selectedModel;
+    input = {
+      ...input,
+      provider: selected.provider,
+      body: selected.body,
+      credential: selected.credential ?? input.credential,
+      decision: {
+        ...input.decision,
+        finalRoute: selected.route ?? input.decision.finalRoute,
+        selectedModel,
+        provider: selected.provider,
+        deployment: selected.deployment ?? input.decision.deployment,
+        reasoningEffort: selected.reasoningEffort ?? input.decision.reasoningEffort,
+        providerSettings
+      }
+    };
+    const targetDialect = providerSettings.dialect;
     const providerStream = isRecord(input.body) && input.body.stream === true;
     const responseStream = input.responseStream ?? providerStream;
     const providerAccountId = input.credential?.providerAccountId;
 
     const { attempt, duplicate } = this.attempts.create({
-      idempotencyKey: input.idempotencyKey,
+      idempotencyKey: `${input.idempotencyKey}:provider-attempt:${attemptIndex}`,
       requestId: input.requestId,
       surface: input.surface,
       provider: input.provider,
@@ -85,7 +133,7 @@ export class ProviderProxy implements ProviderAdapter {
 
     if (!attempt || duplicate) {
       input.reply.code(409).send({ error: "Duplicate request is still active." });
-      return;
+      return { retry: false };
     }
     this.providerMetrics.startAttempt({
       providerAttemptId: attempt.id,
@@ -102,7 +150,11 @@ export class ProviderProxy implements ProviderAdapter {
       providerAttemptId: attempt.id,
       preparedRequestHash: requestBodyHash(input.body),
       attemptIndex: 0,
-      fallbackIndex: 0
+      fallbackIndex: attemptIndex,
+      retryAttempt: attemptIndex + 1,
+      retryMaxAttempts: maxAttempts,
+      route: selected.route ?? input.decision.finalRoute ?? null,
+      deployment: selected.deployment ? jsonPayload(selected.deployment) : null
     };
     if (routeCandidateId !== undefined) providerRequestStartedPayload.routeCandidateId = routeCandidateId;
     if (providerAccountId) providerRequestStartedPayload.providerAccountId = providerAccountId;
@@ -143,7 +195,7 @@ export class ProviderProxy implements ProviderAdapter {
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
       await this.failBeforeFetch(input, attempt.id, message);
-      return;
+      return { retry: false };
     }
     const endpoint = resolvedProvider ? providerEndpointForDialect(resolvedProvider, targetDialect) : undefined;
     if (!resolvedProvider || !resolvedProvider.enabled || !endpoint) {
@@ -153,7 +205,7 @@ export class ProviderProxy implements ProviderAdapter {
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
       await this.failBeforeFetch(input, attempt.id, error);
-      return;
+      return { retry: false };
     }
     const responseTranslator = endpoint.dialect === input.surface
       ? undefined
@@ -162,29 +214,41 @@ export class ProviderProxy implements ProviderAdapter {
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
       await this.failBeforeFetch(input, attempt.id, "translator_not_found");
-      return;
+      return { retry: false };
     }
     if (!canAuthenticateOrgProvider(resolvedProvider, input.credential)) {
       const error = "provider_credential_unresolved";
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
       await this.failBeforeFetch(input, attempt.id, error);
-      return;
+      return { retry: false };
     }
 
     let upstream: Response;
+    let providerTimedOut = false;
+    const timeout = selected.deployment?.timeoutMs
+      ? setTimeout(() => {
+          providerTimedOut = true;
+          abortController.abort();
+        }, selected.deployment.timeoutMs)
+      : undefined;
     const fetchStartedAtMs = performance.now();
     try {
+      input.timing?.markProviderFetchStart();
+      const requestProvider = providerForDeployment(resolvedProvider, selected.deployment);
       upstream = await this.fetchWithRateLimitRetries({
         input,
         providerAttemptId: attempt.id,
-        provider: resolvedProvider,
+        provider: requestProvider,
         endpoint,
         signal: abortController.signal
       });
     } catch (error) {
+      if (timeout) clearTimeout(timeout);
       input.reply.raw.off("close", abortUpstream);
-      const aborted = clientGone();
+      const aborted = !providerTimedOut && clientGone();
+      const failureReason = transportFailureReason(providerTimedOut, aborted);
+      if (failureReason) this.deploymentHealth.recordFailure(selected.deployment, failureReason);
       if (aborted) {
         this.providerMetrics.recordClientCancellation({
           surface: input.surface,
@@ -199,6 +263,7 @@ export class ProviderProxy implements ProviderAdapter {
         terminalStatus: aborted ? "cancelled" : "failed",
         error: error instanceof Error ? error.message : "Provider request failed."
       });
+      if (retryAvailable && failureReason) return { retry: true, error };
       await this.requestStates.finish(input.idempotencyKey, aborted ? "cancelled" : "failed", {
         requestId: input.requestId,
         providerAttemptId: attempt.id,
@@ -206,6 +271,8 @@ export class ProviderProxy implements ProviderAdapter {
       });
       throw error;
     }
+    if (timeout) clearTimeout(timeout);
+    input.timing?.markFirstByte();
     this.providerMetrics.recordTimeToFirstByte({
       surface: input.surface,
       provider: input.provider,
@@ -226,6 +293,9 @@ export class ProviderProxy implements ProviderAdapter {
     input.reply.code(upstream.status);
     input.reply.header("x-proxy-model", selectedModel);
     input.reply.header("x-proxy-route", input.decision.finalRoute ?? "");
+    if (selected.deployment) {
+      input.reply.header("x-proxy-deployment", selected.deployment.key);
+    }
     if (input.decision.reasoningEffort) {
       input.reply.header("x-proxy-reasoning-effort", input.decision.reasoningEffort);
     }
@@ -244,17 +314,20 @@ export class ProviderProxy implements ProviderAdapter {
         ? translateResponseText(upstreamText, responseTranslator)
         : upstreamText;
       const status = upstream.ok ? "completed" : "failed";
+      const canRetryStatus = retryableStatus(upstream.status, input.retryPolicy?.retryableStatusCodes);
       const usage = tryExtractUsage(text);
       const error = upstream.ok ? undefined : errorExcerpt(text);
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
 
+      this.recordDeploymentStatus(selected, status, upstream.status, canRetryStatus);
       await this.appendTerminal(input, attempt.id, status, usage, upstream.status, error ? { error } : {});
       this.attempts.update(attempt.id, {
         terminalStatus: status,
         usage: usage === undefined ? undefined : jsonPayload(usage),
         error
       });
+      if (status === "failed" && retryAvailable && canRetryStatus) return { retry: true };
       await this.requestStates.finish(input.idempotencyKey, status, {
         requestId: input.requestId,
         providerAttemptId: attempt.id,
@@ -266,7 +339,7 @@ export class ProviderProxy implements ProviderAdapter {
         const assistantText = extractResponseText(input.surface, tryParseJson(text));
         if (assistantText) await input.onAssistantText(assistantText, false);
       }
-      return;
+      return { retry: false };
     }
 
     await this.events.append({
@@ -295,9 +368,12 @@ export class ProviderProxy implements ProviderAdapter {
         completed = true;
         const observation = collected.observation;
         const status = observation.status === "failed" ? "failed" : "completed";
+        const canRetryStatus = retryableStatus(upstream.status, input.retryPolicy?.retryableStatusCodes);
         streamCompleted = true;
         input.reply.raw.off("close", abortUpstream);
 
+        input.timing?.markStreamCompletion();
+        this.recordDeploymentStatus(selected, status, upstream.status, canRetryStatus);
         await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, withoutOutputText(observation));
         this.attempts.update(attempt.id, {
           terminalStatus: status,
@@ -305,6 +381,7 @@ export class ProviderProxy implements ProviderAdapter {
           upstreamRequestId: observation.upstreamResponseId,
           error: observation.error
         });
+        if (status === "failed" && retryAvailable && canRetryStatus) return { retry: true };
         await this.requestStates.finish(input.idempotencyKey, status, {
           requestId: input.requestId,
           providerAttemptId: attempt.id,
@@ -321,6 +398,8 @@ export class ProviderProxy implements ProviderAdapter {
         const observation = observer.finish("cancelled");
         const message = error instanceof Error ? error.message : "Stream failed.";
         const aborted = clientGone();
+        const failureReason = transportFailureReason(false, aborted);
+        if (failureReason) this.deploymentHealth.recordFailure(selected.deployment, failureReason);
         if (aborted) {
           this.providerMetrics.recordClientCancellation({
             surface: input.surface,
@@ -344,6 +423,7 @@ export class ProviderProxy implements ProviderAdapter {
           usage: observation.usage,
           error: message
         });
+        if (retryAvailable && failureReason) return { retry: true, error };
         await this.requestStates.finish(input.idempotencyKey, aborted ? "cancelled" : "failed", {
           requestId: input.requestId,
           providerAttemptId: attempt.id,
@@ -367,7 +447,7 @@ export class ProviderProxy implements ProviderAdapter {
           });
         }
       }
-      return;
+      return { retry: false };
     }
 
     input.reply.hijack();
@@ -375,6 +455,9 @@ export class ProviderProxy implements ProviderAdapter {
     input.reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
     input.reply.raw.setHeader("x-proxy-model", selectedModel);
     input.reply.raw.setHeader("x-proxy-route", input.decision.finalRoute ?? "");
+    if (selected.deployment) {
+      input.reply.raw.setHeader("x-proxy-deployment", selected.deployment.key);
+    }
     if (input.decision.reasoningEffort) {
       input.reply.raw.setHeader("x-proxy-reasoning-effort", input.decision.reasoningEffort);
     }
@@ -404,6 +487,9 @@ export class ProviderProxy implements ProviderAdapter {
         const message = error instanceof Error ? error.message : "Stream failed.";
         const aborted = clientGone();
         const status = aborted ? "cancelled" : "failed";
+        const failureReason = transportFailureReason(false, aborted);
+        if (failureReason) this.deploymentHealth.recordFailure(selected.deployment, failureReason);
+        input.timing?.markStreamCompletion();
         this.providerMetrics.recordStreamBytes({
           surface: input.surface,
           provider: input.provider,
@@ -449,6 +535,8 @@ export class ProviderProxy implements ProviderAdapter {
         status,
         bytes: forwardedBytes
       });
+      input.timing?.markStreamCompletion();
+      this.recordDeploymentStatus(selected, status, upstream.status, retryableStatus(upstream.status, input.retryPolicy?.retryableStatusCodes));
       await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, withoutOutputText(observation));
       this.attempts.update(attempt.id, {
         terminalStatus: status,
@@ -483,6 +571,7 @@ export class ProviderProxy implements ProviderAdapter {
         });
       }
     }
+    return { retry: false };
   }
 
   private async appendTerminal(
@@ -630,6 +719,20 @@ export class ProviderProxy implements ProviderAdapter {
     input.reply.code(502).send({ error });
   }
 
+  private recordDeploymentStatus(
+    selected: ProviderForwardAttemptInput,
+    status: "completed" | "failed" | "cancelled",
+    upstreamStatus: number,
+    retryable: boolean
+  ) {
+    if (status === "completed") {
+      this.deploymentHealth.recordSuccess(selected.deployment);
+      return;
+    }
+    const failureReason = deploymentFailureReason(upstreamStatus, retryable);
+    if (failureReason) this.deploymentHealth.recordFailure(selected.deployment, failureReason);
+  }
+
   private async fetchWithRateLimitRetries({
     input,
     providerAttemptId,
@@ -699,8 +802,6 @@ export class ProviderProxy implements ProviderAdapter {
       const delayMs = rateLimitRetryDelayMs({
         headers: upstream.headers,
         provider: provider.slug,
-        attempt: upstreamAttempt,
-        baseDelayMs: this.config.providerRateLimitBaseDelayMs,
         maxDelayMs: this.config.providerRateLimitMaxDelayMs
       });
       if (delayMs === undefined) return upstream;
@@ -852,6 +953,18 @@ function healthEventType(classification: ProviderHealthClassification) {
   return undefined;
 }
 
+function deploymentFailureReason(status: number, retryable: boolean): ProviderDeploymentFailureReason | undefined {
+  if (status === 429) return "rate_limited";
+  if (retryable && status >= 500 && status < 600) return "server_error";
+  return undefined;
+}
+
+function transportFailureReason(providerTimedOut: boolean, clientAborted: boolean): ProviderDeploymentFailureReason | undefined {
+  if (clientAborted) return undefined;
+  if (providerTimedOut) return "timeout";
+  return "connection_error";
+}
+
 function terminalError(metadata: JsonObject) {
   const error = metadata.error;
   if (typeof error === "string") return error;
@@ -865,6 +978,18 @@ function copyResponseHeaders(upstream: Response, reply: FastifyReply) {
     reply.header(key, value);
     reply.raw.setHeader(key, value);
   }
+}
+
+function providerForDeployment(
+  provider: ProviderRegistryEntry,
+  deployment: ProviderForwardAttemptInput["deployment"]
+): ProviderRegistryEntry {
+  if (!deployment?.baseUrl) return provider;
+  return {
+    ...provider,
+    baseUrl: deployment.baseUrl.replace(/\/+$/, ""),
+    pinnedAddress: undefined
+  };
 }
 
 const blockedResponseHeaders = new Set([
@@ -881,6 +1006,48 @@ const blockedResponseHeaders = new Set([
   "transfer-encoding",
   "upgrade"
 ]);
+
+function retryableStatus(status: number, retryableStatuses: readonly number[] | undefined) {
+  return (retryableStatuses ?? []).includes(status);
+}
+
+function providerForwardAttempts(input: ProviderForwardInput): ProviderForwardAttemptInput[] {
+  if (input.attempts?.length) return input.attempts;
+  if (input.decision.providerAttempts?.length) {
+    return input.decision.providerAttempts.map((attempt) => providerForwardAttempt(input, attempt));
+  }
+  if (
+    !input.decision.finalRoute ||
+    !input.decision.selectedModel ||
+    !input.decision.provider ||
+    !input.decision.providerSettings
+  ) {
+    return [];
+  }
+  return [{
+    route: input.decision.finalRoute,
+    selectedModel: input.decision.selectedModel,
+    provider: input.decision.provider,
+    deployment: input.decision.deployment,
+    reasoningEffort: input.decision.reasoningEffort,
+    body: input.body,
+    credential: input.credential,
+    providerSettings: input.decision.providerSettings
+  }];
+}
+
+function providerForwardAttempt(input: ProviderForwardInput, attempt: RouteProviderAttempt): ProviderForwardAttemptInput {
+  return {
+    route: attempt.route,
+    selectedModel: attempt.selectedModel,
+    provider: attempt.provider,
+    deployment: attempt.deployment,
+    reasoningEffort: attempt.reasoningEffort,
+    body: input.body,
+    credential: input.credential,
+    providerSettings: attempt.providerSettings
+  };
+}
 
 // Prefer the provider's structured error message over the raw body so event
 // payloads stay small and free of incidental request content.
@@ -932,12 +1099,11 @@ function onceDrain(stream: NodeJS.WritableStream) {
 function rateLimitRetryDelayMs(input: {
   headers: Headers;
   provider: Provider;
-  attempt: number;
-  baseDelayMs: number;
   maxDelayMs: number;
 }) {
   const headerDelay = retryAfterDelayMs(input.headers) ?? providerResetDelayMs(input.headers, input.provider);
-  const delayMs = headerDelay ?? fallbackBackoffMs(input.attempt, input.baseDelayMs, input.maxDelayMs);
+  if (headerDelay === undefined) return undefined;
+  const delayMs = headerDelay;
   if (delayMs > input.maxDelayMs) return undefined;
   return delayMs;
 }
@@ -1005,12 +1171,6 @@ function parseDurationMs(value: string) {
     if (match[2] === "m") return total + amount * 60_000;
     return total + amount * 3_600_000;
   }, 0));
-}
-
-function fallbackBackoffMs(attempt: number, baseDelayMs: number, maxDelayMs: number) {
-  const ceiling = Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1));
-  if (ceiling <= 0) return 0;
-  return Math.ceil(ceiling / 2 + Math.random() * (ceiling / 2));
 }
 
 function rateLimitHeaders(headers: Headers) {

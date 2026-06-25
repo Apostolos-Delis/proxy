@@ -142,6 +142,8 @@ Inputs:
 
 The workflow runs typecheck, tests, image build/push, base CDK deploy, migrations, optional seed, service/edge CDK deploy, web sync, CloudFront invalidation, ECS stability wait, and deployed smoke. The GitHub-hosted runner skips admin smoke because admin credentials are not exposed to arbitrary workflow logs.
 
+Before increasing production traffic or changing runtime/infra scaling, apply the [production SLOs and rollout gates](production-rollout-gates.md).
+
 ## Full Deployed Smoke
 
 Run the full smoke from an authenticated workstation.
@@ -256,10 +258,24 @@ aws cloudfront create-invalidation \
 
 Database migrations are forward-only. Risky migrations need an explicit rollback note before deploy.
 
+## RDS Headroom
+
+Before load tests or production traffic increases, check the RDS dashboard for CPU utilization, read/write IOPS, free storage, database connections, and burst balance. Keep sustained CPU below 70%, storage below 70% used, and connections below the pool budget from `DB_POOL_MAX * maxProxyCount`; the proxy pool formula keeps only 70% of database connections available to runtime tasks so operations and migrations retain headroom.
+
+Run the no-spend local load smoke before larger profiles:
+
+```shell
+pnpm build:runtime
+pnpm load:proxy -- --profile=smoke --json-out=.context/load-smoke.json
+```
+
+Use `--profile=concurrency`, `--profile=body-sizes`, `--profile=rps`, `--profile=classifier-cache`, `--profile=provider-failures`, or `--profile=scale-readiness` for targeted readiness checks. `scale-readiness` combines the passing scale profiles; run `provider-failures` separately because 429/5xx/timeout scenarios intentionally return errors. External targets use `PROMPT_PROXY_LOAD_BASE_URL` and `PROMPT_PROXY_LOAD_API_KEY`; only run them against an environment intentionally configured for no-spend or controlled-load provider traffic. Set failure gates with `--max-error-rate`, `--max-p95-ttft-ms`, `--max-p95-pre-forward-ms`, and `--max-p99-total-ms`.
+
 ## Cost Controls
 
 - V1 uses no NAT Gateways, no EKS, no Redis, and no OpenSearch.
-- Keep `desiredProxyCount=1` until traffic proves otherwise.
+- Keep staging `desiredProxyCount=1`.
 - Keep RDS at `db.t4g.micro` and 20 GB for staging.
+- Prod RDS starts at `db.t4g.medium` and 100 GB; resize before load if the RDS headroom checks fail.
 - Keep CloudWatch log retention short.
 - Destroy staging when not in use if cost matters; keep prod deletion protection enabled.

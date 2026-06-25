@@ -25,6 +25,85 @@ describe("ProxyServiceStack", () => {
       Protocol: "HTTP",
       HealthCheckPath: "/healthz"
     });
+    serviceTemplate.hasResourceProperties("AWS::ECS::TaskDefinition", {
+      Cpu: "256",
+      Memory: "512"
+    });
+  });
+
+  it("sizes and autoscales the prod proxy service", () => {
+    const { service } = createRuntimeStacks(environments[1]);
+    const template = Template.fromStack(service);
+
+    template.hasResourceProperties("AWS::ECS::Cluster", {
+      ClusterName: "proxy-prod-cluster",
+      ClusterSettings: Match.arrayWith([Match.objectLike({ Name: "containerInsights", Value: "enhanced" })])
+    });
+    template.hasResourceProperties("AWS::ECS::TaskDefinition", {
+      Family: "proxy-prod-proxy",
+      Cpu: "1024",
+      Memory: "2048",
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+	          Environment: Match.arrayWith([
+	            Match.objectLike({ Name: "DB_POOL_MAX", Value: "5" }),
+	            Match.objectLike({ Name: "EVENT_WRITER_BATCH_SIZE", Value: "25" }),
+	            Match.objectLike({ Name: "EVENT_WRITER_MAX_BYTES", Value: "8388608" }),
+	            Match.objectLike({ Name: "EVENT_WRITER_MAX_ENTRIES", Value: "10000" }),
+	            Match.objectLike({ Name: "EVENT_WRITER_SHUTDOWN_TIMEOUT_MS", Value: "5000" }),
+	            Match.objectLike({ Name: "REQUEST_BODY_LIMIT_BYTES", Value: "15728640" })
+	          ])
+        })
+      ])
+    });
+    template.hasResourceProperties("AWS::ECS::Service", {
+      ServiceName: "proxy-prod-proxy",
+      DesiredCount: 2
+    });
+    template.hasResourceProperties("AWS::ApplicationAutoScaling::ScalableTarget", {
+      MinCapacity: 2,
+      MaxCapacity: 8,
+      ScalableDimension: "ecs:service:DesiredCount",
+      ServiceNamespace: "ecs"
+    });
+    template.hasResourceProperties("AWS::ApplicationAutoScaling::ScalingPolicy", {
+      PolicyType: "TargetTrackingScaling",
+      TargetTrackingScalingPolicyConfiguration: Match.objectLike({
+        PredefinedMetricSpecification: { PredefinedMetricType: "ECSServiceAverageCPUUtilization" },
+        TargetValue: 60
+      })
+    });
+    template.hasResourceProperties("AWS::ApplicationAutoScaling::ScalingPolicy", {
+      PolicyType: "TargetTrackingScaling",
+      TargetTrackingScalingPolicyConfiguration: Match.objectLike({
+        PredefinedMetricSpecification: { PredefinedMetricType: "ECSServiceAverageMemoryUtilization" },
+        TargetValue: 70
+      })
+    });
+  });
+
+  it("creates proxy service health alarms", () => {
+    const { service } = createRuntimeStacks(environments[1]);
+    const template = Template.fromStack(service);
+
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 6);
+    for (const alarmName of [
+      "proxy-prod-proxy-high-cpu",
+      "proxy-prod-proxy-high-memory",
+      "proxy-prod-proxy-target-5xx",
+      "proxy-prod-proxy-target-response-time",
+      "proxy-prod-proxy-unhealthy-targets",
+      "proxy-prod-proxy-restarts"
+    ]) {
+      template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+        AlarmName: alarmName
+      });
+    }
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      MetricName: "RestartCount",
+      Namespace: "ECS/ContainerInsights",
+      Statistic: "Sum"
+    });
   });
 
   it("injects runtime secrets into the proxy task", () => {
@@ -41,6 +120,18 @@ describe("ProxyServiceStack", () => {
         Match.objectLike({
           Name: "proxy",
           Command: ["pnpm", "start:prod:proxy"],
+	          Environment: Match.arrayWith([
+	            Match.objectLike({ Name: "DB_POOL_MAX", Value: "5" }),
+	            Match.objectLike({ Name: "EVENT_WRITER_BATCH_SIZE", Value: "25" }),
+	            Match.objectLike({ Name: "EVENT_WRITER_MAX_BYTES", Value: "8388608" }),
+	            Match.objectLike({ Name: "EVENT_WRITER_MAX_ENTRIES", Value: "10000" }),
+	            Match.objectLike({ Name: "EVENT_WRITER_SHUTDOWN_TIMEOUT_MS", Value: "5000" }),
+	            Match.objectLike({ Name: "REQUEST_BODY_LIMIT_BYTES", Value: "52428800" })
+	          ]),
+          RestartPolicy: {
+            Enabled: true,
+            RestartAttemptPeriod: 300
+          },
           PortMappings: Match.arrayWith([Match.objectLike({ ContainerPort: 8787 })]),
           Secrets: Match.arrayWith([Match.objectLike({ Name: "DATABASE_URL" })])
         })

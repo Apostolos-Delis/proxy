@@ -43,7 +43,7 @@ export type DatabasePersistenceConfig = AdminQueryConfig & {
 };
 
 export function createPostgresPersistence(databaseUrl: string, config: AppConfig, metrics?: MetricsCollector) {
-  return createDatabasePersistence(createPostgresDatabase(databaseUrl), config, true, metrics);
+  return createDatabasePersistence(createPostgresDatabase(databaseUrl, { max: config.dbPoolMax }), config, true, metrics);
 }
 
 export function createDatabasePersistence(
@@ -53,6 +53,9 @@ export function createDatabasePersistence(
   metrics?: MetricsCollector
 ) {
   const transactional = createTransactionalDatabase(db);
+  const apiKeys = new ApiKeyIdentityStore(db);
+  const routingConfigs = new RoutingConfigResolver(db);
+  const clearRoutingConfigCache = () => routingConfigs.clearCache();
   // Getter, not a snapshot: a kill-switch flip must reach the create, resolve,
   // and forward layers together (headersFor already reads config live).
   const credentialOptions: ProviderCredentialOptions = {
@@ -62,14 +65,19 @@ export function createDatabasePersistence(
       return config.subscriptionOAuthEnabled;
     }
   };
-  const providerCredentialAdmin = new ProviderCredentialAdminService(transactional, credentialOptions);
+  const providerCredentials = new ProviderCredentialStore(db, credentialOptions);
+  const providerCredentialAdmin = new ProviderCredentialAdminService(
+    transactional,
+    credentialOptions,
+    () => providerCredentials.clearCache()
+  );
   return {
-    apiKeyAdmin: new ApiKeyAdminService(transactional),
-    apiKeys: new ApiKeyIdentityStore(db),
+    apiKeyAdmin: new ApiKeyAdminService(transactional, () => apiKeys.clearCache()),
+    apiKeys,
     adminSessions: new AdminSessionStore(db),
     compressionCacheWindows: new CompressionCacheWindowResolver(db),
     compressionRetrieval: new CompressionRetrievalResolver(db),
-    providerCredentials: new ProviderCredentialStore(db, credentialOptions),
+    providerCredentials,
     providerCredentialAdmin,
     providerCredentialOAuth: new ProviderCredentialOAuthService(providerCredentialAdmin),
     providerHealth: new ProviderHealthStore(db),
@@ -81,16 +89,20 @@ export function createDatabasePersistence(
     }),
     modelDiscovery: new ModelDiscoveryStore(db),
     modelPricingAdmin: new ModelPricingAdminService(transactional),
-    organizationSettings: new OrganizationSettingsStore(db),
+    organizationSettings: new OrganizationSettingsStore(db, clearRoutingConfigCache),
     promptAccessAudit: new PromptAccessAuditStore(db),
     promptArtifacts: new PromptArtifactStore(transactional, db),
     requestStates: new PersistentRequestStateStore(transactional, db, config.defaultOrganizationId),
-    routingConfigAdmin: new RoutingConfigAdminService(transactional),
-    routingConfigs: new RoutingConfigResolver(db),
+    routingConfigAdmin: new RoutingConfigAdminService(
+      transactional,
+      () => apiKeys.clearCache(),
+      clearRoutingConfigCache
+    ),
+    routingConfigs,
     sessionPins: createSessionPinLoader(db),
     sessionPrompts: new SessionSystemPromptStore(db),
     userAdmin: new UserAdminService(transactional, { invitationTtlSeconds: config.invitationTtlSeconds }),
-    workspaceAdmin: new WorkspaceAdminService(transactional),
+    workspaceAdmin: new WorkspaceAdminService(transactional, clearRoutingConfigCache),
     normalizeLegacyCachedUsage: () => normalizeLegacyCachedUsage(db),
     repriceZeroCostUsage: () => repriceZeroCostUsage(db),
     adminQueries: {

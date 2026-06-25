@@ -3,19 +3,21 @@ import {
   harnessCompatibilityForTarget,
   type HarnessCompatibilityProfileId,
   type RoutingConfig,
-  type RouteTarget
+  type RoutingConfigAnthropicDeployment,
+  type RoutingConfigOpenAIDeployment,
+  type RoutingConfigRetryPolicy,
+  type SelectedDeployment
 } from "@proxy/schema";
 
 import {
   anthropicEffortForModel,
-  nearestReasoningEffort,
   reasoningEffortsFromCapabilities,
   routeOrder
 } from "./catalog.js";
 import { ClassifierError, defaultClassifierSettings } from "./classifier.js";
 import type { ClassificationResult, ClassifierSettings, ClassifierTarget, LlmClassifier } from "./classifier.js";
 import { hasUserSignal } from "./features.js";
-import { jsonPayload, type EventService } from "./events.js";
+import { jsonPayload, type EventAppender } from "./events.js";
 import type { AppConfig } from "./config.js";
 import {
   type MetricsCollector,
@@ -29,6 +31,7 @@ import {
 } from "./persistence/providers.js";
 import { providerHealthTargetKey, type ProviderHealthTarget } from "./persistence/providerHealth.js";
 import { capRoute, checkBeforeClassification, checkDecision, type SessionRouteStore } from "./policy.js";
+import { ProviderDeploymentHealthStore } from "./providerDeploymentHealth.js";
 import { buildRouteExecutionPlan, type TargetAvailability } from "./routeExecutionPlan.js";
 import { translators, translationTag } from "./translators/index.js";
 import type {
@@ -39,6 +42,7 @@ import type {
   ProviderHealthSkip,
   RouteContext,
   RouteDecision,
+  RouteProviderAttempt,
   RouteName,
   RoutingConfigSelection,
   RoutingConfigSnapshot,
@@ -46,14 +50,20 @@ import type {
   UpstreamCredential,
   Verbosity
 } from "./types.js";
+import { sha256, stableJson } from "./util.js";
 
 const classifierFailureFallbackRoute: RouteName = "balanced";
 const classificationCacheTtlMs = 5 * 60 * 1000;
 const classificationCacheMaxEntries = 500;
+const noRetryPolicy: RoutingConfigRetryPolicy = {
+  maxAttempts: 1,
+  retryableStatusCodes: [429, 500, 502, 503, 504]
+};
 
 type ResolvedRouteSettings = {
   selectedModel: string;
   providerSettings: SelectedRouteSettings;
+  deployment: SelectedDeployment;
   reasoningEffort?: ProviderEffort;
   verbosity?: Verbosity;
   provider: Provider;
@@ -66,6 +76,11 @@ type ProviderCredentialResolver = {
     apiKeyId?: string;
     provider: Provider;
   }): Promise<UpstreamCredential | undefined>;
+  resolveAccount?(input: {
+    organizationId: string;
+    provider: Provider;
+    providerAccountId: string;
+  }): Promise<UpstreamCredential | undefined>;
 };
 
 type ProviderHealthReader = {
@@ -76,39 +91,55 @@ type ProviderHealthReader = {
   }): Promise<Map<string, ProviderHealthSkip>>;
 };
 
-function routeSettings(selected: SelectedRouteSettings, supportedEfforts?: ProviderEffort[]): ResolvedRouteSettings {
-  const effort = effectiveEffort(selected, supportedEfforts);
-  const providerSettings = { ...selected };
-  if (effort) providerSettings.effort = effort;
-  else delete providerSettings.effort;
+type DeploymentTarget = {
+  providerId: Provider;
+  model: string;
+  dialect?: Dialect;
+  providerAccountId?: string;
+};
+
+type DeploymentFamily = "openai" | "anthropic";
+
+type DeploymentSelection = {
+  family: DeploymentFamily;
+  settings: RoutingConfigOpenAIDeployment | RoutingConfigAnthropicDeployment;
+  deployment: SelectedDeployment;
+};
+
+function settingsForSurface(selected: SelectedRouteSettings): ResolvedRouteSettings {
+  if ("openai" in selected) {
+    return {
+      selectedModel: selected.model,
+      provider: selected.provider,
+      deployment: selected.deployment,
+      reasoningEffort: selected.openai.reasoning?.effort,
+      verbosity: selected.openai.text?.verbosity,
+      providerSettings: selected
+    };
+  }
+  const requestedEffort = selected.anthropic.output_config?.effort;
+  const effort = selected.anthropic.thinking?.type === "adaptive" && requestedEffort
+    ? anthropicEffortForModel(selected.model, requestedEffort)
+    : undefined;
   return {
     selectedModel: selected.model,
-    provider: selected.providerId,
+    provider: selected.provider,
+    deployment: selected.deployment,
     reasoningEffort: effort,
-    verbosity: selected.dialect === "openai-responses" ? selected.verbosity : undefined,
-    providerSettings
+    providerSettings: selected
   };
 }
 
-function effectiveEffort(selected: SelectedRouteSettings, supportedEfforts?: ProviderEffort[]): ProviderEffort | undefined {
-  if (!selected.effort) return undefined;
-  if (selected.dialect === "anthropic-messages" && selected.thinking?.type !== "adaptive") {
-    return undefined;
-  }
-  if (selected.dialect === "anthropic-messages") {
-    return anthropicEffortForModel(selected.model, selected.effort);
-  }
-  if (supportedEfforts !== undefined) {
-    if (supportedEfforts.length === 0) return undefined;
-    return nearestReasoningEffort(selected.effort, supportedEfforts) ?? selected.effort;
-  }
-  const efforts = defaultSupportedEfforts(selected.dialect);
-  return nearestReasoningEffort(selected.effort, efforts) ?? selected.effort;
-}
-
-function defaultSupportedEfforts(dialect: Dialect): ProviderEffort[] {
-  if (dialect === "anthropic-messages") return ["low", "medium", "high", "xhigh", "max", "ultracode"];
-  return ["minimal", "low", "medium", "high", "xhigh", "max", "ultracode"];
+function routeProviderAttempt(route: RouteName, settings: ResolvedRouteSettings): RouteProviderAttempt {
+  return {
+    route,
+    selectedModel: settings.selectedModel,
+    provider: settings.provider,
+    deployment: settings.deployment,
+    reasoningEffort: settings.reasoningEffort,
+    verbosity: settings.verbosity,
+    providerSettings: settings.providerSettings
+  };
 }
 
 export class RoutingService {
@@ -120,12 +151,13 @@ export class RoutingService {
   constructor(
     private readonly config: AppConfig,
     private readonly classifier: LlmClassifier,
-    private readonly events: EventService,
+    private readonly events: EventAppender,
     private readonly sessions: SessionRouteStore,
     private readonly providerRegistry: ProviderRegistryResolver,
     private readonly credentials?: ProviderCredentialResolver,
     private readonly providerHealth?: ProviderHealthReader,
-    private readonly metrics: MetricsCollector = new NoopMetricsCollector()
+    private readonly metrics: MetricsCollector = new NoopMetricsCollector(),
+    private readonly deploymentHealth = new ProviderDeploymentHealthStore()
   ) {}
 
   async decide(input: {
@@ -238,6 +270,7 @@ export class RoutingService {
 
     const floorSignal = hasUserSignal(context) && !classifierFailed && !skipReason;
     let decision = await this.resolveRoute(
+      requestId,
       context,
       requestedRoute,
       classification,
@@ -251,7 +284,7 @@ export class RoutingService {
           // Candidates above the ceiling clamp back to it, and the ceiling is
           // itself a candidate.
           if (route === requestedRoute || !atOrAbove(ceilingRoute, route)) continue;
-          const candidate = await this.resolveRoute(context, route, classification, routingConfig, classifierSettings, floorSignal);
+          const candidate = await this.resolveRoute(requestId, context, route, classification, routingConfig, classifierSettings, floorSignal);
           if (candidate.outcome === "route") {
             decision = candidate;
             break;
@@ -339,7 +372,15 @@ export class RoutingService {
     const compressionPolicy = routingConfig?.compressionPolicy;
 
     const healthSkips: ProviderHealthSkip[] = [];
-    const routeSettings = await this.resolveProviderSettings(context, finalRoute, routingConfig?.config, guardrailActions, healthSkips);
+    const routeSettings = await this.resolveProviderSettings(
+      context,
+      finalRoute,
+      context.inputHash,
+      routingConfig?.config,
+      routingConfigSnapshot,
+      guardrailActions,
+      healthSkips
+    );
     if (!routeSettings) {
       const healthUnavailable = exhaustedByHealth(guardrailActions, healthSkips);
       const rejected = this.reject(
@@ -362,6 +403,9 @@ export class RoutingService {
       finalRoute,
       selectedModel: routeSettings.selectedModel,
       provider: routeSettings.provider,
+      deployment: routeSettings.deployment,
+      providerAttempts: [routeProviderAttempt(finalRoute, routeSettings)],
+      retryPolicy: retryPolicyForRoute(finalRoute, routingConfig?.config),
       reasoningEffort: routeSettings.reasoningEffort,
       verbosity: routeSettings.verbosity,
       providerSettings: routeSettings.providerSettings,
@@ -516,6 +560,7 @@ export class RoutingService {
   }
 
   private async resolveRoute(
+    requestId: string,
     context: RouteContext,
     classifierRoute: RouteName,
     classification?: ClassificationResult,
@@ -561,11 +606,20 @@ export class RoutingService {
     if (session?.action === "kept" && session.pin) {
       pinnedRouteSettings = await this.resolvePinnedSettings(context, session.pin.settings, guardrailActions, healthSkips);
       if (pinnedRouteSettings) {
-        guardrailActions.push("session_settings_pinned");
+        if (this.deploymentHealth.isCoolingDown(pinnedRouteSettings.deployment)) {
+          pinnedRouteSettings = undefined;
+          guardrailActions.push("session_pin_cooldown_invalidated");
+          invalidatedPin = {
+            provider: session.pin.settings.provider,
+            routingConfigVersionId: session.pin.routingConfigVersionId
+          };
+        } else {
+          guardrailActions.push("session_settings_pinned");
+        }
       } else {
         guardrailActions.push("session_pin_invalidated");
         invalidatedPin = {
-          provider: session.pin.settings.providerId,
+          provider: session.pin.settings.provider,
           routingConfigVersionId: session.pin.routingConfigVersionId
         };
         if (context.statefulResponses === true) {
@@ -579,7 +633,15 @@ export class RoutingService {
     }
 
     const routeSettings =
-      pinnedRouteSettings ?? await this.resolveProviderSettings(context, finalRoute, routingConfig?.config, guardrailActions, healthSkips);
+      pinnedRouteSettings ?? await this.resolveProviderSettings(
+        context,
+        finalRoute,
+        requestId,
+        routingConfig?.config,
+        routingConfigSnapshot,
+        guardrailActions,
+        healthSkips
+      );
     if (!routeSettings) {
       const healthUnavailable = exhaustedByHealth(guardrailActions, healthSkips);
       const rejected = this.reject(
@@ -612,6 +674,18 @@ export class RoutingService {
       finalRoute,
       selectedModel: routeSettings.selectedModel,
       provider: routeSettings.provider,
+      deployment: routeSettings.deployment,
+      providerAttempts: await this.providerAttemptsForRoute(
+        context,
+        finalRoute,
+        requestId,
+        routingConfig?.config,
+        routingConfigSnapshot,
+        routeSettings,
+        guardrailActions,
+        healthSkips
+      ),
+      retryPolicy: retryPolicyForRoute(finalRoute, routingConfig?.config),
       reasoningEffort: routeSettings.reasoningEffort,
       verbosity: routeSettings.verbosity,
       providerSettings: routeSettings.providerSettings,
@@ -685,53 +759,190 @@ export class RoutingService {
     });
   }
 
-  private resolveProviderSettings(
+  private async resolveProviderSettings(
     context: RouteContext,
     route: RouteName,
+    selectionKey: string,
     routingConfig: RoutingConfig | undefined,
+    routingConfigSnapshot: RoutingConfigSnapshot | undefined,
     guardrailActions: string[] = [],
     healthSkips: ProviderHealthSkip[] = []
   ): Promise<ResolvedRouteSettings | undefined> {
-    if (routingConfig) {
-      const routeConfig = routingConfig.routes[route];
-      return this.resolveTargets(context, routeConfig.targets, guardrailActions, healthSkips);
-    }
-
-    return Promise.resolve(undefined);
+    return (await this.resolveProviderSettingsSequence(
+      context,
+      route,
+      selectionKey,
+      routingConfig,
+      routingConfigSnapshot,
+      guardrailActions,
+      healthSkips
+    ))[0];
   }
 
-  private async resolveTargets(
+  private async providerAttemptsForRoute(
     context: RouteContext,
-    targets: RouteTarget[],
+    route: RouteName,
+    selectionKey: string,
+    routingConfig: RoutingConfig | undefined,
+    routingConfigSnapshot: RoutingConfigSnapshot | undefined,
+    selected: ResolvedRouteSettings,
     guardrailActions: string[],
     healthSkips: ProviderHealthSkip[]
-  ): Promise<ResolvedRouteSettings | undefined> {
-    const translatedCandidates: RouteTarget[] = [];
-    for (const target of targets) {
+  ): Promise<RouteProviderAttempt[]> {
+    const attempts = [routeProviderAttempt(route, selected)];
+    const seen = new Set([selected.deployment.key]);
+    for (const settings of await this.resolveProviderSettingsSequence(
+      context,
+      route,
+      selectionKey,
+      routingConfig,
+      routingConfigSnapshot,
+      guardrailActions,
+      healthSkips
+    )) {
+      if (seen.has(settings.deployment.key)) continue;
+      seen.add(settings.deployment.key);
+      attempts.push(routeProviderAttempt(route, settings));
+    }
+
+    const fallbackRoute = routingConfig?.limits.fallbackRoute;
+    if (
+      fallbackRoute &&
+      fallbackRoute !== route &&
+      !checkDecision(context, fallbackRoute, routingConfig?.limits).rejected
+    ) {
+      for (const settings of await this.resolveProviderSettingsSequence(
+        context,
+        fallbackRoute,
+        stableJson([selectionKey, "fallback", fallbackRoute]),
+        routingConfig,
+        routingConfigSnapshot,
+        [],
+        []
+      )) {
+        if (seen.has(settings.deployment.key)) continue;
+        seen.add(settings.deployment.key);
+        attempts.push(routeProviderAttempt(fallbackRoute, settings));
+      }
+    }
+
+    return attempts;
+  }
+
+  private async resolveProviderSettingsSequence(
+    context: RouteContext,
+    route: RouteName,
+    selectionKey: string,
+    routingConfig: RoutingConfig | undefined,
+    routingConfigSnapshot: RoutingConfigSnapshot | undefined,
+    guardrailActions: string[],
+    healthSkips: ProviderHealthSkip[]
+  ): Promise<ResolvedRouteSettings[]> {
+    if (routingConfig) {
+      const routeConfig = routingConfig.routes[route];
+      const deployments = [
+        ...(routeConfig.anthropic?.deployments.map((settings) => ({
+          family: "anthropic" as const,
+          settings
+        })) ?? []),
+        ...(routeConfig.openai?.deployments.map((settings) => ({
+          family: "openai" as const,
+          settings
+        })) ?? [])
+      ];
+      return this.resolveDeployments(
+        context,
+        route,
+        deployments,
+        selectionKey,
+        routingConfigSnapshot,
+        guardrailActions,
+        healthSkips
+      );
+    }
+
+    return [];
+  }
+
+  private async resolveDeployments(
+    context: RouteContext,
+    route: RouteName,
+    deployments: readonly { family: DeploymentFamily; settings: RoutingConfigOpenAIDeployment | RoutingConfigAnthropicDeployment }[],
+    selectionKey: string,
+    routingConfigSnapshot: RoutingConfigSnapshot | undefined,
+    guardrailActions: string[],
+    healthSkips: ProviderHealthSkip[]
+  ): Promise<ResolvedRouteSettings[]> {
+    const resolved: ResolvedRouteSettings[] = [];
+    const translatedCandidates: DeploymentSelection[] = [];
+    for (const selected of this.deploymentSequence(deployments, context, route, selectionKey, routingConfigSnapshot)) {
+      const target = deploymentTarget(selected.deployment);
       const availability = await this.targetAvailability(context, target, "native");
       if (availability.status === "unavailable") {
-        if (availability.healthSkip) healthSkips.push(availability.healthSkip);
+        if (availability.healthSkip) addHealthSkip(healthSkips, availability.healthSkip);
         if (availability.reason === "dialect_unavailable") {
-          translatedCandidates.push(target);
+          translatedCandidates.push(selected);
           continue;
         }
         guardrailActions.push(`target_skipped_${availability.reason}:${target.providerId}`);
         continue;
       }
       appendTranslationAction(guardrailActions, context.surface, availability.dialect);
-      return routeSettings({ ...target, dialect: availability.dialect }, availability.supportedEfforts);
+      resolved.push(settingsForSurface(settingsWithAvailability(selected, availability)));
     }
-    for (const target of translatedCandidates) {
+    for (const selected of translatedCandidates) {
+      const target = deploymentTarget(selected.deployment);
       const availability = await this.targetAvailability(context, target, "translated");
       if (availability.status === "unavailable") {
-        if (availability.healthSkip) healthSkips.push(availability.healthSkip);
+        if (availability.healthSkip) addHealthSkip(healthSkips, availability.healthSkip);
         guardrailActions.push(`target_skipped_${availability.reason}:${target.providerId}`);
         continue;
       }
       appendTranslationAction(guardrailActions, context.surface, availability.dialect);
-      return routeSettings({ ...target, dialect: availability.dialect }, availability.supportedEfforts);
+      resolved.push(settingsForSurface(settingsWithAvailability(selected, availability)));
     }
-    return undefined;
+    return resolved;
+  }
+
+  private deploymentSequence(
+    deployments: readonly { family: DeploymentFamily; settings: RoutingConfigOpenAIDeployment | RoutingConfigAnthropicDeployment }[],
+    context: RouteContext,
+    route: RouteName,
+    selectionKey: string,
+    routingConfig?: RoutingConfigSnapshot
+  ) {
+    const candidates = deployments
+      .map(({ family, settings }, index) => ({
+        family,
+        settings,
+        deployment: selectedDeployment(settings, {
+          route,
+          surface: context.surface,
+          routingConfigVersionId: routingConfig?.versionId ?? "inline",
+          index
+        })
+      }))
+      .filter((candidate) => !this.deploymentHealth.isCoolingDown(candidate.deployment))
+      .sort((left, right) => left.settings.order - right.settings.order);
+    const orders = [...new Set(candidates.map((candidate) => candidate.settings.order))];
+    const sequence: typeof candidates = [];
+    for (const order of orders) {
+      const ordered = candidates.filter((candidate) =>
+        candidate.settings.order === order && candidate.settings.weight > 0
+      );
+      if (ordered.length === 0) continue;
+      const first = weightedPick(ordered, stableJson([selectionKey, route, context.surface, order]));
+      sequence.push(first);
+      sequence.push(
+        ...ordered
+          .filter((candidate) => candidate.deployment.key !== first.deployment.key)
+          .sort((left, right) =>
+            right.settings.weight - left.settings.weight ||
+            left.deployment.key.localeCompare(right.deployment.key)
+          )
+      );
+    }
+    return sequence;
   }
 
   private async resolvePinnedSettings(
@@ -740,19 +951,28 @@ export class RoutingService {
     guardrailActions: string[],
     healthSkips: ProviderHealthSkip[]
   ): Promise<ResolvedRouteSettings | undefined> {
-    const availability = await this.targetAvailability(context, settings);
+    const availability = await this.targetAvailability(context, {
+      providerId: settings.provider,
+      model: settings.model,
+      dialect: settings.dialect,
+      providerAccountId: settings.deployment.providerAccountId
+    });
     if (availability.status === "unavailable") {
-      if (availability.healthSkip) healthSkips.push(availability.healthSkip);
-      guardrailActions.push(`pin_skipped_${availability.reason}:${settings.providerId}`);
+      if (availability.healthSkip) addHealthSkip(healthSkips, availability.healthSkip);
+      guardrailActions.push(`pin_skipped_${availability.reason}:${settings.provider}`);
       return undefined;
     }
     appendTranslationAction(guardrailActions, context.surface, availability.dialect);
-    return routeSettings(settings, availability.supportedEfforts);
+    return settingsForSurface({
+      ...settings,
+      dialect: availability.dialect,
+      deployment: deploymentWithProviderAccount(settings.deployment, availability.providerAccountId)
+    } as SelectedRouteSettings);
   }
 
   private async targetAvailability(
     context: RouteContext,
-    target: Pick<RouteTarget, "providerId" | "model"> & { dialect?: Dialect },
+    target: DeploymentTarget,
     mode: "native" | "translated" = "translated"
   ): Promise<TargetAvailability> {
     const organizationId = context.organizationId ?? this.config.defaultOrganizationId;
@@ -785,12 +1005,18 @@ export class RoutingService {
     if (!compatibility.dialect) return { status: "unavailable", reason: "dialect_unavailable" };
     const endpoint = providerEndpointForDialect(provider, compatibility.dialect);
     if (!endpoint) return { status: "unavailable", reason: "dialect_unavailable" };
-    const credential = await this.credentials?.resolveForRequest({
-      organizationId,
-      workspaceId: context.workspaceId,
-      apiKeyId: context.apiKeyId,
-      provider: target.providerId
-    });
+    const credential = target.providerAccountId && this.credentials?.resolveAccount
+      ? await this.credentials.resolveAccount({
+          organizationId,
+          provider: target.providerId,
+          providerAccountId: target.providerAccountId
+        })
+      : await this.credentials?.resolveForRequest({
+          organizationId,
+          workspaceId: context.workspaceId,
+          apiKeyId: context.apiKeyId,
+          provider: target.providerId
+        });
     if (!provider.builtin && provider.authStyle !== "none" && !credential) {
       return { status: "unavailable", reason: "provider_credential_unresolved", dialect: endpoint.dialect };
     }
@@ -816,7 +1042,7 @@ export class RoutingService {
   private async healthSkipForTarget(
     organizationId: string,
     provider: ProviderRegistryEntry,
-    target: Pick<RouteTarget, "providerId" | "model">,
+    target: Pick<DeploymentTarget, "providerId" | "model">,
     credential: UpstreamCredential
   ) {
     if (!this.providerHealth) return undefined;
@@ -838,7 +1064,10 @@ export class RoutingService {
     idempotencyKey: string,
     decision: RouteDecision
   ) {
-    const payload = { ...decision };
+    const payload = {
+      ...decision,
+      providerAttempts: decision.providerAttempts?.map(({ providerSettings: _settings, ...attempt }) => attempt)
+    };
     delete payload.providerSettings;
     delete payload.routeExecutionPlan;
     await this.events.append({
@@ -915,6 +1144,122 @@ function requestedRouteLabel(decision: RouteDecision) {
   return "unknown";
 }
 
+function settingsWithAvailability(
+  selected: DeploymentSelection,
+  availability: Extract<TargetAvailability, { status: "available" }>
+): SelectedRouteSettings {
+  const deployment = deploymentWithProviderAccount(selected.deployment, availability.providerAccountId);
+  if (selected.family === "openai") {
+    return {
+      provider: selected.settings.provider,
+      model: selected.settings.model,
+      dialect: availability.dialect,
+      deployment,
+      openai: selected.settings as RoutingConfigOpenAIDeployment
+    };
+  }
+  return {
+    provider: selected.settings.provider,
+    model: selected.settings.model,
+    dialect: availability.dialect,
+    deployment,
+    anthropic: selected.settings as RoutingConfigAnthropicDeployment
+  };
+}
+
+function deploymentTarget(deployment: SelectedDeployment): DeploymentTarget {
+  return {
+    providerId: deployment.provider,
+    model: deployment.model,
+    providerAccountId: deployment.providerAccountId
+  };
+}
+
+function deploymentWithProviderAccount(
+  deployment: SelectedDeployment,
+  providerAccountId?: string
+): SelectedDeployment {
+  if (!providerAccountId || deployment.providerAccountId) return deployment;
+  return { ...deployment, providerAccountId };
+}
+
+function selectedDeployment<Deployment extends RoutingConfigOpenAIDeployment | RoutingConfigAnthropicDeployment>(
+  settings: Deployment,
+  input: {
+    route: RouteName;
+    surface: RouteContext["surface"];
+    routingConfigVersionId: string;
+    index: number;
+  }
+): SelectedDeployment & { provider: Deployment["provider"] } {
+  const deployment = {
+    key: deploymentKey({
+      route: input.route,
+      surface: input.surface,
+      routingConfigVersionId: input.routingConfigVersionId,
+      deployment: settings,
+      index: input.index
+    }),
+    provider: settings.provider,
+    model: settings.model,
+    order: settings.order,
+    weight: settings.weight,
+    timeoutMs: settings.timeoutMs
+  } as SelectedDeployment & { provider: Deployment["provider"] };
+  if (settings.baseUrl !== undefined) deployment.baseUrl = settings.baseUrl;
+  if (settings.providerAccountId !== undefined) deployment.providerAccountId = settings.providerAccountId;
+  return deployment;
+}
+
+function deploymentKey(input: {
+  route: RouteName;
+  surface: RouteContext["surface"];
+  routingConfigVersionId: string;
+  deployment: {
+    provider: Provider;
+    model: string;
+    baseUrl?: string;
+    providerAccountId?: string;
+    order: number;
+    weight: number;
+    timeoutMs: number;
+  };
+  index: number;
+}) {
+  return sha256(stableJson([
+    input.routingConfigVersionId,
+    input.route,
+    input.surface,
+    input.index,
+    input.deployment.provider,
+    input.deployment.model,
+    input.deployment.baseUrl ?? null,
+    input.deployment.providerAccountId ?? null,
+    input.deployment.order,
+    input.deployment.weight,
+    input.deployment.timeoutMs
+  ]));
+}
+
+function retryPolicyForRoute(route: RouteName, routingConfig?: RoutingConfig): RoutingConfigRetryPolicy {
+  return routingConfig?.routes[route].retry ?? noRetryPolicy;
+}
+
+function weightedPick<Choice extends { settings: { weight: number } }>(
+  candidates: Choice[],
+  selectionKey: string
+) {
+  const totalWeight = candidates.reduce((sum, candidate) => sum + candidate.settings.weight, 0);
+  const digest = sha256(selectionKey).slice("sha256:".length, "sha256:".length + 12);
+  const target = Number.parseInt(digest, 16) % totalWeight;
+  let cursor = 0;
+  for (const candidate of candidates) {
+    cursor += candidate.settings.weight;
+    if (target < cursor) return candidate;
+  }
+  return candidates[candidates.length - 1];
+}
+
 function rejectionMessage(error: string, check: NonNullable<RouteDecision["budgetChecks"]>[number] | undefined) {
   if (error === "request_estimated_input_limit" && check) {
     return `Proxy rejected this request before routing because the full request is estimated at ${formatCount(check.current)} input tokens, above the active routing config limit of ${formatCount(check.limit)}. This estimate includes the full session envelope and history, not just the latest user message. Start a compacted or new session, or disable/raise limits.maxEstimatedInputTokens in the routing config.`;
@@ -945,6 +1290,12 @@ function appendTranslationAction(guardrailActions: string[], from: Dialect, to: 
   if (!guardrailActions.includes(tag)) guardrailActions.push(tag);
 }
 
+function addHealthSkip(healthSkips: ProviderHealthSkip[], healthSkip: ProviderHealthSkip) {
+  const key = stableJson(healthSkip);
+  if (healthSkips.some((skip) => stableJson(skip) === key)) return;
+  healthSkips.push(healthSkip);
+}
+
 function exhaustedByHealth(guardrailActions: string[], healthSkips: ProviderHealthSkip[]) {
   if (healthSkips.length === 0) return false;
   const skipActions = guardrailActions.filter((action) =>
@@ -971,7 +1322,7 @@ function healthSkipReason(healthSkip: ProviderHealthSkip) {
 function compatibilityTargetDialects(
   context: RouteContext,
   provider: ProviderRegistryEntry,
-  target: Pick<RouteTarget, "providerId"> & { dialect?: Dialect },
+  target: Pick<DeploymentTarget, "providerId"> & { dialect?: Dialect },
   mode: "native" | "translated" = "translated"
 ) {
   if (target.dialect) {

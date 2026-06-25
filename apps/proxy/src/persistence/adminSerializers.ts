@@ -5,18 +5,14 @@ import {
   routeDecisions,
   usageLedger
 } from "@proxy/db";
-import { ROUTE_NAMES, type RouteTarget, type RoutingConfig } from "@proxy/schema";
+import { ROUTE_NAMES, type Effort, type RoutingConfig } from "@proxy/schema";
 
-import { anthropicEffortForModel, nearestReasoningEffort, reasoningEffortsFromCapabilities } from "../catalog.js";
+import { anthropicEffortForModel, reasoningEffortsFromCapabilities } from "../catalog.js";
 import type { JsonObject } from "../types.js";
 import { effectiveInvitationStatus } from "./userAdmin.js";
 
 type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
 type UsageLedgerRow = typeof usageLedger.$inferSelect;
-type RoutingConfigProviderSummary = {
-  capabilities: Record<string, unknown>;
-  endpoints?: readonly { dialect: string }[];
-};
 
 export function invitationSummary(
   row: typeof invitations.$inferSelect,
@@ -92,47 +88,54 @@ export function routingConfigSummary(row: {
 
 export function routingConfigRoutesSummary(
   config: RoutingConfig,
-  providersBySlug = new Map<string, RoutingConfigProviderSummary>()
+  providersBySlug = new Map<string, { capabilities: Record<string, unknown> }>()
 ) {
   return ROUTE_NAMES.map((route) => {
     const routeConfig = config.routes[route];
+    const targets = [
+      ...(routeConfig.openai?.deployments.map((deployment) => ({
+        providerId: deployment.provider,
+        model: deployment.model,
+        effort: deployment.reasoning?.effort ?? null,
+        effectiveEffort: effectiveOpenAIEffort(deployment.provider, deployment.reasoning?.effort, providersBySlug),
+        thinking: null,
+        maxOutputTokens: deployment.maxOutputTokens ?? null,
+        verbosity: deployment.text?.verbosity ?? null,
+        metadata: deployment.metadata ?? null,
+        order: deployment.order
+      })) ?? []),
+      ...(routeConfig.anthropic?.deployments.map((deployment) => ({
+        providerId: deployment.provider,
+        model: deployment.model,
+        effort: deployment.output_config?.effort ?? null,
+        effectiveEffort: deployment.thinking?.type === "adaptive" && deployment.output_config?.effort
+          ? anthropicEffortForModel(deployment.model, deployment.output_config.effort)
+          : null,
+        thinking: deployment.thinking ?? null,
+        maxOutputTokens: deployment.maxTokens ?? null,
+        verbosity: null,
+        metadata: deployment.metadata ?? null,
+        order: deployment.order
+      })) ?? [])
+    ].sort((left, right) => left.order - right.order)
+      .map(({ order: _order, ...target }) => target);
     return {
       route,
       description: routeConfig.description ?? null,
-      targets: routeConfig.targets.map((target) => routeTargetSummary(target, providersBySlug))
+      targets
     };
   });
 }
 
-function routeTargetSummary(target: RouteTarget, providersBySlug: Map<string, RoutingConfigProviderSummary>) {
-  const provider = providersBySlug.get(target.providerId);
-  return {
-    providerId: target.providerId,
-    model: target.model,
-    effort: target.effort ?? null,
-    effectiveEffort: effectiveEffort(target, provider),
-    thinking: target.thinking ?? null,
-    maxOutputTokens: target.maxOutputTokens ?? null,
-    verbosity: target.verbosity ?? null,
-    metadata: target.metadata ?? null
-  };
-}
-
-function effectiveEffort(target: RouteTarget, provider?: RoutingConfigProviderSummary) {
-  if (!target.effort) return null;
-  if (
-    target.providerId === "anthropic" ||
-    provider?.endpoints?.some((endpoint) => endpoint.dialect === "anthropic-messages")
-  ) {
-    if (target.thinking?.type !== "adaptive") return null;
-    return anthropicEffortForModel(target.model, target.effort) ?? null;
-  }
-  const supportedEfforts = reasoningEffortsFromCapabilities(provider?.capabilities);
-  if (supportedEfforts !== undefined) {
-    if (supportedEfforts.length === 0) return null;
-    return nearestReasoningEffort(target.effort, supportedEfforts) ?? target.effort;
-  }
-  return target.effort;
+function effectiveOpenAIEffort(
+  provider: string,
+  effort: Effort | undefined,
+  providersBySlug: Map<string, { capabilities: Record<string, unknown> }>
+) {
+  if (!effort) return null;
+  const supported = reasoningEffortsFromCapabilities(providersBySlug.get(provider)?.capabilities) ?? [];
+  if (supported.length === 0) return effort;
+  return supported.includes(effort) ? effort : null;
 }
 
 export function providerAttemptSummary(row: ProviderAttemptRow) {

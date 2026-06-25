@@ -59,7 +59,8 @@ export class ProviderCredentialAdminError extends AdminMutationError {}
 export class ProviderCredentialAdminService {
   constructor(
     private readonly db: ProxyTransactionalDatabase,
-    private readonly options: ProviderCredentialOptions
+    private readonly options: ProviderCredentialOptions,
+    private readonly onProviderCredentialsChanged: () => void = () => {}
   ) {}
 
   async createCredential(input: {
@@ -92,7 +93,7 @@ export class ProviderCredentialAdminService {
     const settings = oauthCredential?.settings;
     const now = new Date();
 
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const provider = await providerBySlug(tx, input.organizationId, body.data.provider);
       if (!provider) throw new ProviderCredentialAdminError("provider_not_found", 404);
       const [existing] = await tx
@@ -144,6 +145,8 @@ export class ProviderCredentialAdminService {
 
       return { providerAccountId };
     });
+    this.onProviderCredentialsChanged();
+    return result;
   }
 
   async createCredentialFromLocalAuth(input: {
@@ -177,7 +180,7 @@ export class ProviderCredentialAdminService {
     providerAccountId: string;
   }) {
     const now = new Date();
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const account = await byokAccount(tx, input.organizationId, input.providerAccountId);
       if (!account) throw new ProviderCredentialAdminError("provider_credential_not_found", 404);
       if (account.status !== PROVIDER_ACCOUNT_STATUSES.ACTIVE) throw new ProviderCredentialAdminError("provider_credential_revoked", 409);
@@ -213,6 +216,8 @@ export class ProviderCredentialAdminService {
 
       return { providerAccountId: input.providerAccountId };
     });
+    this.onProviderCredentialsChanged();
+    return result;
   }
 
   async bindApiKeyCredential(input: {
@@ -227,7 +232,7 @@ export class ProviderCredentialAdminService {
     const { provider, providerAccountId } = body.data;
     const now = new Date();
 
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const providerRow = await providerBySlug(tx, input.organizationId, provider);
       if (!providerRow) throw new ProviderCredentialAdminError("provider_not_found", 404);
       const [apiKey] = await tx
@@ -302,6 +307,8 @@ export class ProviderCredentialAdminService {
 
       return { apiKeyId: input.apiKeyId, provider: providerRow.slug, providerAccountId };
     });
+    this.onProviderCredentialsChanged();
+    return result;
   }
 }
 

@@ -84,7 +84,10 @@ export type SessionRouteUpdate = {
 export class SessionRouteStore {
   private readonly sessions = new Map<string, SessionRouteState>();
 
-  constructor(private readonly loadPin?: SessionPinLoader) {}
+  constructor(
+    private readonly loadPin?: SessionPinLoader,
+    private readonly maxSessions = Number.POSITIVE_INFINITY
+  ) {}
 
   async peek(context: RouteContext): Promise<{ route: RouteName; soft: boolean } | undefined> {
     if (!context.sessionId) return undefined;
@@ -173,6 +176,7 @@ export class SessionRouteStore {
     // requestCount is observational (debug endpoint only) and may undercount
     // when concurrent requests hydrate the same key; do not gate routing on it.
     const existing = this.sessions.get(update.sessionKey);
+    if (existing) this.sessions.delete(update.sessionKey);
     this.sessions.set(update.sessionKey, {
       sessionKey: update.sessionKey,
       sessionId: update.sessionId,
@@ -183,6 +187,7 @@ export class SessionRouteStore {
       requestCount: (existing?.requestCount ?? 0) + 1,
       softFloor: update.softFloor
     });
+    this.trim();
   }
 
   list() {
@@ -216,8 +221,19 @@ export class SessionRouteStore {
       requestCount: persisted.requestCount,
       softFloor: persisted.softFloor ?? false
     };
+    this.sessions.delete(sessionKey);
     this.sessions.set(sessionKey, state);
+    this.trim();
     return state;
+  }
+
+  private trim() {
+    if (!Number.isFinite(this.maxSessions)) return;
+    while (this.sessions.size > this.maxSessions) {
+      const oldest = this.sessions.keys().next().value;
+      if (oldest === undefined) return;
+      this.sessions.delete(oldest);
+    }
   }
 }
 

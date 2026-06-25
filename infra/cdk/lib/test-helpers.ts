@@ -8,9 +8,8 @@ import { ProxyNetworkStack } from "./network-stack.js";
 import { ProxyServiceStack } from "./proxy-service-stack.js";
 import { ProxyRuntimeSecretsStack } from "./runtime-secrets-stack.js";
 
-export function createRuntimeStacks() {
+export function createRuntimeStacks(config = environments[0]) {
   const app = new App();
-  const config = environments[0];
   const env = {
     account: config.awsAccountId,
     region: config.region

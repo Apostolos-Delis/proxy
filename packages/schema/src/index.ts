@@ -46,6 +46,7 @@ export const PROVIDER_ACCOUNT_STATUSES = {
 } as const;
 
 export const EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max", "ultracode"] as const;
+export const OPENAI_REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as const;
 export const CLASSIFIER_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as const;
 
 export const VERBOSITIES = ["low", "medium", "high"] as const;
@@ -241,6 +242,7 @@ export type ProviderAuthStyle = typeof PROVIDER_AUTH_STYLES[number];
 export type ProviderAccountAuthType = typeof PROVIDER_ACCOUNT_AUTH_TYPES[number];
 export type ProviderAccountStatus = typeof PROVIDER_ACCOUNT_STATUSES[keyof typeof PROVIDER_ACCOUNT_STATUSES];
 export type Effort = typeof EFFORTS[number];
+export type OpenAIReasoningEffort = typeof OPENAI_REASONING_EFFORTS[number];
 export type Verbosity = typeof VERBOSITIES[number];
 export type EventOutboxStatus = typeof EVENT_OUTBOX_STATUSES[keyof typeof EVENT_OUTBOX_STATUSES];
 export type RequestStatus = typeof REQUEST_STATUSES[keyof typeof REQUEST_STATUSES];
@@ -352,6 +354,7 @@ export const providerSchema = z.string().min(1, "Provider slug is required.").re
 export const builtinProviderSchema = z.enum(BUILTIN_PROVIDER_NAMES);
 export const providerAuthStyleSchema = z.enum(PROVIDER_AUTH_STYLES);
 export const effortSchema = z.enum(EFFORTS);
+export const openAIReasoningEffortSchema = z.enum(OPENAI_REASONING_EFFORTS);
 export const classifierEffortSchema = z.enum(CLASSIFIER_EFFORTS);
 export const verbositySchema = z.enum(VERBOSITIES);
 export const providerHealthErrorTypeSchema = z.enum(PROVIDER_HEALTH_ERROR_TYPES);
@@ -462,6 +465,32 @@ export const routingConfigClassifierSchema = z.strictObject({
   })
 });
 
+const deploymentBaseSchema = z.strictObject({
+  model: routingConfigIdentifierSchema,
+  baseUrl: z.string().url().optional(),
+  providerAccountId: routingConfigIdentifierSchema.optional(),
+  order: z.number().int().min(0).max(10000),
+  weight: z.number().int().min(0).max(100000),
+  timeoutMs: z.number().int().positive().max(600000)
+});
+
+export const routingConfigOpenAIDeploymentSchema = deploymentBaseSchema.extend({
+  provider: providerSchema,
+  model: routingConfigIdentifierSchema,
+  reasoning: z.strictObject({
+    effort: openAIReasoningEffortSchema
+  }).optional(),
+  text: z.strictObject({
+    verbosity: verbositySchema
+  }).optional(),
+  maxOutputTokens: z.number().int().positive().optional(),
+  metadata: jsonObjectSchema.optional()
+});
+
+export const routingConfigOpenAIRouteSchema = z.strictObject({
+  deployments: z.array(routingConfigOpenAIDeploymentSchema).min(1)
+}).superRefine(validateDeploymentWeights);
+
 export const routingConfigAnthropicThinkingSchema = z.discriminatedUnion("type", [
   z.strictObject({
     type: z.literal("disabled")
@@ -472,19 +501,39 @@ export const routingConfigAnthropicThinkingSchema = z.discriminatedUnion("type",
   })
 ]);
 
-export const routeTargetSchema = z.strictObject({
-  providerId: providerSchema,
+export const routingConfigAnthropicDeploymentSchema = deploymentBaseSchema.extend({
+  provider: providerSchema,
   model: routingConfigIdentifierSchema,
-  effort: effortSchema.optional(),
   thinking: routingConfigAnthropicThinkingSchema.optional(),
-  maxOutputTokens: z.number().int().positive().optional(),
-  verbosity: verbositySchema.optional(),
+  output_config: z.strictObject({
+    effort: effortSchema
+  }).optional(),
+  maxTokens: z.number().int().positive().optional(),
   metadata: jsonObjectSchema.optional()
+});
+
+export const routingConfigAnthropicRouteSchema = z.strictObject({
+  deployments: z.array(routingConfigAnthropicDeploymentSchema).min(1)
+}).superRefine(validateDeploymentWeights);
+
+export const routingConfigRetryPolicySchema = z.strictObject({
+  maxAttempts: z.number().int().positive().max(5),
+  retryableStatusCodes: z.array(z.number().int().min(400).max(599)).min(1).max(20)
 });
 
 export const routingConfigRouteSchema = z.strictObject({
   description: routingConfigTextSchema.optional(),
-  targets: z.array(routeTargetSchema).min(1, "At least one route target is required.")
+  retry: routingConfigRetryPolicySchema,
+  openai: routingConfigOpenAIRouteSchema.optional(),
+  anthropic: routingConfigAnthropicRouteSchema.optional()
+}).superRefine((route, context) => {
+  if (!route.openai && !route.anthropic) {
+    context.addIssue({
+      code: "custom",
+      message: "At least one provider block is required.",
+      path: ["openai"]
+    });
+  }
 });
 
 export const routingConfigRoutesSchema = z.strictObject({
@@ -523,7 +572,7 @@ export const routingConfigSessionSchema = z.strictObject({
 });
 
 export const routingConfigSchema = z.strictObject({
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(3),
   displayName: routingConfigTextSchema,
   description: routingConfigTextSchema.optional(),
   classifier: routingConfigClassifierSchema,
@@ -533,13 +582,42 @@ export const routingConfigSchema = z.strictObject({
 });
 
 export type RoutingConfigClassifier = z.infer<typeof routingConfigClassifierSchema>;
+export type RoutingConfigOpenAIDeployment = z.infer<typeof routingConfigOpenAIDeploymentSchema>;
+export type RoutingConfigAnthropicDeployment = z.infer<typeof routingConfigAnthropicDeploymentSchema>;
+export type RoutingConfigOpenAIRoute = z.infer<typeof routingConfigOpenAIRouteSchema>;
+export type RoutingConfigAnthropicRoute = z.infer<typeof routingConfigAnthropicRouteSchema>;
+export type RoutingConfigRetryPolicy = z.infer<typeof routingConfigRetryPolicySchema>;
 export type RoutingConfigLimits = z.infer<typeof routingConfigLimitsSchema>;
-export type RouteTarget = z.infer<typeof routeTargetSchema>;
 
-export const sessionPinnedSettingsSchema = routeTargetSchema.extend({
-  dialect: dialectSchema
+export const selectedDeploymentSchema = z.strictObject({
+  key: routingConfigTextSchema,
+  provider: providerSchema,
+  model: routingConfigIdentifierSchema,
+  baseUrl: z.string().url().optional(),
+  providerAccountId: routingConfigIdentifierSchema.optional(),
+  order: z.number().int().min(0).max(10000),
+  weight: z.number().int().min(0).max(100000),
+  timeoutMs: z.number().int().positive().max(600000)
 });
 
+export const sessionPinnedSettingsSchema = z.union([
+  z.strictObject({
+    provider: providerSchema,
+    model: routingConfigIdentifierSchema,
+    dialect: dialectSchema,
+    deployment: selectedDeploymentSchema,
+    openai: routingConfigOpenAIDeploymentSchema
+  }),
+  z.strictObject({
+    provider: providerSchema,
+    model: routingConfigIdentifierSchema,
+    dialect: dialectSchema,
+    deployment: selectedDeploymentSchema,
+    anthropic: routingConfigAnthropicDeploymentSchema
+  })
+]);
+
+export type SelectedDeployment = z.infer<typeof selectedDeploymentSchema>;
 export type SessionPinnedSettings = z.infer<typeof sessionPinnedSettingsSchema>;
 export type RoutingConfigRoute = z.infer<typeof routingConfigRouteSchema>;
 export type RoutingConfig = z.infer<typeof routingConfigSchema>;
@@ -732,3 +810,21 @@ export type RouteCandidateEvaluation = z.infer<typeof routeCandidateEvaluationSc
 export type RouteSelectedTarget = z.infer<typeof routeSelectedTargetSchema>;
 export type RoutePolicyResult = z.infer<typeof routePolicyResultSchema>;
 export type RouteExecutionPlan = z.infer<typeof routeExecutionPlanSchema>;
+
+function validateDeploymentWeights(
+  route: { deployments: Array<{ order: number; weight: number }> },
+  context: z.RefinementCtx
+) {
+  const orders = new Map<number, number>();
+  for (const deployment of route.deployments) {
+    orders.set(deployment.order, (orders.get(deployment.order) ?? 0) + deployment.weight);
+  }
+  for (const [order, weight] of orders) {
+    if (weight > 0) continue;
+    context.addIssue({
+      code: "custom",
+      message: "At least one deployment per order group must have positive weight.",
+      path: ["deployments", route.deployments.findIndex((deployment) => deployment.order === order), "weight"]
+    });
+  }
+}

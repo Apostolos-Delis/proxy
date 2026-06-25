@@ -731,6 +731,7 @@ export const promptArtifacts = pgTable(
     requestId: text("request_id")
       .notNull()
       .references(() => requests.id, { onDelete: "cascade" }),
+    sessionId: text("session_id").references(() => agentSessions.id, { onDelete: "set null" }),
     kind: text("kind").notNull(),
     storageMode: text("storage_mode").$type<PromptCaptureMode>().notNull(),
     contentHash: text("content_hash").notNull(),
@@ -747,7 +748,11 @@ export const promptArtifacts = pgTable(
   (table) => [
     index("prompt_artifacts_request_id_idx").on(table.requestId),
     index("prompt_artifacts_org_workspace_created_idx").on(table.organizationId, table.workspaceId, table.createdAt),
-    index("prompt_artifacts_content_hash_idx").on(table.organizationId, table.contentHash)
+    index("prompt_artifacts_content_hash_idx").on(table.organizationId, table.contentHash),
+    uniqueIndex("prompt_artifacts_session_kind_hash_idx")
+      .on(table.organizationId, table.workspaceId, table.sessionId, table.kind, table.contentHash)
+      .where(sql`${table.sessionId} is not null`),
+    index("prompt_artifacts_org_workspace_session_idx").on(table.organizationId, table.workspaceId, table.sessionId, table.createdAt)
   ]
 );
 

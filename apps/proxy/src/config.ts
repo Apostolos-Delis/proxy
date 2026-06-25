@@ -40,6 +40,23 @@ const metricsPathSchema = z
     "METRICS_PATH must be an absolute path without whitespace, query string, or fragment"
   );
 
+const optionalPositiveIntSchema = z.preprocess((value) => {
+  if (value === undefined || value === "") return undefined;
+  return value;
+}, z.coerce.number().int().positive().optional());
+
+const positiveIntEnvSchema = z.preprocess((value) => {
+  if (value === undefined || value === "") return undefined;
+  return value;
+}, z.coerce.number().int().positive());
+
+const localRequestBodyLimitBytes = 1024 * 1024 * 50;
+const productionRequestBodyLimitBytes = 1024 * 1024 * 15;
+const defaultEventWriterMaxEntries = 10_000;
+const defaultEventWriterMaxBytes = 1024 * 1024 * 8;
+const defaultEventWriterBatchSize = 25;
+const defaultEventWriterShutdownTimeoutMs = 5_000;
+
 const modelCostsSchema = z.preprocess((value) => {
   if (value === undefined || value === "") return {};
   if (typeof value !== "string") return value;
@@ -81,7 +98,32 @@ const configSchema = z.object({
   MODEL_COSTS_JSON: modelCostsSchema,
   ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.55),
   EVENT_STORE_PATH: z.string().optional(),
+  REQUEST_BODY_LIMIT_BYTES: optionalPositiveIntSchema,
+  GATEWAY_LIMIT_WINDOW_MS: positiveIntEnvSchema.default(60_000),
+  GATEWAY_GLOBAL_CONCURRENCY_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_ORGANIZATION_CONCURRENCY_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_WORKSPACE_CONCURRENCY_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_API_KEY_CONCURRENCY_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_USER_CONCURRENCY_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_PROVIDER_MODEL_CONCURRENCY_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_GLOBAL_RPM_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_ORGANIZATION_RPM_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_WORKSPACE_RPM_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_API_KEY_RPM_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_USER_RPM_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_PROVIDER_MODEL_RPM_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_GLOBAL_TPM_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_ORGANIZATION_TPM_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_WORKSPACE_TPM_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_API_KEY_TPM_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_USER_TPM_LIMIT: optionalPositiveIntSchema,
+  GATEWAY_PROVIDER_MODEL_TPM_LIMIT: optionalPositiveIntSchema,
+  EVENT_WRITER_MAX_ENTRIES: positiveIntEnvSchema.default(defaultEventWriterMaxEntries),
+  EVENT_WRITER_MAX_BYTES: positiveIntEnvSchema.default(defaultEventWriterMaxBytes),
+  EVENT_WRITER_BATCH_SIZE: positiveIntEnvSchema.default(defaultEventWriterBatchSize),
+  EVENT_WRITER_SHUTDOWN_TIMEOUT_MS: positiveIntEnvSchema.default(defaultEventWriterShutdownTimeoutMs),
   DATABASE_URL: z.string().optional(),
+  DB_POOL_MAX: positiveIntEnvSchema.default(5),
   PROVIDER_SECRET_ENCRYPTION_KEY: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z
@@ -183,7 +225,34 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     modelCostsFromEnv: Object.keys(parsed.MODEL_COSTS_JSON),
     routeQualityLowConfidenceThreshold: parsed.ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD,
     eventStorePath: parsed.EVENT_STORE_PATH,
+    requestBodyLimitBytes: parsed.REQUEST_BODY_LIMIT_BYTES ?? (parsed.NODE_ENV === "production" ? productionRequestBodyLimitBytes : localRequestBodyLimitBytes),
+    trafficLimits: {
+      windowMs: parsed.GATEWAY_LIMIT_WINDOW_MS,
+      globalConcurrent: parsed.GATEWAY_GLOBAL_CONCURRENCY_LIMIT,
+      organizationConcurrent: parsed.GATEWAY_ORGANIZATION_CONCURRENCY_LIMIT,
+      workspaceConcurrent: parsed.GATEWAY_WORKSPACE_CONCURRENCY_LIMIT,
+      apiKeyConcurrent: parsed.GATEWAY_API_KEY_CONCURRENCY_LIMIT,
+      userConcurrent: parsed.GATEWAY_USER_CONCURRENCY_LIMIT,
+      providerModelConcurrent: parsed.GATEWAY_PROVIDER_MODEL_CONCURRENCY_LIMIT,
+      globalRpm: parsed.GATEWAY_GLOBAL_RPM_LIMIT,
+      organizationRpm: parsed.GATEWAY_ORGANIZATION_RPM_LIMIT,
+      workspaceRpm: parsed.GATEWAY_WORKSPACE_RPM_LIMIT,
+      apiKeyRpm: parsed.GATEWAY_API_KEY_RPM_LIMIT,
+      userRpm: parsed.GATEWAY_USER_RPM_LIMIT,
+      providerModelRpm: parsed.GATEWAY_PROVIDER_MODEL_RPM_LIMIT,
+      globalTpm: parsed.GATEWAY_GLOBAL_TPM_LIMIT,
+      organizationTpm: parsed.GATEWAY_ORGANIZATION_TPM_LIMIT,
+      workspaceTpm: parsed.GATEWAY_WORKSPACE_TPM_LIMIT,
+      apiKeyTpm: parsed.GATEWAY_API_KEY_TPM_LIMIT,
+      userTpm: parsed.GATEWAY_USER_TPM_LIMIT,
+      providerModelTpm: parsed.GATEWAY_PROVIDER_MODEL_TPM_LIMIT
+    },
+    eventWriterMaxEntries: parsed.EVENT_WRITER_MAX_ENTRIES,
+    eventWriterMaxBytes: parsed.EVENT_WRITER_MAX_BYTES,
+    eventWriterBatchSize: parsed.EVENT_WRITER_BATCH_SIZE,
+    eventWriterShutdownTimeoutMs: parsed.EVENT_WRITER_SHUTDOWN_TIMEOUT_MS,
     databaseUrl: parsed.DATABASE_URL,
+    dbPoolMax: parsed.DB_POOL_MAX,
     providerSecretEncryptionKey: parsed.PROVIDER_SECRET_ENCRYPTION_KEY,
     defaultOrganizationId: parsed.DEFAULT_ORGANIZATION_ID,
     subscriptionOAuthEnabled: parsed.SUBSCRIPTION_OAUTH_ENABLED,

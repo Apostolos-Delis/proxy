@@ -729,7 +729,10 @@ export class WebSocketRoutingProxy {
     const config = resolved.routingConfig?.config;
     if (!config) return true;
     const providerIds = new Set(
-      Object.values(config.routes).flatMap((route) => route.targets.map((target) => target.providerId))
+      Object.values(config.routes).flatMap((route) => [
+        ...(route.openai?.deployments.map((deployment) => deployment.provider) ?? []),
+        ...(route.anthropic?.deployments.map((deployment) => deployment.provider) ?? [])
+      ])
     );
     for (const providerId of providerIds) {
       if (providerId === "openai") continue;

@@ -110,6 +110,62 @@ describe("proxy", () => {
     });
   });
 
+  it("rejects oversized request bodies with a clear 413", async () => {
+    const app = buildServer(
+      loadConfig({
+        ...testEnv(),
+        REQUEST_BODY_LIMIT_BYTES: "256",
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer proxy-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-5.5",
+        input: "x".repeat(512)
+      })
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      error: "Request body exceeds proxy limit.",
+      limitBytes: 256
+    });
+
+    await app.close();
+  });
+
+  it("exposes event writer queue stats", async () => {
+    const app = buildServer(
+      loadConfig({
+        ...testEnv(),
+        LOG_LEVEL: "fatal"
+      })
+    );
+    const proxyUrl = await listen(app);
+
+    const response = await fetch(`${proxyUrl}/_debug/event-writer`, {
+      headers: { authorization: "Bearer proxy-token" }
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual(expect.objectContaining({
+      depth: expect.any(Number),
+      dropped: expect.any(Number),
+      flushFailures: expect.any(Number),
+      oldestEventAgeMs: expect.any(Number)
+    }));
+
+    await app.close();
+  });
+
   it("routes Codex-style OpenAI Responses requests through the classifier", async () => {
     const app = buildServer(
       loadConfig({
@@ -1205,7 +1261,7 @@ describe("proxy", () => {
     expect(providerCalls[0].body.model).toBe("gpt-5.5");
   });
 
-  it("reprocesses failed requests instead of replaying the failure", async () => {
+  it("retries transient provider failures before recording completion", async () => {
     const flakyOpenAI = await startOpenAIMock({ failProviderOnce: true });
     const app = buildServer(
       loadConfig({
@@ -1244,14 +1300,14 @@ describe("proxy", () => {
     await app.close();
     await flakyOpenAI.close();
 
-    expect(first.status).toBe(500);
+    expect(first.status).toBe(200);
     expect(second.status).toBe(200);
     expect(second.headers.get("x-proxy-route")).toBe("hard");
     expect(secondBody).toContain("response.completed");
     const providerCalls = flakyOpenAI.records.filter(
       (record) => record.body.model !== "route-classifier-cheap"
     );
-    expect(providerCalls).toHaveLength(2);
+    expect(providerCalls).toHaveLength(1);
   });
 
   it("retries OpenAI provider rate limits before streaming the final response", async () => {
@@ -1368,7 +1424,7 @@ describe("proxy", () => {
     expect(retryEvent?.payload.rateLimit["retry-after"]).toBe("0");
   });
 
-  it("returns provider rate limits when retry-after exceeds the local wait cap", async () => {
+  it("falls back when retry-after exceeds the local wait cap", async () => {
     await openai.close();
     openai = await startOpenAIMock({
       rateLimitProviderOnce: {
@@ -1413,13 +1469,14 @@ describe("proxy", () => {
 
     await app.close();
 
-    expect(response.status).toBe(429);
+    expect(response.status).toBe(200);
     expect(response.headers.get("retry-after")).toBe("2");
-    expect(body).toContain("mock rate limit");
+    expect(body).toContain("response.completed");
     const providerCalls = openai.records.filter(
       (record) => record.body.model !== "route-classifier-cheap"
     );
     expect(providerCalls).toHaveLength(1);
+    expect(anthropic.records.some((record) => record.path === "/messages")).toBe(true);
     expect(events.some((event: any) => event.eventType === "provider.rate_limit_retry_scheduled")).toBe(false);
   });
 

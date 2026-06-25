@@ -196,29 +196,49 @@ describe("database seed", () => {
     expect(routingConfigVersionRows[0]?.version).toBe(1);
     expect(routingConfigVersionRows[0]?.status).toBe("active");
     expect(routingConfigVersionRows[0]?.config).toEqual(expect.objectContaining({
-      schemaVersion: 2,
+      schemaVersion: 3,
       classifier: expect.objectContaining({
         model: options.classifierModel,
         allowRedactedExcerpt: false
       }),
       routes: expect.objectContaining({
         fast: expect.objectContaining({
-          targets: expect.arrayContaining([
-            expect.objectContaining({ providerId: "openai", model: "gpt-5.4-mini" }),
-            expect.objectContaining({ providerId: "anthropic", model: "claude-haiku-4-5" })
-          ])
+          retry: {
+            maxAttempts: 2,
+            retryableStatusCodes: [429, 500, 502, 503, 504]
+          },
+          openai: expect.objectContaining({
+	            deployments: [expect.objectContaining({
+	              provider: "openai",
+	              model: "gpt-5.4-mini",
+	              order: 1,
+	              weight: 1,
+	              timeoutMs: 60000
+            })]
+          }),
+          anthropic: expect.objectContaining({
+            deployments: [expect.objectContaining({
+              provider: "anthropic",
+              model: "claude-haiku-4-5",
+              order: 0,
+              weight: 1,
+              timeoutMs: 60000
+            })]
+          })
         }),
         hard: expect.objectContaining({
-          targets: expect.arrayContaining([
-            expect.objectContaining({ providerId: "anthropic", model: "claude-sonnet-seed" })
-          ])
+          anthropic: expect.objectContaining({
+            deployments: [expect.objectContaining({
+              model: "claude-sonnet-seed"
+            })]
+          })
         })
       })
     }));
     const seededConfig = routingConfigVersionRows[0]?.config as RoutingConfig;
     expect(seededConfig.classifier.rules).toBeUndefined();
     expect(seededConfig.limits.maxEstimatedInputTokens).toBeUndefined();
-    expect(seededConfig.routes.fast.targets.find((target) => target.providerId === "anthropic")?.thinking).toBeUndefined();
+    expect(seededConfig.routes.hard.anthropic?.deployments[0]?.output_config).toEqual({ effort: "high" });
     expect(keyRows).toHaveLength(1);
     expect(keyRows[0]?.workspaceId).toBe(defaultWorkspaceId("org_seed"));
     expect(keyRows[0]?.routingConfigId).toBe("org_seed:routing-config:default");
@@ -254,9 +274,11 @@ describe("database seed", () => {
     expect(version?.config).toEqual(expect.objectContaining({
       routes: expect.objectContaining({
         fast: expect.objectContaining({
-          targets: expect.arrayContaining([
-            expect.objectContaining({ providerId: "openai", model: "gpt-initial-fast" })
-          ])
+          openai: expect.objectContaining({
+            deployments: [expect.objectContaining({
+              model: "gpt-initial-fast"
+            })]
+          })
         })
       })
     }));
@@ -366,7 +388,7 @@ describe("database seed", () => {
     await client.close();
 
     expect(config?.activeVersionId).toBe("org_replace_seed:routing-config:default:v1");
-    expect(version?.config.routes.fast.targets.find((target) => target.providerId === "openai")?.model).toBe("gpt-replaced-fast");
+    expect(version?.config.routes.fast.openai?.deployments[0]?.model).toBe("gpt-replaced-fast");
     expect(version?.config.classifier.timeoutMs).toBe(30000);
   });
 

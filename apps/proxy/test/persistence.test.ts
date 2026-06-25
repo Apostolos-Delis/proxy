@@ -11,6 +11,7 @@ import {
   apiKeys,
   createPgliteDatabase,
   defaultWorkspaceId,
+  eventOutbox,
   events,
   hashApiKey,
   organizations,
@@ -28,8 +29,9 @@ import {
 import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
 
 import { loadConfig } from "../src/config.js";
-import { EventService } from "../src/events.js";
+import { BoundedEventWriter, EventService } from "../src/events.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
+import { ApiKeyIdentityStore } from "../src/persistence/identity.js";
 import type { RouteContext } from "../src/types.js";
 
 describe("postgres persistence", () => {
@@ -94,6 +96,45 @@ describe("postgres persistence", () => {
 
     expect(eventService.listEvents()).toEqual([]);
     expect(eventService.listOutbox()).toEqual([]);
+  });
+
+  it("flushes queued events through the durable event transaction", async () => {
+    const fixture = await persistenceFixture("org_queue");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_queue");
+    const writer = new BoundedEventWriter(eventService, {
+      maxEntries: 10,
+      maxBytes: 10_000,
+      retryDelayMs: 1
+    });
+
+    writer.enqueue({
+      scopeType: "request",
+      scopeId: "request_queue",
+      correlationId: "request_queue",
+      idempotencyKey: "idem_queue",
+      producer: "test",
+      eventType: "proxy.request_received",
+      payload: {
+        surface: "openai-responses",
+        requestedModel: "router-auto",
+        inputHash: "sha256:input",
+        inputChars: 400
+      }
+    });
+    const stats = await writer.drain(1_000);
+
+    const requestRows = await fixture.db.select().from(requests).where(eq(requests.id, "request_queue"));
+    const eventRows = await fixture.db.select().from(events).where(eq(events.scopeId, "request_queue"));
+    const outboxRows = eventRows[0]
+      ? await fixture.db.select().from(eventOutbox).where(eq(eventOutbox.eventId, eventRows[0].id))
+      : [];
+
+    expect(stats.depth).toBe(0);
+    expect(requestRows).toHaveLength(1);
+    expect(eventRows).toHaveLength(1);
+    expect(outboxRows).toHaveLength(1);
+    expect(requestRows[0]?.status).toBe("received");
+    expect(eventRows[0]?.eventType).toBe("proxy.request_received");
   });
 
   it("persists request lifecycle rows and usage cost from events", async () => {
@@ -801,6 +842,9 @@ describe("postgres persistence", () => {
     });
 
     const identity = await fixture.persistence.apiKeys.resolve("secret-token", new Date("2026-06-08T00:00:00.000Z"));
+    await fixture.persistence.apiKeys.resolve("secret-token", new Date("2026-06-08T00:00:04.000Z"));
+    const rowsBeforeFlush = await fixture.db.select().from(apiKeys).where(eq(apiKeys.id, "api_key_1"));
+    await fixture.persistence.apiKeys.flushLastUsed();
     const rows = await fixture.db.select().from(apiKeys).where(eq(apiKeys.id, "api_key_1"));
 
     expect(identity).toEqual({
@@ -810,8 +854,49 @@ describe("postgres persistence", () => {
       userId: undefined,
       routingConfigId: null
     });
-    expect(rows[0]?.lastUsedAt?.toISOString()).toBe("2026-06-08T00:00:00.000Z");
+    expect(rowsBeforeFlush[0]?.lastUsedAt).toBeNull();
+    expect(rows[0]?.lastUsedAt?.toISOString()).toBe("2026-06-08T00:00:04.000Z");
     await expect(fixture.persistence.apiKeys.resolve("wrong-token")).resolves.toBeUndefined();
+  });
+
+  it("serves api key identity from cache only until ttl expiry", async () => {
+    const fixture = await persistenceFixture("org_api_key_cache");
+    await fixture.db.insert(organizations).values({
+      id: "org_api_key_cache",
+      slug: "org_api_key_cache",
+      name: "org_api_key_cache"
+    }).onConflictDoNothing();
+    await fixture.db.insert(workspaces).values({
+      id: defaultWorkspaceId("org_api_key_cache"),
+      organizationId: "org_api_key_cache",
+      slug: "default",
+      name: "Default"
+    }).onConflictDoNothing();
+    await fixture.db.insert(apiKeys).values({
+      id: "api_key_cache",
+      organizationId: "org_api_key_cache",
+      workspaceId: defaultWorkspaceId("org_api_key_cache"),
+      keyHash: hashApiKey("cached-token"),
+      name: "Cached key",
+      scopes: ["proxy"]
+    });
+    const store = new ApiKeyIdentityStore(fixture.db, {
+      cacheTtlMs: 1_000,
+      lastUsedFlushDelayMs: 60_000
+    });
+
+    const beforeRevoke = await store.resolve("cached-token", new Date("2026-06-08T00:00:00.000Z"));
+    await fixture.db
+      .update(apiKeys)
+      .set({ revokedAt: new Date("2026-06-08T00:00:00.250Z") })
+      .where(eq(apiKeys.id, "api_key_cache"));
+    const cachedAfterRevoke = await store.resolve("cached-token", new Date("2026-06-08T00:00:00.500Z"));
+    const expiredAfterRevoke = await store.resolve("cached-token", new Date("2026-06-08T00:00:01.500Z"));
+    await store.flushLastUsed();
+
+    expect(beforeRevoke?.apiKeyId).toBe("api_key_cache");
+    expect(cachedAfterRevoke?.apiKeyId).toBe("api_key_cache");
+    expect(expiredAfterRevoke).toBeUndefined();
   });
 
   it("resolves api key routing config assignments", async () => {

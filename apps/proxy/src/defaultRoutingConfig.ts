@@ -39,7 +39,7 @@ function sha256Hex(value: string) {
 
 function defaultRoutingConfig(config: AppConfig): RoutingConfig {
   return routingConfigSchema.parse({
-    schemaVersion: 2,
+    schemaVersion: 3,
     displayName: "Default coding router",
     description: "Seeded default routing config for coding-agent traffic.",
     classifier: {
@@ -80,20 +80,36 @@ function routeConfig(
 ): RoutingConfig["routes"][RouteName] {
   return {
     description,
-    targets: [
-      {
-        providerId: "anthropic",
+    retry: {
+      maxAttempts: 2,
+      retryableStatusCodes: [429, 500, 502, 503, 504]
+    },
+    anthropic: {
+      deployments: [{
+        provider: "anthropic",
         model: modelFor(config, "anthropic", route),
-        effort,
-        ...(route === "fast" ? {} : { thinking: { type: "adaptive" as const, display: "omitted" as const } })
-      },
-      {
-        providerId: "openai",
+        order: 0,
+        weight: 1,
+        timeoutMs: 60000,
+        output_config: { effort },
+        ...(route === "fast"
+          ? {}
+          : {
+              thinking: { type: "adaptive" as const, display: "omitted" as const }
+            })
+      }]
+    },
+    openai: {
+      deployments: [{
+        provider: "openai",
         model: modelFor(config, "openai", route),
-        effort,
-        verbosity: route === "fast" || route === "balanced" ? "low" : "medium"
-      }
-    ]
+        order: 1,
+        weight: 1,
+        timeoutMs: 60000,
+        reasoning: { effort },
+        text: { verbosity: route === "fast" || route === "balanced" ? "low" : "medium" }
+      }]
+    }
   };
 }
 

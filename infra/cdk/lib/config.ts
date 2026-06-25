@@ -15,6 +15,18 @@ export type ProxyEnvironmentConfig = {
   githubOidcProviderArn?: string;
   cloudFrontOriginFacingPrefixListId?: string;
   desiredProxyCount: number;
+  minProxyCount: number;
+  maxProxyCount: number;
+  proxyCpu: number;
+  proxyMemoryMiB: number;
+  proxyScaleTargetCpuPercent: number;
+  proxyScaleTargetMemoryPercent: number;
+  requestBodyLimitBytes: number;
+  eventWriterMaxEntries: number;
+  eventWriterMaxBytes: number;
+  eventWriterBatchSize: number;
+  eventWriterShutdownTimeoutMs: number;
+  databasePoolMax: number;
   databaseInstanceClass: string;
   databaseAllocatedStorageGb: number;
   customDomain?: {

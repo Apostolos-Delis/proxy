@@ -1,8 +1,10 @@
 import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import { Alarm, ComparisonOperator, Metric, TreatMissingData } from "aws-cdk-lib/aws-cloudwatch";
 import { SubnetType } from "aws-cdk-lib/aws-ec2";
 import {
   Cluster,
   ContainerImage,
+  ContainerInsights,
   CpuArchitecture,
   FargateService,
   FargateTaskDefinition,
@@ -10,7 +12,7 @@ import {
   OperatingSystemFamily,
   Secret as EcsSecret
 } from "aws-cdk-lib/aws-ecs";
-import { ApplicationProtocol } from "aws-cdk-lib/aws-elasticloadbalancingv2";
+import { ApplicationProtocol, HttpCodeTarget, type ApplicationTargetGroup } from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 
@@ -42,7 +44,8 @@ export class ProxyServiceStack extends Stack {
 
     this.cluster = new Cluster(this, "Cluster", {
       vpc: network.vpc,
-      clusterName: resourceName(config, "cluster")
+      clusterName: resourceName(config, "cluster"),
+      containerInsightsV2: ContainerInsights.ENHANCED
     });
 
     const logGroup = new LogGroup(this, "ProxyLogGroup", {
@@ -52,8 +55,8 @@ export class ProxyServiceStack extends Stack {
     });
     const taskDefinition = new FargateTaskDefinition(this, "ProxyTaskDefinition", {
       family: resourceName(config, "proxy"),
-      cpu: 256,
-      memoryLimitMiB: 512,
+      cpu: config.proxyCpu,
+      memoryLimitMiB: config.proxyMemoryMiB,
       runtimePlatform: {
         cpuArchitecture: CpuArchitecture.ARM64,
         operatingSystemFamily: OperatingSystemFamily.LINUX
@@ -62,6 +65,8 @@ export class ProxyServiceStack extends Stack {
     taskDefinition.addContainer("proxy", {
       image,
       command: ["pnpm", "start:prod:proxy"],
+      enableRestartPolicy: true,
+      restartAttemptPeriod: Duration.seconds(300),
       environment: runtimeEnvironment(config),
       secrets: runtimeSecretEnvironment(database, runtimeSecrets),
       portMappings: [{ containerPort: 8787 }],
@@ -83,6 +88,21 @@ export class ProxyServiceStack extends Stack {
       minHealthyPercent: 100
     });
 
+    const scaling = this.service.autoScaleTaskCount({
+      minCapacity: config.minProxyCount,
+      maxCapacity: config.maxProxyCount
+    });
+    scaling.scaleOnCpuUtilization("CpuScaling", {
+      targetUtilizationPercent: config.proxyScaleTargetCpuPercent,
+      scaleInCooldown: Duration.seconds(120),
+      scaleOutCooldown: Duration.seconds(60)
+    });
+    scaling.scaleOnMemoryUtilization("MemoryScaling", {
+      targetUtilizationPercent: config.proxyScaleTargetMemoryPercent,
+      scaleInCooldown: Duration.seconds(120),
+      scaleOutCooldown: Duration.seconds(60)
+    });
+
     const listener = network.loadBalancer.addListener("HttpListener", {
       port: 80,
       protocol: ApplicationProtocol.HTTP,
@@ -99,6 +119,7 @@ export class ProxyServiceStack extends Stack {
         timeout: Duration.seconds(10)
       }
     });
+    createProxyAlarms(this, config, this.service, targetGroup);
 
     new CfnOutput(this, "ClusterName", { value: this.cluster.clusterName });
     new CfnOutput(this, "ProxyServiceName", { value: this.service.serviceName });
@@ -106,6 +127,75 @@ export class ProxyServiceStack extends Stack {
       value: targetGroup.targetGroupArn
     });
   }
+}
+
+function createProxyAlarms(
+  scope: Construct,
+  config: ProxyEnvironmentConfig,
+  service: FargateService,
+  targetGroup: ApplicationTargetGroup
+) {
+  const period = Duration.minutes(5);
+  new Alarm(scope, "ProxyHighCpuAlarm", {
+    alarmName: resourceName(config, "proxy-high-cpu"),
+    metric: service.metricCpuUtilization({ period }),
+    threshold: 85,
+    evaluationPeriods: 3,
+    datapointsToAlarm: 2,
+    comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    treatMissingData: TreatMissingData.NOT_BREACHING
+  });
+  new Alarm(scope, "ProxyHighMemoryAlarm", {
+    alarmName: resourceName(config, "proxy-high-memory"),
+    metric: service.metricMemoryUtilization({ period }),
+    threshold: 85,
+    evaluationPeriods: 3,
+    datapointsToAlarm: 2,
+    comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    treatMissingData: TreatMissingData.NOT_BREACHING
+  });
+  new Alarm(scope, "ProxyTarget5xxAlarm", {
+    alarmName: resourceName(config, "proxy-target-5xx"),
+    metric: targetGroup.metrics.httpCodeTarget(HttpCodeTarget.TARGET_5XX_COUNT, { period }),
+    threshold: 5,
+    evaluationPeriods: 2,
+    comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    treatMissingData: TreatMissingData.NOT_BREACHING
+  });
+  new Alarm(scope, "ProxyTargetResponseTimeAlarm", {
+    alarmName: resourceName(config, "proxy-target-response-time"),
+    metric: targetGroup.metrics.targetResponseTime({ period, statistic: "p95" }),
+    threshold: 30,
+    evaluationPeriods: 3,
+    datapointsToAlarm: 2,
+    comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    treatMissingData: TreatMissingData.NOT_BREACHING
+  });
+  new Alarm(scope, "ProxyUnhealthyTargetsAlarm", {
+    alarmName: resourceName(config, "proxy-unhealthy-targets"),
+    metric: targetGroup.metrics.unhealthyHostCount({ period }),
+    threshold: 1,
+    evaluationPeriods: 2,
+    comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    treatMissingData: TreatMissingData.NOT_BREACHING
+  });
+  new Alarm(scope, "ProxyRestartCountAlarm", {
+    alarmName: resourceName(config, "proxy-restarts"),
+    metric: new Metric({
+      namespace: "ECS/ContainerInsights",
+      metricName: "RestartCount",
+      dimensionsMap: {
+        ClusterName: service.cluster.clusterName,
+        ServiceName: service.serviceName
+      },
+      statistic: "Sum",
+      period
+    }),
+    threshold: 1,
+    evaluationPeriods: 1,
+    comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    treatMissingData: TreatMissingData.NOT_BREACHING
+  });
 }
 
 export function runtimeEnvironment(config: ProxyEnvironmentConfig) {
@@ -123,12 +213,18 @@ export function runtimeEnvironment(config: ProxyEnvironmentConfig) {
     CLASSIFIER_MODEL: "gpt-5-nano-2025-08-07",
     CLASSIFIER_PROVIDER: "openai",
     CLASSIFIER_TIMEOUT_MS: "30000",
+    DB_POOL_MAX: String(config.databasePoolMax),
     DEFAULT_ORGANIZATION_ID: `proxy-${config.envName}`,
     DEBUG_ENDPOINTS_ENABLED: "false",
+    EVENT_WRITER_BATCH_SIZE: String(config.eventWriterBatchSize),
+    EVENT_WRITER_MAX_BYTES: String(config.eventWriterMaxBytes),
+    EVENT_WRITER_MAX_ENTRIES: String(config.eventWriterMaxEntries),
+    EVENT_WRITER_SHUTDOWN_TIMEOUT_MS: String(config.eventWriterShutdownTimeoutMs),
     LOG_LEVEL: "info",
     NODE_ENV: "production",
     OPENAI_BASE_URL: "https://api.openai.com/v1",
     PORT: "8787",
+    REQUEST_BODY_LIMIT_BYTES: String(config.requestBodyLimitBytes),
     SEED_REPLACE_ROUTING_CONFIG: "true",
     SEED_USER_ID: `proxy-${config.envName}-admin`
   };

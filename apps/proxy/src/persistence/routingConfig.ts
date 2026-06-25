@@ -44,16 +44,48 @@ export type RoutingConfigResolverLike = {
   }): Promise<ResolvedRoutingConfig>;
 };
 
-export class RoutingConfigResolver implements RoutingConfigResolverLike {
-  private readonly cacheTtlPolicy = new Map<string, { eligible: boolean; expiresAt: number }>();
+type RoutingConfigResolverOptions = {
+  cacheTtlMs?: number;
+  maxEntries?: number;
+  nowMs?: () => number;
+};
 
-  constructor(private readonly db: ProxyDbSession) {}
+type CachedRoutingConfig = {
+  value: ResolvedRoutingConfig;
+  expiresAtMs: number;
+};
+
+export class RoutingConfigResolver implements RoutingConfigResolverLike {
+  private readonly cache = new Map<string, CachedRoutingConfig>();
+  private readonly cacheTtlPolicy = new Map<string, { eligible: boolean; expiresAt: number }>();
+  private readonly cacheTtlMs: number;
+  private readonly maxEntries: number;
+  private readonly nowMs: () => number;
+
+  constructor(private readonly db: ProxyDbSession, options: RoutingConfigResolverOptions = {}) {
+    this.cacheTtlMs = options.cacheTtlMs ?? 5000;
+    this.maxEntries = options.maxEntries ?? 1000;
+    this.nowMs = options.nowMs ?? (() => Date.now());
+  }
+
+  clearCache() {
+    this.cache.clear();
+    this.cacheTtlPolicy.clear();
+  }
 
   async resolve(input: {
     organizationId: string;
     workspaceId: string;
     routingConfigId?: string | null;
   }): Promise<ResolvedRoutingConfig> {
+    const key = cacheKey(input);
+    const cached = this.cache.get(key);
+    const now = this.nowMs();
+    if (cached && cached.expiresAtMs > now) {
+      return structuredClone(cached.value);
+    }
+    if (cached) this.cache.delete(key);
+
     const orgSettings = await this.organizationSettings(input.organizationId);
     const configId = input.routingConfigId
       ?? await this.defaultRoutingConfigId(input.workspaceId)
@@ -99,7 +131,7 @@ export class RoutingConfigResolver implements RoutingConfigResolverLike {
       ? await this.hasRecoverableCacheIdleGap(input.organizationId, input.workspaceId)
       : false;
 
-    return {
+    const resolved = {
       organizationId: input.organizationId,
       workspaceId: input.workspaceId,
       configId: config.id,
@@ -114,6 +146,18 @@ export class RoutingConfigResolver implements RoutingConfigResolverLike {
       toolResultCompressionPolicy: compressionPolicyFromSettings(orgSettings?.settings),
       duplicateToolResultReferences: orgSettings?.settings?.duplicateToolResultReferences === true
     };
+
+    if (this.cacheTtlMs > 0 && this.maxEntries > 0) {
+      if (!this.cache.has(key) && this.cache.size >= this.maxEntries) {
+        const oldestKey = this.cache.keys().next().value;
+        if (oldestKey) this.cache.delete(oldestKey);
+      }
+      this.cache.set(key, {
+        value: structuredClone(resolved),
+        expiresAtMs: now + this.cacheTtlMs
+      });
+    }
+    return structuredClone(resolved);
   }
 
   private async organizationSettings(organizationId: string) {
@@ -139,7 +183,7 @@ export class RoutingConfigResolver implements RoutingConfigResolverLike {
 
   private async hasRecoverableCacheIdleGap(organizationId: string, workspaceId: string) {
     const key = `${organizationId}:${workspaceId}`;
-    const now = Date.now();
+    const now = this.nowMs();
     const cached = this.cacheTtlPolicy.get(key);
     if (cached && cached.expiresAt > now) return cached.eligible;
 
@@ -164,6 +208,14 @@ export class RoutingConfigResolver implements RoutingConfigResolverLike {
     });
     return eligible;
   }
+}
+
+function cacheKey(input: {
+  organizationId: string;
+  workspaceId: string;
+  routingConfigId?: string | null;
+}) {
+  return JSON.stringify([input.organizationId, input.workspaceId, input.routingConfigId ?? null]);
 }
 
 export function routingConfigSnapshot(resolved: ResolvedRoutingConfig): RoutingConfigSnapshot {

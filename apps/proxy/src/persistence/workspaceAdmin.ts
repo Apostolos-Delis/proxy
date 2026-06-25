@@ -20,7 +20,10 @@ const createWorkspaceBodySchema = z.object({
 export class WorkspaceAdminError extends AdminMutationError {}
 
 export class WorkspaceAdminService {
-  constructor(private readonly db: ProxyTransactionalDatabase) {}
+  constructor(
+    private readonly db: ProxyTransactionalDatabase,
+    private readonly onRoutingConfigsChanged: () => void = () => {}
+  ) {}
 
   async createWorkspace(input: {
     organizationId: string;
@@ -33,7 +36,7 @@ export class WorkspaceAdminService {
     const slug = slugValue(body.data.slug ?? body.data.name);
     const now = new Date();
 
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const [existing] = await tx
         .select({ id: workspaces.id })
         .from(workspaces)
@@ -77,6 +80,8 @@ export class WorkspaceAdminService {
 
       return { workspaceId, slug, name: body.data.name };
     });
+    this.onRoutingConfigsChanged();
+    return result;
   }
 }
 

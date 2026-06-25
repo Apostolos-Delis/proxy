@@ -11,7 +11,7 @@ import {
   routingConfigs,
   routingConfigVersions
 } from "@proxy/db";
-import type { RoutingConfig } from "@proxy/schema";
+import type { RoutingConfig, RoutingConfigAnthropicDeployment, RoutingConfigOpenAIDeployment } from "@proxy/schema";
 
 import { SessionRouteStore } from "../src/policy.js";
 import type { RouteContext } from "../src/types.js";
@@ -271,9 +271,24 @@ describe("session pinning", () => {
       externalSessionId: "stale-session",
       currentRoute: "hard",
       pinnedSettings: {
-        providerId: "missing-openai-pin",
+        provider: "missing-openai-pin",
         model: "gpt-stale-pin",
-        dialect: "openai-responses"
+        dialect: "openai-responses",
+        deployment: {
+          key: "stale-openai-deployment",
+          provider: "missing-openai-pin",
+          model: "gpt-stale-pin",
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000
+        },
+        openai: {
+          provider: "missing-openai-pin",
+          model: "gpt-stale-pin",
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000
+        }
       },
       requestCount: 3,
       metadata: {}
@@ -520,35 +535,70 @@ async function lastDecisionPayload(fixture: PromptTestFixture) {
     | undefined;
 }
 
+type AnthropicEffort = NonNullable<RoutingConfigAnthropicDeployment["output_config"]>["effort"];
+type OpenAIEffort = NonNullable<RoutingConfigOpenAIDeployment["reasoning"]>["effort"];
+type OpenAIVerbosity = NonNullable<RoutingConfigOpenAIDeployment["text"]>["verbosity"];
+
 function withHardAnthropic(
   config: RoutingConfig,
-  anthropic: Omit<RoutingConfig["routes"]["hard"]["targets"][number], "providerId">
+  anthropic: Partial<RoutingConfigAnthropicDeployment> & { model: string; effort?: AnthropicEffort }
 ): RoutingConfig {
+  const base = config.routes.hard.anthropic!.deployments[0]!;
+  const { effort, ...deployment } = anthropic;
   return {
     ...config,
     routes: {
       ...config.routes,
       hard: {
         ...config.routes.hard,
-        targets: config.routes.hard.targets.map((target) =>
-          target.providerId === "anthropic" ? { ...target, ...anthropic } : target
-        )
+        anthropic: {
+          deployments: [{ ...base, ...deployment, ...(effort ? { output_config: { effort } } : {}) }]
+        }
       }
     }
   };
 }
 
+type HardTargetFixture = {
+  providerId: string;
+  model: string;
+  effort?: AnthropicEffort | OpenAIEffort;
+  verbosity?: OpenAIVerbosity;
+};
+
 function withHardTargets(
   config: RoutingConfig,
-  targets: RoutingConfig["routes"]["hard"]["targets"]
+  targets: HardTargetFixture[]
 ): RoutingConfig {
+  const openai = targets
+    .filter((target) => !target.providerId.includes("anthropic"))
+    .map((target, index): RoutingConfigOpenAIDeployment => ({
+      provider: target.providerId,
+      model: target.model,
+      order: index,
+      weight: 1,
+      timeoutMs: 60000,
+      ...(target.effort ? { reasoning: { effort: target.effort as OpenAIEffort } } : {}),
+      ...(target.verbosity ? { text: { verbosity: target.verbosity } } : {})
+    }));
+  const anthropic = targets
+    .filter((target) => target.providerId.includes("anthropic"))
+    .map((target, index): RoutingConfigAnthropicDeployment => ({
+      provider: target.providerId,
+      model: target.model,
+      order: index,
+      weight: 1,
+      timeoutMs: 60000,
+      ...(target.effort ? { output_config: { effort: target.effort as AnthropicEffort } } : {})
+    }));
   return {
     ...config,
     routes: {
       ...config.routes,
       hard: {
         ...config.routes.hard,
-        targets
+        ...(openai.length > 0 ? { openai: { deployments: openai } } : { openai: undefined }),
+        ...(anthropic.length > 0 ? { anthropic: { deployments: anthropic } } : { anthropic: undefined })
       }
     }
   };
@@ -659,16 +709,14 @@ async function publishVersion(
     version: input.version,
     configHash: input.configHash,
     config,
-    status: "active",
-    createdByUserId: "local-user",
-    activatedAt: new Date()
+    status: "draft",
+    createdByUserId: "local-user"
   });
-  await fixture.db
-    .update(routingConfigVersions)
-    .set({ status: "archived" })
-    .where(eq(routingConfigVersions.id, previous.id));
-  await fixture.db
-    .update(routingConfigs)
-    .set({ activeVersionId: versionId })
-    .where(eq(routingConfigs.id, configId));
+  await fixture.persistence.routingConfigAdmin.activateVersion({
+    organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
+    actorUserId: "local-user",
+    configId,
+    versionId
+  });
 }

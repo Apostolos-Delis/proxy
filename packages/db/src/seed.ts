@@ -525,7 +525,7 @@ function model(provider: BuiltinProvider, modelName: string, route: RouteName, s
 
 function defaultRoutingConfig(options: SeedOptions): RoutingConfig {
   return routingConfigSchema.parse({
-    schemaVersion: 2,
+    schemaVersion: 3,
     displayName: "Default coding router",
     description: "Seeded default routing config for coding-agent traffic.",
     classifier: {
@@ -566,20 +566,40 @@ function routeConfig(
 ): RoutingConfig["routes"][RouteName] {
   return {
     description,
-    targets: [
-      {
-        providerId: "anthropic",
+    retry: {
+      maxAttempts: 2,
+      retryableStatusCodes: [429, 500, 502, 503, 504]
+    },
+	    openai: {
+	      deployments: [{
+	        provider: "openai",
+	        model: modelFor(options, "openai", route),
+	        order: 1,
+	        weight: 1,
+	        timeoutMs: 60000,
+        reasoning: {
+          effort: openaiEffort
+        },
+        text: {
+          verbosity: route === "fast" || route === "balanced" ? "low" : "medium"
+        }
+      }]
+    },
+    anthropic: {
+      deployments: [{
+        provider: "anthropic",
         model: modelFor(options, "anthropic", route),
-        effort: openaiEffort,
+        order: 0,
+        weight: 1,
+        timeoutMs: 60000,
+        output_config: {
+          effort: openaiEffort
+        },
+        // Fast omits thinking: "disabled" is rejected by adaptive-only models,
+        // while omitting the field lets the provider apply its default.
         ...(route === "fast" ? {} : { thinking: { type: "adaptive" as const, display: "omitted" as const } })
-      },
-      {
-        providerId: "openai",
-        model: modelFor(options, "openai", route),
-        effort: openaiEffort,
-        verbosity: route === "fast" || route === "balanced" ? "low" : "medium"
-      }
-    ]
+      }]
+    }
   };
 }
 

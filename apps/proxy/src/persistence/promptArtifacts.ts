@@ -1,4 +1,4 @@
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, lte } from "drizzle-orm";
 
 import {
   organizationSettings,
@@ -53,27 +53,15 @@ export class PromptArtifactStore {
     if (artifacts.length === 0) return [];
 
     const now = new Date();
-    const candidates = artifacts.map((artifact) => artifactRow(input, artifact, settings, now));
-    const captured = new Set(await this.sessionArtifactKeys(input.organizationId, input.requestId));
-    const rows: CapturedPromptArtifact[] = [];
-    for (const row of candidates) {
-      const key = artifactKey(row);
-      if (captured.has(key)) continue;
-      captured.add(key);
-      rows.push(row);
-    }
+    const sessionId = await this.requestSessionId(input.organizationId, input.requestId);
+    const candidates = artifacts.map((artifact) => artifactRow({ ...input, sessionId }, artifact, settings, now));
+    const rows = uniqueArtifactRows(candidates);
     if (rows.length === 0) return [];
 
-    await this.db.transaction(async (tx) => {
-      await tx.insert(promptArtifacts).values(rows);
-    });
-    return rows;
+    return this.insertRows(rows);
   }
 
-  // Requests in an agentic session resend the whole conversation each turn.
-  // Skip messages already captured by an earlier request of the same session
-  // so every artifact marks where its content first appeared.
-  private async sessionArtifactKeys(organizationId: string, requestId: string) {
+  private async requestSessionId(organizationId: string, requestId: string) {
     const [request] = await this.readDb
       .select({ sessionId: requests.sessionId })
       .from(requests)
@@ -82,28 +70,7 @@ export class PromptArtifactStore {
         eq(requests.id, requestId)
       ))
       .limit(1);
-    if (!request?.sessionId) return [];
-
-    // Includes the current request on purpose: a replayed capture for the
-    // same request sees its own committed rows and stays idempotent.
-    const siblingRequests = this.readDb
-      .select({ id: requests.id })
-      .from(requests)
-      .where(and(
-        eq(requests.organizationId, organizationId),
-        eq(requests.sessionId, request.sessionId)
-      ));
-    const existing = await this.readDb
-      .select({
-        kind: promptArtifacts.kind,
-        contentHash: promptArtifacts.contentHash
-      })
-      .from(promptArtifacts)
-      .where(and(
-        eq(promptArtifacts.organizationId, organizationId),
-        inArray(promptArtifacts.requestId, siblingRequests)
-      ));
-    return existing.map((row) => `${row.kind}:${row.contentHash}`);
+    return request?.sessionId ?? null;
   }
 
   async captureResponse(input: {
@@ -121,8 +88,9 @@ export class PromptArtifactStore {
     const settings = await this.settings(input.organizationId);
     if (settings.promptCaptureMode === "none") return [];
 
+    const sessionId = await this.requestSessionId(input.organizationId, input.requestId);
     const row = artifactRow(
-      input,
+      { ...input, sessionId },
       {
         kind: "assistant_response",
         content: input.text,
@@ -132,13 +100,14 @@ export class PromptArtifactStore {
       settings,
       new Date()
     );
-    // A later request's history capture can land first; skip the duplicate.
-    const captured = new Set(await this.sessionArtifactKeys(input.organizationId, input.requestId));
-    if (captured.has(artifactKey(row))) return [];
-    await this.db.transaction(async (tx) => {
-      await tx.insert(promptArtifacts).values([row]);
-    });
-    return [row];
+    return this.insertRows([row]);
+  }
+
+  private async insertRows(rows: CapturedPromptArtifact[]) {
+    if (rows.length === 0) return [];
+    return this.db.transaction(async (tx) =>
+      tx.insert(promptArtifacts).values(rows).onConflictDoNothing().returning()
+    );
   }
 
   async captureCompressionArtifact(input: {
@@ -146,9 +115,10 @@ export class PromptArtifactStore {
     workspaceId: string;
     requestId: string;
     surface: Surface;
-    kind: "compression_original_tool_result" | "compression_compressed_tool_result";
-    content: unknown;
-    blockPath: string;
+	    kind: "compression_original_tool_result" | "compression_compressed_tool_result";
+	    content: unknown;
+	    sessionId?: string | null;
+	    blockPath: string;
     toolName: string;
     ruleId: string;
     ruleVersion: number;
@@ -157,8 +127,8 @@ export class PromptArtifactStore {
     const settings = await this.settings(input.organizationId);
     if (settings.promptCaptureMode !== "raw_text") return undefined;
     const content = typeof input.content === "string" ? input.content : stableJson(input.content);
-    const row = artifactRow(
-      input,
+	    const row = artifactRow(
+	      { ...input, sessionId: input.sessionId ?? null },
       {
         kind: input.kind,
         content,
@@ -298,6 +268,18 @@ function artifactKey(row: CapturedPromptArtifact) {
   return `${row.kind}:${row.contentHash}`;
 }
 
+function uniqueArtifactRows(rows: CapturedPromptArtifact[]) {
+  const seen = new Set<string>();
+  const uniqueRows: CapturedPromptArtifact[] = [];
+  for (const row of rows) {
+    const key = artifactKey(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniqueRows.push(row);
+  }
+  return uniqueRows;
+}
+
 export function extractResponseText(surface: Surface, body: unknown): string {
   if (!isRecord(body)) return "";
   switch (surface) {
@@ -350,7 +332,7 @@ function anthropicOutputText(content: unknown) {
 }
 
 function artifactRow(
-  input: Omit<PromptArtifactCaptureInput, "body">,
+  input: Omit<PromptArtifactCaptureInput, "body"> & { sessionId: string | null },
   artifact: ExtractedPromptArtifact,
   settings: PromptCaptureSettings,
   now: Date
@@ -373,6 +355,7 @@ function artifactRow(
     organizationId: input.organizationId,
     workspaceId: input.workspaceId,
     requestId: input.requestId,
+    sessionId: input.sessionId,
     kind: artifact.kind,
     storageMode,
     contentHash: artifact.content === undefined ? sha256(stableJson(metadata)) : sha256(artifact.content),

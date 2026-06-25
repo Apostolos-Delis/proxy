@@ -15,7 +15,12 @@ import {
   usageLedger
 } from "@proxy/db";
 import { harnessCompatibilityForTarget } from "@proxy/schema";
-import type { Dialect, RoutingConfig } from "@proxy/schema";
+import type {
+  Dialect,
+  RoutingConfig,
+  RoutingConfigAnthropicDeployment,
+  RoutingConfigOpenAIDeployment
+} from "@proxy/schema";
 
 import { scopedIdempotencyKey } from "../src/auth.js";
 import { idempotencyFrom } from "../src/util.js";
@@ -709,7 +714,7 @@ async function assignRouteConfig(
     secret: string;
     slug: string;
     configHash: string;
-    targets: RoutingConfig["routes"]["hard"]["targets"];
+    targets: TargetFixture[];
   }
 ) {
   const configId = `${organizationId}:routing-config:${input.slug}`;
@@ -719,8 +724,7 @@ async function assignRouteConfig(
     .from(routingConfigVersions)
     .where(eq(routingConfigVersions.id, `${organizationId}:routing-config:default:v1`))
     .limit(1);
-  const config = structuredClone(defaultVersion.config as RoutingConfig);
-  config.routes.hard.targets = input.targets;
+  const config = withHardTargets(structuredClone(defaultVersion.config as RoutingConfig), input.targets);
 
   await fixture.db.insert(routingConfigs).values({
     id: configId,
@@ -754,6 +758,58 @@ async function assignRouteConfig(
     name: "Translated route key",
     routingConfigId: configId
   });
+}
+
+type AnthropicEffort = NonNullable<RoutingConfigAnthropicDeployment["output_config"]>["effort"];
+type OpenAIEffort = NonNullable<RoutingConfigOpenAIDeployment["reasoning"]>["effort"];
+type OpenAIVerbosity = NonNullable<RoutingConfigOpenAIDeployment["text"]>["verbosity"];
+
+type TargetFixture = {
+  providerId: string;
+  model: string;
+  effort?: AnthropicEffort | OpenAIEffort;
+  verbosity?: OpenAIVerbosity;
+  thinking?: RoutingConfigAnthropicDeployment["thinking"];
+  maxOutputTokens?: number;
+};
+
+function withHardTargets(config: RoutingConfig, targets: TargetFixture[]): RoutingConfig {
+  const openai = targets
+    .filter((target) => !target.providerId.includes("anthropic"))
+    .map((target, index): RoutingConfigOpenAIDeployment => ({
+      provider: target.providerId,
+      model: target.model,
+      order: index,
+      weight: 1,
+      timeoutMs: 60000,
+      ...(target.effort ? { reasoning: { effort: target.effort as OpenAIEffort } } : {}),
+      ...(target.verbosity ? { text: { verbosity: target.verbosity } } : {}),
+      ...(target.maxOutputTokens ? { maxOutputTokens: target.maxOutputTokens } : {})
+    }));
+  const anthropic = targets
+    .filter((target) => target.providerId.includes("anthropic"))
+    .map((target, index): RoutingConfigAnthropicDeployment => ({
+      provider: target.providerId,
+      model: target.model,
+      order: index,
+      weight: 1,
+      timeoutMs: 60000,
+      ...(target.effort ? { output_config: { effort: target.effort as AnthropicEffort } } : {}),
+      ...(target.thinking ? { thinking: target.thinking } : {}),
+      ...(target.maxOutputTokens ? { maxTokens: target.maxOutputTokens } : {})
+    }));
+
+  return {
+    ...config,
+    routes: {
+      ...config.routes,
+      hard: {
+        ...config.routes.hard,
+        ...(openai.length > 0 ? { openai: { deployments: openai } } : { openai: undefined }),
+        ...(anthropic.length > 0 ? { anthropic: { deployments: anthropic } } : { anthropic: undefined })
+      }
+    }
+  };
 }
 
 async function lastDecisionPayload(fixture: PromptTestFixture) {

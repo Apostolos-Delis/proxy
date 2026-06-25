@@ -47,9 +47,13 @@ export async function startOpenAIMock(
     classifierResponsesShape?: boolean;
     compressedJsonProvider?: boolean;
     failProviderOnce?: boolean;
+    failProviderOnceStatus?: number;
+    failProviderModels?: Record<string, number>;
     failStreamAfterChunk?: boolean;
+    failStreamAfterFirstByte?: boolean;
     failStreamProvider?: boolean;
     rateLimitProviderOnce?: RateLimitMock;
+    stallProviderBeforeFirstByte?: boolean;
     slowProvider?: boolean;
     streamContentType?: string;
     providerHeaders?: Record<string, string>;
@@ -128,9 +132,16 @@ export async function startOpenAIMock(
       return;
     }
 
+    const modelFailureStatus = typeof body.model === "string" ? options.failProviderModels?.[body.model] : undefined;
+    if (modelFailureStatus) {
+      response.writeHead(modelFailureStatus, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "mock provider model unavailable" } }));
+      return;
+    }
+
     if (options.failProviderOnce && !providerFailed) {
       providerFailed = true;
-      response.writeHead(500, { "content-type": "application/json" });
+      response.writeHead(options.failProviderOnceStatus ?? 500, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: { message: "mock provider unavailable" } }));
       return;
     }
@@ -281,11 +292,12 @@ export async function startOpenAIMock(
       ...options.providerHeaders
     });
     response.on("close", () => resolveProviderClosed?.());
+    if (options.stallProviderBeforeFirstByte) return;
     response.write(
       `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_mock" } })}\n\n`
     );
-    if (options.failStreamAfterChunk) {
-      setImmediate(() => response.destroy(new Error("mock stream failure")));
+    if (options.failStreamAfterChunk || options.failStreamAfterFirstByte) {
+      setTimeout(() => response.destroy(new Error("mock stream failed after first byte")), 5);
       return;
     }
     if (options.slowProvider) return;

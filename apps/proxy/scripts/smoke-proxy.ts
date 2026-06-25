@@ -180,21 +180,27 @@ async function assignSmokeRoutingConfig() {
   assignedConfig.description = "Smoke-only routing config that maps hard traffic to the fast model tier.";
 
   const hard = assignedConfig.routes.hard;
-  const openai = hard.targets.find((target) => target.providerId === "openai");
-  const anthropic = hard.targets.find((target) => target.providerId === "anthropic");
-  if (!openai || !anthropic) {
+  if (!hard.openai?.deployments[0] || !hard.anthropic?.deployments[0]) {
     throw new Error("config resolution failed: seeded hard route is missing provider settings");
   }
-  Object.assign(openai, {
-    model: config.openaiFastModel,
-    effort: "low",
-    verbosity: "low"
-  });
-  Object.assign(anthropic, {
-    model: config.anthropicFastModel,
-    thinking: { type: "disabled" },
-    effort: "low"
-  });
+  hard.openai = {
+    ...hard.openai,
+    deployments: [{
+      ...hard.openai.deployments[0],
+      model: config.openaiFastModel,
+      reasoning: { effort: "low" },
+      text: { verbosity: "low" }
+    }]
+  };
+  hard.anthropic = {
+    ...hard.anthropic,
+    deployments: [{
+      ...hard.anthropic.deployments[0],
+      model: config.anthropicFastModel,
+      thinking: { type: "disabled" },
+      output_config: { effort: "low" }
+    }]
+  };
 
   const created = await smokePersistence.persistence.routingConfigAdmin.createConfig({
     organizationId: config.defaultOrganizationId,

@@ -38,39 +38,42 @@ export class DatabaseEventSink implements PersistentEventSink {
 
   async append(event: ProxyEvent, outbox: OutboxItem) {
     const startedAtMs = performance.now();
+    let committedSequence = event.sequence;
     try {
       await this.db.transaction(async (tx) => {
         await ensureOrganization(tx, event.tenantId);
         const sequence = await nextEventSequence(tx, event, this.useAdvisoryLocks);
-        await projectEvent(tx, event);
+        committedSequence = sequence;
+        const storedEvent = { ...event, sequence };
+        await projectEvent(tx, storedEvent);
         await tx.insert(events).values({
-          id: event.eventId,
+          id: storedEvent.eventId,
           sequence,
-          schemaVersion: event.schemaVersion,
-          organizationId: event.tenantId,
-          workspaceId: event.workspaceId,
-          scopeType: event.scopeType,
-          scopeId: event.scopeId,
-          sessionId: event.sessionId,
-          turnId: event.turnId,
-          parentEventId: event.parentEventId,
-          causationId: event.causationId,
-          correlationId: event.correlationId,
-          idempotencyKey: event.idempotencyKey,
-          actorType: event.actor.type,
-          actorId: event.actor.id,
-          producer: event.producer,
-          eventType: event.eventType,
-          payloadHash: event.payloadHash,
-          sensitivity: event.sensitivity,
-          redactionState: event.redactionState,
-          payload: event.payload,
-          metadata: event.metadata,
-          createdAt: new Date(event.createdAt)
+          schemaVersion: storedEvent.schemaVersion,
+          organizationId: storedEvent.tenantId,
+          workspaceId: storedEvent.workspaceId,
+          scopeType: storedEvent.scopeType,
+          scopeId: storedEvent.scopeId,
+          sessionId: storedEvent.sessionId,
+          turnId: storedEvent.turnId,
+          parentEventId: storedEvent.parentEventId,
+          causationId: storedEvent.causationId,
+          correlationId: storedEvent.correlationId,
+          idempotencyKey: storedEvent.idempotencyKey,
+          actorType: storedEvent.actor.type,
+          actorId: storedEvent.actor.id,
+          producer: storedEvent.producer,
+          eventType: storedEvent.eventType,
+          payloadHash: storedEvent.payloadHash,
+          sensitivity: storedEvent.sensitivity,
+          redactionState: storedEvent.redactionState,
+          payload: storedEvent.payload,
+          metadata: storedEvent.metadata,
+          createdAt: new Date(storedEvent.createdAt)
         });
         await tx.insert(eventOutbox).values({
           id: outbox.outboxId,
-          eventId: event.eventId,
+          eventId: storedEvent.eventId,
           status: outbox.status
         });
       });
@@ -90,6 +93,7 @@ export class DatabaseEventSink implements PersistentEventSink {
       });
       throw error;
     }
+    return { sequence: committedSequence };
   }
 
   private async recordDurableOutboxHealth() {

@@ -25,7 +25,10 @@ const createApiKeyBodySchema = z.object({
 export class ApiKeyAdminError extends AdminMutationError {}
 
 export class ApiKeyAdminService {
-  constructor(private readonly db: ProxyTransactionalDatabase) {}
+  constructor(
+    private readonly db: ProxyTransactionalDatabase,
+    private readonly onApiKeysChanged: () => void = () => {}
+  ) {}
 
   async createApiKey(input: {
     organizationId: string;
@@ -96,7 +99,7 @@ export class ApiKeyAdminService {
     apiKeyId: string;
   }) {
     const now = new Date();
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const [apiKey] = await tx
         .select({
           id: apiKeys.id,
@@ -140,6 +143,8 @@ export class ApiKeyAdminService {
 
       return { apiKeyId: input.apiKeyId, revokedAt: now };
     });
+    this.onApiKeysChanged();
+    return result;
   }
 }
 

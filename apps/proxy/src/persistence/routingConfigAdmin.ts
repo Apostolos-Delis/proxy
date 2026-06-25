@@ -37,7 +37,11 @@ const assignApiKeyRoutingConfigBodySchema = z.object({
 export class RoutingConfigAdminError extends AdminMutationError {}
 
 export class RoutingConfigAdminService {
-  constructor(private readonly db: ProxyTransactionalDatabase) {}
+  constructor(
+    private readonly db: ProxyTransactionalDatabase,
+    private readonly onApiKeysChanged: () => void = () => {},
+    private readonly onRoutingConfigsChanged: () => void = () => {}
+  ) {}
 
   async createConfig(input: {
     organizationId: string;
@@ -54,7 +58,7 @@ export class RoutingConfigAdminService {
     const slug = slugValue(body.data.name);
     const hash = configHash(config);
 
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       await rejectDuplicateSlug(tx, input.organizationId, input.workspaceId, slug);
       await validateRoutingConfigPublishability(tx, input.organizationId, config);
       await tx.insert(routingConfigs).values({
@@ -131,6 +135,7 @@ export class RoutingConfigAdminService {
       });
       return { configId, versionId, version: 1, configHash: hash };
     });
+    return result;
   }
 
   // Backfills the seeded default config for workspaces that predate
@@ -141,7 +146,9 @@ export class RoutingConfigAdminService {
     workspaceId: string;
     actorUserId: string;
   }) {
-    return this.db.transaction((tx) => ensureWorkspaceDefaultRoutingConfig(tx, input));
+    const result = await this.db.transaction((tx) => ensureWorkspaceDefaultRoutingConfig(tx, input));
+    if (result) this.onRoutingConfigsChanged();
+    return result;
   }
 
   async createVersion(input: {
@@ -158,7 +165,7 @@ export class RoutingConfigAdminService {
     const versionId = createId("routing_config_version");
     const hash = configHash(config);
 
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const configRow = await lockedConfig(tx, input.organizationId, input.workspaceId, input.configId);
       if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
       if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
@@ -205,6 +212,7 @@ export class RoutingConfigAdminService {
       });
       return { configId: input.configId, versionId, version, configHash: hash };
     });
+    return result;
   }
 
   async activateVersion(input: {
@@ -215,7 +223,7 @@ export class RoutingConfigAdminService {
     versionId: string;
   }) {
     const now = new Date();
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const configRow = await lockedConfig(tx, input.organizationId, input.workspaceId, input.configId);
       if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
       if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
@@ -282,6 +290,8 @@ export class RoutingConfigAdminService {
         configHash: version.configHash
       };
     });
+    this.onRoutingConfigsChanged();
+    return result;
   }
 
   async assignApiKeyRoutingConfig(input: {
@@ -295,7 +305,7 @@ export class RoutingConfigAdminService {
     if (!body.success) throw validationError("invalid_api_key_routing_config_request", body.error);
     const routingConfigId = body.data.routingConfigId;
 
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const [apiKey] = await tx
         .select({
           id: apiKeys.id,
@@ -356,6 +366,8 @@ export class RoutingConfigAdminService {
         routingConfigId
       };
     });
+    this.onApiKeysChanged();
+    return result;
   }
 
   async archiveConfig(input: {
@@ -365,7 +377,7 @@ export class RoutingConfigAdminService {
     configId: string;
   }) {
     const now = new Date();
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const configRow = await lockedConfig(tx, input.organizationId, input.workspaceId, input.configId);
       if (!configRow) throw new RoutingConfigAdminError("routing_config_not_found", 404);
       if (configRow.status === "archived") throw new RoutingConfigAdminError("routing_config_archived", 409);
@@ -412,6 +424,8 @@ export class RoutingConfigAdminService {
         configHash: activeVersion?.configHash ?? null
       };
     });
+    this.onRoutingConfigsChanged();
+    return result;
   }
 }
 
@@ -497,23 +511,37 @@ async function validateRoutingConfigPublishability(
   await validateClassifierProvider(tx, organizationId, config);
   const issues: { path: string; message: string }[] = [];
   for (const [route, routeConfig] of Object.entries(config.routes)) {
-    for (const [index, target] of routeConfig.targets.entries()) {
-      const path = `routes.${route}.targets.${index}.providerId`;
-      const provider = await providerForSlug(tx, organizationId, target.providerId);
+    const deployments = [
+      ...(routeConfig.openai?.deployments.map((deployment, index) => ({
+        provider: deployment.provider,
+        providerAccountId: deployment.providerAccountId,
+        path: `routes.${route}.openai.deployments.${index}.provider`
+      })) ?? []),
+      ...(routeConfig.anthropic?.deployments.map((deployment, index) => ({
+        provider: deployment.provider,
+        providerAccountId: deployment.providerAccountId,
+        path: `routes.${route}.anthropic.deployments.${index}.provider`
+      })) ?? [])
+    ];
+    for (const deployment of deployments) {
+      const provider = await providerForSlug(tx, organizationId, deployment.provider);
       if (!provider) {
-        issues.push({ path, message: "Target provider must resolve to a provider registry row." });
+        issues.push({ path: deployment.path, message: "Target provider must resolve to a provider registry row." });
         continue;
       }
       if (!provider.enabled) {
-        issues.push({ path, message: "Target provider must be enabled." });
+        issues.push({ path: deployment.path, message: "Target provider must be enabled." });
         continue;
       }
       if (!canServeCurrentSurface(provider.endpoints)) {
-        issues.push({ path, message: "Target provider must expose an OpenAI Responses, OpenAI Chat, or Anthropic Messages endpoint." });
+        issues.push({ path: deployment.path, message: "Target provider must expose an OpenAI Responses, OpenAI Chat, or Anthropic Messages endpoint." });
+      }
+      if (deployment.providerAccountId && !await hasProviderCredential(tx, organizationId, provider.id, deployment.providerAccountId)) {
+        issues.push({ path: deployment.path.replace(/\.provider$/, ".providerAccountId"), message: "Provider account must be active and match the deployment provider." });
       }
       if (!provider.organizationId || provider.authStyle === "none") continue;
       if (!await hasProviderCredential(tx, organizationId, provider.id)) {
-        issues.push({ path, message: "Auth-required custom target providers need a provider credential before publishing." });
+        issues.push({ path: deployment.path, message: "Auth-required custom target providers need a provider credential before publishing." });
       }
     }
   }
@@ -530,16 +558,19 @@ function canServeCurrentSurface(endpoints: { dialect: string; path: string }[]) 
 async function hasProviderCredential(
   tx: ProxyTransaction,
   organizationId: string,
-  providerId: string
+  providerId: string,
+  providerAccountId?: string
 ) {
+  const predicates = [
+    eq(providerAccounts.organizationId, organizationId),
+    eq(providerAccounts.providerId, providerId),
+    eq(providerAccounts.status, "active")
+  ];
+  if (providerAccountId) predicates.push(eq(providerAccounts.id, providerAccountId));
   const [account] = await tx
     .select({ id: providerAccounts.id })
     .from(providerAccounts)
-    .where(and(
-      eq(providerAccounts.organizationId, organizationId),
-      eq(providerAccounts.providerId, providerId),
-      eq(providerAccounts.status, "active")
-    ))
+    .where(and(...predicates))
     .limit(1);
   return Boolean(account);
 }
