@@ -12,7 +12,7 @@ import {
 } from "./routingConfigEditor";
 
 const baseConfig: RoutingConfigDocument = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   displayName: "Default coding router",
   classifier: {
     providerId: "openai",
@@ -26,28 +26,96 @@ const baseConfig: RoutingConfigDocument = {
   routes: {
     fast: {
       description: "Simple tasks",
-      targets: [
-        { providerId: "anthropic", model: "claude-fast", effort: "minimal", thinking: { type: "disabled" } },
-        { providerId: "openai", model: "gpt-fast", effort: "low", verbosity: "low" }
-      ]
+      openai: {
+        deployments: [{
+          provider: "openai",
+          model: "gpt-fast",
+          order: 1,
+          weight: 1,
+          timeoutMs: 60000,
+          reasoning: { effort: "low" },
+          text: { verbosity: "low" }
+        }]
+      },
+      anthropic: {
+        deployments: [{
+          provider: "anthropic",
+          model: "claude-fast",
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000,
+          output_config: { effort: "minimal" },
+          thinking: { type: "disabled" }
+        }]
+      }
     },
     balanced: {
-      targets: [
-        { providerId: "anthropic", model: "claude-balanced", effort: "medium" },
-        { providerId: "openai", model: "gpt-balanced", effort: "medium" }
-      ]
+      openai: {
+        deployments: [{
+          provider: "openai",
+          model: "gpt-balanced",
+          order: 1,
+          weight: 1,
+          timeoutMs: 60000,
+          reasoning: { effort: "medium" }
+        }]
+      },
+      anthropic: {
+        deployments: [{
+          provider: "anthropic",
+          model: "claude-balanced",
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000,
+          output_config: { effort: "medium" }
+        }]
+      }
     },
     hard: {
-      targets: [
-        { providerId: "anthropic", model: "claude-hard", effort: "high" },
-        { providerId: "openai", model: "gpt-hard", effort: "high" }
-      ]
+      openai: {
+        deployments: [{
+          provider: "openai",
+          model: "gpt-hard",
+          order: 1,
+          weight: 1,
+          timeoutMs: 60000,
+          reasoning: { effort: "high" }
+        }]
+      },
+      anthropic: {
+        deployments: [{
+          provider: "anthropic",
+          model: "claude-hard",
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000,
+          output_config: { effort: "high" }
+        }]
+      }
     },
     deep: {
-      targets: [
-        { providerId: "anthropic", model: "claude-deep", effort: "max", metadata: { lane: "deep" } },
-        { providerId: "openai", model: "gpt-deep", effort: "xhigh", maxOutputTokens: 20000 }
-      ]
+      openai: {
+        deployments: [{
+          provider: "openai",
+          model: "gpt-deep",
+          order: 1,
+          weight: 1,
+          timeoutMs: 60000,
+          reasoning: { effort: "xhigh" },
+          maxOutputTokens: 20000
+        }]
+      },
+      anthropic: {
+        deployments: [{
+          provider: "anthropic",
+          model: "claude-deep",
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000,
+          output_config: { effort: "max" },
+          metadata: { lane: "deep" }
+        }]
+      }
     }
   },
   limits: { maxRoute: "deep", fallbackRoute: "hard" },
@@ -76,7 +144,7 @@ describe("draftFromConfig", () => {
   it("uses an empty target list for missing route configs", () => {
     const config = {
       ...baseConfig,
-      routes: { ...baseConfig.routes, fast: { targets: [] } }
+      routes: { ...baseConfig.routes, fast: {} }
     };
     const draft = draftFromConfig(config);
 
@@ -107,10 +175,24 @@ describe("applyDraft", () => {
     ];
     const next = applyDraft(baseConfig, draft);
 
-    expect(next.routes.fast.targets).toEqual([
-      { providerId: "openai", model: "gpt-fast-next", effort: "low", verbosity: "low" },
-      { providerId: "anthropic", model: "claude-fast", effort: "minimal", thinking: { type: "disabled" } }
-    ]);
+    expect(next.routes.fast.openai?.deployments?.[0]).toEqual({
+      provider: "openai",
+      model: "gpt-fast-next",
+      order: 0,
+      weight: 1,
+      timeoutMs: 60000,
+      reasoning: { effort: "low" },
+      text: { verbosity: "low" }
+    });
+    expect(next.routes.fast.anthropic?.deployments?.[0]).toEqual({
+      provider: "anthropic",
+      model: "claude-fast",
+      order: 1,
+      weight: 1,
+      timeoutMs: 60000,
+      output_config: { effort: "minimal" },
+      thinking: { type: "disabled" }
+    });
     expect(next.routes.fast.description).toBe("Simple tasks");
   });
 
@@ -119,7 +201,7 @@ describe("applyDraft", () => {
     draft.routes.deep.targets.push({ providerId: " ", model: " ", effort: " " });
     const next = applyDraft(baseConfig, draft);
 
-    expect(next.routes.deep.targets).toEqual(baseConfig.routes.deep.targets);
+    expect(next.routes.deep).toEqual(baseConfig.routes.deep);
   });
 
   it("updates the classifier rules while preserving other classifier settings", () => {

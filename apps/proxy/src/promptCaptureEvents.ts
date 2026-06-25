@@ -1,5 +1,5 @@
 import { actorForIdentity, type RequestIdentity } from "./auth.js";
-import { jsonPayload, type EventService } from "./events.js";
+import { jsonPayload, type EventAppender } from "./events.js";
 import {
   promptCaptureEventPayload,
   type CapturedPromptArtifact
@@ -7,7 +7,7 @@ import {
 import type { JsonObject, RouteContext, Surface } from "./types.js";
 
 export async function appendPromptCaptureEvent(input: {
-  events: EventService;
+  events: EventAppender;
   identity: RequestIdentity;
   requestId: string;
   idempotencyKey: string;

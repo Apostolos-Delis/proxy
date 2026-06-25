@@ -23,10 +23,33 @@ function anthropicDecision(model = "claude-opus-4-8") {
     selectedModel: model,
     surface: "anthropic-messages" as const,
     provider: "anthropic" as const,
-    providerSettings: {
-      providerId: "anthropic" as const,
+    deployment: {
+      key: "test-anthropic",
+      provider: "anthropic" as const,
       model,
-      dialect: "anthropic-messages" as const
+      order: 0,
+      weight: 1,
+      timeoutMs: 60000
+    },
+    providerSettings: {
+      provider: "anthropic" as const,
+      model,
+      dialect: "anthropic-messages" as const,
+      deployment: {
+        key: "test-anthropic",
+        provider: "anthropic" as const,
+        model,
+        order: 0,
+        weight: 1,
+        timeoutMs: 60000
+      },
+      anthropic: {
+        provider: "anthropic" as const,
+        model,
+        order: 0,
+        weight: 1,
+        timeoutMs: 60000
+      }
     }
   };
 }

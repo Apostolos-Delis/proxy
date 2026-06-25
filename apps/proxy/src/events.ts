@@ -49,8 +49,12 @@ export type OutboxItem = {
   error?: string;
 };
 
+type PersistentEventAppendResult = {
+  sequence: number;
+};
+
 export type PersistentEventSink = {
-  append(event: ProxyEvent, outbox: OutboxItem): Promise<void>;
+  append(event: ProxyEvent, outbox: OutboxItem): Promise<PersistentEventAppendResult | void>;
 };
 
 export type AppendEventInput = {
@@ -73,11 +77,204 @@ export type AppendEventInput = {
   metadata?: JsonObject;
 };
 
+export type EventAppender = {
+  append(input: AppendEventInput): Promise<unknown>;
+};
+
+export type EventWriterDropReason = "capacity" | "retries_exhausted";
+
+export type BoundedEventWriterStats = {
+  maxEntries: number;
+  maxBytes: number;
+  depth: number;
+  queuedBytes: number;
+  dropped: number;
+  flushFailures: number;
+  lastFlushLatencyMs: number | null;
+  oldestEventAgeMs: number;
+  flushing: boolean;
+};
+
+type BoundedEventWriterOptions = {
+  maxEntries: number;
+  maxBytes: number;
+  batchSize?: number;
+  maxAttempts?: number;
+  retryDelayMs?: number;
+  onDrop?: (input: AppendEventInput, reason: EventWriterDropReason) => void;
+  onFlushFailure?: (error: unknown, input: AppendEventInput, attempt: number) => void;
+};
+
+type QueuedEvent = {
+  input: AppendEventInput;
+  bytes: number;
+  enqueuedAt: number;
+  attempts: number;
+};
+
+const defaultEventWriterBatchSize = 25;
+const defaultEventWriterMaxAttempts = 3;
+const defaultEventWriterRetryDelayMs = 100;
+
+export class BoundedEventWriter implements EventAppender {
+  private readonly maxEntries: number;
+  private readonly maxBytes: number;
+  private readonly batchSize: number;
+  private readonly maxAttempts: number;
+  private readonly retryDelayMs: number;
+  private readonly onDrop?: (input: AppendEventInput, reason: EventWriterDropReason) => void;
+  private readonly onFlushFailure?: (error: unknown, input: AppendEventInput, attempt: number) => void;
+  private readonly queue: QueuedEvent[] = [];
+  private queuedBytes = 0;
+  private dropped = 0;
+  private flushFailures = 0;
+  private lastFlushLatencyMs: number | null = null;
+  private flushing = false;
+  private flushScheduled = false;
+
+  constructor(
+    private readonly events: EventAppender,
+    options: BoundedEventWriterOptions
+  ) {
+    this.maxEntries = options.maxEntries;
+    this.maxBytes = options.maxBytes;
+    this.batchSize = options.batchSize ?? defaultEventWriterBatchSize;
+    this.maxAttempts = options.maxAttempts ?? defaultEventWriterMaxAttempts;
+    this.retryDelayMs = options.retryDelayMs ?? defaultEventWriterRetryDelayMs;
+    this.onDrop = options.onDrop;
+    this.onFlushFailure = options.onFlushFailure;
+  }
+
+  async append(input: AppendEventInput) {
+    this.enqueue(input);
+  }
+
+  enqueue(input: AppendEventInput) {
+    const bytes = eventInputBytes(input);
+    if (bytes > this.maxBytes || this.queue.length >= this.maxEntries || this.queuedBytes + bytes > this.maxBytes) {
+      this.drop(input, "capacity");
+      return "dropped" as const;
+    }
+
+    this.queue.push({
+      input: structuredClone(input),
+      bytes,
+      enqueuedAt: Date.now(),
+      attempts: 0
+    });
+    this.queuedBytes += bytes;
+    this.scheduleFlush();
+    return "queued" as const;
+  }
+
+  stats(): BoundedEventWriterStats {
+    const oldest = this.queue[0];
+    return {
+      maxEntries: this.maxEntries,
+      maxBytes: this.maxBytes,
+      depth: this.queue.length,
+      queuedBytes: this.queuedBytes,
+      dropped: this.dropped,
+      flushFailures: this.flushFailures,
+      lastFlushLatencyMs: this.lastFlushLatencyMs,
+      oldestEventAgeMs: oldest ? Math.max(0, Date.now() - oldest.enqueuedAt) : 0,
+      flushing: this.flushing
+    };
+  }
+
+  async drain(timeoutMs: number) {
+    const deadline = Date.now() + timeoutMs;
+    this.scheduleFlush();
+    while ((this.queue.length > 0 || this.flushing || this.flushScheduled) && Date.now() < deadline) {
+      await sleep(Math.min(10, Math.max(1, deadline - Date.now())));
+    }
+    return this.stats();
+  }
+
+  private scheduleFlush(delayMs = 0) {
+    if (this.flushScheduled) return;
+    this.flushScheduled = true;
+    if (delayMs > 0) {
+      setTimeout(() => {
+        this.flushScheduled = false;
+        void this.flush();
+      }, delayMs);
+      return;
+    }
+    queueMicrotask(() => {
+      this.flushScheduled = false;
+      void this.flush();
+    });
+  }
+
+  private async flush() {
+    if (this.flushing) return;
+    this.flushing = true;
+    let processed = 0;
+    try {
+      while (this.queue.length > 0 && processed < this.batchSize) {
+        const item = this.queue[0];
+        const started = Date.now();
+        try {
+          await this.events.append(item.input);
+          this.shift();
+          this.lastFlushLatencyMs = Date.now() - started;
+          processed += 1;
+        } catch (error) {
+          item.attempts += 1;
+          this.flushFailures += 1;
+          this.onFlushFailure?.(error, item.input, item.attempts);
+          if (item.attempts > this.maxAttempts) {
+            this.shift();
+            this.drop(item.input, "retries_exhausted");
+            processed += 1;
+            continue;
+          }
+          this.scheduleFlush(this.retryDelayMs);
+          return;
+        }
+      }
+    } finally {
+      this.flushing = false;
+      if (this.queue.length > 0 && !this.flushScheduled) {
+        this.scheduleFlush();
+      }
+    }
+  }
+
+  private shift() {
+    const item = this.queue.shift();
+    if (!item) return;
+    this.queuedBytes -= item.bytes;
+  }
+
+  private drop(input: AppendEventInput, reason: EventWriterDropReason) {
+    this.dropped += 1;
+    this.onDrop?.(input, reason);
+  }
+}
+
+function eventInputBytes(input: AppendEventInput) {
+  return Buffer.byteLength(stableJson(input));
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 type ScopeState = {
   sequence: number;
   tenantId: string;
   workspaceId: string;
 };
+
+type EventServiceOptions = {
+  mirrorLimit?: number;
+  scopeLimit?: number;
+};
+
+const persistentMirrorLimit = 1_000;
+const persistentScopeLimit = 50_000;
 
 export class EventService {
   private readonly events: ProxyEvent[] = [];
@@ -92,8 +289,15 @@ export class EventService {
     private readonly outboxHandler?: (event: ProxyEvent) => Promise<void>,
     private readonly persistentSink?: PersistentEventSink,
     private readonly defaultTenantId = "local",
-    private readonly metrics: MetricsCollector = new NoopMetricsCollector()
-  ) {}
+    private readonly metrics: MetricsCollector = new NoopMetricsCollector(),
+    options: EventServiceOptions = {}
+  ) {
+    this.mirrorLimit = options.mirrorLimit ?? (persistentSink ? persistentMirrorLimit : Number.POSITIVE_INFINITY);
+    this.scopeLimit = options.scopeLimit ?? (persistentSink ? persistentScopeLimit : Number.POSITIVE_INFINITY);
+  }
+
+  private readonly mirrorLimit: number;
+  private readonly scopeLimit: number;
 
   async append(input: AppendEventInput) {
     const scopeKey = `${input.scopeType}:${input.scopeId}`;
@@ -101,6 +305,7 @@ export class EventService {
     const sequence = (previousScope?.sequence ?? 0) + 1;
     const tenantId = input.tenantId ?? previousScope?.tenantId ?? this.defaultTenantId;
     const workspaceId = input.workspaceId ?? previousScope?.workspaceId ?? defaultWorkspaceId(tenantId);
+    this.scopes.delete(scopeKey);
     this.scopes.set(scopeKey, { sequence, tenantId, workspaceId });
 
     const payload = input.payload ?? {};
@@ -140,7 +345,11 @@ export class EventService {
     try {
       try {
         if (this.persistentSink) {
-          await this.persistentSink.append(event, outboxItem);
+          const result = await this.persistentSink.append(event, outboxItem);
+          if (result) {
+            event.sequence = result.sequence;
+            this.scopes.set(scopeKey, { sequence: result.sequence, tenantId, workspaceId });
+          }
         }
       } catch (error) {
         if (this.scopes.get(scopeKey)?.sequence === sequence) {
@@ -153,8 +362,9 @@ export class EventService {
         throw error;
       }
 
-      this.events.push(event);
-      this.outbox.push(outboxItem);
+      this.trimMap(this.scopes, this.scopeLimit);
+      this.pushMirror(this.events, event);
+      this.pushMirror(this.outbox, outboxItem);
 
       // Listeners observe committed events only; a throwing listener must not
       // fail the append.
@@ -205,6 +415,10 @@ export class EventService {
     return this.outbox.map((item) => Object.freeze({ ...item }));
   }
 
+  mirrorIsBounded() {
+    return Number.isFinite(this.mirrorLimit);
+  }
+
   async processOutbox(handler: (event: ProxyEvent) => Promise<void>) {
     for (const item of this.outbox) {
       if (item.status !== "queued") continue;
@@ -238,11 +452,35 @@ export class EventService {
       oldestQueuedAt === undefined ? 0 : Math.max(0, (Date.now() - oldestQueuedAt) / 1000)
     );
   }
+
+  private pushMirror<T>(items: T[], item: T) {
+    if (this.mirrorLimit <= 0) return;
+    items.push(item);
+    while (items.length > this.mirrorLimit) {
+      items.shift();
+    }
+  }
+
+  private trimMap<K, V>(items: Map<K, V>, limit: number) {
+    if (!Number.isFinite(limit)) return;
+    while (items.size > limit) {
+      const oldest = items.keys().next().value;
+      if (oldest === undefined) return;
+      items.delete(oldest);
+    }
+  }
 }
+
+type ProviderAttemptStoreOptions = {
+  maxAttempts?: number;
+};
 
 export class ProviderAttemptStore {
   private readonly attempts = new Map<string, ProviderAttempt>();
   private readonly idempotency = new Map<string, string>();
+  private readonly attemptIdempotency = new Map<string, string>();
+
+  constructor(private readonly options: ProviderAttemptStoreOptions = {}) {}
 
   create(input: {
     idempotencyKey: string;
@@ -271,6 +509,8 @@ export class ProviderAttemptStore {
     };
     this.attempts.set(attempt.id, attempt);
     this.idempotency.set(input.idempotencyKey, attempt.id);
+    this.attemptIdempotency.set(attempt.id, input.idempotencyKey);
+    this.trim();
 
     return { attempt, duplicate: false };
   }
@@ -289,6 +529,21 @@ export class ProviderAttemptStore {
 
   list() {
     return [...this.attempts.values()];
+  }
+
+  private trim() {
+    const limit = this.options.maxAttempts ?? Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(limit)) return;
+    while (this.attempts.size > limit) {
+      const oldestAttemptId = this.attempts.keys().next().value;
+      if (oldestAttemptId === undefined) return;
+      this.attempts.delete(oldestAttemptId);
+      const idempotencyKey = this.attemptIdempotency.get(oldestAttemptId);
+      this.attemptIdempotency.delete(oldestAttemptId);
+      if (idempotencyKey && this.idempotency.get(idempotencyKey) === oldestAttemptId) {
+        this.idempotency.delete(idempotencyKey);
+      }
+    }
   }
 }
 

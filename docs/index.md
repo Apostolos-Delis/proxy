@@ -67,6 +67,7 @@
 - [Routing configs runbook](runbooks/routing-configs.md)
 - [AWS deployment runbook](runbooks/aws-deployment.md)
 - [Proxy metrics runbook](runbooks/proxy-metrics.md)
+- [Production SLOs and rollout gates](runbooks/production-rollout-gates.md)
 - [Subscription auth runbook](runbooks/subscription-auth.md)
 - [Provider account health runbook](runbooks/provider-account-health.md)
 

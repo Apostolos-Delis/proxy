@@ -16,6 +16,19 @@ import { eq } from "drizzle-orm";
 
 import type { RouteName } from "../types.js";
 
+type ApiKeyIdentityStoreOptions = {
+  cacheTtlMs?: number;
+  lastUsedFlushDelayMs?: number;
+};
+
+type CachedApiKeyIdentity = {
+  identity?: ResolvedApiKeyIdentity;
+  expiresAtMs: number;
+};
+
+const defaultCacheTtlMs = 5_000;
+const defaultLastUsedFlushDelayMs = 1_000;
+
 export type ResolvedApiKeyIdentity = {
   apiKeyId: string;
   organizationId: string;
@@ -25,32 +38,108 @@ export type ResolvedApiKeyIdentity = {
 };
 
 export class ApiKeyIdentityStore {
-  constructor(private readonly db: ProxyDbSession) {}
+  private readonly cache = new Map<string, CachedApiKeyIdentity>();
+  private readonly pendingLastUsed = new Map<string, Date>();
+  private flushTimer: ReturnType<typeof setTimeout> | undefined;
+
+  constructor(
+    private readonly db: ProxyDbSession,
+    private readonly options: ApiKeyIdentityStoreOptions = {}
+  ) {}
 
   async resolve(secret: string, now = new Date()): Promise<ResolvedApiKeyIdentity | undefined> {
+    const keyHash = hashApiKey(secret);
+    const nowMs = now.getTime();
+    const cached = this.cache.get(keyHash);
+    if (cached && cached.expiresAtMs > nowMs) {
+      if (cached.identity) this.recordLastUsed(cached.identity.apiKeyId, now);
+      return cached.identity ? cloneIdentity(cached.identity) : undefined;
+    }
+
     const [row] = await this.db
       .select()
       .from(apiKeys)
-      .where(eq(apiKeys.keyHash, hashApiKey(secret)))
+      .where(eq(apiKeys.keyHash, keyHash))
       .limit(1);
 
-    if (!row) return undefined;
-    if (row.revokedAt) return undefined;
-    if (row.expiresAt && row.expiresAt.getTime() <= now.getTime()) return undefined;
+    if (!row) {
+      this.cache.set(keyHash, { expiresAtMs: nowMs + this.cacheTtlMs() });
+      return undefined;
+    }
+    if (row.revokedAt || (row.expiresAt && row.expiresAt.getTime() <= nowMs)) {
+      this.cache.set(keyHash, { expiresAtMs: nowMs + this.cacheTtlMs() });
+      return undefined;
+    }
 
-    await this.db
-      .update(apiKeys)
-      .set({ lastUsedAt: now })
-      .where(eq(apiKeys.id, row.id));
-
-    return {
+    const identity = {
       apiKeyId: row.id,
       organizationId: row.organizationId,
       workspaceId: row.workspaceId,
       userId: row.userId ?? undefined,
       routingConfigId: row.routingConfigId ?? null
     };
+    this.cache.set(keyHash, { identity, expiresAtMs: nowMs + this.cacheTtlMs() });
+    this.recordLastUsed(row.id, now);
+    return cloneIdentity(identity);
   }
+
+  clearCache() {
+    this.cache.clear();
+  }
+
+  async flushLastUsed() {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = undefined;
+    }
+    const pending = [...this.pendingLastUsed.entries()];
+    this.pendingLastUsed.clear();
+    let failed = false;
+    for (const [apiKeyId, lastUsedAt] of pending) {
+      try {
+        await this.db
+          .update(apiKeys)
+          .set({ lastUsedAt })
+          .where(eq(apiKeys.id, apiKeyId));
+      } catch {
+        failed = true;
+        const current = this.pendingLastUsed.get(apiKeyId);
+        if (!current || current.getTime() < lastUsedAt.getTime()) {
+          this.pendingLastUsed.set(apiKeyId, lastUsedAt);
+        }
+      }
+    }
+    if (this.pendingLastUsed.size > 0) this.scheduleFlush();
+    if (failed) throw new Error("Failed to flush API key last_used_at updates.");
+  }
+
+  private recordLastUsed(apiKeyId: string, lastUsedAt: Date) {
+    const pending = this.pendingLastUsed.get(apiKeyId);
+    if (!pending || pending.getTime() < lastUsedAt.getTime()) {
+      this.pendingLastUsed.set(apiKeyId, lastUsedAt);
+    }
+    this.scheduleFlush();
+  }
+
+  private scheduleFlush() {
+    if (this.flushTimer) return;
+    this.flushTimer = setTimeout(() => {
+      this.flushLastUsed().catch(() => undefined);
+    }, this.lastUsedFlushDelayMs());
+    this.flushTimer.unref?.();
+  }
+
+  private cacheTtlMs() {
+    return this.options.cacheTtlMs ?? defaultCacheTtlMs;
+  }
+
+  private lastUsedFlushDelayMs() {
+    return this.options.lastUsedFlushDelayMs ?? defaultLastUsedFlushDelayMs;
+  }
+}
+
+function cloneIdentity(identity: ResolvedApiKeyIdentity): ResolvedApiKeyIdentity {
+  return { ...identity };
 }
 
 export async function ensureOrganization(tx: ProxyTransaction, organizationId: string) {

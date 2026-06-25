@@ -35,9 +35,13 @@ describe("prompt artifact capture", () => {
     });
     await response.text();
 
-    const rows = await fixture.db.select().from(promptArtifacts);
-    const eventRows = await fixture.db.select().from(events);
-    const captureEvent = eventRows.find((event) => event.eventType === "prompt_artifacts.captured");
+    const flushed = await eventually(async () => {
+      const rows = await fixture.db.select().from(promptArtifacts);
+      const eventRows = await fixture.db.select().from(events);
+      const captureEvent = eventRows.find((event) => event.eventType === "prompt_artifacts.captured");
+      return { rows, eventRows, captureEvent };
+    }, (value) => value.rows.length >= 3 && Boolean(value.captureEvent));
+    const { rows, eventRows, captureEvent } = flushed;
     const requestDetail = captureEvent
       ? (await adminGql(
           fixture.proxyUrl,
@@ -364,7 +368,10 @@ describe("prompt artifact capture", () => {
     });
     await second.text();
 
-    const rows = await fixture.db.select().from(promptArtifacts);
+    const rows = await eventually(
+      () => fixture.db.select().from(promptArtifacts),
+      (items) => items.some((row) => row.rawText === "second question")
+    );
     const byKind = (kind: string) => rows.filter((row) => row.kind === kind);
 
     expect(first.status).toBe(200);
@@ -377,6 +384,77 @@ describe("prompt artifact capture", () => {
     const firstQuestion = byKind("user_message").find((row) => row.rawText === "first question");
     const secondQuestion = byKind("user_message").find((row) => row.rawText === "second question");
     expect(firstQuestion?.requestId).not.toBe(secondQuestion?.requestId);
+  });
+
+  it("dedupes repeated artifacts in a long session without preloading prior hashes", async () => {
+    const fixture = await setup("org_anthropic_long_dedup");
+    const headers = {
+      authorization: "Bearer proxy-token",
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01",
+      "x-claude-code-session-id": "session-long-dedup"
+    };
+
+    const first = await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: "claude-router-auto",
+        messages: [{ role: "user", content: "first long-session question" }],
+        max_tokens: 256,
+        stream: true
+      })
+    });
+    await first.text();
+    const firstRows = await eventually(
+      () => fixture.db.select().from(promptArtifacts),
+      (rows) => rows.some((row) => row.rawText === "first long-session question")
+    );
+    const anchor = firstRows.find((row) => row.rawText === "first long-session question");
+    if (!anchor?.sessionId) {
+      throw new Error("expected captured artifact to be linked to the session");
+    }
+    const anchorSessionId = anchor.sessionId;
+
+    await fixture.db.insert(promptArtifacts).values(Array.from({ length: 500 }, (_, index) => ({
+      id: `prompt_artifact_prior_${index}`,
+      organizationId: anchor.organizationId,
+      workspaceId: anchor.workspaceId,
+      requestId: anchor.requestId,
+      sessionId: anchorSessionId,
+      kind: "tool_result",
+      storageMode: "hash_only",
+      contentHash: `sha256:prior-${index}`,
+      rawText: null,
+      tokenEstimate: 0,
+      sourceRole: "tool",
+      metadata: { index }
+    })));
+
+    const second = await fetch(`${fixture.proxyUrl}/v1/messages`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: "claude-router-auto",
+        messages: [
+          { role: "user", content: "first long-session question" },
+          { role: "user", content: "fresh long-session question" }
+        ],
+        max_tokens: 256,
+        stream: true
+      })
+    });
+    await second.text();
+
+    const rows = await eventually(
+      () => fixture.db.select().from(promptArtifacts),
+      (items) => items.some((row) => row.rawText === "fresh long-session question")
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(rows.filter((row) => row.rawText === "first long-session question")).toHaveLength(1);
+    expect(rows.filter((row) => row.rawText === "fresh long-session question")).toHaveLength(1);
   });
 
   it("links Anthropic sessions from metadata.user_id when no session header is set", async () => {
@@ -410,7 +488,7 @@ describe("prompt artifact capture", () => {
     ]);
   });
 
-  it("fails before classifier or provider spend when prompt capture fails", async () => {
+  it("forwards when async prompt capture fails", async () => {
     const fixture = await setup("org_capture_failure", "raw_text", true);
 
     const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
@@ -421,14 +499,16 @@ describe("prompt artifact capture", () => {
       },
       body: JSON.stringify({
         model: "router-auto",
-        input: "this should not reach the classifier",
+        input: "this should still reach the provider",
         stream: true
       })
     });
-    await response.text();
+    const body = await response.text();
 
-    expect(response.status).toBe(500);
-    expect(fixture.openai.records).toHaveLength(0);
+    expect(response.status).toBe(200);
+    expect(body).toContain("response.completed");
+    expect(fixture.openai.records.find((record) => record.body.model === "route-classifier-cheap")).toBeTruthy();
+    expect(fixture.openai.records.find((record) => record.body.model === "gpt-5.5")).toBeTruthy();
   });
 
   it("keeps prompt content hash-only when raw capture is not enabled", async () => {
@@ -592,5 +672,15 @@ describe("prompt artifact capture", () => {
   ) {
     activeFixture = await captureFixture(organizationId, promptCaptureMode, failCapture, options);
     return activeFixture;
+  }
+
+  async function eventually<T>(read: () => Promise<T>, ready: (value: T) => boolean) {
+    const deadline = Date.now() + 1_000;
+    let latest = await read();
+    while (!ready(latest) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      latest = await read();
+    }
+    return latest;
   }
 });

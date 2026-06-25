@@ -12,14 +12,13 @@ import {
 } from "./index.js";
 
 const validConfig = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   displayName: "Default coding router",
   description: "Routes coding-agent traffic by complexity.",
   classifier: {
     providerId: "openai",
     model: "gpt-5-nano-2025-08-07",
     rules: "Keep auth/ and payments/ on hard or deep.",
-    effort: "minimal",
     timeoutMs: 1500,
     maxAttempts: 2,
     allowRedactedExcerpt: true,
@@ -31,80 +30,122 @@ const validConfig = {
   routes: {
     fast: {
       description: "Simple shell/status/read-only tasks",
-      targets: [
-        {
-          providerId: "anthropic",
-          model: "claude-haiku-4-5",
-          effort: "low",
-          thinking: { type: "disabled" }
-        },
-        {
-          providerId: "openai",
+      retry: {
+        maxAttempts: 2,
+        retryableStatusCodes: [429, 500, 502, 503, 504]
+      },
+      openai: {
+        deployments: [{
+          provider: "openai",
           model: "gpt-5-nano-2025-08-07",
-          effort: "low",
-          verbosity: "low",
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000,
+          reasoning: { effort: "low" },
+          text: { verbosity: "low" },
           metadata: {
             surface: "responses"
           }
-        },
-        {
-          providerId: "acme-vllm",
-          model: "qwen3-coder-30b"
-        }
-      ]
+        }]
+      },
+      anthropic: {
+        deployments: [{
+          provider: "anthropic",
+          model: "claude-haiku-4-5",
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000,
+          thinking: { type: "disabled" },
+          output_config: { effort: "low" }
+        }]
+      }
     },
     balanced: {
       description: "Default coding tasks",
-      targets: [
-        {
-          providerId: "anthropic",
-          model: "claude-sonnet-4-5",
-          effort: "medium",
-          thinking: { type: "adaptive", display: "omitted" }
-        },
-        {
-          providerId: "openai",
+      retry: {
+        maxAttempts: 2,
+        retryableStatusCodes: [429, 500, 502, 503, 504]
+      },
+      openai: {
+        deployments: [{
+          provider: "openai",
           model: "gpt-5.4",
-          effort: "medium",
-          verbosity: "low"
-        }
-      ]
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000,
+          reasoning: { effort: "medium" },
+          text: { verbosity: "low" }
+        }]
+      },
+      anthropic: {
+        deployments: [{
+          provider: "anthropic",
+          model: "claude-sonnet-4-5",
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000,
+          thinking: { type: "adaptive", display: "omitted" },
+          output_config: { effort: "medium" }
+        }]
+      }
     },
     hard: {
       description: "Debugging, multi-file edits, migrations",
-      targets: [
-        {
-          providerId: "anthropic",
-          model: "claude-sonnet-4-5",
-          effort: "high",
-          thinking: { type: "adaptive", display: "omitted" }
-        },
-        {
-          providerId: "openai",
+      retry: {
+        maxAttempts: 2,
+        retryableStatusCodes: [429, 500, 502, 503, 504]
+      },
+      openai: {
+        deployments: [{
+          provider: "openai",
           model: "gpt-5.5",
-          effort: "high",
-          verbosity: "medium"
-        }
-      ]
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000,
+          reasoning: { effort: "high" },
+          text: { verbosity: "medium" }
+        }]
+      },
+      anthropic: {
+        deployments: [{
+          provider: "anthropic",
+          model: "claude-sonnet-4-5",
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000,
+          thinking: { type: "adaptive", display: "omitted" },
+          output_config: { effort: "high" }
+        }]
+      }
     },
     deep: {
       description: "Architecture, system design, security, storage design",
-      targets: [
-        {
-          providerId: "anthropic",
-          model: "claude-opus-4-5",
-          effort: "ultracode",
-          thinking: { type: "adaptive", display: "omitted" },
-          maxOutputTokens: 32000,
-          metadata: { retained: true }
-        },
-        {
-          providerId: "openai",
+      retry: {
+        maxAttempts: 2,
+        retryableStatusCodes: [429, 500, 502, 503, 504]
+      },
+      openai: {
+        deployments: [{
+          provider: "openai",
           model: "gpt-5.5-pro",
-          effort: "xhigh",
-          verbosity: "medium"
-        }
-      ]
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000,
+          reasoning: { effort: "xhigh" },
+          text: { verbosity: "medium" }
+        }]
+      },
+      anthropic: {
+        deployments: [{
+          provider: "anthropic",
+          model: "claude-opus-4-5",
+          order: 0,
+          weight: 1,
+          timeoutMs: 60000,
+          thinking: { type: "adaptive", display: "omitted" },
+          output_config: { effort: "xhigh" }
+        }]
+      }
     }
   },
   limits: {
@@ -126,42 +167,8 @@ const validConfig = {
 } satisfies RoutingConfig;
 
 describe("routingConfigSchema", () => {
-  it("accepts a target-list routing config", () => {
+  it("accepts a default OpenAI and Anthropic routing config", () => {
     expect(routingConfigSchema.parse(validConfig)).toEqual(validConfig);
-  });
-
-  it("parses v2 configs without rewriting thinking or metadata", () => {
-    const parsed = routingConfigSchema.parse(validConfig);
-
-    expect(JSON.stringify(parsed)).toBe(JSON.stringify(validConfig));
-  });
-
-  it("rejects v1 provider-block configs at parse time", () => {
-    const result = routingConfigSchema.safeParse({
-      ...validConfig,
-      schemaVersion: 1,
-      classifier: {
-        provider: "openai",
-        model: "gpt-5-nano-2025-08-07",
-        timeoutMs: 1500,
-        maxAttempts: 2,
-        allowRedactedExcerpt: true,
-        structuredOutput: {
-          mode: "json_schema"
-        }
-      },
-      routes: {
-        ...validConfig.routes,
-        fast: {
-          openai: {
-            model: "gpt-5-nano-2025-08-07"
-          }
-        }
-      }
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.path).toEqual(["schemaVersion"]);
   });
 
   it("accepts configs without classifier rules", () => {
@@ -203,7 +210,7 @@ describe("routingConfigSchema", () => {
   it("rejects the pre-cutover top-level systemPrompt field", () => {
     const result = routingConfigSchema.safeParse({
       ...validConfig,
-      systemPrompt: "You are assisting through the organization's proxy."
+      systemPrompt: "You are assisting through the organization's prompt proxy."
     });
 
     expect(result.success).toBe(false);
@@ -257,7 +264,7 @@ describe("routingConfigSchema", () => {
     expect(attemptResult.error?.issues[0]?.path).toEqual(["classifier", "maxAttempts"]);
   });
 
-  it("rejects whitespace-only classifier and target strings", () => {
+  it("rejects whitespace-only classifier and provider strings", () => {
     const classifierResult = routingConfigSchema.safeParse({
       ...validConfig,
       classifier: {
@@ -271,12 +278,12 @@ describe("routingConfigSchema", () => {
         ...validConfig.routes,
         fast: {
           ...validConfig.routes.fast,
-          targets: [
-            {
-              ...validConfig.routes.fast.targets[0],
+          openai: {
+            deployments: [{
+              ...validConfig.routes.fast.openai.deployments[0],
               model: "\t"
-            }
-          ]
+            }]
+          }
         }
       }
     });
@@ -284,7 +291,14 @@ describe("routingConfigSchema", () => {
     expect(classifierResult.success).toBe(false);
     expect(classifierResult.error?.issues[0]?.path).toEqual(["classifier", "model"]);
     expect(providerResult.success).toBe(false);
-    expect(providerResult.error?.issues[0]?.path).toEqual(["routes", "fast", "targets", 0, "model"]);
+    expect(providerResult.error?.issues[0]?.path).toEqual([
+      "routes",
+      "fast",
+      "openai",
+      "deployments",
+      0,
+      "model"
+    ]);
   });
 
   it("rejects model identifiers with surrounding whitespace", () => {
@@ -301,12 +315,12 @@ describe("routingConfigSchema", () => {
         ...validConfig.routes,
         deep: {
           ...validConfig.routes.deep,
-          targets: [
-            {
-              ...validConfig.routes.deep.targets[0],
+          anthropic: {
+            deployments: [{
+              ...validConfig.routes.deep.anthropic.deployments[0],
               model: "\tclaude-opus-4-5\n"
-            }
-          ]
+            }]
+          }
         }
       }
     });
@@ -314,7 +328,14 @@ describe("routingConfigSchema", () => {
     expect(classifierResult.success).toBe(false);
     expect(classifierResult.error?.issues[0]?.path).toEqual(["classifier", "model"]);
     expect(providerResult.success).toBe(false);
-    expect(providerResult.error?.issues[0]?.path).toEqual(["routes", "deep", "targets", 0, "model"]);
+    expect(providerResult.error?.issues[0]?.path).toEqual([
+      "routes",
+      "deep",
+      "anthropic",
+      "deployments",
+      0,
+      "model"
+    ]);
   });
 
   it("rejects structured-output schema identifiers with surrounding whitespace", () => {
@@ -333,56 +354,138 @@ describe("routingConfigSchema", () => {
     expect(result.error?.issues[0]?.path).toEqual(["classifier", "structuredOutput", "schemaName"]);
   });
 
-  it("rejects invalid targets before runtime", () => {
+  it("rejects invalid provider blocks before runtime", () => {
     const result = routingConfigSchema.safeParse({
       ...validConfig,
       routes: {
         ...validConfig.routes,
         hard: {
           ...validConfig.routes.hard,
-          targets: [
-            {
-              ...validConfig.routes.hard.targets[0],
-              effort: "maximum"
-            }
-          ]
+          openai: {
+            deployments: [{
+              ...validConfig.routes.hard.openai.deployments[0],
+              reasoning: { effort: "maximum" }
+            }]
+          }
         }
       }
     });
 
     expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.path).toEqual(["routes", "hard", "targets", 0, "effort"]);
+    expect(result.error?.issues[0]?.path).toEqual([
+      "routes",
+      "hard",
+      "openai",
+      "deployments",
+      0,
+      "reasoning",
+      "effort"
+    ]);
   });
 
-  it("keeps provider-only efforts out of classifier config", () => {
-    for (const effort of ["max", "ultracode"]) {
-      const result = routingConfigSchema.safeParse({
-        ...validConfig,
-        classifier: {
-          ...validConfig.classifier,
-          effort
+  it("rejects pre-cutover single-model provider blocks", () => {
+    const result = routingConfigSchema.safeParse({
+      ...validConfig,
+      schemaVersion: 1,
+      routes: {
+        ...validConfig.routes,
+        hard: {
+          ...validConfig.routes.hard,
+          openai: {
+            model: "gpt-5.5",
+            reasoning: { effort: "high" }
+          }
         }
-      });
+      }
+    });
 
-      expect(result.success).toBe(false);
-      expect(result.error?.issues[0]?.path).toEqual(["classifier", "effort"]);
-    }
+    expect(result.success).toBe(false);
   });
 
-  it("requires each route to define at least one target", () => {
+  it("requires deployment identity and positive order-group weight", () => {
+    const missingProvider = routingConfigSchema.safeParse({
+      ...validConfig,
+      routes: {
+        ...validConfig.routes,
+        hard: {
+          ...validConfig.routes.hard,
+          openai: {
+            deployments: [{
+              ...validConfig.routes.hard.openai.deployments[0],
+              provider: " "
+            }]
+          }
+        }
+      }
+    });
+    const zeroWeight = routingConfigSchema.safeParse({
+      ...validConfig,
+      routes: {
+        ...validConfig.routes,
+        fast: {
+          ...validConfig.routes.fast,
+          openai: {
+            deployments: [{
+              ...validConfig.routes.fast.openai.deployments[0],
+              weight: 0
+            }]
+          }
+        }
+      }
+    });
+
+    expect(missingProvider.success).toBe(false);
+    expect(missingProvider.error?.issues[0]?.path).toEqual(["routes", "hard", "openai", "deployments", 0, "provider"]);
+    expect(zeroWeight.success).toBe(false);
+    expect(zeroWeight.error?.issues[0]?.path).toEqual(["routes", "fast", "openai", "deployments", 0, "weight"]);
+  });
+
+  it("requires bounded route retry policy", () => {
+    const missingRetry = routingConfigSchema.safeParse({
+      ...validConfig,
+      routes: {
+        ...validConfig.routes,
+        fast: {
+          description: validConfig.routes.fast.description,
+          openai: validConfig.routes.fast.openai,
+          anthropic: validConfig.routes.fast.anthropic
+        }
+      }
+    });
+    const tooManyAttempts = routingConfigSchema.safeParse({
+      ...validConfig,
+      routes: {
+        ...validConfig.routes,
+        hard: {
+          ...validConfig.routes.hard,
+          retry: {
+            ...validConfig.routes.hard.retry,
+            maxAttempts: 6
+          }
+        }
+      }
+    });
+
+    expect(missingRetry.success).toBe(false);
+    expect(missingRetry.error?.issues[0]?.path).toEqual(["routes", "fast", "retry"]);
+    expect(tooManyAttempts.success).toBe(false);
+    expect(tooManyAttempts.error?.issues[0]?.path).toEqual(["routes", "hard", "retry", "maxAttempts"]);
+  });
+
+  it("requires each route to define at least one provider", () => {
     const result = routingConfigSchema.safeParse({
       ...validConfig,
       routes: {
         ...validConfig.routes,
         fast: {
-          description: "No target",
-          targets: []
+          description: "No provider",
+          retry: validConfig.routes.fast.retry
         }
       }
     });
 
     expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.path).toEqual(["routes", "fast", "targets"]);
+    expect(result.error?.issues[0]?.path).toEqual(["routes", "fast", "openai"]);
   });
 
   it("accepts partial route estimated input limits", () => {

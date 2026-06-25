@@ -2286,9 +2286,10 @@ function promptArtifactDetailColumns(includeContent: boolean) {
   return {
     id: promptArtifacts.id,
     organizationId: promptArtifacts.organizationId,
-    workspaceId: promptArtifacts.workspaceId,
-    requestId: promptArtifacts.requestId,
-    kind: promptArtifacts.kind,
+	    workspaceId: promptArtifacts.workspaceId,
+	    requestId: promptArtifacts.requestId,
+	    sessionId: promptArtifacts.sessionId,
+	    kind: promptArtifacts.kind,
     storageMode: promptArtifacts.storageMode,
     contentHash: promptArtifacts.contentHash,
     rawText: includeContent ? promptArtifacts.rawText : promptArtifactPreviewColumn(promptArtifacts.rawText),

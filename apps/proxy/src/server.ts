@@ -9,6 +9,7 @@ import {
   anthropicMessagesSurface,
   openAIChatSurface,
   openAIResponsesSurface,
+  type ProviderForwardAttemptInput,
   rewriteSurfaceRequest,
   rewriteTokenCountRequest
 } from "./adapters.js";
@@ -29,7 +30,14 @@ import {
 import { DefaultRoutingConfigResolver } from "./defaultRoutingConfig.js";
 import { LlmClassifier } from "./classifier.js";
 import { EmailService } from "./email.js";
-import { EventService, ProviderAttemptStore, RequestStateStore, type RequestStateGate } from "./events.js";
+import {
+  BoundedEventWriter,
+  EventService,
+  ProviderAttemptStore,
+  RequestStateStore,
+  type RequestStateGate,
+  type RequestStateStoreLike
+} from "./events.js";
 import { registerAdminGraphQL } from "./graphql/route.js";
 import { harnessProfileByName } from "./harness.js";
 import { scheduleDailyModelCatalogRefresh } from "./jobs/modelCatalogRefresh.js";
@@ -40,6 +48,7 @@ import {
   metricTerminalStatusFor,
   type MetricsCollector
 } from "./metrics.js";
+import { AsyncObservabilityEventAppender } from "./observability.js";
 import { SessionRouteStore } from "./policy.js";
 import { createPostgresPersistence } from "./persistence/index.js";
 import type {
@@ -59,18 +68,34 @@ import {
   compressOrFallback
 } from "./toolResultCompression.js";
 import { ProviderProxy } from "./proxy.js";
+import { ProviderDeploymentHealthStore } from "./providerDeploymentHealth.js";
+import { RequestTiming, requestBodySizeBytes } from "./requestTiming.js";
 import { RoutingService } from "./router.js";
 import { buildSetupScript } from "./setupScript.js";
-import type { Provider, RouteContext, RouteDecision, Surface } from "./types.js";
+import { TrafficLimitStore, type TrafficLimitDenied, type TrafficLimitLease } from "./trafficLimits.js";
+import type { Provider, RouteContext, RouteDecision, RouteProviderAttempt, Surface } from "./types.js";
 import { createId, headerValue, idempotencyFrom, isRecord, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
 
 type AppPersistence = ReturnType<typeof createPostgresPersistence>;
 
+const persistentProviderAttemptMirrorLimit = 10_000;
+const persistentSessionMirrorLimit = 10_000;
+
 export function buildServer(config: AppConfig = loadConfig(), options: { persistence?: AppPersistence; metrics?: MetricsCollector } = {}) {
   const app = Fastify({
     logger: { level: config.logLevel },
-    bodyLimit: 1024 * 1024 * 50
+    bodyLimit: config.requestBodyLimitBytes
+  });
+  app.setErrorHandler((error, _request, reply) => {
+    if (isBodyLimitError(error)) {
+      reply.code(413).send({
+        error: "Request body exceeds proxy limit.",
+        limitBytes: config.requestBodyLimitBytes
+      });
+      return;
+    }
+    reply.send(error);
   });
   const metrics = options.metrics ?? createMetricsCollector(config);
   metrics.setGauge("proxy_up", 1);
@@ -127,26 +152,55 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     undefined,
     persistence?.eventSink,
     config.defaultOrganizationId,
-    metrics
+    metrics,
+    {
+      mirrorLimit: persistence ? 1_000 : undefined,
+      scopeLimit: persistence ? 50_000 : undefined
+    }
   );
   const auth = new ProxyAuthService(config, persistence?.apiKeys);
   const adminAuth = new AdminAuthService(config, persistence?.adminSessions);
-  const attempts = new ProviderAttemptStore();
+  const attempts = new ProviderAttemptStore({
+    maxAttempts: persistence ? persistentProviderAttemptMirrorLimit : undefined
+  });
   const requestStates = persistence?.requestStates ?? new RequestStateStore();
-  const sessions = new SessionRouteStore(persistence?.sessionPins);
+  const sessions = new SessionRouteStore(
+    persistence?.sessionPins,
+    persistence ? persistentSessionMirrorLimit : Number.POSITIVE_INFINITY
+  );
   const classifier = new LlmClassifier(config, metrics);
   const providerRegistry = persistence?.providerRegistry ?? new ConfigProviderRegistry(config);
+  const observabilityWriter = new BoundedEventWriter(events, {
+    maxEntries: config.eventWriterMaxEntries,
+    maxBytes: config.eventWriterMaxBytes,
+    batchSize: config.eventWriterBatchSize,
+    onDrop: (input, reason) => app.log.warn({ eventType: input.eventType, reason }, "observability event dropped"),
+    onFlushFailure: (err, input, attempt) => app.log.warn(
+      { err, eventType: input.eventType, attempt },
+      "observability event flush failed"
+    )
+  });
+  app.addHook("onClose", async () => {
+    const stats = await observabilityWriter.drain(config.eventWriterShutdownTimeoutMs);
+    if (stats.depth > 0) {
+      app.log.warn({ stats }, "observability event writer shutdown drain timed out");
+    }
+  });
+  const observabilityEvents = new AsyncObservabilityEventAppender(events, observabilityWriter);
+  const deploymentHealth = new ProviderDeploymentHealthStore();
+  const trafficLimits = new TrafficLimitStore(config.trafficLimits);
   const routing = new RoutingService(
     config,
     classifier,
-    events,
+    observabilityEvents,
     sessions,
     providerRegistry,
     persistence?.providerCredentials,
     persistence?.providerHealth,
-    metrics
+    metrics,
+    deploymentHealth
   );
-  const proxy = new ProviderProxy(config, events, attempts, requestStates, providerRegistry, metrics);
+  const proxy = new ProviderProxy(config, events, attempts, requestStates, providerRegistry, metrics, deploymentHealth);
   const assistantResponseCapture = (input: {
     identity: RequestIdentity;
     requestId: string;
@@ -335,6 +389,10 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       requireAuth(request.headers, config.proxyToken);
       return events.listOutbox();
     });
+    app.get("/_debug/event-writer", async (request) => {
+      requireAuth(request.headers, config.proxyToken);
+      return observabilityWriter.stats();
+    });
     app.get("/_debug/sessions", async (request) => {
       requireAuth(request.headers, config.proxyToken);
       return sessions.list();
@@ -349,7 +407,12 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     });
   }
   app.post("/v1/responses", async (request, reply) => {
-    const identity = await auth.resolve(request.headers);
+    const timing = new RequestTiming(app.log, {
+      surface: openAIResponsesSurface.surface,
+      requestBodyBytes: requestBodySizeBytes(headerValue(request.headers, "content-length"), request.body)
+    });
+    timing.sampleEventLoopLag();
+    const identity = await timing.measure("auth", () => auth.resolve(request.headers));
     const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
       openAIResponsesSurface.createOperation,
       request.body,
@@ -359,11 +422,32 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     markModelStream(metrics, modelRequestsInFlight, requestMetrics, request, requestWantsStream(request.body));
     const context = contextForIdentity(rawContext, identity);
     const proposedRequestId = createId("request");
-    const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
-    if (sendDuplicateRequest(gate, reply)) return;
+    const gate = await timing.measure("idempotency_claim", () => requestStates.begin(idempotencyKey, proposedRequestId, context));
+    if (sendDuplicateRequest(gate, reply)) {
+      timing.log("duplicate");
+      return;
+    }
     const requestId = gate.state.requestId ?? proposedRequestId;
+    timing.addMetadata({
+      requestId,
+      organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId
+    });
 
+    let requestLimitLease: TrafficLimitLease | undefined;
     try {
+      requestLimitLease = await acquireTrafficLimitOrReject({
+        trafficLimits,
+        requestStates,
+        reply,
+        idempotencyKey,
+        identity,
+        context
+      });
+      if (!requestLimitLease) {
+        markModelErrorClass(requestMetrics, request, "traffic_limit");
+        return;
+      }
       await events.append({
         tenantId: identity.organizationId,
         workspaceId: identity.workspaceId,
@@ -425,6 +509,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         routingConfig: resolved.routingConfig
       });
+      timing.recordDecision(decision);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
         markModelErrorClass(requestMetrics, request, "routing");
@@ -463,6 +548,17 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       const forwardedBody = rewriteSurfaceRequest(compression.body, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching });
+      const providerAttempts = await buildProviderForwardAttempts({
+        persistence,
+        identity,
+        decision,
+        rewrite: (attemptDecision) => rewriteSurfaceRequest(
+          compression.body,
+          attemptDecision,
+          systemPrompt,
+          { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }
+        )
+      });
       await appendCompressionEvidence({
         events,
         tenantId: identity.organizationId,
@@ -478,7 +574,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         result: compression,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
-      await proxy.forward({
+      const forwardResult = await proxy.forward({
         requestId,
         idempotencyKey,
         organizationId: identity.organizationId,
@@ -491,6 +587,18 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         headers: lowerHeaders(request.headers),
         decision,
         reply,
+        attempts: providerAttempts,
+        retryPolicy: decision.retryPolicy,
+        acquireProviderLimit: (providerAttempt) => acquireTrafficLimitOrReject({
+          trafficLimits,
+          requestStates,
+          reply,
+          idempotencyKey,
+          identity,
+          context,
+          providerAttempt
+        }),
+        timing,
         credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
         compressionTelemetry: compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy),
         onAssistantText: assistantResponseCapture({
@@ -505,17 +613,30 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         }),
         onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
       });
+      if (forwardResult === "rejected") {
+        timing.log("rejected");
+        return;
+      }
+      timing.log("completed");
     } catch (error) {
+      timing.log("failed", { error: errorMessage(error) });
       await requestStates.finish(idempotencyKey, "failed", {
         requestId,
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
+    } finally {
+      requestLimitLease?.release();
     }
   });
 
   app.post("/v1/chat/completions", async (request, reply) => {
-    const identity = await auth.resolve(request.headers);
+    const timing = new RequestTiming(app.log, {
+      surface: openAIChatSurface.surface,
+      requestBodyBytes: requestBodySizeBytes(headerValue(request.headers, "content-length"), request.body)
+    });
+    timing.sampleEventLoopLag();
+    const identity = await timing.measure("auth", () => auth.resolve(request.headers));
     const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
       openAIChatSurface.createOperation,
       request.body,
@@ -525,11 +646,32 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     markModelStream(metrics, modelRequestsInFlight, requestMetrics, request, requestWantsStream(request.body));
     const context = contextForIdentity(rawContext, identity);
     const proposedRequestId = createId("request");
-    const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
-    if (sendDuplicateRequest(gate, reply)) return;
+    const gate = await timing.measure("idempotency_claim", () => requestStates.begin(idempotencyKey, proposedRequestId, context));
+    if (sendDuplicateRequest(gate, reply)) {
+      timing.log("duplicate");
+      return;
+    }
     const requestId = gate.state.requestId ?? proposedRequestId;
+    timing.addMetadata({
+      requestId,
+      organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId
+    });
 
+    let requestLimitLease: TrafficLimitLease | undefined;
     try {
+      requestLimitLease = await acquireTrafficLimitOrReject({
+        trafficLimits,
+        requestStates,
+        reply,
+        idempotencyKey,
+        identity,
+        context
+      });
+      if (!requestLimitLease) {
+        markModelErrorClass(requestMetrics, request, "traffic_limit");
+        return;
+      }
       await events.append({
         tenantId: identity.organizationId,
         workspaceId: identity.workspaceId,
@@ -584,6 +726,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         routingConfig: resolved.routingConfig
       });
+      timing.recordDecision(decision);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
         markModelErrorClass(requestMetrics, request, "routing");
@@ -621,6 +764,17 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       const forwardedBody = rewriteSurfaceRequest(compression.body, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching });
+      const providerAttempts = await buildProviderForwardAttempts({
+        persistence,
+        identity,
+        decision,
+        rewrite: (attemptDecision) => rewriteSurfaceRequest(
+          compression.body,
+          attemptDecision,
+          resolved.systemPrompt,
+          { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }
+        )
+      });
       await appendCompressionEvidence({
         events,
         tenantId: identity.organizationId,
@@ -636,7 +790,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         result: compression,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
-      await proxy.forward({
+      const forwardResult = await proxy.forward({
         requestId,
         idempotencyKey,
         organizationId: identity.organizationId,
@@ -649,6 +803,18 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         headers: lowerHeaders(request.headers),
         decision,
         reply,
+        attempts: providerAttempts,
+        retryPolicy: decision.retryPolicy,
+        acquireProviderLimit: (providerAttempt) => acquireTrafficLimitOrReject({
+          trafficLimits,
+          requestStates,
+          reply,
+          idempotencyKey,
+          identity,
+          context,
+          providerAttempt
+        }),
+        timing,
         credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
         compressionTelemetry: compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy),
         onAssistantText: assistantResponseCapture({
@@ -663,17 +829,30 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         }),
         onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
       });
+      if (forwardResult === "rejected") {
+        timing.log("rejected");
+        return;
+      }
+      timing.log("completed");
     } catch (error) {
+      timing.log("failed", { error: errorMessage(error) });
       await requestStates.finish(idempotencyKey, "failed", {
         requestId,
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
+    } finally {
+      requestLimitLease?.release();
     }
   });
 
   app.post("/v1/messages", async (request, reply) => {
-    const identity = await auth.resolve(request.headers);
+    const timing = new RequestTiming(app.log, {
+      surface: anthropicMessagesSurface.surface,
+      requestBodyBytes: requestBodySizeBytes(headerValue(request.headers, "content-length"), request.body)
+    });
+    timing.sampleEventLoopLag();
+    const identity = await timing.measure("auth", () => auth.resolve(request.headers));
     const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
       anthropicMessagesSurface.createOperation,
       request.body,
@@ -683,11 +862,32 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     markModelStream(metrics, modelRequestsInFlight, requestMetrics, request, requestWantsStream(request.body));
     const context = contextForIdentity(rawContext, identity);
     const proposedRequestId = createId("request");
-    const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
-    if (sendDuplicateRequest(gate, reply)) return;
+    const gate = await timing.measure("idempotency_claim", () => requestStates.begin(idempotencyKey, proposedRequestId, context));
+    if (sendDuplicateRequest(gate, reply)) {
+      timing.log("duplicate");
+      return;
+    }
     const requestId = gate.state.requestId ?? proposedRequestId;
+    timing.addMetadata({
+      requestId,
+      organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId
+    });
 
+    let requestLimitLease: TrafficLimitLease | undefined;
     try {
+      requestLimitLease = await acquireTrafficLimitOrReject({
+        trafficLimits,
+        requestStates,
+        reply,
+        idempotencyKey,
+        identity,
+        context
+      });
+      if (!requestLimitLease) {
+        markModelErrorClass(requestMetrics, request, "traffic_limit");
+        return;
+      }
       await events.append({
         tenantId: identity.organizationId,
         workspaceId: identity.workspaceId,
@@ -750,6 +950,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         idempotencyKey,
         routingConfig: resolved.routingConfig
       });
+      timing.recordDecision(decision);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
         markModelErrorClass(requestMetrics, request, "routing");
@@ -788,6 +989,17 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
       const forwardedBody = rewriteSurfaceRequest(compression.body, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching });
+      const providerAttempts = await buildProviderForwardAttempts({
+        persistence,
+        identity,
+        decision,
+        rewrite: (attemptDecision) => rewriteSurfaceRequest(
+          compression.body,
+          attemptDecision,
+          systemPrompt,
+          { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }
+        )
+      });
       await appendCompressionEvidence({
         events,
         tenantId: identity.organizationId,
@@ -803,7 +1015,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         result: compression,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
-      await proxy.forward({
+      const forwardResult = await proxy.forward({
         requestId,
         idempotencyKey,
         organizationId: identity.organizationId,
@@ -816,6 +1028,18 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         headers: lowerHeaders(request.headers),
         decision,
         reply,
+        attempts: providerAttempts,
+        retryPolicy: decision.retryPolicy,
+        acquireProviderLimit: (providerAttempt) => acquireTrafficLimitOrReject({
+          trafficLimits,
+          requestStates,
+          reply,
+          idempotencyKey,
+          identity,
+          context,
+          providerAttempt
+        }),
+        timing,
         credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
         compressionTelemetry: compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy),
         onAssistantText: assistantResponseCapture({
@@ -830,17 +1054,30 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         }),
         onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
       });
+      if (forwardResult === "rejected") {
+        timing.log("rejected");
+        return;
+      }
+      timing.log("completed");
     } catch (error) {
+      timing.log("failed", { error: errorMessage(error) });
       await requestStates.finish(idempotencyKey, "failed", {
         requestId,
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
+    } finally {
+      requestLimitLease?.release();
     }
   });
 
   app.post("/v1/messages/count_tokens", async (request, reply) => {
-    const identity = await auth.resolve(request.headers);
+    const timing = new RequestTiming(app.log, {
+      surface: anthropicMessagesSurface.surface,
+      requestBodyBytes: requestBodySizeBytes(headerValue(request.headers, "content-length"), request.body)
+    });
+    timing.sampleEventLoopLag();
+    const identity = await timing.measure("auth", () => auth.resolve(request.headers));
     const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
       anthropicMessagesSurface.countTokensOperation ?? anthropicMessagesSurface.createOperation,
       request.body,
@@ -850,10 +1087,31 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     markModelStream(metrics, modelRequestsInFlight, requestMetrics, request, false);
     const context = contextForIdentity(rawContext, identity);
     const proposedRequestId = createId("request");
-    const gate = await requestStates.begin(idempotencyKey, proposedRequestId, context);
-    if (sendDuplicateRequest(gate, reply)) return;
+    const gate = await timing.measure("idempotency_claim", () => requestStates.begin(idempotencyKey, proposedRequestId, context));
+    if (sendDuplicateRequest(gate, reply)) {
+      timing.log("duplicate");
+      return;
+    }
     const requestId = gate.state.requestId ?? proposedRequestId;
+    timing.addMetadata({
+      requestId,
+      organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId
+    });
+    let requestLimitLease: TrafficLimitLease | undefined;
     try {
+      requestLimitLease = await acquireTrafficLimitOrReject({
+        trafficLimits,
+        requestStates,
+        reply,
+        idempotencyKey,
+        identity,
+        context
+      });
+      if (!requestLimitLease) {
+        markModelErrorClass(requestMetrics, request, "traffic_limit");
+        return;
+      }
       await events.append({
         tenantId: identity.organizationId,
         workspaceId: identity.workspaceId,
@@ -876,6 +1134,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         resolved.systemPrompt
       );
       const decision = await routing.tokenCountDecision(context, resolved.routingConfig);
+      timing.recordDecision(decision);
       if (decision.outcome === "reject") {
         await requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
         markModelErrorClass(requestMetrics, request, "routing");
@@ -903,6 +1162,17 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         }
       );
       const forwardedBody = rewriteTokenCountRequest(countCompression.body, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade });
+      const providerAttempts = await buildProviderForwardAttempts({
+        persistence,
+        identity,
+        decision,
+        rewrite: (attemptDecision) => rewriteTokenCountRequest(
+          countCompression.body,
+          attemptDecision,
+          systemPrompt,
+          { upgradeCacheTtl: resolved.cacheTtlUpgrade }
+        )
+      });
       await appendCompressionEvidence({
         events,
         tenantId: identity.organizationId,
@@ -923,7 +1193,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         },
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
-      await proxy.forward({
+      const forwardResult = await proxy.forward({
         requestId,
         idempotencyKey,
         organizationId: identity.organizationId,
@@ -936,6 +1206,18 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         decision,
         reply,
         path: "/messages/count_tokens",
+        attempts: providerAttempts,
+        retryPolicy: decision.retryPolicy,
+        acquireProviderLimit: (providerAttempt) => acquireTrafficLimitOrReject({
+          trafficLimits,
+          requestStates,
+          reply,
+          idempotencyKey,
+          identity,
+          context,
+          providerAttempt
+        }),
+        timing,
         credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
         compressionTelemetry: compressionForwardTelemetry({
           ...countCompression,
@@ -945,12 +1227,20 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         }, resolved.toolResultCompressionPolicy),
         onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
       });
+      if (forwardResult === "rejected") {
+        timing.log("rejected");
+        return;
+      }
+      timing.log("completed");
     } catch (error) {
+      timing.log("failed", { error: errorMessage(error) });
       await requestStates.finish(idempotencyKey, "failed", {
         requestId,
         error: error instanceof Error ? error.message : "Request failed."
       });
       throw error;
+    } finally {
+      requestLimitLease?.release();
     }
   });
 
@@ -966,12 +1256,137 @@ function requestWantsStream(body: unknown) {
   return isRecord(body) && body.stream === true;
 }
 
+async function acquireTrafficLimitOrReject(input: {
+  trafficLimits: TrafficLimitStore;
+  requestStates: RequestStateStoreLike;
+  reply: FastifyReply;
+  idempotencyKey: string;
+  identity: RequestIdentity;
+  context: RouteContext;
+  providerAttempt?: ProviderForwardAttemptInput;
+}): Promise<TrafficLimitLease | undefined> {
+  const stage = input.providerAttempt ? "provider_model" : "request";
+  const result = input.trafficLimits.acquire({
+    organizationId: input.identity.organizationId,
+    workspaceId: input.identity.workspaceId,
+    apiKeyId: input.identity.apiKeyId,
+    userId: input.context.userId,
+    provider: input.providerAttempt?.provider,
+    model: input.providerAttempt?.selectedModel,
+    estimatedTokens: input.context.estimatedInputTokens
+  }, stage);
+  if (result.allowed) return result.lease;
+
+  await input.requestStates.finish(input.idempotencyKey, "failed", { error: result.error });
+  sendTrafficLimitDenied(input.reply, result);
+  return undefined;
+}
+
+function sendTrafficLimitDenied(reply: FastifyReply, result: TrafficLimitDenied) {
+  if (result.retryAfterSeconds !== undefined) {
+    reply.header("retry-after", String(result.retryAfterSeconds));
+  }
+  reply.code(429).send({
+    error: result.error,
+    scope: result.scope,
+    limit: result.limit,
+    current: result.current
+  });
+}
+
+async function buildProviderForwardAttempts(input: {
+  persistence: AppPersistence | undefined;
+  identity: RequestIdentity;
+  decision: RouteDecision;
+  rewrite: (decision: RouteDecision) => unknown;
+}): Promise<ProviderForwardAttemptInput[]> {
+  const maxAttempts = Math.max(1, input.decision.retryPolicy?.maxAttempts ?? 1);
+  const attempts: ProviderForwardAttemptInput[] = [];
+  let skippedUnavailableAccount = false;
+
+  for (const candidate of candidateProviderAttempts(input.decision)) {
+    const credential = await resolveUpstreamCredential(
+      input.persistence,
+      input.identity,
+      candidate.provider,
+      candidate.deployment.providerAccountId
+    );
+    if (candidate.deployment.providerAccountId && !credential) {
+      skippedUnavailableAccount = true;
+      continue;
+    }
+
+    const attemptDecision = decisionForProviderAttempt(input.decision, candidate);
+    attempts.push({
+      route: candidate.route,
+      selectedModel: candidate.selectedModel,
+      provider: candidate.provider,
+      deployment: candidate.deployment,
+      reasoningEffort: candidate.reasoningEffort,
+      body: input.rewrite(attemptDecision),
+      credential,
+      providerSettings: candidate.providerSettings
+    });
+  }
+
+  const scopedAttempts = attempts.some((attempt) => attempt.credential)
+    ? attempts.filter((attempt) => attempt.credential)
+    : attempts;
+  if (attempts.length === 0 && skippedUnavailableAccount) {
+    throw new Error("deployment_provider_account_unavailable");
+  }
+  return scopedAttempts.slice(0, maxAttempts);
+}
+
+function candidateProviderAttempts(decision: RouteDecision): RouteProviderAttempt[] {
+  if (decision.providerAttempts?.length) return decision.providerAttempts;
+  if (
+    !decision.finalRoute ||
+    !decision.selectedModel ||
+    !decision.provider ||
+    !decision.deployment ||
+    !decision.providerSettings
+  ) {
+    return [];
+  }
+  return [{
+    route: decision.finalRoute,
+    selectedModel: decision.selectedModel,
+    provider: decision.provider,
+    deployment: decision.deployment,
+    reasoningEffort: decision.reasoningEffort,
+    verbosity: decision.verbosity,
+    providerSettings: decision.providerSettings
+  }];
+}
+
+function decisionForProviderAttempt(decision: RouteDecision, attempt: RouteProviderAttempt): RouteDecision {
+  return {
+    ...decision,
+    finalRoute: attempt.route,
+    selectedModel: attempt.selectedModel,
+    provider: attempt.provider,
+    deployment: attempt.deployment,
+    reasoningEffort: attempt.reasoningEffort,
+    verbosity: attempt.verbosity,
+    providerSettings: attempt.providerSettings
+  };
+}
+
 function resolveUpstreamCredential(
   persistence: AppPersistence | undefined,
   identity: RequestIdentity,
-  provider: Provider
+  provider: Provider,
+  providerAccountId?: string
 ) {
   if (!persistence) return undefined;
+  if (providerAccountId) {
+    return persistence.providerCredentials.resolveAccount({
+      organizationId: identity.organizationId,
+      provider,
+      providerAccountId
+    });
+  }
   return persistence.providerCredentials.resolveForRequest({
     organizationId: identity.organizationId,
     workspaceId: identity.workspaceId,
@@ -1317,6 +1732,16 @@ function finishModelRequestMetrics(
     terminal_status: terminalStatus
   });
   state.modelRecorded = true;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isBodyLimitError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; statusCode?: unknown };
+  return candidate.statusCode === 413 || candidate.code === "FST_ERR_CTP_BODY_TOO_LARGE";
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

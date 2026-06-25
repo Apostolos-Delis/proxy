@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { actorForIdentity, type RequestIdentity } from "./auth.js";
-import { jsonPayload, type EventService } from "./events.js";
+import { jsonPayload, type EventAppender } from "./events.js";
 import type { JsonObject, Surface } from "./types.js";
 import { isRecord, roughTokenEstimate, stableJson, stringField, unreachable } from "./util.js";
 
@@ -92,7 +92,7 @@ function fallbackModelForSurface(surface: Surface) {
 }
 
 export async function appendTokensAttributed(input: {
-  events: EventService;
+  events: EventAppender;
   identity: RequestIdentity;
   requestId: string;
   idempotencyKey: string;

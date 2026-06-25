@@ -1220,184 +1220,137 @@ describe("database migrations", () => {
     }
   });
 
-  it("migrates v1 routing config jsonb to v2 target lists", async () => {
+  it("converts stored routing configs to provider deployment pools", async () => {
     const client = new PGlite();
-    const migrationsDir = fileURLToPath(new URL("../migrations", import.meta.url));
-    const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
-    const beforeCutover = files.filter((file) => file < "0012_routing_config_v2_cutover.sql");
-    const v1Config = legacyRoutingConfig();
+    const foundation = await readFile(
+      fileURLToPath(new URL("../migrations/0000_foundation.sql", import.meta.url)),
+      "utf8"
+    );
+    const deploymentCutover = await readFile(
+      fileURLToPath(new URL("../migrations/0010_routing_config_deployments.sql", import.meta.url)),
+      "utf8"
+    );
 
     try {
-      for (const file of beforeCutover) {
-        await client.exec(await readFile(join(migrationsDir, file), "utf8"));
-      }
-
+      await client.exec(foundation);
       await client.exec(`
-        insert into organizations (id, slug, name) values ('org_v2_migration', 'org-v2-migration', 'Org V2 Migration');
-        insert into workspaces (id, organization_id, slug, name) values
-          ('org_v2_migration:workspace:default', 'org_v2_migration', 'default', 'Default');
-        insert into routing_configs (id, organization_id, workspace_id, name, slug) values
-          ('config_v2_migration', 'org_v2_migration', 'org_v2_migration:workspace:default', 'Config V2 Migration', 'default');
-        insert into routing_config_versions (
-          id,
-          organization_id,
-          workspace_id,
-          routing_config_id,
-          version,
-          config_hash,
-          config,
-          status
-        ) values (
-          'version_v2_migration',
-          'org_v2_migration',
-          'org_v2_migration:workspace:default',
-          'config_v2_migration',
+        insert into organizations (id, slug, name)
+        values ('deploy_org', 'deploy-org', 'Deploy Org');
+
+        insert into routing_configs (id, organization_id, name, slug)
+        values ('deploy_config', 'deploy_org', 'Deploy Config', 'deploy-config');
+
+        insert into routing_config_versions (id, organization_id, routing_config_id, version, config_hash, config)
+        values (
+          'deploy_version_v1',
+          'deploy_org',
+          'deploy_config',
           1,
-          'legacy_hash',
-          $config$${JSON.stringify(v1Config)}$config$::jsonb,
-          'active'
-        );
-        insert into agent_sessions (
-          id,
-          organization_id,
-          workspace_id,
-          surface,
-          external_session_id,
-          pinned_settings
-        ) values (
-          'session_v2_migration',
-          'org_v2_migration',
-          'org_v2_migration:workspace:default',
-          'anthropic-messages',
-          'session-v2',
-          '{"provider":"anthropic","model":"claude-legacy","anthropic":{"model":"claude-legacy"}}'::jsonb
-        );
-        insert into organization_settings (organization_id, settings) values (
-          'org_v2_migration',
-          '{"cacheTtlUpgrade":true,"costBaselineAnthropicModel":"claude-baseline","costBaselineOpenaiModel":"gpt-baseline"}'::jsonb
+          'deploy_hash_v1',
+          '{
+            "schemaVersion": 1,
+            "displayName": "Router",
+            "classifier": {"provider": "openai", "model": "route-classifier", "timeoutMs": 1500, "maxAttempts": 1, "allowRedactedExcerpt": false, "structuredOutput": {"mode": "json_schema"}},
+            "routes": {
+              "fast": {
+                "description": "Fast",
+                "openai": {"model": "gpt-fast", "reasoning": {"effort": "low"}},
+                "anthropic": {"model": "claude-fast"}
+              }
+            },
+            "limits": {"maxRoute": "deep", "fallbackRoute": "hard"},
+            "session": {"pinInitialRoute": true, "allowUpgrade": true, "allowDowngrade": false}
+          }'::jsonb
         );
       `);
 
-      await client.exec(await readFile(join(migrationsDir, "0012_routing_config_v2_cutover.sql"), "utf8"));
+      await client.exec(deploymentCutover);
 
-      const versions = await client.query<{ config_hash: string; config: Record<string, any> }>(`
-        select config_hash, config from routing_config_versions where id = 'version_v2_migration'
-      `);
-      const sessions = await client.query<{ pinned_settings: Record<string, unknown> | null }>(`
-        select pinned_settings from agent_sessions where id = 'session_v2_migration'
-      `);
-      const settings = await client.query<{ settings: Record<string, any> }>(`
-        select settings from organization_settings where organization_id = 'org_v2_migration'
-      `);
-      const databaseHash = await client.query<{ hash: string }>(`
-        select encode(sha256(convert_to(config::text, 'UTF8')), 'hex') as hash
-        from routing_config_versions
-        where id = 'version_v2_migration'
-      `);
+      const versions = await client.query<{ config_hash: string; config: Record<string, any> }>(
+        "select config_hash, config from routing_config_versions where id = 'deploy_version_v1'"
+      );
+      const route = versions.rows[0]?.config.routes.fast;
 
-      expect(versions.rows[0]?.config_hash).toMatch(/^[a-f0-9]{64}$/);
-      expect(versions.rows[0]?.config_hash).not.toBe("legacy_hash");
-      expect(versions.rows[0]?.config_hash).toBe(databaseHash.rows[0]?.hash);
-      expect(versions.rows[0]?.config).toEqual(expect.objectContaining({
-        schemaVersion: 2,
-        classifier: expect.objectContaining({
-          providerId: "openai",
-          effort: "minimal"
-        })
-      }));
-      expect(versions.rows[0]?.config.routes.hard.targets).toEqual([
-        expect.objectContaining({
-          providerId: "anthropic",
-          model: "claude-hard",
-          effort: "high",
-          thinking: { type: "adaptive", display: "omitted" },
-          maxOutputTokens: 4096,
-          metadata: { retained: true }
-        }),
-        expect.objectContaining({
-          providerId: "openai",
-          model: "gpt-hard",
-          effort: "high",
-          verbosity: "medium",
-          maxOutputTokens: 1234
-        })
-      ]);
-      expect(sessions.rows).toEqual([{ pinned_settings: null }]);
-      expect(settings.rows[0]?.settings).toEqual({
-        cacheTtlUpgrade: true,
-        costBaselineByDialect: {
-          "anthropic-messages": "claude-baseline",
-          "openai-responses": "gpt-baseline",
-          "openai-chat": "gpt-baseline"
-        }
-      });
+      expect(versions.rows[0]?.config_hash).toMatch(/^v2:[a-f0-9]{32}$/);
+      expect(versions.rows[0]?.config_hash).not.toBe("deploy_hash_v1");
+      expect(versions.rows[0]?.config.schemaVersion).toBe(2);
+      expect(route.openai.deployments).toEqual([expect.objectContaining({
+        provider: "openai",
+        model: "gpt-fast",
+        order: 0,
+        weight: 1,
+        timeoutMs: 60000,
+        reasoning: { effort: "low" }
+      })]);
+      expect(route.anthropic.deployments).toEqual([expect.objectContaining({
+        provider: "anthropic",
+        model: "claude-fast",
+        order: 0,
+        weight: 1,
+        timeoutMs: 60000
+      })]);
     } finally {
       await client.close();
     }
   });
 
-  it("aborts the v2 routing config migration before writes on hash collision", async () => {
+  it("adds route retry policy to stored routing configs", async () => {
     const client = new PGlite();
-    const migrationsDir = fileURLToPath(new URL("../migrations", import.meta.url));
-    const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
-    const beforeCutover = files.filter((file) => file < "0012_routing_config_v2_cutover.sql");
-    const v1Config = legacyRoutingConfig();
+    const foundation = await readFile(
+      fileURLToPath(new URL("../migrations/0000_foundation.sql", import.meta.url)),
+      "utf8"
+    );
+    const retryCutover = await readFile(
+      fileURLToPath(new URL("../migrations/0011_routing_config_retry_policy.sql", import.meta.url)),
+      "utf8"
+    );
 
     try {
-      for (const file of beforeCutover) {
-        await client.exec(await readFile(join(migrationsDir, file), "utf8"));
-      }
-
+      await client.exec(foundation);
       await client.exec(`
-        insert into organizations (id, slug, name) values ('org_v2_collision', 'org-v2-collision', 'Org V2 Collision');
-        insert into workspaces (id, organization_id, slug, name) values
-          ('org_v2_collision:workspace:default', 'org_v2_collision', 'default', 'Default');
-        insert into routing_configs (id, organization_id, workspace_id, name, slug) values
-          ('config_v2_collision_a', 'org_v2_collision', 'org_v2_collision:workspace:default', 'Config V2 Collision A', 'a'),
-          ('config_v2_collision_b', 'org_v2_collision', 'org_v2_collision:workspace:default', 'Config V2 Collision B', 'b');
-        insert into routing_config_versions (
-          id,
-          organization_id,
-          workspace_id,
-          routing_config_id,
-          version,
-          config_hash,
-          config
-        ) values
-          (
-            'version_v2_collision_a',
-            'org_v2_collision',
-            'org_v2_collision:workspace:default',
-            'config_v2_collision_a',
-            1,
-            'legacy_hash_a',
-            $config$${JSON.stringify(v1Config)}$config$::jsonb
-          ),
-          (
-            'version_v2_collision_b',
-            'org_v2_collision',
-            'org_v2_collision:workspace:default',
-            'config_v2_collision_b',
-            1,
-            'legacy_hash_b',
-            $config$${JSON.stringify(v1Config)}$config$::jsonb
-          );
+        insert into organizations (id, slug, name)
+        values ('retry_org', 'retry-org', 'Retry Org');
+
+        insert into routing_configs (id, organization_id, name, slug)
+        values ('retry_config', 'retry_org', 'Retry Config', 'retry-config');
+
+        insert into routing_config_versions (id, organization_id, routing_config_id, version, config_hash, config)
+        values (
+          'retry_version_v2',
+          'retry_org',
+          'retry_config',
+          1,
+          'retry_hash_v2',
+          '{
+            "schemaVersion": 2,
+            "displayName": "Router",
+            "classifier": {"provider": "openai", "model": "route-classifier", "timeoutMs": 1500, "maxAttempts": 1, "allowRedactedExcerpt": false, "structuredOutput": {"mode": "json_schema"}},
+            "routes": {
+              "fast": {
+                "description": "Fast",
+                "openai": {"deployments": [{"provider": "openai", "model": "gpt-fast", "order": 0, "weight": 1, "timeoutMs": 60000}]}
+              }
+            },
+            "limits": {"maxRoute": "deep", "fallbackRoute": "hard"},
+            "session": {"pinInitialRoute": true, "allowUpgrade": true, "allowDowngrade": false}
+          }'::jsonb
+        );
       `);
 
-      await expect(client.exec(
-        await readFile(join(migrationsDir, "0012_routing_config_v2_cutover.sql"), "utf8")
-      )).rejects.toThrow("routing_config_v2_hash_collision");
+      await client.exec(retryCutover);
 
-      const versions = await client.query<{ id: string; config_hash: string; schema_version: string | null }>(`
-        select id, config_hash, config->>'schemaVersion' as schema_version
-        from routing_config_versions
-        order by id
-      `);
+      const versions = await client.query<{ config_hash: string; config: Record<string, any> }>(
+        "select config_hash, config from routing_config_versions where id = 'retry_version_v2'"
+      );
+      const route = versions.rows[0]?.config.routes.fast;
 
-      expect(versions.rows).toEqual([
-        { id: "version_v2_collision_a", config_hash: "legacy_hash_a", schema_version: "1" },
-        { id: "version_v2_collision_b", config_hash: "legacy_hash_b", schema_version: "1" }
-      ]);
+      expect(versions.rows[0]?.config_hash).toMatch(/^v3:[a-f0-9]{32}$/);
+      expect(versions.rows[0]?.config_hash).not.toBe("retry_hash_v2");
+      expect(versions.rows[0]?.config.schemaVersion).toBe(3);
+      expect(route.retry).toEqual({
+        maxAttempts: 2,
+        retryableStatusCodes: [429, 500, 502, 503, 504]
+      });
     } finally {
       await client.close();
     }
@@ -1700,76 +1653,6 @@ describe("database migrations", () => {
     }
   });
 });
-
-function legacyRoutingConfig() {
-  const route = (
-    description: string,
-    openaiModel: string,
-    anthropicModel: string,
-    effort: string
-  ) => ({
-    description,
-    openai: {
-      model: openaiModel,
-      reasoning: { effort },
-      text: { verbosity: effort === "low" ? "low" : "medium" }
-    },
-    anthropic: {
-      model: anthropicModel,
-      thinking: effort === "low" ? { type: "disabled" } : { type: "adaptive", display: "omitted" },
-      output_config: { effort }
-    }
-  });
-
-  return {
-    schemaVersion: 1,
-    displayName: "Legacy coding router",
-    description: "Legacy v1 config",
-    classifier: {
-      provider: "openai",
-      model: "route-classifier-cheap",
-      reasoningEffort: "minimal",
-      timeoutMs: 1500,
-      maxAttempts: 2,
-      allowRedactedExcerpt: true,
-      structuredOutput: {
-        mode: "json_schema",
-        schemaName: "routing_classifier"
-      }
-    },
-    routes: {
-      fast: route("Fast", "gpt-fast", "claude-fast", "low"),
-      balanced: route("Balanced", "gpt-balanced", "claude-balanced", "medium"),
-      hard: {
-        ...route("Hard", "gpt-hard", "claude-hard", "high"),
-        openai: {
-          model: "gpt-hard",
-          reasoning: { effort: "high" },
-          text: { verbosity: "medium" },
-          maxOutputTokens: 1234
-        },
-        anthropic: {
-          model: "claude-hard",
-          thinking: { type: "adaptive", display: "omitted" },
-          output_config: { effort: "high" },
-          maxTokens: 4096,
-          metadata: { retained: true }
-        }
-      },
-      deep: route("Deep", "gpt-deep", "claude-deep", "xhigh")
-    },
-    limits: {
-      maxRoute: "deep",
-      fallbackRoute: "hard",
-      maxEstimatedInputTokens: 200000
-    },
-    session: {
-      pinInitialRoute: true,
-      allowUpgrade: true,
-      allowDowngrade: false
-    }
-  };
-}
 
 async function migratedClient() {
   const client = new PGlite();

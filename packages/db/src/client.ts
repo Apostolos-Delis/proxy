@@ -16,8 +16,12 @@ export type ProxyTransactionalDatabase = {
   transaction<T>(callback: (tx: ProxyTransaction) => Promise<T>): Promise<T>;
 };
 
-export function createPostgresDatabase(databaseUrl: string): ProxyPostgresDatabase {
-  return drizzlePostgres(postgres(databaseUrl), { schema });
+export type PostgresDatabaseOptions = {
+  max?: number;
+};
+
+export function createPostgresDatabase(databaseUrl: string, options: PostgresDatabaseOptions = {}): ProxyPostgresDatabase {
+  return drizzlePostgres(postgres(databaseUrl, { max: options.max ?? 5 }), { schema });
 }
 
 export function createPgliteDatabase(client = new PGlite()): ProxyPgliteDatabase {

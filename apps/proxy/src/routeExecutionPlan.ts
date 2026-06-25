@@ -4,8 +4,7 @@ import {
   type RouteCandidateEvaluation,
   type RouteExecutionPlan,
   type RoutePolicyResult,
-  type RoutingConfig,
-  type RouteTarget
+  type RoutingConfig
 } from "@proxy/schema";
 
 import type { ClassifierSettings } from "./classifier.js";
@@ -15,15 +14,23 @@ import type {
   ProviderHealthSkip,
   RouteContext,
   RouteDecision,
+  RouteName,
   SelectedRouteSettings
 } from "./types.js";
+
+type PlanTarget = {
+  providerId: string;
+  model: string;
+  dialect?: Dialect;
+  providerAccountId?: string;
+};
 
 export type TargetAvailability =
   | { status: "available"; dialect: Dialect; supportedEfforts?: ProviderEffort[]; providerAccountId?: string }
   | { status: "unavailable"; reason: string; dialect?: Dialect; healthSkip?: ProviderHealthSkip };
 
 export type TargetAvailabilityResolver = (
-  target: Pick<RouteTarget, "providerId" | "model"> & { dialect?: Dialect },
+  target: PlanTarget,
   mode?: "native" | "translated"
 ) => Promise<TargetAvailability>;
 
@@ -43,10 +50,10 @@ export async function buildRouteExecutionPlan(input: {
   const workspaceId = context.workspaceId ?? defaultWorkspaceId(organizationId);
   const route = decision.classifier?.recommendedRoute ?? decision.classifierRoute ?? finalRoute;
   const candidates = routingConfig
-    ? await buildConfiguredRouteCandidates(context, decision, routingConfig.routes[finalRoute].targets, targetAvailability)
+    ? await buildConfiguredRouteCandidates(context, decision, routingConfig, targetAvailability)
     : [];
   const selectedCandidate = candidates.find((candidate) =>
-    candidate.providerId === decision.providerSettings?.providerId &&
+    candidate.providerId === decision.providerSettings?.provider &&
     candidate.model === decision.providerSettings?.model &&
     candidate.endpointDialect === decision.providerSettings?.dialect
   );
@@ -92,7 +99,7 @@ export async function buildRouteExecutionPlan(input: {
     candidates: finalCandidates,
     selected: {
       candidateId: selectedCandidateId,
-      providerId: decision.providerSettings.providerId,
+      providerId: decision.providerSettings.provider,
       providerAccountId: finalSelectedCandidate?.providerAccountIds[0] ?? null,
       model: decision.providerSettings.model,
       dialect: endpointDialect,
@@ -105,12 +112,18 @@ export async function buildRouteExecutionPlan(input: {
 async function buildConfiguredRouteCandidates(
   context: RouteContext,
   decision: RouteDecision,
-  targets: RouteTarget[],
+  routingConfig: RoutingConfig,
   targetAvailability: TargetAvailabilityResolver
 ): Promise<RouteCandidateEvaluation[]> {
   const candidates: RouteCandidateEvaluation[] = [];
   const budgetAllowed = budgetAllowedFromChecks(decision.budgetChecks);
-  for (const [index, target] of targets.entries()) {
+  const deployments = configuredRouteDeployments(routingConfig, decision.finalRoute);
+  for (const [index, deployment] of deployments.entries()) {
+    const target = {
+      providerId: deployment.provider,
+      model: deployment.model,
+      providerAccountId: deployment.providerAccountId
+    };
     const nativeAvailability = await targetAvailability(target, "native");
     let availability = nativeAvailability;
     let translated = false;
@@ -124,16 +137,16 @@ async function buildConfiguredRouteCandidates(
     const skipReason = availability.status === "unavailable"
       ? routeSkipReasonForCompatibilityReason(availability.reason)
       : undefined;
-    const selected = decision.providerSettings?.providerId === target.providerId &&
+    const selected = decision.providerSettings?.provider === target.providerId &&
       decision.providerSettings.model === target.model &&
       decision.providerSettings.dialect === endpointDialect;
     const eligible = availability.status === "available";
-    const providerAccountIds = availability.status === "available" && availability.providerAccountId
-      ? [availability.providerAccountId]
-      : [];
+    const providerAccountId = deployment.providerAccountId
+      ?? (availability.status === "available" ? availability.providerAccountId : undefined);
+    const providerAccountIds = providerAccountId ? [providerAccountId] : [];
     candidates.push({
       id: `candidate_${index}`,
-      order: index,
+      order: deployment.order,
       providerId: target.providerId,
       providerAccountIds,
       model: target.model,
@@ -158,6 +171,29 @@ async function buildConfiguredRouteCandidates(
     });
   }
   return candidates;
+}
+
+function configuredRouteDeployments(routingConfig: RoutingConfig, route: RouteName | undefined) {
+  if (!route) return [];
+  const routeConfig = routingConfig.routes[route];
+  return [
+    ...(routeConfig.anthropic?.deployments.map((deployment, index) => ({
+      deployment,
+      familyOrder: 0,
+      index
+    })) ?? []),
+    ...(routeConfig.openai?.deployments.map((deployment, index) => ({
+      deployment,
+      familyOrder: 1,
+      index
+    })) ?? [])
+  ]
+    .sort((left, right) =>
+      left.deployment.order - right.deployment.order ||
+      left.familyOrder - right.familyOrder ||
+      left.index - right.index
+    )
+    .map(({ deployment }) => deployment);
 }
 
 function budgetAllowedFromChecks(budgetChecks: RouteDecision["budgetChecks"]) {
@@ -201,7 +237,7 @@ function selectedCandidateEvaluation(
   return {
     id,
     order,
-    providerId: settings.providerId,
+    providerId: settings.provider,
     providerAccountIds: [],
     model: settings.model,
     endpointDialect: settings.dialect,

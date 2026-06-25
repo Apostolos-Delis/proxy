@@ -527,26 +527,71 @@ Codex-specific compatibility requirements:
 Routes are persisted configuration, not process-global code or ad hoc JSON env. A starting seeded config:
 
 ```yaml
+schemaVersion: 3
 routes:
   fast:
-    model: gpt-5.4-mini
-    reasoning_effort: low
-    verbosity: low
+    retry:
+      maxAttempts: 2
+      retryableStatusCodes: [429, 500, 502, 503, 504]
+    openai:
+      deployments:
+        - provider: openai
+          model: gpt-5.4-mini
+          order: 0
+          weight: 1
+          timeoutMs: 60000
+          reasoning:
+            effort: low
+          text:
+            verbosity: low
 
   balanced:
-    model: gpt-5.4
-    reasoning_effort: medium
-    verbosity: low
+    retry:
+      maxAttempts: 2
+      retryableStatusCodes: [429, 500, 502, 503, 504]
+    openai:
+      deployments:
+        - provider: openai
+          model: gpt-5.4
+          order: 0
+          weight: 1
+          timeoutMs: 60000
+          reasoning:
+            effort: medium
+          text:
+            verbosity: low
 
   hard:
-    model: gpt-5.5
-    reasoning_effort: high
-    verbosity: medium
+    retry:
+      maxAttempts: 2
+      retryableStatusCodes: [429, 500, 502, 503, 504]
+    openai:
+      deployments:
+        - provider: openai
+          model: gpt-5.5
+          order: 0
+          weight: 1
+          timeoutMs: 60000
+          reasoning:
+            effort: high
+          text:
+            verbosity: medium
 
   deep:
-    model: gpt-5.5
-    reasoning_effort: xhigh
-    verbosity: medium
+    retry:
+      maxAttempts: 2
+      retryableStatusCodes: [429, 500, 502, 503, 504]
+    openai:
+      deployments:
+        - provider: openai
+          model: gpt-5.5
+          order: 0
+          weight: 1
+          timeoutMs: 60000
+          reasoning:
+            effort: xhigh
+          text:
+            verbosity: medium
 ```
 
 Codex-specific models such as `gpt-5.1-codex-mini` and `gpt-5.2-codex` should be evaluated, but not assumed. A cheaper model is only cheaper if it avoids extra repair turns.

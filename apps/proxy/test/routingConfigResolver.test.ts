@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createPgliteDatabase,
   defaultWorkspaceId,
-  organizationSettings,
   routingConfigs,
   routingConfigVersions
 } from "@proxy/db";
@@ -17,6 +16,7 @@ import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
 
 import { loadConfig } from "../src/config.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
+import { RoutingConfigResolver } from "../src/persistence/routingConfig.js";
 
 describe("routing config resolver guardrails", () => {
   let client: PGlite | undefined;
@@ -77,6 +77,82 @@ describe("routing config resolver guardrails", () => {
       configHash: "sha256:activated-routing-config"
     }));
     expect(second.config.classifier.model).toBe("route-classifier-after-activation");
+  });
+
+  it("caches routing config resolution until the TTL expires", async () => {
+    const fixture = await setup("org_resolver_cache");
+    await seed(fixture, "org_resolver_cache", "seed_resolver_cache_user", "seeded-resolver-cache-token");
+    const configId = "org_resolver_cache:routing-config:default";
+    const workspaceId = defaultWorkspaceId("org_resolver_cache");
+    let nowMs = 1_000;
+    const resolver = new RoutingConfigResolver(fixture.db, {
+      cacheTtlMs: 1_000,
+      nowMs: () => nowMs
+    });
+
+    const first = await resolver.resolve({
+      organizationId: "org_resolver_cache",
+      workspaceId,
+      routingConfigId: null
+    });
+    const originalDisplayName = first.config.displayName;
+    first.config.displayName = "Mutated response should not leak into cache";
+    const cachedClone = await resolver.resolve({
+      organizationId: "org_resolver_cache",
+      workspaceId,
+      routingConfigId: null
+    });
+
+    const firstVersion = await activeVersion(fixture, first.versionId);
+    const secondVersionId = `${configId}:v2`;
+    await fixture.db.insert(routingConfigVersions).values({
+      id: secondVersionId,
+      organizationId: "org_resolver_cache",
+      workspaceId,
+      routingConfigId: configId,
+      version: 2,
+      configHash: "sha256:routing-cache-v2",
+      config: {
+        ...firstVersion.config,
+        displayName: "TTL refreshed routing config",
+        classifier: {
+          ...firstVersion.config.classifier,
+          model: "route-classifier-after-cache-ttl"
+        }
+      },
+      status: "active",
+      createdByUserId: "seed_resolver_cache_user",
+      activatedAt: new Date("2026-06-08T00:00:00.000Z")
+    });
+    await fixture.db
+      .update(routingConfigs)
+      .set({ activeVersionId: secondVersionId })
+      .where(eq(routingConfigs.id, configId));
+
+    const stale = await resolver.resolve({
+      organizationId: "org_resolver_cache",
+      workspaceId,
+      routingConfigId: null
+    });
+    nowMs = 2_001;
+    const refreshed = await resolver.resolve({
+      organizationId: "org_resolver_cache",
+      workspaceId,
+      routingConfigId: null
+    });
+
+    expect(cachedClone.config.displayName).toBe(originalDisplayName);
+    expect(stale).toEqual(expect.objectContaining({
+      versionId: first.versionId,
+      version: 1,
+      configHash: first.configHash
+    }));
+    expect(refreshed).toEqual(expect.objectContaining({
+      versionId: secondVersionId,
+      version: 2,
+      configHash: "sha256:routing-cache-v2"
+    }));
+    expect(refreshed.config.classifier.model).toBe("route-classifier-after-cache-ttl");
   });
 
   it("resolves API key assignment changes on the next lookup", async () => {
@@ -157,23 +233,33 @@ describe("routing config resolver guardrails", () => {
     const before = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_resolver_system_prompt",
       workspaceId: defaultWorkspaceId("org_resolver_system_prompt"),
-      routingConfigId: null
+      routingConfigId: configId
     });
 
-    await fixture.db
-      .update(organizationSettings)
-      .set({ systemPrompt: "Follow organization proxy policy." })
-      .where(eq(organizationSettings.organizationId, "org_resolver_system_prompt"));
+    await fixture.persistence.organizationSettings.setSystemPrompt(
+      "org_resolver_system_prompt",
+      "Follow organization proxy policy."
+    );
     const pinnedWithPrompt = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_resolver_system_prompt",
       workspaceId: defaultWorkspaceId("org_resolver_system_prompt"),
       routingConfigId: configId
     });
 
-    await fixture.db
-      .delete(organizationSettings)
-      .where(eq(organizationSettings.organizationId, "org_resolver_system_prompt"));
-    const pinnedWithoutRow = await fixture.persistence.routingConfigs.resolve({
+    await fixture.persistence.organizationSettings.setSystemPrompt("org_resolver_system_prompt", null);
+    const pinnedWithoutPrompt = await fixture.persistence.routingConfigs.resolve({
+      organizationId: "org_resolver_system_prompt",
+      workspaceId: defaultWorkspaceId("org_resolver_system_prompt"),
+      routingConfigId: configId
+    });
+    await fixture.persistence.organizationSettings.setAutomaticCaching("org_resolver_system_prompt", true);
+    const withAutomaticCaching = await fixture.persistence.routingConfigs.resolve({
+      organizationId: "org_resolver_system_prompt",
+      workspaceId: defaultWorkspaceId("org_resolver_system_prompt"),
+      routingConfigId: configId
+    });
+    await fixture.persistence.organizationSettings.setAutomaticCaching("org_resolver_system_prompt", false);
+    const withoutAutomaticCaching = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_resolver_system_prompt",
       workspaceId: defaultWorkspaceId("org_resolver_system_prompt"),
       routingConfigId: configId
@@ -182,8 +268,10 @@ describe("routing config resolver guardrails", () => {
     expect(before.organizationSystemPrompt).toBeUndefined();
     expect(pinnedWithPrompt.configId).toBe(configId);
     expect(pinnedWithPrompt.organizationSystemPrompt).toBe("Follow organization proxy policy.");
-    expect(pinnedWithoutRow.configId).toBe(configId);
-    expect(pinnedWithoutRow.organizationSystemPrompt).toBeUndefined();
+    expect(pinnedWithoutPrompt.configId).toBe(configId);
+    expect(pinnedWithoutPrompt.organizationSystemPrompt).toBeUndefined();
+    expect(withAutomaticCaching.automaticCaching).toBe(true);
+    expect(withoutAutomaticCaching.automaticCaching).toBe(false);
   });
 
   async function setup(organizationId: string) {

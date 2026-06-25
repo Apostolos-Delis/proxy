@@ -10,7 +10,6 @@ import {
   encryptSecret,
   events,
   hashApiKey,
-  organizationSettings,
   promptArtifacts,
   providers,
   providerAccounts,
@@ -20,8 +19,14 @@ import {
   routingConfigVersions
 } from "@proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
-import { composeClassifierInstructions, type RoutingConfig } from "@proxy/schema";
+import {
+  composeClassifierInstructions,
+  type RoutingConfig,
+  type RoutingConfigAnthropicDeployment,
+  type RoutingConfigOpenAIDeployment
+} from "@proxy/schema";
 
+import { startOpenAIMock } from "./helpers.js";
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
 const ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
@@ -209,8 +214,9 @@ describe("routing config runtime resolution", () => {
       slug: "fallback-gap",
       configHash: "sha256:fallback-gap-config",
       configure: (config) => {
-        config.routes.hard.targets = [{ providerId: "missing-hard-provider", model: "missing-hard-model", effort: "high" }];
-        return config;
+        return withHardTargets(config, [
+          { providerId: "missing-hard-provider", model: "missing-hard-model", effort: "high" }
+        ]);
       }
     });
 
@@ -257,15 +263,15 @@ describe("routing config runtime resolution", () => {
           ...config.routes,
           hard: {
             ...config.routes.hard,
-            targets: config.routes.hard.targets.map((target) => target.providerId === "openai"
-              ? {
-                  ...target,
-                  model: "gpt-config-hard",
-                  effort: "max",
-                  verbosity: "high",
-                  maxOutputTokens: 1234
-                }
-              : target)
+            openai: {
+              deployments: [{
+                ...config.routes.hard.openai!.deployments[0],
+                model: "gpt-config-hard",
+                reasoning: { effort: "xhigh" },
+                text: { verbosity: "high" },
+                maxOutputTokens: 1234
+              }]
+            }
           }
         }
       })
@@ -419,23 +425,20 @@ describe("routing config runtime resolution", () => {
         ...config,
         routes: {
           ...config.routes,
-          hard: {
-            ...config.routes.hard,
-            targets: [
-              {
-                providerId: "acme-needs-key",
-                model: "acme-hard",
-                effort: "high",
-                verbosity: "medium"
-              },
-              {
-                providerId: "openai",
-                model: "gpt-credential-plan",
-                effort: "high",
-                verbosity: "medium"
-              }
-            ]
-          }
+          hard: withHardTargets(config, [
+            {
+              providerId: "acme-needs-key",
+              model: "acme-hard",
+              effort: "high",
+              verbosity: "medium"
+            },
+            {
+              providerId: "openai",
+              model: "gpt-credential-plan",
+              effort: "high",
+              verbosity: "medium"
+            }
+          ]).routes.hard
         }
       })
     });
@@ -541,10 +544,9 @@ describe("routing config runtime resolution", () => {
         ...config,
         routes: {
           ...config.routes,
-          hard: {
-            ...config.routes.hard,
-            targets: [{ providerId: "acme-no-effort", model: "acme-hard", effort: "high" }]
-          }
+          hard: withHardTargets(config, [
+            { providerId: "acme-no-effort", model: "acme-hard" }
+          ]).routes.hard
         }
       })
     });
@@ -600,15 +602,12 @@ describe("routing config runtime resolution", () => {
         ...config,
         routes: {
           ...config.routes,
-          hard: {
-            ...config.routes.hard,
-            targets: [{
-              providerId: "custom-responses",
-              model: "gpt-custom-ws",
-              effort: "high",
-              verbosity: "medium"
-            }]
-          }
+          hard: withHardTargets(config, [{
+            providerId: "custom-responses",
+            model: "gpt-custom-ws",
+            effort: "high",
+            verbosity: "medium"
+          }]).routes.hard
         }
       })
     });
@@ -687,15 +686,12 @@ describe("routing config runtime resolution", () => {
         ...config,
         routes: {
           ...config.routes,
-          hard: {
-            ...config.routes.hard,
-            targets: [{
-              providerId: "custom-responses-byok",
-              model: "gpt-custom-ws-byok",
-              effort: "high",
-              verbosity: "medium"
-            }]
-          }
+          hard: withHardTargets(config, [{
+            providerId: "custom-responses-byok",
+            model: "gpt-custom-ws-byok",
+            effort: "high",
+            verbosity: "medium"
+          }]).routes.hard
         }
       })
     });
@@ -740,6 +736,807 @@ describe("routing config runtime resolution", () => {
     expect(eventRows.filter((event) => event.eventType === "provider.response_completed")).toHaveLength(1);
   });
 
+  it("prefers the lowest-order available deployment", async () => {
+    const organizationId = "org_config_deployment_order";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: {
+        classifierOutput: {
+          complexity: "hard",
+          risk: ["debugging"],
+          recommended_route: "hard",
+          can_use_fast_model: false,
+          needs_deep_reasoning: false,
+          reason_codes: ["deployment_order"],
+          confidence: 0.91
+        }
+      }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "deployment-order-token",
+      slug: "deployment-order",
+      configHash: "sha256:deployment-order-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            openai: {
+              deployments: [
+                {
+                  ...config.routes.hard.openai!.deployments[0],
+                  model: "gpt-primary-order",
+                  order: 0,
+                  weight: 1
+                },
+                {
+                  ...config.routes.hard.openai!.deployments[0],
+                  model: "gpt-secondary-order",
+                  order: 1,
+                  weight: 100
+                }
+              ]
+            }
+          }
+        }
+      })
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer deployment-order-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this failing test",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const providerCall = activeFixture.openai.records.find((record) =>
+      record.body.model === "gpt-primary-order" || record.body.model === "gpt-secondary-order"
+    );
+
+    expect(response.status).toBe(200);
+    expect(providerCall?.body.model).toBe("gpt-primary-order");
+  });
+
+  it("uses deployment weights within an order group", async () => {
+    const organizationId = "org_config_deployment_weight";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: {
+        classifierOutput: {
+          complexity: "hard",
+          risk: ["debugging"],
+          recommended_route: "hard",
+          can_use_fast_model: false,
+          needs_deep_reasoning: false,
+          reason_codes: ["deployment_weight"],
+          confidence: 0.91
+        }
+      }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "deployment-weight-token",
+      slug: "deployment-weight",
+      configHash: "sha256:deployment-weight-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            openai: {
+              deployments: [
+                {
+                  ...config.routes.hard.openai!.deployments[0],
+                  model: "gpt-zero-weight",
+                  order: 0,
+                  weight: 0
+                },
+                {
+                  ...config.routes.hard.openai!.deployments[0],
+                  model: "gpt-positive-weight",
+                  order: 0,
+                  weight: 1
+                }
+              ]
+            }
+          }
+        }
+      })
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer deployment-weight-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this weighted route",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const providerCall = activeFixture.openai.records.find((record) =>
+      record.body.model === "gpt-zero-weight" || record.body.model === "gpt-positive-weight"
+    );
+
+    expect(response.status).toBe(200);
+    expect(providerCall?.body.model).toBe("gpt-positive-weight");
+  });
+
+  it("fails closed when a deployment provider account cannot resolve", async () => {
+    const organizationId = "org_config_deployment_account_missing";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: {
+        classifierOutput: {
+          complexity: "hard",
+          risk: ["debugging"],
+          recommended_route: "hard",
+          can_use_fast_model: false,
+          needs_deep_reasoning: false,
+          reason_codes: ["deployment_account"],
+          confidence: 0.91
+        }
+      }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "deployment-account-token",
+      slug: "deployment-account",
+      configHash: "sha256:deployment-account-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            anthropic: undefined,
+            openai: {
+              deployments: [{
+                ...config.routes.hard.openai!.deployments[0],
+                model: "gpt-missing-account",
+                providerAccountId: "missing_provider_account"
+              }]
+            }
+          }
+        }
+      })
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer deployment-account-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this account route",
+        stream: true
+      })
+    });
+    const body = await response.text();
+
+    expect(response.status).toBe(500);
+    expect(body).toContain("deployment_provider_account_unavailable");
+    expect(activeFixture.openai.records.filter((record) =>
+      record.body.model === "gpt-missing-account"
+    )).toHaveLength(0);
+  });
+
+  it("retries a provider 429 on the next ordered deployment and keeps the failed deployment in cooldown", async () => {
+    const organizationId = "org_config_deployment_cooldown";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: {
+        failProviderOnce: true,
+        failProviderOnceStatus: 429,
+        classifierOutput: {
+          complexity: "hard",
+          risk: ["debugging"],
+          recommended_route: "hard",
+          can_use_fast_model: false,
+          needs_deep_reasoning: false,
+          reason_codes: ["deployment_cooldown"],
+          confidence: 0.91
+        }
+      }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "deployment-cooldown-token",
+      slug: "deployment-cooldown",
+      configHash: "sha256:deployment-cooldown-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            openai: {
+              deployments: [
+                {
+                  ...config.routes.hard.openai!.deployments[0],
+                  model: "gpt-cooldown-primary",
+                  order: 0,
+                  weight: 1
+                },
+                {
+                  ...config.routes.hard.openai!.deployments[0],
+                  model: "gpt-cooldown-secondary",
+                  order: 1,
+                  weight: 1
+                }
+              ]
+            }
+          }
+        }
+      })
+    });
+
+    const first = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer deployment-cooldown-token",
+        "content-type": "application/json",
+        "x-codex-session-id": "deployment-cooldown-session"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this cooldown route",
+        stream: true
+      })
+    });
+    await first.text();
+    const second = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer deployment-cooldown-token",
+        "content-type": "application/json",
+        "x-codex-session-id": "deployment-cooldown-session"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this cooldown route again",
+        stream: true
+      })
+    });
+    await second.text();
+
+    const providerCalls = activeFixture.openai.records.filter((record) =>
+      record.body.model === "gpt-cooldown-primary" || record.body.model === "gpt-cooldown-secondary"
+    );
+
+    const eventRows = await activeFixture.db.select().from(events);
+    const started = eventRows.filter((event) => event.eventType === "provider.request_started");
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(providerCalls.map((record) => record.body.model)).toEqual([
+      "gpt-cooldown-primary",
+      "gpt-cooldown-secondary",
+      "gpt-cooldown-secondary"
+    ]);
+    expect(first.headers.get("x-proxy-model")).toBe("gpt-cooldown-secondary");
+    expect(first.headers.get("x-proxy-route")).toBe("hard");
+    expect(first.headers.get("x-proxy-deployment")).toBe(
+      (started[1]?.payload as { deployment?: { key?: string } } | undefined)?.deployment?.key
+    );
+    const decision = await lastDecisionPayload(activeFixture);
+    expect(decision?.guardrailActions).toContain("session_pin_cooldown_invalidated");
+  });
+
+  it("applies provider-model limits to fallback deployment attempts", async () => {
+    const organizationId = "org_config_fallback_provider_limit";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: {
+        GATEWAY_PROVIDER_MODEL_CONCURRENCY_LIMIT: "1"
+      },
+      openAIOptions: {
+        failProviderOnce: true,
+        failProviderOnceStatus: 429,
+        slowProvider: true,
+        classifierOutput: {
+          complexity: "hard",
+          risk: ["debugging"],
+          recommended_route: "hard",
+          can_use_fast_model: false,
+          needs_deep_reasoning: false,
+          reason_codes: ["fallback_provider_limit"],
+          confidence: 0.91
+        }
+      }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "fallback-provider-limit-token",
+      slug: "fallback-provider-limit",
+      configHash: "sha256:fallback-provider-limit-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            openai: {
+              deployments: [
+                {
+                  ...config.routes.hard.openai!.deployments[0],
+                  model: "gpt-provider-limit-primary",
+                  order: 0,
+                  weight: 1
+                },
+                {
+                  ...config.routes.hard.openai!.deployments[0],
+                  model: "gpt-provider-limit-fallback",
+                  order: 1,
+                  weight: 1
+                }
+              ]
+            }
+          }
+        }
+      })
+    });
+    const firstController = new AbortController();
+
+    const first = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer fallback-provider-limit-token",
+        "content-type": "application/json",
+        "x-codex-session-id": "fallback-provider-limit-session"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this provider limit fallback route",
+        stream: true
+      }),
+      signal: firstController.signal
+    });
+    const second = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer fallback-provider-limit-token",
+        "content-type": "application/json",
+        "x-codex-session-id": "fallback-provider-limit-session"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this provider limit fallback route again",
+        stream: true
+      })
+    });
+    const secondBody = await second.json() as { error: string; scope: string };
+    firstController.abort();
+    await first.text().catch(() => "");
+
+    const providerCalls = activeFixture.openai.records.filter((record) =>
+      record.body.model === "gpt-provider-limit-primary" ||
+      record.body.model === "gpt-provider-limit-fallback"
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(429);
+    expect(secondBody).toMatchObject({
+      error: "traffic_limit_exceeded:provider_model:concurrency",
+      scope: "provider_model"
+    });
+    expect(providerCalls.map((record) => record.body.model)).toEqual([
+      "gpt-provider-limit-primary",
+      "gpt-provider-limit-fallback"
+    ]);
+  });
+
+  it("retries configured provider 5xx responses before first byte", async () => {
+    const organizationId = "org_config_deployment_5xx_retry";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: {
+        failProviderOnce: true,
+        failProviderOnceStatus: 503,
+        classifierOutput: {
+          complexity: "hard",
+          risk: ["debugging"],
+          recommended_route: "hard",
+          can_use_fast_model: false,
+          needs_deep_reasoning: false,
+          reason_codes: ["deployment_5xx_retry"],
+          confidence: 0.91
+        }
+      }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "deployment-5xx-retry-token",
+      slug: "deployment-5xx-retry",
+      configHash: "sha256:deployment-5xx-retry-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            openai: {
+              deployments: [
+                {
+                  ...config.routes.hard.openai!.deployments[0],
+                  model: "gpt-5xx-primary",
+                  order: 0,
+                  weight: 1
+                },
+                {
+                  ...config.routes.hard.openai!.deployments[0],
+                  model: "gpt-5xx-secondary",
+                  order: 1,
+                  weight: 1
+                }
+              ]
+            }
+          }
+        }
+      })
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer deployment-5xx-retry-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "debug this 5xx retry route",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const providerCalls = activeFixture.openai.records.filter((record) =>
+      record.body.model === "gpt-5xx-primary" || record.body.model === "gpt-5xx-secondary"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-proxy-model")).toBe("gpt-5xx-secondary");
+    expect(providerCalls.map((record) => record.body.model)).toEqual([
+      "gpt-5xx-primary",
+      "gpt-5xx-secondary"
+    ]);
+  });
+
+  it("does not cool down deployments for non-retryable provider 5xx responses", async () => {
+    const organizationId = "org_config_deployment_nonretryable_5xx";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: {
+        failProviderModels: {
+          "gpt-nonretryable-primary": 501
+        },
+        classifierOutput: {
+          complexity: "hard",
+          risk: ["debugging"],
+          recommended_route: "hard",
+          can_use_fast_model: false,
+          needs_deep_reasoning: false,
+          reason_codes: ["deployment_nonretryable_5xx"],
+          confidence: 0.91
+        }
+      }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "deployment-nonretryable-5xx-token",
+      slug: "deployment-nonretryable-5xx",
+      configHash: "sha256:deployment-nonretryable-5xx-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          hard: {
+            ...config.routes.hard,
+            retry: {
+              ...config.routes.hard.retry,
+              maxAttempts: 2,
+              retryableStatusCodes: [429, 503]
+            },
+            openai: {
+              deployments: [
+                {
+                  ...config.routes.hard.openai!.deployments[0],
+                  model: "gpt-nonretryable-primary",
+                  order: 0,
+                  weight: 1
+                },
+                {
+                  ...config.routes.hard.openai!.deployments[0],
+                  model: "gpt-nonretryable-secondary",
+                  order: 1,
+                  weight: 1
+                }
+              ]
+            }
+          }
+        }
+      })
+    });
+
+    for (const input of ["first", "second"]) {
+      const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer deployment-nonretryable-5xx-token",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "router-auto",
+          input: `debug this non-retryable 5xx route ${input}`,
+          stream: true
+        })
+      });
+      await response.text();
+      expect(response.status).toBe(501);
+    }
+
+    const providerCalls = activeFixture.openai.records.filter((record) =>
+      record.body.model === "gpt-nonretryable-primary" ||
+      record.body.model === "gpt-nonretryable-secondary"
+    );
+
+    expect(providerCalls.map((record) => record.body.model)).toEqual([
+      "gpt-nonretryable-primary",
+      "gpt-nonretryable-primary"
+    ]);
+  });
+
+  it("falls back to the configured model route when the selected route is exhausted", async () => {
+    const organizationId = "org_config_model_route_fallback";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      openAIOptions: {
+        failProviderOnce: true,
+        failProviderOnceStatus: 503,
+        classifierOutput: {
+          complexity: "simple",
+          risk: [],
+          recommended_route: "fast",
+          can_use_fast_model: true,
+          needs_deep_reasoning: false,
+          reason_codes: ["model_route_fallback"],
+          confidence: 0.91
+        }
+      }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "model-route-fallback-token",
+      slug: "model-route-fallback",
+      configHash: "sha256:model-route-fallback-config",
+      configure: (config) => ({
+        ...config,
+        routes: {
+          ...config.routes,
+          fast: {
+            ...config.routes.fast,
+            anthropic: undefined,
+            retry: {
+              ...config.routes.fast.retry,
+              maxAttempts: 2
+            },
+            openai: {
+              deployments: [{
+                ...config.routes.fast.openai!.deployments[0],
+                model: "gpt-fast-fallback-primary",
+                order: 0,
+                weight: 1
+              }]
+            }
+          },
+          hard: {
+            ...config.routes.hard,
+            anthropic: undefined,
+            openai: {
+              deployments: [{
+                ...config.routes.hard.openai!.deployments[0],
+                model: "gpt-hard-model-fallback",
+                order: 0,
+                weight: 1
+              }]
+            }
+          }
+        },
+        limits: {
+          ...config.limits,
+          fallbackRoute: "hard"
+        }
+      })
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer model-route-fallback-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-auto",
+        input: "read this small file",
+        stream: true
+      })
+    });
+    await response.text();
+
+    const providerCalls = activeFixture.openai.records.filter((record) =>
+      record.body.model === "gpt-fast-fallback-primary" || record.body.model === "gpt-hard-model-fallback"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(response.headers.get("x-proxy-model")).toBe("gpt-hard-model-fallback");
+    expect(providerCalls.map((record) => record.body.model)).toEqual([
+      "gpt-fast-fallback-primary",
+      "gpt-hard-model-fallback"
+    ]);
+  });
+
+  it("retries provider timeout before first byte", async () => {
+    const organizationId = "org_config_deployment_timeout_retry";
+    const stalledOpenAI = await startOpenAIMock({ stallProviderBeforeFirstByte: true });
+    try {
+      activeFixture = await captureFixture(organizationId, "raw_text", false, {
+        openAIOptions: {
+          classifierOutput: {
+            complexity: "hard",
+            risk: ["debugging"],
+            recommended_route: "hard",
+            can_use_fast_model: false,
+            needs_deep_reasoning: false,
+            reason_codes: ["deployment_timeout_retry"],
+            confidence: 0.91
+          }
+        }
+      });
+      await assignRouteConfig(activeFixture, organizationId, {
+        secret: "deployment-timeout-retry-token",
+        slug: "deployment-timeout-retry",
+        configHash: "sha256:deployment-timeout-retry-config",
+        configure: (config) => ({
+          ...config,
+          routes: {
+            ...config.routes,
+            hard: {
+              ...config.routes.hard,
+              anthropic: undefined,
+              openai: {
+                deployments: [
+                  {
+                    ...config.routes.hard.openai!.deployments[0],
+                    model: "gpt-timeout-primary",
+                    baseUrl: stalledOpenAI.url,
+                    order: 0,
+                    weight: 1,
+                    timeoutMs: 25
+                  },
+                  {
+                    ...config.routes.hard.openai!.deployments[0],
+                    model: "gpt-timeout-secondary",
+                    order: 1,
+                    weight: 1
+                  }
+                ]
+              }
+            }
+          }
+        })
+      });
+
+      const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer deployment-timeout-retry-token",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "router-auto",
+          input: "debug this timeout retry route",
+          stream: true
+        })
+      });
+      await response.text();
+
+      const fallbackCalls = activeFixture.openai.records.filter((record) =>
+        record.body.model === "gpt-timeout-secondary"
+      );
+      const stalledCalls = stalledOpenAI.records.filter((record) =>
+        record.body.model === "gpt-timeout-primary"
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-proxy-model")).toBe("gpt-timeout-secondary");
+      expect(stalledCalls).toHaveLength(1);
+      expect(fallbackCalls).toHaveLength(1);
+    } finally {
+      await stalledOpenAI.close();
+    }
+  });
+
+  it("does not retry invisibly after stream bytes are sent", async () => {
+    const organizationId = "org_config_deployment_stream_failure";
+    const failingOpenAI = await startOpenAIMock({ failStreamAfterFirstByte: true });
+    try {
+      activeFixture = await captureFixture(organizationId, "raw_text", false, {
+        openAIOptions: {
+          classifierOutput: {
+            complexity: "hard",
+            risk: ["debugging"],
+            recommended_route: "hard",
+            can_use_fast_model: false,
+            needs_deep_reasoning: false,
+            reason_codes: ["deployment_stream_failure"],
+            confidence: 0.91
+          }
+        }
+      });
+      await assignRouteConfig(activeFixture, organizationId, {
+        secret: "deployment-stream-failure-token",
+        slug: "deployment-stream-failure",
+        configHash: "sha256:deployment-stream-failure-config",
+        configure: (config) => ({
+          ...config,
+          routes: {
+            ...config.routes,
+            hard: {
+              ...config.routes.hard,
+              anthropic: undefined,
+              openai: {
+                deployments: [
+                  {
+                    ...config.routes.hard.openai!.deployments[0],
+                    model: "gpt-stream-primary",
+                    baseUrl: failingOpenAI.url,
+                    order: 0,
+                    weight: 1
+                  },
+                  {
+                    ...config.routes.hard.openai!.deployments[0],
+                    model: "gpt-stream-secondary",
+                    order: 1,
+                    weight: 1
+                  }
+                ]
+              }
+            }
+          }
+        })
+      });
+
+      const response = await fetch(`${activeFixture.proxyUrl}/v1/responses`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer deployment-stream-failure-token",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "router-auto",
+          input: "debug this stream failure route",
+          stream: true
+        })
+      });
+      await response.text().catch(() => "");
+
+      const failedCalls = failingOpenAI.records.filter((record) =>
+        record.body.model === "gpt-stream-primary"
+      );
+      const fallbackCalls = activeFixture.openai.records.filter((record) =>
+        record.body.model === "gpt-stream-secondary"
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-proxy-model")).toBe("gpt-stream-primary");
+      expect(failedCalls).toHaveLength(1);
+      expect(fallbackCalls).toHaveLength(0);
+    } finally {
+      await failingOpenAI.close();
+    }
+  });
+
   it("uses Anthropic route tier settings from the assigned routing config", async () => {
     const organizationId = "org_config_anthropic_routes";
     activeFixture = await captureFixture(organizationId, "raw_text", false, {
@@ -765,15 +1562,15 @@ describe("routing config runtime resolution", () => {
           ...config.routes,
           deep: {
             ...config.routes.deep,
-            targets: config.routes.deep.targets.map((target) => target.providerId === "anthropic"
-              ? {
-                  ...target,
-                  model: "claude-opus-4-8",
-                  thinking: { type: "adaptive", display: "summarized" },
-                  effort: "ultracode",
-                  maxOutputTokens: 4096
-                }
-              : target)
+            anthropic: {
+              deployments: [{
+                ...config.routes.deep.anthropic!.deployments[0],
+                model: "claude-opus-4-8",
+                thinking: { type: "adaptive", display: "summarized" },
+                output_config: { effort: "xhigh" },
+                maxTokens: 4096
+              }]
+            }
           }
         }
       })
@@ -862,10 +1659,10 @@ describe("routing config runtime resolution", () => {
 
     const beforeResponse = await sendRequest("debug this failing test");
     await beforeResponse.text();
-    await activeFixture.db
-      .update(organizationSettings)
-      .set({ systemPrompt: "Follow organization proxy policy." })
-      .where(eq(organizationSettings.organizationId, organizationId));
+    await activeFixture.persistence.organizationSettings.setSystemPrompt(
+      organizationId,
+      "Follow organization proxy policy."
+    );
     const response = await sendRequest("debug this other failing test");
     await response.text();
 
@@ -882,10 +1679,10 @@ describe("routing config runtime resolution", () => {
   it("pins the organization system prompt for active OpenAI sessions", async () => {
     const organizationId = "org_system_prompt_pin";
     activeFixture = await captureFixture(organizationId);
-    await activeFixture.db
-      .update(organizationSettings)
-      .set({ systemPrompt: "Initial proxy policy." })
-      .where(eq(organizationSettings.organizationId, organizationId));
+    await activeFixture.persistence.organizationSettings.setSystemPrompt(
+      organizationId,
+      "Initial proxy policy."
+    );
 
     const sendRequest = (sessionId: string, input: string) => fetch(`${activeFixture!.proxyUrl}/v1/responses`, {
       method: "POST",
@@ -904,10 +1701,10 @@ describe("routing config runtime resolution", () => {
 
     const first = await sendRequest("proxy-pin-session", "debug the first failing test");
     await first.text();
-    await activeFixture.db
-      .update(organizationSettings)
-      .set({ systemPrompt: "Updated proxy policy." })
-      .where(eq(organizationSettings.organizationId, organizationId));
+    await activeFixture.persistence.organizationSettings.setSystemPrompt(
+      organizationId,
+      "Updated proxy policy."
+    );
     const second = await sendRequest("proxy-pin-session", "debug the second failing test");
     await second.text();
     const third = await sendRequest("proxy-pin-session-new", "debug the third failing test");
@@ -958,10 +1755,10 @@ describe("routing config runtime resolution", () => {
   it("prepends the organization system prompt to Anthropic Messages system blocks", async () => {
     const organizationId = "org_system_prompt_anthropic";
     activeFixture = await captureFixture(organizationId);
-    await activeFixture.db
-      .update(organizationSettings)
-      .set({ systemPrompt: "Follow organization proxy policy." })
-      .where(eq(organizationSettings.organizationId, organizationId));
+    await activeFixture.persistence.organizationSettings.setSystemPrompt(
+      organizationId,
+      "Follow organization proxy policy."
+    );
 
     const response = await fetch(`${activeFixture.proxyUrl}/v1/messages`, {
       method: "POST",
@@ -1018,10 +1815,9 @@ describe("routing config runtime resolution", () => {
         ...config,
         routes: {
           ...config.routes,
-          hard: {
-            ...config.routes.hard,
-            targets: [{ providerId: "missing-hard-provider", model: "missing-hard-model", effort: "high" }]
-          }
+          hard: withHardTargets(config, [
+            { providerId: "missing-hard-provider", model: "missing-hard-model", effort: "high" }
+          ]).routes.hard
         }
       })
     });
@@ -1124,13 +1920,10 @@ describe("routing config runtime resolution", () => {
         ...config,
         routes: {
           ...config.routes,
-          hard: {
-            ...config.routes.hard,
-            targets: [
-              { providerId: "openai", model: "gpt-builtin-cooldown", effort: "high", verbosity: "medium" },
-              { providerId: "anthropic", model: "claude-builtin-fallback", effort: "high" }
-            ]
-          }
+          hard: withHardTargets(config, [
+            { providerId: "openai", model: "gpt-builtin-cooldown", effort: "high", verbosity: "medium" },
+            { providerId: "anthropic", model: "claude-builtin-fallback", effort: "high" }
+          ]).routes.hard
         }
       })
     });
@@ -1613,6 +2406,7 @@ describe("routing config runtime resolution", () => {
       .update(routingConfigVersions)
       .set({ config })
       .where(eq(routingConfigVersions.id, assigned.versionId));
+    activeFixture.persistence.routingConfigs.clearCache();
 
     const response = await send();
     await response.text();
@@ -1854,6 +2648,53 @@ async function assignRouteConfig(
   };
 }
 
+type AnthropicEffort = NonNullable<RoutingConfigAnthropicDeployment["output_config"]>["effort"];
+type OpenAIEffort = NonNullable<RoutingConfigOpenAIDeployment["reasoning"]>["effort"];
+type OpenAIVerbosity = NonNullable<RoutingConfigOpenAIDeployment["text"]>["verbosity"];
+
+type TargetFixture = {
+  providerId: string;
+  model: string;
+  effort?: AnthropicEffort | OpenAIEffort;
+  verbosity?: OpenAIVerbosity;
+};
+
+function withHardTargets(config: RoutingConfig, targets: TargetFixture[]): RoutingConfig {
+  const openai = targets
+    .filter((target) => !target.providerId.includes("anthropic"))
+    .map((target, index): RoutingConfigOpenAIDeployment => ({
+      provider: target.providerId,
+      model: target.model,
+      order: index,
+      weight: 1,
+      timeoutMs: 60000,
+      ...(target.effort ? { reasoning: { effort: target.effort as OpenAIEffort } } : {}),
+      ...(target.verbosity ? { text: { verbosity: target.verbosity } } : {})
+    }));
+  const anthropic = targets
+    .filter((target) => target.providerId.includes("anthropic"))
+    .map((target, index): RoutingConfigAnthropicDeployment => ({
+      provider: target.providerId,
+      model: target.model,
+      order: index,
+      weight: 1,
+      timeoutMs: 60000,
+      ...(target.effort ? { output_config: { effort: target.effort as AnthropicEffort } } : {})
+    }));
+
+  return {
+    ...config,
+    routes: {
+      ...config.routes,
+      hard: {
+        ...config.routes.hard,
+        ...(openai.length > 0 ? { openai: { deployments: openai } } : { openai: undefined }),
+        ...(anthropic.length > 0 ? { anthropic: { deployments: anthropic } } : { anthropic: undefined })
+      }
+    }
+  };
+}
+
 async function setupHealthRoute(
   fixture: PromptTestFixture,
   organizationId: string,
@@ -1863,7 +2704,7 @@ async function setupHealthRoute(
     providerId: string;
     providerSlug: string;
     providerAccountId: string;
-    targets: RoutingConfig["routes"]["hard"]["targets"];
+    targets: TargetFixture[];
   }
 ) {
   await fixture.db.insert(providers).values({
@@ -1896,10 +2737,7 @@ async function setupHealthRoute(
       ...config,
       routes: {
         ...config.routes,
-        hard: {
-          ...config.routes.hard,
-          targets: input.targets
-        }
+        hard: withHardTargets(config, input.targets).routes.hard
       }
     })
   });
@@ -1961,4 +2799,12 @@ function nextWebSocketCompletion(ws: WebSocket) {
     });
     ws.once("error", reject);
   });
+}
+
+async function lastDecisionPayload(fixture: PromptTestFixture) {
+  const eventRows = await fixture.db.select().from(events);
+  const decision = eventRows
+    .filter((event) => event.eventType === "routing.decision_recorded")
+    .at(-1);
+  return decision?.payload as { guardrailActions?: string[] } | undefined;
 }

@@ -10,7 +10,7 @@ import {
   routingConfigVersions,
   workspaces
 } from "@proxy/db";
-import type { RoutingConfig } from "@proxy/schema";
+import type { RoutingConfig, RoutingConfigAnthropicDeployment, RoutingConfigOpenAIDeployment, RouteName } from "@proxy/schema";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
@@ -213,23 +213,17 @@ describe("routing config admin APIs", () => {
           displayName: "Custom Anthropic summary",
           routes: {
             ...baseConfig.routes,
-            hard: {
-              ...baseConfig.routes.hard,
-              targets: [{
+            hard: routeWithTargets(baseConfig.routes.hard, [{
                 providerId: "custom-anthropic",
                 model: "claude-opus-4-8",
                 effort: "high"
-              }]
-            },
-            deep: {
-              ...baseConfig.routes.deep,
-              targets: [{
+              }]),
+            deep: routeWithTargets(baseConfig.routes.deep, [{
                 providerId: "custom-anthropic",
                 model: "claude-opus-4-8",
                 effort: "ultracode",
                 thinking: { type: "adaptive" }
-              }]
-            }
+              }])
           }
         }
       }
@@ -298,8 +292,8 @@ describe("routing config admin APIs", () => {
         config: expect.any(Object)
       })
     ]);
-    expect(versionConfig.routes.hard.targets.find((target) => target.providerId === "openai")?.model).toBe("gpt-5.5");
-    expect(versionConfig.routes.hard.targets.find((target) => target.providerId === "anthropic")?.model).toBe("claude-sonnet-4-5");
+    expect(versionConfig.routes.hard.openai?.deployments[0]?.model).toBe("gpt-5.5");
+    expect(versionConfig.routes.hard.anthropic?.deployments[0]?.model).toBe("claude-sonnet-4-5");
     expect(JSON.stringify(body)).not.toContain("openai-upstream-key");
     expect(JSON.stringify(body)).not.toContain("anthropic-upstream-key");
     expect(crossOrg.data?.routingConfig).toBeNull();
@@ -617,14 +611,11 @@ describe("routing config admin APIs", () => {
         ...baseConfig,
         routes: {
           ...baseConfig.routes,
-          fast: {
-            ...baseConfig.routes.fast,
-            targets: [{
+          fast: routeWithTargets(baseConfig.routes.fast, [{
               providerId: "future-only-target",
               model: "future-only-model",
               effort: "low"
-            }]
-          }
+            }])
         }
       }
     });
@@ -636,7 +627,7 @@ describe("routing config admin APIs", () => {
     expect(result.errors?.[0]?.message).toBe("routing_config_target_validation_failed");
     expect(result.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
     expect(result.errors?.[0]?.extensions?.issues).toEqual([{
-      path: "routes.fast.targets.0.providerId",
+      path: "routes.fast.openai.deployments.0.provider",
       message: "Target provider must expose an OpenAI Responses, OpenAI Chat, or Anthropic Messages endpoint."
     }]);
     expect(after).toHaveLength(before.length);
@@ -746,6 +737,49 @@ describe("routing config admin APIs", () => {
   async function setup(organizationId: string) {
     activeFixture = await captureFixture(organizationId);
     return activeFixture;
+  }
+
+  type AnthropicEffort = NonNullable<RoutingConfigAnthropicDeployment["output_config"]>["effort"];
+  type OpenAIEffort = NonNullable<RoutingConfigOpenAIDeployment["reasoning"]>["effort"];
+
+  type TargetFixture = {
+    providerId: string;
+    model: string;
+    effort?: AnthropicEffort | OpenAIEffort;
+    thinking?: RoutingConfigAnthropicDeployment["thinking"];
+  };
+
+  function routeWithTargets(
+    baseRoute: RoutingConfig["routes"][RouteName],
+    targets: TargetFixture[]
+  ): RoutingConfig["routes"][RouteName] {
+    const openai = targets
+      .filter((target) => !target.providerId.includes("anthropic"))
+      .map((target, index): RoutingConfigOpenAIDeployment => ({
+        provider: target.providerId,
+        model: target.model,
+        order: index,
+        weight: 1,
+        timeoutMs: 60000,
+        ...(target.effort ? { reasoning: { effort: target.effort as OpenAIEffort } } : {})
+      }));
+    const anthropic = targets
+      .filter((target) => target.providerId.includes("anthropic"))
+      .map((target, index): RoutingConfigAnthropicDeployment => ({
+        provider: target.providerId,
+        model: target.model,
+        order: index,
+        weight: 1,
+        timeoutMs: 60000,
+        ...(target.effort ? { output_config: { effort: target.effort as AnthropicEffort } } : {}),
+        ...(target.thinking ? { thinking: target.thinking } : {})
+      }));
+
+    return {
+      ...baseRoute,
+      ...(openai.length > 0 ? { openai: { deployments: openai } } : { openai: undefined }),
+      ...(anthropic.length > 0 ? { anthropic: { deployments: anthropic } } : { anthropic: undefined })
+    };
   }
 
   async function activeConfig(fixture: PromptTestFixture, configId: string) {

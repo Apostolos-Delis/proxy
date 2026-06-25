@@ -162,12 +162,16 @@ To pin a tier, use `router-fast`, `router-balanced`, `router-hard`, `router-deep
 1. A request arrives at `/v1/responses`, `/v1/chat/completions`, or `/v1/messages` and is authenticated by Proxy API key.
 2. The API key resolves organization, workspace, user attribution, and routing config. Precedence is API-key assignment, then workspace default, then seeded default.
 3. An LLM classifier returns a structured tier decision unless the caller pinned a tier through the model alias.
-4. The active routing config maps the tier to ordered provider targets. Native dialect endpoints are preferred; registered same-family translators can bridge OpenAI Responses and Chat when compatible.
+4. The active routing config maps the tier to ordered provider deployment pools. Native dialect endpoints are preferred; registered same-family translators can bridge OpenAI Responses and Chat when compatible. Provider 429/5xx/timeout failures can retry to ordered fallback deployments before response bytes are sent.
 5. The route decision, provider attempts, usage, routing config identity, and prompt artifacts are persisted for audit and console projections.
 
-Provider HTTP forwarding retries upstream `429` responses before sending headers to the client. It honors `Retry-After`, provider reset headers, and then jittered exponential backoff. Tune with `PROVIDER_RATE_LIMIT_MAX_ATTEMPTS`, `PROVIDER_RATE_LIMIT_BASE_DELAY_MS`, and `PROVIDER_RATE_LIMIT_MAX_DELAY_MS`.
+Routing configs are edited in the console. Saving creates a new immutable version, which can be activated in the same step. Environment variables such as `OPENAI_FAST_MODEL` and `ANTHROPIC_HARD_MODEL` seed local defaults only; persisted runtime requests resolve from the database. Responses include `x-prompt-proxy-route`, `x-prompt-proxy-model`, and `x-prompt-proxy-deployment` for the final served deployment. See the [routing configs runbook](docs/runbooks/routing-configs.md) for assignment commands and troubleshooting.
 
-Routing configs are edited in the console. Saving creates a new immutable version, which can be activated in the same step. Environment variables such as `OPENAI_FAST_MODEL` and `ANTHROPIC_HARD_MODEL` seed local defaults only; persisted runtime requests resolve from the database.
+Optional traffic admission limits: `GATEWAY_*_CONCURRENCY_LIMIT`, `GATEWAY_*_RPM_LIMIT`, and `GATEWAY_*_TPM_LIMIT` cover global, organization, workspace, API-key, user, and provider/model scopes. The local limiter returns 429 before classifier/provider work when a request exceeds a configured limit; rate and token windows include `retry-after`.
+
+## Workspaces
+
+Provider HTTP forwarding retries upstream `429` responses before sending headers to the client. It honors `Retry-After`, provider reset headers, and then jittered exponential backoff. Tune with `PROVIDER_RATE_LIMIT_MAX_ATTEMPTS`, `PROVIDER_RATE_LIMIT_BASE_DELAY_MS`, and `PROVIDER_RATE_LIMIT_MAX_DELAY_MS`.
 
 ## Operations Console
 
@@ -224,13 +228,21 @@ The GraphQL SDL lives at [apps/proxy/schema.graphql](apps/proxy/schema.graphql).
 pnpm --filter @proxy/proxy schema:print
 ```
 
-Development debug routes include `/_debug/events`, `/_debug/provider-attempts`, `/_debug/outbox`, `/_debug/sessions`, `/_debug/projections`, and `/_debug/route-quality`. They are enabled automatically only when `DATABASE_URL` is unset; set `DEBUG_ENDPOINTS_ENABLED=true` to enable them with persistence.
+Development debug routes include `/_debug/events`, `/_debug/provider-attempts`, `/_debug/outbox`, `/_debug/event-writer`, `/_debug/sessions`, `/_debug/projections`, and `/_debug/route-quality`. They are enabled automatically only when `DATABASE_URL` is unset; set `DEBUG_ENDPOINTS_ENABLED=true` to enable them with persistence.
 
 Operational metrics are disabled by default. `GET /metrics` emits OpenMetrics/Prometheus text when `METRICS_ENABLED=true`, `METRICS_EXPORTER=prometheus`, and `METRICS_TOKEN` are configured. See the [proxy metrics runbook](docs/runbooks/proxy-metrics.md).
+
+Proxy JSON request bodies are capped by `REQUEST_BODY_LIMIT_BYTES`. Local development defaults to 50 MiB; production defaults to 15 MiB unless the deployment config sets an explicit value.
+
+Async observability events are flushed through a bounded writer. Tune `EVENT_WRITER_MAX_ENTRIES`, `EVENT_WRITER_MAX_BYTES`, `EVENT_WRITER_BATCH_SIZE`, and `EVENT_WRITER_SHUTDOWN_TIMEOUT_MS`; `/_debug/event-writer` reports depth, dropped events, flush failures, flush latency, and oldest queued event age.
+
+Traffic limit counters are in-process. In a multi-task deployment, set each task's `GATEWAY_*` limit to the desired fleet limit divided by the number of proxy tasks, or add an external shared limiter before treating the value as fleet-global.
 
 ## Persistence
 
 `packages/db` is the Drizzle/Postgres layer. When `DATABASE_URL` is set, proxy events and current-state rows for requests, route decisions, provider attempts, usage, sessions, prompt artifacts, events, and outbox items are written in the same transaction.
+
+Runtime Postgres pools are capped by `DB_POOL_MAX` (default `5`). For production sizing, start with `floor(db_max_connections * 0.7 / max_proxy_tasks)` so normal proxy traffic leaves connection headroom for migrations, operations tasks, and manual break-glass sessions.
 
 ```shell
 pnpm db:up        # start Postgres via Docker Compose
@@ -264,12 +276,15 @@ pnpm typecheck
 pnpm test
 pnpm smoke
 pnpm smoke:harnesses
+pnpm build:runtime && pnpm load:proxy -- --profile=smoke --json-out=.context/load-smoke.json
 pnpm build
 ```
 
 `pnpm smoke` spins up mock OpenAI and Anthropic upstreams, drives Codex-shaped and Claude Code-shaped requests through the proxy, and verifies routing-config resolution end to end. `pnpm smoke:harnesses` runs the real installed `codex` and `claude` CLIs against the same mock-backed proxy.
 
 Architecture rules and conventions live in [AGENTS.md](AGENTS.md). The docs index is [docs/index.md](docs/index.md), starting with the [model routing proxy design](docs/model-routing-proxy.md).
+
+`pnpm load:proxy` runs the proxy load harness from `apps/proxy/scripts/load-proxy.ts`. With no `PROMPT_PROXY_LOAD_BASE_URL`, it starts a local proxy with mock OpenAI and Anthropic upstreams, so the smoke profile has no provider spend. Profiles cover `concurrency` (200/500/1000 SSE streams), `body-sizes` (100 KB/1 MB/5 MB bodies), `rps` (20/50/100 new requests/sec), `classifier-cache`, `provider-failures`, and `scale-readiness` (the passing scale profiles combined; provider failures run separately). Results include p50/p95/p99 TTFT, pre-forward latency when mock upstream timing is available, stream duration, error rate, memory, and machine-readable JSON. Thresholds are configurable with flags such as `--max-error-rate`, `--max-p95-ttft-ms`, `--max-p95-pre-forward-ms`, and `--max-p99-total-ms`.
 
 ## Deployment
 

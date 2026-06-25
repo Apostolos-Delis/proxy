@@ -26,7 +26,14 @@ type CacheEntry = {
   expiresAt: number;
 };
 
-const CACHE_TTL_MS = 30_000;
+type BindingCacheEntry = {
+  providerAccountId: string | null;
+  expiresAt: number;
+};
+
+const CREDENTIAL_CACHE_TTL_MS = 30_000;
+const BINDING_CACHE_TTL_MS = 5_000;
+const MAX_CACHE_ENTRIES = 1000;
 const OAUTH_REFRESH_SKEW_MS = 60_000;
 
 export type ResolveCredentialInput = {
@@ -38,8 +45,8 @@ export type ResolveCredentialInput = {
 
 export type ResolveProviderAccountCredentialInput = {
   organizationId: string;
+  provider?: Provider;
   providerAccountId: string;
-  providerId?: string;
 };
 
 export type ProviderCredentialOptions = {
@@ -50,48 +57,45 @@ export type ProviderCredentialOptions = {
 };
 
 export class ProviderCredentialStore {
-  private readonly cache = new Map<string, CacheEntry>();
+  private readonly credentialCache = new Map<string, CacheEntry>();
+  private readonly bindingCache = new Map<string, BindingCacheEntry>();
 
   constructor(
     private readonly db: ProxyDbSession,
     private readonly options: ProviderCredentialOptions
   ) {}
 
+  clearCache() {
+    this.credentialCache.clear();
+    this.bindingCache.clear();
+  }
+
   async resolveForRequest(input: ResolveCredentialInput, now = Date.now()): Promise<UpstreamCredential | undefined> {
-    if (!input.apiKeyId) return undefined;
+    const apiKeyId = input.apiKeyId;
+    if (!apiKeyId) return undefined;
+
     const provider = await providerBySlug(this.db, input.organizationId, input.provider);
     if (!provider) return undefined;
 
-    const [binding] = await this.db
-      .select({ providerAccountId: apiKeyProviderAccounts.providerAccountId })
-      .from(apiKeyProviderAccounts)
-      .where(and(
-        eq(apiKeyProviderAccounts.organizationId, input.organizationId),
-        eq(apiKeyProviderAccounts.workspaceId, input.workspaceId ?? defaultWorkspaceId(input.organizationId)),
-        eq(apiKeyProviderAccounts.apiKeyId, input.apiKeyId),
-        eq(apiKeyProviderAccounts.providerId, provider.id)
-      ))
-      .limit(1);
-    if (!binding) return undefined;
+    const providerAccountId = await this.providerAccountId({ ...input, apiKeyId, providerId: provider.id }, now);
+    if (!providerAccountId) return undefined;
 
-    const credential = await this.resolveAccount({
+    return this.resolveAccount({
       organizationId: input.organizationId,
-      providerAccountId: binding.providerAccountId,
-      providerId: provider.id
+      provider: input.provider,
+      providerAccountId
     }, now);
-    if (credential?.provider !== input.provider) return undefined;
-    return credential;
   }
 
-  async resolveAccount(input: ResolveProviderAccountCredentialInput, now = Date.now()): Promise<UpstreamCredential | undefined> {
-    const cached = this.cache.get(input.providerAccountId);
-    if (cached && cached.expiresAt > now) return cached.credential;
-
-    const predicates = [
-      eq(providerAccounts.organizationId, input.organizationId),
-      eq(providerAccounts.id, input.providerAccountId)
-    ];
-    if (input.providerId) predicates.push(eq(providerAccounts.providerId, input.providerId));
+  async resolveAccount(
+    input: ResolveProviderAccountCredentialInput,
+    now = Date.now()
+  ): Promise<UpstreamCredential | undefined> {
+    const cached = this.credentialCache.get(input.providerAccountId);
+    if (cached && cached.expiresAt > now && (!input.provider || cached.credential.provider === input.provider)) {
+      return { ...cached.credential };
+    }
+    if (cached) this.credentialCache.delete(input.providerAccountId);
 
     const [account] = await this.db
       .select({
@@ -106,7 +110,11 @@ export class ProviderCredentialStore {
       })
       .from(providerAccounts)
       .innerJoin(providers, eq(providers.id, providerAccounts.providerId))
-      .where(and(...predicates))
+      .where(and(
+        eq(providerAccounts.organizationId, input.organizationId),
+        eq(providerAccounts.id, input.providerAccountId),
+        input.provider ? eq(providers.slug, input.provider) : undefined
+      ))
       .limit(1);
     if (!account) return undefined;
     if (account.status !== PROVIDER_ACCOUNT_STATUSES.ACTIVE) return undefined;
@@ -152,14 +160,42 @@ export class ProviderCredentialStore {
       baseUrl,
       pinnedAddress
     };
-    this.cache.set(account.id, { credential, expiresAt: now + CACHE_TTL_MS });
+    setCacheEntry(this.credentialCache, account.id, {
+      credential: { ...credential },
+      expiresAt: now + CREDENTIAL_CACHE_TTL_MS
+    });
 
     await this.db
       .update(providerAccounts)
       .set({ lastUsedAt: new Date(now) })
       .where(eq(providerAccounts.id, account.id));
 
-    return credential;
+    return { ...credential };
+  }
+
+  private async providerAccountId(input: ResolveCredentialInput & { apiKeyId: string; providerId: string }, now: number) {
+    const key = bindingCacheKey(input);
+    const cached = this.bindingCache.get(key);
+    if (cached && cached.expiresAt > now) return cached.providerAccountId ?? undefined;
+    if (cached) this.bindingCache.delete(key);
+
+    const [binding] = await this.db
+      .select({ providerAccountId: apiKeyProviderAccounts.providerAccountId })
+      .from(apiKeyProviderAccounts)
+      .where(and(
+        eq(apiKeyProviderAccounts.organizationId, input.organizationId),
+        eq(apiKeyProviderAccounts.workspaceId, input.workspaceId ?? defaultWorkspaceId(input.organizationId)),
+        eq(apiKeyProviderAccounts.apiKeyId, input.apiKeyId),
+        eq(apiKeyProviderAccounts.providerId, input.providerId)
+      ))
+      .limit(1);
+
+    const providerAccountId = binding?.providerAccountId ?? null;
+    setCacheEntry(this.bindingCache, key, {
+      providerAccountId,
+      expiresAt: now + BINDING_CACHE_TTL_MS
+    });
+    return providerAccountId ?? undefined;
   }
 
   private async openAIChatGPTAccessToken(input: {
@@ -226,4 +262,25 @@ async function providerBySlug(db: ProxyDbSession, organizationId: string, slug: 
     ))
     .limit(1);
   return builtinProvider;
+}
+
+function bindingCacheKey(input: ResolveCredentialInput & { providerId?: string }) {
+  return JSON.stringify([
+    input.organizationId,
+    input.workspaceId ?? defaultWorkspaceId(input.organizationId),
+    input.apiKeyId ?? null,
+    input.providerId ?? input.provider
+  ]);
+}
+
+function setCacheEntry<Value>(
+  cache: Map<string, Value>,
+  key: string,
+  value: Value
+) {
+  if (!cache.has(key) && cache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey) cache.delete(oldestKey);
+  }
+  cache.set(key, value);
 }

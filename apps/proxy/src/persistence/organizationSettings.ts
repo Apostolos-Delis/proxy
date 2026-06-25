@@ -58,7 +58,10 @@ function normalizeCompressionPolicy(policy: CompressionPolicy): CompressionPolic
 }
 
 export class OrganizationSettingsStore {
-  constructor(private readonly db: ProxyDbSession) {}
+  constructor(
+    private readonly db: ProxyDbSession,
+    private readonly onRoutingConfigsChanged: () => void = () => {}
+  ) {}
 
   async setSystemPrompt(organizationId: string, systemPrompt: string | null) {
     const patch = { systemPrompt, updatedAt: new Date() };
@@ -66,6 +69,7 @@ export class OrganizationSettingsStore {
       .insert(organizationSettings)
       .values({ organizationId, ...patch })
       .onConflictDoUpdate({ target: organizationSettings.organizationId, set: patch });
+    this.onRoutingConfigsChanged();
     return systemPrompt;
   }
 
@@ -190,6 +194,7 @@ export class OrganizationSettingsStore {
           updatedAt: new Date()
         }
       });
+    this.onRoutingConfigsChanged();
     return enabled;
   }
 }

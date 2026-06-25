@@ -112,7 +112,7 @@ describe("workspace switching", () => {
       workspaceId: created.id,
       routingConfigId: null
     });
-    expect(resolved.config.routes.balanced.targets.find((target) => target.providerId === "openai")?.model)
+    expect(resolved.config.routes.balanced.openai?.deployments[0]?.model)
       .toBe("gpt-5.4");
   });
 

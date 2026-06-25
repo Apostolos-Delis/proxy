@@ -1062,11 +1062,80 @@ describe("BYOK provider credentials", () => {
     });
     const accountId = created.data?.createProviderCredential.id;
     await gql(fixture, BIND, { apiKeyId: "org_byok_cleared:api-key:default", provider: "anthropic", providerAccountId: accountId });
+    await sendMessage(fixture);
+    expect(fixture.anthropic.records.at(-1)?.headers["x-api-key"]).toBe(CUSTOMER_KEY);
+
     await gql(fixture, BIND, { apiKeyId: "org_byok_cleared:api-key:default", provider: "anthropic", providerAccountId: null });
 
     await sendMessage(fixture);
-    const providerCall = fixture.anthropic.records.find((record) => record.path === "/messages");
-    expect(providerCall?.headers["x-api-key"]).toBe("anthropic-upstream-key");
+    expect(fixture.anthropic.records.at(-1)?.headers["x-api-key"]).toBe("anthropic-upstream-key");
+  });
+
+  it("uses a binding created after an unbound request immediately", async () => {
+    const fixture = await setup("org_byok_bind_after_miss");
+    await sendMessage(fixture);
+    expect(fixture.anthropic.records.at(-1)?.headers["x-api-key"]).toBe("anthropic-upstream-key");
+
+    const created = await gql(fixture, CREATE, {
+      input: { provider: "anthropic", name: "Late key", apiKey: CUSTOMER_KEY }
+    });
+    const accountId = created.data?.createProviderCredential.id;
+    const bound = await gql(fixture, BIND, {
+      apiKeyId: "org_byok_bind_after_miss:api-key:default",
+      provider: "anthropic",
+      providerAccountId: accountId
+    });
+    expect(bound.errors).toBeUndefined();
+
+    await sendMessage(fixture);
+    expect(fixture.anthropic.records.at(-1)?.headers["x-api-key"]).toBe(CUSTOMER_KEY);
+  });
+
+  it("uses a newly bound credential immediately when a key rotates", async () => {
+    const fixture = await setup("org_byok_rotate_binding");
+    const first = await gql(fixture, CREATE, {
+      input: { provider: "anthropic", name: "First key", apiKey: CUSTOMER_KEY }
+    });
+    await gql(fixture, BIND, {
+      apiKeyId: "org_byok_rotate_binding:api-key:default",
+      provider: "anthropic",
+      providerAccountId: first.data?.createProviderCredential.id
+    });
+    await sendMessage(fixture);
+    expect(fixture.anthropic.records.at(-1)?.headers["x-api-key"]).toBe(CUSTOMER_KEY);
+
+    const rotatedKey = "sk-ant-customer-rotated";
+    const second = await gql(fixture, CREATE, {
+      input: { provider: "anthropic", name: "Rotated key", apiKey: rotatedKey }
+    });
+    await gql(fixture, BIND, {
+      apiKeyId: "org_byok_rotate_binding:api-key:default",
+      provider: "anthropic",
+      providerAccountId: second.data?.createProviderCredential.id
+    });
+    await sendMessage(fixture);
+    expect(fixture.anthropic.records.at(-1)?.headers["x-api-key"]).toBe(rotatedKey);
+  });
+
+  it("falls back to the company key after a cached credential is revoked", async () => {
+    const fixture = await setup("org_byok_revoke_cached");
+    const created = await gql(fixture, CREATE, {
+      input: { provider: "anthropic", name: "Revoked key", apiKey: CUSTOMER_KEY }
+    });
+    const accountId = created.data?.createProviderCredential.id;
+    await gql(fixture, BIND, {
+      apiKeyId: "org_byok_revoke_cached:api-key:default",
+      provider: "anthropic",
+      providerAccountId: accountId
+    });
+    await sendMessage(fixture);
+    expect(fixture.anthropic.records.at(-1)?.headers["x-api-key"]).toBe(CUSTOMER_KEY);
+
+    const revoke = await gql(fixture, REVOKE, { id: accountId });
+    expect(revoke.errors).toBeUndefined();
+
+    await sendMessage(fixture);
+    expect(fixture.anthropic.records.at(-1)?.headers["x-api-key"]).toBe("anthropic-upstream-key");
   });
 
   it("allows reusing a revoked credential's label", async () => {
@@ -2002,6 +2071,48 @@ describe("subscription oauth credentials", () => {
       .where(eq(providerAccounts.id, accountId));
     const second = await fixture.persistence.providerCredentials.resolveForRequest(resolveInput);
     expect(second?.providerAccountId).toBe(accountId);
+  });
+
+  it("does not reuse a cached credential for a different provider", async () => {
+    const fixture = await setup("org_oauth_cache_provider", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
+    const accountId = await createBoundOauthCredential(fixture, "org_oauth_cache_provider");
+
+    const anthropic = await fixture.persistence.providerCredentials.resolveAccount({
+      organizationId: "org_oauth_cache_provider",
+      provider: "anthropic",
+      providerAccountId: accountId
+    });
+    const openai = await fixture.persistence.providerCredentials.resolveAccount({
+      organizationId: "org_oauth_cache_provider",
+      provider: "openai",
+      providerAccountId: accountId
+    });
+
+    expect(anthropic?.providerAccountId).toBe(accountId);
+    expect(openai).toBeUndefined();
+  });
+
+  it("serves cached provider bindings until the binding TTL expires", async () => {
+    const fixture = await setup("org_oauth_binding_cache", { SUBSCRIPTION_OAUTH_ENABLED: "true" });
+    const accountId = await createBoundOauthCredential(fixture, "org_oauth_binding_cache");
+    const now = Date.now();
+
+    const resolveInput = {
+      organizationId: "org_oauth_binding_cache",
+      apiKeyId: "org_oauth_binding_cache:api-key:default",
+      provider: "anthropic"
+    } as const;
+    const first = await fixture.persistence.providerCredentials.resolveForRequest(resolveInput, now);
+    expect(first?.providerAccountId).toBe(accountId);
+
+    await fixture.db
+      .delete(apiKeyProviderAccounts)
+      .where(eq(apiKeyProviderAccounts.apiKeyId, "org_oauth_binding_cache:api-key:default"));
+    const cachedBinding = await fixture.persistence.providerCredentials.resolveForRequest(resolveInput, now + 1_000);
+    const afterExpiry = await fixture.persistence.providerCredentials.resolveForRequest(resolveInput, now + 6_000);
+
+    expect(cachedBinding?.providerAccountId).toBe(accountId);
+    expect(afterExpiry).toBeUndefined();
   });
 
   it("re-resolves an oauth account to undefined once the cache expires with the flag off", async () => {
