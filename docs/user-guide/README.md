@@ -1,3 +1,5 @@
+<img src="../assets/proxy-logo.svg" alt="Proxy logo" width="64" height="64" />
+
 # Proxy User Guide
 
 This guide is the operator-facing path through Proxy: get it running, connect a coding agent, route traffic through provider credentials, and use the console to understand what happened.
