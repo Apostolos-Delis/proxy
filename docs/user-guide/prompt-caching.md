@@ -4,6 +4,8 @@ Proxy records prompt-cache usage for every provider that reports it, and it can 
 
 Use **Caching** in the console to monitor cache read ratio, cached tokens, uncached input, estimated cache savings, likely cache busts, key/session hit rates, token attribution buckets, compression savings, and idle gaps that could benefit from longer TTLs.
 
+Use the [prompt caching rollout runbook](../runbooks/prompt-caching.md) before enabling or changing mutating cache controls.
+
 ## Current Support
 
 | Provider target | Proxy-applied controls | Preserved caller controls | Measurements |
@@ -50,7 +52,7 @@ Proxy normalizes provider usage into:
 
 Those fields feed **Usage / Cost**, **Caching**, request logs, session views, token attribution, and spend accounting. Cache savings are estimates based on local model pricing: cached tokens are compared against the full input-token price for the same model.
 
-Use cache-bust reporting when cache read tokens collapse between adjacent requests in the same session. Current causes include likely TTL expiry, model switch, provider switch, or unknown. Use token attribution when you need to find whether system prompts, org prompts, tool schemas, history, latest user text, or tool results are dominating the uncached prefix.
+Use cache-bust reporting when cache read tokens collapse between adjacent requests in the same session. Current causes include likely TTL expiry, model switch, provider switch, org prompt edit, tool schema churn, translator change, compression policy change, route config change, or unknown when evidence is incomplete. Use token attribution when you need to find whether system prompts, org prompts, tool schemas, history, latest user text, or tool results are dominating the uncached prefix.
 
 ## Operator Workflow
 
@@ -64,6 +66,7 @@ Use cache-bust reporting when cache read tokens collapse between adjacent reques
 ## Related Pages
 
 - [Analytics And Spend](analytics.md)
+- [Prompt Caching Runbook](../runbooks/prompt-caching.md)
 - [Monitoring](monitoring.md)
 - [Sessions And Request Replay](sessions.md)
 - [Token Compression](token-compression.md)

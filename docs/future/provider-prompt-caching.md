@@ -2,7 +2,7 @@
 
 ## Summary
 
-Proxy already captures cache-read/cache-write usage, prices cached tokens separately, detects cache busts, attributes token mass by request bucket, pins session routes, pins org system prompts, and has Anthropic-only request transforms for automatic caching and adaptive 1-hour TTL upgrades.
+Proxy already captures cache-read/cache-write usage, prices cached tokens separately, detects cache busts with evidence-backed operator causes, attributes token mass by request bucket, pins session routes, pins org system prompts, and has Anthropic-only request transforms for automatic caching and adaptive 1-hour TTL upgrades.
 
 What it does not yet have is a provider-agnostic prompt-caching layer like the Deep Agents approach: one policy surface that can choose the best available cache controls for each provider, preserve prompt-cache locality across translations and route changes, and report whether those controls actually saved money.
 
@@ -17,7 +17,7 @@ Implemented:
 - Native OpenAI rewrites preserve `prompt_cache_key` when clients send it; translations that cannot round-trip the field drop it. Codex/opencode session detection can use inbound values before forwarding.
 - OpenAI rewrites preserve client-sent `prompt_cache_retention` for public OpenAI API upstreams. Proxy does not add the field automatically.
 - Usage normalization records total input, cached input, cache-creation input, output, reasoning, and total tokens across OpenAI and Anthropic wire shapes.
-- Cache-bust detection reports likely TTL expiry, model switch, provider switch, or unknown causes from usage-ledger rows.
+- Cache-bust detection reports likely TTL expiry, model switch, provider switch, org prompt edit, tool schema churn, translator change, compression policy change, route config change, or unknown causes from usage-ledger rows plus request-scoped event evidence.
 - Token attribution emits `tokens.attributed` with system prompt, org prompt, tool schemas, history, new tool results, latest user text, and per-tool breakdowns.
 - The console has a Caching view backed by token attribution, cache-bust, cache-savings, and usage analytics queries.
 
@@ -388,6 +388,8 @@ Acceptance criteria:
 - A session can explain why its warm prefix was preserved or busted.
 - Cache-bust reports identify the top operator-controlled causes, not just `unknown`.
 
+Status: cache-bust attribution now includes org prompt edits, tool schema churn, translator changes, compression policy changes, and route config changes when both adjacent session rows carry evidence. Missing evidence stays `unknown`. The [prompt caching runbook](../runbooks/prompt-caching.md) turns those causes into rollout block signals and rollback steps.
+
 ## Settings and UI
 
 Replace today's two Anthropic-specific toggles with a policy model once the provider-edge plan exists:
@@ -474,3 +476,4 @@ pnpm typecheck
 6. Add richer cache-bust attribution for org prompt, tool schema, translator, and compression policy changes.
 7. Add a third provider in observe-only mode.
 8. Experiment with provider-supported prewarm only after the reporting loop can prove value.
+9. Use the rollout runbook for baseline, canary, block-signal, and rollback decisions before any mutating control is widened.
