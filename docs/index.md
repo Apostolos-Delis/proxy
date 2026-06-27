@@ -63,6 +63,7 @@
 - [Tool output compression tickets](scopes/router-research-roadmap-v1/tool-output-compression-tickets.md)
 - [Reversible compression V1 tickets](scopes/reversible-compression-v1/TICKETS.md)
 - [Proxy metrics V1 tickets](scopes/proxy-metrics-v1/TICKETS.md)
+- [Provider prompt caching expansion tickets](future/provider-prompt-caching-tickets.md)
 - [Harness compatibility tests V1 tickets](scopes/router-research-roadmap-v1/harness-compatibility-tests-tickets.md)
 - [Routing configs runbook](runbooks/routing-configs.md)
 - [AWS deployment runbook](runbooks/aws-deployment.md)
