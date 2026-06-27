@@ -90,6 +90,10 @@ export type CacheBustModel = CacheBustReportModel["busts"][number];
 export type PromptCachePlanReportModel = Awaited<ReturnType<Q["promptCachePlans"]>>;
 export type PromptCachePlanRowModel = PromptCachePlanReportModel["plans"][number];
 export type PromptCachePlanControlRowModel = PromptCachePlanReportModel["controls"][number];
+export type OpenAICacheAnalyticsModel = Awaited<ReturnType<Q["openAICacheAnalytics"]>>;
+export type OpenAICacheAggregateModel = OpenAICacheAnalyticsModel["totals"];
+export type OpenAICacheGroupModel = OpenAICacheAnalyticsModel["groups"][number];
+export type OpenAICacheTrendModel = OpenAICacheAnalyticsModel["trends"][number];
 
 export type CompressionSavingsReportModel = Awaited<ReturnType<Q["compressionSavings"]>>;
 export type CompressionSavingsRowModel = CompressionSavingsReportModel["rows"][number];

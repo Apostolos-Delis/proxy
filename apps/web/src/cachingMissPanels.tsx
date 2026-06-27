@@ -4,9 +4,12 @@ import { useState } from "react";
 import {
   bustCauses,
   bustsByModel,
+  openAICacheGroupLabel,
   type CacheBustReport,
-  type ModelBustRow
+  type ModelBustRow,
+  type OpenAICacheAnalyticsReport
 } from "./cachingData";
+import { Sparkline } from "./charts";
 import { formatCompact, formatInteger, formatPercent } from "./format";
 import { DataTable, GlassCard } from "./ui";
 import {
@@ -125,6 +128,65 @@ function ReasonBar({ row, maxDropped, dimmed, onHover }: {
 
 const KEY_LIST_LIMIT = 8;
 const LOW_VALUE_HIT_RATE = 0.15;
+const OPENAI_CACHE_GROUP_LIMIT = 6;
+
+export function OpenAICacheEffectiveness({ report }: { report: OpenAICacheAnalyticsReport | undefined }) {
+  if (!report) {
+    return (
+      <GlassCard>
+        <div className="card-title"><KeyRound />OpenAI cache effectiveness</div>
+        <div className="inline-skeleton skeleton-pulse" style={{ height: 200 }} />
+      </GlassCard>
+    );
+  }
+  const rows = report.groups
+    .filter((group) => group.inputTokens > 0)
+    .slice(0, OPENAI_CACHE_GROUP_LIMIT);
+  const trend = report.trends.map((point) => ({
+    label: new Date(point.ts).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    value: point.cacheHitRate * 100
+  }));
+
+  return (
+    <GlassCard>
+      <div className="card-head">
+        <div className="card-title"><KeyRound />OpenAI cache effectiveness</div>
+        <span className="mono faint caching-miss-total">
+          {formatPercent(report.totals.cacheHitRate)} token hit
+        </span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="empty compact-empty">No OpenAI traffic in this window.</div>
+      ) : (
+        <>
+          <div className="barlist caching-key-list">
+            {rows.map((group) => (
+              <div key={`${group.surface}:${group.model}:${group.route}:${group.cacheGroupSource}:${group.cacheGroupKey}`} className="barlist-row">
+                <div className="barlist-label">
+                  <span className="mono">{openAICacheGroupLabel(group)}</span>
+                  <span className="caching-key-hint">
+                    {group.provider} · {group.model} · {group.route} · {formatCompact(group.cachedInputTokens)} / {formatCompact(group.inputTokens)} tok
+                  </span>
+                </div>
+                <div className="barlist-val" style={{ color: keyRateColor(group.cacheHitRate) }}>
+                  {formatPercent(group.cacheHitRate)}
+                </div>
+                <div className="barlist-track">
+                  <i style={{ width: `${group.cacheHitRate * 100}%`, background: group.cacheHitRate > 0.5 ? undefined : "var(--fg-faint)" }} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="sep" />
+          <Sparkline data={trend} color="#38bdf8" valueFormatter={(value) => `${Math.round(value)}%`} />
+          <div className="stat-sub">
+            Request hit rate {formatPercent(report.totals.requestHitRate)} across {formatCompact(report.totals.requestCount)} OpenAI requests.
+          </div>
+        </>
+      )}
+    </GlassCard>
+  );
+}
 
 export function KeyHitRates({ groups, lookups }: { groups: UsageGroup[] | undefined; lookups: GroupLabelLookups }) {
   if (!groups) {

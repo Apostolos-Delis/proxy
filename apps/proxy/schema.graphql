@@ -535,6 +535,47 @@ type Mutation {
   upsertModelCatalogEntry(input: UpsertModelCatalogInput!): ModelCatalogEntry
 }
 
+type OpenAICacheAggregate {
+  cacheHitRate: Float!
+  cachedInputTokens: Float!
+  cachedRequests: Float!
+  inputTokens: Float!
+  requestCount: Float!
+  requestHitRate: Float!
+}
+
+type OpenAICacheAnalytics {
+  groups: [OpenAICacheGroup!]!
+  interval: UsageInterval!
+  totals: OpenAICacheAggregate!
+  trends: [OpenAICacheTrend!]!
+}
+
+type OpenAICacheGroup {
+  cacheGroupKey: String!
+  cacheGroupSource: String!
+  cacheHitRate: Float!
+  cachedInputTokens: Float!
+  cachedRequests: Float!
+  inputTokens: Float!
+  model: String!
+  provider: String!
+  requestCount: Float!
+  requestHitRate: Float!
+  route: String!
+  surface: String!
+}
+
+type OpenAICacheTrend {
+  cacheHitRate: Float!
+  cachedInputTokens: Float!
+  cachedRequests: Float!
+  inputTokens: Float!
+  requestCount: Float!
+  requestHitRate: Float!
+  ts: String!
+}
+
 type OrgMember {
   email: String
   name: String
@@ -898,6 +939,7 @@ type Query {
   members: [OrgMember!]!
   modelCatalog: [ModelCatalogEntry!]!
   modelPricing: [ModelPricingEntry!]!
+  openAICacheAnalytics(end: String, interval: UsageInterval, start: String): OpenAICacheAnalytics!
   overview: Overview!
   overviewDashboard: OverviewDashboard!
   prompt(artifactId: ID!): PromptDetail

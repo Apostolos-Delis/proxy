@@ -47,6 +47,7 @@ export type ProviderForwardInput = {
   idempotencyKey: string;
   organizationId: string;
   workspaceId: string;
+  sessionId?: string;
   surface: Surface;
   provider: Provider;
   harnessProfileId?: HarnessCompatibilityProfileId;
@@ -117,7 +118,7 @@ export type RewriteOptions = {
 };
 
 export type RewriteWithPromptCachePlanOptions = {
-  context: Pick<RouteContext, "surface"> & Partial<Pick<RouteContext, "transport" | "harnessProfileId" | "estimatedInputTokens">>;
+  context: Pick<RouteContext, "surface"> & Partial<Pick<RouteContext, "transport" | "harnessProfileId" | "estimatedInputTokens" | "sessionId">>;
   capabilities?: ProviderCachingCapabilities;
   settings?: PromptCachePlanSettings;
 };

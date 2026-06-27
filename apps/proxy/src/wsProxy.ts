@@ -423,6 +423,7 @@ export class WebSocketRoutingProxy {
         headers,
         forwardedBody,
         context.harnessProfileId,
+        context.sessionId,
         decision,
         credential
       );
@@ -664,6 +665,7 @@ export class WebSocketRoutingProxy {
     incoming: Record<string, string | undefined>,
     body: unknown,
     harnessProfileId: RouteContext["harnessProfileId"],
+    sessionId: string | undefined,
     decision: RouteDecision,
     credential?: UpstreamCredential
   ): Promise<WebSocketUpstreamTarget> {
@@ -689,7 +691,7 @@ export class WebSocketRoutingProxy {
     const promptCachePlan = computePromptCachePlan({
       body,
       sourceBody: body,
-      context: { surface: openAIResponsesSurface.surface, harnessProfileId },
+      context: { surface: openAIResponsesSurface.surface, harnessProfileId, sessionId },
       decision,
       capabilities: provider.capabilities.promptCaching
     });

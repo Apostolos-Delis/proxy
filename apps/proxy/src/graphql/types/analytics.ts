@@ -8,6 +8,10 @@ import type {
   IdleGapBucketModel,
   IdleGapReportModel,
   LatencySummaryModel,
+  OpenAICacheAggregateModel,
+  OpenAICacheAnalyticsModel,
+  OpenAICacheGroupModel,
+  OpenAICacheTrendModel,
   OverviewDashboardShape,
   RouteOutputGroupRowModel,
   RouteOutputReportModel,
@@ -338,5 +342,62 @@ export const PromptCachePlanReport = builder
       sampled: t.exposeBoolean("sampled"),
       plans: t.expose("plans", { type: [PromptCachePlanRow] }),
       controls: t.expose("controls", { type: [PromptCachePlanControlRow] })
+    })
+  });
+
+export const OpenAICacheAggregate = builder
+  .objectRef<OpenAICacheAggregateModel>("OpenAICacheAggregate")
+  .implement({
+    fields: (t) => ({
+      requestCount: t.exposeFloat("requestCount"),
+      cachedRequests: t.exposeFloat("cachedRequests"),
+      inputTokens: t.exposeFloat("inputTokens"),
+      cachedInputTokens: t.exposeFloat("cachedInputTokens"),
+      cacheHitRate: t.exposeFloat("cacheHitRate"),
+      requestHitRate: t.exposeFloat("requestHitRate")
+    })
+  });
+
+export const OpenAICacheGroup = builder
+  .objectRef<OpenAICacheGroupModel>("OpenAICacheGroup")
+  .implement({
+    fields: (t) => ({
+      surface: t.exposeString("surface"),
+      provider: t.exposeString("provider"),
+      model: t.exposeString("model"),
+      route: t.exposeString("route"),
+      cacheGroupSource: t.exposeString("cacheGroupSource"),
+      cacheGroupKey: t.exposeString("cacheGroupKey"),
+      requestCount: t.exposeFloat("requestCount"),
+      cachedRequests: t.exposeFloat("cachedRequests"),
+      inputTokens: t.exposeFloat("inputTokens"),
+      cachedInputTokens: t.exposeFloat("cachedInputTokens"),
+      cacheHitRate: t.exposeFloat("cacheHitRate"),
+      requestHitRate: t.exposeFloat("requestHitRate")
+    })
+  });
+
+export const OpenAICacheTrend = builder
+  .objectRef<OpenAICacheTrendModel>("OpenAICacheTrend")
+  .implement({
+    fields: (t) => ({
+      ts: t.exposeString("ts"),
+      requestCount: t.exposeFloat("requestCount"),
+      cachedRequests: t.exposeFloat("cachedRequests"),
+      inputTokens: t.exposeFloat("inputTokens"),
+      cachedInputTokens: t.exposeFloat("cachedInputTokens"),
+      cacheHitRate: t.exposeFloat("cacheHitRate"),
+      requestHitRate: t.exposeFloat("requestHitRate")
+    })
+  });
+
+export const OpenAICacheAnalytics = builder
+  .objectRef<OpenAICacheAnalyticsModel>("OpenAICacheAnalytics")
+  .implement({
+    fields: (t) => ({
+      interval: t.field({ type: UsageInterval, resolve: (report) => report.interval }),
+      totals: t.expose("totals", { type: OpenAICacheAggregate }),
+      groups: t.expose("groups", { type: [OpenAICacheGroup] }),
+      trends: t.expose("trends", { type: [OpenAICacheTrend] })
     })
   });

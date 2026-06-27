@@ -25,6 +25,7 @@ import {
   CacheBustReport,
   CompressionSavingsReport,
   IdleGapReport,
+  OpenAICacheAnalytics,
   Overview,
   OverviewDashboard,
   PromptCachePlanReport,
@@ -475,6 +476,38 @@ builder.queryFields((t) => ({
         sampled: false,
         plans: [],
         controls: []
+      };
+    }
+  }),
+
+  openAICacheAnalytics: t.field({
+    type: OpenAICacheAnalytics,
+    args: {
+      interval: t.arg({ type: UsageInterval }),
+      start: t.arg.string(),
+      end: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) {
+        return queries.openAICacheAnalytics({
+          interval: args.interval ?? undefined,
+          start: args.start ?? undefined,
+          end: args.end ?? undefined
+        });
+      }
+      return {
+        interval: args.interval ?? "day",
+        totals: {
+          requestCount: 0,
+          cachedRequests: 0,
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          cacheHitRate: 0,
+          requestHitRate: 0
+        },
+        groups: [],
+        trends: []
       };
     }
   }),

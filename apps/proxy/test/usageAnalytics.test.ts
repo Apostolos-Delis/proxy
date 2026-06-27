@@ -5,6 +5,7 @@ import {
   agentSessions,
   apiKeys,
   defaultWorkspaceId,
+  events,
   hashApiKey,
   organizations,
   providerAttempts,
@@ -24,6 +25,7 @@ import {
   usageRow,
   type PromptTestFixture
 } from "./promptTestFixture.js";
+import { sha256 } from "../src/util.js";
 
 const usageFields = `{
   groupBy
@@ -303,6 +305,161 @@ describe("usage analytics admin APIs", () => {
     const collapsedSecondPoint = collapsed.points[1];
     expect(collapsedSecondPoint.groups.__other__.requestCount).toBe(1);
     expect(collapsedSecondPoint.groups.__other__.usage.totalTokens).toBe(15);
+  });
+
+  it("reports OpenAI cache effectiveness by key hash and session fallback", async () => {
+    const fixture = await setup("org_openai_cache_analytics");
+    const dayOne = new Date("2026-06-09T10:00:00.000Z");
+    const dayTwo = new Date("2026-06-10T12:00:00.000Z");
+    const keyHash = sha256("prompt_cache_key:customer-cache-key");
+
+    await fixture.db.insert(users).values([{ id: "user_openai_cache" }]);
+    await fixture.db.insert(agentSessions).values([
+      {
+        id: "session_keyed",
+        organizationId: "org_openai_cache_analytics",
+        workspaceId: defaultWorkspaceId("org_openai_cache_analytics"),
+        userId: "user_openai_cache",
+        surface: "openai-responses"
+      },
+      {
+        id: "session_fallback",
+        organizationId: "org_openai_cache_analytics",
+        workspaceId: defaultWorkspaceId("org_openai_cache_analytics"),
+        userId: "user_openai_cache",
+        surface: "openai-chat"
+      },
+      {
+        id: "session_anthropic_cache",
+        organizationId: "org_openai_cache_analytics",
+        workspaceId: defaultWorkspaceId("org_openai_cache_analytics"),
+        userId: "user_openai_cache",
+        surface: "anthropic-messages"
+      }
+    ]);
+    await fixture.db.insert(requests).values([
+      usageRequest("openai_cache_keyed", "org_openai_cache_analytics", "user_openai_cache", "session_keyed", "openai-responses", dayOne),
+      usageRequest("openai_cache_chat", "org_openai_cache_analytics", "user_openai_cache", "session_fallback", "openai-chat", dayTwo),
+      usageRequest("openai_cache_uncached", "org_openai_cache_analytics", "user_openai_cache", "session_fallback", "openai-responses", dayTwo),
+      usageRequest("anthropic_cache_excluded", "org_openai_cache_analytics", "user_openai_cache", "session_anthropic_cache", "anthropic-messages", dayTwo)
+    ]);
+    await fixture.db.insert(routeDecisions).values([
+      usageDecision("decision_openai_cache_keyed", "openai_cache_keyed", "org_openai_cache_analytics", "hard", "openai", "gpt-5.5"),
+      usageDecision("decision_openai_cache_chat", "openai_cache_chat", "org_openai_cache_analytics", "fast", "openai", "gpt-5.4-mini"),
+      usageDecision("decision_openai_cache_uncached", "openai_cache_uncached", "org_openai_cache_analytics", "fast", "openai", "gpt-5.4-mini"),
+      usageDecision("decision_anthropic_cache_excluded", "anthropic_cache_excluded", "org_openai_cache_analytics", "hard", "anthropic", "claude-hard")
+    ]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("attempt_openai_cache_keyed", "openai_cache_keyed", "org_openai_cache_analytics", "openai-responses", "openai", "gpt-5.5", "completed", dayOne),
+      usageAttempt("attempt_openai_cache_chat", "openai_cache_chat", "org_openai_cache_analytics", "openai-chat", "openai", "gpt-5.4-mini", "completed", dayTwo),
+      usageAttempt("attempt_openai_cache_uncached", "openai_cache_uncached", "org_openai_cache_analytics", "openai-responses", "openai", "gpt-5.4-mini", "completed", dayTwo),
+      usageAttempt("attempt_anthropic_cache_excluded", "anthropic_cache_excluded", "org_openai_cache_analytics", "anthropic-messages", "anthropic", "claude-hard", "completed", dayTwo)
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      {
+        ...usageRow("usage_openai_cache_keyed", "openai_cache_keyed", "attempt_openai_cache_keyed", "org_openai_cache_analytics", "openai", "gpt-5.5", "hard", 1000, 100, 2000),
+        cachedInputTokens: 500
+      },
+      {
+        ...usageRow("usage_openai_cache_chat", "openai_cache_chat", "attempt_openai_cache_chat", "org_openai_cache_analytics", "openai", "gpt-5.4-mini", "fast", 400, 50, 700),
+        cachedInputTokens: 100
+      },
+      usageRow("usage_openai_cache_uncached", "openai_cache_uncached", "attempt_openai_cache_uncached", "org_openai_cache_analytics", "openai", "gpt-5.4-mini", "fast", 200, 40, 400),
+      {
+        ...usageRow("usage_anthropic_cache_excluded", "anthropic_cache_excluded", "attempt_anthropic_cache_excluded", "org_openai_cache_analytics", "anthropic", "claude-hard", "hard", 900, 90, 1500),
+        cachedInputTokens: 800
+      }
+    ]);
+    await fixture.db.insert(events).values({
+      id: "event_openai_cache_keyed_plan",
+      sequence: 1,
+      schemaVersion: 1,
+      organizationId: "org_openai_cache_analytics",
+      workspaceId: defaultWorkspaceId("org_openai_cache_analytics"),
+      scopeType: "request",
+      scopeId: "openai_cache_keyed",
+      sessionId: "session_keyed",
+      correlationId: "openai_cache_keyed",
+      actorType: "user",
+      actorId: "user_openai_cache",
+      producer: "test",
+      eventType: "prompt_cache.plan_applied",
+      payloadHash: "sha256:event_openai_cache_keyed_plan",
+      sensitivity: "internal",
+      redactionState: "not_applicable",
+      payload: {
+        surface: "openai-responses",
+        provider: "openai",
+        model: "gpt-5.5",
+        dialect: "openai-responses",
+        mode: "implicit",
+        translated: false,
+        appliedControls: ["implicit_prefix_caching", "cache_key_preserved"],
+        skippedControls: [],
+        cacheKey: "provided",
+        cacheGroup: { source: "prompt_cache_key", key: keyHash }
+      },
+      metadata: {},
+      createdAt: dayOne
+    });
+
+    const result = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query {
+        openAICacheAnalytics(start: "2026-06-09T00:00:00.000Z", end: "2026-06-11T00:00:00.000Z", interval: day) {
+          interval
+          totals { requestCount cachedRequests inputTokens cachedInputTokens cacheHitRate requestHitRate }
+          groups {
+            surface
+            provider
+            model
+            route
+            cacheGroupSource
+            cacheGroupKey
+            requestCount
+            cachedRequests
+            inputTokens
+            cachedInputTokens
+            cacheHitRate
+            requestHitRate
+          }
+          trends { ts requestCount cachedRequests inputTokens cachedInputTokens cacheHitRate requestHitRate }
+        }
+      }`
+    );
+    const report = result.data?.openAICacheAnalytics;
+    const keyedGroup = report.groups.find((group: any) => group.cacheGroupSource === "prompt_cache_key");
+    const sessionGroups = report.groups.filter((group: any) => group.cacheGroupSource === "session");
+
+    expect(result.errors).toBeUndefined();
+    expect(report.interval).toBe("day");
+    expect(report.totals).toEqual(expect.objectContaining({
+      requestCount: 3,
+      cachedRequests: 2,
+      inputTokens: 1600,
+      cachedInputTokens: 600
+    }));
+    expect(report.totals.cacheHitRate).toBeCloseTo(0.375);
+    expect(report.totals.requestHitRate).toBeCloseTo(2 / 3);
+    expect(keyedGroup).toEqual(expect.objectContaining({
+      surface: "openai-responses",
+      provider: "openai",
+      model: "gpt-5.5",
+      route: "hard",
+      cacheGroupKey: keyHash,
+      requestCount: 1,
+      cachedRequests: 1,
+      inputTokens: 1000,
+      cachedInputTokens: 500,
+      cacheHitRate: 0.5,
+      requestHitRate: 1
+    }));
+    expect(JSON.stringify(keyedGroup)).not.toContain("customer-cache-key");
+    expect(sessionGroups.map((group: any) => group.cacheGroupKey)).toEqual(["session_fallback", "session_fallback"]);
+    expect(report.groups.map((group: any) => group.provider)).not.toContain("anthropic");
+    expect(report.trends).toHaveLength(2);
+    expect(report.trends.map((point: any) => point.cachedInputTokens)).toEqual([500, 100]);
   });
 
   it("records the API key on proxied requests and attributes usage to it", async () => {

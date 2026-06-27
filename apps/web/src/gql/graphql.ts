@@ -254,6 +254,15 @@ export type PromptCachePlansViewQueryVariables = Exact<{
 
 export type PromptCachePlansViewQuery = { promptCachePlans: { totalPlans: number, sampled: boolean, plans: Array<{ provider: string, model: string, mode: string, count: number, appliedControls: number, skippedControls: number }>, controls: Array<{ provider: string, model: string, mode: string, control: string, status: string, reason: string, count: number }> } };
 
+export type OpenAiCacheAnalyticsViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+  interval?: UsageInterval | null | undefined;
+}>;
+
+
+export type OpenAiCacheAnalyticsViewQuery = { openAICacheAnalytics: { interval: UsageInterval, totals: { requestCount: number, cachedRequests: number, inputTokens: number, cachedInputTokens: number, cacheHitRate: number, requestHitRate: number }, groups: Array<{ surface: string, provider: string, model: string, route: string, cacheGroupSource: string, cacheGroupKey: string, requestCount: number, cachedRequests: number, inputTokens: number, cachedInputTokens: number, cacheHitRate: number, requestHitRate: number }>, trends: Array<{ ts: string, requestCount: number, cachedRequests: number, inputTokens: number, cachedInputTokens: number, cacheHitRate: number, requestHitRate: number }> } };
+
 export type CachePricingRatesQueryVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -1028,6 +1037,44 @@ export const PromptCachePlansViewDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<PromptCachePlansViewQuery, PromptCachePlansViewQueryVariables>;
+export const OpenAiCacheAnalyticsViewDocument = new TypedDocumentString(`
+    query OpenAICacheAnalyticsView($start: String, $end: String, $interval: UsageInterval) {
+  openAICacheAnalytics(start: $start, end: $end, interval: $interval) {
+    interval
+    totals {
+      requestCount
+      cachedRequests
+      inputTokens
+      cachedInputTokens
+      cacheHitRate
+      requestHitRate
+    }
+    groups {
+      surface
+      provider
+      model
+      route
+      cacheGroupSource
+      cacheGroupKey
+      requestCount
+      cachedRequests
+      inputTokens
+      cachedInputTokens
+      cacheHitRate
+      requestHitRate
+    }
+    trends {
+      ts
+      requestCount
+      cachedRequests
+      inputTokens
+      cachedInputTokens
+      cacheHitRate
+      requestHitRate
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<OpenAiCacheAnalyticsViewQuery, OpenAiCacheAnalyticsViewQueryVariables>;
 export const CachePricingRatesDocument = new TypedDocumentString(`
     query CachePricingRates {
   modelPricing {
