@@ -42,6 +42,11 @@ export const MODEL_CATALOG_SOURCES = ["models.dev-snapshot", "models.dev-refresh
 
 export const PROVIDER_ACCOUNT_AUTH_TYPES = ["api_key", "oauth"] as const;
 
+export const PROVIDER_CACHE_TTLS = ["5m", "1h", "24h"] as const;
+export const PROVIDER_CACHE_KEY_FIELDS = ["prompt_cache_key", "routing_key"] as const;
+export const PROVIDER_CACHE_RETENTION_FIELDS = ["prompt_cache_retention"] as const;
+export const PROVIDER_CACHE_USAGE_SHAPES = ["openai", "anthropic", "provider_specific"] as const;
+
 // Claude subscription tokens minted by `claude setup-token`. Anthropic has
 // rotated token prefixes before — keep every prefix check on this constant.
 export const CLAUDE_SUBSCRIPTION_TOKEN_PREFIX = "sk-ant-oat01-";
@@ -251,6 +256,10 @@ export type BedrockProviderOperation = typeof BEDROCK_PROVIDER_OPERATIONS[number
 export type ModelCatalogSource = typeof MODEL_CATALOG_SOURCES[number];
 export type ProviderAccountAuthType = typeof PROVIDER_ACCOUNT_AUTH_TYPES[number];
 export type ProviderAccountStatus = typeof PROVIDER_ACCOUNT_STATUSES[keyof typeof PROVIDER_ACCOUNT_STATUSES];
+export type ProviderCacheTtl = typeof PROVIDER_CACHE_TTLS[number];
+export type ProviderCacheKeyField = typeof PROVIDER_CACHE_KEY_FIELDS[number];
+export type ProviderCacheRetentionField = typeof PROVIDER_CACHE_RETENTION_FIELDS[number];
+export type ProviderCacheUsageShape = typeof PROVIDER_CACHE_USAGE_SHAPES[number];
 export type Effort = typeof EFFORTS[number];
 export type OpenAIReasoningEffort = typeof OPENAI_REASONING_EFFORTS[number];
 export type Verbosity = typeof VERBOSITIES[number];
@@ -366,6 +375,10 @@ export const builtinProviderSchema = z.enum(BUILTIN_PROVIDER_NAMES);
 export const providerAuthStyleSchema = z.enum(PROVIDER_AUTH_STYLES);
 export const providerAdapterKindSchema = z.enum(PROVIDER_ADAPTER_KINDS);
 export const bedrockProviderOperationSchema = z.enum(BEDROCK_PROVIDER_OPERATIONS);
+export const providerCacheTtlSchema = z.enum(PROVIDER_CACHE_TTLS);
+export const providerCacheKeyFieldSchema = z.enum(PROVIDER_CACHE_KEY_FIELDS);
+export const providerCacheRetentionFieldSchema = z.enum(PROVIDER_CACHE_RETENTION_FIELDS);
+export const providerCacheUsageShapeSchema = z.enum(PROVIDER_CACHE_USAGE_SHAPES);
 export const effortSchema = z.enum(EFFORTS);
 export const openAIReasoningEffortSchema = z.enum(OPENAI_REASONING_EFFORTS);
 export const classifierEffortSchema = z.enum(CLASSIFIER_EFFORTS);
@@ -392,6 +405,69 @@ export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() => z.union([
 ]));
 
 export const jsonObjectSchema: z.ZodType<JsonObject> = z.record(z.string(), jsonValueSchema);
+
+export const providerCachingCapabilitiesSchema = z.strictObject({
+  implicitPrefixCaching: z.boolean(),
+  explicitBreakpoints: z.boolean(),
+  supportedTtls: z.array(providerCacheTtlSchema),
+  cacheKeyField: providerCacheKeyFieldSchema.optional(),
+  retentionField: providerCacheRetentionFieldSchema.optional(),
+  prewarm: z.boolean(),
+  usageShape: providerCacheUsageShapeSchema
+});
+
+export type ProviderCachingCapabilities = z.infer<typeof providerCachingCapabilitiesSchema>;
+
+export const CONSERVATIVE_PROVIDER_CACHING_CAPABILITIES = {
+  implicitPrefixCaching: false,
+  explicitBreakpoints: false,
+  supportedTtls: [],
+  prewarm: false,
+  usageShape: "provider_specific"
+} satisfies ProviderCachingCapabilities;
+
+export const OPENAI_PROVIDER_CACHING_CAPABILITIES = {
+  implicitPrefixCaching: true,
+  explicitBreakpoints: false,
+  supportedTtls: ["24h"],
+  cacheKeyField: "prompt_cache_key",
+  retentionField: "prompt_cache_retention",
+  prewarm: false,
+  usageShape: "openai"
+} satisfies ProviderCachingCapabilities;
+
+export const ANTHROPIC_PROVIDER_CACHING_CAPABILITIES = {
+  implicitPrefixCaching: false,
+  explicitBreakpoints: true,
+  supportedTtls: ["5m", "1h"],
+  prewarm: true,
+  usageShape: "anthropic"
+} satisfies ProviderCachingCapabilities;
+
+export function builtinProviderCachingCapabilities(provider: Provider): ProviderCachingCapabilities {
+  if (provider === PROVIDERS.OPENAI) return OPENAI_PROVIDER_CACHING_CAPABILITIES;
+  if (provider === PROVIDERS.ANTHROPIC) return ANTHROPIC_PROVIDER_CACHING_CAPABILITIES;
+  return CONSERVATIVE_PROVIDER_CACHING_CAPABILITIES;
+}
+
+export const providerCapabilitiesSchema = z.object({
+  efforts: z.array(effortSchema).optional(),
+  promptCaching: providerCachingCapabilitiesSchema.optional()
+}).catchall(jsonValueSchema);
+
+export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>;
+
+export function providerCapabilitiesWithDefaults(
+  provider: Provider,
+  capabilities: Record<string, unknown> = {}
+): ProviderCapabilities {
+  const parsed = providerCapabilitiesSchema.safeParse(capabilities);
+  const safeCapabilities = parsed.success ? parsed.data : {};
+  return {
+    ...safeCapabilities,
+    promptCaching: safeCapabilities.promptCaching ?? builtinProviderCachingCapabilities(provider)
+  };
+}
 
 export const compressionPolicySchema = z.strictObject({
   mode: z.enum(COMPRESSION_POLICY_MODES),
@@ -475,7 +551,7 @@ export const providerRegistryEntrySchema = z.strictObject({
   auth_style: providerAuthStyleSchema,
   endpoints: z.array(providerRegistryEndpointSchema).min(1, "At least one endpoint is required."),
   default_headers: z.record(z.string(), routingConfigTextSchema),
-  capabilities: jsonObjectSchema.optional(),
+  capabilities: providerCapabilitiesSchema.optional(),
   forward_harness_headers: z.boolean(),
   enabled: z.boolean()
 }).superRefine((entry, ctx) => {

@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
   anthropicEffortForModel,
   anthropicReasoningEffortsForModel,
   composeClassifierInstructions,
+  CONSERVATIVE_PROVIDER_CACHING_CAPABILITIES,
+  OPENAI_PROVIDER_CACHING_CAPABILITIES,
+  providerCapabilitiesWithDefaults,
+  providerCachingCapabilitiesSchema,
   providerRegistryEntrySchema,
   ROUTING_CLASSIFIER_BASE_INSTRUCTIONS,
   routingConfigSchema,
@@ -548,7 +553,16 @@ describe("providerRegistryEntrySchema", () => {
         "x-routing-pool": "primary"
       },
       capabilities: {
-        efforts: ["low", "medium", "high", "xhigh"]
+        efforts: ["low", "medium", "high", "xhigh"],
+        promptCaching: {
+          implicitPrefixCaching: true,
+          explicitBreakpoints: false,
+          supportedTtls: ["24h"],
+          cacheKeyField: "prompt_cache_key",
+          retentionField: "prompt_cache_retention",
+          prewarm: false,
+          usageShape: "openai"
+        }
       },
       forward_harness_headers: false,
       enabled: true
@@ -575,6 +589,31 @@ describe("providerRegistryEntrySchema", () => {
     };
 
     expect(providerRegistryEntrySchema.parse(entry)).toEqual(entry);
+  });
+
+  it("validates prompt-cache capabilities", () => {
+    expect(providerCachingCapabilitiesSchema.parse(OPENAI_PROVIDER_CACHING_CAPABILITIES))
+      .toEqual(OPENAI_PROVIDER_CACHING_CAPABILITIES);
+    expect(providerCachingCapabilitiesSchema.parse(ANTHROPIC_PROVIDER_CACHING_CAPABILITIES))
+      .toEqual(ANTHROPIC_PROVIDER_CACHING_CAPABILITIES);
+
+    const result = providerCachingCapabilitiesSchema.safeParse({
+      implicitPrefixCaching: true,
+      explicitBreakpoints: false,
+      supportedTtls: ["7d"],
+      prewarm: false,
+      usageShape: "openai"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(["supportedTtls", 0]);
+  });
+
+  it("adds conservative prompt-cache defaults for custom providers", () => {
+    expect(providerCapabilitiesWithDefaults("acme-vllm", { efforts: ["low"] })).toEqual({
+      efforts: ["low"],
+      promptCaching: CONSERVATIVE_PROVIDER_CACHING_CAPABILITIES
+    });
   });
 
   it("rejects invalid registry entries with useful paths", () => {

@@ -6,6 +6,8 @@ import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import {
+  ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
+  OPENAI_PROVIDER_CACHING_CAPABILITIES,
   routingConfigSchema,
   type BuiltinProvider,
   type RouteName,
@@ -452,7 +454,10 @@ async function upsertBuiltinProviders(db: ProxyDbSession, options: SeedOptions, 
         { dialect: "openai-chat", path: "/chat/completions" }
       ],
       defaultHeaders: {},
-      capabilities: { efforts: ["low", "medium", "high", "xhigh"] },
+      capabilities: {
+        efforts: ["low", "medium", "high", "xhigh"],
+        promptCaching: OPENAI_PROVIDER_CACHING_CAPABILITIES
+      },
       forwardHarnessHeaders: true,
       enabled: true
     },
@@ -469,7 +474,10 @@ async function upsertBuiltinProviders(db: ProxyDbSession, options: SeedOptions, 
         { dialect: "anthropic-messages", path: "/messages" }
       ],
       defaultHeaders: {},
-      capabilities: { efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"] },
+      capabilities: {
+        efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"],
+        promptCaching: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES
+      },
       forwardHarnessHeaders: true,
       enabled: true
     },

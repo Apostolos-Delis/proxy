@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { providers, type ProxyTransaction, type ProxyTransactionalDatabase } from "@proxy/db";
-import { BEDROCK_PROVIDER_OPERATIONS, EFFORTS, HTTP_PROVIDER_DIALECT_NAMES, PROVIDER_ADAPTER_KINDS, PROVIDER_AUTH_STYLES } from "@proxy/schema";
+import {
+  BEDROCK_PROVIDER_OPERATIONS,
+  HTTP_PROVIDER_DIALECT_NAMES,
+  PROVIDER_ADAPTER_KINDS,
+  PROVIDER_AUTH_STYLES,
+  providerCapabilitiesSchema
+} from "@proxy/schema";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -29,9 +35,7 @@ const bedrockEndpointBodySchema = z.object({
 
 const endpointBodySchema = z.union([httpEndpointBodySchema, bedrockEndpointBodySchema]);
 
-const capabilitiesBodySchema = z.object({
-  efforts: z.array(z.enum(EFFORTS)).optional()
-}).passthrough().default({});
+const capabilitiesBodySchema = providerCapabilitiesSchema.default({});
 
 const providerBodySchema = z.object({
   slug: z.string().trim().min(1),
