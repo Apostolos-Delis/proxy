@@ -15,15 +15,15 @@ Implemented:
 - Anthropic Messages can inject top-level `cache_control: { type: "ephemeral" }` for multi-turn requests that do not already carry any cache markers.
 - Anthropic Messages can upgrade eligible ephemeral cache markers to `ttl: "1h"` when org history shows recoverable idle gaps and the current request has a large cacheable prefix.
 - Native OpenAI rewrites preserve `prompt_cache_key` when clients send it; translations that cannot round-trip the field drop it. Codex/opencode session detection can use inbound values before forwarding.
-- OpenAI `prompt_cache_retention` is currently stripped by request rewrites.
+- OpenAI rewrites preserve client-sent `prompt_cache_retention` for public OpenAI API upstreams. Proxy does not add the field automatically.
 - Usage normalization records total input, cached input, cache-creation input, output, reasoning, and total tokens across OpenAI and Anthropic wire shapes.
 - Cache-bust detection reports likely TTL expiry, model switch, provider switch, or unknown causes from usage-ledger rows.
 - Token attribution emits `tokens.attributed` with system prompt, org prompt, tool schemas, history, new tool results, latest user text, and per-tool breakdowns.
 - The console has a Caching view backed by token attribution, cache-bust, cache-savings, and usage analytics queries.
 
-Known drift to fix first:
+Current alignment:
 
-- The settings page says OpenAI requests always get 24-hour prompt-cache retention, but the runtime deletes `prompt_cache_retention` and tests assert it is not forwarded. The product copy or the runtime needs to change before adding more controls.
+- The settings page, runtime, and tests now agree that OpenAI prompt caching is provider-managed: clients may send documented `prompt_cache_retention` values, and Proxy forwards them to public OpenAI API upstreams without adding retention policy on its own.
 
 ## Goals
 
@@ -144,9 +144,9 @@ This keeps route handlers thin and prevents cache behavior from being split betw
 
 ### 0. Align current behavior and docs
 
-- Decide whether OpenAI `prompt_cache_retention` should be supported.
-- If no: update the settings-page copy and any docs that claim OpenAI retention is always applied.
-- If yes: stop deleting the field, add policy/settings, add OpenAI Responses and Chat tests, and verify current OpenAI API behavior before shipping.
+- Keep OpenAI `prompt_cache_retention` support aligned with official provider docs.
+- Proxy forwards client-sent values to public OpenAI API upstreams, but it does not add retention policy automatically.
+- Add policy/settings only if Proxy later owns that control instead of preserving client intent.
 - Add a short current-state section to the user guide so operators know which controls are Anthropic-only.
 
 ### 1. Capability registry and observe-only plan

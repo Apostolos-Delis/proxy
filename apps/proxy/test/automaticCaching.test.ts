@@ -216,11 +216,11 @@ describe("prompt_cache_retention on OpenAI rewrites", () => {
     expect(result.prompt_cache_retention).toBeUndefined();
   });
 
-  it("drops a client-set prompt_cache_retention", () => {
+  it("preserves a client-set prompt_cache_retention", () => {
     const body = { model: "router-hard", input: "hi", prompt_cache_retention: "in_memory" };
 
     const result = rewriteSurfaceRequest(body, openaiDecision(), undefined, {}) as any;
-    expect(result.prompt_cache_retention).toBeUndefined();
+    expect(result.prompt_cache_retention).toBe("in_memory");
   });
 });
 
@@ -254,7 +254,7 @@ describe("automatic caching end to end (DB-backed)", () => {
     expect(providerCall?.body.cache_control).toEqual({ type: "ephemeral" });
   });
 
-  it("forwards OpenAI requests without prompt_cache_retention", async () => {
+  it("forwards OpenAI requests with client-set prompt_cache_retention", async () => {
     fixture = await captureFixture("org_pcr");
 
     const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
@@ -265,7 +265,7 @@ describe("automatic caching end to end (DB-backed)", () => {
     await response.text();
 
     const providerCall = fixture.openai.records.find((rec) => rec.path === "/responses");
-    expect(providerCall?.body.prompt_cache_retention).toBeUndefined();
+    expect(providerCall?.body.prompt_cache_retention).toBe("24h");
   });
 
   it("setAutomaticCaching merges into settings without clobbering other keys", async () => {

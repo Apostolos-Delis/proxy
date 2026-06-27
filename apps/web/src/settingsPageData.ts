@@ -107,7 +107,7 @@ export const settingsSections: SettingsSectionDef[] = [
   {
     id: "optimization",
     title: "Token optimization",
-    description: "Request transforms that cut token spend on proxied traffic. Applied org-wide across all routing configs. OpenAI requests always get 24-hour prompt-cache retention — it is priced identically to the default, so there is nothing to configure.",
+    description: "Request transforms that cut token spend on proxied traffic. Applied org-wide across all routing configs. OpenAI API prompt caching is provider-managed; explicit prompt_cache_retention values are forwarded to public OpenAI upstreams when clients send them.",
     requiresDatabase: true,
     rows: [
       {

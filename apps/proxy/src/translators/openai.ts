@@ -38,7 +38,6 @@ function responsesRequestToChat(body: unknown) {
   delete request.input;
   delete request.reasoning;
   delete request.max_output_tokens;
-  delete request.prompt_cache_retention;
   delete request.text;
   return request;
 }

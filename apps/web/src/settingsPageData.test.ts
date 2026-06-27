@@ -54,6 +54,15 @@ describe("sectionsFor", () => {
   });
 });
 
+describe("settings copy", () => {
+  it("does not claim Proxy always applies OpenAI cache retention", () => {
+    const optimization = settingsSections.find((section) => section.id === "optimization");
+
+    expect(optimization?.description).toContain("explicit prompt_cache_retention values are forwarded to public OpenAI upstreams");
+    expect(optimization?.description).not.toContain("always get 24-hour prompt-cache retention");
+  });
+});
+
 describe("filterSections", () => {
   it("returns sections unchanged for an empty query", () => {
     expect(filterSections(settingsSections, "  ")).toBe(settingsSections);

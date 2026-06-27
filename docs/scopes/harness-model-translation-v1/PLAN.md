@@ -223,7 +223,7 @@ The current `previous_response_id` guard stays in force. The stateful Codex guar
 Caching should follow the upstream dialect, not the inbound harness:
 
 - Anthropic upstreams may receive automatic cache control and TTL upgrades after translation.
-- OpenAI upstreams must not receive `prompt_cache_retention`; stale inbound values are stripped.
+- Public OpenAI API upstreams may receive documented client-sent `prompt_cache_retention`; Proxy does not add the field automatically.
 - Cache annotations from one dialect should not be blindly copied into the other dialect.
 - Cache changes must be byte-stable across turns for Claude Code history replay.
 
