@@ -42,7 +42,7 @@ import { resolveRoutingSelection, type RoutingConfigResolverLike } from "./persi
 import type { SessionSystemPromptStore } from "./persistence/sessionRoute.js";
 import { classifyProviderTerminalHealth } from "./providerHealth.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
-import { canAuthenticateOrgProvider, providerRequestHeaders } from "./proxy.js";
+import { canAuthenticateOrgProvider, providerRequestHeaders } from "./providerAdapters/genericHttp.js";
 import type { RoutingService } from "./router.js";
 import type { JsonObject, Provider, RouteContext, RouteDecision, RouteName, UpstreamCredential } from "./types.js";
 import {
@@ -389,7 +389,9 @@ export class WebSocketRoutingProxy {
         warn: (err, message) => this.log?.warn({ err, requestId }, message)
       });
 
-      const routeCandidateId = decision.routeExecutionPlan?.selected?.candidateId;
+      const routeCandidateId = decision.providerAttempts?.find((candidate) =>
+        candidate.deployment.key === decision.deployment?.key
+      )?.routeCandidateId ?? decision.routeExecutionPlan?.selected?.candidateId;
       const providerRequestStartedPayload: JsonObject = {
         surface: openAIResponsesSurface.surface,
         provider,

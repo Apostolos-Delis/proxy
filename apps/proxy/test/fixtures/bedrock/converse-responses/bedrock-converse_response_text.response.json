@@ -1,0 +1,24 @@
+{
+  "output": {
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "The migration is low risk if the adapter boundary lands first."
+        }
+      ]
+    }
+  },
+  "stopReason": "end_turn",
+  "usage": {
+    "inputTokens": 42,
+    "outputTokens": 13,
+    "totalTokens": 55
+  },
+  "metrics": {
+    "latencyMs": 128
+  },
+  "$metadata": {
+    "requestId": "bedrock-request-text"
+  }
+}

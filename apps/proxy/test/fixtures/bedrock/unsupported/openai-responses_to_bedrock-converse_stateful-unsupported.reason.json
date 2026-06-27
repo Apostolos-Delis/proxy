@@ -1,0 +1,4 @@
+{
+  "reason": "previous_response_id_not_supported",
+  "message": "Stateful OpenAI Responses requests cannot be translated to Bedrock Converse in V1."
+}

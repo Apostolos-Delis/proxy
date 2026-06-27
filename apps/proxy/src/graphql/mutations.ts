@@ -15,7 +15,7 @@ import {
   UpdateUserRoleResult,
   UserStatusResult
 } from "./types/invitations.js";
-import { ModelPricingEntry } from "./types/pricing.js";
+import { BedrockModelDiscoveryResult, ModelCatalogEntry, ModelPricingEntry } from "./types/pricing.js";
 import { ApiKey, CreateApiKeyResult, ProviderAccount, ProviderCredentialOAuthStart, ProviderCredentialOAuthStatus, ProviderHealthProbeResultType, ProviderRegistryEntry, RoutingConfigDetail } from "./types/routing.js";
 import { PromptCaptureConfig, Settings, SettingsInput } from "./types/settings.js";
 import { Viewer, WorkspaceSummary } from "./types/viewer.js";
@@ -41,9 +41,32 @@ const CreateProviderCredentialInput = builder.inputType("CreateProviderCredentia
     name: t.string({ required: true }),
     authType: t.field({ type: ProviderAccountAuthType }),
     baseUrl: t.string(),
-    // Carries the API key or, for authType "oauth", the subscription token.
-    apiKey: t.string({ required: true }),
+    // Carries the API key, subscription token, or Bedrock bearer token depending on auth mode.
+    apiKey: t.string(),
+    credentialMode: t.string(),
+    region: t.string(),
+    endpointOverride: t.string(),
+    discoveryRegions: t.stringList(),
+    accessKeyId: t.string(),
+    secretAccessKey: t.string(),
+    sessionToken: t.string(),
     chatgptAccountId: t.string()
+  })
+});
+
+const UpdateProviderCredentialInput = builder.inputType("UpdateProviderCredentialInput", {
+  fields: (t) => ({
+    providerAccountId: t.id({ required: true }),
+    name: t.string(),
+    baseUrl: t.string(),
+    apiKey: t.string(),
+    credentialMode: t.string(),
+    region: t.string(),
+    endpointOverride: t.string(),
+    discoveryRegions: t.stringList(),
+    accessKeyId: t.string(),
+    secretAccessKey: t.string(),
+    sessionToken: t.string()
   })
 });
 
@@ -65,14 +88,22 @@ const StartProviderCredentialOAuthInput = builder.inputType("StartProviderCreden
 const ProbeProviderCredentialInput = builder.inputType("ProbeProviderCredentialInput", {
   fields: (t) => ({
     providerAccountId: t.id({ required: true }),
-    model: t.string({ required: true })
+    model: t.string({ required: true }),
+    operation: t.string()
+  })
+});
+
+const RefreshBedrockModelCatalogInput = builder.inputType("RefreshBedrockModelCatalogInput", {
+  fields: (t) => ({
+    providerAccountId: t.id({ required: true })
   })
 });
 
 const ProviderEndpointInput = builder.inputType("ProviderEndpointInput", {
   fields: (t) => ({
     dialect: t.string({ required: true }),
-    path: t.string({ required: true })
+    path: t.string(),
+    operation: t.string()
   })
 });
 
@@ -81,6 +112,8 @@ const CreateProviderInput = builder.inputType("CreateProviderInput", {
     slug: t.string({ required: true }),
     displayName: t.string({ required: true }),
     baseUrl: t.string({ required: true }),
+    adapterKind: t.string(),
+    adapterConfig: t.field({ type: "JSON" }),
     authStyle: t.string({ required: true }),
     endpoints: t.field({ type: [ProviderEndpointInput], required: true }),
     defaultHeaders: t.field({ type: "JSON" }),
@@ -95,6 +128,8 @@ const UpdateProviderInput = builder.inputType("UpdateProviderInput", {
     providerId: t.id({ required: true }),
     displayName: t.string({ required: true }),
     baseUrl: t.string({ required: true }),
+    adapterKind: t.string(),
+    adapterConfig: t.field({ type: "JSON" }),
     authStyle: t.string({ required: true }),
     endpoints: t.field({ type: [ProviderEndpointInput], required: true }),
     defaultHeaders: t.field({ type: "JSON" }),
@@ -128,6 +163,31 @@ const SetModelPricingInput = builder.inputType("SetModelPricingInput", {
     outputCostPerMtok: t.float({ required: true }),
     cacheReadCostPerMtok: t.float(),
     cacheWriteCostPerMtok: t.float()
+  })
+});
+
+const ModelCatalogPricingInput = builder.inputType("ModelCatalogPricingInput", {
+  fields: (t) => ({
+    inputCostPerMtok: t.float(),
+    outputCostPerMtok: t.float(),
+    cacheReadCostPerMtok: t.float(),
+    cacheWriteCostPerMtok: t.float()
+  })
+});
+
+const UpsertModelCatalogInput = builder.inputType("UpsertModelCatalogInput", {
+  fields: (t) => ({
+    provider: t.string({ required: true }),
+    model: t.string({ required: true }),
+    displayName: t.string(),
+    dialects: t.stringList(),
+    contextWindow: t.int(),
+    maxOutputTokens: t.int(),
+    supportsStreaming: t.boolean(),
+    supportsTools: t.boolean(),
+    supportsImages: t.boolean(),
+    supportsReasoning: t.boolean(),
+    pricing: t.field({ type: ModelCatalogPricingInput })
   })
 });
 
@@ -165,6 +225,19 @@ function mapSettingsError(error: unknown): never {
     throw adminGraphQLError("invalid_settings", 400, (error as { issues: unknown }).issues);
   }
   throw error;
+}
+
+function providerEndpointInput(endpoint: {
+  dialect: string;
+  path?: string | null;
+  operation?: string | null;
+}) {
+  const normalized: { dialect: string; path?: string; operation?: string } = {
+    dialect: endpoint.dialect
+  };
+  if (endpoint.path != null) normalized.path = endpoint.path;
+  if (endpoint.operation != null) normalized.operation = endpoint.operation;
+  return normalized;
 }
 
 builder.mutationFields((t) => ({
@@ -406,6 +479,63 @@ builder.mutationFields((t) => ({
     }
   }),
 
+  upsertModelCatalogEntry: t.field({
+    type: ModelCatalogEntry,
+    nullable: true,
+    args: { input: t.arg({ type: UpsertModelCatalogInput, required: true }) },
+    resolve: async (_root, args, context) => {
+      const identity = requireAdminRole(context);
+      const queries = scopedQueries(context);
+      if (!context.persistence || !queries) throw notFoundError("model_catalog_unavailable");
+      try {
+        const result = await context.persistence.modelCatalogAdmin.upsertManualModel({
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
+          body: {
+            provider: args.input.provider,
+            model: args.input.model,
+            displayName: args.input.displayName ?? undefined,
+            dialects: args.input.dialects?.filter((value): value is string => value != null) ?? undefined,
+            contextWindow: args.input.contextWindow ?? undefined,
+            maxOutputTokens: args.input.maxOutputTokens ?? undefined,
+            supportsStreaming: args.input.supportsStreaming ?? undefined,
+            supportsTools: args.input.supportsTools ?? undefined,
+            supportsImages: args.input.supportsImages ?? undefined,
+            supportsReasoning: args.input.supportsReasoning ?? undefined,
+            pricing: args.input.pricing ? {
+              ...(args.input.pricing.inputCostPerMtok == null ? {} : { inputCostPerMtok: args.input.pricing.inputCostPerMtok }),
+              ...(args.input.pricing.outputCostPerMtok == null ? {} : { outputCostPerMtok: args.input.pricing.outputCostPerMtok }),
+              ...(args.input.pricing.cacheReadCostPerMtok == null ? {} : { cacheReadCostPerMtok: args.input.pricing.cacheReadCostPerMtok }),
+              ...(args.input.pricing.cacheWriteCostPerMtok == null ? {} : { cacheWriteCostPerMtok: args.input.pricing.cacheWriteCostPerMtok })
+            } : undefined
+          }
+        });
+        queries.invalidateModelPricing();
+        const entries = await queries.modelCatalog();
+        return entries.find((entry) => entry.provider === result.provider && entry.model === result.model) ?? null;
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
+  refreshBedrockModelCatalog: t.field({
+    type: BedrockModelDiscoveryResult,
+    args: { input: t.arg({ type: RefreshBedrockModelCatalogInput, required: true }) },
+    resolve: async (_root, args, context) => {
+      const identity = requireAdminRole(context);
+      const queries = scopedQueries(context);
+      if (!context.persistence || !queries) throw notFoundError("model_catalog_unavailable");
+      const result = await context.persistence.bedrockModelDiscovery.refreshProviderAccount({
+        organizationId: identity.organizationId,
+        actorUserId: identity.userId,
+        providerAccountId: String(args.input.providerAccountId)
+      });
+      queries.invalidateModelPricing();
+      return result;
+    }
+  }),
+
   clearModelPricing: t.field({
     type: [ModelPricingEntry],
     args: {
@@ -629,7 +759,14 @@ builder.mutationFields((t) => ({
             name: args.input.name,
             authType: args.input.authType ?? undefined,
             baseUrl: args.input.baseUrl ?? undefined,
-            apiKey: args.input.apiKey,
+            apiKey: args.input.apiKey ?? undefined,
+            credentialMode: args.input.credentialMode ?? undefined,
+            region: args.input.region ?? undefined,
+            endpointOverride: args.input.endpointOverride ?? undefined,
+            discoveryRegions: args.input.discoveryRegions ?? undefined,
+            accessKeyId: args.input.accessKeyId ?? undefined,
+            secretAccessKey: args.input.secretAccessKey ?? undefined,
+            sessionToken: args.input.sessionToken ?? undefined,
             chatgptAccountId: args.input.chatgptAccountId ?? undefined
           }
         });
@@ -666,6 +803,40 @@ builder.mutationFields((t) => ({
     }
   }),
 
+  updateProviderCredential: t.field({
+    type: ProviderAccount,
+    nullable: true,
+    args: { input: t.arg({ type: UpdateProviderCredentialInput, required: true }) },
+    resolve: async (_root, args, context) => {
+      if (!context.persistence) throw notFoundError("provider_accounts_not_found");
+      const identity = requireAdminRole(context);
+      const providerAccountId = String(args.input.providerAccountId);
+      try {
+        const updated = await context.persistence.providerCredentialAdmin.updateCredential({
+          organizationId: identity.organizationId,
+          actorUserId: identity.userId,
+          providerAccountId,
+          body: {
+            name: args.input.name ?? undefined,
+            baseUrl: args.input.baseUrl === null ? null : args.input.baseUrl ?? undefined,
+            apiKey: args.input.apiKey ?? undefined,
+            credentialMode: args.input.credentialMode ?? undefined,
+            region: args.input.region ?? undefined,
+            endpointOverride: args.input.endpointOverride === null ? null : args.input.endpointOverride ?? undefined,
+            discoveryRegions: args.input.discoveryRegions ?? undefined,
+            accessKeyId: args.input.accessKeyId ?? undefined,
+            secretAccessKey: args.input.secretAccessKey ?? undefined,
+            sessionToken: args.input.sessionToken ?? undefined
+          }
+        });
+        const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
+        return accounts.find((account) => account.id === updated.providerAccountId) ?? null;
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
+
   probeProviderCredential: t.field({
     type: ProviderHealthProbeResultType,
     args: { input: t.arg({ type: ProbeProviderCredentialInput, required: true }) },
@@ -683,7 +854,8 @@ builder.mutationFields((t) => ({
           workspaceId: identity.workspaceId,
           actorUserId: identity.userId,
           providerAccountId: String(args.input.providerAccountId),
-          model: args.input.model
+          model: args.input.model,
+          operation: args.input.operation ?? undefined
         });
       } catch (error) {
         if (error instanceof ProviderHealthProbeError) {
@@ -754,8 +926,10 @@ builder.mutationFields((t) => ({
             slug: args.input.slug,
             displayName: args.input.displayName,
             baseUrl: args.input.baseUrl,
+            adapterKind: args.input.adapterKind ?? undefined,
+            adapterConfig: args.input.adapterConfig ?? undefined,
             authStyle: args.input.authStyle,
-            endpoints: args.input.endpoints,
+            endpoints: args.input.endpoints.map(providerEndpointInput),
             defaultHeaders: args.input.defaultHeaders ?? undefined,
             capabilities: args.input.capabilities ?? undefined,
             forwardHarnessHeaders: args.input.forwardHarnessHeaders ?? undefined,
@@ -786,8 +960,10 @@ builder.mutationFields((t) => ({
           body: {
             displayName: args.input.displayName,
             baseUrl: args.input.baseUrl,
+            adapterKind: args.input.adapterKind ?? undefined,
+            adapterConfig: args.input.adapterConfig ?? undefined,
             authStyle: args.input.authStyle,
-            endpoints: args.input.endpoints,
+            endpoints: args.input.endpoints.map(providerEndpointInput),
             defaultHeaders: args.input.defaultHeaders ?? undefined,
             capabilities: args.input.capabilities ?? undefined,
             forwardHarnessHeaders: args.input.forwardHarnessHeaders ?? undefined,

@@ -1,0 +1,11 @@
+data: {"id":"chatcmpl_bedrock","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl_bedrock","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"The migration "},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl_bedrock","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"should land behind an adapter."},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl_bedrock","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":null}
+
+data: {"id":"chatcmpl_bedrock","object":"chat.completion.chunk","choices":[],"usage":null}
+
+data: [DONE]

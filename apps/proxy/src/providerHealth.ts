@@ -2,10 +2,13 @@ import {
   PROVIDER_HEALTH_MESSAGE_MAX_CHARS,
   type ProviderHealthClassification,
   type ProviderHealthClassificationSource,
+  type ProviderHealthConfidence,
+  type ProviderHealthMetadata,
   type ProviderHealthErrorType,
   type ProviderHealthScope
 } from "@proxy/schema";
 
+import type { ProviderAdapterFailureClassification } from "./providerAdapters/types.js";
 import type { Provider } from "./types.js";
 
 export type ProviderTerminalHealthInput = {
@@ -16,6 +19,7 @@ export type ProviderTerminalHealthInput = {
   error?: string;
   headers?: Record<string, string | undefined>;
   streamStatus?: "completed" | "failed" | "cancelled";
+  adapterClassification?: ProviderAdapterFailureClassification;
   now?: Date;
 };
 
@@ -37,6 +41,11 @@ export function classifyProviderTerminalHealth(input: ProviderTerminalHealthInpu
   const message = sanitizedMessage(input.error);
   const lower = message?.toLowerCase() ?? "";
 
+  const adapterClassification = input.adapterClassification;
+  if (adapterClassification) {
+    return adapterHealthClassification({ ...input, adapterClassification }, now, statusCode, message);
+  }
+
   const match = healthMatch(input, lower);
   const retryHeaderMs = match.retryable && match.scope !== "request_only"
     ? retryWindowMs(input.headers, now)
@@ -55,6 +64,34 @@ export function classifyProviderTerminalHealth(input: ProviderTerminalHealthInpu
       model: input.model,
       ...(statusCode === undefined ? {} : { statusCode })
     }
+  };
+}
+
+function adapterHealthClassification(
+  input: ProviderTerminalHealthInput & { adapterClassification: ProviderAdapterFailureClassification },
+  now: Date,
+  statusCode: number | undefined,
+  fallbackMessage: string | null
+): ProviderHealthClassification {
+  const classification = input.adapterClassification;
+  const cooldownMs = classification.cooldownMs;
+  const metadata: ProviderHealthMetadata = {
+    provider: input.provider,
+    model: input.model,
+    adapterCategory: classification.category,
+    fatal: classification.fatal,
+    ...(statusCode === undefined ? {} : { statusCode }),
+    ...classification.metadata
+  };
+  return {
+    errorType: classification.errorType,
+    source: classification.source,
+    confidence: classification.confidence ?? confidenceForSource(classification.source),
+    retryable: classification.retryable,
+    scope: classification.scope,
+    cooldownUntil: cooldownMs === undefined ? null : new Date(now.getTime() + cooldownMs).toISOString(),
+    message: sanitizedMessage(classification.message ?? undefined) ?? fallbackMessage,
+    metadata
   };
 }
 
@@ -166,6 +203,12 @@ function sanitizedMessage(error: string | undefined) {
 function confidenceFor(match: HealthMatch) {
   if (match.errorType === "unknown_terminal" || match.errorType === "unknown_transient") return "unknown";
   if (match.source === "response_body") return "heuristic";
+  return "exact";
+}
+
+function confidenceForSource(source: ProviderHealthClassificationSource): ProviderHealthConfidence {
+  if (source === "response_body") return "heuristic";
+  if (source === "proxy_policy") return "unknown";
   return "exact";
 }
 

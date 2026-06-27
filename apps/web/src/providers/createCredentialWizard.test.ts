@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   authTypeForMode,
+  bedrockDiscoveryRegions,
   canVisitStep,
   credentialBlockerMessage,
   initialProviderCredentialDraft,
@@ -34,6 +35,8 @@ describe("initialProviderCredentialDraft", () => {
     expect(draft.mode).toBe("api_key");
     expect(draft.provider).toBe("anthropic");
     expect(draft.name).toBe("");
+    expect(draft.bedrockCredentialMode).toBe("aws_bedrock_bearer_token");
+    expect(draft.bedrockRegion).toBe("us-east-1");
   });
 });
 
@@ -124,6 +127,17 @@ describe("stepBlockerMessage", () => {
     expect(stepBlockerMessage(draftAt("type", { name: "", apiKey: "" }), true)).toBeNull();
     expect(stepBlockerMessage(draftAt("credentials", { name: "" }), true)).toBe("Enter a credential label.");
     expect(stepBlockerMessage(draftAt("credentials", { apiKey: "" }), true)).toBe("API key is required.");
+  });
+
+  it("uses Bedrock validation only when the selected provider is Bedrock", () => {
+    const draft = draftAt("credentials", {
+      provider: "amazon-bedrock",
+      apiKey: "",
+      bedrockRegion: "us-east-1",
+      bedrockDiscoveryRegions: "us-east-1"
+    });
+    expect(stepBlockerMessage(draft, true, false)).toBe("API key is required.");
+    expect(stepBlockerMessage(draft, true, true)).toBe("Bedrock bearer token is required.");
   });
 });
 
@@ -236,6 +250,19 @@ describe("credentialBlockerMessage", () => {
       chatgptAccountId: ""
     });
     expect(credentialBlockerMessage(draft, true)).toBe("ChatGPT account ID is required unless the auth JSON includes one.");
+  });
+
+  it("validates Bedrock static key fields without requiring generic API keys", () => {
+    const draft = draftAt("credentials", {
+      provider: "amazon-bedrock",
+      apiKey: "",
+      bedrockCredentialMode: "aws_static_keys",
+      bedrockAccessKeyId: "AKIA_TEST_ONLY",
+      bedrockSecretAccessKey: "aws-secret",
+      bedrockDiscoveryRegions: "us-east-1, us-west-2"
+    });
+    expect(credentialBlockerMessage(draft, true, true)).toBeNull();
+    expect(bedrockDiscoveryRegions(draft)).toEqual(["us-east-1", "us-west-2"]);
   });
 
   it("rejects invalid Codex auth JSON before submit", () => {

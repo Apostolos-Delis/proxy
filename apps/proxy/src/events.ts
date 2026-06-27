@@ -488,6 +488,7 @@ export class ProviderAttemptStore {
     surface: Surface;
     provider: ProviderAttempt["provider"];
     model: string;
+    adapterKind?: ProviderAttempt["adapterKind"];
     providerAccountId?: string;
   }) {
     const existingId = this.idempotency.get(input.idempotencyKey);
@@ -504,6 +505,7 @@ export class ProviderAttemptStore {
       surface: input.surface,
       provider: input.provider,
       model: input.model,
+      adapterKind: input.adapterKind,
       providerAccountId: input.providerAccountId,
       terminalStatus: "pending"
     };

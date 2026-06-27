@@ -15,6 +15,7 @@ Provider Account Health V1 tracks provider-account and provider-account/model he
   - `model_access_denied`: `terminal`.
   - `model_unavailable`: `locked_out`, default 10 minutes.
 - Request-only failures such as context overflow, incompatible request shape, stream disconnects, and unknown terminal errors do not poison account/model health.
+- Bedrock adapter failures preserve sanitized metadata such as region, operation, model/profile, and `bedrockErrorKind`. Secrets and raw upstream response bodies are not stored.
 - Expired cooldowns and lockouts stay in the table for operator context but are ignored by route planning.
 - Provider-wide circuit breakers and scheduled background probes are not part of V1.
 
@@ -43,6 +44,33 @@ The deploy is a hard cutover: code expects the tables and attempt column to exis
 6. For a request rejected or rerouted by health, open the request detail. The event timeline shows health skip rows from `routing.decision_recorded.healthSkips`.
 
 Manual probes use a small fixed prompt, low output caps, and provider-compatible non-streaming plus streaming checks. Probe events do not include provider secrets or raw upstream response bodies. Tool-call probes are deferred until a provider capability contract exists.
+
+## Bedrock Failure Handling
+
+The Bedrock admin health filter exposes these categories:
+
+| Category | Health state | Common cause | Operator action |
+| --- | --- | --- | --- |
+| Model access denied | Model `terminal` with `last_error_type: model_access_denied` | The IAM principal can call Bedrock but the AWS account has not enabled access to the selected model/profile, or the model ARN is not allowed by IAM | Enable model access in the Bedrock console for the target region and account, or update IAM resources to include the foundation model or inference profile. Run a manual probe after access is granted. |
+| Stream permission denied | Model `terminal` only for streaming targets | The principal can use non-streaming `Converse` but lacks `bedrock:InvokeModelWithResponseStream` or the model/profile does not allow streaming | Add `bedrock:InvokeModelWithResponseStream`, verify the model supports streaming, or route non-streaming callers to that model until streaming access is fixed. Non-streaming successes do not clear this streaming-specific model health row. |
+| Quota exceeded | Account cooldown with `last_error_type: quota_exhausted` | AWS service quota, throughput, provisioned throughput, or account-level usage limit is exhausted | Check AWS Service Quotas and Bedrock usage, reduce traffic, add fallback targets, request quota increase, or switch to a profile/region with capacity. |
+| Throttling | Account cooldown with `last_error_type: rate_limited` | Bedrock returned throttling or too-many-requests | Wait for cooldown, lower concurrency/RPM, add route fallbacks, or use inference profiles/provisioned throughput. |
+| Region unavailable | Account cooldown with `last_error_type: provider_unavailable` and Bedrock region metadata | The selected model/profile is unavailable in the configured region, or the regional Bedrock endpoint is unavailable | Confirm runtime region and discovery regions, choose a model available in that region, use a cross-region inference profile, or fail over to another Bedrock account/region. |
+
+Bedrock guardrail interventions are request-only incompatibilities. They produce provider attempt and event evidence but should not poison account or model health because the credential and model can still be healthy for other prompts.
+
+Unknown model metadata appears in the routing editor as missing catalog rows, unknown context/tool/streaming support, or unknown pricing. Add a manual catalog row, run Bedrock discovery for the provider account/region, or add/update the curated metadata overlay before routing production traffic to that model. Unknown metadata should be treated as an operational warning, not as proof that the model is unavailable.
+
+For any Bedrock incident, collect:
+
+1. Provider account id and credential source category.
+2. Runtime region and discovery region.
+3. Selected model id and resolved inference profile id, if any.
+4. Bedrock operation, `Converse` or `ConverseStream`.
+5. Request route tier and routing config version.
+6. Health skip evidence from the request timeline.
+
+Do not copy AWS access keys, bearer tokens, raw prompt text, or full upstream response bodies into incident notes.
 
 ## Clearing Stuck Health
 
@@ -148,6 +176,7 @@ Post-deploy checks:
 2. Confirm `provider_account_health` rows appear after a mocked 429 or manual probe.
 3. Confirm request detail health skip evidence is visible for skipped accounts/models.
 4. Watch for unexpected growth in `provider_health_unavailable` rejections.
+5. For Bedrock, confirm `bedrockErrorKind`, region, operation, and model/profile metadata appear in health detail rows without secret material.
 
 ## Follow-Ups
 

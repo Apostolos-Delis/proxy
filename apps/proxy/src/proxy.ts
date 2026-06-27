@@ -12,42 +12,38 @@ import {
   type RequestStateStoreLike
 } from "./events.js";
 import {
-  operatorTokenForProvider,
   ProviderRegistryError,
-  providerEndpointForDialect,
-  type ProviderRegistryEndpoint,
+  providerEndpointForAnyDialect,
   type ProviderRegistryEntry,
   type ProviderRegistryResolver
 } from "./persistence/providers.js";
 import { extractResponseText } from "./persistence/promptArtifacts.js";
 import {
-  copySelectedHeaders,
-  detectHarnessSurfaceProfile,
-  dialectHeadersFor,
-  harnessSurfaceProfileById,
-  identityHeadersFor
-} from "./harness.js";
-import {
   type MetricsCollector,
   NoopMetricsCollector
 } from "./metrics.js";
+import { canAuthenticateOrgProvider, GenericHttpProviderAdapter } from "./providerAdapters/genericHttp.js";
+import { BedrockRuntimeProviderAdapter } from "./providerAdapters/bedrockRuntime.js";
+import type { ProviderAdapterFailureClassification } from "./providerAdapters/types.js";
 import { ProviderMetrics } from "./providerMetrics.js";
 import { ProviderDeploymentHealthStore, type ProviderDeploymentFailureReason } from "./providerDeploymentHealth.js";
 import { classifyProviderTerminalHealth } from "./providerHealth.js";
 import { sseObserverForDialect, streamObservationEventMetadata, type StreamObservation } from "./sseObserver.js";
 import { providerCompressionTerminalTelemetry, requestBodyHash } from "./toolResultCompression.js";
-import { translators, type DialectTranslator } from "./translators/index.js";
-import type { JsonObject, Provider, RouteDecision, RouteProviderAttempt, Surface, UpstreamCredential } from "./types.js";
-import {
-  fetchWithPinnedAddress,
-  providerRequestPinnedAddress,
-  providerRequestRedirect,
-  providerRequestUrl
-} from "./upstream.js";
+import type { JsonObject, Provider, ProviderAttempt, RouteDecision, RouteProviderAttempt, Surface, UpstreamCredential } from "./types.js";
 import { isRecord } from "./util.js";
+
+type TerminalAdapterMetadata = {
+  adapterKind?: ProviderRegistryEntry["adapterKind"];
+  adapterClassification?: ProviderAdapterFailureClassification;
+};
+
+type RuntimeProviderAdapter = GenericHttpProviderAdapter | BedrockRuntimeProviderAdapter;
 
 export class ProviderProxy implements ProviderAdapter {
   private readonly providerMetrics: ProviderMetrics;
+  private readonly genericHttp: GenericHttpProviderAdapter;
+  private readonly bedrockRuntime: BedrockRuntimeProviderAdapter;
 
   constructor(
     private readonly config: AppConfig,
@@ -56,9 +52,12 @@ export class ProviderProxy implements ProviderAdapter {
     private readonly requestStates: RequestStateStoreLike,
     private readonly providerRegistry: ProviderRegistryResolver,
     metrics: MetricsCollector = new NoopMetricsCollector(),
-    private readonly deploymentHealth = new ProviderDeploymentHealthStore()
+    private readonly deploymentHealth = new ProviderDeploymentHealthStore(),
+    providerAdapters: { bedrockRuntime?: BedrockRuntimeProviderAdapter } = {}
   ) {
     this.providerMetrics = new ProviderMetrics(config, attempts, metrics);
+    this.genericHttp = new GenericHttpProviderAdapter(config, events);
+    this.bedrockRuntime = providerAdapters.bedrockRuntime ?? new BedrockRuntimeProviderAdapter(config, events);
   }
 
   async forward(input: ProviderForwardInput): Promise<ProviderForwardResult> {
@@ -128,6 +127,7 @@ export class ProviderProxy implements ProviderAdapter {
       surface: input.surface,
       provider: input.provider,
       model: selectedModel,
+      adapterKind: selected.adapterKind,
       providerAccountId
     });
 
@@ -142,7 +142,7 @@ export class ProviderProxy implements ProviderAdapter {
       stream: responseStream
     });
 
-    const routeCandidateId = input.decision.routeExecutionPlan?.selected?.candidateId;
+    const routeCandidateId = selected.routeCandidateId;
     const providerRequestStartedPayload: JsonObject = {
       surface: input.surface,
       provider: input.provider,
@@ -157,6 +157,7 @@ export class ProviderProxy implements ProviderAdapter {
       deployment: selected.deployment ? jsonPayload(selected.deployment) : null
     };
     if (routeCandidateId !== undefined) providerRequestStartedPayload.routeCandidateId = routeCandidateId;
+    if (selected.adapterKind) providerRequestStartedPayload.adapterKind = selected.adapterKind;
     if (providerAccountId) providerRequestStartedPayload.providerAccountId = providerAccountId;
 
     await this.events.append({
@@ -194,33 +195,38 @@ export class ProviderProxy implements ProviderAdapter {
       const message = error instanceof ProviderRegistryError ? error.code : "provider_registry_resolution_failed";
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
-      await this.failBeforeFetch(input, attempt.id, message);
+      await this.failBeforeFetch(input, attempt.id, message, { adapterKind: selected.adapterKind });
       return { retry: false };
     }
-    const endpoint = resolvedProvider ? providerEndpointForDialect(resolvedProvider, targetDialect) : undefined;
+    const endpoint = resolvedProvider ? providerEndpointForAnyDialect(resolvedProvider, targetDialect) : undefined;
     if (!resolvedProvider || !resolvedProvider.enabled || !endpoint) {
       const error = !resolvedProvider || !resolvedProvider.enabled
         ? "provider_not_found"
         : "provider_endpoint_not_found";
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
-      await this.failBeforeFetch(input, attempt.id, error);
+      await this.failBeforeFetch(input, attempt.id, error, { adapterKind: resolvedProvider?.adapterKind ?? selected.adapterKind });
       return { retry: false };
     }
-    const responseTranslator = endpoint.dialect === input.surface
-      ? undefined
-      : translators.get(endpoint.dialect, input.surface);
-    if (endpoint.dialect !== input.surface && !responseTranslator) {
+    const providerAdapter = this.providerAdapterFor(resolvedProvider);
+    if (!providerAdapter) {
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
-      await this.failBeforeFetch(input, attempt.id, "translator_not_found");
+      await this.failBeforeFetch(input, attempt.id, "provider_adapter_not_supported", { adapterKind: resolvedProvider.adapterKind });
+      return { retry: false };
+    }
+    const responseTranslation = providerAdapter.responseTranslation({ endpoint, surface: input.surface });
+    if (responseTranslation.kind === "unsupported") {
+      streamCompleted = true;
+      input.reply.raw.off("close", abortUpstream);
+      await this.failBeforeFetch(input, attempt.id, "translator_not_found", { adapterKind: resolvedProvider.adapterKind });
       return { retry: false };
     }
     if (!canAuthenticateOrgProvider(resolvedProvider, input.credential)) {
       const error = "provider_credential_unresolved";
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
-      await this.failBeforeFetch(input, attempt.id, error);
+      await this.failBeforeFetch(input, attempt.id, error, { adapterKind: resolvedProvider.adapterKind });
       return { retry: false };
     }
 
@@ -236,7 +242,7 @@ export class ProviderProxy implements ProviderAdapter {
     try {
       input.timing?.markProviderFetchStart();
       const requestProvider = providerForDeployment(resolvedProvider, selected.deployment);
-      upstream = await this.fetchWithRateLimitRetries({
+      upstream = await providerAdapter.fetchWithRateLimitRetries({
         input,
         providerAttemptId: attempt.id,
         provider: requestProvider,
@@ -256,11 +262,19 @@ export class ProviderProxy implements ProviderAdapter {
           stage: "before_provider"
         });
       }
+      const adapterClassification = aborted
+        ? undefined
+        : providerAdapter.classifyFetchError({ error, timedOut: providerTimedOut });
+      const adapterMetadata = {
+        adapterKind: resolvedProvider.adapterKind,
+        adapterClassification
+      };
       await this.appendTerminal(input, attempt.id, aborted ? "cancelled" : "failed", undefined, 0, {
         error: error instanceof Error ? error.message : "Provider request failed."
-      });
+      }, adapterMetadata);
       this.attempts.update(attempt.id, {
         terminalStatus: aborted ? "cancelled" : "failed",
+        ...providerAttemptAdapterPatch(adapterMetadata),
         error: error instanceof Error ? error.message : "Provider request failed."
       });
       if (retryAvailable && failureReason) return { retry: true, error };
@@ -310,20 +324,33 @@ export class ProviderProxy implements ProviderAdapter {
         });
       }
       const upstreamText = await upstream.text();
-      const text = upstream.ok && responseTranslator
-        ? translateResponseText(upstreamText, responseTranslator)
+      const text = upstream.ok
+        ? providerAdapter.translateResponseText(upstreamText, responseTranslation)
         : upstreamText;
       const status = upstream.ok ? "completed" : "failed";
       const canRetryStatus = retryableStatus(upstream.status, input.retryPolicy?.retryableStatusCodes);
       const usage = tryExtractUsage(text);
       const error = upstream.ok ? undefined : errorExcerpt(text);
+        const adapterClassification = status === "failed"
+          ? providerAdapter.classifyResponse({
+              status: upstream.status,
+              headers: upstream.headers,
+              bodyText: upstreamText,
+              response: upstream
+            })
+          : undefined;
+      const adapterMetadata = {
+        adapterKind: resolvedProvider.adapterKind,
+        adapterClassification
+      };
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
 
       this.recordDeploymentStatus(selected, status, upstream.status, canRetryStatus);
-      await this.appendTerminal(input, attempt.id, status, usage, upstream.status, error ? { error } : {});
+      await this.appendTerminal(input, attempt.id, status, usage, upstream.status, error ? { error } : {}, adapterMetadata);
       this.attempts.update(attempt.id, {
         terminalStatus: status,
+        ...providerAttemptAdapterPatch(adapterMetadata),
         usage: usage === undefined ? undefined : jsonPayload(usage),
         error
       });
@@ -361,22 +388,28 @@ export class ProviderProxy implements ProviderAdapter {
 
     if (!responseStream) {
       try {
-        const responseBody = responseTranslator
-          ? responseTranslator.sseTransform(upstream.body)
-          : upstream.body;
+        const responseBody = providerAdapter.transformResponseStream(upstream.body, responseTranslation);
         const collected = await collectStreamResponse(responseBody, observer, input.surface);
         completed = true;
         const observation = collected.observation;
         const status = observation.status === "failed" ? "failed" : "completed";
         const canRetryStatus = retryableStatus(upstream.status, input.retryPolicy?.retryableStatusCodes);
+        const adapterClassification = status === "failed"
+          ? streamAdapterClassification(providerAdapter, upstream, observation)
+          : undefined;
+        const adapterMetadata = {
+          adapterKind: resolvedProvider.adapterKind,
+          adapterClassification
+        };
         streamCompleted = true;
         input.reply.raw.off("close", abortUpstream);
 
         input.timing?.markStreamCompletion();
         this.recordDeploymentStatus(selected, status, upstream.status, canRetryStatus);
-        await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, withoutOutputText(observation));
+        await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, withoutOutputText(observation), adapterMetadata);
         this.attempts.update(attempt.id, {
           terminalStatus: status,
+          ...providerAttemptAdapterPatch(adapterMetadata),
           usage: observation.usage,
           upstreamRequestId: observation.upstreamResponseId,
           error: observation.error
@@ -407,6 +440,13 @@ export class ProviderProxy implements ProviderAdapter {
             stage: "after_headers"
           });
         }
+        const adapterClassification = aborted
+          ? undefined
+          : providerAdapter.classifyMalformedResponse({ message, response: upstream });
+        const adapterMetadata = {
+          adapterKind: resolvedProvider.adapterKind,
+          adapterClassification
+        };
         await this.appendTerminal(
           input,
           attempt.id,
@@ -416,10 +456,12 @@ export class ProviderProxy implements ProviderAdapter {
           {
             ...withoutOutputText(observation),
             error: message
-          }
+          },
+          adapterMetadata
         );
         this.attempts.update(attempt.id, {
           terminalStatus: aborted ? "cancelled" : "failed",
+          ...providerAttemptAdapterPatch(adapterMetadata),
           usage: observation.usage,
           error: message
         });
@@ -466,9 +508,7 @@ export class ProviderProxy implements ProviderAdapter {
       let status: "completed" | "failed";
       let forwardedBytes = 0;
       try {
-        const responseBody = responseTranslator
-          ? responseTranslator.sseTransform(upstream.body)
-          : upstream.body;
+        const responseBody = providerAdapter.transformResponseStream(upstream.body, responseTranslation);
         for await (const chunk of responseBody) {
           const bytes = chunk instanceof Uint8Array ? chunk : Buffer.from(chunk);
           forwardedBytes += bytes.byteLength;
@@ -504,6 +544,13 @@ export class ProviderProxy implements ProviderAdapter {
             stage: forwardedBytes > 0 ? "after_bytes" : "after_headers"
           });
         }
+        const adapterClassification = aborted
+          ? undefined
+          : providerAdapter.classifyMalformedResponse({ message, response: upstream });
+        const adapterMetadata = {
+          adapterKind: resolvedProvider.adapterKind,
+          adapterClassification
+        };
         await this.appendTerminal(
           input,
           attempt.id,
@@ -513,10 +560,12 @@ export class ProviderProxy implements ProviderAdapter {
           {
             ...withoutOutputText(observation),
             error: message
-          }
+          },
+          adapterMetadata
         );
         this.attempts.update(attempt.id, {
           terminalStatus: status,
+          ...providerAttemptAdapterPatch(adapterMetadata),
           usage: observation.usage,
           error: message
         });
@@ -537,9 +586,17 @@ export class ProviderProxy implements ProviderAdapter {
       });
       input.timing?.markStreamCompletion();
       this.recordDeploymentStatus(selected, status, upstream.status, retryableStatus(upstream.status, input.retryPolicy?.retryableStatusCodes));
-      await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, withoutOutputText(observation));
+      const adapterClassification = status === "failed"
+        ? streamAdapterClassification(providerAdapter, upstream, observation)
+        : undefined;
+      const adapterMetadata = {
+        adapterKind: resolvedProvider.adapterKind,
+        adapterClassification
+      };
+      await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, withoutOutputText(observation), adapterMetadata);
       this.attempts.update(attempt.id, {
         terminalStatus: status,
+        ...providerAttemptAdapterPatch(adapterMetadata),
         usage: observation.usage,
         upstreamRequestId: observation.upstreamResponseId,
         error: observation.error
@@ -582,6 +639,7 @@ export class ProviderProxy implements ProviderAdapter {
       workspaceId: string;
       surface: Surface;
       provider: Provider;
+      body: unknown;
       decision: RouteDecision;
       compressionTelemetry?: JsonObject;
       onTerminal?: ProviderForwardInput["onTerminal"];
@@ -591,7 +649,8 @@ export class ProviderProxy implements ProviderAdapter {
     status: "completed" | "failed" | "cancelled",
     usage: unknown,
     upstreamStatus: number,
-    metadata: unknown = {}
+    metadata: unknown = {},
+    adapterMetadata: TerminalAdapterMetadata = {}
   ) {
     const metadataPayload = jsonPayload(metadata) as JsonObject;
     const payload: JsonObject = {
@@ -601,8 +660,13 @@ export class ProviderProxy implements ProviderAdapter {
       providerAttemptId,
       terminalStatus: status,
       upstreamStatus,
+      stream: isRecord(input.body) && input.body.stream === true,
       usage: usage === undefined ? null : jsonPayload(usage)
     };
+    if (adapterMetadata.adapterKind) payload.adapterKind = adapterMetadata.adapterKind;
+    if (adapterMetadata.adapterClassification) {
+      payload.adapterClassification = jsonPayload(adapterMetadata.adapterClassification);
+    }
     Object.assign(payload, providerCompressionTerminalTelemetry(input.compressionTelemetry, upstreamStatus > 0));
     if (input.credential?.providerAccountId) payload.providerAccountId = input.credential.providerAccountId;
     const error = terminalError(metadataPayload);
@@ -613,6 +677,7 @@ export class ProviderProxy implements ProviderAdapter {
       terminalStatus: status,
       statusCode: upstreamStatus,
       error,
+      adapterClassification: adapterMetadata.adapterClassification,
       now: new Date()
     });
     if (healthClassification) payload.healthClassification = jsonPayload(healthClassification);
@@ -704,11 +769,13 @@ export class ProviderProxy implements ProviderAdapter {
   private async failBeforeFetch(
     input: ProviderForwardInput,
     providerAttemptId: string,
-    error: string
+    error: string,
+    adapterMetadata: TerminalAdapterMetadata = {}
   ) {
-    await this.appendTerminal(input, providerAttemptId, "failed", undefined, 0, { error });
+    await this.appendTerminal(input, providerAttemptId, "failed", undefined, 0, { error }, adapterMetadata);
     this.attempts.update(providerAttemptId, {
       terminalStatus: "failed",
+      ...providerAttemptAdapterPatch(adapterMetadata),
       error
     });
     await this.requestStates.finish(input.idempotencyKey, "failed", {
@@ -733,208 +800,11 @@ export class ProviderProxy implements ProviderAdapter {
     if (failureReason) this.deploymentHealth.recordFailure(selected.deployment, failureReason);
   }
 
-  private async fetchWithRateLimitRetries({
-    input,
-    providerAttemptId,
-    provider,
-    endpoint,
-    signal
-  }: {
-    input: ProviderForwardInput;
-    providerAttemptId: string;
-    provider: ProviderRegistryEntry;
-    endpoint: ProviderRegistryEndpoint;
-    signal: AbortSignal;
-  }) {
-    const maxAttempts = this.config.providerRateLimitMaxAttempts;
-
-    for (let upstreamAttempt = 1; upstreamAttempt <= maxAttempts; upstreamAttempt += 1) {
-      const body = providerRequestBody({
-        provider,
-        body: input.body,
-        credential: input.credential
-      });
-      await this.events.append({
-        scopeType: "request",
-        scopeId: input.requestId,
-        correlationId: input.requestId,
-        idempotencyKey: `${input.idempotencyKey}:provider-forwarded:${upstreamAttempt}`,
-        producer: "proxy.provider",
-        eventType: "provider.request_forwarded",
-        payload: {
-          surface: input.surface,
-          provider: input.provider,
-          model: input.decision.selectedModel ?? "unknown",
-          providerAttemptId,
-          upstreamAttempt,
-          preparedRequestHash: requestBodyHash(input.body),
-          forwardedRequestHash: requestBodyHash(body),
-          ...input.compressionTelemetry
-        }
-      });
-      const upstream = await fetchWithPinnedAddress(providerRequestUrl({
-        provider,
-        endpoint,
-        path: input.path,
-        config: this.config,
-        credential: input.credential
-      }), {
-        method: "POST",
-        headers: providerRequestHeaders({
-          config: this.config,
-          provider,
-          endpoint,
-          surface: input.surface,
-          harnessProfileId: input.harnessProfileId,
-          body,
-          incoming: input.headers,
-          credential: input.credential
-        }),
-        body: JSON.stringify(body),
-        redirect: providerRequestRedirect({ provider, credential: input.credential }),
-        signal
-      }, providerRequestPinnedAddress({ provider, config: this.config, credential: input.credential }));
-
-      if (upstream.status !== 429 || upstreamAttempt === maxAttempts) {
-        return upstream;
-      }
-
-      const delayMs = rateLimitRetryDelayMs({
-        headers: upstream.headers,
-        provider: provider.slug,
-        maxDelayMs: this.config.providerRateLimitMaxDelayMs
-      });
-      if (delayMs === undefined) return upstream;
-
-      await discardBody(upstream);
-      await this.events.append({
-        scopeType: "request",
-        scopeId: input.requestId,
-        correlationId: input.requestId,
-        idempotencyKey: input.idempotencyKey,
-        producer: "proxy.provider",
-        eventType: "provider.rate_limit_retry_scheduled",
-        payload: {
-          surface: input.surface,
-          provider: input.provider,
-          model: input.decision.selectedModel ?? "unknown",
-          providerAttemptId,
-          upstreamAttempt,
-          maxAttempts,
-          upstreamStatus: upstream.status,
-          retryDelayMs: delayMs,
-          rateLimit: jsonPayload(rateLimitHeaders(upstream.headers))
-        }
-      });
-      await sleep(delayMs, signal);
-    }
-
-    throw new Error("Provider rate-limit retry loop exhausted.");
+  private providerAdapterFor(provider: ProviderRegistryEntry) {
+    if (provider.adapterKind === "generic-http-json") return this.genericHttp;
+    if (provider.adapterKind === "aws-bedrock-converse") return this.bedrockRuntime;
+    return undefined;
   }
-}
-
-export function providerRequestBody(input: {
-  provider: ProviderRegistryEntry;
-  body: unknown;
-  credential?: UpstreamCredential;
-}) {
-  const credentialForProvider = input.credential && input.credential.provider === input.provider.slug
-    ? input.credential
-    : undefined;
-  if (!isOpenAIChatGPTCredential(input.provider, credentialForProvider)) return input.body;
-  if (!isRecord(input.body)) return input.body;
-  const body = { ...input.body };
-  if (body.prompt_cache_retention !== undefined) delete body.prompt_cache_retention;
-  if (body.max_output_tokens !== undefined) delete body.max_output_tokens;
-  return body;
-}
-
-// Claude Code sends this beta flag natively, but translated harnesses (Codex, etc.) do
-// not — and Anthropic rejects OAuth /v1/messages requests without it — so inject it
-// wherever the proxy forwards an Anthropic subscription OAuth bearer.
-const ANTHROPIC_OAUTH_BETA = "oauth-2025-04-20";
-
-function mergeBetaTokens(existing: string | undefined, value: string) {
-  const tokens = (existing ?? "").split(",").map((token) => token.trim()).filter(Boolean);
-  if (!tokens.includes(value)) tokens.push(value);
-  return tokens.join(",");
-}
-
-export function providerRequestHeaders(input: {
-  config: AppConfig;
-  provider: ProviderRegistryEntry;
-  endpoint: ProviderRegistryEndpoint;
-  surface: Surface;
-  harnessProfileId?: ProviderForwardInput["harnessProfileId"];
-  body: unknown;
-  incoming: Record<string, string | undefined>;
-  credential?: UpstreamCredential;
-}) {
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-    ...input.provider.defaultHeaders
-  };
-  const credentialForProvider = input.credential && input.credential.provider === input.provider.slug
-    ? input.credential
-    : undefined;
-  const operatorToken = input.provider.builtin ? operatorTokenForProvider(input.provider.slug, input.config) : undefined;
-  const chatgptCredential = isOpenAIChatGPTCredential(input.provider, credentialForProvider)
-    ? credentialForProvider
-    : undefined;
-  const token = chatgptCredential?.token ??
-    (credentialForProvider?.authType === "api_key" ? credentialForProvider.token : operatorToken);
-  let usesAnthropicOAuthBearer = false;
-
-  if (
-    input.provider.slug === "anthropic" &&
-    credentialForProvider?.authType === "oauth" &&
-    input.config.subscriptionOAuthEnabled
-  ) {
-    // Subscription OAuth authenticates with the credential's own bearer token, so it
-    // works without an operator API key configured for the provider. (When the flag is
-    // off, `token` falls back to the operator key and is sent as x-api-key below.)
-    headers.authorization = `Bearer ${credentialForProvider.token}`;
-    usesAnthropicOAuthBearer = true;
-  } else if (input.provider.authStyle === "bearer" && token) {
-    headers.authorization = `Bearer ${token}`;
-    if (chatgptCredential?.chatgptAccountId) {
-      headers["ChatGPT-Account-Id"] = chatgptCredential.chatgptAccountId;
-    }
-  } else if (input.provider.authStyle === "x-api-key" && token) {
-    headers["x-api-key"] = token;
-  }
-
-  const profile = input.harnessProfileId
-    ? harnessSurfaceProfileById(input.harnessProfileId)
-    : detectHarnessSurfaceProfile({ surface: input.surface, body: input.body, headers: input.incoming });
-  copySelectedHeaders(input.incoming, headers, dialectHeadersFor(input.endpoint.dialect));
-
-  if (input.endpoint.dialect === "anthropic-messages") {
-    headers["anthropic-version"] = headers["anthropic-version"] ?? "2023-06-01";
-  }
-  if (usesAnthropicOAuthBearer) {
-    headers["anthropic-beta"] = mergeBetaTokens(headers["anthropic-beta"], ANTHROPIC_OAUTH_BETA);
-  }
-  if (input.provider.builtin || input.provider.forwardHarnessHeaders) {
-    copySelectedHeaders(input.incoming, headers, identityHeadersFor(profile));
-  }
-
-  return headers;
-}
-
-export function canAuthenticateOrgProvider(provider: ProviderRegistryEntry, credential?: UpstreamCredential) {
-  if (provider.builtin || provider.authStyle === "none") return true;
-  return credential?.provider === provider.slug;
-}
-
-function isOpenAIChatGPTCredential(
-  provider: ProviderRegistryEntry,
-  credential: UpstreamCredential | undefined
-) {
-  return provider.slug === "openai" &&
-    credential?.provider === provider.slug &&
-    credential.authType === "oauth" &&
-    Boolean(credential.chatgptAccountId);
 }
 
 function terminalEventType(status: "completed" | "failed" | "cancelled") {
@@ -1026,8 +896,10 @@ function providerForwardAttempts(input: ProviderForwardInput): ProviderForwardAt
   }
   return [{
     route: input.decision.finalRoute,
+    routeCandidateId: input.decision.routeExecutionPlan?.selected?.candidateId,
     selectedModel: input.decision.selectedModel,
     provider: input.decision.provider,
+    adapterKind: input.decision.selectedAdapterKind,
     deployment: input.decision.deployment,
     reasoningEffort: input.decision.reasoningEffort,
     body: input.body,
@@ -1039,13 +911,51 @@ function providerForwardAttempts(input: ProviderForwardInput): ProviderForwardAt
 function providerForwardAttempt(input: ProviderForwardInput, attempt: RouteProviderAttempt): ProviderForwardAttemptInput {
   return {
     route: attempt.route,
+    routeCandidateId: attempt.routeCandidateId,
     selectedModel: attempt.selectedModel,
     provider: attempt.provider,
+    adapterKind: attempt.adapterKind,
     deployment: attempt.deployment,
     reasoningEffort: attempt.reasoningEffort,
     body: input.body,
     credential: input.credential,
     providerSettings: attempt.providerSettings
+  };
+}
+
+function streamAdapterClassification(
+  adapter: RuntimeProviderAdapter,
+  upstream: Response,
+  observation: StreamObservation
+) {
+  if (observation.observerError) {
+    return adapter.classifyMalformedResponse({ message: observation.observerError, response: upstream });
+  }
+  if (
+    observation.status === "failed" &&
+    observation.error &&
+    "classifyStreamError" in adapter &&
+    typeof adapter.classifyStreamError === "function"
+  ) {
+    return adapter.classifyStreamError({ message: observation.error, response: upstream });
+  }
+  if (upstream.status >= 400) {
+    return adapter.classifyResponse({
+      status: upstream.status,
+      headers: upstream.headers,
+      bodyText: observation.error,
+      response: upstream
+    });
+  }
+  return undefined;
+}
+
+function providerAttemptAdapterPatch(adapterMetadata: TerminalAdapterMetadata): Partial<ProviderAttempt> {
+  return {
+    ...(adapterMetadata.adapterKind ? { adapterKind: adapterMetadata.adapterKind } : {}),
+    ...(adapterMetadata.adapterClassification
+      ? { adapterClassification: jsonPayload(adapterMetadata.adapterClassification) as JsonObject }
+      : {})
   };
 }
 
@@ -1082,138 +992,10 @@ function tryParseJson(text: string): unknown {
   }
 }
 
-function translateResponseText(text: string, translator: DialectTranslator) {
-  const parsed = tryParseJson(text);
-  if (parsed === undefined) return text;
-  return JSON.stringify(translator.response(parsed));
-}
-
 function withoutOutputText(observation: StreamObservation) {
   return streamObservationEventMetadata(observation);
 }
 
 function onceDrain(stream: NodeJS.WritableStream) {
   return new Promise<void>((resolve) => stream.once("drain", resolve));
-}
-
-function rateLimitRetryDelayMs(input: {
-  headers: Headers;
-  provider: Provider;
-  maxDelayMs: number;
-}) {
-  const headerDelay = retryAfterDelayMs(input.headers) ?? providerResetDelayMs(input.headers, input.provider);
-  if (headerDelay === undefined) return undefined;
-  const delayMs = headerDelay;
-  if (delayMs > input.maxDelayMs) return undefined;
-  return delayMs;
-}
-
-function retryAfterDelayMs(headers: Headers) {
-  const value = headers.get("retry-after");
-  if (!value) return undefined;
-  const seconds = Number(value);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1000);
-  const dateMs = Date.parse(value);
-  if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now());
-  return undefined;
-}
-
-function providerResetDelayMs(headers: Headers, provider: Provider) {
-  const values = provider === "openai"
-    ? [
-        delayWithRemaining(headers, "x-ratelimit-reset-requests", "x-ratelimit-remaining-requests"),
-        delayWithRemaining(headers, "x-ratelimit-reset-tokens", "x-ratelimit-remaining-tokens")
-      ]
-    : [
-        delayWithRemaining(headers, "anthropic-ratelimit-requests-reset", "anthropic-ratelimit-requests-remaining"),
-        delayWithRemaining(headers, "anthropic-ratelimit-tokens-reset", "anthropic-ratelimit-tokens-remaining"),
-        delayWithRemaining(headers, "anthropic-ratelimit-input-tokens-reset", "anthropic-ratelimit-input-tokens-remaining"),
-        delayWithRemaining(headers, "anthropic-ratelimit-output-tokens-reset", "anthropic-ratelimit-output-tokens-remaining"),
-        delayWithRemaining(headers, "anthropic-priority-input-tokens-reset", "anthropic-priority-input-tokens-remaining"),
-        delayWithRemaining(headers, "anthropic-priority-output-tokens-reset", "anthropic-priority-output-tokens-remaining")
-      ];
-  const exhausted = values.filter((value) => value.delayMs !== undefined && value.exhausted);
-  if (exhausted.length > 0) return Math.max(...exhausted.map((value) => value.delayMs ?? 0));
-  const candidates = values.map((value) => value.delayMs).filter((value) => value !== undefined);
-  if (candidates.length === 0) return undefined;
-  return Math.min(...candidates);
-}
-
-function delayWithRemaining(headers: Headers, resetHeader: string, remainingHeader: string) {
-  const reset = headers.get(resetHeader);
-  const remaining = headers.get(remainingHeader);
-  return {
-    delayMs: reset ? parseResetDelayMs(reset) : undefined,
-    exhausted: remaining !== null && Number(remaining) <= 0
-  };
-}
-
-function parseResetDelayMs(value: string) {
-  const duration = parseDurationMs(value);
-  if (duration !== undefined) return duration;
-  const dateMs = Date.parse(value);
-  if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now());
-  return undefined;
-}
-
-function parseDurationMs(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  const matches = [...trimmed.matchAll(/(\d+(?:\.\d+)?)(ms|s|m|h)/g)];
-  if (matches.length === 0) return undefined;
-  const consumed = matches.map((match) => match[0]).join("");
-  if (consumed !== trimmed) return undefined;
-  return Math.ceil(matches.reduce((total, match) => {
-    const amount = Number(match[1]);
-    if (!Number.isFinite(amount)) return total;
-    if (match[2] === "ms") return total + amount;
-    if (match[2] === "s") return total + amount * 1000;
-    if (match[2] === "m") return total + amount * 60_000;
-    return total + amount * 3_600_000;
-  }, 0));
-}
-
-function rateLimitHeaders(headers: Headers) {
-  const result: Record<string, string> = {};
-  for (const [key, value] of headers.entries()) {
-    if (
-      key === "retry-after" ||
-      key.startsWith("x-ratelimit-") ||
-      key.startsWith("anthropic-ratelimit-") ||
-      key.startsWith("anthropic-priority-") ||
-      key.startsWith("anthropic-fast-")
-    ) {
-      result[key] = value;
-    }
-  }
-  return result;
-}
-
-async function discardBody(response: Response) {
-  try {
-    await response.body?.cancel();
-  } catch {
-    await response.text().catch(() => undefined);
-  }
-}
-
-function sleep(delayMs: number, signal: AbortSignal) {
-  if (signal.aborted) return Promise.reject(abortError());
-  return new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, delayMs);
-    const onAbort = () => {
-      clearTimeout(timeout);
-      reject(abortError());
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-function abortError() {
-  const error = new Error("Provider request cancelled.");
-  error.name = "AbortError";
-  return error;
 }

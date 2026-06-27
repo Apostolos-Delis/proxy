@@ -1,0 +1,48 @@
+[
+  {
+    "messageStart": {
+      "role": "assistant"
+    }
+  },
+  {
+    "contentBlockStart": {
+      "contentBlockIndex": 0,
+      "start": {
+        "toolUse": {
+          "toolUseId": "call_list_files",
+          "name": "shell"
+        }
+      }
+    }
+  },
+  {
+    "contentBlockDelta": {
+      "contentBlockIndex": 0,
+      "delta": {
+        "toolUse": {
+          "input": "{\"cmd\""
+        }
+      }
+    }
+  },
+  {
+    "contentBlockDelta": {
+      "contentBlockIndex": 0,
+      "delta": {
+        "toolUse": {
+          "input": ":\"ls apps/proxy\"}"
+        }
+      }
+    }
+  },
+  {
+    "contentBlockStop": {
+      "contentBlockIndex": 0
+    }
+  },
+  {
+    "messageStop": {
+      "stopReason": "tool_use"
+    }
+  }
+]

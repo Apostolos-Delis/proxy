@@ -1,0 +1,20 @@
+[
+  {
+    "messageStart": {
+      "role": "assistant"
+    }
+  },
+  {
+    "contentBlockDelta": {
+      "contentBlockIndex": 0,
+      "delta": {
+        "text": "Starting"
+      }
+    }
+  },
+  {
+    "throttlingException": {
+      "message": "Rate exceeded while streaming from Bedrock."
+    }
+  }
+]

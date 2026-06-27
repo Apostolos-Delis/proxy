@@ -98,19 +98,66 @@ const RoutingModelCatalogDocument = graphql(`
       slug
       displayName
       authStyle
+      adapterKind
       enabled
       builtin
       endpoints {
         dialect
         path
+        operation
       }
       capabilities
     }
-    modelPricing {
+    modelCatalog {
       provider
       model
-      source
-      seenInTraffic
+      displayName
+      catalogSource
+      providerAccountId
+      region
+      bedrockModelSource
+      bedrockInferenceProfileArn
+      bedrockInferenceProfileId
+      bedrockInferenceProfileSource
+      bedrockInferenceProfileGeography
+      bedrockBaseModelId
+      bedrockFoundationModelId
+      dialects
+      contextWindow
+      maxOutputTokens
+      supportsStreaming
+      supportsTools
+      supportsImages
+      supportsReasoning
+      warnings
+      pricingKnown
+      inputCostPerMtok
+      outputCostPerMtok
+    }
+    providerAccounts {
+      id
+      providerId
+      provider
+      name
+      status
+      credentialMode
+      credentialSourceCategory
+      region
+      endpointOverride
+      discoveryRegions
+      health {
+        status
+        lastErrorType
+        cooldownUntil
+        metadata
+        modelHealth {
+          model
+          status
+          lastErrorType
+          lockoutUntil
+          metadata
+        }
+      }
     }
   }
 `);
@@ -229,7 +276,8 @@ export async function fetchRoutingModelCatalog(): Promise<RoutingEditorCatalog> 
   const data = await gqlFetch(RoutingModelCatalogDocument);
   return {
     providers: data.providers,
-    models: data.modelPricing
+    models: data.modelCatalog,
+    providerAccounts: data.providerAccounts
   };
 }
 

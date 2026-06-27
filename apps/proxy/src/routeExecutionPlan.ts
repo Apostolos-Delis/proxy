@@ -4,12 +4,15 @@ import {
   type RouteCandidateEvaluation,
   type RouteExecutionPlan,
   type RoutePolicyResult,
-  type RoutingConfig
+  type RoutingConfig,
+  type RoutingConfigAnthropicDeployment,
+  type RoutingConfigOpenAIDeployment
 } from "@proxy/schema";
 
 import type { ClassifierSettings } from "./classifier.js";
 import type {
   Dialect,
+  ProviderAdapterKind,
   ProviderEffort,
   ProviderHealthSkip,
   RouteContext,
@@ -17,17 +20,29 @@ import type {
   RouteName,
   SelectedRouteSettings
 } from "./types.js";
+import { deploymentKey } from "./deploymentKey.js";
 
 type PlanTarget = {
   providerId: string;
   model: string;
   dialect?: Dialect;
   providerAccountId?: string;
+  bedrockOnlySettings?: boolean;
+};
+
+export type ConfiguredRouteDeployment = {
+  deployment: RoutingConfigAnthropicDeployment | RoutingConfigOpenAIDeployment;
+  sourceIndex: number;
+};
+
+type ConfiguredRouteCandidates = {
+  candidates: RouteCandidateEvaluation[];
+  selectedCandidateId?: string;
 };
 
 export type TargetAvailability =
-  | { status: "available"; dialect: Dialect; supportedEfforts?: ProviderEffort[]; providerAccountId?: string }
-  | { status: "unavailable"; reason: string; dialect?: Dialect; healthSkip?: ProviderHealthSkip };
+  | { status: "available"; dialect: Dialect; adapterKind?: ProviderAdapterKind; supportedEfforts?: ProviderEffort[]; providerAccountId?: string; contextWindowOk?: boolean | null }
+  | { status: "unavailable"; reason: string; dialect?: Dialect; adapterKind?: ProviderAdapterKind; healthSkip?: ProviderHealthSkip; contextWindowOk?: boolean | null };
 
 export type TargetAvailabilityResolver = (
   target: PlanTarget,
@@ -49,14 +64,19 @@ export async function buildRouteExecutionPlan(input: {
   const organizationId = context.organizationId ?? defaultOrganizationId;
   const workspaceId = context.workspaceId ?? defaultWorkspaceId(organizationId);
   const route = decision.classifier?.recommendedRoute ?? decision.classifierRoute ?? finalRoute;
-  const candidates = routingConfig
+  const configuredCandidates = routingConfig
     ? await buildConfiguredRouteCandidates(context, decision, routingConfig, targetAvailability)
-    : [];
-  const selectedCandidate = candidates.find((candidate) =>
-    candidate.providerId === decision.providerSettings?.provider &&
-    candidate.model === decision.providerSettings?.model &&
-    candidate.endpointDialect === decision.providerSettings?.dialect
-  );
+    : { candidates: [] };
+  const candidates = configuredCandidates.candidates;
+  const selectedProviderAccountId = decision.providerSettings.deployment.providerAccountId;
+  const selectedCandidate = configuredCandidates.selectedCandidateId
+    ? candidates.find((candidate) => candidate.id === configuredCandidates.selectedCandidateId)
+    : candidates.find((candidate) =>
+        candidate.providerId === decision.providerSettings?.provider &&
+        candidate.model === decision.providerSettings?.model &&
+        candidate.endpointDialect === decision.providerSettings?.dialect &&
+        providerAccountMatches(candidate.providerAccountIds, selectedProviderAccountId)
+      );
   const finalCandidates = selectedCandidate
     ? candidates
     : [
@@ -114,15 +134,19 @@ async function buildConfiguredRouteCandidates(
   decision: RouteDecision,
   routingConfig: RoutingConfig,
   targetAvailability: TargetAvailabilityResolver
-): Promise<RouteCandidateEvaluation[]> {
+): Promise<ConfiguredRouteCandidates> {
   const candidates: RouteCandidateEvaluation[] = [];
+  const providerSettings = decision.providerSettings;
+  if (!providerSettings) return { candidates };
   const budgetAllowed = budgetAllowedFromChecks(decision.budgetChecks);
   const deployments = configuredRouteDeployments(routingConfig, decision.finalRoute);
-  for (const [index, deployment] of deployments.entries()) {
+  let selectedCandidateId: string | undefined;
+  for (const [index, { deployment, sourceIndex }] of deployments.entries()) {
     const target = {
       providerId: deployment.provider,
       model: deployment.model,
-      providerAccountId: deployment.providerAccountId
+      providerAccountId: deployment.providerAccountId,
+      bedrockOnlySettings: hasBedrockOnlySettings(deployment)
     };
     const nativeAvailability = await targetAvailability(target, "native");
     let availability = nativeAvailability;
@@ -137,15 +161,29 @@ async function buildConfiguredRouteCandidates(
     const skipReason = availability.status === "unavailable"
       ? routeSkipReasonForCompatibilityReason(availability.reason)
       : undefined;
-    const selected = decision.providerSettings?.provider === target.providerId &&
-      decision.providerSettings.model === target.model &&
-      decision.providerSettings.dialect === endpointDialect;
-    const eligible = availability.status === "available";
     const providerAccountId = deployment.providerAccountId
       ?? (availability.status === "available" ? availability.providerAccountId : undefined);
     const providerAccountIds = providerAccountId ? [providerAccountId] : [];
+    const selectedProviderAccountId = providerSettings.deployment.providerAccountId;
+    const candidateId = `candidate_${index}`;
+    const selectedBase = providerSettings.provider === target.providerId &&
+      providerSettings.model === target.model &&
+      providerSettings.dialect === endpointDialect;
+    const selectedByDeploymentKey = selectedBase &&
+      providerSettings.deployment.key === deploymentKey({
+        routingConfigVersionId: decision.routingConfig?.versionId ?? "inline",
+        route: decision.finalRoute,
+        surface: context.surface,
+        deployment,
+        index: sourceIndex
+      });
+    const selectedByFallback = selectedBase &&
+      providerAccountMatches(providerAccountIds, selectedProviderAccountId);
+    const selected = selectedByDeploymentKey || selectedByFallback;
+    if (selectedByDeploymentKey || (selectedByFallback && !selectedCandidateId)) selectedCandidateId = candidateId;
+    const eligible = availability.status === "available";
     candidates.push({
-      id: `candidate_${index}`,
+      id: candidateId,
       order: deployment.order,
       providerId: target.providerId,
       providerAccountIds,
@@ -160,8 +198,8 @@ async function buildConfiguredRouteCandidates(
       skipReasons: skipReason ? [skipReason] : [],
       factors: {
         nativeDialect: context.surface === endpointDialect,
-        capabilityMatch: eligible || selected,
-        contextWindowOk: null,
+        capabilityMatch: capabilityMatchFactor(availability, eligible || selected),
+        contextWindowOk: availability.contextWindowOk ?? null,
         providerHealthy: providerHealthyFactor(availability),
         accountAvailable: accountAvailableFactor(availability, eligible),
         budgetAllowed,
@@ -170,22 +208,30 @@ async function buildConfiguredRouteCandidates(
       }
     });
   }
-  return candidates;
+  return { candidates, selectedCandidateId };
 }
 
-function configuredRouteDeployments(routingConfig: RoutingConfig, route: RouteName | undefined) {
+function providerAccountMatches(candidateProviderAccountIds: string[], selectedProviderAccountId: string | undefined) {
+  if (selectedProviderAccountId) return candidateProviderAccountIds.includes(selectedProviderAccountId);
+  return candidateProviderAccountIds.length === 0;
+}
+
+export function configuredRouteDeployments(routingConfig: RoutingConfig, route: RouteName | undefined): ConfiguredRouteDeployment[] {
   if (!route) return [];
   const routeConfig = routingConfig.routes[route];
+  const anthropicDeployments = routeConfig.anthropic?.deployments ?? [];
   return [
-    ...(routeConfig.anthropic?.deployments.map((deployment, index) => ({
+    ...anthropicDeployments.map((deployment, index) => ({
       deployment,
       familyOrder: 0,
-      index
-    })) ?? []),
+      index,
+      sourceIndex: index
+    })),
     ...(routeConfig.openai?.deployments.map((deployment, index) => ({
       deployment,
       familyOrder: 1,
-      index
+      index,
+      sourceIndex: anthropicDeployments.length + index
     })) ?? [])
   ]
     .sort((left, right) =>
@@ -193,7 +239,30 @@ function configuredRouteDeployments(routingConfig: RoutingConfig, route: RouteNa
       left.familyOrder - right.familyOrder ||
       left.index - right.index
     )
-    .map(({ deployment }) => deployment);
+    .map(({ deployment, sourceIndex }) => ({ deployment, sourceIndex }));
+}
+
+function capabilityMatchFactor(availability: TargetAvailability, fallback: boolean) {
+  if (
+    availability.status === "unavailable" &&
+    (
+      availability.reason === "model_capability" ||
+      availability.reason === "tool_capability_unavailable" ||
+      availability.reason === "image_capability_unavailable" ||
+      availability.reason === "streaming_capability_unavailable"
+    )
+  ) {
+    return false;
+  }
+  return fallback;
+}
+
+function hasBedrockOnlySettings(deployment: RoutingConfigOpenAIDeployment | RoutingConfigAnthropicDeployment) {
+  const metadata = deployment.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
+  return metadata.bedrock !== undefined ||
+    metadata.bedrockConverse !== undefined ||
+    metadata.bedrockSettings !== undefined;
 }
 
 function budgetAllowedFromChecks(budgetChecks: RouteDecision["budgetChecks"]) {

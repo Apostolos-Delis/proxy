@@ -3,6 +3,14 @@ import { describe, expect, it } from "vitest";
 import { rewriteSurfaceRequest } from "../src/adapters.js";
 
 function openAIChatDecision(model = "gpt-5.5", settings: Record<string, unknown> = {}) {
+  const deployment = {
+    provider: "openai" as const,
+    model,
+    order: 0,
+    weight: 1,
+    timeoutMs: 60000,
+    ...settings
+  };
   return {
     outcome: "route" as const,
     finalRoute: "hard" as const,
@@ -10,10 +18,11 @@ function openAIChatDecision(model = "gpt-5.5", settings: Record<string, unknown>
     surface: "openai-chat" as const,
     provider: "openai" as const,
     providerSettings: {
-      providerId: "openai" as const,
+      provider: "openai" as const,
       model,
       dialect: "openai-chat" as const,
-      ...settings
+      deployment: { key: "test", provider: "openai" as const, model, order: 0, weight: 1, timeoutMs: 60000 },
+      openai: deployment
     }
   };
 }
@@ -23,6 +32,14 @@ function anthropicDecision(
   model = "claude-sonnet-4-5",
   settings: Record<string, unknown> = {}
 ) {
+  const deployment = {
+    provider: "anthropic" as const,
+    model,
+    order: 0,
+    weight: 1,
+    timeoutMs: 60000,
+    ...settings
+  };
   return {
     outcome: "route" as const,
     finalRoute: "fast" as const,
@@ -30,10 +47,11 @@ function anthropicDecision(
     surface,
     provider: "anthropic" as const,
     providerSettings: {
-      providerId: "anthropic" as const,
+      provider: "anthropic" as const,
       model,
       dialect: "anthropic-messages" as const,
-      ...settings
+      deployment: { key: "test", provider: "anthropic" as const, model, order: 0, weight: 1, timeoutMs: 60000 },
+      anthropic: deployment
     }
   };
 }
@@ -113,7 +131,7 @@ describe("openai-chat rewrite", () => {
     };
 
     const result = rewriteSurfaceRequest(body, openAIChatDecision("gpt-5.5", {
-      effort: "max",
+      reasoning: { effort: "xhigh" },
       maxOutputTokens: 1234
     })) as any;
 

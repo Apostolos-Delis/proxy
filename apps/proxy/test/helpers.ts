@@ -296,11 +296,11 @@ export async function startOpenAIMock(
     response.write(
       `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_mock" } })}\n\n`
     );
+    if (options.slowProvider) return;
     if (options.failStreamAfterChunk || options.failStreamAfterFirstByte) {
       setTimeout(() => response.destroy(new Error("mock stream failed after first byte")), 5);
       return;
     }
-    if (options.slowProvider) return;
     if (options.responsesStreamError) {
       response.write(
         `data: ${JSON.stringify({

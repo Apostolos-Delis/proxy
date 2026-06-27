@@ -4,13 +4,17 @@ import { boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, 
 import type {
   EventOutboxStatus,
   InvitationStatus,
+  ModelCatalogSource,
   OrganizationMemberRole,
   OrganizationMemberStatus,
   PromptCaptureMode,
+  ProviderAdapterKind,
   ProviderAccountAuthType,
   ProviderAttemptStatus,
   ProviderHealthErrorType,
   ProviderHealthStatus,
+  ProviderAuthStyle,
+  ProviderRegistryEndpoint,
   RequestStatus,
   RouteExecutionPlan,
   RouteSkipReason,
@@ -298,8 +302,10 @@ export const providers = pgTable(
     slug: text("slug").notNull(),
     displayName: text("display_name").notNull(),
     baseUrl: text("base_url").notNull(),
-    authStyle: text("auth_style").$type<"bearer" | "x-api-key" | "none">().notNull(),
-    endpoints: jsonb("endpoints").$type<{ dialect: string; path: string }[]>().notNull().default([]),
+    adapterKind: text("adapter_kind").$type<ProviderAdapterKind>().notNull().default("generic-http-json"),
+    adapterConfig: jsonb("adapter_config").$type<Record<string, unknown>>().notNull().default({}),
+    authStyle: text("auth_style").$type<ProviderAuthStyle>().notNull(),
+    endpoints: jsonb("endpoints").$type<ProviderRegistryEndpoint[]>().notNull().default([]),
     defaultHeaders: jsonb("default_headers").$type<Record<string, string>>().notNull().default({}),
     capabilities: jsonb("capabilities").$type<Record<string, unknown>>().notNull().default({}),
     forwardHarnessHeaders: boolean("forward_harness_headers").notNull().default(false),
@@ -468,16 +474,25 @@ export const modelCatalog = pgTable(
     providerId: uuid("provider_id")
       .notNull()
       .references(() => providers.id),
+    providerAccountId: text("provider_account_id"),
+    region: text("region"),
     model: text("model").notNull(),
     route: text("route").$type<RouteName>(),
+    catalogSource: text("catalog_source").$type<ModelCatalogSource>().notNull().default("manual"),
     capabilities: jsonb("capabilities").$type<Record<string, unknown>>().notNull().default({}),
     pricing: jsonb("pricing").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
   (table) => [
-    uniqueIndex("model_catalog_org_provider_id_model_idx").on(table.organizationId, table.providerId, table.model),
-    index("model_catalog_route_idx").on(table.organizationId, table.route)
+    uniqueIndex("model_catalog_org_provider_account_region_model_idx").on(table.organizationId, table.providerId, table.providerAccountId, table.region, table.model),
+    index("model_catalog_route_idx").on(table.organizationId, table.route),
+    index("model_catalog_org_provider_account_idx").on(table.organizationId, table.providerAccountId),
+    foreignKey({
+      name: "model_catalog_provider_account_fk",
+      columns: [table.organizationId, table.providerAccountId, table.providerId],
+      foreignColumns: [providerAccounts.organizationId, providerAccounts.id, providerAccounts.providerId]
+    })
   ]
 );
 
@@ -640,6 +655,8 @@ export const providerAttempts = pgTable(
     surface: text("surface").notNull(),
     provider: text("provider").notNull(),
     model: text("model").notNull(),
+    adapterKind: text("adapter_kind").$type<ProviderAdapterKind>(),
+    adapterClassification: jsonb("adapter_classification").$type<Record<string, unknown>>(),
     providerAccountId: text("provider_account_id"),
     upstreamRequestId: text("upstream_request_id"),
     terminalStatus: text("terminal_status").$type<ProviderAttemptStatus>().notNull().default("pending"),

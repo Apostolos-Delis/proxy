@@ -11,6 +11,12 @@ export const ProviderAttempt = builder
       surface: t.exposeString("surface"),
       provider: t.exposeString("provider"),
       model: t.exposeString("model"),
+      adapterKind: t.exposeString("adapterKind", { nullable: true }),
+      adapterClassification: t.field({
+        type: "JSON",
+        nullable: true,
+        resolve: (attempt) => attempt.adapterClassification ?? null
+      }),
       providerAccountId: t.exposeString("providerAccountId", { nullable: true }),
       upstreamRequestId: t.exposeString("upstreamRequestId", { nullable: true }),
       terminalStatus: t.exposeString("terminalStatus"),

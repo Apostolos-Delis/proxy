@@ -15,7 +15,7 @@ export function providerRequestUrl(input: {
   config: AppConfig;
   credential?: UpstreamCredential;
 }) {
-  return `${providerRequestBaseUrl(input)}${input.path ?? input.endpoint.path}`;
+  return `${providerRequestBaseUrl(input)}${input.path ?? providerEndpointPath(input.endpoint)}`;
 }
 
 export function providerRequestPinnedAddress(input: {
@@ -88,6 +88,11 @@ function isOpenAIChatGPTCredential(
     credential?.provider === provider.slug &&
     credential.authType === "oauth" &&
     Boolean(credential.chatgptAccountId);
+}
+
+function providerEndpointPath(endpoint: ProviderRegistryEndpoint) {
+  if ("path" in endpoint) return endpoint.path;
+  throw new Error("provider_endpoint_path_unavailable");
 }
 
 function dispatcherForPinnedAddress(pinnedAddress: PinnedUpstreamAddress) {

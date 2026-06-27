@@ -124,8 +124,22 @@ describe("database seed", () => {
     expect(sandboxMemberRows).toEqual([
       expect.objectContaining({ userId: "user_seed", role: "owner", status: "active" })
     ]);
-    expect(providerAccountRows).toHaveLength(2);
-    expect(registryProviderRows).toHaveLength(2);
+    expect(providerAccountRows).toHaveLength(3);
+    expect(providerAccountRows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "org_seed:provider:amazon-bedrock",
+        providerId: "00000000-0000-0000-0000-000000000003",
+        name: "Amazon Bedrock",
+        secretRef: "aws:default-chain",
+        secretCiphertext: null,
+        settings: {
+          credentialMode: "aws_default_chain",
+          region: "us-east-1",
+          discoveryRegions: ["us-east-1"]
+        }
+      })
+    ]));
+    expect(registryProviderRows).toHaveLength(3);
     expect(registryProviderRows).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: "00000000-0000-0000-0000-000000000001",
@@ -150,6 +164,27 @@ describe("database seed", () => {
         ],
         capabilities: { efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"] },
         forwardHarnessHeaders: true,
+        enabled: true
+      }),
+      expect.objectContaining({
+        id: "00000000-0000-0000-0000-000000000003",
+        slug: "amazon-bedrock",
+        baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com",
+        adapterKind: "aws-bedrock-converse",
+        adapterConfig: {
+          service: "bedrock-runtime",
+          controlPlaneService: "bedrock",
+          defaultRegion: "us-east-1",
+          supportsBearerToken: true,
+          supportsInferenceProfiles: true
+        },
+        authStyle: "aws-sdk",
+        endpoints: [
+          { dialect: "bedrock-converse", operation: "Converse" },
+          { dialect: "bedrock-converse", operation: "ConverseStream" }
+        ],
+        capabilities: {},
+        forwardHarnessHeaders: false,
         enabled: true
       })
     ]));

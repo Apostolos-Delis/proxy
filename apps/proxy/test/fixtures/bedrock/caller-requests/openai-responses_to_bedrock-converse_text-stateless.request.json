@@ -1,0 +1,21 @@
+{
+  "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+  "instructions": "Answer with concise operational guidance.",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Summarize the migration risk."
+        }
+      ]
+    }
+  ],
+  "max_output_tokens": 256,
+  "temperature": 0.2,
+  "top_p": 0.9,
+  "store": false,
+  "stream": false
+}

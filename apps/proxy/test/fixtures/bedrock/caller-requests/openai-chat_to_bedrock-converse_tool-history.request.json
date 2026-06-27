@@ -1,0 +1,52 @@
+{
+  "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+  "messages": [
+    {
+      "role": "user",
+      "content": "List the project files."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_list_files",
+          "type": "function",
+          "function": {
+            "name": "shell",
+            "arguments": "{\"cmd\":\"ls apps/proxy\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_list_files",
+      "content": "{\"stdout\":\"src\\ntest\\npackage.json\"}"
+    },
+    {
+      "role": "user",
+      "content": "Summarize what you found."
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "shell",
+        "description": "Run a read-only shell command.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "cmd": { "type": "string" }
+          },
+          "required": ["cmd"],
+          "additionalProperties": false
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto",
+  "max_completion_tokens": 512,
+  "stream": false
+}

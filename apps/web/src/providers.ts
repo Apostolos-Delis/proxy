@@ -14,6 +14,7 @@ export function providerOptionsFromRegistry(providers: ProviderRegistrySummary[]
     .filter((provider) => provider.enabled)
     .map((provider) => ({
       value: provider.slug,
-      label: builtin.get(provider.slug) ?? provider.displayName
+      label: builtin.get(provider.slug) ?? provider.displayName,
+      adapterKind: provider.adapterKind
     }));
 }

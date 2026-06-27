@@ -96,6 +96,11 @@ describe("healthSkipsFromEvents", () => {
             healthStatus: "cooldown",
             errorType: "rate_limited",
             expiresAt: "2026-06-18T12:05:00.000Z",
+            metadata: {
+              bedrockErrorKind: "stream_permission_denied",
+              region: "us-east-1",
+              nested: { raw: "do not render" }
+            },
             rawError: "do not render"
           }
         ]
@@ -111,7 +116,11 @@ describe("healthSkipsFromEvents", () => {
         model: "gpt-locked",
         healthStatus: "cooldown",
         errorType: "rate_limited",
-        expiresAt: "2026-06-18T12:05:00.000Z"
+        expiresAt: "2026-06-18T12:05:00.000Z",
+        metadata: {
+          bedrockErrorKind: "stream_permission_denied",
+          region: "us-east-1"
+        }
       }
     ]);
     expect(JSON.stringify(skips)).not.toContain("do not render");
@@ -131,7 +140,8 @@ describe("healthSkipsFromEvents", () => {
         model: null,
         healthStatus: null,
         errorType: null,
-        expiresAt: null
+        expiresAt: null,
+        metadata: {}
       }
     ]);
   });

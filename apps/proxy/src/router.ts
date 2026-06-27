@@ -1,12 +1,14 @@
 import {
   TRANSLATABLE_DIALECT_PAIRS,
+  TRANSLATION_COMPATIBILITY_DIALECTS,
   harnessCompatibilityForTarget,
   type HarnessCompatibilityProfileId,
   type RoutingConfig,
   type RoutingConfigAnthropicDeployment,
   type RoutingConfigOpenAIDeployment,
   type RoutingConfigRetryPolicy,
-  type SelectedDeployment
+  type SelectedDeployment,
+  type TranslationDialect
 } from "@proxy/schema";
 
 import {
@@ -19,25 +21,30 @@ import type { ClassificationResult, ClassifierSettings, ClassifierTarget, LlmCla
 import { hasUserSignal } from "./features.js";
 import { jsonPayload, type EventAppender } from "./events.js";
 import type { AppConfig } from "./config.js";
+import { deploymentKey } from "./deploymentKey.js";
 import {
   type MetricsCollector,
   NoopMetricsCollector
 } from "./metrics.js";
 import {
   ProviderRegistryError,
+  providerEndpointForAnyDialect,
   providerEndpointForDialect,
   type ProviderRegistryEntry,
   type ProviderRegistryResolver
 } from "./persistence/providers.js";
+import type { ModelTargetCapabilities } from "./modelDiscovery.js";
 import { providerHealthTargetKey, type ProviderHealthTarget } from "./persistence/providerHealth.js";
 import { capRoute, checkBeforeClassification, checkDecision, type SessionRouteStore } from "./policy.js";
+import { resolveBedrockConverseModelId } from "./providerAdapters/bedrockModelIds.js";
 import { ProviderDeploymentHealthStore } from "./providerDeploymentHealth.js";
-import { buildRouteExecutionPlan, type TargetAvailability } from "./routeExecutionPlan.js";
+import { buildRouteExecutionPlan, configuredRouteDeployments, type TargetAvailability } from "./routeExecutionPlan.js";
 import { translators, translationTag } from "./translators/index.js";
 import type {
   Dialect,
   JsonObject,
   Provider,
+  ProviderAdapterKind,
   ProviderEffort,
   ProviderHealthSkip,
   RouteContext,
@@ -67,6 +74,7 @@ type ResolvedRouteSettings = {
   reasoningEffort?: ProviderEffort;
   verbosity?: Verbosity;
   provider: Provider;
+  adapterKind?: ProviderAdapterKind;
 };
 
 type ProviderCredentialResolver = {
@@ -91,11 +99,22 @@ type ProviderHealthReader = {
   }): Promise<Map<string, ProviderHealthSkip>>;
 };
 
+type ModelCapabilityReader = {
+  targetCapabilities(input: {
+    organizationId: string;
+    providerId: string;
+    model: string;
+    providerAccountId?: string;
+    region?: string;
+  }): Promise<ModelTargetCapabilities | undefined>;
+};
+
 type DeploymentTarget = {
   providerId: Provider;
   model: string;
   dialect?: Dialect;
   providerAccountId?: string;
+  bedrockOnlySettings?: boolean;
 };
 
 type DeploymentFamily = "openai" | "anthropic";
@@ -106,14 +125,16 @@ type DeploymentSelection = {
   deployment: SelectedDeployment;
 };
 
-function settingsForSurface(selected: SelectedRouteSettings): ResolvedRouteSettings {
+function settingsForSurface(selected: SelectedRouteSettings, adapterKind?: ProviderAdapterKind): ResolvedRouteSettings {
+  const selectedModel = selectedModelForSettings(selected, adapterKind);
   if ("openai" in selected) {
     return {
-      selectedModel: selected.model,
+      selectedModel,
       provider: selected.provider,
       deployment: selected.deployment,
       reasoningEffort: selected.openai.reasoning?.effort,
       verbosity: selected.openai.text?.verbosity,
+      adapterKind,
       providerSettings: selected
     };
   }
@@ -122,19 +143,47 @@ function settingsForSurface(selected: SelectedRouteSettings): ResolvedRouteSetti
     ? anthropicEffortForModel(selected.model, requestedEffort)
     : undefined;
   return {
-    selectedModel: selected.model,
+    selectedModel,
     provider: selected.provider,
     deployment: selected.deployment,
     reasoningEffort: effort,
+    adapterKind,
     providerSettings: selected
   };
 }
 
-function routeProviderAttempt(route: RouteName, settings: ResolvedRouteSettings): RouteProviderAttempt {
+function selectedModelForSettings(selected: SelectedRouteSettings, adapterKind?: ProviderAdapterKind) {
+  if (selected.dialect !== "bedrock-converse" && adapterKind !== "aws-bedrock-converse") return selected.model;
+  const settings = bedrockRouteMetadataSettings(selected);
+  return resolveBedrockConverseModelId({
+    modelId: selected.model,
+    inferenceProfile: stringMetadata(settings?.inferenceProfile) ?? stringMetadata(settings?.inferenceProfileId),
+    inferenceProfileGeography: stringMetadata(settings?.inferenceProfileGeography) ?? stringMetadata(settings?.profileGeography)
+  });
+}
+
+function bedrockRouteMetadataSettings(selected: SelectedRouteSettings) {
+  const metadata = "openai" in selected ? selected.openai.metadata : selected.anthropic.metadata;
+  if (!isPlainObject(metadata)) return undefined;
+  const candidate = metadata.bedrockConverse ?? metadata.bedrock ?? metadata.bedrockSettings;
+  return isPlainObject(candidate) ? candidate : undefined;
+}
+
+function stringMetadata(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function routeProviderAttempt(route: RouteName, settings: ResolvedRouteSettings, routeCandidateId?: string): RouteProviderAttempt {
   return {
     route,
+    routeCandidateId,
     selectedModel: settings.selectedModel,
     provider: settings.provider,
+    adapterKind: settings.adapterKind,
     deployment: settings.deployment,
     reasoningEffort: settings.reasoningEffort,
     verbosity: settings.verbosity,
@@ -156,6 +205,7 @@ export class RoutingService {
     private readonly providerRegistry: ProviderRegistryResolver,
     private readonly credentials?: ProviderCredentialResolver,
     private readonly providerHealth?: ProviderHealthReader,
+    private readonly modelCapabilities?: ModelCapabilityReader,
     private readonly metrics: MetricsCollector = new NoopMetricsCollector(),
     private readonly deploymentHealth = new ProviderDeploymentHealthStore()
   ) {}
@@ -322,6 +372,7 @@ export class RoutingService {
         defaultOrganizationId: this.config.defaultOrganizationId,
         targetAvailability: (target, mode) => this.targetAvailability(context, target, mode)
       });
+      assignSelectedRouteCandidateId(decision);
       await this.recordRouteExecutionPlan(requestId, idempotencyKey, decision);
     }
 
@@ -405,6 +456,7 @@ export class RoutingService {
       provider: routeSettings.provider,
       deployment: routeSettings.deployment,
       providerAttempts: [routeProviderAttempt(finalRoute, routeSettings)],
+      selectedAdapterKind: routeSettings.adapterKind,
       retryPolicy: retryPolicyForRoute(finalRoute, routingConfig?.config),
       reasoningEffort: routeSettings.reasoningEffort,
       verbosity: routeSettings.verbosity,
@@ -688,6 +740,7 @@ export class RoutingService {
       retryPolicy: retryPolicyForRoute(finalRoute, routingConfig?.config),
       reasoningEffort: routeSettings.reasoningEffort,
       verbosity: routeSettings.verbosity,
+      selectedAdapterKind: routeSettings.adapterKind,
       providerSettings: routeSettings.providerSettings,
       guardrailActions,
       reasonCodes: classification?.output.reason_codes ?? [`alias_${finalRoute}`],
@@ -748,6 +801,7 @@ export class RoutingService {
         classifierRoute: decision.classifierRoute,
         finalRoute: decision.finalRoute,
         provider: decision.provider,
+        ...(decision.selectedAdapterKind ? { adapterKind: decision.selectedAdapterKind } : {}),
         selectedModel: decision.selectedModel,
         routingConfig: decision.routingConfig ?? null,
         routeExecutionPlan: plan,
@@ -789,7 +843,8 @@ export class RoutingService {
     guardrailActions: string[],
     healthSkips: ProviderHealthSkip[]
   ): Promise<RouteProviderAttempt[]> {
-    const attempts = [routeProviderAttempt(route, selected)];
+    const routeCandidateIds = routeCandidateIdsForRoute(routingConfig, route, context.surface, routingConfigSnapshot?.versionId);
+    const attempts = [routeProviderAttempt(route, selected, routeCandidateIds.get(selected.deployment.key))];
     const seen = new Set([selected.deployment.key]);
     for (const settings of await this.resolveProviderSettingsSequence(
       context,
@@ -802,7 +857,7 @@ export class RoutingService {
     )) {
       if (seen.has(settings.deployment.key)) continue;
       seen.add(settings.deployment.key);
-      attempts.push(routeProviderAttempt(route, settings));
+      attempts.push(routeProviderAttempt(route, settings, routeCandidateIds.get(settings.deployment.key)));
     }
 
     const fallbackRoute = routingConfig?.limits.fallbackRoute;
@@ -877,6 +932,7 @@ export class RoutingService {
     const translatedCandidates: DeploymentSelection[] = [];
     for (const selected of this.deploymentSequence(deployments, context, route, selectionKey, routingConfigSnapshot)) {
       const target = deploymentTarget(selected.deployment);
+      target.bedrockOnlySettings = hasBedrockOnlySettings(selected.settings);
       const availability = await this.targetAvailability(context, target, "native");
       if (availability.status === "unavailable") {
         if (availability.healthSkip) addHealthSkip(healthSkips, availability.healthSkip);
@@ -888,10 +944,11 @@ export class RoutingService {
         continue;
       }
       appendTranslationAction(guardrailActions, context.surface, availability.dialect);
-      resolved.push(settingsForSurface(settingsWithAvailability(selected, availability)));
+      resolved.push(settingsForSurface(settingsWithAvailability(selected, availability), availability.adapterKind));
     }
     for (const selected of translatedCandidates) {
       const target = deploymentTarget(selected.deployment);
+      target.bedrockOnlySettings = hasBedrockOnlySettings(selected.settings);
       const availability = await this.targetAvailability(context, target, "translated");
       if (availability.status === "unavailable") {
         if (availability.healthSkip) addHealthSkip(healthSkips, availability.healthSkip);
@@ -899,7 +956,7 @@ export class RoutingService {
         continue;
       }
       appendTranslationAction(guardrailActions, context.surface, availability.dialect);
-      resolved.push(settingsForSurface(settingsWithAvailability(selected, availability)));
+      resolved.push(settingsForSurface(settingsWithAvailability(selected, availability), availability.adapterKind));
     }
     return resolved;
   }
@@ -955,7 +1012,8 @@ export class RoutingService {
       providerId: settings.provider,
       model: settings.model,
       dialect: settings.dialect,
-      providerAccountId: settings.deployment.providerAccountId
+      providerAccountId: settings.deployment.providerAccountId,
+      bedrockOnlySettings: hasBedrockOnlySettings(settings)
     });
     if (availability.status === "unavailable") {
       if (availability.healthSkip) addHealthSkip(healthSkips, availability.healthSkip);
@@ -967,7 +1025,7 @@ export class RoutingService {
       ...settings,
       dialect: availability.dialect,
       deployment: deploymentWithProviderAccount(settings.deployment, availability.providerAccountId)
-    } as SelectedRouteSettings);
+    } as SelectedRouteSettings, availability.adapterKind);
   }
 
   private async targetAvailability(
@@ -998,13 +1056,37 @@ export class RoutingService {
       statefulResponses: context.statefulResponses,
       hasPreviousResponseId: context.hasPreviousResponseId,
       unsupportedFields: context.unsupportedFields,
+      bedrockSettingsOnNonBedrockTarget: target.bedrockOnlySettings,
       targetDialects,
       availableTranslators: availableTranslatorPairs()
     });
-    if (compatibility.status === "unavailable") return { status: "unavailable", reason: compatibility.reason ?? "dialect_unavailable" };
-    if (!compatibility.dialect) return { status: "unavailable", reason: "dialect_unavailable" };
-    const endpoint = providerEndpointForDialect(provider, compatibility.dialect);
-    if (!endpoint) return { status: "unavailable", reason: "dialect_unavailable" };
+    if (compatibility.status === "unavailable") {
+      return {
+        status: "unavailable",
+        reason: compatibility.reason ?? "dialect_unavailable",
+        dialect: compatibility.to,
+        adapterKind: provider.adapterKind
+      };
+    }
+    if (!compatibility.dialect) return { status: "unavailable", reason: "dialect_unavailable", adapterKind: provider.adapterKind };
+    const endpoint = providerEndpointForAnyDialect(provider, compatibility.dialect);
+    if (!endpoint) return { status: "unavailable", reason: "dialect_unavailable", adapterKind: provider.adapterKind };
+    if (!runtimeAdapterAvailable(provider.adapterKind)) {
+      return {
+        status: "unavailable",
+        reason: "provider_adapter_unavailable",
+        dialect: endpoint.dialect,
+        adapterKind: provider.adapterKind
+      };
+    }
+    if (provider.authStyle === "aws-sdk" && !target.providerAccountId) {
+      return {
+        status: "unavailable",
+        reason: "provider_credential_unresolved",
+        dialect: endpoint.dialect,
+        adapterKind: provider.adapterKind
+      };
+    }
     const credential = target.providerAccountId && this.credentials?.resolveAccount
       ? await this.credentials.resolveAccount({
           organizationId,
@@ -1018,15 +1100,33 @@ export class RoutingService {
           provider: target.providerId
         });
     if (!provider.builtin && provider.authStyle !== "none" && !credential) {
-      return { status: "unavailable", reason: "provider_credential_unresolved", dialect: endpoint.dialect };
+      return { status: "unavailable", reason: "provider_credential_unresolved", dialect: endpoint.dialect, adapterKind: provider.adapterKind };
+    }
+    const capabilities = await this.modelCapabilities?.targetCapabilities({
+      organizationId,
+      providerId: provider.id,
+      model: target.model,
+      providerAccountId: credential?.providerAccountId ?? target.providerAccountId,
+      region: credentialRegion(credential)
+    });
+    const capabilityCheck = modelCapabilityCheck(context, capabilities);
+    if (!capabilityCheck.supported) {
+      return {
+        status: "unavailable",
+        reason: capabilityCheck.reason ?? "model_capability",
+        dialect: endpoint.dialect,
+        adapterKind: provider.adapterKind,
+        contextWindowOk: capabilityCheck.contextWindowOk
+      };
     }
     if (credential) {
-      const healthSkip = await this.healthSkipForTarget(organizationId, provider, target, credential);
+      const healthSkip = await this.healthSkipForTarget(organizationId, provider, target, credential, context);
       if (healthSkip) {
         return {
           status: "unavailable",
           reason: healthSkipReason(healthSkip),
           dialect: endpoint.dialect,
+          adapterKind: provider.adapterKind,
           healthSkip
         };
       }
@@ -1034,8 +1134,10 @@ export class RoutingService {
     return {
       status: "available",
       dialect: endpoint.dialect,
+      adapterKind: provider.adapterKind,
       supportedEfforts: reasoningEffortsFromCapabilities(provider.capabilities),
-      providerAccountId: credential?.providerAccountId
+      providerAccountId: credential?.providerAccountId,
+      contextWindowOk: capabilityCheck.contextWindowOk
     };
   }
 
@@ -1043,14 +1145,16 @@ export class RoutingService {
     organizationId: string,
     provider: ProviderRegistryEntry,
     target: Pick<DeploymentTarget, "providerId" | "model">,
-    credential: UpstreamCredential
+    credential: UpstreamCredential,
+    context: RouteContext
   ) {
     if (!this.providerHealth) return undefined;
     const healthTarget = {
       provider: target.providerId,
       providerId: provider.id,
       providerAccountId: credential.providerAccountId,
-      model: target.model
+      model: target.model,
+      isStreaming: context.isStreaming === true
     };
     const skips = await this.providerHealth.skipsForTargets({
       organizationId,
@@ -1070,6 +1174,7 @@ export class RoutingService {
     };
     delete payload.providerSettings;
     delete payload.routeExecutionPlan;
+    if (!payload.selectedAdapterKind) delete payload.selectedAdapterKind;
     await this.events.append({
       scopeType: "request",
       scopeId: requestId,
@@ -1136,6 +1241,36 @@ export class RoutingService {
   }
 }
 
+function routeCandidateIdsForRoute(
+  routingConfig: RoutingConfig | undefined,
+  route: RouteName,
+  surface: RouteContext["surface"],
+  routingConfigVersionId: string | undefined
+) {
+  const ids = new Map<string, string>();
+  if (!routingConfig) return ids;
+  for (const [index, { deployment, sourceIndex }] of configuredRouteDeployments(routingConfig, route).entries()) {
+    ids.set(deploymentKey({
+      routingConfigVersionId: routingConfigVersionId ?? "inline",
+      route,
+      surface,
+      deployment,
+      index: sourceIndex
+    }), `candidate_${index}`);
+  }
+  return ids;
+}
+
+function assignSelectedRouteCandidateId(decision: RouteDecision) {
+  const selectedCandidateId = decision.routeExecutionPlan?.selected?.candidateId;
+  const selectedDeploymentKey = decision.providerSettings?.deployment.key;
+  if (!selectedCandidateId || !selectedDeploymentKey || !decision.providerAttempts?.length) return;
+  decision.providerAttempts = decision.providerAttempts.map((attempt) => {
+    if (attempt.routeCandidateId || attempt.deployment.key !== selectedDeploymentKey) return attempt;
+    return { ...attempt, routeCandidateId: selectedCandidateId };
+  });
+}
+
 function requestedRouteLabel(decision: RouteDecision) {
   if (decision.classifierRoute) return decision.classifierRoute;
   if (decision.requestedModel?.startsWith("router-")) return decision.requestedModel.slice("router-".length);
@@ -1175,6 +1310,21 @@ function deploymentTarget(deployment: SelectedDeployment): DeploymentTarget {
   };
 }
 
+function hasBedrockOnlySettings(deployment: RoutingConfigOpenAIDeployment | RoutingConfigAnthropicDeployment | SelectedRouteSettings) {
+  let metadata: Record<string, unknown> | undefined;
+  if ("openai" in deployment) {
+    metadata = deployment.openai.metadata;
+  } else if ("anthropic" in deployment) {
+    metadata = deployment.anthropic.metadata;
+  } else {
+    metadata = deployment.metadata;
+  }
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
+  return metadata.bedrock !== undefined ||
+    metadata.bedrockConverse !== undefined ||
+    metadata.bedrockSettings !== undefined;
+}
+
 function deploymentWithProviderAccount(
   deployment: SelectedDeployment,
   providerAccountId?: string
@@ -1209,36 +1359,6 @@ function selectedDeployment<Deployment extends RoutingConfigOpenAIDeployment | R
   if (settings.baseUrl !== undefined) deployment.baseUrl = settings.baseUrl;
   if (settings.providerAccountId !== undefined) deployment.providerAccountId = settings.providerAccountId;
   return deployment;
-}
-
-function deploymentKey(input: {
-  route: RouteName;
-  surface: RouteContext["surface"];
-  routingConfigVersionId: string;
-  deployment: {
-    provider: Provider;
-    model: string;
-    baseUrl?: string;
-    providerAccountId?: string;
-    order: number;
-    weight: number;
-    timeoutMs: number;
-  };
-  index: number;
-}) {
-  return sha256(stableJson([
-    input.routingConfigVersionId,
-    input.route,
-    input.surface,
-    input.index,
-    input.deployment.provider,
-    input.deployment.model,
-    input.deployment.baseUrl ?? null,
-    input.deployment.providerAccountId ?? null,
-    input.deployment.order,
-    input.deployment.weight,
-    input.deployment.timeoutMs
-  ]));
 }
 
 function retryPolicyForRoute(route: RouteName, routingConfig?: RoutingConfig): RoutingConfigRetryPolicy {
@@ -1319,6 +1439,26 @@ function healthSkipReason(healthSkip: ProviderHealthSkip) {
   return "provider_account_cooldown";
 }
 
+function modelCapabilityCheck(
+  context: RouteContext,
+  capabilities: ModelTargetCapabilities | undefined
+) {
+  if (!capabilities) return { supported: true, contextWindowOk: null };
+  const contextWindowOk = capabilities.contextWindow === null
+    ? null
+    : context.estimatedInputTokens <= capabilities.contextWindow;
+  if (contextWindowOk === false) return { supported: false, reason: "model_capability", contextWindowOk };
+  if (context.hasTools && capabilities.toolCall === false) return { supported: false, reason: "tool_capability_unavailable", contextWindowOk };
+  if (context.hasImages && capabilities.image === false) return { supported: false, reason: "image_capability_unavailable", contextWindowOk };
+  if (context.isStreaming === true && capabilities.streaming === false) return { supported: false, reason: "streaming_capability_unavailable", contextWindowOk };
+  return { supported: true, contextWindowOk };
+}
+
+function credentialRegion(credential: UpstreamCredential | undefined) {
+  const region = credential?.providerAccountSettings?.region;
+  return typeof region === "string" && region.trim() ? region.trim() : undefined;
+}
+
 function compatibilityTargetDialects(
   context: RouteContext,
   provider: ProviderRegistryEntry,
@@ -1326,12 +1466,20 @@ function compatibilityTargetDialects(
   mode: "native" | "translated" = "translated"
 ) {
   if (target.dialect) {
-    return providerEndpointForDialect(provider, target.dialect) ? [target.dialect] : [];
+    return providerEndpointForAnyDialect(provider, target.dialect) && isTranslationCompatibilityDialect(target.dialect) ? [target.dialect] : [];
   }
   if (mode === "native") {
-    return providerEndpointForDialect(provider, context.surface) ? [context.surface] : [];
+    return providerEndpointForAnyDialect(provider, context.surface) ? [context.surface] : [];
   }
-  return provider.endpoints.map((endpoint) => endpoint.dialect);
+  return provider.endpoints.map((endpoint) => endpoint.dialect).filter(isTranslationCompatibilityDialect);
+}
+
+function isTranslationCompatibilityDialect(dialect: string): dialect is TranslationDialect {
+  return (TRANSLATION_COMPATIBILITY_DIALECTS as readonly string[]).includes(dialect);
+}
+
+function runtimeAdapterAvailable(adapterKind: ProviderAdapterKind) {
+  return adapterKind === "generic-http-json" || adapterKind === "aws-bedrock-converse";
 }
 
 function availableTranslatorPairs() {

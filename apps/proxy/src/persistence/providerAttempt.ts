@@ -7,6 +7,7 @@ import {
   usageLedger,
   type ProxyTransaction
 } from "@proxy/db";
+import type { ProviderAdapterKind, ProviderAttemptStatus } from "@proxy/schema";
 
 import { usageCostMicros } from "../pricing.js";
 import { createId } from "../util.js";
@@ -21,6 +22,8 @@ import {
   stringValue,
   surfaceValue
 } from "./values.js";
+
+type TerminalProviderAttemptStatus = Exclude<ProviderAttemptStatus, "pending">;
 
 export async function persistProviderStarted(tx: ProxyTransaction, event: {
   tenantId: string;
@@ -45,6 +48,8 @@ export async function persistProviderStarted(tx: ProxyTransaction, event: {
       surface: surfaceValue(payload.surface) ?? "unknown",
       provider: providerValue(payload.provider) ?? "unknown",
       model: stringValue(payload.model) ?? "unknown",
+      adapterKind: providerAdapterKindValue(payload.adapterKind),
+      adapterClassification: recordValue(payload.adapterClassification),
       providerAccountId: stringValue(payload.providerAccountId),
       terminalStatus: "pending",
       routeCandidateId: stringValue(payload.routeCandidateId),
@@ -83,17 +88,22 @@ export async function persistProviderTerminal(tx: ProxyTransaction, event: {
   const usage = recordValue(payload.usage);
   const completedAt = new Date(event.createdAt);
   const error = errorText(payload.error) ?? errorText(event.metadata.error);
+  const adapterKind = providerAdapterKindValue(payload.adapterKind);
+  const adapterClassification = recordValue(payload.adapterClassification);
+  const update = {
+    terminalStatus: status,
+    statusCode: numberValue(payload.upstreamStatus),
+    upstreamRequestId: stringValue(payload.upstreamRequestId) ?? stringValue(event.metadata.upstreamResponseId),
+    error,
+    usage: usage ?? {},
+    completedAt,
+    ...(adapterKind === undefined ? {} : { adapterKind }),
+    ...(adapterClassification === undefined ? {} : { adapterClassification })
+  };
 
   await tx
     .update(providerAttempts)
-    .set({
-      terminalStatus: status,
-      statusCode: numberValue(payload.upstreamStatus),
-      upstreamRequestId: stringValue(payload.upstreamRequestId) ?? stringValue(event.metadata.upstreamResponseId),
-      error,
-      usage: usage ?? {},
-      completedAt
-    })
+    .set(update)
     .where(eq(providerAttempts.id, providerAttemptId));
 
   await tx
@@ -163,7 +173,7 @@ export async function persistProviderTerminal(tx: ProxyTransaction, event: {
     });
 }
 
-function terminalStatus(eventType: string, payloadStatus: unknown) {
+function terminalStatus(eventType: string, payloadStatus: unknown): TerminalProviderAttemptStatus {
   if (payloadStatus === "completed" || payloadStatus === "failed" || payloadStatus === "cancelled") {
     return payloadStatus;
   }
@@ -176,4 +186,9 @@ function errorText(value: unknown) {
   if (typeof value === "string") return value;
   if (value === undefined || value === null) return undefined;
   return JSON.stringify(value);
+}
+
+function providerAdapterKindValue(value: unknown): ProviderAdapterKind | undefined {
+  if (value === "generic-http-json" || value === "aws-bedrock-converse") return value;
+  return undefined;
 }

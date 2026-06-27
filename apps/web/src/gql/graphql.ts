@@ -42,15 +42,24 @@ export type CreateProviderCredentialFromLocalAuthInput = {
 };
 
 export type CreateProviderCredentialInput = {
-  apiKey: string;
+  accessKeyId?: string | null | undefined;
+  apiKey?: string | null | undefined;
   authType?: ProviderAccountAuthType | null | undefined;
   baseUrl?: string | null | undefined;
   chatgptAccountId?: string | null | undefined;
+  credentialMode?: string | null | undefined;
+  discoveryRegions?: Array<string> | null | undefined;
+  endpointOverride?: string | null | undefined;
   name: string;
   provider: string;
+  region?: string | null | undefined;
+  secretAccessKey?: string | null | undefined;
+  sessionToken?: string | null | undefined;
 };
 
 export type CreateProviderInput = {
+  adapterConfig?: unknown;
+  adapterKind?: string | null | undefined;
   authStyle: string;
   baseUrl: string;
   capabilities?: unknown;
@@ -88,6 +97,7 @@ export type ModelPricingSource =
 
 export type ProbeProviderCredentialInput = {
   model: string;
+  operation?: string | null | undefined;
   providerAccountId: string | number;
 };
 
@@ -102,7 +112,12 @@ export type ProviderAccountAuthType =
 
 export type ProviderEndpointInput = {
   dialect: string;
-  path: string;
+  operation?: string | null | undefined;
+  path?: string | null | undefined;
+};
+
+export type RefreshBedrockModelCatalogInput = {
+  providerAccountId: string | number;
 };
 
 export type RouteQualitySettingsInput = {
@@ -152,7 +167,23 @@ export type ToolResultCompressionPolicyInput = {
   storeOriginalArtifact?: boolean | null | undefined;
 };
 
+export type UpdateProviderCredentialInput = {
+  accessKeyId?: string | null | undefined;
+  apiKey?: string | null | undefined;
+  baseUrl?: string | null | undefined;
+  credentialMode?: string | null | undefined;
+  discoveryRegions?: Array<string> | null | undefined;
+  endpointOverride?: string | null | undefined;
+  name?: string | null | undefined;
+  providerAccountId: string | number;
+  region?: string | null | undefined;
+  secretAccessKey?: string | null | undefined;
+  sessionToken?: string | null | undefined;
+};
+
 export type UpdateProviderInput = {
+  adapterConfig?: unknown;
+  adapterKind?: string | null | undefined;
   authStyle: string;
   baseUrl: string;
   capabilities?: unknown;
@@ -322,12 +353,12 @@ export type SubscriptionAuthSettingQuery = { settings: { subscriptionOAuthEnable
 export type ProviderAccountsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type ProviderAccountsQuery = { providerAccounts: Array<{ id: string, organizationId: string, provider: string, name: string, authType: ProviderAccountAuthType, status: string, baseUrl: string | null, secretHint: string | null, ownerUserId: string | null, boundKeyCount: number, createdAt: string, lastUsedAt: string | null, health: { status: string | null, cooldownUntil: string | null, lastErrorType: string | null, lastErrorAt: string | null, lastSuccessAt: string | null, lastCheckedAt: string | null, consecutiveFailures: number, modelHealth: Array<{ providerId: string, providerAccountId: string, model: string, status: string, lastErrorType: string | null, lastErrorAt: string | null, lockoutUntil: string | null, consecutiveFailures: number, lastSuccessAt: string | null }> } | null }> };
+export type ProviderAccountsQuery = { providerAccounts: Array<{ id: string, organizationId: string, provider: string, name: string, authType: ProviderAccountAuthType, status: string, baseUrl: string | null, secretHint: string | null, credentialMode: string | null, credentialSourceCategory: string | null, region: string | null, endpointOverride: string | null, discoveryRegions: Array<string>, ownerUserId: string | null, boundKeyCount: number, createdAt: string, lastUsedAt: string | null, health: { status: string | null, cooldownUntil: string | null, lastErrorType: string | null, lastErrorAt: string | null, lastSuccessAt: string | null, lastCheckedAt: string | null, consecutiveFailures: number, metadata: unknown, modelHealth: Array<{ providerId: string, providerAccountId: string, model: string, status: string, lastErrorType: string | null, lastErrorAt: string | null, lockoutUntil: string | null, consecutiveFailures: number, lastSuccessAt: string | null, metadata: unknown }> } | null }> };
 
 export type ProviderRegistryQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type ProviderRegistryQuery = { providers: Array<{ id: string, organizationId: string | null, slug: string, displayName: string, baseUrl: string, authStyle: string, defaultHeaders: unknown, capabilities: unknown, forwardHarnessHeaders: boolean, enabled: boolean, builtin: boolean, endpoints: Array<{ dialect: string, path: string }> }> };
+export type ProviderRegistryQuery = { providers: Array<{ id: string, organizationId: string | null, slug: string, displayName: string, baseUrl: string, adapterKind: string, authStyle: string, defaultHeaders: unknown, capabilities: unknown, forwardHarnessHeaders: boolean, enabled: boolean, builtin: boolean, endpoints: Array<{ dialect: string, path: string | null, operation: string | null }> }> };
 
 export type CreateProviderCredentialMutationVariables = Exact<{
   input: CreateProviderCredentialInput;
@@ -335,6 +366,13 @@ export type CreateProviderCredentialMutationVariables = Exact<{
 
 
 export type CreateProviderCredentialMutation = { createProviderCredential: { id: string, name: string } | null };
+
+export type UpdateProviderCredentialMutationVariables = Exact<{
+  input: UpdateProviderCredentialInput;
+}>;
+
+
+export type UpdateProviderCredentialMutation = { updateProviderCredential: { id: string, name: string, credentialMode: string | null, credentialSourceCategory: string | null, region: string | null, endpointOverride: string | null, discoveryRegions: Array<string> } | null };
 
 export type CreateProviderCredentialFromLocalAuthMutationVariables = Exact<{
   input: CreateProviderCredentialFromLocalAuthInput;
@@ -399,6 +437,13 @@ export type ProbeProviderCredentialMutationVariables = Exact<{
 
 export type ProbeProviderCredentialMutation = { probeProviderCredential: { probeId: string, providerAccountId: string, provider: string, model: string, status: string, healthStatus: string, errorType: string | null, message: string | null, statusCode: number | null, latencyMs: number, checkedAt: string, stateUpdated: boolean, dimensions: unknown } };
 
+export type RefreshBedrockModelCatalogMutationVariables = Exact<{
+  input: RefreshBedrockModelCatalogInput;
+}>;
+
+
+export type RefreshBedrockModelCatalogMutation = { refreshBedrockModelCatalog: { providerAccountId: string, regions: Array<string>, status: string, error: string | null, modelsSeen: number, modelsApplied: number, inserted: number, updated: number, skipped: number, errors: Array<{ region: string, error: string }> } };
+
 export type AssignApiKeyProviderAccountMutationVariables = Exact<{
   apiKeyId: string | number;
   provider: string;
@@ -441,7 +486,7 @@ export type RoutingApiKeysQuery = { apiKeys: Array<{ id: string, name: string, u
 export type RoutingModelCatalogQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type RoutingModelCatalogQuery = { providers: Array<{ slug: string, displayName: string, authStyle: string, enabled: boolean, builtin: boolean, capabilities: unknown, endpoints: Array<{ dialect: string, path: string }> }>, modelPricing: Array<{ provider: string | null, model: string, source: ModelPricingSource, seenInTraffic: boolean }> };
+export type RoutingModelCatalogQuery = { providers: Array<{ slug: string, displayName: string, authStyle: string, adapterKind: string, enabled: boolean, builtin: boolean, capabilities: unknown, endpoints: Array<{ dialect: string, path: string | null, operation: string | null }> }>, modelCatalog: Array<{ provider: string, model: string, displayName: string | null, catalogSource: string, providerAccountId: string | null, region: string | null, bedrockModelSource: string | null, bedrockInferenceProfileArn: string | null, bedrockInferenceProfileId: string | null, bedrockInferenceProfileSource: string | null, bedrockInferenceProfileGeography: string | null, bedrockBaseModelId: string | null, bedrockFoundationModelId: string | null, dialects: Array<string>, contextWindow: number | null, maxOutputTokens: number | null, supportsStreaming: boolean | null, supportsTools: boolean | null, supportsImages: boolean | null, supportsReasoning: boolean | null, warnings: Array<string>, pricingKnown: boolean, inputCostPerMtok: number | null, outputCostPerMtok: number | null }>, providerAccounts: Array<{ id: string, providerId: string, provider: string, name: string, status: string, credentialMode: string | null, credentialSourceCategory: string | null, region: string | null, endpointOverride: string | null, discoveryRegions: Array<string>, health: { status: string | null, lastErrorType: string | null, cooldownUntil: string | null, metadata: unknown, modelHealth: Array<{ model: string, status: string, lastErrorType: string | null, lockoutUntil: string | null, metadata: unknown }> } | null }> };
 
 export type CreateApiKeyMutationVariables = Exact<{
   input: CreateApiKeyInput;
@@ -1374,6 +1419,11 @@ export const ProviderAccountsDocument = new TypedDocumentString(`
     status
     baseUrl
     secretHint
+    credentialMode
+    credentialSourceCategory
+    region
+    endpointOverride
+    discoveryRegions
     ownerUserId
     boundKeyCount
     health {
@@ -1384,6 +1434,7 @@ export const ProviderAccountsDocument = new TypedDocumentString(`
       lastSuccessAt
       lastCheckedAt
       consecutiveFailures
+      metadata
       modelHealth {
         providerId
         providerAccountId
@@ -1394,6 +1445,7 @@ export const ProviderAccountsDocument = new TypedDocumentString(`
         lockoutUntil
         consecutiveFailures
         lastSuccessAt
+        metadata
       }
     }
     createdAt
@@ -1409,10 +1461,12 @@ export const ProviderRegistryDocument = new TypedDocumentString(`
     slug
     displayName
     baseUrl
+    adapterKind
     authStyle
     endpoints {
       dialect
       path
+      operation
     }
     defaultHeaders
     capabilities
@@ -1430,6 +1484,19 @@ export const CreateProviderCredentialDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CreateProviderCredentialMutation, CreateProviderCredentialMutationVariables>;
+export const UpdateProviderCredentialDocument = new TypedDocumentString(`
+    mutation UpdateProviderCredential($input: UpdateProviderCredentialInput!) {
+  updateProviderCredential(input: $input) {
+    id
+    name
+    credentialMode
+    credentialSourceCategory
+    region
+    endpointOverride
+    discoveryRegions
+  }
+}
+    `) as unknown as TypedDocumentString<UpdateProviderCredentialMutation, UpdateProviderCredentialMutationVariables>;
 export const CreateProviderCredentialFromLocalAuthDocument = new TypedDocumentString(`
     mutation CreateProviderCredentialFromLocalAuth($input: CreateProviderCredentialFromLocalAuthInput!) {
   createProviderCredentialFromLocalAuth(input: $input) {
@@ -1528,6 +1595,25 @@ export const ProbeProviderCredentialDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<ProbeProviderCredentialMutation, ProbeProviderCredentialMutationVariables>;
+export const RefreshBedrockModelCatalogDocument = new TypedDocumentString(`
+    mutation RefreshBedrockModelCatalog($input: RefreshBedrockModelCatalogInput!) {
+  refreshBedrockModelCatalog(input: $input) {
+    providerAccountId
+    regions
+    status
+    error
+    modelsSeen
+    modelsApplied
+    inserted
+    updated
+    skipped
+    errors {
+      region
+      error
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<RefreshBedrockModelCatalogMutation, RefreshBedrockModelCatalogMutationVariables>;
 export const AssignApiKeyProviderAccountDocument = new TypedDocumentString(`
     mutation AssignApiKeyProviderAccount($apiKeyId: ID!, $provider: String!, $providerAccountId: ID) {
   assignApiKeyProviderAccount(
@@ -1711,19 +1797,66 @@ export const RoutingModelCatalogDocument = new TypedDocumentString(`
     slug
     displayName
     authStyle
+    adapterKind
     enabled
     builtin
     endpoints {
       dialect
       path
+      operation
     }
     capabilities
   }
-  modelPricing {
+  modelCatalog {
     provider
     model
-    source
-    seenInTraffic
+    displayName
+    catalogSource
+    providerAccountId
+    region
+    bedrockModelSource
+    bedrockInferenceProfileArn
+    bedrockInferenceProfileId
+    bedrockInferenceProfileSource
+    bedrockInferenceProfileGeography
+    bedrockBaseModelId
+    bedrockFoundationModelId
+    dialects
+    contextWindow
+    maxOutputTokens
+    supportsStreaming
+    supportsTools
+    supportsImages
+    supportsReasoning
+    warnings
+    pricingKnown
+    inputCostPerMtok
+    outputCostPerMtok
+  }
+  providerAccounts {
+    id
+    providerId
+    provider
+    name
+    status
+    credentialMode
+    credentialSourceCategory
+    region
+    endpointOverride
+    discoveryRegions
+    health {
+      status
+      lastErrorType
+      cooldownUntil
+      metadata
+      modelHealth {
+        model
+        status
+        lastErrorType
+        lockoutUntil
+        metadata
+      }
+    }
   }
 }
     `) as unknown as TypedDocumentString<RoutingModelCatalogQuery, RoutingModelCatalogQueryVariables>;

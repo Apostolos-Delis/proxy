@@ -4,6 +4,10 @@ import {
   type ConsoleTableFilter
 } from "../table";
 import {
+  BEDROCK_HEALTH_CATEGORY_OPTIONS,
+  providerBedrockHealthCategories
+} from "./healthData";
+import {
   providerCredentialStatus,
   providerCredentialType,
   type ProviderCredentialRow
@@ -34,6 +38,13 @@ export function providerCredentialFilters(rows: ProviderCredentialRow[]): Consol
       allLabel: "All statuses",
       options: optionItems(rows.map(providerCredentialStatus)),
       getValue: providerCredentialStatus
+    },
+    {
+      id: "bedrockHealth",
+      label: "Bedrock health",
+      allLabel: "All Bedrock health",
+      options: BEDROCK_HEALTH_CATEGORY_OPTIONS,
+      getValue: (row) => row.kind === "account" ? providerBedrockHealthCategories(row.account) : []
     }
   ];
 }

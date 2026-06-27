@@ -52,7 +52,7 @@ export function CreateRoutingConfigPage() {
     return <PageState title="New routing config" label="Creating a config requires an active source config to clone." />;
   }
   const apiKeys = (keysQuery.data ?? []).filter(isUsableKey);
-  return <CreateConfigForm sourceConfigs={sourceConfigs} apiKeys={apiKeys} catalog={catalogQuery.data ?? { providers: [], models: [] }} />;
+  return <CreateConfigForm sourceConfigs={sourceConfigs} apiKeys={apiKeys} catalog={catalogQuery.data} />;
 }
 
 function CreateConfigForm({ sourceConfigs, apiKeys, catalog }: {
@@ -106,7 +106,7 @@ function CreateConfigForm({ sourceConfigs, apiKeys, catalog }: {
     const nextErrors = validateCreateForm(form);
     const nextEditorError = !sourceVersion || !draft
       ? "Source routing config has no active version."
-      : draftError(draft);
+      : draftError(draft, catalog);
     setErrors(nextErrors);
     setEditorError(nextEditorError);
     if (Object.keys(nextErrors).length > 0 || nextEditorError || !sourceVersion || !draft) return;
@@ -116,7 +116,7 @@ function CreateConfigForm({ sourceConfigs, apiKeys, catalog }: {
         name: form.name.trim(),
         description: description || null,
         config: {
-          ...applyDraft(sourceVersion.config, draft),
+          ...applyDraft(sourceVersion.config, draft, catalog),
           displayName: form.name.trim(),
           description: description || undefined
         }

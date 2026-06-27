@@ -54,6 +54,7 @@ export function buildOpenAIContext(
     toolCount: tools.length,
     hasPreviousResponseId: typeof request.previous_response_id === "string",
     hasImages: hasImageInput(request.input),
+    isStreaming: request.stream === true,
     unsupportedFields: unsupportedTranslatedFieldsForOpenAIResponses(request),
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
@@ -102,6 +103,7 @@ export function buildOpenAIChatContext(
     toolCount: tools.length,
     hasPreviousResponseId: false,
     hasImages: hasImageInput(request.messages),
+    isStreaming: request.stream === true,
     unsupportedFields: [],
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
@@ -151,7 +153,8 @@ export function buildAnthropicContext(
     toolCount: tools.length,
     hasPreviousResponseId: false,
     hasImages: hasImageInput(request.messages),
-    unsupportedFields: [],
+    isStreaming: request.stream === true,
+    unsupportedFields: unsupportedTranslatedFieldsForAnthropicMessages(request),
     extractedHints: extractHints(fullText),
     routingExtractedHints: extractHints(routingInput.text),
     sessionId: profile.sessionId(request, headers),
@@ -212,6 +215,12 @@ function unsupportedTranslatedFieldsForOpenAIResponses(request: Record<string, u
     fields.push("include.reasoning.encrypted_content");
   }
   return fields;
+}
+
+function unsupportedTranslatedFieldsForAnthropicMessages(request: Record<string, unknown>) {
+  const fields: string[] = [];
+  collectSignedOrEncryptedThinkingFields(request.messages, fields);
+  return [...new Set(fields)];
 }
 
 function stripHarnessBlocks(text: string, tags: ReadonlySet<string>): string {
@@ -321,6 +330,28 @@ function hasImageInput(value: unknown): boolean {
   if (typeof type === "string" && /image/i.test(type)) return true;
 
   return Object.values(value).some(hasImageInput);
+}
+
+function collectSignedOrEncryptedThinkingFields(value: unknown, fields: string[]) {
+  if (!value) return;
+  if (Array.isArray(value)) {
+    for (const item of value) collectSignedOrEncryptedThinkingFields(item, fields);
+    return;
+  }
+  if (!isRecord(value)) return;
+  if (
+    (value.type === "thinking" || value.type === "reasoning") &&
+    typeof value.signature === "string"
+  ) {
+    fields.push("thinking.signature");
+  }
+  if (
+    (value.type === "thinking" || value.type === "reasoning") &&
+    typeof value.encrypted_content === "string"
+  ) {
+    fields.push("thinking.encrypted_content");
+  }
+  for (const item of Object.values(value)) collectSignedOrEncryptedThinkingFields(item, fields);
 }
 
 function escapeRegExp(value: string) {

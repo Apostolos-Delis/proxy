@@ -65,6 +65,10 @@ export function harnessFixtureCountForPath(
     ).length;
   }
   if (path.translatedSupport) {
+    if (path.targetDialect === "bedrock-converse") {
+      const bedrockCount = bedrockConverseFixtureCount(path.surface);
+      if (bedrockCount > 0) return bedrockCount;
+    }
     return fixtures.filter((fixture) =>
       fixture.profileId === path.profileId &&
       fixture.mode === "translated" &&
@@ -82,6 +86,24 @@ export function defaultHarnessFixtureRoot() {
     resolve(process.cwd(), "apps/proxy/test/fixtures/harnesses"),
     resolve(process.cwd(), "test/fixtures/harnesses")
   ].find(isDirectory);
+}
+
+function defaultBedrockFixtureRoot() {
+  return [
+    fileURLToPath(new URL("../test/fixtures/bedrock/expected-converse", import.meta.url)),
+    fileURLToPath(new URL("../../test/fixtures/bedrock/expected-converse", import.meta.url)),
+    resolve(process.cwd(), "apps/proxy/test/fixtures/bedrock/expected-converse"),
+    resolve(process.cwd(), "test/fixtures/bedrock/expected-converse")
+  ].find(isDirectory);
+}
+
+function bedrockConverseFixtureCount(surface: TranslationDialect) {
+  const root = defaultBedrockFixtureRoot();
+  if (!root) return 0;
+  return readdirSync(root).filter((file) =>
+    file.startsWith(`${surface}_to_bedrock-converse_`) &&
+    file.endsWith(".expected.json")
+  ).length;
 }
 
 function emptyFixtureCounts() {

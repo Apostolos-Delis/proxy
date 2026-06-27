@@ -10,8 +10,10 @@ import {
   encryptSecret,
   events,
   hashApiKey,
+  modelCatalog,
   promptArtifacts,
   providers,
+  providerAttempts,
   providerAccounts,
   providerAccountHealth,
   providerModelHealth,
@@ -575,6 +577,225 @@ describe("routing config runtime resolution", () => {
     expect(providerCall?.body.reasoning).toBeUndefined();
   });
 
+  it("routes OpenAI Chat traffic to an org-scoped OpenAI-compatible provider", async () => {
+    const organizationId = "org_config_custom_chat_provider";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: { ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8" }
+    });
+    await activeFixture.db.insert(providers).values({
+      id: "00000000-0000-0000-0000-00000000c017",
+      organizationId,
+      slug: "custom-chat",
+      displayName: "Custom Chat",
+      baseUrl: activeFixture.openai.url,
+      authStyle: "none",
+      endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "custom-chat-route-token",
+      slug: "custom-chat-route",
+      configHash: "sha256:custom-chat-route-config",
+      configure: (config) => withHardTargets(config, [
+        { providerId: "custom-chat", model: "llama-custom-chat" }
+      ])
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer custom-chat-route-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-hard",
+        messages: [{ role: "user", content: "debug this chat route" }],
+        stream: false
+      })
+    });
+    const body = await response.text();
+
+    const providerCall = activeFixture.openai.records.find((record) =>
+      record.path === "/chat/completions" && record.body.model === "llama-custom-chat"
+    );
+    const eventRows = await activeFixture.db.select().from(events);
+    const plan = eventRows.find((event) => event.eventType === "routing.plan_recorded");
+    const routeExecutionPlan = plan?.payload.routeExecutionPlan as Record<string, any> | undefined;
+
+    expect(response.status, body).toBe(200);
+    expect(response.headers.get("x-proxy-route")).toBe("hard");
+    expect(providerCall).toBeTruthy();
+    expect(providerCall?.body.messages).toEqual([{ role: "user", content: "debug this chat route" }]);
+    expect(routeExecutionPlan?.selected).toEqual(expect.objectContaining({
+      providerId: "custom-chat",
+      model: "llama-custom-chat",
+      dialect: "openai-chat",
+      translated: false
+    }));
+    expect(routeExecutionPlan?.candidates).toEqual([
+      expect.objectContaining({
+        providerId: "custom-chat",
+        model: "llama-custom-chat",
+        endpointDialect: "openai-chat",
+        translated: false,
+        compatible: true,
+        eligible: true,
+        factors: expect.objectContaining({
+          nativeDialect: true,
+          capabilityMatch: true
+        })
+      })
+    ]);
+  });
+
+  it("records explicit skip evidence for unsupported custom model capabilities", async () => {
+    const organizationId = "org_config_custom_model_capability_skip";
+    const customProviderId = "00000000-0000-0000-0000-00000000c018";
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: { ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8" }
+    });
+    await activeFixture.db.insert(providers).values({
+      id: customProviderId,
+      organizationId,
+      slug: "custom-chat-no-tools",
+      displayName: "Custom Chat No Tools",
+      baseUrl: activeFixture.openai.url,
+      authStyle: "none",
+      endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+    await activeFixture.db.insert(modelCatalog).values({
+      id: "model:custom-chat-no-tools",
+      organizationId,
+      providerId: customProviderId,
+      model: "llama-no-tools",
+      catalogSource: "manual",
+      capabilities: { source: "manual", toolCall: false, contextWindow: 128000 },
+      pricing: { source: "manual" }
+    });
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "custom-chat-capability-route-token",
+      slug: "custom-chat-capability-route",
+      configHash: "sha256:custom-chat-capability-route-config",
+      configure: (config) => withHardTargets(config, [
+        { providerId: "custom-chat-no-tools", model: "llama-no-tools" },
+        { providerId: "openai", model: "gpt-chat-fallback" }
+      ])
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer custom-chat-capability-route-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-hard",
+        messages: [{ role: "user", content: "use a tool" }],
+        tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object", properties: {} } } }],
+        stream: false
+      })
+    });
+    const body = await response.text();
+
+    const eventRows = await activeFixture.db.select().from(events);
+    const plan = eventRows.find((event) => event.eventType === "routing.plan_recorded");
+    const routeExecutionPlan = plan?.payload.routeExecutionPlan as Record<string, any> | undefined;
+    const providerCall = activeFixture.openai.records.find((record) =>
+      record.path === "/chat/completions" && record.body.model === "gpt-chat-fallback"
+    );
+
+    expect(response.status, body).toBe(200);
+    expect(providerCall).toBeTruthy();
+    expect(routeExecutionPlan?.selected).toEqual(expect.objectContaining({
+      candidateId: "candidate_1",
+      providerId: "openai",
+      model: "gpt-chat-fallback",
+      translated: false
+    }));
+    expect(routeExecutionPlan?.candidates).toEqual([
+      expect.objectContaining({
+        id: "candidate_0",
+        providerId: "custom-chat-no-tools",
+        model: "llama-no-tools",
+        endpointDialect: "openai-chat",
+        translated: false,
+        compatible: false,
+        eligible: false,
+        skipReasons: ["target_unavailable_tool_capability"],
+        factors: expect.objectContaining({
+          nativeDialect: true,
+          capabilityMatch: false,
+          contextWindowOk: true
+        })
+      }),
+      expect.objectContaining({
+        id: "candidate_1",
+        providerId: "openai",
+        model: "gpt-chat-fallback",
+        endpointDialect: "openai-chat",
+        eligible: true
+      })
+    ]);
+  });
+
+  it("records Bedrock target compatibility without making AWS calls", async () => {
+    const organizationId = "org_config_bedrock_translator_skip";
+    activeFixture = await captureFixture(organizationId, "raw_text", false);
+    await assignRouteConfig(activeFixture, organizationId, {
+      secret: "bedrock-translator-skip-token",
+      slug: "bedrock-translator-skip-route",
+      configHash: "sha256:bedrock-translator-skip-route-config",
+      configure: (config) => withHardTargets(config, [
+        { providerId: "amazon-bedrock", model: "amazon.nova-pro-v1:0" },
+        { providerId: "openai", model: "gpt-chat-fallback" }
+      ])
+    });
+
+    const response = await fetch(`${activeFixture.proxyUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer bedrock-translator-skip-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "router-hard",
+        messages: [{ role: "user", content: "debug this chat route" }],
+        stream: false
+      })
+    });
+    const body = await response.text();
+
+    const eventRows = await activeFixture.db.select().from(events);
+    const plan = eventRows.find((event) => event.eventType === "routing.plan_recorded");
+    const routeExecutionPlan = plan?.payload.routeExecutionPlan as Record<string, any> | undefined;
+
+    expect(response.status, body).toBe(200);
+    expect(activeFixture.openai.records.some((record) => record.body.model === "gpt-chat-fallback")).toBe(true);
+    expect(routeExecutionPlan?.selected).toEqual(expect.objectContaining({
+      candidateId: "candidate_1",
+      providerId: "openai",
+      model: "gpt-chat-fallback",
+      dialect: "openai-chat"
+    }));
+    expect(routeExecutionPlan?.candidates?.[0]).toMatchObject({
+      providerId: "amazon-bedrock",
+      model: "amazon.nova-pro-v1:0",
+      endpointDialect: "bedrock-converse",
+      translated: true,
+      compatible: false,
+      eligible: false,
+      skipReasons: ["target_skipped_missing_credential"],
+      factors: expect.objectContaining({
+        nativeDialect: false
+      })
+    });
+  });
+
   it("routes WebSocket requests to custom responses providers", async () => {
     const organizationId = "org_config_custom_ws_provider";
     activeFixture = await captureFixture(organizationId, "raw_text", false, {
@@ -1014,6 +1235,13 @@ describe("routing config runtime resolution", () => {
 
     const eventRows = await activeFixture.db.select().from(events);
     const started = eventRows.filter((event) => event.eventType === "provider.request_started");
+    const forwarded = eventRows.filter((event) => event.eventType === "provider.request_forwarded");
+    const failedTerminal = eventRows.find((event) => event.eventType === "provider.response_failed");
+    const attemptRows = await activeFixture.db
+      .select()
+      .from(providerAttempts)
+      .where(eq(providerAttempts.organizationId, organizationId));
+    const failedAttempt = attemptRows.find((attempt) => attempt.model === "gpt-cooldown-primary");
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
@@ -1027,7 +1255,28 @@ describe("routing config runtime resolution", () => {
     expect(first.headers.get("x-proxy-deployment")).toBe(
       (started[1]?.payload as { deployment?: { key?: string } } | undefined)?.deployment?.key
     );
+    expect(forwarded[0]?.payload).toEqual(expect.objectContaining({
+      adapterKind: "generic-http-json"
+    }));
+    expect(failedTerminal?.payload).toEqual(expect.objectContaining({
+      adapterKind: "generic-http-json",
+      adapterClassification: expect.objectContaining({
+        category: "rate_limited",
+        errorType: "rate_limited"
+      })
+    }));
+    expect(failedAttempt?.adapterKind).toBe("generic-http-json");
+    expect(failedAttempt?.adapterClassification).toEqual(expect.objectContaining({
+      category: "rate_limited",
+      errorType: "rate_limited",
+      retryable: true,
+      fatal: false
+    }));
     const decision = await lastDecisionPayload(activeFixture);
+    expect(decision?.selectedAdapterKind).toBe("generic-http-json");
+    expect(decision?.providerAttempts?.[0]).toEqual(expect.objectContaining({
+      adapterKind: "generic-http-json"
+    }));
     expect(decision?.guardrailActions).toContain("session_pin_cooldown_invalidated");
   });
 
@@ -1197,12 +1446,19 @@ describe("routing config runtime resolution", () => {
     const providerCalls = activeFixture.openai.records.filter((record) =>
       record.body.model === "gpt-5xx-primary" || record.body.model === "gpt-5xx-secondary"
     );
+    const started = (await activeFixture.db.select().from(events))
+      .filter((event) => event.eventType === "provider.request_started")
+      .sort((left, right) => left.sequence - right.sequence);
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-proxy-model")).toBe("gpt-5xx-secondary");
     expect(providerCalls.map((record) => record.body.model)).toEqual([
       "gpt-5xx-primary",
       "gpt-5xx-secondary"
+    ]);
+    expect(started.map((event) => (event.payload as { routeCandidateId?: string }).routeCandidateId)).toEqual([
+      "candidate_1",
+      "candidate_2"
     ]);
   });
 
@@ -1412,7 +1668,7 @@ describe("routing config runtime resolution", () => {
                     baseUrl: stalledOpenAI.url,
                     order: 0,
                     weight: 1,
-                    timeoutMs: 25
+                    timeoutMs: 250
                   },
                   {
                     ...config.routes.hard.openai!.deployments[0],
@@ -2076,7 +2332,11 @@ describe("routing config runtime resolution", () => {
       lastErrorAt: new Date(),
       lockoutUntil,
       consecutiveFailures: 1,
-      metadata: {}
+      metadata: {
+        bedrockErrorKind: "region_unavailable",
+        bedrockOperation: "Converse",
+        region: "us-west-2"
+      }
     });
 
     const response = await sendHardResponse(activeFixture, "model-lockout-token");
@@ -2098,7 +2358,90 @@ describe("routing config runtime resolution", () => {
         model: "gpt-model-lockout",
         healthStatus: "locked_out",
         errorType: "model_unavailable",
-        expiresAt: lockoutUntil.toISOString()
+        expiresAt: lockoutUntil.toISOString(),
+        metadata: expect.objectContaining({
+          bedrockErrorKind: "region_unavailable",
+          bedrockOperation: "Converse",
+          region: "us-west-2"
+        })
+      })
+    ]);
+  });
+
+  it("only applies Bedrock stream permission health to streaming requests", async () => {
+    const organizationId = "org_health_stream_permission_skip";
+    const providerId = "00000000-0000-0000-0000-00000000c023";
+    const providerAccountId = `${organizationId}:provider-account:stream-permission`;
+    activeFixture = await captureFixture(organizationId, "raw_text", false, {
+      envOverrides: {
+        ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8",
+        PROVIDER_SECRET_ENCRYPTION_KEY: ENCRYPTION_KEY
+      }
+    });
+    await setupHealthRoute(activeFixture, organizationId, {
+      routeSlug: "stream-permission-skip",
+      secret: "stream-permission-token",
+      providerId,
+      providerSlug: "custom-stream-permission",
+      providerAccountId,
+      targets: [
+        { providerId: "custom-stream-permission", model: "gpt-stream-permission", effort: "high", verbosity: "medium" },
+        { providerId: "openai", model: "gpt-stream-permission-fallback", effort: "high", verbosity: "medium" }
+      ]
+    });
+    await activeFixture.db.insert(providerModelHealth).values({
+      id: `${organizationId}:model-health`,
+      organizationId,
+      workspaceId: defaultWorkspaceId(organizationId),
+      providerId,
+      providerAccountId,
+      model: "gpt-stream-permission",
+      status: "terminal",
+      lastErrorType: "model_access_denied",
+      lastErrorAt: new Date(),
+      consecutiveFailures: 1,
+      metadata: {
+        bedrockErrorKind: "stream_permission_denied",
+        bedrockOperation: "ConverseStream",
+        region: "us-east-1"
+      }
+    });
+
+    const nonStreamingResponse = await sendHardResponse(activeFixture, "stream-permission-token", false);
+    await nonStreamingResponse.text();
+    const nonStreamingDecision = await routeDecisionPayload(activeFixture);
+    const firstProviderCalls = activeFixture.openai.records.filter((record) =>
+      record.path === "/responses" && record.body.model !== "route-classifier-cheap"
+    );
+
+    expect(nonStreamingResponse.status).toBe(200);
+    expect(firstProviderCalls.map((record) => record.body.model)).toEqual(["gpt-stream-permission"]);
+    expect(nonStreamingDecision?.healthSkips ?? []).toEqual([]);
+
+    const streamingResponse = await sendHardResponse(activeFixture, "stream-permission-token");
+    await streamingResponse.text();
+    const streamingDecision = await routeDecisionPayload(activeFixture);
+    const providerCalls = activeFixture.openai.records.filter((record) =>
+      record.path === "/responses" && record.body.model !== "route-classifier-cheap"
+    );
+
+    expect(streamingResponse.status).toBe(200);
+    expect(providerCalls.map((record) => record.body.model)).toEqual(["gpt-stream-permission", "gpt-stream-permission-fallback"]);
+    expect(streamingDecision?.guardrailActions).toContain("target_skipped_provider_model_terminal:custom-stream-permission");
+    expect(streamingDecision?.healthSkips).toEqual([
+      expect.objectContaining({
+        scope: "provider_account_model",
+        provider: "custom-stream-permission",
+        providerId,
+        providerAccountId,
+        model: "gpt-stream-permission",
+        healthStatus: "terminal",
+        errorType: "model_access_denied",
+        metadata: expect.objectContaining({
+          bedrockErrorKind: "stream_permission_denied",
+          bedrockOperation: "ConverseStream",
+          region: "us-east-1"
+        })
       })
     ]);
   });
@@ -2750,7 +3093,7 @@ async function setupHealthRoute(
   });
 }
 
-function sendHardResponse(fixture: PromptTestFixture, token: string) {
+function sendHardResponse(fixture: PromptTestFixture, token: string, stream = true) {
   return fetch(`${fixture.proxyUrl}/v1/responses`, {
     method: "POST",
     headers: {
@@ -2760,14 +3103,14 @@ function sendHardResponse(fixture: PromptTestFixture, token: string) {
     body: JSON.stringify({
       model: "router-hard",
       input: "debug this provider health route",
-      stream: true
+      stream
     })
   });
 }
 
 async function routeDecisionPayload(fixture: PromptTestFixture) {
   const eventRows = await fixture.db.select().from(events);
-  const decision = eventRows.find((event) => event.eventType === "routing.decision_recorded");
+  const decision = eventRows.filter((event) => event.eventType === "routing.decision_recorded").at(-1);
   return decision?.payload as Record<string, any> | undefined;
 }
 

@@ -537,6 +537,8 @@ describe("providerRegistryEntrySchema", () => {
     const entry = {
       slug: "acme-vllm",
       base_url: "https://models.example.com/v1",
+      adapter_kind: "generic-http-json",
+      adapter_config: {},
       auth_style: "bearer",
       endpoints: [
         { dialect: "openai-chat", path: "/chat/completions" },
@@ -548,6 +550,26 @@ describe("providerRegistryEntrySchema", () => {
       capabilities: {
         efforts: ["low", "medium", "high", "xhigh"]
       },
+      forward_harness_headers: false,
+      enabled: true
+    };
+
+    expect(providerRegistryEntrySchema.parse(entry)).toEqual(entry);
+  });
+
+  it("accepts Bedrock provider registry entries", () => {
+    const entry = {
+      slug: "amazon-bedrock",
+      base_url: "https://bedrock-runtime.us-east-1.amazonaws.com",
+      adapter_kind: "aws-bedrock-converse",
+      adapter_config: { defaultRegion: "us-east-1" },
+      auth_style: "aws-sdk",
+      endpoints: [
+        { dialect: "bedrock-converse", operation: "Converse" },
+        { dialect: "bedrock-converse", operation: "ConverseStream" }
+      ],
+      default_headers: {},
+      capabilities: {},
       forward_harness_headers: false,
       enabled: true
     };
@@ -577,6 +599,46 @@ describe("providerRegistryEntrySchema", () => {
       ["endpoints", 0, "path"],
       ["default_headers", "x-empty"]
     ]));
+  });
+
+  it("rejects invalid adapter and endpoint combinations", () => {
+    const genericAws = providerRegistryEntrySchema.safeParse({
+      slug: "bad-auth",
+      base_url: "https://models.example.com/v1",
+      adapter_kind: "generic-http-json",
+      auth_style: "aws-sdk",
+      endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
+      default_headers: {},
+      forward_harness_headers: false,
+      enabled: true
+    });
+    const bedrockPath = providerRegistryEntrySchema.safeParse({
+      slug: "bad-bedrock",
+      base_url: "https://bedrock-runtime.us-east-1.amazonaws.com",
+      adapter_kind: "aws-bedrock-converse",
+      auth_style: "aws-sdk",
+      endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
+      default_headers: {},
+      forward_harness_headers: false,
+      enabled: true
+    });
+    const emptyPath = providerRegistryEntrySchema.safeParse({
+      slug: "empty-path",
+      base_url: "https://models.example.com/v1",
+      adapter_kind: "generic-http-json",
+      auth_style: "bearer",
+      endpoints: [{ dialect: "openai-chat", path: "" }],
+      default_headers: {},
+      forward_harness_headers: false,
+      enabled: true
+    });
+
+    expect(genericAws.success).toBe(false);
+    expect(genericAws.error?.issues.map((issue) => issue.path)).toContainEqual(["auth_style"]);
+    expect(bedrockPath.success).toBe(false);
+    expect(bedrockPath.error?.issues.map((issue) => issue.path)).toContainEqual(["endpoints", 0, "path"]);
+    expect(emptyPath.success).toBe(false);
+    expect(emptyPath.error?.issues.map((issue) => issue.path)).toContainEqual(["endpoints", 0, "path"]);
   });
 });
 

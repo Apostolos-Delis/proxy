@@ -136,6 +136,8 @@ export function sseObserverForDialect(dialect: Dialect): SseObserver {
       return new OpenAiChatSseObserver();
     case "openai-responses":
       return new OpenAiResponsesSseObserver();
+    case "bedrock-converse":
+      return new ByteCountingSseObserver();
   }
 }
 
@@ -249,6 +251,18 @@ abstract class DialectSseObserver implements SseObserver {
       return;
     }
     this.observation.outputText = current + delta;
+  }
+}
+
+class ByteCountingSseObserver implements SseObserver {
+  private bytes = 0;
+
+  observe(chunk: Uint8Array) {
+    this.bytes += chunk.byteLength;
+  }
+
+  finish(status?: "cancelled"): StreamObservation {
+    return status === "cancelled" ? { bytes: this.bytes, status } : { bytes: this.bytes };
   }
 }
 

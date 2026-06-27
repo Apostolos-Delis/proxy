@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
   apiKeys,
+  modelCatalog,
   providerAccounts,
   providers,
   routingConfigs,
@@ -514,11 +515,13 @@ async function validateRoutingConfigPublishability(
     const deployments = [
       ...(routeConfig.openai?.deployments.map((deployment, index) => ({
         provider: deployment.provider,
+        model: deployment.model,
         providerAccountId: deployment.providerAccountId,
         path: `routes.${route}.openai.deployments.${index}.provider`
       })) ?? []),
       ...(routeConfig.anthropic?.deployments.map((deployment, index) => ({
         provider: deployment.provider,
+        model: deployment.model,
         providerAccountId: deployment.providerAccountId,
         path: `routes.${route}.anthropic.deployments.${index}.provider`
       })) ?? [])
@@ -534,14 +537,29 @@ async function validateRoutingConfigPublishability(
         continue;
       }
       if (!canServeCurrentSurface(provider.endpoints)) {
-        issues.push({ path: deployment.path, message: "Target provider must expose an OpenAI Responses, OpenAI Chat, or Anthropic Messages endpoint." });
+        issues.push({ path: deployment.path, message: "Target provider must expose an OpenAI Responses, OpenAI Chat, Anthropic Messages, or Bedrock Converse endpoint." });
+        continue;
       }
-      if (deployment.providerAccountId && !await hasProviderCredential(tx, organizationId, provider.id, deployment.providerAccountId)) {
+      if (provider.authStyle === "aws-sdk" && !deployment.providerAccountId) {
+        issues.push({ path: deployment.path.replace(/\.provider$/, ".providerAccountId"), message: "AWS SDK target providers need an active provider account before publishing." });
+        continue;
+      }
+      const providerAccount = deployment.providerAccountId
+        ? await providerCredential(tx, organizationId, provider.id, deployment.providerAccountId)
+        : undefined;
+      if (deployment.providerAccountId && !providerAccount) {
         issues.push({ path: deployment.path.replace(/\.provider$/, ".providerAccountId"), message: "Provider account must be active and match the deployment provider." });
+        continue;
       }
-      if (!provider.organizationId || provider.authStyle === "none") continue;
-      if (!await hasProviderCredential(tx, organizationId, provider.id)) {
+      if (provider.organizationId && provider.authStyle !== "none" && !await providerCredential(tx, organizationId, provider.id)) {
         issues.push({ path: deployment.path, message: "Auth-required custom target providers need a provider credential before publishing." });
+        continue;
+      }
+      if (
+        providerNeedsCatalogModel(provider) &&
+        !await hasCatalogModel(tx, organizationId, provider.id, deployment.model, deployment.providerAccountId, providerAccountRegion(providerAccount))
+      ) {
+        issues.push({ path: deployment.path.replace(/\.provider$/, ".model"), message: "Target model must be present in the model catalog before publishing." });
       }
     }
   }
@@ -550,29 +568,91 @@ async function validateRoutingConfigPublishability(
   }
 }
 
-function canServeCurrentSurface(endpoints: { dialect: string; path: string }[]) {
+function canServeCurrentSurface(endpoints: { dialect: string }[]) {
   return endpoints.some((endpoint) =>
-    endpoint.dialect === "openai-responses" || endpoint.dialect === "openai-chat" || endpoint.dialect === "anthropic-messages");
+    endpoint.dialect === "openai-responses" ||
+    endpoint.dialect === "openai-chat" ||
+    endpoint.dialect === "anthropic-messages" ||
+    endpoint.dialect === "bedrock-converse");
 }
 
-async function hasProviderCredential(
+async function providerCredential(
   tx: ProxyTransaction,
   organizationId: string,
   providerId: string,
   providerAccountId?: string
 ) {
+  const credentialPredicate = or(
+    isNotNull(providerAccounts.secretCiphertext),
+    and(
+      eq(providers.adapterKind, "aws-bedrock-converse"),
+      sql`${providerAccounts.settings}->>'credentialMode' in ('aws_default_chain', 'aws_profile')`
+    )
+  );
   const predicates = [
     eq(providerAccounts.organizationId, organizationId),
     eq(providerAccounts.providerId, providerId),
-    eq(providerAccounts.status, "active")
+    eq(providerAccounts.status, "active"),
+    credentialPredicate
   ];
   if (providerAccountId) predicates.push(eq(providerAccounts.id, providerAccountId));
   const [account] = await tx
-    .select({ id: providerAccounts.id })
+    .select({
+      id: providerAccounts.id,
+      settings: providerAccounts.settings
+    })
     .from(providerAccounts)
+    .innerJoin(providers, eq(providers.id, providerAccounts.providerId))
     .where(and(...predicates))
     .limit(1);
-  return Boolean(account);
+  return account;
+}
+
+async function hasCatalogModel(
+  tx: ProxyTransaction,
+  organizationId: string,
+  providerId: string,
+  model: string,
+  providerAccountId?: string,
+  region?: string
+) {
+  const predicates = [
+    eq(modelCatalog.providerId, providerId),
+    eq(modelCatalog.model, model),
+    or(
+      isNull(modelCatalog.organizationId),
+      eq(modelCatalog.organizationId, organizationId)
+    ),
+    providerAccountId
+      ? or(
+          isNull(modelCatalog.providerAccountId),
+          eq(modelCatalog.providerAccountId, providerAccountId)
+        )
+      : isNull(modelCatalog.providerAccountId)
+  ];
+  if (region) {
+    predicates.push(or(
+      isNull(modelCatalog.region),
+      eq(modelCatalog.region, region)
+    ));
+  }
+  const [row] = await tx
+    .select({ id: modelCatalog.id })
+    .from(modelCatalog)
+    .where(and(...predicates))
+    .limit(1);
+  return Boolean(row);
+}
+
+function providerNeedsCatalogModel(provider: { organizationId: string | null; adapterKind: string }) {
+  return provider.organizationId !== null || provider.adapterKind === "aws-bedrock-converse";
+}
+
+function providerAccountRegion(account: { settings: unknown } | undefined) {
+  const settings = account?.settings;
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return undefined;
+  const region = (settings as Record<string, unknown>).region;
+  return typeof region === "string" && region.trim() ? region.trim() : undefined;
 }
 
 async function providerForSlug(

@@ -1,0 +1,27 @@
+{
+  "output": {
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "toolUse": {
+            "toolUseId": "call_list_files",
+            "name": "shell",
+            "input": {
+              "cmd": "ls apps/proxy"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "stopReason": "tool_use",
+  "usage": {
+    "inputTokens": 64,
+    "outputTokens": 10,
+    "totalTokens": 74
+  },
+  "$metadata": {
+    "requestId": "bedrock-request-tool"
+  }
+}

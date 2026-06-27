@@ -83,6 +83,7 @@ export type PromptDetailModel = NonNullable<Awaited<ReturnType<Q["promptDetail"]
 export type PromptArtifactDetailModel = PromptDetailModel["artifact"];
 
 export type ModelPricingEntryModel = Awaited<ReturnType<Q["modelPricing"]>>[number];
+export type ModelCatalogEntryModel = Awaited<ReturnType<Q["modelCatalog"]>>[number];
 
 export type CacheBustReportModel = Awaited<ReturnType<Q["cacheBusts"]>>;
 export type CacheBustModel = CacheBustReportModel["busts"][number];

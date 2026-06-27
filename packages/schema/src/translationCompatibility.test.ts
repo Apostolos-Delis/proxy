@@ -90,6 +90,8 @@ describe("translation compatibility", () => {
   it("exposes the registered dialect matrix", () => {
     expect(canTranslateDialect("anthropic-messages", "openai-chat")).toBe(true);
     expect(canTranslateDialect("openai-chat", "anthropic-messages")).toBe(true);
+    expect(TRANSLATION_COMPATIBILITY_DIALECTS).toContain("bedrock-converse");
+    expect(canTranslateDialect("openai-chat", "bedrock-converse")).toBe(true);
   });
 
   it("generates harness compatibility rows for every profile and target dialect", () => {
@@ -163,6 +165,91 @@ describe("translation compatibility", () => {
       status: "unavailable",
       reason: "unsupported_field",
       unsupportedFields: ["parallel_tool_calls"]
+    });
+  });
+
+  it("evaluates Bedrock targets without a registered runtime translator", () => {
+    expect(harnessCompatibilityForTarget({
+      profileId: "openai-chat-sdk",
+      surface: "openai-chat",
+      transport: "http",
+      targetDialects: ["bedrock-converse"],
+      availableTranslators: []
+    })).toMatchObject({
+      status: "unavailable",
+      reason: "translator_unavailable",
+      to: "bedrock-converse"
+    });
+  });
+
+  it("reports translated Bedrock compatibility when the Bedrock translator is available", () => {
+    expect(harnessCompatibilityForTarget({
+      profileId: "openai-chat-sdk",
+      surface: "openai-chat",
+      transport: "http",
+      targetDialects: ["bedrock-converse"],
+      availableTranslators: [["openai-chat", "bedrock-converse"]]
+    })).toMatchObject({
+      status: "translated",
+      dialect: "bedrock-converse",
+      from: "openai-chat",
+      to: "bedrock-converse"
+    });
+  });
+
+  it("blocks stateful Responses translation to Bedrock with an explicit reason", () => {
+    expect(harnessCompatibilityForTarget({
+      profileId: "codex-responses-http",
+      surface: "openai-responses",
+      transport: "http",
+      statefulResponses: true,
+      targetDialects: ["bedrock-converse"],
+      availableTranslators: [["openai-responses", "bedrock-converse"]]
+    })).toMatchObject({
+      status: "unavailable",
+      reason: "stateful_translation_unavailable",
+      to: "bedrock-converse"
+    });
+  });
+
+  it("uses Bedrock-specific reason codes for signed and encrypted reasoning fields", () => {
+    expect(harnessCompatibilityForTarget({
+      profileId: "codex-responses-http",
+      surface: "openai-responses",
+      transport: "http",
+      targetDialects: ["bedrock-converse"],
+      unsupportedFields: ["include.reasoning.encrypted_content"],
+      availableTranslators: [["openai-responses", "bedrock-converse"]]
+    })).toMatchObject({
+      status: "unavailable",
+      reason: "encrypted_reasoning_unavailable",
+      unsupportedFields: ["include.reasoning.encrypted_content"]
+    });
+    expect(harnessCompatibilityForTarget({
+      profileId: "claude-code-messages",
+      surface: "anthropic-messages",
+      transport: "http",
+      targetDialects: ["bedrock-converse"],
+      unsupportedFields: ["thinking.signature"],
+      availableTranslators: [["anthropic-messages", "bedrock-converse"]]
+    })).toMatchObject({
+      status: "unavailable",
+      reason: "signed_reasoning_unavailable",
+      unsupportedFields: ["thinking.signature"]
+    });
+  });
+
+  it("rejects Bedrock-only deployment settings on non-Bedrock targets", () => {
+    expect(harnessCompatibilityForTarget({
+      profileId: "openai-chat-sdk",
+      surface: "openai-chat",
+      transport: "http",
+      targetDialects: ["openai-responses"],
+      bedrockSettingsOnNonBedrockTarget: true
+    })).toMatchObject({
+      status: "unavailable",
+      reason: "bedrock_settings_on_non_bedrock_target",
+      to: "openai-responses"
     });
   });
 });

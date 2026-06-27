@@ -39,10 +39,6 @@ const smokeEnv = {
 const config = loadConfig(smokeEnv);
 const smokePersistence = await createSmokePersistence(config, smokeEnv);
 const app = buildServer(config, { persistence: smokePersistence.persistence });
-const smokeAdminQueries = smokePersistence.persistence.adminQueries.forScope(
-  config.defaultOrganizationId,
-  defaultWorkspaceId(config.defaultOrganizationId)
-);
 const defaultRoutingConfigId = `${config.defaultOrganizationId}:routing-config:default`;
 
 try {
@@ -63,14 +59,14 @@ try {
   assertClassifierCalls(2, openaiRecords);
   assertProviderCall(openaiRecords, config.openaiHardModel, "Codex default");
   assertProviderCall(anthropicRecords, config.anthropicHardModel, "Claude default");
-  await assertPersistedRoutingDecision(smokeAdminQueries, {
+  await assertPersistedRoutingDecision(smokeAdminQueries(), {
     label: "Codex default",
     surface: "openai-responses",
     finalRoute: "hard",
     selectedModel: config.openaiHardModel,
     routingConfigId: defaultRoutingConfigId
   });
-  await assertPersistedRoutingDecision(smokeAdminQueries, {
+  await assertPersistedRoutingDecision(smokeAdminQueries(), {
     label: "Claude default",
     surface: "anthropic-messages",
     finalRoute: "hard",
@@ -92,14 +88,14 @@ try {
   assertClassifierCalls(4, openaiRecords);
   assertProviderCall(openaiRecords, config.openaiFastModel, "Codex reassigned");
   assertProviderCall(anthropicRecords, config.anthropicFastModel, "Claude reassigned");
-  await assertPersistedRoutingDecision(smokeAdminQueries, {
+  await assertPersistedRoutingDecision(smokeAdminQueries(), {
     label: "Codex reassigned",
     surface: "openai-responses",
     finalRoute: "hard",
     selectedModel: config.openaiFastModel,
     routingConfigId: assigned.configId
   });
-  await assertPersistedRoutingDecision(smokeAdminQueries, {
+  await assertPersistedRoutingDecision(smokeAdminQueries(), {
     label: "Claude reassigned",
     surface: "anthropic-messages",
     finalRoute: "hard",
@@ -152,6 +148,13 @@ function claudeRequest(proxyUrl: string, sessionId: string, content: string) {
       max_tokens: 2048
     })
   });
+}
+
+function smokeAdminQueries() {
+  return smokePersistence.persistence.adminQueries.forScope(
+    config.defaultOrganizationId,
+    defaultWorkspaceId(config.defaultOrganizationId)
+  );
 }
 
 async function drainOk(response: Response, message: string) {
@@ -208,7 +211,6 @@ async function assignSmokeRoutingConfig() {
     actorUserId: config.seedUserId,
     body: {
       name: "Smoke reassigned routing config",
-      slug: "smoke-reassigned",
       description: "Used by smoke tests to prove API-key routing assignment changes are honored.",
       config: assignedConfig
     }

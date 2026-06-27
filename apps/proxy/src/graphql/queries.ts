@@ -36,7 +36,7 @@ import {
   UsageTimeseries
 } from "./types/analytics.js";
 import { CompressionPreviewInput, CompressionPreviewType } from "./types/compression.js";
-import { ModelPricingEntry } from "./types/pricing.js";
+import { ModelCatalogEntry, ModelPricingEntry } from "./types/pricing.js";
 import { Invitation, PublicInvitation } from "./types/invitations.js";
 import { PromptAccessAuditEntry, PromptDetail, PromptPage } from "./types/prompts.js";
 import { RequestDetail, RequestSummary } from "./types/requests.js";
@@ -793,6 +793,15 @@ builder.queryFields((t) => ({
         context.config.modelCosts,
         context.config.modelCostsFromEnv
       ).sort(compareModelPricingEntries);
+    }
+  }),
+
+  modelCatalog: t.field({
+    type: [ModelCatalogEntry],
+    resolve: async (_root, _args, context) => {
+      const queries = scopedQueries(context);
+      if (!queries) return [];
+      return queries.modelCatalog();
     }
   }),
 

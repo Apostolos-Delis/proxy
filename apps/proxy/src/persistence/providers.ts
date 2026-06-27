@@ -2,23 +2,30 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
 import { providers, type ProxyDbSession } from "@proxy/db";
-import type { Dialect, Provider } from "@proxy/schema";
+import type {
+  Dialect,
+  Provider,
+  ProviderAdapterKind,
+  ProviderAuthStyle,
+  ProviderRegistryEndpoint as SchemaProviderRegistryEndpoint,
+  ProviderRegistryHttpEndpoint as SchemaProviderRegistryHttpEndpoint
+} from "@proxy/schema";
 import { and, eq, isNull } from "drizzle-orm";
 
 import type { AppConfig } from "../config.js";
 import type { PinnedUpstreamAddress } from "../types.js";
 
-export type ProviderRegistryEndpoint = {
-  dialect: Dialect;
-  path: string;
-};
+export type ProviderRegistryHttpEndpoint = SchemaProviderRegistryHttpEndpoint;
+export type ProviderRegistryEndpoint = SchemaProviderRegistryEndpoint;
 
 export type ProviderRegistryEntry = {
   id: string;
   organizationId: string | null;
   slug: Provider;
   baseUrl: string;
-  authStyle: "bearer" | "x-api-key" | "none";
+  adapterKind: ProviderAdapterKind;
+  adapterConfig: Record<string, unknown>;
+  authStyle: ProviderAuthStyle;
   endpoints: ProviderRegistryEndpoint[];
   defaultHeaders: Record<string, string>;
   capabilities: Record<string, unknown>;
@@ -32,7 +39,13 @@ export type ProviderRegistryResolver = {
   resolve(input: { organizationId: string; provider: Provider }): Promise<ProviderRegistryEntry | undefined>;
 };
 
-export function providerEndpointForDialect(provider: ProviderRegistryEntry, dialect: Dialect) {
+export function providerEndpointForDialect(provider: ProviderRegistryEntry, dialect: Dialect): ProviderRegistryHttpEndpoint | undefined {
+  return provider.endpoints.find((endpoint): endpoint is ProviderRegistryHttpEndpoint =>
+    "path" in endpoint && endpoint.dialect === dialect
+  );
+}
+
+export function providerEndpointForAnyDialect(provider: ProviderRegistryEntry, dialect: Dialect): ProviderRegistryEndpoint | undefined {
   return provider.endpoints.find((endpoint) => endpoint.dialect === dialect);
 }
 
@@ -100,6 +113,8 @@ export class ConfigProviderRegistry implements ProviderRegistryResolver {
         organizationId: null,
         slug: "openai",
         baseUrl: this.config.openaiBaseUrl,
+        adapterKind: "generic-http-json" as const,
+        adapterConfig: {},
         authStyle: "bearer" as const,
         endpoints: [
           { dialect: "openai-responses" as const, path: "/responses" },
@@ -118,6 +133,8 @@ export class ConfigProviderRegistry implements ProviderRegistryResolver {
         organizationId: null,
         slug: "anthropic",
         baseUrl: this.config.anthropicBaseUrl,
+        adapterKind: "generic-http-json" as const,
+        adapterConfig: {},
         authStyle: "x-api-key" as const,
         endpoints: [
           { dialect: "anthropic-messages" as const, path: "/messages" }
@@ -139,6 +156,8 @@ function providerEntry(row: typeof providers.$inferSelect): ProviderRegistryEntr
     organizationId: row.organizationId,
     slug: row.slug,
     baseUrl: trimProviderBaseUrl(row.baseUrl),
+    adapterKind: row.adapterKind,
+    adapterConfig: row.adapterConfig,
     authStyle: row.authStyle,
     endpoints: row.endpoints.filter(isProviderEndpoint),
     defaultHeaders: row.defaultHeaders,
@@ -154,7 +173,15 @@ const authHeaderNames = new Set([
   "x-api-key",
   "proxy-authorization",
   "cookie",
-  "host"
+  "host",
+  "aws-access-key-id",
+  "aws-secret-access-key",
+  "aws-session-token",
+  "x-amz-content-sha256",
+  "x-amz-credential",
+  "x-amz-date",
+  "x-amz-security-token",
+  "x-amz-signature"
 ]);
 
 export function assertSafeDefaultHeaders(headers: Record<string, string>) {
@@ -260,11 +287,20 @@ function ipv4ToInt(address: string) {
   return address.split(".").reduce((value, part) => ((value << 8) + Number(part)) >>> 0, 0);
 }
 
-function isProviderEndpoint(value: { dialect: string; path: string }): value is ProviderRegistryEndpoint {
-  return (
+function isProviderEndpoint(value: {
+  dialect?: unknown;
+  path?: unknown;
+  operation?: unknown;
+}): value is ProviderRegistryEndpoint {
+  if (
     (value.dialect === "anthropic-messages" || value.dialect === "openai-responses" || value.dialect === "openai-chat") &&
+    typeof value.path === "string" &&
     value.path.startsWith("/")
-  );
+  ) {
+    return true;
+  }
+  return value.dialect === "bedrock-converse" &&
+    (value.operation === "Converse" || value.operation === "ConverseStream");
 }
 
 export function trimProviderBaseUrl(value: string) {

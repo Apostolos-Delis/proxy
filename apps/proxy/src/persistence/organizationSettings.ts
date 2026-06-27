@@ -26,7 +26,8 @@ function costBaselineFromSettings(settings: Record<string, unknown> | undefined)
   return {
     "anthropic-messages": modelSetting(byDialect?.["anthropic-messages"]) ?? defaultCostBaseline["anthropic-messages"],
     "openai-responses": modelSetting(byDialect?.["openai-responses"]) ?? defaultCostBaseline["openai-responses"],
-    "openai-chat": modelSetting(byDialect?.["openai-chat"]) ?? defaultCostBaseline["openai-chat"]
+    "openai-chat": modelSetting(byDialect?.["openai-chat"]) ?? defaultCostBaseline["openai-chat"],
+    "bedrock-converse": modelSetting(byDialect?.["bedrock-converse"]) ?? defaultCostBaseline["bedrock-converse"]
   };
 }
 
@@ -142,7 +143,8 @@ export class OrganizationSettingsStore {
     return settingsCostBaseline({
       "anthropic-messages": anthropicMessagesModel ?? defaultCostBaseline["anthropic-messages"],
       "openai-responses": openaiResponsesModel ?? defaultCostBaseline["openai-responses"],
-      "openai-chat": openaiChatModel ?? defaultCostBaseline["openai-chat"]
+      "openai-chat": openaiChatModel ?? defaultCostBaseline["openai-chat"],
+      "bedrock-converse": defaultCostBaseline["bedrock-converse"]
     });
   }
 

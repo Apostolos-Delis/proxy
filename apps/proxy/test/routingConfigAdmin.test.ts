@@ -4,7 +4,9 @@ import {
   defaultWorkspaceId,
   eventOutbox,
   events,
+  modelCatalog,
   organizations,
+  providerAccounts,
   providers,
   routingConfigs,
   routingConfigVersions,
@@ -204,6 +206,15 @@ describe("routing config admin APIs", () => {
       forwardHarnessHeaders: false,
       enabled: true
     });
+    await fixture.db.insert(modelCatalog).values({
+      id: "model:custom-anthropic:claude-opus-4-8",
+      organizationId,
+      providerId: "00000000-0000-0000-0000-00000000c020",
+      model: "claude-opus-4-8",
+      catalogSource: "manual",
+      capabilities: { source: "manual" },
+      pricing: { source: "manual" }
+    });
 
     const created = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createMutation, {
       input: {
@@ -236,6 +247,90 @@ describe("routing config admin APIs", () => {
 
     expect(hardTarget).toEqual(expect.objectContaining({ effectiveEffort: null }));
     expect(deepTarget).toEqual(expect.objectContaining({ effectiveEffort: "xhigh" }));
+  });
+
+  it("allows Bedrock default-chain provider accounts in route target validation", async () => {
+    const organizationId = "org_routing_config_bedrock_default_chain";
+    const fixture = await setup(organizationId);
+    const configId = `${organizationId}:routing-config:default`;
+    const baseConfig = await activeConfig(fixture, configId);
+    const providerAccountId = `${organizationId}:provider:amazon-bedrock`;
+    await fixture.db.insert(modelCatalog).values({
+      id: "model_routing_config_bedrock_default_chain",
+      organizationId,
+      providerId: "00000000-0000-0000-0000-000000000003",
+      providerAccountId: null,
+      region: null,
+      model: "anthropic.claude-3-5-haiku-20241022-v1:0",
+      catalogSource: "manual",
+      capabilities: { dialects: ["bedrock-converse"] },
+      pricing: {}
+    });
+
+    const created = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createVersionMutation, {
+      configId,
+      config: {
+        ...baseConfig,
+        displayName: "Bedrock default-chain target",
+        routes: {
+          ...baseConfig.routes,
+          hard: routeWithTargets(baseConfig.routes.hard, [{
+            providerId: "amazon-bedrock",
+            providerAccountId,
+            model: "anthropic.claude-3-5-haiku-20241022-v1:0"
+          }])
+        }
+      }
+    });
+
+    const versions = created.data?.createRoutingConfigVersion.versions ?? [];
+    const createdVersion = versions.find((version) =>
+      version.config.routes.hard.openai.deployments.some((deployment) =>
+        deployment.provider === "amazon-bedrock" && deployment.providerAccountId === providerAccountId));
+
+    expect(created.errors).toBeUndefined();
+    expect(createdVersion?.active).toBe(false);
+    expect(createdVersion?.config.routes.hard.openai.deployments[0]).toEqual(expect.objectContaining({
+      provider: "amazon-bedrock",
+      providerAccountId
+    }));
+  });
+
+  it("rejects Bedrock route targets without provider accounts before inserting versions", async () => {
+    const organizationId = "org_routing_config_bedrock_account_required";
+    const fixture = await setup(organizationId);
+    const configId = `${organizationId}:routing-config:default`;
+    const baseConfig = await activeConfig(fixture, configId);
+    const before = await fixture.db
+      .select()
+      .from(routingConfigVersions)
+      .where(eq(routingConfigVersions.routingConfigId, configId));
+
+    const created = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createVersionMutation, {
+      configId,
+      config: {
+        ...baseConfig,
+        displayName: "Bedrock missing account target",
+        routes: {
+          ...baseConfig.routes,
+          hard: routeWithTargets(baseConfig.routes.hard, [{
+            providerId: "amazon-bedrock",
+            model: "anthropic.claude-3-5-haiku-20241022-v1:0"
+          }])
+        }
+      }
+    });
+    const after = await fixture.db
+      .select()
+      .from(routingConfigVersions)
+      .where(eq(routingConfigVersions.routingConfigId, configId));
+
+    expect(created.errors?.[0]?.message).toBe("routing_config_target_validation_failed");
+    expect(created.errors?.[0]?.extensions?.issues).toEqual([{
+      path: "routes.hard.openai.deployments.0.providerAccountId",
+      message: "AWS SDK target providers need an active provider account before publishing."
+    }]);
+    expect(after).toHaveLength(before.length);
   });
 
   it("serves routing config detail with version history", async () => {
@@ -628,7 +723,64 @@ describe("routing config admin APIs", () => {
     expect(result.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
     expect(result.errors?.[0]?.extensions?.issues).toEqual([{
       path: "routes.fast.openai.deployments.0.provider",
-      message: "Target provider must expose an OpenAI Responses, OpenAI Chat, or Anthropic Messages endpoint."
+      message: "Target provider must expose an OpenAI Responses, OpenAI Chat, Anthropic Messages, or Bedrock Converse endpoint."
+    }]);
+    expect(after).toHaveLength(before.length);
+  });
+
+  it("rejects auth-required custom route targets without provider credentials before inserting versions", async () => {
+    const fixture = await setup("org_routing_config_target_credential");
+    const organizationId = "org_routing_config_target_credential";
+    const configId = `${organizationId}:routing-config:default`;
+    const baseConfig = await activeConfig(fixture, configId);
+    await fixture.db.insert(providers).values({
+      id: "00000000-0000-0000-0000-00000000c020",
+      organizationId,
+      slug: "custom-needs-key",
+      displayName: "Custom needs key",
+      baseUrl: "https://custom-needs-key.example/v1",
+      authStyle: "bearer",
+      endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
+      defaultHeaders: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+    await fixture.db.insert(providerAccounts).values({
+      id: `${organizationId}:provider-account:empty`,
+      organizationId,
+      providerId: "00000000-0000-0000-0000-00000000c020",
+      name: "Secretless credential",
+      authType: "api_key",
+      status: "active"
+    });
+    const before = await fixture.db
+      .select()
+      .from(routingConfigVersions)
+      .where(eq(routingConfigVersions.routingConfigId, configId));
+
+    const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, createVersionMutation, {
+      configId,
+      config: {
+        ...baseConfig,
+        routes: {
+          ...baseConfig.routes,
+          fast: routeWithTargets(baseConfig.routes.fast, [{
+            providerId: "custom-needs-key",
+            model: "custom-model",
+            effort: "low"
+          }])
+        }
+      }
+    });
+    const after = await fixture.db
+      .select()
+      .from(routingConfigVersions)
+      .where(eq(routingConfigVersions.routingConfigId, configId));
+
+    expect(result.errors?.[0]?.message).toBe("routing_config_target_validation_failed");
+    expect(result.errors?.[0]?.extensions?.issues).toEqual([{
+      path: "routes.fast.openai.deployments.0.provider",
+      message: "Auth-required custom target providers need a provider credential before publishing."
     }]);
     expect(after).toHaveLength(before.length);
   });
@@ -745,6 +897,7 @@ describe("routing config admin APIs", () => {
   type TargetFixture = {
     providerId: string;
     model: string;
+    providerAccountId?: string;
     effort?: AnthropicEffort | OpenAIEffort;
     thinking?: RoutingConfigAnthropicDeployment["thinking"];
   };
@@ -758,6 +911,7 @@ describe("routing config admin APIs", () => {
       .map((target, index): RoutingConfigOpenAIDeployment => ({
         provider: target.providerId,
         model: target.model,
+        ...(target.providerAccountId ? { providerAccountId: target.providerAccountId } : {}),
         order: index,
         weight: 1,
         timeoutMs: 60000,
@@ -768,6 +922,7 @@ describe("routing config admin APIs", () => {
       .map((target, index): RoutingConfigAnthropicDeployment => ({
         provider: target.providerId,
         model: target.model,
+        ...(target.providerAccountId ? { providerAccountId: target.providerAccountId } : {}),
         order: index,
         weight: 1,
         timeoutMs: 60000,

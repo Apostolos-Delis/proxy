@@ -37,6 +37,35 @@ pnpm load:proxy -- --profile=scale-readiness --json-out=.context/load-scale-read
 
 Attach the generated JSON files to the rollout issue or PR. If the rollout targets a deployed environment, set `PROMPT_PROXY_LOAD_BASE_URL` and `PROMPT_PROXY_LOAD_API_KEY` and only run against an environment configured for no-spend or controlled-load provider traffic.
 
+## Open Model And Bedrock Gates
+
+Use these additional gates before enabling OpenAI-compatible OSS providers, native Bedrock routes, Bedrock model discovery, or Bedrock provider-account fallback.
+
+Read the scoped readiness review first: [Open model and Bedrock production readiness review](../scopes/open-model-bedrock-provider-support-v1/PRODUCTION_READINESS_REVIEW.md).
+
+| Area | Gate |
+| --- | --- |
+| Provider credential boundary | Bedrock targets use an active `amazon-bedrock` provider account. Org-defined Bedrock providers do not use operator default-chain or profile credentials. Admin reads expose only secret hints, credential mode/source, region, endpoint override, and discovery regions. |
+| Prompt and secret leakage | Recent request events contain prompt artifact IDs/hashes and request hashes, not raw prompt content. Bedrock credential events contain only credential kind and source category. |
+| Route evidence | `routing.plan_recorded` shows native, translated, skipped, fallback, and selected candidates with compatibility status, translator, route tier, provider account, and skip reasons. |
+| Usage attribution | Bedrock terminal attempts produce usage ledger rows that can join to provider account, selected model/profile, route tier, and routing config ID/version/hash. |
+| Stateful boundaries | Requests with `previous_response_id`, encrypted OpenAI reasoning, or signed Anthropic thinking do not translate to Bedrock and produce fail-closed route evidence. |
+| Health operations | Provider account and model health views show no active cooldown/lockout for the rollout account/model/profile. Bedrock failure categories are mapped in the provider health runbook. |
+| Live AWS evidence | Live Bedrock tests and `pnpm smoke:bedrock` pass in the target environment with the exact AWS region, model/profile, and credentials intended for rollout. |
+
+Run these commands before promoting a Bedrock-capable release:
+
+```shell
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm smoke:local-openai
+AWS_REGION=target-region AWS_BEDROCK_TEST_MODEL=model-or-profile-id pnpm smoke:bedrock
+AWS_REGION=target-region AWS_BEDROCK_TEST_MODEL=model-or-profile-id pnpm --filter @proxy/proxy exec vitest run test/bedrockLive.test.ts --reporter verbose
+```
+
+`pnpm smoke:bedrock` and the live Bedrock test file skip in unconfigured environments. A skip is acceptable for local development and CI without AWS access, but it is a red gate for the environment that will receive Bedrock traffic.
+
 ## Canary steps
 
 1. Deploy to staging first.

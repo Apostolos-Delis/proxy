@@ -19,7 +19,8 @@ import type {
 export const ProviderEndpoint = builder.objectRef<ProviderEndpointModel>("ProviderEndpoint").implement({
   fields: (t) => ({
     dialect: t.exposeString("dialect"),
-    path: t.exposeString("path")
+    path: t.string({ nullable: true, resolve: (endpoint) => "path" in endpoint ? endpoint.path : null }),
+    operation: t.string({ nullable: true, resolve: (endpoint) => "operation" in endpoint ? endpoint.operation : null })
   })
 });
 
@@ -30,6 +31,8 @@ export const ProviderRegistryEntry = builder.objectRef<ProviderRegistryEntryMode
     slug: t.exposeString("slug"),
     displayName: t.exposeString("displayName"),
     baseUrl: t.exposeString("baseUrl"),
+    adapterKind: t.exposeString("adapterKind"),
+    adapterConfig: t.field({ type: "JSON", resolve: (provider) => provider.adapterConfig }),
     authStyle: t.exposeString("authStyle"),
     endpoints: t.expose("endpoints", { type: [ProviderEndpoint] }),
     defaultHeaders: t.field({ type: "JSON", resolve: (provider) => provider.defaultHeaders }),
@@ -188,7 +191,8 @@ export const ProviderModelHealth = builder.objectRef<ProviderModelHealthModel>("
     lastErrorAt: t.exposeString("lastErrorAt", { nullable: true }),
     lockoutUntil: t.exposeString("lockoutUntil", { nullable: true }),
     consecutiveFailures: t.exposeInt("consecutiveFailures"),
-    lastSuccessAt: t.exposeString("lastSuccessAt", { nullable: true })
+    lastSuccessAt: t.exposeString("lastSuccessAt", { nullable: true }),
+    metadata: t.field({ type: "JSON", resolve: (health) => health.metadata })
   })
 });
 
@@ -201,6 +205,7 @@ export const ProviderAccountHealth = builder.objectRef<ProviderAccountHealthMode
     consecutiveFailures: t.exposeInt("consecutiveFailures"),
     lastSuccessAt: t.exposeString("lastSuccessAt", { nullable: true }),
     lastCheckedAt: t.exposeString("lastCheckedAt", { nullable: true }),
+    metadata: t.field({ type: "JSON", resolve: (health) => health.metadata }),
     modelHealth: t.expose("modelHealth", { type: [ProviderModelHealth] })
   })
 });
@@ -234,6 +239,11 @@ export const ProviderAccount = builder.objectRef<ProviderAccountModel>("Provider
       authType: t.expose("authType", { type: ProviderAccountAuthType }),
     status: t.exposeString("status"),
     secretHint: t.exposeString("secretHint", { nullable: true }),
+    credentialMode: t.exposeString("credentialMode", { nullable: true }),
+    credentialSourceCategory: t.exposeString("credentialSourceCategory", { nullable: true }),
+    region: t.exposeString("region", { nullable: true }),
+    endpointOverride: t.exposeString("endpointOverride", { nullable: true }),
+    discoveryRegions: t.exposeStringList("discoveryRegions"),
     ownerUserId: t.exposeString("ownerUserId", { nullable: true }),
     boundKeyCount: t.exposeInt("boundKeyCount"),
     health: t.expose("health", { type: ProviderAccountHealth, nullable: true }),

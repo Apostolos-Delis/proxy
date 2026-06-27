@@ -28,6 +28,14 @@ import {
 } from "@proxy/db";
 
 import { explicitAlias } from "../catalog.js";
+import { jsonPayload } from "../events.js";
+import {
+  catalogWarnings,
+  effectiveCatalogSource,
+  mergeCatalogCapabilities,
+  mergeCatalogPricing,
+  type CatalogMergeRow
+} from "../modelDiscovery.js";
 import {
   applyPricingToEntry,
   baselineModelForDialect,
@@ -43,7 +51,7 @@ import {
   type ModelPricingEntry,
   type ModelPricingTable
 } from "../pricing.js";
-import type { ProviderAccountAuthType } from "@proxy/schema";
+import type { ProviderAccountAuthType, ProviderAdapterKind, ProviderAuthStyle, ProviderRegistryEndpoint } from "@proxy/schema";
 
 import type { JsonObject, RouteName } from "../types.js";
 import { searchAdminEntities } from "./adminSearch.js";
@@ -276,11 +284,13 @@ export class AdminQueryService {
         organizationId: providerAccounts.organizationId,
         providerId: providerAccounts.providerId,
         provider: providers.slug,
+        providerAdapterKind: providers.adapterKind,
         name: providerAccounts.name,
         baseUrl: providerAccounts.baseUrl,
         authType: providerAccounts.authType,
         status: providerAccounts.status,
         secretHint: providerAccounts.secretHint,
+        settings: providerAccounts.settings,
         createdByUserId: providerAccounts.createdByUserId,
         createdAt: providerAccounts.createdAt,
         lastUsedAt: providerAccounts.lastUsedAt
@@ -289,7 +299,10 @@ export class AdminQueryService {
       .innerJoin(providers, eq(providers.id, providerAccounts.providerId))
       .where(and(
         eq(providerAccounts.organizationId, this.organizationId),
-        isNotNull(providerAccounts.secretCiphertext)
+        or(
+          isNotNull(providerAccounts.secretCiphertext),
+          eq(providers.adapterKind, "aws-bedrock-converse")
+        )
       ))
       .orderBy(desc(providerAccounts.createdAt));
 
@@ -315,6 +328,8 @@ export class AdminQueryService {
         slug: providers.slug,
         displayName: providers.displayName,
         baseUrl: providers.baseUrl,
+        adapterKind: providers.adapterKind,
+        adapterConfig: providers.adapterConfig,
         authStyle: providers.authStyle,
         endpoints: providers.endpoints,
         defaultHeaders: providers.defaultHeaders,
@@ -408,7 +423,8 @@ export class AdminQueryService {
         cooldownUntil: providerAccountHealth.cooldownUntil,
         consecutiveFailures: providerAccountHealth.consecutiveFailures,
         lastSuccessAt: providerAccountHealth.lastSuccessAt,
-        lastCheckedAt: providerAccountHealth.lastCheckedAt
+        lastCheckedAt: providerAccountHealth.lastCheckedAt,
+        metadata: providerAccountHealth.metadata
       })
       .from(providerAccountHealth)
       .where(and(
@@ -432,7 +448,8 @@ export class AdminQueryService {
         lastErrorAt: providerModelHealth.lastErrorAt,
         lockoutUntil: providerModelHealth.lockoutUntil,
         consecutiveFailures: providerModelHealth.consecutiveFailures,
-        lastSuccessAt: providerModelHealth.lastSuccessAt
+        lastSuccessAt: providerModelHealth.lastSuccessAt,
+        metadata: providerModelHealth.metadata
       })
       .from(providerModelHealth)
       .where(and(
@@ -1205,8 +1222,12 @@ export class AdminQueryService {
       const rows = await this.db
         .select({
           organizationId: modelCatalog.organizationId,
+          providerAccountId: modelCatalog.providerAccountId,
+          region: modelCatalog.region,
           provider: providers.slug,
           model: modelCatalog.model,
+          catalogSource: modelCatalog.catalogSource,
+          capabilities: modelCatalog.capabilities,
           pricing: modelCatalog.pricing
         })
         .from(modelCatalog)
@@ -1216,12 +1237,9 @@ export class AdminQueryService {
           eq(modelCatalog.organizationId, this.organizationId)
         ));
       const table: Record<string, ModelPricing> = {};
-      for (const row of rows.filter((row) => row.organizationId === null)) {
-        const pricing = pricingFromRow(row.pricing);
-        if (pricing) table[providerModelPricingKey(row.provider, row.model)] = pricing;
-      }
-      for (const row of rows.filter((row) => row.organizationId !== null)) {
-        const pricing = pricingFromRow(row.pricing);
+      for (const group of groupedCatalogRows(rows).values()) {
+        const row = group[0]!;
+        const pricing = pricingFromRow(mergeCatalogPricing(group, this.organizationId));
         if (pricing) table[providerModelPricingKey(row.provider, row.model)] = pricing;
       }
       return Object.freeze(table);
@@ -1254,8 +1272,12 @@ export class AdminQueryService {
     const catalogModels = await this.db
       .select({
         organizationId: modelCatalog.organizationId,
+        providerAccountId: modelCatalog.providerAccountId,
+        region: modelCatalog.region,
         provider: providers.slug,
         model: modelCatalog.model,
+        catalogSource: modelCatalog.catalogSource,
+        capabilities: modelCatalog.capabilities,
         pricing: modelCatalog.pricing,
         updatedAt: modelCatalog.updatedAt
       })
@@ -1279,17 +1301,13 @@ export class AdminQueryService {
       return entry;
     };
 
-    for (const catalogEntry of catalogModels.filter((entry) => entry.organizationId === null)) {
+    for (const group of groupedCatalogRows(catalogModels).values()) {
+      const catalogEntry = group[0]!;
       const row = upsert(catalogEntry.model, catalogEntry.provider);
-      const rowPricing = pricingFromRow(catalogEntry.pricing);
-      if (rowPricing) applyPricingToEntry(row, rowPricing, "default");
-    }
-    for (const catalogEntry of catalogModels.filter((entry) => entry.organizationId !== null)) {
-      const row = upsert(catalogEntry.model, catalogEntry.provider);
-      const rowPricing = pricingFromRow(catalogEntry.pricing);
-      if (!rowPricing) continue;
-      applyPricingToEntry(row, rowPricing, "custom");
-      row.updatedAt = catalogEntry.updatedAt.toISOString();
+      const rowPricing = pricingFromRow(mergeCatalogPricing(group, this.organizationId));
+      const hasOrgRow = group.some((entry) => entry.organizationId === this.organizationId);
+      if (rowPricing) applyPricingToEntry(row, rowPricing, hasOrgRow ? "custom" : "default");
+      if (hasOrgRow) row.updatedAt = maxUpdatedAt(group).toISOString();
     }
     // The routing classifier bills its own model on every request, so list it
     // even before traffic — operators must be able to confirm it is priced.
@@ -1314,6 +1332,49 @@ export class AdminQueryService {
     }
 
     return [...entries.values()].sort(compareModelPricingEntries);
+  }
+
+  async modelCatalog() {
+    const rows = await this.db
+      .select({
+        organizationId: modelCatalog.organizationId,
+        providerAccountId: modelCatalog.providerAccountId,
+        region: modelCatalog.region,
+        provider: providers.slug,
+        model: modelCatalog.model,
+        catalogSource: modelCatalog.catalogSource,
+        capabilities: modelCatalog.capabilities,
+        pricing: modelCatalog.pricing,
+        updatedAt: modelCatalog.updatedAt
+      })
+      .from(modelCatalog)
+      .innerJoin(providers, eq(providers.id, modelCatalog.providerId))
+      .where(or(
+        isNull(modelCatalog.organizationId),
+        eq(modelCatalog.organizationId, this.organizationId)
+      ))
+      .orderBy(asc(providers.slug), asc(modelCatalog.model), asc(modelCatalog.organizationId));
+
+    const entries: ReturnType<typeof modelCatalogSummary>[] = [];
+    for (const group of groupedModelCatalogRows(rows, this.organizationId)) {
+      const row = group.rows[0]!;
+      entries.push(modelCatalogSummary({
+        provider: row.provider,
+        model: row.model,
+        providerAccountId: group.providerAccountId,
+        region: group.region,
+        catalogSource: effectiveCatalogSource(group.rows, this.organizationId),
+        capabilities: mergeCatalogCapabilities(group.rows, this.organizationId),
+        pricing: mergeCatalogPricing(group.rows, this.organizationId),
+        updatedAt: maxUpdatedAt(group.rows)
+      }));
+    }
+    return entries.sort((left, right) =>
+      (left.provider ?? "").localeCompare(right.provider ?? "") ||
+      left.model.localeCompare(right.model) ||
+      (left.providerAccountId ?? "").localeCompare(right.providerAccountId ?? "") ||
+      (left.region ?? "").localeCompare(right.region ?? "")
+    );
   }
 
   // Adds the configured classifier model to the pricing listing if traffic has
@@ -1925,11 +1986,13 @@ type ProviderAccountSummaryRow = {
   organizationId: string;
   providerId: string;
   provider: string;
+  providerAdapterKind: ProviderAdapterKind;
   name: string;
   baseUrl: string | null;
   authType: ProviderAccountAuthType;
   status: string;
   secretHint: string | null;
+  settings: Record<string, unknown>;
   createdByUserId: string | null;
   createdAt: Date;
   lastUsedAt: Date | null;
@@ -1944,6 +2007,7 @@ type ProviderAccountHealthRow = {
   consecutiveFailures: number;
   lastSuccessAt: Date | null;
   lastCheckedAt: Date | null;
+  metadata: Record<string, unknown>;
 };
 
 type ProviderModelHealthRow = {
@@ -1956,6 +2020,7 @@ type ProviderModelHealthRow = {
   lockoutUntil: Date | null;
   consecutiveFailures: number;
   lastSuccessAt: Date | null;
+  metadata: Record<string, unknown>;
 };
 
 type ProviderRegistryRow = {
@@ -1964,8 +2029,10 @@ type ProviderRegistryRow = {
   slug: string;
   displayName: string;
   baseUrl: string;
-  authStyle: "bearer" | "x-api-key" | "none";
-  endpoints: { dialect: string; path: string }[];
+  adapterKind: ProviderAdapterKind;
+  adapterConfig: Record<string, unknown>;
+  authStyle: ProviderAuthStyle;
+  endpoints: ProviderRegistryEndpoint[];
   defaultHeaders: Record<string, string>;
   capabilities: Record<string, unknown>;
   forwardHarnessHeaders: boolean;
@@ -2132,12 +2199,39 @@ function providerAccountSummary(
     authType: row.authType,
     status: row.status,
     secretHint: row.secretHint ?? null,
+    credentialMode: bedrockSettingsString(row, "credentialMode"),
+    credentialSourceCategory: bedrockCredentialSourceCategory(row),
+    region: bedrockSettingsString(row, "region"),
+    endpointOverride: bedrockSettingsString(row, "endpointOverride"),
+    discoveryRegions: bedrockDiscoveryRegions(row),
     ownerUserId: row.createdByUserId ?? null,
     boundKeyCount,
     health: providerAccountHealthSummary(health, modelHealth),
     createdAt: row.createdAt.toISOString(),
     lastUsedAt: row.lastUsedAt?.toISOString() ?? null
   };
+}
+
+function bedrockSettingsString(row: ProviderAccountSummaryRow, key: string) {
+  if (row.providerAdapterKind !== "aws-bedrock-converse") return null;
+  const value = row.settings[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function bedrockCredentialSourceCategory(row: ProviderAccountSummaryRow) {
+  const mode = bedrockSettingsString(row, "credentialMode");
+  if (mode === "aws_bedrock_bearer_token") return "encrypted_bearer_token";
+  if (mode === "aws_static_keys") return "encrypted_static_keys";
+  if (mode === "aws_default_chain") return "deployment_default_chain";
+  if (mode === "aws_profile") return "local_profile";
+  return null;
+}
+
+function bedrockDiscoveryRegions(row: ProviderAccountSummaryRow) {
+  if (row.providerAdapterKind !== "aws-bedrock-converse") return [];
+  const value = row.settings.discoveryRegions;
+  if (!Array.isArray(value)) return [];
+  return value.filter((region): region is string => typeof region === "string" && region.trim().length > 0);
 }
 
 function providerAccountHealthSummary(
@@ -2153,6 +2247,7 @@ function providerAccountHealthSummary(
     consecutiveFailures: health?.consecutiveFailures ?? 0,
     lastSuccessAt: health?.lastSuccessAt?.toISOString() ?? null,
     lastCheckedAt: health?.lastCheckedAt?.toISOString() ?? null,
+    metadata: health?.metadata ?? {},
     modelHealth: modelHealth.map((row) => ({
       providerId: row.providerId,
       providerAccountId: row.providerAccountId,
@@ -2162,7 +2257,8 @@ function providerAccountHealthSummary(
       lastErrorAt: row.lastErrorAt?.toISOString() ?? null,
       lockoutUntil: row.lockoutUntil?.toISOString() ?? null,
       consecutiveFailures: row.consecutiveFailures,
-      lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null
+      lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null,
+      metadata: row.metadata
     }))
   };
 }
@@ -2177,6 +2273,7 @@ function healthSkipsFromEvents(events: { eventType: string; payload: unknown }[]
     for (const skip of healthSkips) {
       if (!skip || typeof skip !== "object" || Array.isArray(skip)) continue;
       const record = skip as Record<string, unknown>;
+      const metadata = healthMetadata(record.metadata);
       skips.push({
         scope: stringOrNull(record.scope),
         provider: stringOrNull(record.provider),
@@ -2185,15 +2282,140 @@ function healthSkipsFromEvents(events: { eventType: string; payload: unknown }[]
         model: stringOrNull(record.model),
         healthStatus: stringOrNull(record.healthStatus),
         errorType: stringOrNull(record.errorType),
-        expiresAt: stringOrNull(record.expiresAt)
+        expiresAt: stringOrNull(record.expiresAt),
+        ...(Object.keys(metadata).length > 0 ? { metadata } : {})
       });
     }
   }
   return skips;
 }
 
+function healthMetadata(value: unknown): JsonObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return jsonPayload(value) as JsonObject;
+}
+
 function stringOrNull(value: unknown) {
   return typeof value === "string" ? value : null;
+}
+
+function modelCatalogSummary(row: {
+  provider: string;
+  model: string;
+  providerAccountId: string | null;
+  region: string | null;
+  catalogSource: string;
+  capabilities: Record<string, unknown>;
+  pricing: Record<string, unknown>;
+  updatedAt: Date;
+}) {
+  const inputCostPerMtok = numberOrNull(row.pricing.inputCostPerMtok);
+  const outputCostPerMtok = numberOrNull(row.pricing.outputCostPerMtok);
+  return {
+    provider: row.provider,
+    model: row.model,
+    displayName: stringOrNull(row.capabilities.displayName) ?? stringOrNull(row.capabilities.name),
+    catalogSource: row.catalogSource,
+    providerAccountId: row.providerAccountId,
+    region: row.region,
+    bedrockModelSource: stringOrNull(row.capabilities.bedrockModelSource),
+    bedrockInferenceProfileArn: stringOrNull(row.capabilities.bedrockInferenceProfileArn),
+    bedrockInferenceProfileId: stringOrNull(row.capabilities.bedrockInferenceProfileId),
+    bedrockInferenceProfileSource: stringOrNull(row.capabilities.bedrockInferenceProfileSource),
+    bedrockInferenceProfileGeography: stringOrNull(row.capabilities.bedrockInferenceProfileGeography),
+    bedrockBaseModelId: stringOrNull(row.capabilities.bedrockBaseModelId),
+    bedrockFoundationModelId: stringOrNull(row.capabilities.bedrockFoundationModelId),
+    dialects: stringArray(row.capabilities.dialects),
+    contextWindow: numberOrNull(row.capabilities.contextWindow),
+    maxOutputTokens: numberOrNull(row.capabilities.maxOutputTokens),
+    supportsStreaming: booleanOrNull(row.capabilities.streaming),
+    supportsTools: booleanOrNull(row.capabilities.toolCall),
+    supportsImages: booleanOrNull(row.capabilities.image) ?? imageSupportFromModalities(row.capabilities.modalities),
+    supportsReasoning: booleanOrNull(row.capabilities.reasoning),
+    pricingKnown: inputCostPerMtok !== null && outputCostPerMtok !== null,
+    inputCostPerMtok,
+    outputCostPerMtok,
+    cacheReadCostPerMtok: numberOrNull(row.pricing.cacheReadCostPerMtok),
+    cacheWriteCostPerMtok: numberOrNull(row.pricing.cacheWriteCostPerMtok),
+    warnings: catalogWarnings(row.capabilities, row.pricing),
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+
+function groupedCatalogRows<Row extends CatalogMergeRow & { provider: string; model: string }>(rows: Row[]) {
+  const groups = new Map<string, Row[]>();
+  for (const row of rows) {
+    const key = providerModelPricingKey(row.provider, row.model);
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  return groups;
+}
+
+function groupedModelCatalogRows<Row extends CatalogMergeRow & { provider: string; model: string }>(
+  rows: Row[],
+  organizationId: string
+) {
+  const groups: Array<{
+    provider: string;
+    model: string;
+    providerAccountId: string | null;
+    region: string | null;
+    rows: Row[];
+  }> = [];
+  for (const providerModelRows of groupedCatalogRows(rows).values()) {
+    const genericRows = providerModelRows.filter((row) => row.providerAccountId === null && row.region === null);
+    const scopeKeys = new Map<string, { providerAccountId: string | null; region: string | null }>();
+    for (const row of providerModelRows) {
+      const providerAccountId = row.providerAccountId ?? null;
+      const region = row.region ?? null;
+      scopeKeys.set(`${providerAccountId ?? ""}:${region ?? ""}`, { providerAccountId, region });
+    }
+    for (const scope of scopeKeys.values()) {
+      const scopedRows = providerModelRows.filter((row) =>
+        (row.providerAccountId ?? null) === scope.providerAccountId &&
+        (row.region ?? null) === scope.region
+      );
+      const row = scopedRows[0]!;
+      const mergeRows = scope.providerAccountId === null && scope.region === null
+        ? scopedRows
+        : [...genericRows, ...scopedRows];
+      groups.push({
+        provider: row.provider,
+        model: row.model,
+        providerAccountId: scope.providerAccountId,
+        region: scope.region,
+        rows: mergeRows.filter((row) =>
+          row.organizationId === null ||
+          row.organizationId === organizationId
+        )
+      });
+    }
+  }
+  return groups.filter((group) => group.rows.length > 0);
+}
+
+function maxUpdatedAt<Row extends { updatedAt?: Date }>(rows: Row[]) {
+  return rows.reduce((latest, row) => {
+    if (!row.updatedAt || row.updatedAt <= latest) return latest;
+    return row.updatedAt;
+  }, rows[0]?.updatedAt ?? new Date(0));
+}
+
+function stringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function numberOrNull(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function booleanOrNull(value: unknown) {
+  return typeof value === "boolean" ? value : null;
+}
+
+function imageSupportFromModalities(value: unknown) {
+  const modalities = stringArray(value);
+  return modalities.length > 0 ? modalities.includes("image") : null;
 }
 
 function providerRegistrySummary(row: ProviderRegistryRow) {
@@ -2203,6 +2425,8 @@ function providerRegistrySummary(row: ProviderRegistryRow) {
     slug: row.slug,
     displayName: row.displayName,
     baseUrl: row.baseUrl,
+    adapterKind: row.adapterKind,
+    adapterConfig: row.adapterConfig,
     authStyle: row.authStyle,
     endpoints: row.endpoints,
     defaultHeaders: row.defaultHeaders,

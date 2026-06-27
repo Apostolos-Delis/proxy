@@ -145,6 +145,8 @@ export function providerAttemptSummary(row: ProviderAttemptRow) {
     surface: row.surface,
     provider: row.provider,
     model: row.model,
+    adapterKind: row.adapterKind ?? undefined,
+    adapterClassification: row.adapterClassification ? row.adapterClassification as JsonObject : undefined,
     providerAccountId: row.providerAccountId ?? undefined,
     upstreamRequestId: row.upstreamRequestId ?? undefined,
     terminalStatus: row.terminalStatus,

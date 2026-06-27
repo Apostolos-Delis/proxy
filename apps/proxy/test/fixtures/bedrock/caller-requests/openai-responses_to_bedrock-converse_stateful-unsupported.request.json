@@ -1,0 +1,18 @@
+{
+  "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+  "previous_response_id": "resp_previous_123",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Continue from the prior response."
+        }
+      ]
+    }
+  ],
+  "max_output_tokens": 256,
+  "stream": false
+}

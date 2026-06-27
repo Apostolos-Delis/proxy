@@ -11,6 +11,91 @@ import {
   type RoutingConfigDocument
 } from "./routingConfigEditor";
 
+const catalog = {
+  providers: [
+    {
+      slug: "openai",
+      displayName: "OpenAI",
+      authStyle: "bearer",
+      adapterKind: "generic-http-json",
+      enabled: true,
+      builtin: true,
+      endpoints: [{ dialect: "openai-responses", path: "/v1/responses" }],
+      capabilities: { efforts: ["low", "medium", "high", "xhigh"] }
+    },
+    {
+      slug: "anthropic",
+      displayName: "Anthropic",
+      authStyle: "bearer",
+      adapterKind: "generic-http-json",
+      enabled: true,
+      builtin: true,
+      endpoints: [{ dialect: "anthropic-messages", path: "/v1/messages" }],
+      capabilities: { efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"] }
+    },
+    {
+      slug: "aws-bedrock",
+      displayName: "Amazon Bedrock",
+      authStyle: "aws-sdk",
+      adapterKind: "aws-bedrock-converse",
+      enabled: true,
+      builtin: true,
+      endpoints: [{ dialect: "bedrock-converse", path: null, operation: "converse" }],
+      capabilities: {}
+    },
+    {
+      slug: "custom-oss",
+      displayName: "OSS Gateway",
+      authStyle: "bearer",
+      adapterKind: "generic-http-json",
+      enabled: true,
+      builtin: false,
+      endpoints: [{ dialect: "openai-chat", path: "/v1/chat/completions" }],
+      capabilities: {}
+    }
+  ],
+  models: [
+    catalogModel("openai", "gpt-fast"),
+    catalogModel("openai", "gpt-balanced"),
+    catalogModel("openai", "gpt-hard"),
+    catalogModel("openai", "gpt-deep"),
+    catalogModel("anthropic", "claude-fast"),
+    catalogModel("anthropic", "claude-balanced"),
+    catalogModel("anthropic", "claude-hard"),
+    catalogModel("anthropic", "claude-deep"),
+    catalogModel("aws-bedrock", "anthropic.claude-3-5-sonnet-20241022-v2:0", { region: "us-east-1", supportsTools: true, supportsStreaming: true }),
+    catalogModel("custom-oss", "qwen/qwen3-coder")
+  ],
+  providerAccounts: [
+    {
+      id: "bedrock-account",
+      providerId: "provider_bedrock",
+      provider: "aws-bedrock",
+      name: "bedrock-east",
+      status: "active",
+      credentialMode: "aws_default_chain",
+      credentialSourceCategory: "deployment_default_chain",
+      region: "us-east-1",
+      endpointOverride: null,
+      discoveryRegions: ["us-east-1"],
+      health: { status: "healthy", lastErrorType: null, cooldownUntil: null, modelHealth: [] }
+    },
+    {
+      id: "oss-account",
+      providerId: "provider_oss",
+      provider: "custom-oss",
+      name: "oss-key",
+      status: "active",
+      credentialMode: null,
+      credentialSourceCategory: "encrypted_bearer_token",
+      region: null,
+      endpointOverride: null,
+      discoveryRegions: [],
+      health: null
+    }
+  ]
+};
+
 const baseConfig: RoutingConfigDocument = {
   schemaVersion: 3,
   displayName: "Default coding router",
@@ -204,6 +289,68 @@ describe("applyDraft", () => {
     expect(next.routes.deep).toEqual(baseConfig.routes.deep);
   });
 
+  it("preserves custom and Bedrock provider slugs instead of dropping them", () => {
+    const config: RoutingConfigDocument = {
+      ...baseConfig,
+      routes: {
+        ...baseConfig.routes,
+        fast: {
+          openai: {
+            deployments: [{
+              provider: "aws-bedrock",
+              providerAccountId: "bedrock-account",
+              model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+              order: 0,
+              weight: 1,
+              timeoutMs: 60000,
+              metadata: {
+                bedrockConverse: {
+                  inferenceProfile: "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                  serviceTier: "optimized"
+                }
+              }
+            }, {
+              provider: "custom-oss",
+              providerAccountId: "oss-account",
+              model: "qwen/qwen3-coder",
+              order: 1,
+              weight: 1,
+              timeoutMs: 60000
+            }]
+          }
+        }
+      }
+    };
+
+    const draft = draftFromConfig(config);
+    const next = applyDraft(config, draft, catalog);
+
+    expect(draft.routes.fast.targets).toEqual([
+      {
+        providerId: "aws-bedrock",
+        family: "openai",
+        providerAccountId: "bedrock-account",
+        model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        effort: "",
+        metadata: {
+          bedrockConverse: {
+            inferenceProfile: "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+            serviceTier: "optimized"
+          }
+        }
+      },
+      {
+        providerId: "custom-oss",
+        family: "openai",
+        providerAccountId: "oss-account",
+        model: "qwen/qwen3-coder",
+        effort: ""
+      }
+    ]);
+    expect(next.routes.fast.openai?.deployments?.map((deployment) => deployment.provider)).toEqual(["aws-bedrock", "custom-oss"]);
+    expect(next.routes.fast.anthropic).toBeUndefined();
+  });
+
   it("updates the classifier rules while preserving other classifier settings", () => {
     const draft = draftFromConfig(baseConfig);
     draft.classifierRules = "  Route by area.  ";
@@ -260,28 +407,28 @@ describe("draftError", () => {
     const draft = draftFromConfig(baseConfig);
     draft.routes.fast.targets = draft.routes.fast.targets.slice(0, 1);
 
-    expect(draftError(draft)).toBeUndefined();
+    expect(draftError(draft, catalog)).toBeUndefined();
   });
 
   it("rejects tiers with no targets", () => {
     const draft = draftFromConfig(baseConfig);
     draft.routes.hard.targets = [];
 
-    expect(draftError(draft)).toContain("hard");
+    expect(draftError(draft, catalog)).toContain("hard");
   });
 
   it("rejects incomplete targets", () => {
     const draft = draftFromConfig(baseConfig);
     draft.routes.hard.targets[0].model = " ";
 
-    expect(draftError(draft)).toBe("hard target 1 needs both a provider and model.");
+    expect(draftError(draft, catalog)).toBe("hard target 1 needs both a provider and model.");
   });
 
   it("accepts blank routing rules", () => {
     const draft = draftFromConfig(baseConfig);
     draft.classifierRules = "   ";
 
-    expect(draftError(draft)).toBeUndefined();
+    expect(draftError(draft, catalog)).toBeUndefined();
   });
 
   it("rejects invalid request input caps when enabled", () => {
@@ -289,7 +436,7 @@ describe("draftError", () => {
     draft.maxEstimatedInputTokensEnabled = true;
     draft.maxEstimatedInputTokens = "0";
 
-    expect(draftError(draft)).toBe("Request input cap must be a positive whole number.");
+    expect(draftError(draft, catalog)).toBe("Request input cap must be a positive whole number.");
   });
 
   it("ignores request input cap text when disabled", () => {
@@ -297,9 +444,112 @@ describe("draftError", () => {
     draft.maxEstimatedInputTokensEnabled = false;
     draft.maxEstimatedInputTokens = "not-a-number";
 
-    expect(draftError(draft)).toBeUndefined();
+    expect(draftError(draft, catalog)).toBeUndefined();
+  });
+
+  it("accepts publishable Bedrock and custom HTTP targets", () => {
+    const draft = draftFromConfig(baseConfig);
+    draft.routes.fast.targets = [{
+      providerId: "aws-bedrock",
+      model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      providerAccountId: "bedrock-account",
+      effort: "",
+      metadata: {
+        bedrockConverse: {
+          inferenceProfile: "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+        }
+      }
+    }];
+    draft.routes.balanced.targets = [{ providerId: "custom-oss", model: "qwen/qwen3-coder", providerAccountId: "oss-account", effort: "" }];
+
+    expect(draftError(draft, catalog)).toBeUndefined();
+  });
+
+  it("rejects Bedrock-only settings on non-Bedrock targets with the backend reason code", () => {
+    const draft = draftFromConfig(baseConfig);
+    draft.routes.fast.targets = [{
+      providerId: "custom-oss",
+      model: "qwen/qwen3-coder",
+      providerAccountId: "oss-account",
+      effort: "",
+      metadata: { bedrockConverse: { serviceTier: "optimized" } }
+    }];
+
+    expect(draftError(draft, catalog)).toBe("fast target 1 rejected by compatibility: bedrock_settings_on_non_bedrock_target.");
+  });
+
+  it("rejects uncredentialed Bedrock targets with the backend reason code", () => {
+    const draft = draftFromConfig(baseConfig);
+    draft.routes.fast.targets = [{
+      providerId: "aws-bedrock",
+      model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      effort: ""
+    }];
+
+    expect(draftError(draft, catalog)).toBe("fast target 1 rejected by compatibility: provider_credential_unresolved.");
+  });
+
+  it("rejects Bedrock targets when the selected account does not match catalog scope", () => {
+    const scopedCatalog = {
+      ...catalog,
+      providerAccounts: [
+        ...catalog.providerAccounts,
+        {
+          id: "bedrock-west-account",
+          providerId: "provider_bedrock",
+          provider: "aws-bedrock",
+          name: "bedrock-west",
+          status: "active",
+          credentialMode: "aws_default_chain",
+          credentialSourceCategory: "deployment_default_chain",
+          region: "us-west-2",
+          endpointOverride: null,
+          discoveryRegions: ["us-west-2"],
+          health: { status: "healthy", lastErrorType: null, cooldownUntil: null, modelHealth: [] }
+        }
+      ]
+    };
+    const draft = draftFromConfig(baseConfig);
+    draft.routes.fast.targets = [{
+      providerId: "aws-bedrock",
+      model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      providerAccountId: "bedrock-west-account",
+      effort: ""
+    }];
+
+    expect(draftError(draft, scopedCatalog)).toBe("fast target 1 rejected by compatibility: model_catalog_missing.");
   });
 });
+
+function catalogModel(provider: string, model: string, options: Partial<(typeof catalog)["models"][number]> = {}) {
+  return {
+    provider,
+    model,
+    displayName: null,
+    catalogSource: "manual",
+    providerAccountId: null,
+    region: null,
+    bedrockModelSource: null,
+    bedrockInferenceProfileArn: null,
+    bedrockInferenceProfileId: null,
+    bedrockInferenceProfileSource: null,
+    bedrockInferenceProfileGeography: null,
+    bedrockBaseModelId: null,
+    bedrockFoundationModelId: null,
+    dialects: [],
+    contextWindow: 200000,
+    maxOutputTokens: 8192,
+    supportsStreaming: true,
+    supportsTools: true,
+    supportsImages: false,
+    supportsReasoning: false,
+    warnings: [],
+    pricingKnown: true,
+    inputCostPerMtok: 1,
+    outputCostPerMtok: 3,
+    ...options
+  };
+}
 
 describe("effectiveEffortForTarget", () => {
   it("shows provider effort clamping without changing the draft", () => {

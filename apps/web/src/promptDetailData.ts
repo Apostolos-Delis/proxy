@@ -15,6 +15,7 @@ export type HealthSkipEvidence = {
   healthStatus: string | null;
   errorType: string | null;
   expiresAt: string | null;
+  metadata: Record<string, string | number | boolean | null>;
 };
 
 const EVENT_TONES: [string, string][] = [
@@ -93,7 +94,8 @@ export function healthSkipsFromEvents(events: ProxyEvent[]): HealthSkipEvidence[
         model: stringOrNull(record.model),
         healthStatus: stringOrNull(record.healthStatus),
         errorType: stringOrNull(record.errorType),
-        expiresAt: stringOrNull(record.expiresAt)
+        expiresAt: stringOrNull(record.expiresAt),
+        metadata: metadataRecord(record.metadata)
       });
     }
   }
@@ -102,6 +104,17 @@ export function healthSkipsFromEvents(events: ProxyEvent[]): HealthSkipEvidence[
 
 function stringOrNull(value: unknown) {
   return typeof value === "string" ? value : null;
+}
+
+function metadataRecord(value: unknown): Record<string, string | number | boolean | null> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const entries = Object.entries(value).filter((entry): entry is [string, string | number | boolean | null] => (
+    typeof entry[1] === "string" ||
+    typeof entry[1] === "number" ||
+    typeof entry[1] === "boolean" ||
+    entry[1] === null
+  ));
+  return Object.fromEntries(entries);
 }
 
 function compressionEventStatus(eventType: string, payload: Record<string, unknown>) {

@@ -23,6 +23,11 @@ const ProviderAccountsDocument = graphql(`
       status
       baseUrl
       secretHint
+      credentialMode
+      credentialSourceCategory
+      region
+      endpointOverride
+      discoveryRegions
       ownerUserId
       boundKeyCount
       health {
@@ -33,6 +38,7 @@ const ProviderAccountsDocument = graphql(`
         lastSuccessAt
         lastCheckedAt
         consecutiveFailures
+        metadata
         modelHealth {
           providerId
           providerAccountId
@@ -43,6 +49,7 @@ const ProviderAccountsDocument = graphql(`
           lockoutUntil
           consecutiveFailures
           lastSuccessAt
+          metadata
         }
       }
       createdAt
@@ -59,10 +66,12 @@ const ProviderRegistryDocument = graphql(`
       slug
       displayName
       baseUrl
+      adapterKind
       authStyle
       endpoints {
         dialect
         path
+        operation
       }
       defaultHeaders
       capabilities
@@ -78,6 +87,20 @@ const CreateProviderCredentialDocument = graphql(`
     createProviderCredential(input: $input) {
       id
       name
+    }
+  }
+`);
+
+const UpdateProviderCredentialDocument = graphql(`
+  mutation UpdateProviderCredential($input: UpdateProviderCredentialInput!) {
+    updateProviderCredential(input: $input) {
+      id
+      name
+      credentialMode
+      credentialSourceCategory
+      region
+      endpointOverride
+      discoveryRegions
     }
   }
 `);
@@ -189,6 +212,26 @@ const ProbeProviderCredentialDocument = graphql(`
   }
 `);
 
+const RefreshBedrockModelCatalogDocument = graphql(`
+  mutation RefreshBedrockModelCatalog($input: RefreshBedrockModelCatalogInput!) {
+    refreshBedrockModelCatalog(input: $input) {
+      providerAccountId
+      regions
+      status
+      error
+      modelsSeen
+      modelsApplied
+      inserted
+      updated
+      skipped
+      errors {
+        region
+        error
+      }
+    }
+  }
+`);
+
 const AssignApiKeyProviderAccountDocument = graphql(`
   mutation AssignApiKeyProviderAccount($apiKeyId: ID!, $provider: String!, $providerAccountId: ID) {
     assignApiKeyProviderAccount(apiKeyId: $apiKeyId, provider: $provider, providerAccountId: $providerAccountId) {
@@ -207,7 +250,8 @@ export type ProviderAccountSummary = ProviderAccountsQuery["providerAccounts"][n
 export type ProviderRegistrySummary = ProviderRegistryQuery["providers"][number];
 export type ProviderEndpointInput = {
   dialect: string;
-  path: string;
+  path?: string;
+  operation?: string;
 };
 export type ProviderInput = {
   slug: string;
@@ -228,9 +272,29 @@ export type CreateProviderCredentialInput = {
   provider: ProviderName;
   name: string;
   authType: ProviderAccountAuthType;
-  apiKey: string;
+  apiKey?: string;
   baseUrl?: string;
+  credentialMode?: string;
+  region?: string;
+  endpointOverride?: string;
+  discoveryRegions?: string[];
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  sessionToken?: string;
   chatgptAccountId?: string;
+};
+export type UpdateProviderCredentialInput = {
+  providerAccountId: string;
+  name?: string;
+  apiKey?: string;
+  baseUrl?: string | null;
+  credentialMode?: string;
+  region?: string;
+  endpointOverride?: string | null;
+  discoveryRegions?: string[];
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  sessionToken?: string;
 };
 export type CreateProviderCredentialFromLocalAuthInput = {
   provider: ProviderName;
@@ -256,6 +320,10 @@ export async function fetchSubscriptionOAuthEnabled() {
 
 export async function createProviderCredential(input: CreateProviderCredentialInput) {
   return (await gqlFetch(CreateProviderCredentialDocument, { input })).createProviderCredential;
+}
+
+export async function updateProviderCredential(input: UpdateProviderCredentialInput) {
+  return (await gqlFetch(UpdateProviderCredentialDocument, { input })).updateProviderCredential;
 }
 
 export async function createProviderCredentialFromLocalAuth(input: CreateProviderCredentialFromLocalAuthInput) {
@@ -290,8 +358,12 @@ export async function revokeProviderCredential(providerAccountId: string) {
   return (await gqlFetch(RevokeProviderCredentialDocument, { providerAccountId })).revokeProviderCredential;
 }
 
-export async function probeProviderCredential(input: { providerAccountId: string; model: string }) {
+export async function probeProviderCredential(input: { providerAccountId: string; model: string; operation?: string }) {
   return (await gqlFetch(ProbeProviderCredentialDocument, { input })).probeProviderCredential;
+}
+
+export async function refreshBedrockModelCatalog(providerAccountId: string) {
+  return (await gqlFetch(RefreshBedrockModelCatalogDocument, { input: { providerAccountId } })).refreshBedrockModelCatalog;
 }
 
 export async function assignApiKeyProviderAccount(

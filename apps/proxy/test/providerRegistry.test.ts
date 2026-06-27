@@ -17,6 +17,14 @@ describe("provider registry guards", () => {
       () => assertSafeDefaultHeaders({ "x-api-key": "secret" }),
       "provider_default_header_forbidden"
     );
+    expectProviderRegistryCode(
+      () => assertSafeDefaultHeaders({ "x-amz-security-token": "session-token" }),
+      "provider_default_header_forbidden"
+    );
+    expectProviderRegistryCode(
+      () => assertSafeDefaultHeaders({ "aws-secret-access-key": "secret" }),
+      "provider_default_header_forbidden"
+    );
     expect(() => assertSafeDefaultHeaders({ "anthropic-version": "2023-06-01" })).not.toThrow();
   });
 

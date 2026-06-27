@@ -3,12 +3,14 @@ import type { HarnessCompatibilityProfileId, RoutingConfigRetryPolicy, SelectedD
 
 import { buildAnthropicContext, buildOpenAIChatContext, buildOpenAIContext } from "./features.js";
 import { anthropicEffortForModel, supportsAnthropicAdaptiveThinking } from "./catalog.js";
+import { resolveBedrockConverseModelId } from "./providerAdapters/bedrockModelIds.js";
 import type { RequestTiming } from "./requestTiming.js";
 import { translators } from "./translators/index.js";
 import type {
   Dialect,
   JsonObject,
   Provider,
+  ProviderAdapterKind,
   ProviderEffort,
   RouteContext,
   RouteDecision,
@@ -59,8 +61,10 @@ export type ProviderForwardResult = "forwarded" | "rejected";
 
 export type ProviderForwardAttemptInput = {
   route?: RouteName;
+  routeCandidateId?: string;
   selectedModel: string;
   provider: Provider;
+  adapterKind?: ProviderAdapterKind;
   deployment?: SelectedDeployment;
   reasoningEffort?: ProviderEffort;
   body: unknown;
@@ -130,6 +134,9 @@ export function rewriteSurfaceRequest(
     if (options.automaticCaching) injectAutomaticCacheControl(rewritten);
     if (options.upgradeCacheTtl && shouldUpgradeCacheControlTtl(rewritten)) upgradeCacheControlTtl(rewritten);
     return rewritten;
+  }
+  if (settings.dialect === "bedrock-converse") {
+    return rewriteBedrockConverseRequest(targetBody, settings, systemPrompt);
   }
   throw new Error("Selected provider settings do not match the request surface.");
 }
@@ -435,6 +442,74 @@ function rewriteAnthropicMessagesRequest(
     request.max_tokens = DEFAULT_ANTHROPIC_MAX_TOKENS;
   }
   return request;
+}
+
+function rewriteBedrockConverseRequest(
+  body: unknown,
+  settings: SelectedRouteSettings,
+  systemPrompt?: string
+) {
+  const request = structuredClone(isRecord(body) ? body : {});
+  const bedrockSettings = bedrockMetadataSettings("openai" in settings ? settings.openai.metadata : settings.anthropic.metadata);
+  request.modelId = resolveBedrockConverseModelId({
+    modelId: settings.model,
+    inferenceProfile: stringValue(bedrockSettings?.inferenceProfile) ?? stringValue(bedrockSettings?.inferenceProfileId),
+    inferenceProfileGeography: stringValue(bedrockSettings?.inferenceProfileGeography) ?? stringValue(bedrockSettings?.profileGeography)
+  });
+  delete request.stream;
+  if (systemPrompt) {
+    const existingSystem = Array.isArray(request.system) ? request.system : [];
+    request.system = [{ text: systemPrompt }, ...existingSystem];
+  }
+  const maxTokens = "openai" in settings
+    ? settings.openai.maxOutputTokens
+    : settings.anthropic.maxTokens;
+  if (maxTokens !== undefined) {
+    request.inferenceConfig = {
+      ...(isRecord(request.inferenceConfig) ? request.inferenceConfig : {}),
+      maxTokens
+    };
+  }
+  applyBedrockMetadataConfig(request, bedrockSettings);
+  return request;
+}
+
+function applyBedrockMetadataConfig(request: Record<string, unknown>, settings: Record<string, unknown> | undefined) {
+  if (!settings) return;
+  const requestMetadata = stringRecord(settings.requestMetadata);
+  if (requestMetadata) request.requestMetadata = requestMetadata;
+  const guardrailIdentifier = stringValue(settings.guardrailIdentifier);
+  const guardrailVersion = stringValue(settings.guardrailVersion);
+  if (guardrailIdentifier && guardrailVersion) {
+    request.guardrailConfig = {
+      guardrailIdentifier,
+      guardrailVersion,
+      ...(settings.guardrailTrace === "enabled" || settings.guardrailTrace === "disabled" ? { trace: settings.guardrailTrace } : {})
+    };
+  }
+  const latency = stringValue(settings.serviceTier) ?? stringValue(settings.latency);
+  if (latency === "standard" || latency === "optimized") {
+    request.performanceConfig = { latency };
+  }
+  if (isRecord(settings.additionalModelRequestFields)) {
+    request.additionalModelRequestFields = settings.additionalModelRequestFields;
+  }
+}
+
+function bedrockMetadataSettings(metadata: unknown) {
+  if (!isRecord(metadata)) return undefined;
+  const candidate = metadata.bedrockConverse ?? metadata.bedrock ?? metadata.bedrockSettings;
+  return isRecord(candidate) ? candidate : undefined;
+}
+
+function stringRecord(value: unknown) {
+  if (!isRecord(value)) return undefined;
+  const entries = Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function anthropicThinkingForSettings(settings: Extract<SelectedRouteSettings, { anthropic: unknown }>) {

@@ -44,7 +44,40 @@ const REDIRECT_OPENAI_PROVIDER_ID = "10000000-0000-0000-0000-000000000004";
 const CUSTOM_ANTHROPIC_PROVIDER_ID = "10000000-0000-0000-0000-000000000005";
 
 const CREATE = `mutation Create($input: CreateProviderCredentialInput!) {
-  createProviderCredential(input: $input) { id providerId provider baseUrl name status authType secretHint ownerUserId }
+  createProviderCredential(input: $input) {
+    id
+    providerId
+    provider
+    baseUrl
+    name
+    status
+    authType
+    secretHint
+    credentialMode
+    credentialSourceCategory
+    region
+    endpointOverride
+    discoveryRegions
+    ownerUserId
+  }
+}`;
+const UPDATE = `mutation Update($input: UpdateProviderCredentialInput!) {
+  updateProviderCredential(input: $input) {
+    id
+    providerId
+    provider
+    baseUrl
+    name
+    status
+    authType
+    secretHint
+    credentialMode
+    credentialSourceCategory
+    region
+    endpointOverride
+    discoveryRegions
+    ownerUserId
+  }
 }`;
 const CREATE_LOCAL = `mutation CreateLocal($input: CreateProviderCredentialFromLocalAuthInput!) {
   createProviderCredentialFromLocalAuth(input: $input) { id providerId provider baseUrl name status authType secretHint ownerUserId }
@@ -78,7 +111,25 @@ const BIND = `mutation Bind($apiKeyId: ID!, $provider: String!, $providerAccount
     id providerCredentials { provider providerId providerAccountId name status }
   }
 }`;
-const LIST = `query { providerAccounts { id providerId provider baseUrl name authType status secretHint ownerUserId boundKeyCount } }`;
+const LIST = `query {
+  providerAccounts {
+    id
+    providerId
+    provider
+    baseUrl
+    name
+    authType
+    status
+    secretHint
+    credentialMode
+    credentialSourceCategory
+    region
+    endpointOverride
+    discoveryRegions
+    ownerUserId
+    boundKeyCount
+  }
+}`;
 const PROVIDERS = `query {
   providers {
     slug
@@ -1157,6 +1208,263 @@ describe("BYOK provider credentials", () => {
     const named = (list.data?.providerAccounts ?? []).filter((row: { name: string }) => row.name === "Acme key");
     expect(named).toHaveLength(2);
     expect(named.filter((row: { status: string }) => row.status === "active")).toHaveLength(1);
+  });
+
+  it("lists the seeded Bedrock default-chain account without secret material", async () => {
+    const fixture = await setup("org_bedrock_seeded_account");
+
+    const list = await gql(fixture, LIST);
+    const account = (list.data?.providerAccounts ?? []).find((row: { provider: string }) => row.provider === "amazon-bedrock");
+
+    expect(list.errors).toBeUndefined();
+    expect(account).toEqual(expect.objectContaining({
+      providerId: "00000000-0000-0000-0000-000000000003",
+      provider: "amazon-bedrock",
+      name: "Amazon Bedrock",
+      authType: "api_key",
+      status: "active",
+      secretHint: null,
+      credentialMode: "aws_default_chain",
+      credentialSourceCategory: "deployment_default_chain",
+      region: "us-east-1",
+      endpointOverride: null,
+      discoveryRegions: ["us-east-1"],
+      boundKeyCount: 0
+    }));
+    const serialized = JSON.stringify(list);
+    expect(serialized).not.toContain("secretCiphertext");
+    expect(serialized).not.toContain("aws:default-chain");
+
+    const credential = await fixture.persistence.providerCredentials.resolveAccount({
+      organizationId: "org_bedrock_seeded_account",
+      provider: "amazon-bedrock",
+      providerAccountId: account.id
+    });
+    expect(credential).toEqual(expect.objectContaining({
+      provider: "amazon-bedrock",
+      providerAccountId: account.id,
+      token: "",
+      providerAccountSettings: {
+        credentialMode: "aws_default_chain",
+        region: "us-east-1",
+        discoveryRegions: ["us-east-1"]
+      }
+    }));
+  });
+
+  it("creates Bedrock bearer-token accounts and exposes only non-secret metadata", async () => {
+    const fixture = await setup("org_bedrock_bearer_account");
+    const bearerToken = "bedrock-bearer-token-secret";
+
+    const created = await gql(fixture, CREATE, {
+      input: {
+        provider: "amazon-bedrock",
+        name: "Bedrock bearer",
+        credentialMode: "aws_bedrock_bearer_token",
+        region: "us-west-2",
+        discoveryRegions: ["us-west-2", "us-east-1"],
+        endpointOverride: fixture.openai.url,
+        apiKey: bearerToken
+      }
+    });
+
+    expect(created.errors).toBeUndefined();
+    const account = created.data?.createProviderCredential;
+    expect(account).toEqual(expect.objectContaining({
+      provider: "amazon-bedrock",
+      baseUrl: fixture.openai.url,
+      secretHint: expect.stringMatching(/^••••/),
+      credentialMode: "aws_bedrock_bearer_token",
+      credentialSourceCategory: "encrypted_bearer_token",
+      region: "us-west-2",
+      endpointOverride: fixture.openai.url,
+      discoveryRegions: ["us-west-2", "us-east-1"]
+    }));
+    expect(JSON.stringify(created)).not.toContain(bearerToken);
+
+    const [row] = await fixture.db
+      .select()
+      .from(providerAccounts)
+      .where(eq(providerAccounts.id, account.id));
+    expect(row?.settings).toEqual({
+      credentialMode: "aws_bedrock_bearer_token",
+      region: "us-west-2",
+      discoveryRegions: ["us-west-2", "us-east-1"],
+      endpointOverride: fixture.openai.url
+    });
+    expect(decryptSecret(row!.secretCiphertext ?? "", ENCRYPTION_KEY)).toBe(bearerToken);
+
+    const list = await gql(fixture, LIST);
+    expect(JSON.stringify(list)).not.toContain(bearerToken);
+  });
+
+  it("updates Bedrock account metadata and rotates write-only secrets", async () => {
+    const fixture = await setup("org_bedrock_update_account");
+    const originalToken = "bedrock-original-token";
+    const rotatedToken = "bedrock-rotated-token";
+
+    const created = await gql(fixture, CREATE, {
+      input: {
+        provider: "amazon-bedrock",
+        name: "Bedrock editable",
+        credentialMode: "aws_bedrock_bearer_token",
+        region: "us-west-2",
+        discoveryRegions: ["us-west-2"],
+        endpointOverride: fixture.openai.url,
+        apiKey: originalToken
+      }
+    });
+    expect(created.errors).toBeUndefined();
+    const accountId = created.data?.createProviderCredential.id;
+
+    const metadataOnly = await gql(fixture, UPDATE, {
+      input: {
+        providerAccountId: accountId,
+        name: "Bedrock renamed",
+        region: "us-east-1",
+        discoveryRegions: ["us-east-1", "us-west-2"],
+        endpointOverride: null
+      }
+    });
+    expect(metadataOnly.errors).toBeUndefined();
+    expect(metadataOnly.data?.updateProviderCredential).toEqual(expect.objectContaining({
+      id: accountId,
+      provider: "amazon-bedrock",
+      name: "Bedrock renamed",
+      baseUrl: null,
+      credentialMode: "aws_bedrock_bearer_token",
+      credentialSourceCategory: "encrypted_bearer_token",
+      region: "us-east-1",
+      endpointOverride: null,
+      discoveryRegions: ["us-east-1", "us-west-2"]
+    }));
+
+    const [metadataRow] = await fixture.db
+      .select()
+      .from(providerAccounts)
+      .where(eq(providerAccounts.id, accountId));
+    expect(decryptSecret(metadataRow!.secretCiphertext ?? "", ENCRYPTION_KEY)).toBe(originalToken);
+    expect(metadataRow?.settings).toEqual({
+      credentialMode: "aws_bedrock_bearer_token",
+      region: "us-east-1",
+      discoveryRegions: ["us-east-1", "us-west-2"]
+    });
+
+    const rotated = await gql(fixture, UPDATE, {
+      input: {
+        providerAccountId: accountId,
+        endpointOverride: fixture.anthropic.url,
+        apiKey: rotatedToken
+      }
+    });
+    expect(rotated.errors).toBeUndefined();
+    expect(rotated.data?.updateProviderCredential).toEqual(expect.objectContaining({
+      id: accountId,
+      endpointOverride: fixture.anthropic.url,
+      baseUrl: fixture.anthropic.url,
+      region: "us-east-1"
+    }));
+
+    const [rotatedRow] = await fixture.db
+      .select()
+      .from(providerAccounts)
+      .where(eq(providerAccounts.id, accountId));
+    expect(decryptSecret(rotatedRow!.secretCiphertext ?? "", ENCRYPTION_KEY)).toBe(rotatedToken);
+    expect(JSON.stringify(metadataOnly)).not.toContain(originalToken);
+    expect(JSON.stringify(rotated)).not.toContain(rotatedToken);
+
+    const auditEvents = await fixture.db.select().from(events);
+    const updateEvents = auditEvents.filter((event) => event.eventType === "provider_account.updated");
+    expect(updateEvents).toHaveLength(2);
+    expect(updateEvents[0]?.payload).toEqual(expect.objectContaining({
+      providerAccountId: accountId,
+      provider: "amazon-bedrock",
+      name: "Bedrock renamed",
+      region: "us-east-1",
+      secretUpdated: false
+    }));
+    expect(updateEvents[1]?.payload).toEqual(expect.objectContaining({
+      providerAccountId: accountId,
+      endpointOverride: fixture.anthropic.url,
+      secretUpdated: true
+    }));
+    expect(JSON.stringify(updateEvents)).not.toContain(originalToken);
+    expect(JSON.stringify(updateEvents)).not.toContain(rotatedToken);
+  });
+
+  it("rejects invalid Bedrock account configurations", async () => {
+    const fixture = await setup("org_bedrock_invalid_accounts");
+    await fixture.db.insert(providers).values({
+      id: CUSTOM_PROVIDER_ID,
+      organizationId: "org_bedrock_invalid_accounts",
+      slug: "org-bedrock",
+      displayName: "Org Bedrock",
+      baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com",
+      adapterKind: "aws-bedrock-converse",
+      adapterConfig: { defaultRegion: "us-east-1" },
+      authStyle: "aws-sdk",
+      endpoints: [
+        { dialect: "bedrock-converse", operation: "Converse" },
+        { dialect: "bedrock-converse", operation: "ConverseStream" }
+      ],
+      defaultHeaders: {},
+      capabilities: {},
+      forwardHarnessHeaders: false,
+      enabled: true
+    });
+
+    const missingRegion = await gql(fixture, CREATE, {
+      input: {
+        provider: "amazon-bedrock",
+        name: "Missing region",
+        credentialMode: "aws_default_chain"
+      }
+    });
+    const openAIWithBedrockFields = await gql(fixture, CREATE, {
+      input: {
+        provider: "openai",
+        name: "Wrong fields",
+        apiKey: "sk-openai",
+        credentialMode: "aws_bedrock_bearer_token",
+        region: "us-east-1"
+      }
+    });
+    const orgDefaultChain = await gql(fixture, CREATE, {
+      input: {
+        provider: "org-bedrock",
+        name: "Org default chain",
+        credentialMode: "aws_default_chain",
+        region: "us-east-1"
+      }
+    });
+    const staticMissingSecret = await gql(fixture, CREATE, {
+      input: {
+        provider: "amazon-bedrock",
+        name: "Missing static secret",
+        credentialMode: "aws_static_keys",
+        region: "us-east-1",
+        accessKeyId: "AKIA_TEST_ONLY"
+      }
+    });
+    const openAICreated = await gql(fixture, CREATE, {
+      input: {
+        provider: "openai",
+        name: "OpenAI update target",
+        apiKey: "sk-openai-update-target"
+      }
+    });
+    const openAIUpdateWithBedrockFields = await gql(fixture, UPDATE, {
+      input: {
+        providerAccountId: openAICreated.data?.createProviderCredential.id,
+        region: "us-east-1"
+      }
+    });
+
+    expect(missingRegion.errors?.[0]?.message).toBe("invalid_bedrock_provider_credential");
+    expect(openAIWithBedrockFields.errors?.[0]?.message).toBe("invalid_provider_credential_request");
+    expect(orgDefaultChain.errors?.[0]?.message).toBe("invalid_bedrock_provider_credential");
+    expect(staticMissingSecret.errors?.[0]?.message).toBe("invalid_provider_credential_request");
+    expect(openAIUpdateWithBedrockFields.errors?.[0]?.message).toBe("invalid_provider_credential_request");
   });
 
   async function setup(organizationId: string, envOverrides: Record<string, string> = {}) {

@@ -4012,7 +4012,8 @@ input[type="checkbox"][role="switch"]:focus-visible {
   grid-template-columns: 42px minmax(0, 1fr) max-content;
   grid-template-areas:
     "rank fields actions"
-    ". notes notes";
+    ". notes notes"
+    ". controls controls";
   gap: 8px 12px;
   align-items: start;
   min-width: 0;
@@ -4074,6 +4075,87 @@ input[type="checkbox"][role="switch"]:focus-visible {
   color: var(--fg-faint);
   font-size: 11px;
   line-height: 1.25;
+}
+
+.route-target-controls {
+  grid-area: controls;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 8px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.route-target-control {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.route-target-control > span {
+  color: var(--fg-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.route-target-control input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.route-target-control input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
+.route-target-json-control {
+  grid-column: 1 / -1;
+}
+
+.route-target-json-control .json-editor {
+  min-height: 92px;
+}
+
+.route-target-json-control .json-editor textarea,
+.route-target-json-control .json-editor pre {
+  min-height: 92px;
+  font-size: 11.5px;
+}
+
+.route-target-json-control small {
+  color: var(--danger);
+  font-size: 11px;
+}
+
+.menu-select.target-control-select > button {
+  width: 100%;
+  height: 34px;
+  justify-content: space-between;
+  border-color: var(--border);
+  background: var(--glass-2);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.menu-select.target-control-select .menu-select-popover {
+  min-width: 220px;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .route-target-add {
@@ -4162,10 +4244,15 @@ input[type="checkbox"][role="switch"]:focus-visible {
     grid-template-areas:
       "rank fields"
       ". actions"
-      ". notes";
+      ". notes"
+      ". controls";
   }
 
   .route-target-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .route-target-controls {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -5104,7 +5191,7 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .provider-probe-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
   gap: 10px;
   align-items: end;
 }
@@ -5136,6 +5223,38 @@ input[type="checkbox"][role="switch"]:focus-visible {
 }
 
 .provider-probe-result {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+}
+
+.bedrock-settings-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.bedrock-settings-panel .card-title svg {
+  width: 15px;
+  height: 15px;
+  color: var(--accent-2);
+}
+
+.bedrock-settings-form,
+.bedrock-credential-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.bedrock-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.bedrock-refresh-result {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 14px 16px;
   border: 1px solid var(--border);
