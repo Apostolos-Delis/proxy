@@ -702,6 +702,27 @@ type PromptCachePlanRow {
   skippedControls: Float!
 }
 
+type PromptCachePrewarmJobRow {
+  actualCostMicros: Float!
+  cacheReadLiftTokens: Float!
+  count: Float!
+  estimatedCostMicros: Float!
+  expiredUnusedCostMicros: Float!
+  model: String!
+  provider: String!
+  status: String!
+}
+
+type PromptCachePrewarmReport {
+  actualCostMicros: Float!
+  cacheReadLiftTokens: Float!
+  estimatedCostMicros: Float!
+  expiredUnusedCostMicros: Float!
+  jobs: [PromptCachePrewarmJobRow!]!
+  sampled: Boolean!
+  totalJobs: Float!
+}
+
 type PromptCaptureConfig {
   organizationId: String!
   promptCaptureMode: String!
@@ -945,6 +966,7 @@ type Query {
   prompt(artifactId: ID!): PromptDetail
   promptAccessAudit: [PromptAccessAuditEntry!]!
   promptCachePlans(end: String, start: String): PromptCachePlanReport!
+  promptCachePrewarms(end: String, start: String): PromptCachePrewarmReport!
   prompts(end: String, limit: Int, model: String, offset: Int, route: String, start: String, surface: String, userId: String): PromptPage!
   providerAccounts: [ProviderAccount!]!
   providerCredentialOAuthStatus(loginId: ID!): ProviderCredentialOAuthStatus

@@ -115,7 +115,15 @@ type DateRangeFilters = {
 };
 
 const PROMPT_CACHE_PLAN_SAMPLE_CAP = 5_000;
+const PROMPT_CACHE_PREWARM_SAMPLE_CAP = 5_000;
 const OPENAI_CACHE_ANALYTICS_GROUP_LIMIT = 12;
+const PROMPT_CACHE_PREWARM_EVENTS = [
+  "prompt_cache.prewarm_started",
+  "prompt_cache.prewarm_completed",
+  "prompt_cache.prewarm_failed",
+  "prompt_cache.prewarm_cancelled",
+  "prompt_cache.prewarm_expired_unused"
+];
 
 export type AdminQueryConfig = {
   routeQualityLowConfidenceThreshold: number;
@@ -1770,6 +1778,24 @@ export class AdminQueryService {
     );
   }
 
+  async promptCachePrewarms(filters: DateRangeFilters = {}) {
+    const start = dateValue(filters.start);
+    const end = dateValue(filters.end);
+    const conditions = [this.scopedTo(events), inArray(events.eventType, PROMPT_CACHE_PREWARM_EVENTS)];
+    if (start) conditions.push(gte(events.createdAt, start));
+    if (end) conditions.push(lte(events.createdAt, end));
+    const rows = await this.db
+      .select({ payload: events.payload })
+      .from(events)
+      .where(and(...conditions))
+      .orderBy(desc(events.createdAt))
+      .limit(PROMPT_CACHE_PREWARM_SAMPLE_CAP);
+    return aggregatePromptCachePrewarmReport(
+      rows.map((row) => row.payload),
+      rows.length === PROMPT_CACHE_PREWARM_SAMPLE_CAP
+    );
+  }
+
   async tokenAttribution(filters: DateRangeFilters = {}) {
     const start = dateValue(filters.start);
     const end = dateValue(filters.end);
@@ -3094,6 +3120,17 @@ type PromptCacheControlAggregateRow = {
   count: number;
 };
 
+type PromptCachePrewarmAggregateRow = {
+  provider: string;
+  model: string;
+  status: string;
+  count: number;
+  estimatedCostMicros: number;
+  actualCostMicros: number;
+  expiredUnusedCostMicros: number;
+  cacheReadLiftTokens: number;
+};
+
 function aggregatePromptCachePlanReport(payloads: unknown[], sampled: boolean) {
   const plans = new Map<string, PromptCachePlanAggregateRow>();
   const controls = new Map<string, PromptCacheControlAggregateRow>();
@@ -3156,6 +3193,65 @@ function aggregatePromptCachePlanReport(payloads: unknown[], sampled: boolean) {
   };
 }
 
+function aggregatePromptCachePrewarmReport(payloads: unknown[], sampled: boolean) {
+  const latestByJobId = new Map<string, Record<string, unknown>>();
+  for (const payload of payloads) {
+    if (!isRecord(payload)) continue;
+    const jobId = boundedPlanValue(payload.jobId, "");
+    if (!jobId || latestByJobId.has(jobId)) continue;
+    latestByJobId.set(jobId, payload);
+  }
+
+  const jobs = new Map<string, PromptCachePrewarmAggregateRow>();
+  const totals = {
+    totalJobs: latestByJobId.size,
+    estimatedCostMicros: 0,
+    actualCostMicros: 0,
+    expiredUnusedCostMicros: 0,
+    cacheReadLiftTokens: 0
+  };
+
+  for (const payload of latestByJobId.values()) {
+    const provider = boundedPlanValue(payload.provider, "unknown");
+    const model = boundedPlanValue(payload.model, "unknown");
+    const status = boundedPlanValue(payload.status, "unknown");
+    const estimatedCostMicros = finiteNumber(payload.estimatedCostMicros);
+    const actualCostMicros = finiteNumber(payload.actualCostMicros);
+    const cacheReadLiftTokens = finiteNumber(payload.cacheReadLiftTokens);
+    const expiredUnusedCostMicros = status === "expired_unused"
+      ? actualCostMicros || estimatedCostMicros
+      : 0;
+    const key = [provider, model, status].join("\0");
+    const row = jobs.get(key) ?? {
+      provider,
+      model,
+      status,
+      count: 0,
+      estimatedCostMicros: 0,
+      actualCostMicros: 0,
+      expiredUnusedCostMicros: 0,
+      cacheReadLiftTokens: 0
+    };
+    row.count += 1;
+    row.estimatedCostMicros += estimatedCostMicros;
+    row.actualCostMicros += actualCostMicros;
+    row.expiredUnusedCostMicros += expiredUnusedCostMicros;
+    row.cacheReadLiftTokens += cacheReadLiftTokens;
+    jobs.set(key, row);
+
+    totals.estimatedCostMicros += estimatedCostMicros;
+    totals.actualCostMicros += actualCostMicros;
+    totals.expiredUnusedCostMicros += expiredUnusedCostMicros;
+    totals.cacheReadLiftTokens += cacheReadLiftTokens;
+  }
+
+  return {
+    ...totals,
+    sampled,
+    jobs: [...jobs.values()].sort(comparePromptCachePrewarmJobs)
+  };
+}
+
 function incrementPromptCacheControl(
   controls: Map<string, PromptCacheControlAggregateRow>,
   input: Omit<PromptCacheControlAggregateRow, "count">
@@ -3184,6 +3280,10 @@ function boundedPlanValue(value: unknown, fallback: string) {
   return trimmed.length > 120 ? trimmed.slice(0, 120) : trimmed;
 }
 
+function finiteNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 function comparePromptCachePlans(
   left: PromptCachePlanAggregateRow,
   right: PromptCachePlanAggregateRow
@@ -3205,6 +3305,16 @@ function comparePromptCacheControls(
     left.control.localeCompare(right.control) ||
     left.status.localeCompare(right.status) ||
     left.reason.localeCompare(right.reason);
+}
+
+function comparePromptCachePrewarmJobs(
+  left: PromptCachePrewarmAggregateRow,
+  right: PromptCachePrewarmAggregateRow
+) {
+  return right.count - left.count ||
+    left.provider.localeCompare(right.provider) ||
+    left.model.localeCompare(right.model) ||
+    left.status.localeCompare(right.status);
 }
 
 /**

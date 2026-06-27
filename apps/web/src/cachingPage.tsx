@@ -3,7 +3,7 @@ import { RefreshCw, Zap } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { isAdminRole } from "./access";
-import { BucketBreakdown, CompressionSavings, IdleGaps, Offenders, PromptCachePlans } from "./cachingAnatomyPanels";
+import { BucketBreakdown, CompressionSavings, IdleGaps, Offenders, PromptCachePlans, PromptCachePrewarms } from "./cachingAnatomyPanels";
 import {
   cacheSavings,
   fetchCacheBusts,
@@ -12,6 +12,7 @@ import {
   fetchIdleGaps,
   fetchOpenAICacheAnalytics,
   fetchPromptCachePlans,
+  fetchPromptCachePrewarms,
   fetchTokenAttribution,
   type CacheSavings
 } from "./cachingData";
@@ -112,6 +113,12 @@ export function CachingPage() {
     placeholderData: keepPreviousData,
     enabled: dashboardReady
   });
+  const { error: promptCachePrewarmsQueryError, data: promptCachePrewarmsQueryData } = useQuery({
+    queryKey: ["prompt-cache-prewarms", start, end],
+    queryFn: () => fetchPromptCachePrewarms({ start, end }),
+    placeholderData: keepPreviousData,
+    enabled: dashboardReady
+  });
   const { error: openAICacheQueryError, data: openAICacheQueryData } = useQuery({
     queryKey: ["openai-cache-analytics", start, end, interval],
     queryFn: () => fetchOpenAICacheAnalytics({ start, end, interval }),
@@ -122,7 +129,7 @@ export function CachingPage() {
   const error = dashboardQueryError ?? bustsQueryError
     ?? keyUsageQueryError ?? modelUsageQueryError ?? ratesQueryError
     ?? compressionSavingsQueryError ?? attributionQueryError ?? idleGapsQueryError
-    ?? promptCachePlansQueryError ?? openAICacheQueryError;
+    ?? promptCachePlansQueryError ?? promptCachePrewarmsQueryError ?? openAICacheQueryError;
   if (error) return <PageState title="Caching" label={error.message} />;
 
   const usage = dashboardQueryData?.usage;
@@ -210,6 +217,7 @@ export function CachingPage() {
         <Offenders report={attributionQueryData} />
         <CompressionSavings report={compressionSavingsQueryData} />
         <PromptCachePlans report={promptCachePlansQueryData} />
+        <PromptCachePrewarms report={promptCachePrewarmsQueryData} />
         <IdleGaps report={idleGapsQueryData} />
       </div>
     </div>

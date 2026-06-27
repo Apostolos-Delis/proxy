@@ -738,6 +738,10 @@ describe("prompt cache prewarm contracts", () => {
       ...job,
       expiresAt: job.scheduledFor
     }).success).toBe(false);
+    expect(promptCachePrewarmJobSchema.safeParse({
+      ...job,
+      prefixDigest: "raw prompt text"
+    }).success).toBe(false);
   });
 });
 

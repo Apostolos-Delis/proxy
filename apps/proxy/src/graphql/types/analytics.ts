@@ -20,6 +20,8 @@ import type {
   PromptCachePlanControlRowModel,
   PromptCachePlanReportModel,
   PromptCachePlanRowModel,
+  PromptCachePrewarmJobRowModel,
+  PromptCachePrewarmReportModel,
   RouteQualityModel,
   TokenAttributionBucketModel,
   TokenAttributionOffenderModel,
@@ -342,6 +344,35 @@ export const PromptCachePlanReport = builder
       sampled: t.exposeBoolean("sampled"),
       plans: t.expose("plans", { type: [PromptCachePlanRow] }),
       controls: t.expose("controls", { type: [PromptCachePlanControlRow] })
+    })
+  });
+
+export const PromptCachePrewarmJobRow = builder
+  .objectRef<PromptCachePrewarmJobRowModel>("PromptCachePrewarmJobRow")
+  .implement({
+    fields: (t) => ({
+      provider: t.exposeString("provider"),
+      model: t.exposeString("model"),
+      status: t.exposeString("status"),
+      count: t.exposeFloat("count"),
+      estimatedCostMicros: t.exposeFloat("estimatedCostMicros"),
+      actualCostMicros: t.exposeFloat("actualCostMicros"),
+      expiredUnusedCostMicros: t.exposeFloat("expiredUnusedCostMicros"),
+      cacheReadLiftTokens: t.exposeFloat("cacheReadLiftTokens")
+    })
+  });
+
+export const PromptCachePrewarmReport = builder
+  .objectRef<PromptCachePrewarmReportModel>("PromptCachePrewarmReport")
+  .implement({
+    fields: (t) => ({
+      totalJobs: t.exposeFloat("totalJobs"),
+      sampled: t.exposeBoolean("sampled"),
+      estimatedCostMicros: t.exposeFloat("estimatedCostMicros"),
+      actualCostMicros: t.exposeFloat("actualCostMicros"),
+      expiredUnusedCostMicros: t.exposeFloat("expiredUnusedCostMicros"),
+      cacheReadLiftTokens: t.exposeFloat("cacheReadLiftTokens"),
+      jobs: t.expose("jobs", { type: [PromptCachePrewarmJobRow] })
     })
   });
 
