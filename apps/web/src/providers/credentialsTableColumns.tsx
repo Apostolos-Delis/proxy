@@ -4,7 +4,7 @@ import { useState } from "react";
 import { compactId, formatDateTime } from "../format";
 import type { ApiKeySummary } from "../routing/data";
 import type { ConsoleTableColumn } from "../table";
-import { StatusBadge } from "../ui";
+import { StatusIndicator } from "../ui";
 import { OwnerCell, ownerLabel, type UserDirectory } from "../userDirectory";
 import type { ProviderAccountSummary } from "./data";
 import {
@@ -96,7 +96,7 @@ export function providerCredentialColumns({
       header: "Status",
       accessorFn: providerCredentialStatus,
       size: 130,
-      cell: ({ row }) => <StatusBadge status={providerCredentialStatus(row.original)} />
+      cell: ({ row }) => <StatusIndicator status={providerCredentialStatus(row.original)} />
     },
     {
       id: "actions",

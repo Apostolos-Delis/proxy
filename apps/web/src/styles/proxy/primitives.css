@@ -75,6 +75,28 @@
 .badge-warn { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
 .badge-accent { color: var(--accent-2); background: var(--accent-soft); border-color: transparent; }
 
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--fg-muted);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.status-indicator-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  flex: none;
+}
+.status-indicator-success { color: var(--success); }
+.status-indicator-danger { color: var(--danger); }
+.status-indicator-warn { color: var(--warn); }
+.status-indicator-default { color: var(--fg-muted); }
+
 .tag {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 2px 8px; border-radius: 5px;

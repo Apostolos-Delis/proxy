@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 
-import { StatusBadge } from "../ui";
+import { StatusIndicator } from "../ui";
 import { matchSegments, type PaletteAction, type PaletteGroup } from "./searchData";
 
 type PaletteResultsProps = {
@@ -78,7 +78,7 @@ function PaletteRow({ action, query, index, active, onOpen, onHover }: {
       <span className="palette-row-main">
         <span className="palette-row-title">
           <Highlight text={action.title} query={query} />
-          {action.status ? <StatusBadge status={action.status} /> : null}
+          {action.status ? <StatusIndicator status={action.status} /> : null}
         </span>
         {action.subtitle ? (
           <span className="palette-row-sub">

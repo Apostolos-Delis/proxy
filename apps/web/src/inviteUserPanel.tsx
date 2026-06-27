@@ -6,7 +6,7 @@ import { graphql } from "./gql";
 import type { MemberRole } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
 import { MenuSelect } from "./table/MenuSelect";
-import { Badge, FormField as Field, GlassCard } from "./ui";
+import { FormField as Field, GlassCard, StatusIndicator } from "./ui";
 
 const CreateInvitationDocument = graphql(`
   mutation CreateInvitation($input: CreateInvitationInput!) {
@@ -122,18 +122,18 @@ export function InviteLinkResult({ result }: { result: InvitationActionResult })
   return (
     <div className="invite-result">
       <div className="row gap-8">
-        <Badge variant="success" dot>Invite created</Badge>
-        <EmailDeliveryBadge delivery={result.emailDelivery} />
+        <StatusIndicator status="created">Invite created</StatusIndicator>
+        <EmailDeliveryStatus delivery={result.emailDelivery} />
       </div>
       <CopyLink url={result.inviteUrl} />
     </div>
   );
 }
 
-export function EmailDeliveryBadge({ delivery }: { delivery: EmailDelivery }) {
-  if (delivery.delivered) return <Badge variant="accent">Email sent</Badge>;
-  if (delivery.transport === "log") return <Badge variant="warn">Email logged (no RESEND_API_KEY)</Badge>;
-  return <Badge variant="danger">Email failed{delivery.error ? `: ${delivery.error}` : ""}</Badge>;
+export function EmailDeliveryStatus({ delivery }: { delivery: EmailDelivery }) {
+  if (delivery.delivered) return <StatusIndicator tone="success">Email sent</StatusIndicator>;
+  if (delivery.transport === "log") return <StatusIndicator tone="warn">Email logged (no RESEND_API_KEY)</StatusIndicator>;
+  return <StatusIndicator tone="danger">Email failed{delivery.error ? `: ${delivery.error}` : ""}</StatusIndicator>;
 }
 
 function CopyLink({ url }: { url: string }) {

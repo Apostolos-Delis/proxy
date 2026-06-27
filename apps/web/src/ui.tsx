@@ -108,6 +108,8 @@ export function Badge({ children, variant, dot = false }: { children: ReactNode;
   return <span className={`badge${variant ? ` badge-${variant}` : ""}`}>{dot ? <span className="dot" /> : null}{children}</span>;
 }
 
+type StatusTone = "success" | "danger" | "warn" | "default";
+
 export function InfoHint({ label, children, placement = "top" }: { label: string; children: ReactNode; placement?: "top" | "bottom" }) {
   return (
     <span className="info-hint" tabIndex={0} role="note" aria-label={label}>
@@ -117,12 +119,15 @@ export function InfoHint({ label, children, placement = "top" }: { label: string
   );
 }
 
-export function StatusBadge({ status }: { status?: string | null }) {
-  const tone = statusTone(status ?? "unknown");
-  if (tone === "success") return <Badge variant="success" dot>{status === "paid" ? "Success" : status ?? "success"}</Badge>;
-  if (tone === "danger") return <Badge variant="danger" dot>{status ?? "error"}</Badge>;
-  if (tone === "warn") return <Badge variant="warn" dot>{status ?? "pending"}</Badge>;
-  return <Badge dot>{status ?? "unknown"}</Badge>;
+export function StatusIndicator({ status, tone, children }: { status?: string | null; tone?: StatusTone; children?: ReactNode }) {
+  const value = status ?? "unknown";
+  const resolvedTone = tone ?? statusTone(value);
+  return (
+    <span className={`status-indicator status-indicator-${resolvedTone}`}>
+      <span className="status-indicator-dot" />
+      {children ?? statusLabel(value)}
+    </span>
+  );
 }
 
 export function RouteBadge({ route }: { route?: string | null }) {
@@ -235,12 +240,21 @@ function initials(value: string) {
   return value.split(/[\s._-]+/).map((word) => word[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
 }
 
-function statusTone(status: string) {
+function statusTone(status: string): StatusTone {
   const value = status.toLowerCase();
-  if (value === "completed" || value === "success" || value === "paid" || value === "active" || value === "accepted") return "success";
-  if (value === "failed" || value === "error" || value === "inactive" || value === "revoked" || value === "expired" || value === "deactivated" || value === "disabled") return "danger";
-  if (value === "pending" || value === "received" || value === "provider_pending" || value === "invited") return "warn";
+  if (value === "completed" || value === "success" || value === "succeeded" || value === "paid" || value === "active" || value === "accepted" || value === "healthy" || value === "available" || value === "applied" || value === "eligible" || value === "created" || value === "updated" || value === "verified") return "success";
+  if (value === "failed" || value === "error" || value === "inactive" || value === "revoked" || value === "expired" || value === "deactivated" || value === "disabled" || value === "locked_out" || value === "terminal" || value === "unavailable") return "danger";
+  if (value === "pending" || value === "received" || value === "provider_pending" || value === "invited" || value === "waiting" || value === "partial" || value === "cooldown" || value === "skipped") return "warn";
   return "default";
+}
+
+function statusLabel(status: string) {
+  if (status.toLowerCase() === "paid") return "Success";
+  return status
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ") || "Unknown";
 }
 
 function buttonVariantClass(variant: "primary" | "default" | "ghost") {

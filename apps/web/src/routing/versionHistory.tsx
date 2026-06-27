@@ -2,7 +2,7 @@ import { Archive, CheckCircle2, History } from "lucide-react";
 
 import type { RoutingConfigDetail, RoutingConfigVersionDetail } from "./data";
 import { compactId, formatDateTime, formatInteger } from "../format";
-import { Badge, DataTable, GlassCard, StatusBadge } from "../ui";
+import { DataTable, GlassCard, StatusIndicator } from "../ui";
 
 export function VersionHistory({ versions, pendingVersionId, onActivate, error }: {
   versions: RoutingConfigVersionDetail[];
@@ -52,9 +52,9 @@ function VersionRow({ version, pending, onActivate }: {
 // A version keeps status "active" after a newer version replaces it; only the
 // config's pointer marks the current one, so label the others "superseded".
 function VersionStatus({ version }: { version: RoutingConfigVersionDetail }) {
-  if (version.active) return <Badge variant="success" dot>Active</Badge>;
-  if (version.status === "active") return <Badge>superseded</Badge>;
-  return <StatusBadge status={version.status} />;
+  if (version.active) return <StatusIndicator status="active" />;
+  if (version.status === "active") return <StatusIndicator status="superseded" />;
+  return <StatusIndicator status={version.status} />;
 }
 
 export function ArchivePanel({ detail, pending, error, onArchive }: {

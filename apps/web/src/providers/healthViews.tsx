@@ -2,7 +2,7 @@ import { Activity, LockKeyhole } from "lucide-react";
 
 import { compactId, formatDateTime } from "../format";
 import { Fact } from "../keyTraffic";
-import { Badge } from "../ui";
+import { StatusIndicator } from "../ui";
 import type { ProviderCredentialRow } from "./credentialsTableData";
 import type { ProviderAccountSummary } from "./data";
 import {
@@ -10,13 +10,12 @@ import {
   modelHealthRows,
   providerHealthLabel,
   providerHealthTone,
-  type ProviderHealthTone,
   type ProviderModelHealth
 } from "./healthData";
 
 export function ProviderCredentialHealthCell({ row }: { row: ProviderCredentialRow }) {
   if (row.kind === "default") return <span className="provider-health-empty">not tracked</span>;
-  return <ProviderHealthBadge account={row.account} compact />;
+  return <ProviderHealthStatus account={row.account} compact />;
 }
 
 export function ProviderHealthSection({ account }: { account: ProviderAccountSummary }) {
@@ -35,7 +34,7 @@ export function ProviderHealthSection({ account }: { account: ProviderAccountSum
     <section className="provider-health-panel">
       <div className="card-head">
         <div className="card-title"><Activity />Health</div>
-        <ProviderHealthBadge account={account} />
+        <ProviderHealthStatus account={account} />
       </div>
       <div className="fact-grid provider-health-facts">
         <Fact label="Cooldown">{health.cooldownUntil ? formatDateTime(health.cooldownUntil) : "none"}</Fact>
@@ -62,11 +61,11 @@ export function ProviderHealthSection({ account }: { account: ProviderAccountSum
   );
 }
 
-function ProviderHealthBadge({ account, compact = false }: { account: ProviderAccountSummary; compact?: boolean }) {
+function ProviderHealthStatus({ account, compact = false }: { account: ProviderAccountSummary; compact?: boolean }) {
   const health = account.health;
   return (
     <div className="provider-health-cell" title={healthTitle(account)}>
-      <Badge variant={badgeVariant(providerHealthTone(health))} dot>{providerHealthLabel(health)}</Badge>
+      <StatusIndicator tone={providerHealthTone(health)}>{providerHealthLabel(health)}</StatusIndicator>
       {compact ? <span className="provider-health-detail">{shortHealthDetail(health)}</span> : null}
     </div>
   );
@@ -79,17 +78,10 @@ function ProviderModelHealthRow({ model }: { model: ProviderModelHealth }) {
         <strong className="mono">{model.model}</strong>
         <span className="faint">{model.providerAccountId ? compactId(model.providerAccountId, 8) : "provider key"}</span>
       </div>
-      <Badge variant={badgeVariant(providerHealthTone(model))} dot>{providerHealthLabel(model)}</Badge>
+      <StatusIndicator tone={providerHealthTone(model)}>{providerHealthLabel(model)}</StatusIndicator>
       <span className="provider-health-detail">{modelDetail(model)}</span>
     </div>
   );
-}
-
-function badgeVariant(tone: ProviderHealthTone) {
-  if (tone === "success") return "success";
-  if (tone === "warn") return "warn";
-  if (tone === "danger") return "danger";
-  return undefined;
 }
 
 function shortHealthDetail(health: ProviderAccountSummary["health"]) {

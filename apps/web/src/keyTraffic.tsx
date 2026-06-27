@@ -10,7 +10,7 @@ import { graphql } from "./gql";
 import type { KeyTrafficRequestsQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
 import { usageRangeOptions, usageRangeQuery, type UsageRangeKey } from "./usageAnalytics";
-import { Segmented, StatusBadge } from "./ui";
+import { Segmented, StatusIndicator } from "./ui";
 
 // Shared by the API-key and provider-key slideouts: both attribute the same
 // request stream to "their" key and render the same usage/log sections.
@@ -145,7 +145,7 @@ export function RecentKeyRequestsSection({ requests, logsSearch }: {
                 <td><span className="row gap-8"><span className="model-dot" /><span className="mono">{request.selectedModel ?? "unknown"}</span></span></td>
                 <td className="mono">{formatCompact(request.usage.totalTokens)}</td>
                 <td className="mono">{formatMoney(request.selectedCost)}</td>
-                <td><StatusBadge status={request.terminalStatus} /></td>
+                <td><StatusIndicator status={request.terminalStatus} /></td>
               </tr>
             ))}
           </tbody>

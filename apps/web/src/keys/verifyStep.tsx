@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchApiKeyVerification } from "../routing/data";
-import { Badge, GlassCard } from "../ui";
+import { GlassCard, StatusIndicator } from "../ui";
 import { formatDateTime } from "../format";
 import { HarnessSetupGuide } from "../harnessSetupCard";
 import { CopySecret } from "./copySecret";
@@ -14,7 +14,7 @@ export function VerifyStep({ created }: { created: CreatedKeyResult }) {
       <GlassCard>
         <div className="key-secret-result">
           <div className="key-secret-head">
-            <Badge variant="success" dot>{created.keyName} created</Badge>
+            <StatusIndicator status="created">{created.keyName} created</StatusIndicator>
             <span className="faint">Copy the secret now — it is never shown again.</span>
           </div>
           <CopySecret secret={created.secret} />
@@ -49,9 +49,9 @@ function VerificationCard({ apiKeyId }: { apiKeyId: string }) {
       />
       <div className="verify-status">
         {lastUsedAt ? (
-          <Badge variant="success" dot>Verified — first request {formatDateTime(lastUsedAt)}</Badge>
+          <StatusIndicator status="verified">Verified — first request {formatDateTime(lastUsedAt)}</StatusIndicator>
         ) : (
-          <Badge variant="warn" dot>Waiting for the first request…</Badge>
+          <StatusIndicator status="waiting">Waiting for the first request…</StatusIndicator>
         )}
         {verificationError ? <span className="action-error">{verificationError.message}</span> : null}
       </div>

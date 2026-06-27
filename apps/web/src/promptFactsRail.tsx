@@ -5,7 +5,7 @@ import { compactId, formatCompact, formatDateTime, formatMoney, formatPercent } 
 import { CopyButton } from "./jsonView";
 import { formatDuration, type PromptArtifactDetail, type RequestSummary } from "./promptDetailData";
 import { classifierSnapshot, type ClassifierSnapshot } from "./routingSnapshot";
-import { Badge, GlassCard, RouteBadge, StatusBadge } from "./ui";
+import { Badge, GlassCard, RouteBadge, StatusIndicator } from "./ui";
 
 export function FactsRail({ artifact, request }: { artifact: PromptArtifactDetail; request: RequestSummary | null }) {
   const config = artifact.routingConfig ?? request?.routingConfig;
@@ -14,7 +14,7 @@ export function FactsRail({ artifact, request }: { artifact: PromptArtifactDetai
     <aside className="detail-rail">
       <GlassCard>
         <div className="rail-summary">
-          <Fact label="Status"><StatusBadge status={request?.terminalStatus} /></Fact>
+          <Fact label="Status"><StatusIndicator status={request?.terminalStatus} /></Fact>
           <Fact label="Latency"><span className="mono">{formatDuration(request?.latencyMs)}</span></Fact>
           <Fact label="First byte"><span className="mono">{formatDuration(request?.timeToFirstByteMs)}</span></Fact>
         </div>

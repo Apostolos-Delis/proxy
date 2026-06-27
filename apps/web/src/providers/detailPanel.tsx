@@ -15,7 +15,7 @@ import {
 } from "../keyTraffic";
 import { fetchApiKeys, type ApiKeySummary } from "../routing/data";
 import { MenuSelect } from "../table/MenuSelect";
-import { Badge, StatusBadge } from "../ui";
+import { StatusIndicator } from "../ui";
 import {
   probeProviderCredential,
   refreshBedrockModelCatalog,
@@ -56,7 +56,7 @@ export function ProviderKeyDetailPanel({ account, onClose }: {
       subtitle={(
         <span className="row gap-8">
           <span className="code-pill">{account.provider}</span>
-          <StatusBadge status={account.status} />
+          <StatusIndicator status={account.status} />
         </span>
       )}
       storageKey="key-panel-width"
@@ -130,7 +130,7 @@ function ProviderProbeSection({ account }: { account: ProviderAccountSummary }) 
     <section className="provider-probe-panel">
       <div className="card-head">
         <div className="card-title"><PlayCircle />Probe</div>
-        {probeMutation.data ? <Badge variant={probeBadgeVariant(probeMutation.data)} dot>{probeLabel(probeMutation.data)}</Badge> : null}
+        {probeMutation.data ? <StatusIndicator tone={probeStatusTone(probeMutation.data)}>{probeLabel(probeMutation.data)}</StatusIndicator> : null}
       </div>
       <form
         className="provider-probe-form"
@@ -166,7 +166,7 @@ function ProviderProbeSection({ account }: { account: ProviderAccountSummary }) 
 function ProviderProbeResultView({ result }: { result: ProviderProbeResult }) {
   return (
     <div className="fact-grid provider-probe-result">
-      <Fact label="Result"><Badge variant={probeBadgeVariant(result)} dot>{probeLabel(result)}</Badge></Fact>
+      <Fact label="Result"><StatusIndicator tone={probeStatusTone(result)}>{probeLabel(result)}</StatusIndicator></Fact>
       <Fact label="Health">{result.healthStatus}</Fact>
       <Fact label="Latency">{formatDurationMs(result.latencyMs)}</Fact>
       <Fact label="Status"><span className="mono">{result.statusCode ?? "none"}</span></Fact>
@@ -228,7 +228,7 @@ function BedrockSettingsSection({ account }: { account: ProviderAccountSummary }
     <section className="bedrock-settings-panel">
       <div className="card-head">
         <div className="card-title"><Save />Bedrock setup</div>
-        {updateMutation.data ? <Badge variant="success" dot>Updated</Badge> : null}
+        {updateMutation.data ? <StatusIndicator status="updated" /> : null}
       </div>
       <form
         className="bedrock-settings-form"
@@ -327,7 +327,7 @@ type BedrockRefreshResultModel = NonNullable<Awaited<ReturnType<typeof refreshBe
 function BedrockRefreshResult({ result }: { result: BedrockRefreshResultModel }) {
   return (
     <div className="fact-grid bedrock-refresh-result">
-      <Fact label="Result"><Badge variant={result.status === "completed" ? "success" : "danger"} dot>{result.status}</Badge></Fact>
+      <Fact label="Result"><StatusIndicator status={result.status} tone={result.status === "completed" ? "success" : "danger"} /></Fact>
       <Fact label="Regions"><span className="mono">{result.regions.join(", ")}</span></Fact>
       <Fact label="Seen"><span className="mono">{result.modelsSeen}</span></Fact>
       <Fact label="Applied"><span className="mono">{result.modelsApplied}</span></Fact>
@@ -428,7 +428,7 @@ function probeLabel(result: ProviderProbeResult) {
   return "Failed";
 }
 
-function probeBadgeVariant(result: ProviderProbeResult): "success" | "warn" | "danger" {
+function probeStatusTone(result: ProviderProbeResult): "success" | "warn" | "danger" {
   if (result.status === "success") return "success";
   if (result.status === "partial") return "warn";
   return "danger";
@@ -467,8 +467,8 @@ function BoundKeysSection({ boundKeys, accountId }: { boundKeys: ApiKeySummary[]
 
 function bindingStatus(apiKey: ApiKeySummary, accountId: string): ReactNode {
   const binding = apiKey.providerCredentials.find((credential) => credential.providerAccountId === accountId);
-  if (apiKey.revokedAt) return <StatusBadge status="revoked" />;
-  if (binding?.status && binding.status !== "active") return <StatusBadge status={binding.status} />;
+  if (apiKey.revokedAt) return <StatusIndicator status="revoked" />;
+  if (binding?.status && binding.status !== "active") return <StatusIndicator status={binding.status} />;
   return null;
 }
 

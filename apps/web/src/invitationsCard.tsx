@@ -7,7 +7,7 @@ import { graphql } from "./gql";
 import type { InvitationsListQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
 import { InviteLinkResult, type InvitationActionResult } from "./inviteUserPanel";
-import { Badge, DataTable, GlassCard, StatusBadge } from "./ui";
+import { Badge, DataTable, GlassCard, StatusIndicator } from "./ui";
 
 const InvitationsListDocument = graphql(`
   query InvitationsList {
@@ -119,7 +119,7 @@ function InvitationRow({ invitation, resendPending, revokePending, onResend, onR
         {invitation.name ? <div className="faint">{invitation.name}</div> : null}
       </td>
       <td><Badge>{invitation.role}</Badge></td>
-      <td><StatusBadge status={invitation.status} /></td>
+      <td><StatusIndicator status={invitation.status} /></td>
       <td>{inviterLabel(invitation)}</td>
       <td>{invitation.lastSentAt ? formatDateTime(invitation.lastSentAt) : <span className="faint">never</span>}</td>
       <td>{formatDateTime(invitation.expiresAt)}</td>

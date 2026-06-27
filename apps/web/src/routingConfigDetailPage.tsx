@@ -13,7 +13,7 @@ import { compactId, formatDateTime, formatInteger } from "./format";
 import { ConfigEditorCard } from "./routing/configEditorCard";
 import { ConfigApiKeysCard } from "./routing/keyAssignment";
 import { ArchivePanel, VersionHistory } from "./routing/versionHistory";
-import { GlassCard, PageState, StatusBadge } from "./ui";
+import { GlassCard, PageState, StatusIndicator } from "./ui";
 
 export function RoutingConfigDetailPage({ configId }: { configId: string }) {
   const queryClient = useQueryClient();
@@ -50,7 +50,7 @@ export function RoutingConfigDetailPage({ configId }: { configId: string }) {
         <div>
           <div className="routing-detail-name">
             <h2>{queryData.config.name}</h2>
-            <StatusBadge status={queryData.config.status} />
+            <StatusIndicator status={queryData.config.status} />
           </div>
           <div className="muted">{queryData.config.description ?? "No description"}</div>
         </div>
