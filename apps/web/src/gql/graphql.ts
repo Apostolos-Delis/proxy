@@ -648,6 +648,8 @@ export type UpdateSettingsMutation = { updateSettings: { organizationId: string,
 
 export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } };
 
+export type UsageGroupChartFieldsFragment = { key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, totalTokens: number }, cost: { selected: number } };
+
 export type UsageReportViewQueryVariables = Exact<{
   groupBy: UsageGroupBy;
   start?: string | null | undefined;
@@ -677,7 +679,7 @@ export type UsageDashboardViewQueryVariables = Exact<{
 }>;
 
 
-export type UsageDashboardViewQuery = { usageDashboard: { usage: { groupBy: UsageGroupBy, data: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } }, timeseries: { groupBy: UsageGroupBy, interval: UsageInterval, start: string, end: string, groups: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, points: Array<{ ts: string, groups: unknown, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } }> } } };
+export type UsageDashboardViewQuery = { usageDashboard: { usage: { groupBy: UsageGroupBy, data: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } }, timeseries: { groupBy: UsageGroupBy, interval: UsageInterval, start: string, end: string, groups: Array<{ key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, totalTokens: number }, cost: { selected: number } }>, points: Array<{ ts: string, groups: unknown, totals: { key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, totalTokens: number }, cost: { selected: number } } }> } } };
 
 export type UsageLookupsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -914,6 +916,20 @@ export const UsageGroupFieldsFragmentDoc = new TypedDocumentString(`
   }
 }
     `, {"fragmentName":"UsageGroupFields"}) as unknown as TypedDocumentString<UsageGroupFieldsFragment, unknown>;
+export const UsageGroupChartFieldsFragmentDoc = new TypedDocumentString(`
+    fragment UsageGroupChartFields on UsageGroup {
+  key
+  requestCount
+  usage {
+    inputTokens
+    cachedInputTokens
+    totalTokens
+  }
+  cost {
+    selected
+  }
+}
+    `, {"fragmentName":"UsageGroupChartFields"}) as unknown as TypedDocumentString<UsageGroupChartFieldsFragment, unknown>;
 export const BillingPageDocument = new TypedDocumentString(`
     query BillingPage {
   overview {
@@ -2631,12 +2647,12 @@ export const UsageDashboardViewDocument = new TypedDocumentString(`
       start
       end
       groups {
-        ...UsageGroupFields
+        ...UsageGroupChartFields
       }
       points {
         ts
         totals {
-          ...UsageGroupFields
+          ...UsageGroupChartFields
         }
         groups
       }
@@ -2667,6 +2683,18 @@ export const UsageDashboardViewDocument = new TypedDocumentString(`
     baseline
     savings
     classifier
+  }
+}
+fragment UsageGroupChartFields on UsageGroup {
+  key
+  requestCount
+  usage {
+    inputTokens
+    cachedInputTokens
+    totalTokens
+  }
+  cost {
+    selected
   }
 }`) as unknown as TypedDocumentString<UsageDashboardViewQuery, UsageDashboardViewQueryVariables>;
 export const UsageLookupsDocument = new TypedDocumentString(`

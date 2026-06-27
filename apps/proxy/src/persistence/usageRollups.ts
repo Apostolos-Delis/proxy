@@ -100,6 +100,8 @@ export type OpenAICacheAnalyticsRows = {
   trends: OpenAICacheTrendRow[];
 };
 
+export type UsageLatencyMode = "full" | "report";
+
 const GROUP_KEY_SQL: Record<UsageRollupGroupBy, string> = {
   user: "coalesce(r.user_id, 'unknown')",
   api_key: "coalesce(r.api_key_id, 'unknown')",
@@ -213,8 +215,9 @@ function requestMetricsCtes(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: S
   `;
 }
 
-function reportSelect(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: SQL | null): SQL {
+function reportSelect(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: SQL | null, latencyMode: UsageLatencyMode): SQL {
   const bucketed = bucketExpr !== null;
+  const bucketedLatency = bucketed && latencyMode === "full";
   return sql`
     ${requestMetricsCtes(scope, keyExpr, bucketExpr)}
     select
@@ -251,8 +254,8 @@ function reportSelect(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: SQL | n
       'latency'::text as row_kind,
       group_key,
       grouping(group_key)::int as key_grouped,
-      ${bucketed ? sql`bucket_ts` : sql`null::double precision`} as bucket_ts,
-      ${bucketed ? sql`grouping(bucket_ts)::int` : sql`null::int`} as bucket_grouped,
+      ${bucketedLatency ? sql`bucket_ts` : sql`null::double precision`} as bucket_ts,
+      ${bucketedLatency ? sql`grouping(bucket_ts)::int` : sql`null::int`} as bucket_grouped,
       null::text as surface,
       null::text as requested_model,
       null::text as selected_provider,
@@ -273,7 +276,7 @@ function reportSelect(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: SQL | n
       (avg(latency_ms) filter (where latency_ms >= 0))::double precision as average_ms,
       (percentile_disc(0.95) within group (order by latency_ms) filter (where latency_ms >= 0))::double precision as p95_ms
     from request_metrics
-    group by grouping sets ${bucketed
+    group by grouping sets ${bucketedLatency
       ? sql.raw("((group_key), (bucket_ts, group_key), (bucket_ts), ())")
       : sql.raw("((group_key), ())")}
   `;
@@ -284,7 +287,7 @@ export async function usageRollupReportRows(
   scope: UsageRollupScope,
   groupBy: UsageRollupGroupBy
 ): Promise<UsageRollupReport> {
-  const rows = await executeRows(db, reportSelect(scope, keyExpression(groupBy, null), null));
+  const rows = await executeRows(db, reportSelect(scope, keyExpression(groupBy, null), null, "full"));
   return splitReportRows(rows, false);
 }
 
@@ -293,11 +296,12 @@ export async function usageBucketRollupReportRows(
   scope: UsageRollupScope,
   groupBy: UsageRollupGroupBy,
   stepMs: number,
-  keptKeys: string[] | null
+  keptKeys: string[] | null,
+  latencyMode: UsageLatencyMode = "full"
 ): Promise<UsageBucketRollupReport> {
   const rows = await executeRows(
     db,
-    reportSelect(scope, keyExpression(groupBy, keptKeys), bucketExpression(stepMs))
+    reportSelect(scope, keyExpression(groupBy, keptKeys), bucketExpression(stepMs), latencyMode)
   );
   return splitReportRows(rows, true);
 }
@@ -477,9 +481,10 @@ function rollupRow(row: RawRow): UsageRollupRow {
 }
 
 function latencyRow(row: RawRow, bucketed: boolean): UsageLatencyRow {
+  const bucketGrouped = row.bucket_grouped;
   return {
     groupKey: toNumber(row.key_grouped) === 1 ? null : String(row.group_key),
-    bucketTs: bucketed && toNumber(row.bucket_grouped) === 0 ? toNumber(row.bucket_ts) : null,
+    bucketTs: bucketed && bucketGrouped !== null && toNumber(bucketGrouped) === 0 ? toNumber(row.bucket_ts) : null,
     averageMs: row.average_ms === null ? null : toNumber(row.average_ms),
     p95Ms: row.p95_ms === null ? null : toNumber(row.p95_ms)
   };

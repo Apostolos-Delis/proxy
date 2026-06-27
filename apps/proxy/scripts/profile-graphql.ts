@@ -300,8 +300,14 @@ const PREVIOUS_RANGE = {
 const usageGroupSelection = `{
   key requestCount failedRequests retriedRequests failureRate retryRate
   latency { averageMs p95Ms }
-  usage { inputTokens cachedInputTokens outputTokens reasoningTokens totalTokens }
+  usage { inputTokens cachedInputTokens cacheCreationInputTokens outputTokens reasoningTokens totalTokens }
   cost { selected baseline savings }
+}`;
+
+const usageChartGroupSelection = `{
+  key requestCount
+  usage { inputTokens cachedInputTokens totalTokens }
+  cost { selected }
 }`;
 
 const operations: Operation[] = [
@@ -314,6 +320,7 @@ const operations: Operation[] = [
   { name: "promptAccessAudit", query: "query { promptAccessAudit { id artifactId accessPath createdAt } }" },
   { name: "usage(route)", query: `query { usage(groupBy: route, start: "${RANGE.start}", end: "${RANGE.end}") { groupBy data ${usageGroupSelection} totals ${usageGroupSelection} } }` },
   { name: "usageTimeseries(model)", query: `query { usageTimeseries(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { groupBy interval start end groups ${usageGroupSelection} points { ts totals ${usageGroupSelection} groups } } }` },
+  { name: "usageDashboard (UsageDashboardView)", query: `query { usageDashboard(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { usage { data ${usageGroupSelection} totals ${usageGroupSelection} } timeseries { groups ${usageChartGroupSelection} points { ts totals ${usageChartGroupSelection} groups } } } }` },
   { name: "usageDashboard (UsagePage shape)", query: `query { usageDashboard(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { usage { data ${usageGroupSelection} totals ${usageGroupSelection} } timeseries { groups ${usageGroupSelection} points { ts totals ${usageGroupSelection} groups } } } members { userId name email } apiKeys { id name revokedAt } }` },
   { name: "overviewDashboard (OverviewPage shape)", query: `query { overviewDashboard { overview { requestCount totals { totalTokens } cost { selected baseline savings } routeQuality { lowConfidenceCount cheaperLikelyWouldWorkCount cheapCausedRetriesOrRepairsCount } } requests { createdAt selectedCost baselineCost usage { totalTokens } } modelUsage { data { key usage { totalTokens } cost { selected } } } } }` },
   { name: "costPage shape", query: `query { usageDashboard(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { usage { data ${usageGroupSelection} totals ${usageGroupSelection} } timeseries { groups ${usageGroupSelection} points { ts totals ${usageGroupSelection} groups } } } spendTab: usage(groupBy: user, start: "${RANGE.start}", end: "${RANGE.end}") { data ${usageGroupSelection} totals ${usageGroupSelection} } members { userId name email } apiKeys { id name revokedAt } modelPricing { model provider source seenInTraffic } }` },
@@ -389,35 +396,43 @@ try {
   if (!cookie) throw new Error("login failed");
 
   const rows: { name: string; median: number; sqlCount: number }[] = [];
-  for (const op of operations) {
+  const operationFilter = process.env.PROFILE_OP;
+  const selectedOperations = operationFilter
+    ? operations.filter((op) => op.name.includes(operationFilter))
+    : operations;
+  if (operationFilter && selectedOperations.length === 0) throw new Error(`no operation matched PROFILE_OP=${operationFilter}`);
+
+  for (const op of selectedOperations) {
     rows.push({ name: op.name, ...(await profile(fixture.proxyUrl, cookie, op, 7)) });
   }
 
-  // Mutations mutate state; run each once (no warmup) with its own count.
-  const defaultDetail = await fetch(`${fixture.proxyUrl}/admin/graphql`, {
-    method: "POST",
-    headers: { "content-type": "application/json", cookie },
-    body: JSON.stringify({
-      query: `query { routingConfig(configId: "${ORG}:routing-config:default") { versions { active config } } }`
-    })
-  }).then((item) => item.json()) as { data: { routingConfig: { versions: { active: boolean; config: unknown }[] } } };
-  const activeConfig = defaultDetail.data.routingConfig.versions.find((version) => version.active)?.config;
-  if (!activeConfig) throw new Error("no active routing config version found in seed");
+  if (!operationFilter) {
+    // Mutations mutate state; run each once (no warmup) with its own count.
+    const defaultDetail = await fetch(`${fixture.proxyUrl}/admin/graphql`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        query: `query { routingConfig(configId: "${ORG}:routing-config:default") { versions { active config } } }`
+      })
+    }).then((item) => item.json()) as { data: { routingConfig: { versions: { active: boolean; config: unknown }[] } } };
+    const activeConfig = defaultDetail.data.routingConfig.versions.find((version) => version.active)?.config;
+    if (!activeConfig) throw new Error("no active routing config version found in seed");
 
-  for (const op of mutations) {
-    const prepared = op.name === "mut createRoutingConfigVersion"
-      ? {
-          ...op,
-          variables: {
-            configId: `${ORG}:routing-config:default`,
-            config: { ...(activeConfig as Record<string, unknown>), displayName: "Profiled version" }
+    for (const op of mutations) {
+      const prepared = op.name === "mut createRoutingConfigVersion"
+        ? {
+            ...op,
+            variables: {
+              configId: `${ORG}:routing-config:default`,
+              config: { ...(activeConfig as Record<string, unknown>), displayName: "Profiled version" }
+            }
           }
-        }
-      : op;
-    const before = sqlCounter.count;
-    const startedAt = performance.now();
-    await gql(fixture.proxyUrl, cookie, prepared);
-    rows.push({ name: op.name, median: performance.now() - startedAt, sqlCount: sqlCounter.count - before });
+        : op;
+      const before = sqlCounter.count;
+      const startedAt = performance.now();
+      await gql(fixture.proxyUrl, cookie, prepared);
+      rows.push({ name: op.name, median: performance.now() - startedAt, sqlCount: sqlCounter.count - before });
+    }
   }
 
   const width = Math.max(...rows.map((row) => row.name.length)) + 2;
