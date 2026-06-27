@@ -10,10 +10,11 @@ import {
 } from "./metrics.js";
 import { normalizeUsage } from "./persistence/values.js";
 import { pricingForProviderModel, usageCostMicros } from "./pricing.js";
+import { promptCacheControlLabel, type PromptCachePlan, promptCacheSkipReasonLabel } from "./promptCachePlan.js";
 import type { JsonObject, Provider, RouteDecision, Surface } from "./types.js";
 import { isRecord } from "./util.js";
 
-type ProviderMetricLabels = {
+export type ProviderMetricLabels = {
   surface: Surface;
   provider: Provider;
   model: string;
@@ -74,6 +75,10 @@ export class ProviderMetrics {
       model: input.model,
       terminal_status: metricTerminalStatusFor(input.status)
     }, input.bytes);
+  }
+
+  recordPromptCachePlan(input: ProviderMetricLabels & { plan: PromptCachePlan }) {
+    recordPromptCachePlanMetrics(this.metrics, input);
   }
 
   recordClientCancellation(input: {
@@ -185,6 +190,35 @@ export class ProviderMetrics {
       attempt.terminalStatus === "pending"
     ).length;
     this.metrics.setGauge("proxy_terminal_pending_provider_attempts", count, { surface, provider });
+  }
+}
+
+export function recordPromptCachePlanMetrics(
+  metrics: MetricsCollector,
+  input: ProviderMetricLabels & { plan: PromptCachePlan }
+) {
+  const labels = {
+    surface: input.surface,
+    provider: input.provider,
+    model: input.model,
+    mode: input.plan.mode
+  };
+  metrics.incrementCounter("proxy_prompt_cache_plans_total", labels);
+  for (const control of input.plan.appliedControls) {
+    metrics.incrementCounter("proxy_prompt_cache_plan_controls_total", {
+      ...labels,
+      control: promptCacheControlLabel(control),
+      status: "applied",
+      reason: "none"
+    });
+  }
+  for (const skipped of input.plan.skippedControls) {
+    metrics.incrementCounter("proxy_prompt_cache_plan_controls_total", {
+      ...labels,
+      control: promptCacheControlLabel(skipped.control),
+      status: "skipped",
+      reason: promptCacheSkipReasonLabel(skipped.reason)
+    });
   }
 }
 

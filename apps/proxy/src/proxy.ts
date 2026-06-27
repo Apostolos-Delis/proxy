@@ -28,6 +28,7 @@ import type { ProviderAdapterFailureClassification } from "./providerAdapters/ty
 import { ProviderMetrics } from "./providerMetrics.js";
 import { ProviderDeploymentHealthStore, type ProviderDeploymentFailureReason } from "./providerDeploymentHealth.js";
 import { classifyProviderTerminalHealth } from "./providerHealth.js";
+import { observePromptCachePlan } from "./promptCacheObservability.js";
 import { computePromptCachePlan } from "./promptCachePlan.js";
 import { sseObserverForDialect, streamObservationEventMetadata, type StreamObservation } from "./sseObserver.js";
 import { providerCompressionTerminalTelemetry, requestBodyHash } from "./toolResultCompression.js";
@@ -52,8 +53,9 @@ export class ProviderProxy implements ProviderAdapter {
     private readonly attempts: ProviderAttemptStore,
     private readonly requestStates: RequestStateStoreLike,
     private readonly providerRegistry: ProviderRegistryResolver,
-    metrics: MetricsCollector = new NoopMetricsCollector(),
+    private readonly metrics: MetricsCollector = new NoopMetricsCollector(),
     private readonly deploymentHealth = new ProviderDeploymentHealthStore(),
+    private readonly warnObservabilityFailure: (error: unknown, message: string) => void = () => {},
     providerAdapters: { bedrockRuntime?: BedrockRuntimeProviderAdapter } = {}
   ) {
     this.providerMetrics = new ProviderMetrics(config, attempts, metrics);
@@ -141,6 +143,21 @@ export class ProviderProxy implements ProviderAdapter {
       surface: input.surface,
       provider: input.provider,
       stream: responseStream
+    });
+    observePromptCachePlan({
+      events: this.events,
+      metrics: this.metrics,
+      warn: this.warnObservabilityFailure,
+      tenantId: input.organizationId,
+      workspaceId: input.workspaceId,
+      scopeId: input.requestId,
+      correlationId: input.requestId,
+      idempotencyKey: `${input.idempotencyKey}:prompt-cache-plan:${attemptIndex}`,
+      surface: input.surface,
+      provider: input.provider,
+      model: selectedModel,
+      route: input.decision.finalRoute,
+      plan: selected.promptCachePlan
     });
 
     const routeCandidateId = selected.routeCandidateId;

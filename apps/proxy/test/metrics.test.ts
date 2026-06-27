@@ -394,6 +394,21 @@ describe("routing and provider metrics", () => {
       surface: "openai-responses",
       terminal_status: "succeeded"
     })).toBe(1);
+    expect(sampleValue(snapshot.counters, "proxy_prompt_cache_plans_total", {
+      mode: "implicit",
+      model: "gpt-routed-hard-test",
+      provider: "openai",
+      surface: "openai-responses"
+    })).toBe(1);
+    expect(sampleValue(snapshot.counters, "proxy_prompt_cache_plan_controls_total", {
+      control: "implicit_prefix_caching",
+      mode: "implicit",
+      model: "gpt-routed-hard-test",
+      provider: "openai",
+      reason: "none",
+      status: "applied",
+      surface: "openai-responses"
+    })).toBe(1);
     expect(sampleValue(snapshot.counters, "proxy_usage_tokens_total", {
       model: "gpt-routed-hard-test",
       provider: "openai",

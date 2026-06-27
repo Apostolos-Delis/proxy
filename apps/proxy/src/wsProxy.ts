@@ -42,7 +42,9 @@ import { resolveRoutingSelection, type RoutingConfigResolverLike } from "./persi
 import type { SessionSystemPromptStore } from "./persistence/sessionRoute.js";
 import { classifyProviderTerminalHealth } from "./providerHealth.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
+import { observePromptCachePlan } from "./promptCacheObservability.js";
 import { computePromptCachePlan, type PromptCachePlan } from "./promptCachePlan.js";
+import { type MetricsCollector, NoopMetricsCollector } from "./metrics.js";
 import { canAuthenticateOrgProvider, providerRequestHeaders } from "./providerAdapters/genericHttp.js";
 import type { RoutingService } from "./router.js";
 import type { JsonObject, Provider, RouteContext, RouteDecision, RouteName, UpstreamCredential } from "./types.js";
@@ -96,6 +98,7 @@ export class WebSocketRoutingProxy {
     private readonly routingConfigs?: RoutingConfigResolverLike,
     private readonly sessionPrompts?: SessionSystemPromptStore,
     private readonly compressionCacheWindows?: CompressionCacheWindowResolver,
+    private readonly metrics: MetricsCollector = new NoopMetricsCollector(),
     private readonly log?: WsLogger
   ) {}
 
@@ -423,6 +426,23 @@ export class WebSocketRoutingProxy {
         decision,
         credential
       );
+      observePromptCachePlan({
+        events: this.events,
+        metrics: this.metrics,
+        warn: (err, message) => this.log?.warn({ err, requestId }, message),
+        tenantId: identity.organizationId,
+        workspaceId: identity.workspaceId,
+        scopeId: requestId,
+        correlationId: requestId,
+        idempotencyKey: `${idempotencyKey}:prompt-cache-plan`,
+        sessionId: context.sessionId,
+        actor: actorForIdentity(identity),
+        surface: openAIResponsesSurface.surface,
+        provider,
+        model: decision.selectedModel ?? "unknown",
+        route: decision.finalRoute,
+        plan: upstreamTarget.promptCachePlan
+      });
     } catch (error) {
       await this.finishActiveRequest(activeRequest, "failed", undefined, {
         error: error instanceof Error ? error.message : "websocket_request_failed"

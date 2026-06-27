@@ -77,6 +77,7 @@ describe("Codex Responses WebSocket native golden fixtures", () => {
       record.path === "/responses" && record.body.type === "response.create"
     );
     const decisions = await decisionPayloads(activeFixture);
+    const planEvents = await promptCachePlanEvents(activeFixture, 2);
 
     expectExactJson(clientEvents, fixture.expectedClientEvents);
     expectExactJson(providerCalls.map((record) => record.body), fixture.expectedUpstreamRequests);
@@ -91,6 +92,16 @@ describe("Codex Responses WebSocket native golden fixtures", () => {
     expectRoutePlanExcerpt(decisions[0], fixture.routePlanExcerpt);
     expect(decisions.flatMap((decision) => decision.guardrailActions ?? []))
       .not.toContain("translated_request:openai-responses_to_openai-chat");
+    expect(planEvents).toHaveLength(2);
+    expect(planEvents[0]?.organizationId).toBe(organizationId);
+    expect(planEvents[0]?.workspaceId).toBe(defaultWorkspaceId(organizationId));
+    expect(planEvents[0]?.payload).toMatchObject({
+      surface: "openai-responses",
+      provider: "openai",
+      model: "gpt-codex-ws-native",
+      mode: "implicit",
+      appliedControls: expect.arrayContaining(["implicit_prefix_caching"])
+    });
   });
 
   it("rejects binary WebSocket client frames before routing", async () => {
@@ -311,6 +322,17 @@ async function decisionPayloads(fixture: PromptTestFixture) {
       verbosity?: string;
       error?: string;
     });
+}
+
+async function promptCachePlanEvents(fixture: PromptTestFixture, expectedCount: number) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const rows = (await fixture.db.select().from(events))
+      .filter((event) => event.eventType === "prompt_cache.plan_applied");
+    if (rows.length >= expectedCount) return rows;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return (await fixture.db.select().from(events))
+    .filter((event) => event.eventType === "prompt_cache.plan_applied");
 }
 
 function websocketOpen(ws: WebSocket) {
