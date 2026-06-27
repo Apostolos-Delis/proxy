@@ -46,6 +46,21 @@ export const PROVIDER_CACHE_TTLS = ["5m", "1h", "24h"] as const;
 export const PROVIDER_CACHE_KEY_FIELDS = ["prompt_cache_key", "routing_key"] as const;
 export const PROVIDER_CACHE_RETENTION_FIELDS = ["prompt_cache_retention"] as const;
 export const PROVIDER_CACHE_USAGE_SHAPES = ["openai", "anthropic", "gemini", "provider_specific"] as const;
+export const PROMPT_CACHE_PREWARM_JOB_STATUSES = [
+  "planned",
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "expired_unused"
+] as const;
+export const PROMPT_CACHE_PREWARM_TRIGGER_SOURCES = [
+  "route_config_publish",
+  "session_resume",
+  "workspace_bootstrap",
+  "manual"
+] as const;
 
 // Claude subscription tokens minted by `claude setup-token`. Anthropic has
 // rotated token prefixes before — keep every prefix check on this constant.
@@ -260,6 +275,8 @@ export type ProviderCacheTtl = typeof PROVIDER_CACHE_TTLS[number];
 export type ProviderCacheKeyField = typeof PROVIDER_CACHE_KEY_FIELDS[number];
 export type ProviderCacheRetentionField = typeof PROVIDER_CACHE_RETENTION_FIELDS[number];
 export type ProviderCacheUsageShape = typeof PROVIDER_CACHE_USAGE_SHAPES[number];
+export type PromptCachePrewarmJobStatus = typeof PROMPT_CACHE_PREWARM_JOB_STATUSES[number];
+export type PromptCachePrewarmTriggerSource = typeof PROMPT_CACHE_PREWARM_TRIGGER_SOURCES[number];
 export type Effort = typeof EFFORTS[number];
 export type OpenAIReasoningEffort = typeof OPENAI_REASONING_EFFORTS[number];
 export type Verbosity = typeof VERBOSITIES[number];
@@ -417,6 +434,47 @@ export const providerCachingCapabilitiesSchema = z.strictObject({
 });
 
 export type ProviderCachingCapabilities = z.infer<typeof providerCachingCapabilitiesSchema>;
+
+export const promptCachePrewarmJobStatusSchema = z.enum(PROMPT_CACHE_PREWARM_JOB_STATUSES);
+export const promptCachePrewarmTriggerSourceSchema = z.enum(PROMPT_CACHE_PREWARM_TRIGGER_SOURCES);
+
+export const promptCachePrewarmSettingsSchema = z.strictObject({
+  enabled: z.boolean(),
+  maxDailySpendMicros: z.number().int().nonnegative(),
+  maxHourlyJobs: z.number().int().nonnegative(),
+  maxInputTokensPerJob: z.number().int().positive(),
+  providerAllowlist: z.array(providerSchema),
+  modelAllowlist: z.array(z.string().trim().min(1))
+});
+
+export type PromptCachePrewarmSettings = z.infer<typeof promptCachePrewarmSettingsSchema>;
+
+export const promptCachePrewarmJobSchema = z.strictObject({
+  id: z.string().trim().min(1),
+  organizationId: z.string().trim().min(1),
+  workspaceId: z.string().trim().min(1),
+  provider: providerSchema,
+  model: z.string().trim().min(1),
+  triggerSource: promptCachePrewarmTriggerSourceSchema,
+  status: promptCachePrewarmJobStatusSchema,
+  idempotencyKey: z.string().trim().min(1),
+  prefixDigest: z.string().trim().min(1),
+  routingConfigVersionId: z.string().trim().min(1).optional(),
+  sessionId: z.string().trim().min(1).optional(),
+  scheduledFor: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+  estimatedInputTokens: z.number().int().nonnegative(),
+  spendCapMicros: z.number().int().nonnegative(),
+  estimatedCostMicros: z.number().int().nonnegative(),
+  actualCostMicros: z.number().int().nonnegative().optional(),
+  providerCacheRef: z.string().trim().min(1).optional(),
+  metadata: jsonObjectSchema.default({})
+}).refine((job) => Date.parse(job.expiresAt) > Date.parse(job.scheduledFor), {
+  path: ["expiresAt"],
+  message: "Prewarm expiration must be after the scheduled time."
+});
+
+export type PromptCachePrewarmJob = z.infer<typeof promptCachePrewarmJobSchema>;
 
 export const CONSERVATIVE_PROVIDER_CACHING_CAPABILITIES = {
   implicitPrefixCaching: false,

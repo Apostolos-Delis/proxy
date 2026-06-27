@@ -10,6 +10,8 @@ import {
   OPENAI_PROVIDER_CACHING_CAPABILITIES,
   providerCapabilitiesWithDefaults,
   providerCachingCapabilitiesSchema,
+  promptCachePrewarmJobSchema,
+  promptCachePrewarmSettingsSchema,
   providerRegistryEntrySchema,
   ROUTING_CLASSIFIER_BASE_INSTRUCTIONS,
   routingConfigSchema,
@@ -673,6 +675,69 @@ describe("providerRegistryEntrySchema", () => {
     expect(bedrockPath.error?.issues.map((issue) => issue.path)).toContainEqual(["endpoints", 0, "path"]);
     expect(emptyPath.success).toBe(false);
     expect(emptyPath.error?.issues.map((issue) => issue.path)).toContainEqual(["endpoints", 0, "path"]);
+  });
+});
+
+describe("prompt cache prewarm contracts", () => {
+  it("validates prewarm settings with explicit caps", () => {
+    expect(promptCachePrewarmSettingsSchema.parse({
+      enabled: true,
+      maxDailySpendMicros: 500000,
+      maxHourlyJobs: 10,
+      maxInputTokensPerJob: 32000,
+      providerAllowlist: ["google-gemini-openai"],
+      modelAllowlist: ["gemini-2.5-pro"]
+    })).toEqual({
+      enabled: true,
+      maxDailySpendMicros: 500000,
+      maxHourlyJobs: 10,
+      maxInputTokensPerJob: 32000,
+      providerAllowlist: ["google-gemini-openai"],
+      modelAllowlist: ["gemini-2.5-pro"]
+    });
+
+    expect(promptCachePrewarmSettingsSchema.safeParse({
+      enabled: true,
+      maxDailySpendMicros: -1,
+      maxHourlyJobs: 10,
+      maxInputTokensPerJob: 32000,
+      providerAllowlist: ["google-gemini-openai"],
+      modelAllowlist: ["gemini-2.5-pro"]
+    }).success).toBe(false);
+  });
+
+  it("validates auditable prewarm job records", () => {
+    const job = {
+      id: "prewarm_job_1",
+      organizationId: "org_prewarm",
+      workspaceId: "ws_prewarm",
+      provider: "google-gemini-openai",
+      model: "gemini-2.5-pro",
+      triggerSource: "route_config_publish",
+      status: "queued",
+      idempotencyKey: "org_prewarm:ws_prewarm:google-gemini-openai:gemini-2.5-pro:prefix_sha256",
+      prefixDigest: "sha256:prefix_sha256",
+      routingConfigVersionId: "version_1",
+      scheduledFor: "2026-06-27T12:00:00.000Z",
+      expiresAt: "2026-06-27T12:05:00.000Z",
+      estimatedInputTokens: 12000,
+      spendCapMicros: 100000,
+      estimatedCostMicros: 25000
+    };
+
+    expect(promptCachePrewarmJobSchema.parse(job)).toEqual({
+      ...job,
+      metadata: {}
+    });
+
+    expect(promptCachePrewarmJobSchema.safeParse({
+      ...job,
+      status: "completed"
+    }).success).toBe(false);
+    expect(promptCachePrewarmJobSchema.safeParse({
+      ...job,
+      expiresAt: job.scheduledFor
+    }).success).toBe(false);
   });
 });
 

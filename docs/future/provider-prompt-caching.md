@@ -322,6 +322,53 @@ Acceptance criteria:
 - Operators can see prewarm cost, resulting cache-hit lift, and expired/unused prewarm counts.
 - Disabling the feature stops future prewarm jobs without affecting normal traffic.
 
+#### Prewarm job model
+
+Status: define the internal model and caps first; do not perform provider calls until a follow-up implementation proves a provider has a documented prewarm primitive.
+
+Settings:
+
+- `enabled`: hard opt-in. `false` prevents new jobs from being planned or queued.
+- `maxDailySpendMicros`: org/workspace spend ceiling for prewarm attempts.
+- `maxHourlyJobs`: throttle for route-config publishes, session resumes, workspace bootstrap, and manual triggers.
+- `maxInputTokensPerJob`: upper bound for the cacheable prefix sent to a provider.
+- `providerAllowlist` and `modelAllowlist`: explicit targets; no default all-provider rollout.
+
+Job identity:
+
+- Scope every job by `organizationId`, `workspaceId`, `provider`, and `model`.
+- Use `triggerSource` values `route_config_publish`, `session_resume`, `workspace_bootstrap`, or `manual`.
+- Build `idempotencyKey` from org, workspace, provider, model, trigger source, routing config/session key, prefix digest, and TTL bucket.
+- Store `prefixDigest`, not raw prompt bytes, tool schemas, API keys, provider secrets, or raw cache keys.
+- Include optional `routingConfigVersionId`, `sessionId`, and provider cache reference only when they are already scoped to the same org/workspace.
+
+State machine:
+
+- `planned`: candidate passed static eligibility but has not consumed capacity.
+- `queued`: capacity and spend caps were reserved.
+- `running`: worker has started the provider operation.
+- `succeeded`: provider returned a cache reference or documented success signal.
+- `failed`: provider operation failed or returned an incompatible response.
+- `cancelled`: disabled settings or operator cancellation stopped the job before provider work.
+- `expired_unused`: TTL elapsed without a matching cache-read lift.
+
+Caps and scheduling:
+
+- Reject planning when the selected provider capability does not support prewarm.
+- Reject planning when the target provider/model is absent from the allowlists.
+- Reserve estimated cost against the daily cap before queueing.
+- Do not schedule work whose `expiresAt` would arrive before the expected first reuse.
+- Do not schedule duplicate jobs for the same idempotency key.
+- Treat `maxDailySpendMicros: 0` or `maxHourlyJobs: 0` as observe-only/no-queue mode.
+
+Accounting:
+
+- Record prewarm cost separately from user request cost.
+- `estimatedCostMicros` is reserved before queueing; `actualCostMicros` is written only after provider completion.
+- `expired_unused` keeps cost attributed to prewarm waste, not user traffic.
+- Hit-rate lift is measured by later provider usage rows that match the same org/workspace/provider/model/prefix digest or provider cache reference.
+- Disabling prewarm cancels `planned` and `queued` jobs, prevents future jobs, and leaves `running`, `succeeded`, `failed`, and `expired_unused` records auditable.
+
 ### 6. Prompt-layout hygiene
 
 - Pin any proxy-injected static prefix per active session.
@@ -365,6 +412,8 @@ Add:
 - `prompt_cache.control_skipped`
 - `prompt_cache.prewarm_started`
 - `prompt_cache.prewarm_completed`
+- `prompt_cache.prewarm_failed`
+- `prompt_cache.prewarm_cancelled`
 - `prompt_cache.prewarm_expired_unused`
 
 Reuse:
