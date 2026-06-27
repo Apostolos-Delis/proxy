@@ -64,5 +64,6 @@
   "stream": false,
   "max_tokens": 64,
   "max_completion_tokens": 222,
-  "reasoning_effort": "high"
+  "reasoning_effort": "high",
+  "prompt_cache_retention": "24h"
 }

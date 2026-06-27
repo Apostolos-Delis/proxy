@@ -9,7 +9,7 @@ import {
   type ProxyTransaction,
   type ProxyTransactionalDatabase
 } from "@proxy/db";
-import { PROVIDER_ACCOUNT_STATUSES } from "@proxy/schema";
+import { PROVIDER_ACCOUNT_STATUSES, providerCapabilitiesWithDefaults } from "@proxy/schema";
 
 import type { ProviderCredentialStore } from "../persistence/providerCredentials.js";
 import type { ProviderRegistryEntry } from "../persistence/providers.js";
@@ -340,7 +340,7 @@ function providerEntry(account: BedrockProviderAccount): ProviderRegistryEntry {
     authStyle: account.authStyle,
     endpoints: account.endpoints,
     defaultHeaders: account.defaultHeaders,
-    capabilities: account.capabilities,
+    capabilities: providerCapabilitiesWithDefaults(account.provider, account.capabilities),
     forwardHarnessHeaders: account.forwardHarnessHeaders,
     enabled: account.enabled,
     builtin: account.providerOrganizationId === null
