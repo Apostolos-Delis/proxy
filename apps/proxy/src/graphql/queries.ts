@@ -146,6 +146,14 @@ function selectedChildFieldNames(info: GraphQLResolveInfo, parentField: string) 
   return fields;
 }
 
+function selectedFieldPath(info: GraphQLResolveInfo, path: string[]) {
+  const seenFragments = new Set<string>();
+  for (const node of info.fieldNodes) {
+    if (node.selectionSet && selectionPathSelected(info, node.selectionSet.selections, path, 0, seenFragments)) return true;
+  }
+  return false;
+}
+
 function collectFieldNames(
   info: GraphQLResolveInfo,
   selections: readonly SelectionNode[],
@@ -194,6 +202,52 @@ function collectChildFieldNames(
     seenFragments.add(fragmentKey);
     collectChildFieldNames(info, fragment.selectionSet.selections, parentField, fields, seenFragments, insideParent);
   }
+}
+
+function selectionPathSelected(
+  info: GraphQLResolveInfo,
+  selections: readonly SelectionNode[],
+  path: string[],
+  pathIndex: number,
+  seenFragments: Set<string>
+): boolean {
+  for (const selection of selections) {
+    if (selection.kind === Kind.FIELD) {
+      if (selection.name.value !== path[pathIndex]) continue;
+      if (pathIndex === path.length - 1) return true;
+      if (
+        selection.selectionSet &&
+        selectionPathSelected(info, selection.selectionSet.selections, path, pathIndex + 1, seenFragments)
+      ) {
+        return true;
+      }
+      continue;
+    }
+    if (selection.kind === Kind.INLINE_FRAGMENT) {
+      if (selectionPathSelected(info, selection.selectionSet.selections, path, pathIndex, seenFragments)) return true;
+      continue;
+    }
+    const fragmentKey = `${selection.name.value}:${pathIndex}`;
+    const fragment = info.fragments[selection.name.value];
+    if (!fragment || seenFragments.has(fragmentKey)) continue;
+    seenFragments.add(fragmentKey);
+    if (selectionPathSelected(info, fragment.selectionSet.selections, path, pathIndex, seenFragments)) return true;
+  }
+  return false;
+}
+
+function usageDashboardOptions(info: GraphQLResolveInfo) {
+  return {
+    includeTimeseriesLatency: selectedFieldPath(info, ["timeseries", "groups", "latency"]) ||
+      selectedFieldPath(info, ["timeseries", "points", "totals", "latency"])
+  };
+}
+
+function usageTimeseriesOptions(info: GraphQLResolveInfo) {
+  return {
+    includeTimeseriesLatency: selectedFieldPath(info, ["groups", "latency"]) ||
+      selectedFieldPath(info, ["points", "totals", "latency"])
+  };
 }
 
 builder.queryFields((t) => ({
@@ -325,16 +379,16 @@ builder.queryFields((t) => ({
       end: t.arg.string(),
       limit: t.arg.int()
     },
-    resolve: async (_root, args, context) => {
+    resolve: async (_root, args, context, info) => {
       const queries = scopedQueries(context);
       if (queries) {
-        return queries.usageTimeseries({
+        return (await queries.usageDashboard({
           groupBy: args.groupBy ?? undefined,
           interval: args.interval ?? undefined,
           start: args.start ?? undefined,
           end: args.end ?? undefined,
           limit: args.limit ?? undefined
-        });
+        }, usageTimeseriesOptions(info))).timeseries;
       }
       const now = new Date().toISOString();
       const empty: UsageTimeseriesModel = {
@@ -358,7 +412,7 @@ builder.queryFields((t) => ({
       end: t.arg.string(),
       limit: t.arg.int()
     },
-    resolve: async (_root, args, context) => {
+    resolve: async (_root, args, context, info) => {
       const queries = scopedQueries(context);
       if (queries) {
         return queries.usageDashboard({
@@ -367,7 +421,7 @@ builder.queryFields((t) => ({
           start: args.start ?? undefined,
           end: args.end ?? undefined,
           limit: args.limit ?? undefined
-        });
+        }, usageDashboardOptions(info));
       }
       return {
         usage: emptyUsageReport(),

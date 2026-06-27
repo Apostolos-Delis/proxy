@@ -37,6 +37,21 @@ graphql(`
   }
 `);
 
+graphql(`
+  fragment UsageGroupChartFields on UsageGroup {
+    key
+    requestCount
+    usage {
+      inputTokens
+      cachedInputTokens
+      totalTokens
+    }
+    cost {
+      selected
+    }
+  }
+`);
+
 const UsageReportViewDocument = graphql(`
   query UsageReportView($groupBy: UsageGroupBy!, $start: String, $end: String) {
     usage(groupBy: $groupBy, start: $start, end: $end) {
@@ -90,12 +105,12 @@ const UsageDashboardViewDocument = graphql(`
         start
         end
         groups {
-          ...UsageGroupFields
+          ...UsageGroupChartFields
         }
         points {
           ts
           totals {
-            ...UsageGroupFields
+            ...UsageGroupChartFields
           }
           groups
         }
@@ -195,10 +210,23 @@ export type UsageRangeFilters = {
 };
 
 type RawTimeseries = UsageTimeseriesViewQuery["usageTimeseries"];
-export type UsageTimeseriesPoint = Omit<RawTimeseries["points"][number], "groups"> & {
+export type UsageChartGroup = Pick<UsageGroup, "key" | "requestCount"> & {
+  usage: Pick<UsageGroup["usage"], "inputTokens" | "cachedInputTokens" | "totalTokens">;
+  cost: Pick<UsageGroup["cost"], "selected">;
+};
+type RawTimeseriesLike = Omit<RawTimeseries, "groups" | "points"> & {
+  groups: UsageChartGroup[];
+  points: Array<Omit<RawTimeseries["points"][number], "totals" | "groups"> & {
+    totals: UsageChartGroup;
+    groups?: Record<string, UsageGroup> | null;
+  }>;
+};
+export type UsageTimeseriesPoint = Omit<RawTimeseries["points"][number], "totals" | "groups"> & {
+  totals: UsageChartGroup;
   groups: Record<string, UsageGroup>;
 };
-export type UsageTimeseries = Omit<RawTimeseries, "points"> & {
+export type UsageTimeseries = Omit<RawTimeseries, "groups" | "points"> & {
+  groups: UsageChartGroup[];
   points: UsageTimeseriesPoint[];
 };
 export type UsageDashboard = {
@@ -231,7 +259,7 @@ export async function fetchUsageDashboard(
   };
 }
 
-function normalizeTimeseries(raw: RawTimeseries): UsageTimeseries {
+function normalizeTimeseries(raw: RawTimeseriesLike): UsageTimeseries {
   return {
     ...raw,
     points: raw.points.map((point) => ({

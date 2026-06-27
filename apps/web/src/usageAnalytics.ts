@@ -1,5 +1,5 @@
 import { displayUser } from "./consoleData";
-import type { UsageGroup, UsageLookupApiKey, UsageLookupUser, UsageTimeseries } from "./usageData";
+import type { UsageChartGroup, UsageGroup, UsageLookupApiKey, UsageLookupUser, UsageTimeseries } from "./usageData";
 
 export type UsageRangeKey = "1" | "7" | "30" | "90";
 
@@ -94,7 +94,12 @@ export function groupKeyLabel(dimension: UsageDimension, key: string, lookups: G
 
 export type UsageMetric = "cost" | "tokens" | "requests";
 
-export function metricValue(group: UsageGroup | undefined, metric: UsageMetric) {
+type UsageMetricGroup = Pick<UsageGroup, "requestCount"> & {
+  usage: Pick<UsageGroup["usage"], "totalTokens">;
+  cost: Pick<UsageGroup["cost"], "selected">;
+};
+
+export function metricValue(group: UsageMetricGroup | undefined, metric: UsageMetric) {
   if (!group) return 0;
   if (metric === "cost") return group.cost.selected;
   if (metric === "tokens") return group.usage.totalTokens;
@@ -139,7 +144,7 @@ export function stackedUsageSeries(
 export type SeriesPoint = { label: string; value: number };
 
 /** Per-bucket series over whole-window totals; the same regardless of the grouping dimension. */
-export function usagePointSeries(timeseries: UsageTimeseries, value: (totals: UsageGroup) => number): SeriesPoint[] {
+export function usagePointSeries(timeseries: UsageTimeseries, value: (totals: UsageChartGroup) => number): SeriesPoint[] {
   return timeseries.points.map((point) => ({
     label: bucketLabel(point.ts, timeseries.interval),
     value: value(point.totals)
@@ -155,7 +160,11 @@ export function totalsPointSeries(timeseries: UsageTimeseries, metric: UsageMetr
  * input tokens. Normalized convention: inputTokens is the TOTAL prompt input
  * with cache reads/writes as subsets, so writes count as misses on their own.
  */
-export function cacheHitRate(group: UsageGroup | null | undefined): number | null {
+type CacheHitGroup = {
+  usage: Pick<UsageGroup["usage"], "inputTokens" | "cachedInputTokens">;
+};
+
+export function cacheHitRate(group: CacheHitGroup | null | undefined): number | null {
   if (!group) return null;
   if (group.usage.inputTokens <= 0) return null;
   // The server heals ledger rows that violate the convention (cached ≤ input),

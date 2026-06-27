@@ -98,6 +98,7 @@ import {
   type OpenAICacheTrendRow,
   type UsageBucketRollupReport,
   type UsageLatencyRow,
+  type UsageLatencyMode,
   type UsageRollupReport,
   type UsageRollupRow,
   type UsageRollupScope
@@ -161,6 +162,10 @@ export type UsageAnalyticsFilters = {
 export type UsageTimeseriesFilters = UsageAnalyticsFilters & {
   interval?: string;
   limit?: number;
+};
+
+export type UsageDashboardOptions = {
+  includeTimeseriesLatency?: boolean;
 };
 
 export type SessionDetailOptions = {
@@ -639,16 +644,17 @@ export class AdminQueryService {
     };
   }
 
-  async usageDashboard(filters: UsageTimeseriesFilters = {}) {
+  async usageDashboard(filters: UsageTimeseriesFilters = {}, options: UsageDashboardOptions = {}) {
     const groupBy = usageGroupBy(filters.groupBy);
     const interval = usageInterval(filters.interval);
     const limit = timeseriesGroupLimit(filters.limit);
     const scope = this.usageRollupScope(filters);
     const step = intervalMs(interval);
+    const latencyMode: UsageLatencyMode = options.includeTimeseriesLatency ? "full" : "report";
     const [pricing, costBaseline, bucketReport] = await Promise.all([
       this.effectivePricing(),
       this.effectiveCostBaseline(),
-      this.usageBucketRollupReport(scope, groupBy, step, null)
+      this.usageBucketRollupReport(scope, groupBy, step, null, latencyMode)
     ]);
     return this.usageDashboardFromBucket(
       filters,
@@ -659,12 +665,13 @@ export class AdminQueryService {
       scope,
       bucketReport,
       pricing,
-      costBaseline
+      costBaseline,
+      options.includeTimeseriesLatency === true
     );
   }
 
   async usageTimeseries(filters: UsageTimeseriesFilters = {}) {
-    return (await this.usageDashboard(filters)).timeseries;
+    return (await this.usageDashboard(filters, { includeTimeseriesLatency: true })).timeseries;
   }
 
   async openAICacheAnalytics(filters: UsageTimeseriesFilters = {}) {
@@ -699,7 +706,8 @@ export class AdminQueryService {
     scope: UsageRollupScope,
     bucketReport: UsageBucketRollupReport,
     pricing: ModelPricingTable,
-    costBaseline: CostBaseline
+    costBaseline: CostBaseline,
+    includeTimeseriesLatency: boolean
   ) {
     const { rollups } = bucketReport;
 
@@ -719,8 +727,8 @@ export class AdminQueryService {
     const ranked = [...groupTotals.values()].sort(compareUsageGroups);
     const keptKeys = new Set(ranked.slice(0, limit).map((group) => group.key));
     const collapseOthers = ranked.length > limit;
-    const pointReport = collapseOthers
-      ? await this.usageBucketRollupReport(scope, groupBy, step, [...keptKeys])
+    const pointReport = collapseOthers && includeTimeseriesLatency
+      ? await this.usageBucketRollupReport(scope, groupBy, step, [...keptKeys], "full")
       : bucketReport;
 
     const points = new Map<number, { totals: UsageGroup; groups: Map<string, UsageGroup> }>();
@@ -730,10 +738,13 @@ export class AdminQueryService {
     for (const row of pointReport.rollups) {
       const point = points.get(row.bucketTs);
       if (!point) continue;
-      const group = point.groups.get(row.groupKey) ?? emptyUsageGroup(row.groupKey);
+      const groupKey = collapseOthers && !includeTimeseriesLatency && !keptKeys.has(row.groupKey)
+        ? OTHER_ROLLUP_GROUP_KEY
+        : row.groupKey;
+      const group = point.groups.get(groupKey) ?? emptyUsageGroup(groupKey);
       this.addUsageRollup(point.totals, row, pricing, costBaseline);
       this.addUsageRollup(group, row, pricing, costBaseline);
-      point.groups.set(row.groupKey, group);
+      point.groups.set(groupKey, group);
     }
 
     const usageGroupLatency = new Map<string, UsageLatencyRow>();
@@ -749,13 +760,15 @@ export class AdminQueryService {
     const timeseriesGroupLatency = new Map<string, UsageLatencyRow>();
     const bucketLatency = new Map<number, UsageLatencyRow>();
     const bucketGroupLatency = new Map<string, UsageLatencyRow>();
-    for (const row of pointReport.latencies) {
-      if (row.groupKey === null) {
-        if (row.bucketTs !== null) bucketLatency.set(row.bucketTs, row);
-      } else if (row.bucketTs === null) {
-        timeseriesGroupLatency.set(row.groupKey, row);
-      } else {
-        bucketGroupLatency.set(`${row.bucketTs}:${row.groupKey}`, row);
+    if (includeTimeseriesLatency) {
+      for (const row of pointReport.latencies) {
+        if (row.groupKey === null) {
+          if (row.bucketTs !== null) bucketLatency.set(row.bucketTs, row);
+        } else if (row.bucketTs === null) {
+          timeseriesGroupLatency.set(row.groupKey, row);
+        } else {
+          bucketGroupLatency.set(`${row.bucketTs}:${row.groupKey}`, row);
+        }
       }
     }
 
@@ -813,10 +826,11 @@ export class AdminQueryService {
     scope: UsageRollupScope,
     groupBy: UsageGroupBy,
     step: number,
-    keptKeys: string[] | null
+    keptKeys: string[] | null,
+    latencyMode: UsageLatencyMode = "full"
   ): Promise<UsageBucketRollupReport> {
-    return this.cached(`usage-bucket-rollup-report:${groupBy}:${step}:${JSON.stringify(keptKeys)}:${usageScopeKey(scope)}`, () =>
-      this.recordDbQuery("usage_bucket_rollup", () => usageBucketRollupReportRows(this.db, scope, groupBy, step, keptKeys)));
+    return this.cached(`usage-bucket-rollup-report:${groupBy}:${step}:${JSON.stringify(keptKeys)}:${latencyMode}:${usageScopeKey(scope)}`, () =>
+      this.recordDbQuery("usage_bucket_rollup", () => usageBucketRollupReportRows(this.db, scope, groupBy, step, keptKeys, latencyMode)));
   }
 
   private async recordDbQuery<T>(operation: string, load: () => Promise<T>) {

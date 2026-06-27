@@ -637,6 +637,84 @@ describe("usage analytics admin APIs", () => {
     expect(dashboardPointTotal).toBe(pointTotal);
   });
 
+  it("keeps dashboard report latency while making timeseries latency selection-dependent", async () => {
+    const fixture = await setup("org_usage_dashboard_latency");
+    const createdAt = new Date("2026-06-08T12:00:00.000Z");
+
+    await fixture.db.insert(users).values([{ id: "user_dashboard_latency" }]);
+    await fixture.db.insert(agentSessions).values({
+      id: "session_dashboard_latency",
+      organizationId: "org_usage_dashboard_latency",
+      workspaceId: defaultWorkspaceId("org_usage_dashboard_latency"),
+      userId: "user_dashboard_latency",
+      surface: "openai-responses"
+    });
+    await fixture.db.insert(requests).values([
+      usageRequest("dashboard_latency_request_fast", "org_usage_dashboard_latency", "user_dashboard_latency", "session_dashboard_latency", "openai-responses", createdAt),
+      usageRequest("dashboard_latency_request_slow", "org_usage_dashboard_latency", "user_dashboard_latency", "session_dashboard_latency", "openai-responses", createdAt)
+    ]);
+    await fixture.db.insert(routeDecisions).values([
+      usageDecision("dashboard_latency_decision_fast", "dashboard_latency_request_fast", "org_usage_dashboard_latency", "fast", "openai", "gpt-fast"),
+      usageDecision("dashboard_latency_decision_slow", "dashboard_latency_request_slow", "org_usage_dashboard_latency", "fast", "openai", "gpt-fast")
+    ]);
+    await fixture.db.insert(providerAttempts).values([
+      {
+        ...usageAttempt("dashboard_latency_attempt_fast", "dashboard_latency_request_fast", "org_usage_dashboard_latency", "openai-responses", "openai", "gpt-fast", "completed", createdAt),
+        completedAt: new Date(createdAt.getTime() + 100)
+      },
+      {
+        ...usageAttempt("dashboard_latency_attempt_slow", "dashboard_latency_request_slow", "org_usage_dashboard_latency", "openai-responses", "openai", "gpt-fast", "completed", createdAt),
+        completedAt: new Date(createdAt.getTime() + 200)
+      }
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      usageRow("dashboard_latency_usage_fast", "dashboard_latency_request_fast", "dashboard_latency_attempt_fast", "org_usage_dashboard_latency", "openai", "gpt-fast", "fast", 100, 25, 1000),
+      usageRow("dashboard_latency_usage_slow", "dashboard_latency_request_slow", "dashboard_latency_attempt_slow", "org_usage_dashboard_latency", "openai", "gpt-fast", "fast", 200, 50, 2000)
+    ]);
+
+    const reportOnly = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query {
+        usageDashboard(groupBy: route, interval: day) {
+          usage {
+            data { key latency { averageMs p95Ms } }
+            totals { latency { averageMs p95Ms } }
+          }
+          timeseries {
+            groups { key requestCount }
+            points { ts totals { requestCount } groups }
+          }
+        }
+      }`
+    );
+    const withTimeseriesLatency = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query {
+        usageDashboard(groupBy: route, interval: day) {
+          timeseries {
+            groups { key latency { averageMs p95Ms } }
+            points { totals { latency { averageMs p95Ms } } }
+          }
+        }
+      }`
+    );
+
+    expect(reportOnly.errors).toBeUndefined();
+    expect(reportOnly.data?.usageDashboard.usage.totals.latency).toEqual({ averageMs: 150, p95Ms: 200 });
+    expect(reportOnly.data?.usageDashboard.usage.data[0].latency).toEqual({ averageMs: 150, p95Ms: 200 });
+    expect(reportOnly.data?.usageDashboard.timeseries.groups).toEqual([
+      expect.objectContaining({ key: "fast", requestCount: 2 })
+    ]);
+    expect(withTimeseriesLatency.errors).toBeUndefined();
+    expect(withTimeseriesLatency.data?.usageDashboard.timeseries.groups[0].latency).toEqual({ averageMs: 150, p95Ms: 200 });
+    const latencyPoint = withTimeseriesLatency.data?.usageDashboard.timeseries.points.find(
+      (point: { totals: { latency: { p95Ms: number | null } } }) => point.totals.latency.p95Ms === 200
+    );
+    expect(latencyPoint?.totals.latency).toEqual({ averageMs: 150, p95Ms: 200 });
+  });
+
   it("folds classifier spend into selected cost and savings without inflating tokens or counts", async () => {
     const fixture = await setup("org_usage_classifier");
     const createdAt = new Date("2026-06-08T12:00:00.000Z");
