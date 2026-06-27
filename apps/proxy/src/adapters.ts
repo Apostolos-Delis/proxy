@@ -150,6 +150,7 @@ export function rewriteSurfaceRequestWithPromptCachePlan(
   const promptCachePlan = computePromptCachePlan({
     body: rewritten,
     bodyDialect: decision.providerSettings?.dialect,
+    sourceBody: body,
     context: options.context,
     decision,
     capabilities: options.capabilities,
@@ -210,6 +211,7 @@ export function rewriteTokenCountRequestWithPromptCachePlan(
   const promptCachePlan = computePromptCachePlan({
     body: request,
     bodyDialect: decision.providerSettings?.dialect,
+    sourceBody: body,
     context: options.context,
     decision,
     capabilities: options.capabilities,

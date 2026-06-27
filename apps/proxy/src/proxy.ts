@@ -925,6 +925,7 @@ function providerForwardAttempts(input: ProviderForwardInput): ProviderForwardAt
     providerSettings: input.decision.providerSettings,
     promptCachePlan: computePromptCachePlan({
       body: input.body,
+      sourceBody: input.body,
       context: { surface: input.surface, harnessProfileId: input.harnessProfileId },
       decision: input.decision
     })
@@ -954,6 +955,7 @@ function providerForwardAttempt(input: ProviderForwardInput, attempt: RouteProvi
     providerSettings: attempt.providerSettings,
     promptCachePlan: computePromptCachePlan({
       body: input.body,
+      sourceBody: input.body,
       context: { surface: input.surface, harnessProfileId: input.harnessProfileId },
       decision,
       capabilities: attempt.providerCachingCapabilities

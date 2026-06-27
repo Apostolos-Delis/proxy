@@ -78,6 +78,7 @@ export type PromptCachePlanSettings = {
 export function computePromptCachePlan(input: {
   body: unknown;
   bodyDialect?: Surface | Dialect;
+  sourceBody?: unknown;
   context: Pick<RouteContext, "surface"> & Partial<Pick<RouteContext, "transport" | "harnessProfileId" | "estimatedInputTokens">>;
   decision: RouteDecision;
   capabilities?: ProviderCachingCapabilities;
@@ -88,6 +89,8 @@ export function computePromptCachePlan(input: {
   const capabilities = input.capabilities ?? builtinProviderCachingCapabilities(provider);
   const targetBody = bodyForTargetDialect(input.body, input.bodyDialect ?? input.context.surface, dialect);
   const body = isRecord(targetBody) ? targetBody : {};
+  const sourceBody = isRecord(input.sourceBody) ? input.sourceBody : undefined;
+  const translatedCacheFields = input.context.surface !== dialect && sourceBody !== undefined && hasProviderCacheField(sourceBody);
   const skippedControls: PromptCachePlan["skippedControls"] = [];
   const appliedControls: string[] = [];
 
@@ -151,6 +154,9 @@ export function computePromptCachePlan(input: {
     } else if (input.settings?.cacheTtlUpgrade === true) {
       skippedControls.push({ control: "ttl_1h", reason: "not_eligible" });
     }
+    if (translatedCacheFields) {
+      skippedControls.push({ control: "cross_dialect_cache_fields", reason: "translated_request" });
+    }
 
     let strategy: PromptCachePlan["breakpointStrategy"];
     if (hasBreakpoints) strategy = "preserve_client";
@@ -191,6 +197,12 @@ function retentionState(body: Record<string, unknown>, capabilities: ProviderCac
   const value = body[capabilities.retentionField];
   if (value === "in_memory" || value === "24h" || value === "1h" || value === "5m") return value;
   return undefined;
+}
+
+function hasProviderCacheField(body: Record<string, unknown>) {
+  return body.prompt_cache_key !== undefined ||
+    body.prompt_cache_retention !== undefined ||
+    hasAnthropicCacheControl(body);
 }
 
 export function hasAnthropicCacheControl(request: Record<string, unknown>): boolean {
