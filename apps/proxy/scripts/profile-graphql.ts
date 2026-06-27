@@ -304,6 +304,12 @@ const usageGroupSelection = `{
   cost { selected baseline savings }
 }`;
 
+const usageDashboardGroupSelection = `{
+  key requestCount
+  usage { inputTokens cachedInputTokens cacheCreationInputTokens outputTokens reasoningTokens totalTokens }
+  cost { selected }
+}`;
+
 const usageChartGroupSelection = `{
   key requestCount
   usage { inputTokens cachedInputTokens totalTokens }
@@ -320,7 +326,7 @@ const operations: Operation[] = [
   { name: "promptAccessAudit", query: "query { promptAccessAudit { id artifactId accessPath createdAt } }" },
   { name: "usage(route)", query: `query { usage(groupBy: route, start: "${RANGE.start}", end: "${RANGE.end}") { groupBy data ${usageGroupSelection} totals ${usageGroupSelection} } }` },
   { name: "usageTimeseries(model)", query: `query { usageTimeseries(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { groupBy interval start end groups ${usageGroupSelection} points { ts totals ${usageGroupSelection} groups } } }` },
-  { name: "usageDashboard (UsageDashboardView)", query: `query { usageDashboard(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { usage { data ${usageGroupSelection} totals ${usageGroupSelection} } timeseries { groups ${usageChartGroupSelection} points { ts totals ${usageChartGroupSelection} groups } } } }` },
+  { name: "usageDashboard (UsageDashboardView)", query: `query { usageDashboard(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { usage { data ${usageDashboardGroupSelection} totals ${usageDashboardGroupSelection} } timeseries { groups ${usageChartGroupSelection} points { ts totals ${usageChartGroupSelection} groups } } } }` },
   { name: "usageDashboard (UsagePage shape)", query: `query { usageDashboard(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { usage { data ${usageGroupSelection} totals ${usageGroupSelection} } timeseries { groups ${usageGroupSelection} points { ts totals ${usageGroupSelection} groups } } } members { userId name email } apiKeys { id name revokedAt } }` },
   { name: "overviewDashboard (OverviewPage shape)", query: `query { overviewDashboard { overview { requestCount totals { totalTokens } cost { selected baseline savings } routeQuality { lowConfidenceCount cheaperLikelyWouldWorkCount cheapCausedRetriesOrRepairsCount } } requests { createdAt selectedCost baselineCost usage { totalTokens } } modelUsage { data { key usage { totalTokens } cost { selected } } } } }` },
   { name: "costPage shape", query: `query { usageDashboard(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { usage { data ${usageGroupSelection} totals ${usageGroupSelection} } timeseries { groups ${usageGroupSelection} points { ts totals ${usageGroupSelection} groups } } } spendTab: usage(groupBy: user, start: "${RANGE.start}", end: "${RANGE.end}") { data ${usageGroupSelection} totals ${usageGroupSelection} } members { userId name email } apiKeys { id name revokedAt } modelPricing { model provider source seenInTraffic } }` },

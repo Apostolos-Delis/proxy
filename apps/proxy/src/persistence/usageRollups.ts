@@ -100,7 +100,7 @@ export type OpenAICacheAnalyticsRows = {
   trends: OpenAICacheTrendRow[];
 };
 
-export type UsageLatencyMode = "full" | "report";
+export type UsageLatencyMode = "none" | "full" | "report";
 
 const GROUP_KEY_SQL: Record<UsageRollupGroupBy, string> = {
   user: "coalesce(r.user_id, 'unknown')",
@@ -133,7 +133,12 @@ function bucketExpression(stepMs: number): SQL {
 // count) per request, and per-request ledger sums. Provider usage rows are the
 // attempt-linked ones; classifier rows have no attempt and only contribute
 // spend, never tokens.
-function requestMetricsCtes(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: SQL | null): SQL {
+function requestMetricsCtes(
+  scope: UsageRollupScope,
+  keyExpr: SQL,
+  bucketExpr: SQL | null,
+  includeLatency: boolean
+): SQL {
   const { organizationId, workspaceId, start, end } = scope;
   // Dates travel as ISO strings: raw-sql params skip drizzle's column-level
   // Date serialization and postgres-js does not encode Date objects itself.
@@ -152,9 +157,12 @@ function requestMetricsCtes(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: S
         count(*)::int as attempt_count,
         (array_agg(pa.terminal_status order by pa.started_at desc))[1] as last_status,
         (array_agg(pa.provider order by pa.started_at desc))[1] as last_provider,
-        (array_agg(pa.model order by pa.started_at desc))[1] as last_model,
+        (array_agg(pa.model order by pa.started_at desc))[1] as last_model
+        ${includeLatency
+          ? sql`,
         (array_agg(pa.started_at order by pa.started_at desc))[1] as last_started_at,
-        (array_agg(pa.completed_at order by pa.started_at desc))[1] as last_completed_at
+        (array_agg(pa.completed_at order by pa.started_at desc))[1] as last_completed_at`
+          : sql``}
       from provider_attempts pa
       join scoped_requests sr on sr.id = pa.request_id
       where pa.organization_id = ${organizationId}
@@ -203,7 +211,9 @@ function requestMetricsCtes(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: S
         coalesce(la.provider_cost_micros, 0)::double precision as provider_cost_micros,
         coalesce(la.classifier_cost_micros, 0)::double precision as classifier_cost_micros,
         floor(extract(epoch from r.created_at) * 1000)::double precision as created_at_ms,
-        round(extract(epoch from (aa.last_completed_at - aa.last_started_at)) * 1000)::double precision as latency_ms
+        ${includeLatency
+          ? sql`round(extract(epoch from (aa.last_completed_at - aa.last_started_at)) * 1000)::double precision`
+          : sql`null::double precision`} as latency_ms
       from scoped_requests r
       left join route_decisions d
         on d.request_id = r.id
@@ -215,21 +225,71 @@ function requestMetricsCtes(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: S
   `;
 }
 
-function reportSelect(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: SQL | null, latencyMode: UsageLatencyMode): SQL {
+function reportSelect(
+  scope: UsageRollupScope,
+  keyExpr: SQL,
+  bucketExpr: SQL | null,
+  latencyMode: UsageLatencyMode,
+  includePricingDimensions: boolean
+): SQL {
   const bucketed = bucketExpr !== null;
   const bucketedLatency = bucketed && latencyMode === "full";
+  const pricingFields = includePricingDimensions
+    ? sql`surface, requested_model, selected_provider, selected_model`
+    : sql`null::text as surface, null::text as requested_model, null::text as selected_provider, null::text as selected_model`;
+  let pricingGroupBy: SQL;
+  if (includePricingDimensions && bucketed) {
+    pricingGroupBy = sql.raw("group_key, bucket_ts, surface, requested_model, selected_provider, selected_model");
+  } else if (includePricingDimensions) {
+    pricingGroupBy = sql.raw("group_key, surface, requested_model, selected_provider, selected_model");
+  } else if (bucketed) {
+    pricingGroupBy = sql.raw("group_key, bucket_ts");
+  } else {
+    pricingGroupBy = sql.raw("group_key");
+  }
+  const latencySelect = latencyMode === "none"
+    ? sql``
+    : sql`
+      union all
+      select
+        'latency'::text as row_kind,
+        group_key,
+        grouping(group_key)::int as key_grouped,
+        ${bucketedLatency ? sql`bucket_ts` : sql`null::double precision`} as bucket_ts,
+        ${bucketedLatency ? sql`grouping(bucket_ts)::int` : sql`null::int`} as bucket_grouped,
+        null::text as surface,
+        null::text as requested_model,
+        null::text as selected_provider,
+        null::text as selected_model,
+        null::int as request_count,
+        null::int as failed_requests,
+        null::int as retried_requests,
+        null::double precision as input_tokens,
+        null::double precision as cached_input_tokens,
+        null::double precision as cache_creation_input_tokens,
+        null::double precision as output_tokens,
+        null::double precision as reasoning_tokens,
+        null::double precision as total_tokens,
+        null::double precision as uncached_input_tokens,
+        null::double precision as provider_cost_micros,
+        null::double precision as classifier_cost_micros,
+        null::double precision as earliest_created_at_ms,
+        (avg(latency_ms) filter (where latency_ms >= 0))::double precision as average_ms,
+        (percentile_disc(0.95) within group (order by latency_ms) filter (where latency_ms >= 0))::double precision as p95_ms
+      from request_metrics
+      group by grouping sets ${bucketedLatency
+        ? sql.raw("((group_key), (bucket_ts, group_key), (bucket_ts), ())")
+        : sql.raw("((group_key), ())")}
+    `;
   return sql`
-    ${requestMetricsCtes(scope, keyExpr, bucketExpr)}
+    ${requestMetricsCtes(scope, keyExpr, bucketExpr, latencyMode !== "none")}
     select
       'rollup'::text as row_kind,
       group_key,
       0::int as key_grouped,
       ${bucketed ? sql`bucket_ts` : sql`null::double precision`} as bucket_ts,
       ${bucketed ? sql`0::int` : sql`null::int`} as bucket_grouped,
-      surface,
-      requested_model,
-      selected_provider,
-      selected_model,
+      ${pricingFields},
       count(*)::int as request_count,
       (count(*) filter (where terminal_status = 'failed'))::int as failed_requests,
       (count(*) filter (where attempt_count > 1))::int as retried_requests,
@@ -246,39 +306,8 @@ function reportSelect(scope: UsageRollupScope, keyExpr: SQL, bucketExpr: SQL | n
       null::double precision as average_ms,
       null::double precision as p95_ms
     from request_metrics
-    group by ${bucketed
-      ? sql.raw("group_key, bucket_ts, surface, requested_model, selected_provider, selected_model")
-      : sql.raw("group_key, surface, requested_model, selected_provider, selected_model")}
-    union all
-    select
-      'latency'::text as row_kind,
-      group_key,
-      grouping(group_key)::int as key_grouped,
-      ${bucketedLatency ? sql`bucket_ts` : sql`null::double precision`} as bucket_ts,
-      ${bucketedLatency ? sql`grouping(bucket_ts)::int` : sql`null::int`} as bucket_grouped,
-      null::text as surface,
-      null::text as requested_model,
-      null::text as selected_provider,
-      null::text as selected_model,
-      null::int as request_count,
-      null::int as failed_requests,
-      null::int as retried_requests,
-      null::double precision as input_tokens,
-      null::double precision as cached_input_tokens,
-      null::double precision as cache_creation_input_tokens,
-      null::double precision as output_tokens,
-      null::double precision as reasoning_tokens,
-      null::double precision as total_tokens,
-      null::double precision as uncached_input_tokens,
-      null::double precision as provider_cost_micros,
-      null::double precision as classifier_cost_micros,
-      null::double precision as earliest_created_at_ms,
-      (avg(latency_ms) filter (where latency_ms >= 0))::double precision as average_ms,
-      (percentile_disc(0.95) within group (order by latency_ms) filter (where latency_ms >= 0))::double precision as p95_ms
-    from request_metrics
-    group by grouping sets ${bucketedLatency
-      ? sql.raw("((group_key), (bucket_ts, group_key), (bucket_ts), ())")
-      : sql.raw("((group_key), ())")}
+    group by ${pricingGroupBy}
+    ${latencySelect}
   `;
 }
 
@@ -287,7 +316,7 @@ export async function usageRollupReportRows(
   scope: UsageRollupScope,
   groupBy: UsageRollupGroupBy
 ): Promise<UsageRollupReport> {
-  const rows = await executeRows(db, reportSelect(scope, keyExpression(groupBy, null), null, "full"));
+  const rows = await executeRows(db, reportSelect(scope, keyExpression(groupBy, null), null, "full", true));
   return splitReportRows(rows, false);
 }
 
@@ -297,11 +326,18 @@ export async function usageBucketRollupReportRows(
   groupBy: UsageRollupGroupBy,
   stepMs: number,
   keptKeys: string[] | null,
-  latencyMode: UsageLatencyMode = "full"
+  latencyMode: UsageLatencyMode = "full",
+  includePricingDimensions = true
 ): Promise<UsageBucketRollupReport> {
   const rows = await executeRows(
     db,
-    reportSelect(scope, keyExpression(groupBy, keptKeys), bucketExpression(stepMs), latencyMode)
+    reportSelect(
+      scope,
+      keyExpression(groupBy, keptKeys),
+      bucketExpression(stepMs),
+      latencyMode,
+      includePricingDimensions
+    )
   );
   return splitReportRows(rows, true);
 }

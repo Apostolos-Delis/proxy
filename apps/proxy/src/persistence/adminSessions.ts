@@ -15,6 +15,8 @@ import type { OrganizationMemberRole } from "@proxy/schema";
 
 import { createId, sha256 } from "../util.js";
 
+const LAST_SEEN_UPDATE_INTERVAL_MS = 60_000;
+
 export type AdminSessionIdentity = {
   sessionId: string;
   organizationId: string;
@@ -89,10 +91,12 @@ export class AdminSessionStore {
     if (row.session.expiresAt.getTime() <= now.getTime()) return null;
     if (row.member.status !== "active") return null;
 
-    await this.db
-      .update(userSessions)
-      .set({ lastSeenAt: now })
-      .where(eq(userSessions.id, row.session.id));
+    if (!row.session.lastSeenAt || now.getTime() - row.session.lastSeenAt.getTime() >= LAST_SEEN_UPDATE_INTERVAL_MS) {
+      await this.db
+        .update(userSessions)
+        .set({ lastSeenAt: now })
+        .where(eq(userSessions.id, row.session.id));
+    }
 
     return {
       sessionId: row.session.id,

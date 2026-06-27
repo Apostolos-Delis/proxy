@@ -78,6 +78,12 @@ export function UsagePage() {
     placeholderData: keepPreviousData
   });
   const dashboardReady = Boolean(dashboardQueryData) && !isDashboardPlaceholderData;
+  const { data: usageReportQueryData } = useQuery({
+    queryKey: ["usage-report", dimension, start, end],
+    queryFn: () => fetchUsageReport(dimension, { start, end }),
+    placeholderData: keepPreviousData,
+    enabled: layout === "console" && dashboardReady
+  });
   const { error: routeOutputQueryError, data: routeOutputQueryData } = useQuery({
     queryKey: ["route-output-report", start, end],
     queryFn: () => fetchRouteOutputReport({ start, end }),
@@ -114,7 +120,7 @@ export function UsagePage() {
 
   if (error) return <PageState title="Usage" label={error.message} />;
 
-  const usage = dashboardQueryData?.usage;
+  const usage = layout === "console" ? (usageReportQueryData ?? dashboardQueryData?.usage) : dashboardQueryData?.usage;
   const timeseries = dashboardQueryData?.timeseries;
   if (!usage || !timeseries) return <PageSkeleton blocks={[460, 260]} />;
 
