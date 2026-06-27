@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { CONSERVATIVE_PROVIDER_CACHING_CAPABILITIES } from "@proxy/schema";
 
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
@@ -67,7 +68,10 @@ describe("provider registry admin GraphQL", () => {
       adapterConfig: {},
       authStyle: "bearer",
       defaultHeaders: { "x-acme-region": "iad" },
-      capabilities: { efforts: ["low", "medium", "high"] },
+      capabilities: {
+        efforts: ["low", "medium", "high"],
+        promptCaching: CONSERVATIVE_PROVIDER_CACHING_CAPABILITIES
+      },
       forwardHarnessHeaders: true,
       enabled: true,
       builtin: false
@@ -95,7 +99,10 @@ describe("provider registry admin GraphQL", () => {
       displayName: "Acme OpenAI Gateway",
       authStyle: "none",
       endpoints: [{ dialect: "openai-responses", path: "/responses" }],
-      capabilities: { efforts: ["low", "medium", "high", "xhigh"] },
+      capabilities: {
+        efforts: ["low", "medium", "high", "xhigh"],
+        promptCaching: CONSERVATIVE_PROVIDER_CACHING_CAPABILITIES
+      },
       forwardHarnessHeaders: false,
       enabled: true
     });

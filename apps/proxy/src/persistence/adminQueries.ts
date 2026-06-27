@@ -1,6 +1,13 @@
 import { performance } from "node:perf_hooks";
 
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  providerCapabilitiesWithDefaults,
+  type ProviderAccountAuthType,
+  type ProviderAdapterKind,
+  type ProviderAuthStyle,
+  type ProviderRegistryEndpoint
+} from "@proxy/schema";
 
 import {
   agentSessions,
@@ -51,8 +58,6 @@ import {
   type ModelPricingEntry,
   type ModelPricingTable
 } from "../pricing.js";
-import type { ProviderAccountAuthType, ProviderAdapterKind, ProviderAuthStyle, ProviderRegistryEndpoint } from "@proxy/schema";
-
 import type { JsonObject, RouteName } from "../types.js";
 import { searchAdminEntities } from "./adminSearch.js";
 import { workspaceScope } from "./scope.js";
@@ -2430,7 +2435,7 @@ function providerRegistrySummary(row: ProviderRegistryRow) {
     authStyle: row.authStyle,
     endpoints: row.endpoints,
     defaultHeaders: row.defaultHeaders,
-    capabilities: row.capabilities,
+    capabilities: providerCapabilitiesWithDefaults(row.slug, row.capabilities),
     forwardHarnessHeaders: row.forwardHarnessHeaders,
     enabled: row.enabled,
     builtin: row.organizationId === null

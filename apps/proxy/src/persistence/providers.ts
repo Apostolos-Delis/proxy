@@ -2,13 +2,15 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
 import { providers, type ProxyDbSession } from "@proxy/db";
-import type {
-  Dialect,
-  Provider,
-  ProviderAdapterKind,
-  ProviderAuthStyle,
-  ProviderRegistryEndpoint as SchemaProviderRegistryEndpoint,
-  ProviderRegistryHttpEndpoint as SchemaProviderRegistryHttpEndpoint
+import {
+  providerCapabilitiesWithDefaults,
+  type Dialect,
+  type Provider,
+  type ProviderAdapterKind,
+  type ProviderAuthStyle,
+  type ProviderCapabilities,
+  type ProviderRegistryEndpoint as SchemaProviderRegistryEndpoint,
+  type ProviderRegistryHttpEndpoint as SchemaProviderRegistryHttpEndpoint
 } from "@proxy/schema";
 import { and, eq, isNull } from "drizzle-orm";
 
@@ -28,7 +30,7 @@ export type ProviderRegistryEntry = {
   authStyle: ProviderAuthStyle;
   endpoints: ProviderRegistryEndpoint[];
   defaultHeaders: Record<string, string>;
-  capabilities: Record<string, unknown>;
+  capabilities: ProviderCapabilities;
   forwardHarnessHeaders: boolean;
   enabled: boolean;
   builtin: boolean;
@@ -121,7 +123,9 @@ export class ConfigProviderRegistry implements ProviderRegistryResolver {
           { dialect: "openai-chat" as const, path: "/chat/completions" }
         ],
         defaultHeaders: {},
-        capabilities: { efforts: ["low", "medium", "high", "xhigh"] },
+        capabilities: providerCapabilitiesWithDefaults("openai", {
+          efforts: ["low", "medium", "high", "xhigh"]
+        }),
         forwardHarnessHeaders: true,
         enabled: true,
         builtin: true
@@ -140,7 +144,9 @@ export class ConfigProviderRegistry implements ProviderRegistryResolver {
           { dialect: "anthropic-messages" as const, path: "/messages" }
         ],
         defaultHeaders: {},
-        capabilities: { efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"] },
+        capabilities: providerCapabilitiesWithDefaults("anthropic", {
+          efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"]
+        }),
         forwardHarnessHeaders: true,
         enabled: true,
         builtin: true
@@ -161,7 +167,7 @@ function providerEntry(row: typeof providers.$inferSelect): ProviderRegistryEntr
     authStyle: row.authStyle,
     endpoints: row.endpoints.filter(isProviderEndpoint),
     defaultHeaders: row.defaultHeaders,
-    capabilities: row.capabilities,
+    capabilities: providerCapabilitiesWithDefaults(row.slug, row.capabilities),
     forwardHarnessHeaders: row.forwardHarnessHeaders,
     enabled: row.enabled,
     builtin: row.organizationId === null

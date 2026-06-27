@@ -5,7 +5,11 @@ import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { eq, isNull } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import type { RoutingConfig } from "@proxy/schema";
+import {
+  ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
+  OPENAI_PROVIDER_CACHING_CAPABILITIES,
+  type RoutingConfig
+} from "@proxy/schema";
 
 import { hashApiKey } from "./apiKeyHash.js";
 import { createPgliteDatabase } from "./client.js";
@@ -150,7 +154,10 @@ describe("database seed", () => {
           { dialect: "openai-responses", path: "/responses" },
           { dialect: "openai-chat", path: "/chat/completions" }
         ],
-        capabilities: { efforts: ["low", "medium", "high", "xhigh"] },
+        capabilities: {
+          efforts: ["low", "medium", "high", "xhigh"],
+          promptCaching: OPENAI_PROVIDER_CACHING_CAPABILITIES
+        },
         forwardHarnessHeaders: true,
         enabled: true
       }),
@@ -162,7 +169,10 @@ describe("database seed", () => {
         endpoints: [
           { dialect: "anthropic-messages", path: "/messages" }
         ],
-        capabilities: { efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"] },
+        capabilities: {
+          efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"],
+          promptCaching: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES
+        },
         forwardHarnessHeaders: true,
         enabled: true
       }),
