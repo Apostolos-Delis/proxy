@@ -37,6 +37,13 @@ describe("promptCachePlans admin query", () => {
         mode: "observe",
         appliedControls: [],
         skippedControls: [{ control: "top_level_auto_breakpoint", reason: "setting_disabled" }]
+      }),
+      promptCachePlanEvent("plan_4", organizationId, workspaceId, {
+        provider: "google-gemini",
+        model: "gemini-2.5-pro",
+        mode: "implicit",
+        appliedControls: ["implicit_prefix_caching"],
+        skippedControls: [{ control: "cache_key_preserved", reason: "provider_capability_unavailable" }]
       })
     ]);
 
@@ -53,7 +60,7 @@ describe("promptCachePlans admin query", () => {
       }`
     )).data?.promptCachePlans;
 
-    expect(result.totalPlans).toBe(3);
+    expect(result.totalPlans).toBe(4);
     expect(result.sampled).toBe(false);
     expect(result.plans).toContainEqual({
       provider: "openai",
@@ -79,6 +86,23 @@ describe("promptCachePlans admin query", () => {
       control: "top_level_auto_breakpoint",
       status: "skipped",
       reason: "setting_disabled",
+      count: 1
+    });
+    expect(result.plans).toContainEqual({
+      provider: "google-gemini",
+      model: "gemini-2.5-pro",
+      mode: "implicit",
+      count: 1,
+      appliedControls: 1,
+      skippedControls: 1
+    });
+    expect(result.controls).toContainEqual({
+      provider: "google-gemini",
+      model: "gemini-2.5-pro",
+      mode: "implicit",
+      control: "cache_key_preserved",
+      status: "skipped",
+      reason: "provider_capability_unavailable",
       count: 1
     });
   });

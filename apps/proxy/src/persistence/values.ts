@@ -28,7 +28,9 @@ export type NormalizedUsage = {
 // shape is detected by its top-level cache keys, so re-normalizing an
 // already-normalized (camelCase) object stays a no-op. Chat-completions
 // usage (prompt_tokens/completion_tokens + prompt_tokens_details/
-// completion_tokens_details) reports inclusively like Responses does.
+// completion_tokens_details) reports inclusively like Responses does. Gemini
+// reports cached content as a subset of total input in its Interactions usage
+// and generateContent usageMetadata shapes.
 export function normalizeUsage(usage: Record<string, unknown>): NormalizedUsage {
   const inputDetails =
     recordValue(usage.input_tokens_details) ?? recordValue(usage.prompt_tokens_details) ?? {};
@@ -42,16 +44,22 @@ export function normalizeUsage(usage: Record<string, unknown>): NormalizedUsage 
   const reportedInputTokens =
     numberValue(usage.input_tokens) ??
     numberValue(usage.prompt_tokens) ??
+    numberValue(usage.promptTokenCount) ??
+    numberValue(usage.total_input_tokens) ??
     numberValue(usage.inputTokens) ??
     0;
   const outputTokens =
     numberValue(usage.output_tokens) ??
     numberValue(usage.completion_tokens) ??
+    numberValue(usage.candidatesTokenCount) ??
+    numberValue(usage.total_output_tokens) ??
     numberValue(usage.outputTokens) ??
     0;
   const cachedInputTokens =
     numberValue(inputDetails.cached_tokens) ??
     anthropicCacheReadTokens ??
+    numberValue(usage.cachedContentTokenCount) ??
+    numberValue(usage.total_cached_tokens) ??
     numberValue(usage.cachedInputTokens) ??
     0;
   const cacheCreationInputTokens =
@@ -63,6 +71,8 @@ export function normalizeUsage(usage: Record<string, unknown>): NormalizedUsage 
     : reportedInputTokens;
   const reasoningTokens =
     numberValue(outputDetails.reasoning_tokens) ??
+    numberValue(usage.thoughtsTokenCount) ??
+    numberValue(usage.total_thought_tokens) ??
     numberValue(usage.reasoningTokens) ??
     0;
   return {
@@ -73,7 +83,7 @@ export function normalizeUsage(usage: Record<string, unknown>): NormalizedUsage 
     reasoningTokens,
     totalTokens: exclusiveInputShape
       ? inputTokens + outputTokens
-      : numberValue(usage.total_tokens) ?? numberValue(usage.totalTokens) ?? inputTokens + outputTokens
+      : numberValue(usage.total_tokens) ?? numberValue(usage.totalTokenCount) ?? numberValue(usage.totalTokens) ?? inputTokens + outputTokens
   };
 }
 

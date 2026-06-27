@@ -45,7 +45,7 @@ export const PROVIDER_ACCOUNT_AUTH_TYPES = ["api_key", "oauth"] as const;
 export const PROVIDER_CACHE_TTLS = ["5m", "1h", "24h"] as const;
 export const PROVIDER_CACHE_KEY_FIELDS = ["prompt_cache_key", "routing_key"] as const;
 export const PROVIDER_CACHE_RETENTION_FIELDS = ["prompt_cache_retention"] as const;
-export const PROVIDER_CACHE_USAGE_SHAPES = ["openai", "anthropic", "provider_specific"] as const;
+export const PROVIDER_CACHE_USAGE_SHAPES = ["openai", "anthropic", "gemini", "provider_specific"] as const;
 
 // Claude subscription tokens minted by `claude setup-token`. Anthropic has
 // rotated token prefixes before — keep every prefix check on this constant.
@@ -442,6 +442,14 @@ export const ANTHROPIC_PROVIDER_CACHING_CAPABILITIES = {
   supportedTtls: ["5m", "1h"],
   prewarm: true,
   usageShape: "anthropic"
+} satisfies ProviderCachingCapabilities;
+
+export const GEMINI_PROVIDER_CACHING_CAPABILITIES = {
+  implicitPrefixCaching: true,
+  explicitBreakpoints: false,
+  supportedTtls: [],
+  prewarm: false,
+  usageShape: "gemini"
 } satisfies ProviderCachingCapabilities;
 
 export function builtinProviderCachingCapabilities(provider: Provider): ProviderCachingCapabilities {

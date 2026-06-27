@@ -98,6 +98,42 @@ describe("provider usage normalization fixtures", () => {
       }
     },
     {
+      name: "gemini interactions usage",
+      usage: {
+        total_input_tokens: 1600,
+        total_cached_tokens: 600,
+        total_output_tokens: 75,
+        total_thought_tokens: 25,
+        total_tokens: 1700
+      },
+      expected: {
+        inputTokens: 1600,
+        cachedInputTokens: 600,
+        cacheCreationInputTokens: 0,
+        outputTokens: 75,
+        reasoningTokens: 25,
+        totalTokens: 1700
+      }
+    },
+    {
+      name: "gemini generateContent usage metadata",
+      usage: {
+        promptTokenCount: 1600,
+        cachedContentTokenCount: 600,
+        candidatesTokenCount: 75,
+        thoughtsTokenCount: 25,
+        totalTokenCount: 1700
+      },
+      expected: {
+        inputTokens: 1600,
+        cachedInputTokens: 600,
+        cacheCreationInputTokens: 0,
+        outputTokens: 75,
+        reasoningTokens: 25,
+        totalTokens: 1700
+      }
+    },
+    {
       name: "missing usage",
       usage: {},
       expected: {

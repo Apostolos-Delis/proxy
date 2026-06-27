@@ -86,7 +86,7 @@ type ProviderCachingCapabilities = {
   cacheKeyField?: "prompt_cache_key" | "routing_key";
   retentionField?: "prompt_cache_retention";
   prewarm: boolean;
-  usageShape: "openai" | "anthropic" | "provider_specific";
+  usageShape: "openai" | "anthropic" | "gemini" | "provider_specific";
 };
 ```
 
@@ -288,6 +288,23 @@ Acceptance criteria:
 - New provider support requires adding capabilities and one provider-edge mapper, not changing shared routing logic.
 - Usage ledger still stores normalized cache-read/cache-write fields.
 - Caching page works without provider-specific UI branches.
+
+#### Gemini observe-only adapter result
+
+Status: add Gemini as the first third-provider observe-only cache capability and usage-normalization shape. Do not add a built-in provider, native Gemini request dialect, explicit cache creation, or request mutation in this milestone.
+
+Google docs checked on 2026-06-27:
+
+- [Gemini context caching](https://ai.google.dev/gemini-api/docs/caching) says the Interactions API supports implicit caching only, with no explicit cache-object management in that API version; Gemini 2.5 and newer models have implicit caching enabled by default.
+- The same page says cache hits are visible in `usage_metadata` / `usageMetadata`.
+- [Gemini token usage docs](https://ai.google.dev/gemini-api/docs/tokens) describe Interactions usage fields for total input, output, thinking, cached content, tool-use, and total tokens.
+- [GenerateContent API UsageMetadata](https://ai.google.dev/api/generate-content#UsageMetadata) says `promptTokenCount` includes cached content, `cachedContentTokenCount` is the cached part of the prompt, `thoughtsTokenCount` records thinking tokens, and `totalTokenCount` is prompt plus thoughts plus response candidates.
+
+Proxy representation:
+
+- `GEMINI_PROVIDER_CACHING_CAPABILITIES` is an implicit-prefix, observe-only capability with no cache-key field, no retention field, no explicit breakpoint support, and no prewarm support.
+- Gemini usage normalization maps Interactions `total_input_tokens` / `total_cached_tokens` / `total_output_tokens` / `total_thought_tokens` and GenerateContent `promptTokenCount` / `cachedContentTokenCount` / `candidatesTokenCount` / `thoughtsTokenCount` into the existing normalized usage contract.
+- OpenAI-native `prompt_cache_key` and `prompt_cache_retention` sent to a Gemini-backed OpenAI-compatible endpoint are recorded as unsupported skipped controls, not forwarded policy owned by Proxy.
 
 ### 5. Cache prewarm experiment
 
