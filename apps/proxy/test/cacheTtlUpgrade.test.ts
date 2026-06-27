@@ -8,8 +8,12 @@ import {
   requests,
   users
 } from "@proxy/db";
+import { ANTHROPIC_PROVIDER_CACHING_CAPABILITIES } from "@proxy/schema";
 
-import { rewriteSurfaceRequest, rewriteTokenCountRequest } from "../src/adapters.js";
+import {
+  rewriteSurfaceRequestWithPromptCachePlan,
+  rewriteTokenCountRequestWithPromptCachePlan
+} from "../src/adapters.js";
 import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
 import { captureFixture, usageRequest, type PromptTestFixture } from "./promptTestFixture.js";
@@ -54,6 +58,22 @@ function anthropicDecision(model = "claude-opus-4-8") {
   };
 }
 
+function rewriteAnthropicWithPlan(body: unknown, settings: { automaticCaching?: boolean; cacheTtlUpgrade?: boolean }) {
+  return rewriteSurfaceRequestWithPromptCachePlan(body, anthropicDecision(), undefined, {
+    context: { surface: "anthropic-messages" },
+    capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
+    settings
+  }).body as any;
+}
+
+function rewriteAnthropicTokenCountWithPlan(body: unknown, settings: { automaticCaching?: boolean; cacheTtlUpgrade?: boolean }) {
+  return rewriteTokenCountRequestWithPromptCachePlan(body, anthropicDecision(), undefined, {
+    context: { surface: "anthropic-messages" },
+    capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
+    settings
+  }).body as any;
+}
+
 describe("upgradeCacheControlTtl transform", () => {
   const largeText = "x".repeat(8192);
   const largeMultiTurnMessages = [
@@ -72,7 +92,7 @@ describe("upgradeCacheControlTtl transform", () => {
       messages: largeMultiTurnMessages
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { cacheTtlUpgrade: true });
 
     expect(result.system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
     expect(result.system[1].cache_control).toBeUndefined();
@@ -93,7 +113,7 @@ describe("upgradeCacheControlTtl transform", () => {
       ]
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { cacheTtlUpgrade: true });
 
     // Every breakpoint upgraded — a block keeps ttl:1h once it becomes history,
     // so the cached prefix bytes do not shift turn over turn.
@@ -120,7 +140,7 @@ describe("upgradeCacheControlTtl transform", () => {
       ]
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { cacheTtlUpgrade: true });
     expect(result.messages[2].content[0].content[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
@@ -131,7 +151,7 @@ describe("upgradeCacheControlTtl transform", () => {
       messages: [{ role: "user", content: "hi" }]
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { cacheTtlUpgrade: true });
     expect(result.system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
@@ -142,7 +162,7 @@ describe("upgradeCacheControlTtl transform", () => {
       messages: [{ role: "user", content: "hi" }]
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: false }) as any;
+    const result = rewriteAnthropicWithPlan(body, { cacheTtlUpgrade: false });
     expect(result.system[0].cache_control).toEqual({ type: "ephemeral" });
   });
 
@@ -153,7 +173,7 @@ describe("upgradeCacheControlTtl transform", () => {
       messages: largeMultiTurnMessages
     };
 
-    const result = rewriteTokenCountRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicTokenCountWithPlan(body, { cacheTtlUpgrade: true });
     expect(result.system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
@@ -164,7 +184,7 @@ describe("upgradeCacheControlTtl transform", () => {
       messages: largeMultiTurnMessages
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { cacheTtlUpgrade: true });
     expect(result.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
@@ -175,7 +195,7 @@ describe("upgradeCacheControlTtl transform", () => {
       messages: [{ role: "user", content: "hi" }]
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { cacheTtlUpgrade: true });
     expect(result.cache_control).toEqual({ type: "ephemeral", ttl: "5m" });
   });
 
@@ -192,7 +212,7 @@ describe("upgradeCacheControlTtl transform", () => {
       messages: largeMultiTurnMessages
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { cacheTtlUpgrade: true });
     expect(result.tools[0].cache_control).toBeUndefined();
     expect(result.tools[1].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
     expect(result.system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
@@ -205,7 +225,7 @@ describe("upgradeCacheControlTtl transform", () => {
       messages: largeMultiTurnMessages
     };
 
-    const result = rewriteTokenCountRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicTokenCountWithPlan(body, { cacheTtlUpgrade: true });
     expect(result.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
@@ -216,7 +236,7 @@ describe("upgradeCacheControlTtl transform", () => {
       messages: [{ role: "user", content: "hi" }]
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { cacheTtlUpgrade: true });
     expect(result.system[0].cache_control).toEqual({ type: "ephemeral" });
   });
 
@@ -231,7 +251,7 @@ describe("upgradeCacheControlTtl transform", () => {
       ]
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { cacheTtlUpgrade: true });
     expect(result.cache_control).toEqual({ type: "ephemeral" });
   });
 
@@ -246,7 +266,7 @@ describe("upgradeCacheControlTtl transform", () => {
       ]
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { cacheTtlUpgrade: true });
     expect(result.system[0].cache_control).toEqual({ type: "ephemeral" });
   });
 
@@ -264,7 +284,7 @@ describe("upgradeCacheControlTtl transform", () => {
       messages: largeMultiTurnMessages
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { cacheTtlUpgrade: true });
     expect(result.tools[0].cache_control).toEqual({ type: "ephemeral" });
   });
 
@@ -290,7 +310,7 @@ describe("upgradeCacheControlTtl transform", () => {
       ]
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { upgradeCacheTtl: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { cacheTtlUpgrade: true });
     expect(result.messages[2].content[0].content[0].cache_control).toEqual({ type: "ephemeral" });
   });
 });

@@ -10,8 +10,8 @@ import {
   openAIChatSurface,
   openAIResponsesSurface,
   type ProviderForwardAttemptInput,
-  rewriteSurfaceRequest,
-  rewriteTokenCountRequest
+  rewriteSurfaceRequestWithPromptCachePlan,
+  rewriteTokenCountRequestWithPromptCachePlan
 } from "./adapters.js";
 import {
   actorForIdentity,
@@ -59,7 +59,6 @@ import { ConfigProviderRegistry } from "./persistence/providers.js";
 import { resolveRoutingSelection, type RoutingConfigResolverLike } from "./persistence/routingConfig.js";
 import { modelDiscoveryResponse } from "./modelDiscovery.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
-import { computePromptCachePlan } from "./promptCachePlan.js";
 import { ProjectionService } from "./projections.js";
 import { appendTokensAttributed } from "./tokenAttribution.js";
 import {
@@ -568,21 +567,24 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         artifactStore: persistence?.promptArtifacts,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
-      const forwardedBody = rewriteSurfaceRequest(compression.body, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching });
+      const cacheSettings = { automaticCaching: resolved.automaticCaching, cacheTtlUpgrade: resolved.cacheTtlUpgrade };
       const providerAttempts = await buildProviderForwardAttempts({
         persistence,
         identity,
-        body: compression.body,
-        context,
-        cacheSettings: { automaticCaching: resolved.automaticCaching, cacheTtlUpgrade: resolved.cacheTtlUpgrade },
         decision,
-        rewrite: (attemptDecision) => rewriteSurfaceRequest(
+        rewrite: (attemptDecision, candidate) => rewriteSurfaceRequestWithPromptCachePlan(
           compression.body,
           attemptDecision,
           systemPrompt,
-          { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }
+          { context, capabilities: candidate.providerCachingCapabilities, settings: cacheSettings }
         )
       });
+      const forwardedBody = providerAttempts[0]?.body ?? rewriteSurfaceRequestWithPromptCachePlan(
+        compression.body,
+        decision,
+        systemPrompt,
+        { context, settings: cacheSettings }
+      ).body;
       await appendCompressionEvidence({
         events,
         tenantId: identity.organizationId,
@@ -787,21 +789,24 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         artifactStore: persistence?.promptArtifacts,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
-      const forwardedBody = rewriteSurfaceRequest(compression.body, decision, resolved.systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching });
+      const cacheSettings = { automaticCaching: resolved.automaticCaching, cacheTtlUpgrade: resolved.cacheTtlUpgrade };
       const providerAttempts = await buildProviderForwardAttempts({
         persistence,
         identity,
-        body: compression.body,
-        context,
-        cacheSettings: { automaticCaching: resolved.automaticCaching, cacheTtlUpgrade: resolved.cacheTtlUpgrade },
         decision,
-        rewrite: (attemptDecision) => rewriteSurfaceRequest(
+        rewrite: (attemptDecision, candidate) => rewriteSurfaceRequestWithPromptCachePlan(
           compression.body,
           attemptDecision,
           resolved.systemPrompt,
-          { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }
+          { context, capabilities: candidate.providerCachingCapabilities, settings: cacheSettings }
         )
       });
+      const forwardedBody = providerAttempts[0]?.body ?? rewriteSurfaceRequestWithPromptCachePlan(
+        compression.body,
+        decision,
+        resolved.systemPrompt,
+        { context, settings: cacheSettings }
+      ).body;
       await appendCompressionEvidence({
         events,
         tenantId: identity.organizationId,
@@ -1015,21 +1020,24 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         artifactStore: persistence?.promptArtifacts,
         warn: (err, message) => app.log.warn({ err, requestId }, message)
       });
-      const forwardedBody = rewriteSurfaceRequest(compression.body, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching });
+      const cacheSettings = { automaticCaching: resolved.automaticCaching, cacheTtlUpgrade: resolved.cacheTtlUpgrade };
       const providerAttempts = await buildProviderForwardAttempts({
         persistence,
         identity,
-        body: compression.body,
-        context,
-        cacheSettings: { automaticCaching: resolved.automaticCaching, cacheTtlUpgrade: resolved.cacheTtlUpgrade },
         decision,
-        rewrite: (attemptDecision) => rewriteSurfaceRequest(
+        rewrite: (attemptDecision, candidate) => rewriteSurfaceRequestWithPromptCachePlan(
           compression.body,
           attemptDecision,
           systemPrompt,
-          { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching }
+          { context, capabilities: candidate.providerCachingCapabilities, settings: cacheSettings }
         )
       });
+      const forwardedBody = providerAttempts[0]?.body ?? rewriteSurfaceRequestWithPromptCachePlan(
+        compression.body,
+        decision,
+        systemPrompt,
+        { context, settings: cacheSettings }
+      ).body;
       await appendCompressionEvidence({
         events,
         tenantId: identity.organizationId,
@@ -1191,21 +1199,24 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           profile: harnessProfileByName(context.harness)
         }
       );
-      const forwardedBody = rewriteTokenCountRequest(countCompression.body, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade });
+      const cacheSettings = { automaticCaching: false, cacheTtlUpgrade: resolved.cacheTtlUpgrade };
       const providerAttempts = await buildProviderForwardAttempts({
         persistence,
         identity,
-        body: countCompression.body,
-        context,
-        cacheSettings: { automaticCaching: false, cacheTtlUpgrade: resolved.cacheTtlUpgrade },
         decision,
-        rewrite: (attemptDecision) => rewriteTokenCountRequest(
+        rewrite: (attemptDecision, candidate) => rewriteTokenCountRequestWithPromptCachePlan(
           countCompression.body,
           attemptDecision,
           systemPrompt,
-          { upgradeCacheTtl: resolved.cacheTtlUpgrade }
+          { context, capabilities: candidate.providerCachingCapabilities, settings: cacheSettings }
         )
       });
+      const forwardedBody = providerAttempts[0]?.body ?? rewriteTokenCountRequestWithPromptCachePlan(
+        countCompression.body,
+        decision,
+        systemPrompt,
+        { context, settings: cacheSettings }
+      ).body;
       await appendCompressionEvidence({
         events,
         tenantId: identity.organizationId,
@@ -1330,14 +1341,8 @@ function sendTrafficLimitDenied(reply: FastifyReply, result: TrafficLimitDenied)
 async function buildProviderForwardAttempts(input: {
   persistence: AppPersistence | undefined;
   identity: RequestIdentity;
-  body: unknown;
-  context: RouteContext;
-  cacheSettings: {
-    automaticCaching: boolean;
-    cacheTtlUpgrade: boolean;
-  };
   decision: RouteDecision;
-  rewrite: (decision: RouteDecision) => unknown;
+  rewrite: (decision: RouteDecision, candidate: RouteProviderAttempt) => Pick<ProviderForwardAttemptInput, "body" | "promptCachePlan">;
 }): Promise<ProviderForwardAttemptInput[]> {
   const maxAttempts = Math.max(1, input.decision.retryPolicy?.maxAttempts ?? 1);
   const attempts: ProviderForwardAttemptInput[] = [];
@@ -1356,13 +1361,7 @@ async function buildProviderForwardAttempts(input: {
     }
 
     const attemptDecision = decisionForProviderAttempt(input.decision, candidate);
-    const promptCachePlan = computePromptCachePlan({
-      body: input.body,
-      context: input.context,
-      decision: attemptDecision,
-      capabilities: candidate.providerCachingCapabilities,
-      settings: input.cacheSettings
-    });
+    const rewritten = input.rewrite(attemptDecision, candidate);
     attempts.push({
       route: candidate.route,
       routeCandidateId: candidate.routeCandidateId,
@@ -1371,10 +1370,10 @@ async function buildProviderForwardAttempts(input: {
       adapterKind: candidate.adapterKind,
       deployment: candidate.deployment,
       reasoningEffort: candidate.reasoningEffort,
-      body: input.rewrite(attemptDecision),
+      body: rewritten.body,
       credential,
       providerSettings: candidate.providerSettings,
-      promptCachePlan
+      promptCachePlan: rewritten.promptCachePlan
     });
   }
 

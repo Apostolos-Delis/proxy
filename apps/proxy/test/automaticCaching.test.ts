@@ -2,8 +2,9 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { organizationSettings } from "@proxy/db";
+import { ANTHROPIC_PROVIDER_CACHING_CAPABILITIES } from "@proxy/schema";
 
-import { rewriteSurfaceRequest } from "../src/adapters.js";
+import { rewriteSurfaceRequest, rewriteSurfaceRequestWithPromptCachePlan } from "../src/adapters.js";
 import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
 // A minimal RouteDecision shape that satisfies rewriteSurfaceRequest
@@ -83,6 +84,14 @@ function openaiDecision(model = "gpt-5.5") {
   };
 }
 
+function rewriteAnthropicWithPlan(body: unknown, settings: { automaticCaching?: boolean; cacheTtlUpgrade?: boolean }) {
+  return rewriteSurfaceRequestWithPromptCachePlan(body, anthropicDecision(), undefined, {
+    context: { surface: "anthropic-messages" },
+    capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
+    settings
+  }).body as any;
+}
+
 describe("injectAutomaticCacheControl transform", () => {
   const largeText = "x".repeat(8192);
   const multiTurnMessages = [
@@ -99,14 +108,14 @@ describe("injectAutomaticCacheControl transform", () => {
   it("injects the top-level field on multi-turn requests with no breakpoints", () => {
     const body = { model: "claude-router-hard", messages: multiTurnMessages };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { automaticCaching: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { automaticCaching: true });
     expect(result.cache_control).toEqual({ type: "ephemeral" });
   });
 
   it("skips single-turn requests so one-shot prompts never pay the write surcharge", () => {
     const body = { model: "claude-router-hard", messages: [{ role: "user", content: "hi" }] };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { automaticCaching: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { automaticCaching: true });
     expect(result.cache_control).toBeUndefined();
   });
 
@@ -117,7 +126,7 @@ describe("injectAutomaticCacheControl transform", () => {
       messages: multiTurnMessages
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { automaticCaching: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { automaticCaching: true });
     expect(result.cache_control).toBeUndefined();
   });
 
@@ -128,7 +137,7 @@ describe("injectAutomaticCacheControl transform", () => {
       messages: multiTurnMessages
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { automaticCaching: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { automaticCaching: true });
     expect(result.cache_control).toBeUndefined();
   });
 
@@ -142,7 +151,7 @@ describe("injectAutomaticCacheControl transform", () => {
       ]
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { automaticCaching: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { automaticCaching: true });
     expect(result.cache_control).toBeUndefined();
   });
 
@@ -165,7 +174,7 @@ describe("injectAutomaticCacheControl transform", () => {
       ]
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { automaticCaching: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { automaticCaching: true });
     expect(result.cache_control).toBeUndefined();
   });
 
@@ -176,34 +185,34 @@ describe("injectAutomaticCacheControl transform", () => {
       messages: multiTurnMessages
     };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, { automaticCaching: true }) as any;
+    const result = rewriteAnthropicWithPlan(body, { automaticCaching: true });
     expect(result.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
   it("gives an injected breakpoint the 1h TTL when both settings are on", () => {
     const body = { model: "claude-router-hard", messages: largeMultiTurnMessages };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, {
+    const result = rewriteAnthropicWithPlan(body, {
       automaticCaching: true,
-      upgradeCacheTtl: true
-    }) as any;
+      cacheTtlUpgrade: true
+    });
     expect(result.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
   it("keeps an injected breakpoint at the default TTL for small multi-turn requests", () => {
     const body = { model: "claude-router-hard", messages: multiTurnMessages };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, {
+    const result = rewriteAnthropicWithPlan(body, {
       automaticCaching: true,
-      upgradeCacheTtl: true
-    }) as any;
+      cacheTtlUpgrade: true
+    });
     expect(result.cache_control).toEqual({ type: "ephemeral" });
   });
 
   it("is a no-op when automaticCaching is not set", () => {
     const body = { model: "claude-router-hard", messages: multiTurnMessages };
 
-    const result = rewriteSurfaceRequest(body, anthropicDecision(), undefined, {}) as any;
+    const result = rewriteAnthropicWithPlan(body, {});
     expect(result.cache_control).toBeUndefined();
   });
 });
