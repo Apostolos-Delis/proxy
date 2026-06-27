@@ -433,10 +433,12 @@ Reuse:
 
 Metrics:
 
-- `proxy_prompt_cache_controls_total{provider,model,control,status,reason}`
+- `proxy_prompt_cache_plans_total{provider,model,mode}`
+- `proxy_prompt_cache_plan_controls_total{provider,model,mode,control,status,reason}`
 - `proxy_prompt_cache_hit_rate{provider,model,route}`
 - `proxy_prompt_cache_busts_total{provider,model,cause}`
-- `proxy_prompt_cache_prewarm_cost_usd_total{provider,model,status}`
+- `proxy_prompt_cache_prewarm_jobs_total{provider,model,status}`
+- `proxy_prompt_cache_prewarm_cost_micros_total{provider,model,status}`
 
 ## Testing
 

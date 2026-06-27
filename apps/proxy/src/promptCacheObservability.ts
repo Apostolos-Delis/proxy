@@ -27,14 +27,15 @@ export function observePromptCachePlan(input: {
   route?: string | null;
   plan?: PromptCachePlan;
 }) {
-  if (!input.plan) return;
+  const plan = input.plan;
+  if (!plan) return;
 
   try {
     recordPromptCachePlanMetrics(input.metrics, {
       surface: input.surface,
       provider: input.provider,
       model: input.model,
-      plan: input.plan
+      plan
     });
   } catch (error) {
     input.warn(error, "prompt cache plan metrics record failed");
@@ -57,7 +58,7 @@ export function observePromptCachePlan(input: {
         surface: input.surface,
         model: input.model,
         route: input.route,
-        plan: input.plan
+        plan
       })
     });
   });

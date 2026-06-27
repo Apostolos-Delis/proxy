@@ -7,6 +7,7 @@ import {
   previewCompressionSample
 } from "../compressionPreview.js";
 import { aggregateCompressionSavings } from "../persistence/compressionSavings.js";
+import { emptyCacheBustCauseCounts } from "../persistence/cacheBusts.js";
 import { aggregateIdleGaps } from "../persistence/idleGaps.js";
 import { aggregateTokenAttribution } from "../persistence/tokenAttributionReport.js";
 import { harnessCompatibilityReport } from "../harnessCompatibilityReport.js";
@@ -451,7 +452,7 @@ builder.queryFields((t) => ({
       }
       return {
         busts: [],
-        countsByCause: { ttl_expiry: 0, model_switch: 0, provider_switch: 0, unknown: 0 },
+        countsByCause: emptyCacheBustCauseCounts(),
         sessionsScanned: 0,
         sampled: false
       };

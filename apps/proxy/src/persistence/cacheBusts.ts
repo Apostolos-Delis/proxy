@@ -120,7 +120,7 @@ export function detectCacheBusts(rows: CacheBustLedgerRow[]) {
   }
 
   busts.sort((left, right) => new Date(right.at).getTime() - new Date(left.at).getTime());
-  const countsByCause = emptyCauseCounts();
+  const countsByCause = emptyCacheBustCauseCounts();
   for (const bust of busts) countsByCause[bust.cause] += 1;
 
   return {
@@ -168,7 +168,7 @@ function classify(previous: CacheBustLedgerRow, current: CacheBustLedgerRow, gap
   return "unknown";
 }
 
-function emptyCauseCounts() {
+export function emptyCacheBustCauseCounts() {
   return Object.fromEntries(CACHE_BUST_CAUSES.map((cause) => [cause, 0])) as Record<CacheBustCause, number>;
 }
 
