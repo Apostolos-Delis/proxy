@@ -688,6 +688,7 @@ export class WebSocketRoutingProxy {
     if (!canAuthenticateOrgProvider(provider, credential)) throw new Error("provider_credential_unresolved");
     const promptCachePlan = computePromptCachePlan({
       body,
+      sourceBody: body,
       context: { surface: openAIResponsesSurface.surface, harnessProfileId },
       decision,
       capabilities: provider.capabilities.promptCaching
