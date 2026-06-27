@@ -27,6 +27,7 @@ import {
   IdleGapReport,
   Overview,
   OverviewDashboard,
+  PromptCachePlanReport,
   RouteOutputReport,
   TokenAttributionReport,
   UsageDashboard,
@@ -451,6 +452,29 @@ builder.queryFields((t) => ({
         countsByCause: { ttl_expiry: 0, model_switch: 0, provider_switch: 0, unknown: 0 },
         sessionsScanned: 0,
         sampled: false
+      };
+    }
+  }),
+
+  promptCachePlans: t.field({
+    type: PromptCachePlanReport,
+    args: {
+      start: t.arg.string(),
+      end: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) {
+        return queries.promptCachePlans({
+          start: args.start ?? undefined,
+          end: args.end ?? undefined
+        });
+      }
+      return {
+        totalPlans: 0,
+        sampled: false,
+        plans: [],
+        controls: []
       };
     }
   }),

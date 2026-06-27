@@ -1,11 +1,14 @@
-import { Zap } from "lucide-react";
+import { ListChecks, Zap } from "lucide-react";
 import { useState } from "react";
 
 import {
   bucketLabels,
+  promptCacheControlRows,
   type CompressionSavingsReport,
   type CompressionSavingsRow,
   type IdleGapReport,
+  type PromptCachePlanControl,
+  type PromptCachePlanReport,
   type TokenAttributionOffender,
   type TokenAttributionReport,
   type TokenAttributionSchemaChurn
@@ -178,6 +181,96 @@ export function CompressionSavings({ report }: { report: CompressionSavingsRepor
       )}
     </GlassCard>
   );
+}
+
+export function PromptCachePlans({ report }: { report: PromptCachePlanReport | undefined }) {
+  if (!report) {
+    return (
+      <GlassCard>
+        <div className="card-title"><ListChecks />Prompt-cache plans</div>
+        <div className="inline-skeleton skeleton-pulse" style={{ height: 200 }} />
+      </GlassCard>
+    );
+  }
+  const rows = promptCacheControlRows(report);
+  const max = Math.max(...rows.map((row) => row.count), 1);
+  return (
+    <GlassCard>
+      <div className="card-head">
+        <div className="card-title">
+          <ListChecks />Prompt-cache plans
+          <span className="usage-scope-note">observe-only controls</span>
+        </div>
+        <span className="mono faint caching-miss-total">{formatCompact(report.totalPlans)} plans</span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="empty compact-empty">No prompt-cache plans in this window.</div>
+      ) : (
+        <>
+          <div className="barlist usage-top-list">
+            {rows.map((row, index) => (
+              <BarListRow
+                key={promptCacheControlKey(row)}
+                label={promptCacheControlLabel(row)}
+                value={promptCacheControlValue(row)}
+                width={(row.count / max) * 100}
+                color={seriesColor(index, promptCacheControlKey(row))}
+                mono
+              />
+            ))}
+          </div>
+          <div className="stat-sub">
+            {formatCompact(report.totalPlans)} plans across {formatCompact(report.plans.length)} provider/model/mode groups
+            {report.sampled ? " · newest sample - window truncated" : ""}
+          </div>
+        </>
+      )}
+    </GlassCard>
+  );
+}
+
+function promptCacheControlKey(row: PromptCachePlanControl) {
+  return `${row.provider}:${row.model}:${row.mode}:${row.control}:${row.status}:${row.reason}`;
+}
+
+function promptCacheControlLabel(row: PromptCachePlanControl) {
+  return `${row.provider} · ${row.model} · ${modeLabel(row.mode)} · ${controlLabel(row.control)}`;
+}
+
+function promptCacheControlValue(row: PromptCachePlanControl) {
+  const status = row.status === "skipped" ? `skipped · ${reasonLabel(row.reason)}` : row.status;
+  return `${formatCompact(row.count)} · ${status}`;
+}
+
+function modeLabel(mode: string) {
+  if (mode === "implicit") return "implicit";
+  if (mode === "explicit") return "explicit";
+  if (mode === "observe") return "observe";
+  if (mode === "off") return "off";
+  return mode;
+}
+
+function controlLabel(control: string) {
+  if (control === "implicit_prefix_caching") return "implicit prefix";
+  if (control === "cache_key_preserved") return "cache key";
+  if (control === "retention_preserved") return "retention";
+  if (control === "client_breakpoints_preserved") return "client breakpoints";
+  if (control === "top_level_auto_breakpoint") return "auto breakpoint";
+  if (control === "ttl_1h") return "1h TTL";
+  if (control === "cross_dialect_cache_fields") return "cross-dialect fields";
+  if (control === "prompt_cache") return "prompt cache";
+  return control;
+}
+
+function reasonLabel(reason: string) {
+  if (reason === "translated_request") return "translated";
+  if (reason === "setting_disabled") return "setting disabled";
+  if (reason === "not_eligible") return "not eligible";
+  if (reason === "not_multi_turn_or_no_cacheable_target") return "not cacheable";
+  if (reason === "provider_capability_unavailable") return "unsupported";
+  if (reason === "missing_provider_settings") return "missing settings";
+  if (reason === "none") return "none";
+  return reason;
 }
 
 function compressionSavingsLabel(row: CompressionSavingsRow) {

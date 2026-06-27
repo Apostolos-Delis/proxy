@@ -4,6 +4,7 @@ import type {
   CompressionSavingsViewQuery,
   CachePricingRatesQuery,
   IdleGapsViewQuery,
+  PromptCachePlansViewQuery,
   TokenAttributionViewQuery
 } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
@@ -107,6 +108,32 @@ const CompressionSavingsViewDocument = graphql(`
   }
 `);
 
+const PromptCachePlansViewDocument = graphql(`
+  query PromptCachePlansView($start: String, $end: String) {
+    promptCachePlans(start: $start, end: $end) {
+      totalPlans
+      sampled
+      plans {
+        provider
+        model
+        mode
+        count
+        appliedControls
+        skippedControls
+      }
+      controls {
+        provider
+        model
+        mode
+        control
+        status
+        reason
+        count
+      }
+    }
+  }
+`);
+
 const CachePricingRatesDocument = graphql(`
   query CachePricingRates {
     modelPricing {
@@ -125,6 +152,8 @@ export type CacheBustReport = CacheBustsViewQuery["cacheBusts"];
 export type CacheBust = CacheBustReport["busts"][number];
 export type CompressionSavingsReport = CompressionSavingsViewQuery["compressionSavings"];
 export type CompressionSavingsRow = CompressionSavingsReport["rows"][number];
+export type PromptCachePlanReport = PromptCachePlansViewQuery["promptCachePlans"];
+export type PromptCachePlanControl = PromptCachePlanReport["controls"][number];
 export type CachePricingRate = CachePricingRatesQuery["modelPricing"][number];
 
 export async function fetchTokenAttribution(filters: UsageRangeFilters = {}) {
@@ -137,6 +166,21 @@ export async function fetchCacheBusts(filters: UsageRangeFilters = {}) {
 
 export async function fetchCompressionSavings(filters: UsageRangeFilters = {}) {
   return (await gqlFetch(CompressionSavingsViewDocument, { ...filters })).compressionSavings;
+}
+
+export async function fetchPromptCachePlans(filters: UsageRangeFilters = {}) {
+  return (await gqlFetch(PromptCachePlansViewDocument, { ...filters })).promptCachePlans;
+}
+
+export function promptCacheControlRows(report: PromptCachePlanReport | undefined, limit = 8) {
+  if (!report) return [];
+  return [...report.controls]
+    .sort((left, right) => right.count - left.count || promptCacheControlKey(left).localeCompare(promptCacheControlKey(right)))
+    .slice(0, limit);
+}
+
+function promptCacheControlKey(row: PromptCachePlanControl) {
+  return `${row.provider}:${row.model}:${row.mode}:${row.control}:${row.status}:${row.reason}`;
 }
 
 export type IdleGapReport = IdleGapsViewQuery["idleGaps"];

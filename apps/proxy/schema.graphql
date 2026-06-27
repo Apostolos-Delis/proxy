@@ -635,6 +635,32 @@ type PromptArtifactDetail implements PromptArtifactBase {
   userId: String
 }
 
+type PromptCachePlanControlRow {
+  control: String!
+  count: Float!
+  mode: String!
+  model: String!
+  provider: String!
+  reason: String!
+  status: String!
+}
+
+type PromptCachePlanReport {
+  controls: [PromptCachePlanControlRow!]!
+  plans: [PromptCachePlanRow!]!
+  sampled: Boolean!
+  totalPlans: Float!
+}
+
+type PromptCachePlanRow {
+  appliedControls: Float!
+  count: Float!
+  mode: String!
+  model: String!
+  provider: String!
+  skippedControls: Float!
+}
+
 type PromptCaptureConfig {
   organizationId: String!
   promptCaptureMode: String!
@@ -876,6 +902,7 @@ type Query {
   overviewDashboard: OverviewDashboard!
   prompt(artifactId: ID!): PromptDetail
   promptAccessAudit: [PromptAccessAuditEntry!]!
+  promptCachePlans(end: String, start: String): PromptCachePlanReport!
   prompts(end: String, limit: Int, model: String, offset: Int, route: String, start: String, surface: String, userId: String): PromptPage!
   providerAccounts: [ProviderAccount!]!
   providerCredentialOAuthStatus(loginId: ID!): ProviderCredentialOAuthStatus

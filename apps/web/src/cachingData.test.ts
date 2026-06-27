@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { bustsByModel, cacheSavings } from "./cachingData";
+import { bustsByModel, cacheSavings, promptCacheControlRows, type PromptCachePlanReport } from "./cachingData";
 import type { UsageGroup } from "./usageData";
 
 function modelGroup(key: string, usage: Partial<UsageGroup["usage"]>): Pick<UsageGroup, "key" | "usage"> {
@@ -80,3 +80,38 @@ describe("cacheSavings", () => {
     expect(savings.unpricedCachedTokens).toBe(750_000);
   });
 });
+
+describe("promptCacheControlRows", () => {
+  it("sorts control rows by volume with a stable label tiebreak", () => {
+    const report = {
+      totalPlans: 4,
+      sampled: false,
+      plans: [],
+      controls: [
+        promptCacheControl({ provider: "openai", model: "gpt", control: "retention_preserved", count: 1 }),
+        promptCacheControl({ provider: "anthropic", model: "claude", control: "top_level_auto_breakpoint", status: "skipped", reason: "setting_disabled", count: 3 }),
+        promptCacheControl({ provider: "openai", model: "gpt", control: "implicit_prefix_caching", count: 3 })
+      ]
+    } satisfies PromptCachePlanReport;
+
+    expect(promptCacheControlRows(report).map((row) => row.control)).toEqual([
+      "top_level_auto_breakpoint",
+      "implicit_prefix_caching",
+      "retention_preserved"
+    ]);
+    expect(promptCacheControlRows(report, 2)).toHaveLength(2);
+  });
+});
+
+function promptCacheControl(overrides: Partial<PromptCachePlanReport["controls"][number]> = {}) {
+  return {
+    provider: "openai",
+    model: "gpt-5.5",
+    mode: "implicit",
+    control: "implicit_prefix_caching",
+    status: "applied",
+    reason: "none",
+    count: 1,
+    ...overrides
+  };
+}
