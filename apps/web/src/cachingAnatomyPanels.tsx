@@ -9,11 +9,12 @@ import {
   type IdleGapReport,
   type PromptCachePlanControl,
   type PromptCachePlanReport,
+  type PromptCachePrewarmReport,
   type TokenAttributionOffender,
   type TokenAttributionReport,
   type TokenAttributionSchemaChurn
 } from "./cachingData";
-import { formatCompact, formatDateTime, formatPercent } from "./format";
+import { formatCompact, formatDateTime, formatMoney, formatPercent } from "./format";
 import { BarListRow, GlassCard, Segmented } from "./ui";
 import { seriesColor } from "./usageAnalytics";
 
@@ -229,6 +230,52 @@ export function PromptCachePlans({ report }: { report: PromptCachePlanReport | u
   );
 }
 
+export function PromptCachePrewarms({ report }: { report: PromptCachePrewarmReport | undefined }) {
+  if (!report) {
+    return (
+      <GlassCard>
+        <div className="card-title"><Zap />Prewarm spend</div>
+        <div className="inline-skeleton skeleton-pulse" style={{ height: 200 }} />
+      </GlassCard>
+    );
+  }
+  const rows = report.jobs.slice(0, 8);
+  const max = Math.max(...rows.map((row) => row.actualCostMicros || row.estimatedCostMicros), 1);
+  return (
+    <GlassCard>
+      <div className="card-head">
+        <div className="card-title">
+          <Zap />Prewarm spend
+          <span className="usage-scope-note">cost and reuse lift</span>
+        </div>
+        <span className="mono faint caching-miss-total">{formatMicros(report.actualCostMicros)} actual</span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="empty compact-empty">No prewarm jobs in this window.</div>
+      ) : (
+        <>
+          <div className="barlist usage-top-list">
+            {rows.map((row, index) => (
+              <BarListRow
+                key={`${row.provider}:${row.model}:${row.status}`}
+                label={`${row.provider} · ${row.model} · ${prewarmStatusLabel(row.status)}`}
+                value={`${formatMicros(row.actualCostMicros || row.estimatedCostMicros)} · ${formatCompact(row.count)} jobs`}
+                width={((row.actualCostMicros || row.estimatedCostMicros) / max) * 100}
+                color={seriesColor(index, `${row.provider}:${row.model}:${row.status}`)}
+                mono
+              />
+            ))}
+          </div>
+          <div className="stat-sub">
+            {formatMicros(report.expiredUnusedCostMicros)} expired unused · {formatCompact(report.cacheReadLiftTokens)} read-lift tokens
+            {report.sampled ? " · newest sample - window truncated" : ""}
+          </div>
+        </>
+      )}
+    </GlassCard>
+  );
+}
+
 function promptCacheControlKey(row: PromptCachePlanControl) {
   return `${row.provider}:${row.model}:${row.mode}:${row.control}:${row.status}:${row.reason}`;
 }
@@ -271,6 +318,15 @@ function reasonLabel(reason: string) {
   if (reason === "missing_provider_settings") return "missing settings";
   if (reason === "none") return "none";
   return reason;
+}
+
+function prewarmStatusLabel(status: string) {
+  if (status === "expired_unused") return "expired unused";
+  return status;
+}
+
+function formatMicros(micros: number) {
+  return formatMoney(micros / 1_000_000);
 }
 
 function compressionSavingsLabel(row: CompressionSavingsRow) {

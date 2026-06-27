@@ -322,9 +322,15 @@ Acceptance criteria:
 - Operators can see prewarm cost, resulting cache-hit lift, and expired/unused prewarm counts.
 - Disabling the feature stops future prewarm jobs without affecting normal traffic.
 
+#### Provider-supported experiment result
+
+Status: the first implementation is event-backed and adapter-gated. `PromptCachePrewarmService` enforces opt-in settings, provider/model allowlists, input and spend caps, hourly job caps, TTL-aware scheduling, idempotency, and provider timeouts before invoking a supplied provider-edge adapter. The service emits started, completed, failed, cancelled, and expired-unused events plus bounded metrics. The Caching page reports prewarm cost, expired-unused waste, and cache-read lift from those events.
+
+There is still no default autonomous trigger and no default network adapter. Route-config publish, session-resume, workspace-bootstrap, or manual entry points must supply an eligible candidate and a provider adapter; unsupported providers are cancelled before provider work starts.
+
 #### Prewarm job model
 
-Status: define the internal model and caps first; do not perform provider calls until a follow-up implementation proves a provider has a documented prewarm primitive.
+Status: the internal model, caps, event statuses, and accounting fields are defined before any autonomous trigger is enabled.
 
 Settings:
 

@@ -6,6 +6,7 @@ import type {
   IdleGapsViewQuery,
   OpenAICacheAnalyticsViewQuery,
   PromptCachePlansViewQuery,
+  PromptCachePrewarmsViewQuery,
   TokenAttributionViewQuery
 } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
@@ -135,6 +136,29 @@ const PromptCachePlansViewDocument = graphql(`
   }
 `);
 
+const PromptCachePrewarmsViewDocument = graphql(`
+  query PromptCachePrewarmsView($start: String, $end: String) {
+    promptCachePrewarms(start: $start, end: $end) {
+      totalJobs
+      sampled
+      estimatedCostMicros
+      actualCostMicros
+      expiredUnusedCostMicros
+      cacheReadLiftTokens
+      jobs {
+        provider
+        model
+        status
+        count
+        estimatedCostMicros
+        actualCostMicros
+        expiredUnusedCostMicros
+        cacheReadLiftTokens
+      }
+    }
+  }
+`);
+
 const OpenAICacheAnalyticsViewDocument = graphql(`
   query OpenAICacheAnalyticsView($start: String, $end: String, $interval: UsageInterval) {
     openAICacheAnalytics(start: $start, end: $end, interval: $interval) {
@@ -194,6 +218,7 @@ export type CompressionSavingsReport = CompressionSavingsViewQuery["compressionS
 export type CompressionSavingsRow = CompressionSavingsReport["rows"][number];
 export type PromptCachePlanReport = PromptCachePlansViewQuery["promptCachePlans"];
 export type PromptCachePlanControl = PromptCachePlanReport["controls"][number];
+export type PromptCachePrewarmReport = PromptCachePrewarmsViewQuery["promptCachePrewarms"];
 export type OpenAICacheAnalyticsReport = OpenAICacheAnalyticsViewQuery["openAICacheAnalytics"];
 export type OpenAICacheAnalyticsGroup = OpenAICacheAnalyticsReport["groups"][number];
 export type CachePricingRate = CachePricingRatesQuery["modelPricing"][number];
@@ -212,6 +237,10 @@ export async function fetchCompressionSavings(filters: UsageRangeFilters = {}) {
 
 export async function fetchPromptCachePlans(filters: UsageRangeFilters = {}) {
   return (await gqlFetch(PromptCachePlansViewDocument, { ...filters })).promptCachePlans;
+}
+
+export async function fetchPromptCachePrewarms(filters: UsageRangeFilters = {}) {
+  return (await gqlFetch(PromptCachePrewarmsViewDocument, { ...filters })).promptCachePrewarms;
 }
 
 export async function fetchOpenAICacheAnalytics(filters: UsageRangeFilters & { interval?: "hour" | "day" } = {}) {

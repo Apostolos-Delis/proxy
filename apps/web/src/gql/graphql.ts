@@ -254,6 +254,14 @@ export type PromptCachePlansViewQueryVariables = Exact<{
 
 export type PromptCachePlansViewQuery = { promptCachePlans: { totalPlans: number, sampled: boolean, plans: Array<{ provider: string, model: string, mode: string, count: number, appliedControls: number, skippedControls: number }>, controls: Array<{ provider: string, model: string, mode: string, control: string, status: string, reason: string, count: number }> } };
 
+export type PromptCachePrewarmsViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+}>;
+
+
+export type PromptCachePrewarmsViewQuery = { promptCachePrewarms: { totalJobs: number, sampled: boolean, estimatedCostMicros: number, actualCostMicros: number, expiredUnusedCostMicros: number, cacheReadLiftTokens: number, jobs: Array<{ provider: string, model: string, status: string, count: number, estimatedCostMicros: number, actualCostMicros: number, expiredUnusedCostMicros: number, cacheReadLiftTokens: number }> } };
+
 export type OpenAiCacheAnalyticsViewQueryVariables = Exact<{
   start?: string | null | undefined;
   end?: string | null | undefined;
@@ -1037,6 +1045,28 @@ export const PromptCachePlansViewDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<PromptCachePlansViewQuery, PromptCachePlansViewQueryVariables>;
+export const PromptCachePrewarmsViewDocument = new TypedDocumentString(`
+    query PromptCachePrewarmsView($start: String, $end: String) {
+  promptCachePrewarms(start: $start, end: $end) {
+    totalJobs
+    sampled
+    estimatedCostMicros
+    actualCostMicros
+    expiredUnusedCostMicros
+    cacheReadLiftTokens
+    jobs {
+      provider
+      model
+      status
+      count
+      estimatedCostMicros
+      actualCostMicros
+      expiredUnusedCostMicros
+      cacheReadLiftTokens
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<PromptCachePrewarmsViewQuery, PromptCachePrewarmsViewQueryVariables>;
 export const OpenAiCacheAnalyticsViewDocument = new TypedDocumentString(`
     query OpenAICacheAnalyticsView($start: String, $end: String, $interval: UsageInterval) {
   openAICacheAnalytics(start: $start, end: $end, interval: $interval) {

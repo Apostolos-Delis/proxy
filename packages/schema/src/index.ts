@@ -458,7 +458,9 @@ export const promptCachePrewarmJobSchema = z.strictObject({
   triggerSource: promptCachePrewarmTriggerSourceSchema,
   status: promptCachePrewarmJobStatusSchema,
   idempotencyKey: z.string().trim().min(1),
-  prefixDigest: z.string().trim().min(1),
+  prefixDigest: z.string().trim().refine((value) => value.startsWith("sha256:"), {
+    message: "Prewarm prefix digest must be a sha256 digest."
+  }),
   routingConfigVersionId: z.string().trim().min(1).optional(),
   sessionId: z.string().trim().min(1).optional(),
   scheduledFor: z.string().datetime(),

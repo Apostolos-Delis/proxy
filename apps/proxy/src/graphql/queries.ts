@@ -29,6 +29,7 @@ import {
   Overview,
   OverviewDashboard,
   PromptCachePlanReport,
+  PromptCachePrewarmReport,
   RouteOutputReport,
   TokenAttributionReport,
   UsageDashboard,
@@ -476,6 +477,32 @@ builder.queryFields((t) => ({
         sampled: false,
         plans: [],
         controls: []
+      };
+    }
+  }),
+
+  promptCachePrewarms: t.field({
+    type: PromptCachePrewarmReport,
+    args: {
+      start: t.arg.string(),
+      end: t.arg.string()
+    },
+    resolve: async (_root, args, context) => {
+      const queries = scopedQueries(context);
+      if (queries) {
+        return queries.promptCachePrewarms({
+          start: args.start ?? undefined,
+          end: args.end ?? undefined
+        });
+      }
+      return {
+        totalJobs: 0,
+        sampled: false,
+        estimatedCostMicros: 0,
+        actualCostMicros: 0,
+        expiredUnusedCostMicros: 0,
+        cacheReadLiftTokens: 0,
+        jobs: []
       };
     }
   }),
