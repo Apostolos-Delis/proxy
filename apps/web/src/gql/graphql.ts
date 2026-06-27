@@ -246,6 +246,14 @@ export type CompressionSavingsViewQueryVariables = Exact<{
 
 export type CompressionSavingsViewQuery = { compressionSavings: { eventCount: number, sampled: boolean, blocks: number, savedChars: number, savedEstimatedTokens: number, rows: Array<{ rule: string, ruleVersion: number, tool: string, blocks: number, savedChars: number, savedEstimatedTokens: number }> } };
 
+export type PromptCachePlansViewQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+}>;
+
+
+export type PromptCachePlansViewQuery = { promptCachePlans: { totalPlans: number, sampled: boolean, plans: Array<{ provider: string, model: string, mode: string, count: number, appliedControls: number, skippedControls: number }>, controls: Array<{ provider: string, model: string, mode: string, control: string, status: string, reason: string, count: number }> } };
+
 export type CachePricingRatesQueryVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -995,6 +1003,31 @@ export const CompressionSavingsViewDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CompressionSavingsViewQuery, CompressionSavingsViewQueryVariables>;
+export const PromptCachePlansViewDocument = new TypedDocumentString(`
+    query PromptCachePlansView($start: String, $end: String) {
+  promptCachePlans(start: $start, end: $end) {
+    totalPlans
+    sampled
+    plans {
+      provider
+      model
+      mode
+      count
+      appliedControls
+      skippedControls
+    }
+    controls {
+      provider
+      model
+      mode
+      control
+      status
+      reason
+      count
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<PromptCachePlansViewQuery, PromptCachePlansViewQueryVariables>;
 export const CachePricingRatesDocument = new TypedDocumentString(`
     query CachePricingRates {
   modelPricing {

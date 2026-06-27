@@ -13,6 +13,9 @@ import type {
   RouteOutputReportModel,
   RouteOutputRowModel,
   OverviewModel,
+  PromptCachePlanControlRowModel,
+  PromptCachePlanReportModel,
+  PromptCachePlanRowModel,
   RouteQualityModel,
   TokenAttributionBucketModel,
   TokenAttributionOffenderModel,
@@ -299,3 +302,41 @@ export const CacheBustReport = builder.objectRef<CacheBustReportModel>("CacheBus
     sampled: t.exposeBoolean("sampled")
   })
 });
+
+export const PromptCachePlanRow = builder
+  .objectRef<PromptCachePlanRowModel>("PromptCachePlanRow")
+  .implement({
+    fields: (t) => ({
+      provider: t.exposeString("provider"),
+      model: t.exposeString("model"),
+      mode: t.exposeString("mode"),
+      count: t.exposeFloat("count"),
+      appliedControls: t.exposeFloat("appliedControls"),
+      skippedControls: t.exposeFloat("skippedControls")
+    })
+  });
+
+export const PromptCachePlanControlRow = builder
+  .objectRef<PromptCachePlanControlRowModel>("PromptCachePlanControlRow")
+  .implement({
+    fields: (t) => ({
+      provider: t.exposeString("provider"),
+      model: t.exposeString("model"),
+      mode: t.exposeString("mode"),
+      control: t.exposeString("control"),
+      status: t.exposeString("status"),
+      reason: t.exposeString("reason"),
+      count: t.exposeFloat("count")
+    })
+  });
+
+export const PromptCachePlanReport = builder
+  .objectRef<PromptCachePlanReportModel>("PromptCachePlanReport")
+  .implement({
+    fields: (t) => ({
+      totalPlans: t.exposeFloat("totalPlans"),
+      sampled: t.exposeBoolean("sampled"),
+      plans: t.expose("plans", { type: [PromptCachePlanRow] }),
+      controls: t.expose("controls", { type: [PromptCachePlanControlRow] })
+    })
+  });

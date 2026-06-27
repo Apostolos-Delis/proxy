@@ -3,13 +3,14 @@ import { RefreshCw, Zap } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { isAdminRole } from "./access";
-import { BucketBreakdown, CompressionSavings, IdleGaps, Offenders } from "./cachingAnatomyPanels";
+import { BucketBreakdown, CompressionSavings, IdleGaps, Offenders, PromptCachePlans } from "./cachingAnatomyPanels";
 import {
   cacheSavings,
   fetchCacheBusts,
   fetchCompressionSavings,
   fetchCachePricingRates,
   fetchIdleGaps,
+  fetchPromptCachePlans,
   fetchTokenAttribution,
   type CacheSavings
 } from "./cachingData";
@@ -104,10 +105,17 @@ export function CachingPage() {
     placeholderData: keepPreviousData,
     enabled: dashboardReady
   });
+  const { error: promptCachePlansQueryError, data: promptCachePlansQueryData } = useQuery({
+    queryKey: ["prompt-cache-plans", start, end],
+    queryFn: () => fetchPromptCachePlans({ start, end }),
+    placeholderData: keepPreviousData,
+    enabled: dashboardReady
+  });
 
   const error = dashboardQueryError ?? bustsQueryError
     ?? keyUsageQueryError ?? modelUsageQueryError ?? ratesQueryError
-    ?? compressionSavingsQueryError ?? attributionQueryError ?? idleGapsQueryError;
+    ?? compressionSavingsQueryError ?? attributionQueryError ?? idleGapsQueryError
+    ?? promptCachePlansQueryError;
   if (error) return <PageState title="Caching" label={error.message} />;
 
   const usage = dashboardQueryData?.usage;
@@ -193,6 +201,7 @@ export function CachingPage() {
         <BucketBreakdown report={attributionQueryData} />
         <Offenders report={attributionQueryData} />
         <CompressionSavings report={compressionSavingsQueryData} />
+        <PromptCachePlans report={promptCachePlansQueryData} />
         <IdleGaps report={idleGapsQueryData} />
       </div>
     </div>

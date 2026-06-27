@@ -104,11 +104,14 @@ import {
   type MetricsCollector,
   NoopMetricsCollector
 } from "../metrics.js";
+import { isRecord } from "../util.js";
 
 type DateRangeFilters = {
   start?: string;
   end?: string;
 };
+
+const PROMPT_CACHE_PLAN_SAMPLE_CAP = 5_000;
 
 export type AdminQueryConfig = {
   routeQualityLowConfidenceThreshold: number;
@@ -1722,6 +1725,24 @@ export class AdminQueryService {
     return { ...report, sampled: rows.length === CACHE_BUST_SAMPLE_CAP };
   }
 
+  async promptCachePlans(filters: DateRangeFilters = {}) {
+    const start = dateValue(filters.start);
+    const end = dateValue(filters.end);
+    const conditions = [this.scopedTo(events), eq(events.eventType, "prompt_cache.plan_applied")];
+    if (start) conditions.push(gte(events.createdAt, start));
+    if (end) conditions.push(lte(events.createdAt, end));
+    const rows = await this.db
+      .select({ payload: events.payload })
+      .from(events)
+      .where(and(...conditions))
+      .orderBy(desc(events.createdAt))
+      .limit(PROMPT_CACHE_PLAN_SAMPLE_CAP);
+    return aggregatePromptCachePlanReport(
+      rows.map((row) => row.payload),
+      rows.length === PROMPT_CACHE_PLAN_SAMPLE_CAP
+    );
+  }
+
   async tokenAttribution(filters: DateRangeFilters = {}) {
     const start = dateValue(filters.start);
     const end = dateValue(filters.end);
@@ -2951,6 +2972,138 @@ function outputGroups(rows: OutputGroupAggregateRow[]) {
       };
     })
     .sort((left, right) => right.outputTokens - left.outputTokens || left.key.localeCompare(right.key));
+}
+
+type PromptCachePlanAggregateRow = {
+  provider: string;
+  model: string;
+  mode: string;
+  count: number;
+  appliedControls: number;
+  skippedControls: number;
+};
+
+type PromptCacheControlAggregateRow = {
+  provider: string;
+  model: string;
+  mode: string;
+  control: string;
+  status: string;
+  reason: string;
+  count: number;
+};
+
+function aggregatePromptCachePlanReport(payloads: unknown[], sampled: boolean) {
+  const plans = new Map<string, PromptCachePlanAggregateRow>();
+  const controls = new Map<string, PromptCacheControlAggregateRow>();
+  let totalPlans = 0;
+
+  for (const payload of payloads) {
+    if (!isRecord(payload)) continue;
+    totalPlans += 1;
+    const provider = boundedPlanValue(payload.provider, "unknown");
+    const model = boundedPlanValue(payload.model, "unknown");
+    const mode = boundedPlanValue(payload.mode, "unknown");
+    const planKey = promptCachePlanKey(provider, model, mode);
+    const plan = plans.get(planKey) ?? {
+      provider,
+      model,
+      mode,
+      count: 0,
+      appliedControls: 0,
+      skippedControls: 0
+    };
+    plan.count += 1;
+
+    const appliedControls = Array.isArray(payload.appliedControls)
+      ? payload.appliedControls.filter((control): control is string => typeof control === "string")
+      : [];
+    for (const control of appliedControls) {
+      plan.appliedControls += 1;
+      incrementPromptCacheControl(controls, {
+        provider,
+        model,
+        mode,
+        control: boundedPlanValue(control, "unknown"),
+        status: "applied",
+        reason: "none"
+      });
+    }
+
+    const skippedControls = Array.isArray(payload.skippedControls) ? payload.skippedControls : [];
+    for (const skipped of skippedControls) {
+      if (!isRecord(skipped)) continue;
+      plan.skippedControls += 1;
+      incrementPromptCacheControl(controls, {
+        provider,
+        model,
+        mode,
+        control: boundedPlanValue(skipped.control, "unknown"),
+        status: "skipped",
+        reason: boundedPlanValue(skipped.reason, "unknown")
+      });
+    }
+
+    plans.set(planKey, plan);
+  }
+
+  return {
+    totalPlans,
+    sampled,
+    plans: [...plans.values()].sort(comparePromptCachePlans),
+    controls: [...controls.values()].sort(comparePromptCacheControls)
+  };
+}
+
+function incrementPromptCacheControl(
+  controls: Map<string, PromptCacheControlAggregateRow>,
+  input: Omit<PromptCacheControlAggregateRow, "count">
+) {
+  const key = [
+    input.provider,
+    input.model,
+    input.mode,
+    input.control,
+    input.status,
+    input.reason
+  ].join("\0");
+  const row = controls.get(key) ?? { ...input, count: 0 };
+  row.count += 1;
+  controls.set(key, row);
+}
+
+function promptCachePlanKey(provider: string, model: string, mode: string) {
+  return `${provider}\0${model}\0${mode}`;
+}
+
+function boundedPlanValue(value: unknown, fallback: string) {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  return trimmed.length > 120 ? trimmed.slice(0, 120) : trimmed;
+}
+
+function comparePromptCachePlans(
+  left: PromptCachePlanAggregateRow,
+  right: PromptCachePlanAggregateRow
+) {
+  return right.count - left.count ||
+    left.provider.localeCompare(right.provider) ||
+    left.model.localeCompare(right.model) ||
+    left.mode.localeCompare(right.mode);
+}
+
+function comparePromptCacheControls(
+  left: PromptCacheControlAggregateRow,
+  right: PromptCacheControlAggregateRow
+) {
+  return right.count - left.count ||
+    left.provider.localeCompare(right.provider) ||
+    left.model.localeCompare(right.model) ||
+    left.mode.localeCompare(right.mode) ||
+    left.control.localeCompare(right.control) ||
+    left.status.localeCompare(right.status) ||
+    left.reason.localeCompare(right.reason);
 }
 
 /**

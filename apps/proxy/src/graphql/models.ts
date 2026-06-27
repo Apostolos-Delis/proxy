@@ -87,6 +87,9 @@ export type ModelCatalogEntryModel = Awaited<ReturnType<Q["modelCatalog"]>>[numb
 
 export type CacheBustReportModel = Awaited<ReturnType<Q["cacheBusts"]>>;
 export type CacheBustModel = CacheBustReportModel["busts"][number];
+export type PromptCachePlanReportModel = Awaited<ReturnType<Q["promptCachePlans"]>>;
+export type PromptCachePlanRowModel = PromptCachePlanReportModel["plans"][number];
+export type PromptCachePlanControlRowModel = PromptCachePlanReportModel["controls"][number];
 
 export type CompressionSavingsReportModel = Awaited<ReturnType<Q["compressionSavings"]>>;
 export type CompressionSavingsRowModel = CompressionSavingsReportModel["rows"][number];
