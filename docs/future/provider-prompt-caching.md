@@ -182,6 +182,74 @@ Acceptance criteria:
 - TTL ordering remains valid.
 - Replayed history remains byte-stable across turns.
 
+#### Static-prefix spike result
+
+Status: defer production mutation; keep `static_prefix` as an observe-only candidate until Proxy can prove stable-prefix value from plan events, token attribution, cache-bust data, and session pins.
+
+Anthropic constraints checked against the [Claude prompt-caching docs](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) on 2026-06-27:
+
+- Prompt-cache prefixes are ordered as `tools`, then `system`, then `messages`.
+- Automatic caching uses a top-level `cache_control` field and moves the breakpoint to the last cacheable block as conversations grow.
+- Explicit block-level cache breakpoints can target tool definitions, system blocks, or message content blocks.
+- A request can use up to 4 cache breakpoints. Automatic caching is compatible with explicit breakpoints but consumes one of those slots.
+- The default TTL is 5 minutes; `ttl: "1h"` is available at higher write cost.
+- Explicit cache lookup walks backward through up to 20 blocks from each breakpoint, so a static-prefix breakpoint only helps if a previous request wrote that exact prefix.
+
+Current top-level automatic shape:
+
+```json
+{
+  "model": "claude-opus-4-8",
+  "max_tokens": 1024,
+  "cache_control": { "type": "ephemeral", "ttl": "1h" },
+  "tools": [{ "name": "search", "input_schema": { "type": "object" } }],
+  "system": [{ "type": "text", "text": "Pinned org and session instructions." }],
+  "messages": [
+    { "role": "user", "content": "first question" },
+    { "role": "assistant", "content": "first answer" },
+    { "role": "user", "content": "follow-up" }
+  ]
+}
+```
+
+Expected cacheable prefix: the provider chooses the last cacheable block and advances the breakpoint as the conversation grows. This is good for normal multi-turn agent sessions where the full history is stable and each new turn stays within the provider lookback window.
+
+Static-prefix candidate shape:
+
+```json
+{
+  "model": "claude-opus-4-8",
+  "max_tokens": 1024,
+  "tools": [
+    {
+      "name": "search",
+      "input_schema": { "type": "object" },
+      "cache_control": { "type": "ephemeral", "ttl": "1h" }
+    }
+  ],
+  "system": [
+    {
+      "type": "text",
+      "text": "Pinned org and session instructions.",
+      "cache_control": { "type": "ephemeral", "ttl": "1h" }
+    }
+  ],
+  "messages": [{ "role": "user", "content": "dynamic user request" }]
+}
+```
+
+Expected cacheable prefix: the tool breakpoint writes the stable tool-schema prefix; the system breakpoint writes `tools + system`. This can help sessions with large tool schemas or pinned system prompts but short or highly variable message histories.
+
+Reasons to defer mutation:
+
+- Breakpoint slots are scarce. Tool and system markers plus top-level automatic caching can exhaust the provider limit before client-provided markers are considered.
+- One-shot prompts and small prefixes can pay cache-write premiums without enough follow-up reads to recover the cost.
+- Static-prefix markers are only safe when tool order, tool schemas, org prompt, session prompt, translator version, and compression policy are pinned or provably stable.
+- Translated requests need markers inserted after translation; source-dialect cache fields must remain skipped evidence, not copied into the Anthropic body.
+- Count-token requests must carry the same explicit TTL upgrades for existing markers, while still avoiding automatic top-level marker insertion.
+
+Recommendation: do not add static-prefix request mutation in this milestone. Add an observe-only `static_prefix` candidate first: estimate `tools` and `tools + system` prefix size from token attribution, report why the candidate was skipped, and only graduate to opt-in mutation after cache-read/write data shows repeated misses that top-level automatic caching cannot recover.
+
 ### 3. OpenAI implicit-prefix optimization
 
 - Treat OpenAI as an implicit-prefix provider unless verified docs support additional controls.
