@@ -5,7 +5,7 @@
 - [Proxy user guide](user-guide/README.md)
 - [Quickstart](user-guide/quickstart.md)
 - [API keys and harness setup](user-guide/api-keys.md)
-- [Provider auth](user-guide/provider-auth.md)
+- [Provider auth and Bedrock setup](user-guide/provider-auth.md)
 - [Monitoring](user-guide/monitoring.md)
 - [Sessions and request replay](user-guide/sessions.md)
 - [Analytics and spend](user-guide/analytics.md)
@@ -23,6 +23,8 @@
 - [Subscription auth scope](scopes/subscription-auth-v1/PLAN.md)
 - [Subscription local auth import scope](scopes/subscription-local-auth-v1/PLAN.md)
 - [Provider architecture scope](scopes/provider-architecture-v1/PLAN.md)
+- [Open model and Bedrock provider support scope](scopes/open-model-bedrock-provider-support-v1/PLAN.md)
+- [Open model and Bedrock production readiness review](scopes/open-model-bedrock-provider-support-v1/PRODUCTION_READINESS_REVIEW.md)
 - [Harness model translation scope](scopes/harness-model-translation-v1/PLAN.md)
 - [Proxy metrics scope](scopes/proxy-metrics-v1/PLAN.md)
 - [Reversible compression scope](scopes/reversible-compression-v1/PLAN.md)
@@ -59,6 +61,7 @@
 - [AWS prod-like deployment tickets](scopes/aws-prod-like-deployment-v1/TICKETS.md)
 - [Subscription auth V1 tickets](scopes/subscription-auth-v1/TICKETS.md)
 - [Provider architecture V1 tickets](scopes/provider-architecture-v1/TICKETS.md)
+- [Open model and Bedrock provider support V1 tickets](scopes/open-model-bedrock-provider-support-v1/TICKETS.md)
 - [Harness model translation V1 tickets](scopes/harness-model-translation-v1/TICKETS.md)
 - [Tool output compression tickets](scopes/router-research-roadmap-v1/tool-output-compression-tickets.md)
 - [Reversible compression V1 tickets](scopes/reversible-compression-v1/TICKETS.md)
@@ -69,7 +72,7 @@
 - [Proxy metrics runbook](runbooks/proxy-metrics.md)
 - [Production SLOs and rollout gates](runbooks/production-rollout-gates.md)
 - [Subscription auth runbook](runbooks/subscription-auth.md)
-- [Provider account health runbook](runbooks/provider-account-health.md)
+- [Provider account health and Bedrock failure runbook](runbooks/provider-account-health.md)
 
 ## Harness Setup
 

@@ -242,16 +242,48 @@ Activation changes which immutable version new requests resolve. Existing reques
 ```shell
 pnpm smoke
 pnpm smoke:harnesses
+pnpm smoke:local-openai
+pnpm smoke:bedrock
 ```
 
 `pnpm smoke` uses mock upstream providers. It proves the seeded API key uses the default config, assigns that key to a smoke-only config, and proves the next OpenAI Responses and Anthropic Messages requests use the reassigned config.
 
 `pnpm smoke:harnesses` runs installed `codex` and `claude` CLIs against the same mock-backed proxy and verifies persisted hard-route decisions against the seeded default config.
 
+`pnpm smoke:local-openai` starts a local OpenAI-compatible Chat Completions mock, registers it as an org-scoped provider, adds a manual model catalog row, assigns a smoke routing config, and verifies both non-streaming and streaming `/v1/chat/completions` requests reach the local provider. Its failure messages are labeled as auth, config resolution, provider setup, or provider forwarding.
+
+`pnpm smoke:bedrock` is live-gated. Without `AWS_REGION` and `AWS_BEDROCK_TEST_MODEL`, it exits successfully with `bedrock_smoke=skipped`. With those variables and AWS credentials available to the default provider chain, it updates the seeded `amazon-bedrock` provider account for the selected region, adds a manual Bedrock model catalog row, assigns a smoke routing config, and verifies:
+
+- OpenAI Chat caller -> Bedrock Converse.
+- Anthropic Messages caller -> Bedrock Converse.
+- OpenAI Responses caller -> Bedrock Converse for stateless requests.
+- OpenAI Responses `previous_response_id` -> explicit unsupported error/skip.
+
+Example:
+
+```shell
+AWS_REGION=us-east-1 \
+AWS_BEDROCK_TEST_MODEL=anthropic.claude-3-5-haiku-20241022-v1:0 \
+pnpm smoke:bedrock
+```
+
+Expected successful output includes `bedrock_openai_chat=passed`, `bedrock_anthropic_messages=passed`, `bedrock_openai_responses_stateless=passed`, and `bedrock_openai_responses_previous_response_id=unsupported`. The script uses `aws_default_chain`; configure AWS credentials through the normal SDK default chain for the shell running the smoke.
+
+Before running live Bedrock smoke, verify the selected IAM principal has `bedrock:InvokeModel`; add `bedrock:InvokeModelWithResponseStream` when testing streaming, `bedrock:GetInferenceProfile` when testing inference profiles, and `bedrock:GetGuardrail`/`bedrock:ApplyGuardrail` when route metadata enables guardrails. See [Provider auth](../user-guide/provider-auth.md#amazon-bedrock-provider-credentials) for credential modes and IAM examples.
+
+For opencode, Claude Code, Codex, or SDK callers that are impractical to automate locally, use the harness-specific command when the CLI is installed:
+
+```shell
+pnpm smoke:harnesses
+```
+
+That command records skips for missing CLIs and verifies persisted route decisions for installed Codex and Claude Code caller surfaces against mock providers. Pair it with `pnpm smoke:local-openai` for OpenAI-compatible OSS providers and `pnpm smoke:bedrock` for live Bedrock coverage.
+
 ## Troubleshooting
 
 - `auth failed`: check `PROXY_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, Codex `env_key`, and Claude `ANTHROPIC_API_KEY`.
 - `config resolution failed`: check the API key assignment, organization default, active version id, config status, and config schema validity.
 - `classifier failed`: check `classifier.provider`, `classifier.model`, upstream OpenAI credentials/base URL, timeout, and max attempts in the active config.
-- `provider forwarding failed`: check the selected provider model, provider credentials, deployment `baseUrl`, deployment `timeoutMs`, and surface compatibility.
+- `provider setup failed`: check provider account assignment, Bedrock `credentialMode`, model catalog capabilities, selected region, and whether the route references a live provider account.
+- `provider forwarding failed`: check the selected provider model, provider credentials, deployment `baseUrl` or Bedrock endpoint override, deployment `timeoutMs`, surface compatibility, and Bedrock model access in the selected region.
 - a secondary deployment is selected unexpectedly: check whether the primary deployment is in cooldown due to a recent 429, 5xx, timeout, or connection error.

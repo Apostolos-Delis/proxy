@@ -7,6 +7,7 @@ import {
 import type { AppConfig } from "../config.js";
 import { CompressionCacheWindowResolver } from "../compressionCacheWindow.js";
 import { ModelDiscoveryStore } from "../modelDiscovery.js";
+import { BedrockModelDiscoveryJob } from "../jobs/bedrockModelDiscovery.js";
 import { ModelCatalogRefreshJob } from "../jobs/modelCatalogRefresh.js";
 import { AdminQueryService, type AdminQueryConfig } from "./adminQueries.js";
 import { AdminSessionStore } from "./adminSessions.js";
@@ -14,6 +15,7 @@ import { ApiKeyAdminService } from "./apiKeyAdmin.js";
 import { CompressionRetrievalResolver } from "./compressionReceipts.js";
 import { DatabaseEventSink } from "./eventSink.js";
 import { ApiKeyIdentityStore } from "./identity.js";
+import { ModelCatalogAdminService } from "./modelCatalogAdmin.js";
 import { ModelPricingAdminService } from "./modelPricingAdmin.js";
 import { OrganizationSettingsStore } from "./organizationSettings.js";
 import { ProviderCredentialAdminService } from "./providerCredentialAdmin.js";
@@ -39,6 +41,9 @@ export type DatabasePersistenceConfig = AdminQueryConfig & {
   invitationTtlSeconds: number;
   allowedPrivateUpstreamCidrs: string[];
   providerSecretEncryptionKey?: string;
+  bedrockOperatorDefaultChainEnabled: boolean;
+  bedrockLocalCredentialsEnabled: boolean;
+  bedrockAwsProfile?: string;
   subscriptionOAuthEnabled: boolean;
 };
 
@@ -87,6 +92,8 @@ export function createDatabasePersistence(
     modelCatalogRefresh: new ModelCatalogRefreshJob(transactional, {
       auditOrganizationId: config.defaultOrganizationId
     }),
+    bedrockModelDiscovery: new BedrockModelDiscoveryJob(transactional, providerCredentials, config),
+    modelCatalogAdmin: new ModelCatalogAdminService(transactional),
     modelDiscovery: new ModelDiscoveryStore(db),
     modelPricingAdmin: new ModelPricingAdminService(transactional),
     organizationSettings: new OrganizationSettingsStore(db, clearRoutingConfigCache),

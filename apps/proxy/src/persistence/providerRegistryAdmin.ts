@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { providers, type ProxyTransaction, type ProxyTransactionalDatabase } from "@proxy/db";
-import { DIALECT_NAMES, EFFORTS, PROVIDER_AUTH_STYLES } from "@proxy/schema";
+import { BEDROCK_PROVIDER_OPERATIONS, EFFORTS, HTTP_PROVIDER_DIALECT_NAMES, PROVIDER_ADAPTER_KINDS, PROVIDER_AUTH_STYLES } from "@proxy/schema";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -15,12 +15,19 @@ import {
   type ProviderNetworkPolicy
 } from "./providers.js";
 
-const endpointBodySchema = z.object({
-  dialect: z.enum(DIALECT_NAMES),
+const httpEndpointBodySchema = z.object({
+  dialect: z.enum(HTTP_PROVIDER_DIALECT_NAMES),
   path: z.string().trim().min(1).refine((value) => value.startsWith("/"), {
     message: "Endpoint path must start with '/'."
   })
 }).strict();
+
+const bedrockEndpointBodySchema = z.object({
+  dialect: z.literal("bedrock-converse"),
+  operation: z.enum(BEDROCK_PROVIDER_OPERATIONS)
+}).strict();
+
+const endpointBodySchema = z.union([httpEndpointBodySchema, bedrockEndpointBodySchema]);
 
 const capabilitiesBodySchema = z.object({
   efforts: z.array(z.enum(EFFORTS)).optional()
@@ -30,6 +37,8 @@ const providerBodySchema = z.object({
   slug: z.string().trim().min(1),
   displayName: z.string().trim().min(1),
   baseUrl: z.string().trim().min(1),
+  adapterKind: z.enum(PROVIDER_ADAPTER_KINDS).default("generic-http-json"),
+  adapterConfig: z.record(z.string(), z.unknown()).default({}),
   authStyle: z.enum(PROVIDER_AUTH_STYLES),
   endpoints: z.array(endpointBodySchema).min(1),
   defaultHeaders: z.record(z.string().trim().min(1), z.string().trim().min(1)).default({}),
@@ -71,6 +80,8 @@ export class ProviderRegistryAdminService {
         slug: body.data.slug,
         displayName: body.data.displayName,
         baseUrl: trimProviderBaseUrl(body.data.baseUrl),
+        adapterKind: body.data.adapterKind,
+        adapterConfig: body.data.adapterConfig,
         authStyle: body.data.authStyle,
         endpoints: body.data.endpoints,
         defaultHeaders: body.data.defaultHeaders,
@@ -114,6 +125,8 @@ export class ProviderRegistryAdminService {
         .set({
           displayName: body.data.displayName,
           baseUrl: trimProviderBaseUrl(body.data.baseUrl),
+          adapterKind: body.data.adapterKind,
+          adapterConfig: body.data.adapterConfig,
           authStyle: body.data.authStyle,
           endpoints: body.data.endpoints,
           defaultHeaders: body.data.defaultHeaders,
@@ -188,6 +201,10 @@ async function validateProviderBody(
   body: ProviderBody | ProviderUpdateBody,
   networkPolicy: ProviderNetworkPolicy
 ) {
+  const compatibilityIssues = providerAdapterCompatibilityIssues(body);
+  if (compatibilityIssues.length > 0) {
+    throw new ProviderRegistryAdminError("invalid_provider_adapter", 400, compatibilityIssues);
+  }
   try {
     assertSafeDefaultHeaders(body.defaultHeaders);
     await validateProviderBaseUrl(body.baseUrl, networkPolicy);
@@ -200,6 +217,25 @@ async function validateProviderBody(
     }
     throw error;
   }
+}
+
+function providerAdapterCompatibilityIssues(body: ProviderBody | ProviderUpdateBody) {
+  const issues: { path: string; message: string }[] = [];
+  if (body.adapterKind === "generic-http-json" && body.authStyle === "aws-sdk") {
+    issues.push({ path: "authStyle", message: "aws-sdk auth requires the aws-bedrock-converse adapter." });
+  }
+  if (body.adapterKind === "aws-bedrock-converse" && body.authStyle !== "aws-sdk") {
+    issues.push({ path: "authStyle", message: "Bedrock providers must use aws-sdk auth." });
+  }
+  body.endpoints.forEach((endpoint, index) => {
+    if (body.adapterKind === "generic-http-json" && "operation" in endpoint) {
+      issues.push({ path: `endpoints.${index}.operation`, message: "Generic HTTP providers must use path endpoints." });
+    }
+    if (body.adapterKind === "aws-bedrock-converse" && "path" in endpoint) {
+      issues.push({ path: `endpoints.${index}.path`, message: "Bedrock providers must use operation endpoints." });
+    }
+  });
+  return issues;
 }
 
 async function orgProviderBySlug(tx: ProxyTransaction, organizationId: string, slug: string) {
@@ -237,6 +273,8 @@ function providerPayload(providerId: string, body: ProviderBody) {
     slug: body.slug,
     displayName: body.displayName,
     baseUrl: trimProviderBaseUrl(body.baseUrl),
+    adapterKind: body.adapterKind,
+    adapterConfig: body.adapterConfig,
     authStyle: body.authStyle,
     endpoints: body.endpoints,
     defaultHeaders: body.defaultHeaders,

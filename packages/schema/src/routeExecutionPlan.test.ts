@@ -203,6 +203,13 @@ describe("routeSkipReasonForCompatibilityReason", () => {
     expect(routeSkipReasonForCompatibilityReason("previous_response_translation_unavailable")).toBe("target_unavailable_previous_response_id");
     expect(routeSkipReasonForCompatibilityReason("websocket_native_only")).toBe("target_unavailable_stateful_websocket");
     expect(routeSkipReasonForCompatibilityReason("stateful_translation_unavailable")).toBe("target_unavailable_stateful_translation");
+    expect(routeSkipReasonForCompatibilityReason("encrypted_reasoning_unavailable")).toBe("target_unavailable_encrypted_reasoning");
+    expect(routeSkipReasonForCompatibilityReason("signed_reasoning_unavailable")).toBe("target_unavailable_signed_reasoning");
+    expect(routeSkipReasonForCompatibilityReason("bedrock_settings_on_non_bedrock_target")).toBe("target_unavailable_bedrock_settings");
+    expect(routeSkipReasonForCompatibilityReason("tool_capability_unavailable")).toBe("target_unavailable_tool_capability");
+    expect(routeSkipReasonForCompatibilityReason("image_capability_unavailable")).toBe("target_unavailable_image_capability");
+    expect(routeSkipReasonForCompatibilityReason("streaming_capability_unavailable")).toBe("target_unavailable_streaming_capability");
+    expect(routeSkipReasonForCompatibilityReason("provider_adapter_unavailable")).toBe("target_unavailable_provider_adapter");
   });
 
   it("returns undefined for missing or unknown reasons", () => {

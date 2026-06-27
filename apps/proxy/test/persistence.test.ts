@@ -525,6 +525,143 @@ describe("postgres persistence", () => {
     expect(rows[0]?.lockoutUntil).toBeTruthy();
   });
 
+  it("preserves adapter health classification metadata from terminal provider failures", async () => {
+    const fixture = await persistenceFixture("org_bedrock_health_projection");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_bedrock_health_projection");
+    const providerAccountId = "account_bedrock_health_projection";
+
+    await appendHealthRequest(eventService, "request_bedrock_health_projection", "idem_bedrock_health_projection");
+    await insertHealthProviderAccount(fixture, "org_bedrock_health_projection", providerAccountId);
+    await appendHealthStarted(eventService, "request_bedrock_health_projection", "idem_bedrock_health_projection", providerAccountId);
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_bedrock_health_projection",
+      correlationId: "request_bedrock_health_projection",
+      idempotencyKey: "idem_bedrock_health_projection",
+      producer: "test",
+      eventType: "provider.response_failed",
+      payload: {
+        surface: "openai-responses",
+        provider: "anthropic",
+        selectedModel: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        providerAttemptId: "attempt_request_bedrock_health_projection",
+        providerAccountId,
+        terminalStatus: "failed",
+        upstreamStatus: 403,
+        error: "generic forbidden",
+        healthClassification: {
+          errorType: "model_access_denied",
+          source: "response_body",
+          confidence: "exact",
+          retryable: false,
+          scope: "provider_account_model",
+          cooldownUntil: null,
+          message: "not authorized for response streaming",
+          metadata: {
+            bedrockErrorKind: "stream_permission_denied",
+            bedrockOperation: "ConverseStream",
+            region: "us-east-1",
+            model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+          }
+        }
+      }
+    });
+
+    const rows = await fixture.db.select().from(providerModelHealth).where(eq(providerModelHealth.providerAccountId, providerAccountId));
+
+    expect(rows[0]).toEqual(expect.objectContaining({
+      status: "terminal",
+      lastErrorType: "model_access_denied",
+      metadata: expect.objectContaining({
+        bedrockErrorKind: "stream_permission_denied",
+        bedrockOperation: "ConverseStream",
+        region: "us-east-1"
+      })
+    }));
+  });
+
+  it("preserves streaming permission health across non-streaming successes", async () => {
+    const fixture = await persistenceFixture("org_stream_permission_health_projection");
+    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_stream_permission_health_projection");
+    const providerAccountId = "account_stream_permission_health_projection";
+    const model = "anthropic.claude-3-5-sonnet-20241022-v2:0";
+
+    await appendHealthRequest(eventService, "request_stream_permission_non_stream", "idem_stream_permission_non_stream");
+    await insertHealthProviderAccount(fixture, "org_stream_permission_health_projection", providerAccountId);
+    await fixture.db.insert(providerModelHealth).values({
+      id: "stream_permission_model_health",
+      organizationId: "org_stream_permission_health_projection",
+      providerId: "00000000-0000-0000-0000-000000000002",
+      providerAccountId,
+      model,
+      status: "terminal",
+      lastErrorType: "model_access_denied",
+      lastErrorAt: new Date("2026-06-18T11:59:00.000Z"),
+      consecutiveFailures: 1,
+      metadata: {
+        bedrockErrorKind: "stream_permission_denied",
+        bedrockOperation: "ConverseStream",
+        region: "us-east-1"
+      }
+    });
+    await appendHealthStarted(eventService, "request_stream_permission_non_stream", "idem_stream_permission_non_stream", providerAccountId);
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_stream_permission_non_stream",
+      correlationId: "request_stream_permission_non_stream",
+      idempotencyKey: "idem_stream_permission_non_stream",
+      producer: "test",
+      eventType: "provider.response_completed",
+      payload: {
+        surface: "openai-responses",
+        provider: "anthropic",
+        selectedModel: model,
+        providerAttemptId: "attempt_request_stream_permission_non_stream",
+        providerAccountId,
+        terminalStatus: "completed",
+        upstreamStatus: 200,
+        stream: false,
+        usage: null
+      }
+    });
+
+    const preservedRows = await fixture.db.select().from(providerModelHealth).where(eq(providerModelHealth.providerAccountId, providerAccountId));
+    expect(preservedRows[0]).toEqual(expect.objectContaining({
+      status: "terminal",
+      lastErrorType: "model_access_denied",
+      metadata: expect.objectContaining({ bedrockErrorKind: "stream_permission_denied" })
+    }));
+
+    await appendHealthRequest(eventService, "request_stream_permission_stream", "idem_stream_permission_stream");
+    await appendHealthStarted(eventService, "request_stream_permission_stream", "idem_stream_permission_stream", providerAccountId);
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_stream_permission_stream",
+      correlationId: "request_stream_permission_stream",
+      idempotencyKey: "idem_stream_permission_stream",
+      producer: "test",
+      eventType: "provider.response_completed",
+      payload: {
+        surface: "openai-responses",
+        provider: "anthropic",
+        selectedModel: model,
+        providerAttemptId: "attempt_request_stream_permission_stream",
+        providerAccountId,
+        terminalStatus: "completed",
+        upstreamStatus: 200,
+        stream: true,
+        usage: null
+      }
+    });
+
+    const clearedRows = await fixture.db.select().from(providerModelHealth).where(eq(providerModelHealth.providerAccountId, providerAccountId));
+    expect(clearedRows[0]).toEqual(expect.objectContaining({
+      status: "healthy",
+      lastErrorType: null,
+      metadata: {}
+    }));
+  });
+
   it("resets provider health state on successful provider attempts", async () => {
     const fixture = await persistenceFixture("org_health_success_projection");
     const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_health_success_projection");

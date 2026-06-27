@@ -6,6 +6,8 @@ export { CredentialDetailsStep } from "./credentialDetailsStep";
 import { ProviderMark } from "./icons";
 import {
   canVisitStep,
+  bedrockCredentialModeLabel,
+  bedrockDiscoveryRegions,
   credentialModeLabel,
   createProviderCredentialSteps,
   secretLabelForDraft,
@@ -101,7 +103,10 @@ function chatgptAccountReviewValue(draft: CreateProviderCredentialDraft) {
   return draft.chatgptAccountId.trim() || "from auth JSON";
 }
 
-export function CredentialReviewStep({ draft }: { draft: CreateProviderCredentialDraft }) {
+export function CredentialReviewStep({ draft, providerIsBedrock = false }: {
+  draft: CreateProviderCredentialDraft;
+  providerIsBedrock?: boolean;
+}) {
   return (
     <GlassCard>
       <WizardStepHead
@@ -114,11 +119,21 @@ export function CredentialReviewStep({ draft }: { draft: CreateProviderCredentia
         {draft.mode !== "api_key" ? <div><dt>Source</dt><dd>{sourceLabelForDraft(draft)}</dd></div> : null}
         <div><dt>Provider</dt><dd className="provider-credential-provider"><ProviderMark provider={draft.provider} />{draft.provider}</dd></div>
         <div><dt>Label</dt><dd>{draft.name.trim()}</dd></div>
-        <div><dt>Secret</dt><dd>{secretLabelForDraft(draft)} encrypted at rest</dd></div>
+        {providerIsBedrock ? (
+          <>
+            <div><dt>Credential mode</dt><dd>{bedrockCredentialModeLabel(draft.bedrockCredentialMode)}</dd></div>
+            <div><dt>Runtime region</dt><dd>{draft.bedrockRegion.trim()}</dd></div>
+            <div><dt>Discovery regions</dt><dd>{bedrockDiscoveryRegions(draft).join(", ")}</dd></div>
+            <div><dt>Runtime endpoint</dt><dd>{draft.bedrockEndpointOverride.trim() || "AWS default"}</dd></div>
+            <div><dt>Secret</dt><dd>{bedrockSecretReviewLabel(draft)}</dd></div>
+          </>
+        ) : (
+          <div><dt>Secret</dt><dd>{secretLabelForDraft(draft)} encrypted at rest</dd></div>
+        )}
         {draft.mode === "codex_subscription" ? (
           <div><dt>ChatGPT account</dt><dd>{chatgptAccountReviewValue(draft)}</dd></div>
         ) : null}
-        {draft.source === "claude_oauth" || draft.source === "openai_oauth" ? null : (
+        {providerIsBedrock || draft.source === "claude_oauth" || draft.source === "openai_oauth" ? null : (
           <div><dt>Base URL</dt><dd>{draft.baseUrl.trim() || "Provider default"}</dd></div>
         )}
       </dl>
@@ -130,6 +145,13 @@ export function CredentialReviewStep({ draft }: { draft: CreateProviderCredentia
       ) : null}
     </GlassCard>
   );
+}
+
+function bedrockSecretReviewLabel(draft: CreateProviderCredentialDraft) {
+  if (draft.bedrockCredentialMode === "aws_bedrock_bearer_token") return "Bearer token encrypted at rest";
+  if (draft.bedrockCredentialMode === "aws_static_keys") return "Static keys encrypted at rest";
+  if (draft.bedrockCredentialMode === "aws_default_chain") return "No stored secret";
+  return "No stored secret";
 }
 
 function ModeOption({ draft, mode, title, detail, disabled, onChange }: {

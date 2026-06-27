@@ -10,7 +10,7 @@ import {
 import { PROVIDER_ACCOUNT_STATUSES, PROVIDERS } from "@proxy/schema";
 import { and, eq, isNull } from "drizzle-orm";
 
-import type { Provider, UpstreamCredential } from "../types.js";
+import type { JsonObject, Provider, UpstreamCredential } from "../types.js";
 import {
   parseOpenAIChatGPTSecret,
   refreshOpenAIChatGPTTokenBundle,
@@ -106,7 +106,8 @@ export class ProviderCredentialStore {
         status: providerAccounts.status,
         authType: providerAccounts.authType,
         settings: providerAccounts.settings,
-        secretCiphertext: providerAccounts.secretCiphertext
+        secretCiphertext: providerAccounts.secretCiphertext,
+        providerAdapterKind: providers.adapterKind
       })
       .from(providerAccounts)
       .innerJoin(providers, eq(providers.id, providerAccounts.providerId))
@@ -118,7 +119,10 @@ export class ProviderCredentialStore {
       .limit(1);
     if (!account) return undefined;
     if (account.status !== PROVIDER_ACCOUNT_STATUSES.ACTIVE) return undefined;
-    if (!account.secretCiphertext) return undefined;
+    const bedrockSettings = account.providerAdapterKind === "aws-bedrock-converse"
+      ? jsonObject(account.settings)
+      : undefined;
+    if (!account.secretCiphertext && !bedrockCredentialModeAllowsSecretless(bedrockSettings)) return undefined;
     // Fail closed on auth types this code predates: the column is plain text
     // and $type<> is compile-time only.
     if (account.authType !== "api_key" && account.authType !== "oauth") return undefined;
@@ -134,15 +138,17 @@ export class ProviderCredentialStore {
       ? settingsString(account.settings, "chatgptAccountId")
       : undefined;
     if (account.authType === "oauth" && account.provider === PROVIDERS.OPENAI && !chatgptAccountId) return undefined;
-    if (!this.options.encryptionKey) {
+    if (account.secretCiphertext && !this.options.encryptionKey) {
       throw new Error("provider_secret_encryption_key_missing");
     }
 
-    let token = decryptSecret(account.secretCiphertext, this.options.encryptionKey);
+    let token = account.secretCiphertext
+      ? decryptSecret(account.secretCiphertext, this.options.encryptionKey!)
+      : "";
     if (account.authType === "oauth" && account.provider === PROVIDERS.OPENAI) {
       token = await this.openAIChatGPTAccessToken({
         providerAccountId: account.id,
-        encryptedSecret: account.secretCiphertext,
+        encryptedSecret: account.secretCiphertext!,
         decryptedSecret: token,
         now
       });
@@ -158,7 +164,8 @@ export class ProviderCredentialStore {
       authType: account.authType,
       chatgptAccountId,
       baseUrl,
-      pinnedAddress
+      pinnedAddress,
+      ...(bedrockSettings ? { providerAccountSettings: bedrockSettings } : {})
     };
     setCacheEntry(this.credentialCache, account.id, {
       credential: { ...credential },
@@ -241,6 +248,15 @@ function settingsString(settings: unknown, key: string) {
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
+}
+
+function jsonObject(value: unknown): JsonObject | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return value as JsonObject;
+}
+
+function bedrockCredentialModeAllowsSecretless(settings: JsonObject | undefined) {
+  return settings?.credentialMode === "aws_default_chain" || settings?.credentialMode === "aws_profile";
 }
 
 async function providerBySlug(db: ProxyDbSession, organizationId: string, slug: string) {

@@ -17,22 +17,28 @@ export const SURFACES = {
   OPENAI_CHAT: SURFACE_NAMES[2]
 } as const;
 
-export const DIALECT_NAMES = ["anthropic-messages", "openai-responses", "openai-chat"] as const;
+export const DIALECT_NAMES = ["anthropic-messages", "openai-responses", "openai-chat", "bedrock-converse"] as const;
+export const HTTP_PROVIDER_DIALECT_NAMES = ["anthropic-messages", "openai-responses", "openai-chat"] as const;
 
 export const DIALECTS = {
   ANTHROPIC_MESSAGES: DIALECT_NAMES[0],
   OPENAI_RESPONSES: DIALECT_NAMES[1],
-  OPENAI_CHAT: DIALECT_NAMES[2]
+  OPENAI_CHAT: DIALECT_NAMES[2],
+  BEDROCK_CONVERSE: DIALECT_NAMES[3]
 } as const;
 
-export const BUILTIN_PROVIDER_NAMES = ["openai", "anthropic"] as const;
+export const BUILTIN_PROVIDER_NAMES = ["openai", "anthropic", "amazon-bedrock"] as const;
 
 export const PROVIDERS = {
   OPENAI: BUILTIN_PROVIDER_NAMES[0],
-  ANTHROPIC: BUILTIN_PROVIDER_NAMES[1]
+  ANTHROPIC: BUILTIN_PROVIDER_NAMES[1],
+  BEDROCK: BUILTIN_PROVIDER_NAMES[2]
 } as const;
 
-export const PROVIDER_AUTH_STYLES = ["bearer", "x-api-key", "none"] as const;
+export const PROVIDER_AUTH_STYLES = ["bearer", "x-api-key", "none", "aws-sdk"] as const;
+export const PROVIDER_ADAPTER_KINDS = ["generic-http-json", "aws-bedrock-converse"] as const;
+export const BEDROCK_PROVIDER_OPERATIONS = ["Converse", "ConverseStream"] as const;
+export const MODEL_CATALOG_SOURCES = ["models.dev-snapshot", "models.dev-refresh", "env", "manual", "bedrock-discovery"] as const;
 
 export const PROVIDER_ACCOUNT_AUTH_TYPES = ["api_key", "oauth"] as const;
 
@@ -236,9 +242,13 @@ export function composeClassifierInstructions(rules?: string): string {
 export type RouteName = typeof ROUTE_NAMES[number];
 export type Surface = typeof SURFACE_NAMES[number];
 export type Dialect = typeof DIALECT_NAMES[number];
+export type HttpProviderDialect = typeof HTTP_PROVIDER_DIALECT_NAMES[number];
 export type BuiltinProvider = typeof BUILTIN_PROVIDER_NAMES[number];
 export type Provider = string;
 export type ProviderAuthStyle = typeof PROVIDER_AUTH_STYLES[number];
+export type ProviderAdapterKind = typeof PROVIDER_ADAPTER_KINDS[number];
+export type BedrockProviderOperation = typeof BEDROCK_PROVIDER_OPERATIONS[number];
+export type ModelCatalogSource = typeof MODEL_CATALOG_SOURCES[number];
 export type ProviderAccountAuthType = typeof PROVIDER_ACCOUNT_AUTH_TYPES[number];
 export type ProviderAccountStatus = typeof PROVIDER_ACCOUNT_STATUSES[keyof typeof PROVIDER_ACCOUNT_STATUSES];
 export type Effort = typeof EFFORTS[number];
@@ -344,6 +354,7 @@ export type JsonObject = { [key: string]: JsonValue };
 export const routeNameSchema = z.enum(ROUTE_NAMES);
 export const surfaceSchema = z.enum(SURFACE_NAMES);
 export const dialectSchema = z.enum(DIALECT_NAMES);
+export const httpProviderDialectSchema = z.enum(HTTP_PROVIDER_DIALECT_NAMES);
 export const providerSchema = z.string().min(1, "Provider slug is required.").refine(
   (value) => value.trim().length > 0,
   { message: "Provider slug must contain non-whitespace text." }
@@ -353,6 +364,8 @@ export const providerSchema = z.string().min(1, "Provider slug is required.").re
 );
 export const builtinProviderSchema = z.enum(BUILTIN_PROVIDER_NAMES);
 export const providerAuthStyleSchema = z.enum(PROVIDER_AUTH_STYLES);
+export const providerAdapterKindSchema = z.enum(PROVIDER_ADAPTER_KINDS);
+export const bedrockProviderOperationSchema = z.enum(BEDROCK_PROVIDER_OPERATIONS);
 export const effortSchema = z.enum(EFFORTS);
 export const openAIReasoningEffortSchema = z.enum(OPENAI_REASONING_EFFORTS);
 export const classifierEffortSchema = z.enum(CLASSIFIER_EFFORTS);
@@ -431,24 +444,71 @@ export type ProviderHealthMetadataValue = z.infer<typeof providerHealthMetadataV
 export type ProviderHealthMetadata = z.infer<typeof providerHealthMetadataSchema>;
 export type ProviderHealthClassification = z.infer<typeof providerHealthClassificationSchema>;
 
-export const providerRegistryEndpointSchema = z.strictObject({
-  dialect: dialectSchema,
+export const providerRegistryHttpEndpointSchema = z.strictObject({
+  dialect: httpProviderDialectSchema,
   path: routingConfigIdentifierSchema.refine((value) => value.startsWith("/"), {
     message: "Endpoint path must start with '/'."
   })
 });
+
+export const providerRegistryBedrockEndpointSchema = z.strictObject({
+  dialect: z.literal("bedrock-converse"),
+  operation: bedrockProviderOperationSchema
+});
+
+export const providerRegistryEndpointSchema = z.union([
+  providerRegistryHttpEndpointSchema,
+  providerRegistryBedrockEndpointSchema
+]);
+
+export type ProviderRegistryHttpEndpoint = z.infer<typeof providerRegistryHttpEndpointSchema>;
+export type ProviderRegistryBedrockEndpoint = z.infer<typeof providerRegistryBedrockEndpointSchema>;
+export type ProviderRegistryEndpoint = z.infer<typeof providerRegistryEndpointSchema>;
 
 export const providerRegistryEntrySchema = z.strictObject({
   slug: providerSchema,
   base_url: z.string().url().refine((value) => value === value.trim(), {
     message: "Base URL must not include leading or trailing whitespace."
   }),
+  adapter_kind: providerAdapterKindSchema.default("generic-http-json"),
+  adapter_config: jsonObjectSchema.default({}),
   auth_style: providerAuthStyleSchema,
   endpoints: z.array(providerRegistryEndpointSchema).min(1, "At least one endpoint is required."),
   default_headers: z.record(z.string(), routingConfigTextSchema),
   capabilities: jsonObjectSchema.optional(),
   forward_harness_headers: z.boolean(),
   enabled: z.boolean()
+}).superRefine((entry, ctx) => {
+  if (entry.adapter_kind === "generic-http-json" && entry.auth_style === "aws-sdk") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["auth_style"],
+      message: "aws-sdk auth requires the aws-bedrock-converse adapter."
+    });
+  }
+  if (entry.adapter_kind === "aws-bedrock-converse" && entry.auth_style !== "aws-sdk") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["auth_style"],
+      message: "Bedrock providers must use aws-sdk auth."
+    });
+  }
+  entry.endpoints.forEach((endpoint, index) => {
+    if (entry.adapter_kind === "generic-http-json" && "operation" in endpoint) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["endpoints", index, "operation"],
+        message: "Generic HTTP providers must use path endpoints."
+      });
+    }
+    if (entry.adapter_kind === "aws-bedrock-converse" && "path" in endpoint) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["endpoints", index, "path"],
+        message: "Bedrock providers must use operation endpoints."
+      });
+    }
+  });
 });
 
 export const routingConfigClassifierSchema = z.strictObject({
@@ -631,7 +691,14 @@ export const ROUTE_SKIP_REASONS = [
   "target_unavailable_previous_response_id",
   "target_unavailable_stateful_websocket",
   "target_unavailable_stateful_translation",
+  "target_unavailable_encrypted_reasoning",
+  "target_unavailable_signed_reasoning",
+  "target_unavailable_bedrock_settings",
+  "target_unavailable_tool_capability",
+  "target_unavailable_image_capability",
+  "target_unavailable_streaming_capability",
   "target_unavailable_model_capability",
+  "target_unavailable_provider_adapter",
   "target_unavailable_dialect",
   "target_unavailable_provider_not_found",
   "target_unavailable_provider_registry",
@@ -652,6 +719,14 @@ const compatibilityReasonToSkipReason: Record<string, RouteSkipReason> = {
   previous_response_translation_unavailable: "target_unavailable_previous_response_id",
   websocket_native_only: "target_unavailable_stateful_websocket",
   stateful_translation_unavailable: "target_unavailable_stateful_translation",
+  encrypted_reasoning_unavailable: "target_unavailable_encrypted_reasoning",
+  signed_reasoning_unavailable: "target_unavailable_signed_reasoning",
+  bedrock_settings_on_non_bedrock_target: "target_unavailable_bedrock_settings",
+  tool_capability_unavailable: "target_unavailable_tool_capability",
+  image_capability_unavailable: "target_unavailable_image_capability",
+  streaming_capability_unavailable: "target_unavailable_streaming_capability",
+  model_capability: "target_unavailable_model_capability",
+  provider_adapter_unavailable: "target_unavailable_provider_adapter",
   dialect_unavailable: "target_unavailable_dialect",
   provider_not_found: "target_unavailable_provider_not_found",
   provider_registry_unavailable: "target_unavailable_provider_registry",

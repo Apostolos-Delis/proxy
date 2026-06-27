@@ -13,8 +13,9 @@ import {
   type ProviderHealthStatus
 } from "@proxy/schema";
 
+import { jsonPayload } from "../events.js";
 import { classifyProviderTerminalHealth } from "../providerHealth.js";
-import type { Provider, ProviderHealthSkip } from "../types.js";
+import type { JsonObject, Provider, ProviderHealthSkip } from "../types.js";
 import { createId } from "../util.js";
 import { numberValue, providerValue, recordValue, stringValue } from "./values.js";
 
@@ -23,6 +24,7 @@ export type ProviderHealthTarget = {
   providerId: string;
   providerAccountId: string;
   model: string;
+  isStreaming?: boolean;
 };
 
 export class ProviderHealthStore {
@@ -47,7 +49,8 @@ export class ProviderHealthStore {
         providerAccountId: providerAccountHealth.providerAccountId,
         status: providerAccountHealth.status,
         lastErrorType: providerAccountHealth.lastErrorType,
-        cooldownUntil: providerAccountHealth.cooldownUntil
+        cooldownUntil: providerAccountHealth.cooldownUntil,
+        metadata: providerAccountHealth.metadata
       })
       .from(providerAccountHealth)
       .where(and(
@@ -63,7 +66,8 @@ export class ProviderHealthStore {
         model: providerModelHealth.model,
         status: providerModelHealth.status,
         lastErrorType: providerModelHealth.lastErrorType,
-        lockoutUntil: providerModelHealth.lockoutUntil
+        lockoutUntil: providerModelHealth.lockoutUntil,
+        metadata: providerModelHealth.metadata
       })
       .from(providerModelHealth)
       .where(and(
@@ -77,22 +81,27 @@ export class ProviderHealthStore {
     for (const target of targets) {
       const account = accountsById.get(target.providerAccountId);
       if (account?.status === "terminal" || (account?.cooldownUntil && account.cooldownUntil > now)) {
+        const metadata = healthMetadata(account.metadata);
         result.set(healthKey(target), healthSkip(target, {
           scope: "provider_account",
           healthStatus: account.status,
           errorType: account.lastErrorType ?? undefined,
-          expiresAt: account.cooldownUntil ?? undefined
+          expiresAt: account.cooldownUntil ?? undefined,
+          metadata
         }));
         continue;
       }
 
       const model = modelsByKey.get(healthKey(target));
       if (model?.status === "terminal" || (model?.lockoutUntil && model.lockoutUntil > now)) {
+        const metadata = healthMetadata(model.metadata);
+        if (streamPermissionHealth(model.lastErrorType ?? undefined, metadata) && target.isStreaming !== true) continue;
         result.set(healthKey(target), healthSkip(target, {
           scope: "provider_account_model",
           healthStatus: model.status,
           errorType: model.lastErrorType ?? undefined,
-          expiresAt: model.lockoutUntil ?? undefined
+          expiresAt: model.lockoutUntil ?? undefined,
+          metadata
         }));
       }
     }
@@ -121,6 +130,15 @@ function healthKey(target: Pick<ProviderHealthTarget, "providerId" | "providerAc
   return `${target.providerId}:${target.providerAccountId}:${target.model}`;
 }
 
+function healthMetadata(value: unknown): JsonObject {
+  const payload = jsonPayload(value);
+  return payload && typeof payload === "object" && !Array.isArray(payload) ? payload as JsonObject : {};
+}
+
+function streamPermissionHealth(errorType: string | undefined, metadata: JsonObject) {
+  return errorType === "stream_permission_denied" || metadata.bedrockErrorKind === "stream_permission_denied";
+}
+
 function healthSkip(
   target: ProviderHealthTarget,
   input: {
@@ -128,6 +146,7 @@ function healthSkip(
     healthStatus: string;
     errorType?: string;
     expiresAt?: Date;
+    metadata?: JsonObject;
   }
 ): ProviderHealthSkip {
   return {
@@ -138,7 +157,8 @@ function healthSkip(
     model: target.model,
     healthStatus: input.healthStatus,
     ...(input.errorType ? { errorType: input.errorType } : {}),
-    ...(input.expiresAt ? { expiresAt: input.expiresAt.toISOString() } : {})
+    ...(input.expiresAt ? { expiresAt: input.expiresAt.toISOString() } : {}),
+    ...(input.metadata && Object.keys(input.metadata).length > 0 ? { metadata: input.metadata } : {})
   };
 }
 
@@ -166,12 +186,13 @@ export async function projectProviderHealthTerminal(tx: ProxyTransaction, event:
       providerAccountId,
       providerId: providerRow.id,
       model,
-      at: new Date(event.createdAt)
+      at: new Date(event.createdAt),
+      stream: event.payload.stream === true
     });
     return;
   }
 
-  const classification = classifyProviderTerminalHealth({
+  const classification = payloadHealthClassification(event.payload) ?? classifyProviderTerminalHealth({
     provider,
     model,
     terminalStatus: status === "cancelled" ? "cancelled" : "failed",
@@ -223,7 +244,8 @@ export async function projectProviderHealthProbe(tx: ProxyTransaction, event: {
       providerAccountId,
       providerId,
       model,
-      at: new Date(event.createdAt)
+      at: new Date(event.createdAt),
+      stream: event.payload.streamingSucceeded === true
     });
     return;
   }
@@ -254,6 +276,11 @@ export async function projectProviderHealthProbe(tx: ProxyTransaction, event: {
   }
 }
 
+function payloadHealthClassification(payload: Record<string, unknown>) {
+  const classification = providerHealthClassificationSchema.safeParse(recordValue(payload.healthClassification));
+  return classification.success ? classification.data : undefined;
+}
+
 async function recordHealthSuccess(tx: ProxyTransaction, input: {
   organizationId: string;
   workspaceId?: string;
@@ -261,6 +288,7 @@ async function recordHealthSuccess(tx: ProxyTransaction, input: {
   providerId: string;
   model: string;
   at: Date;
+  stream: boolean;
 }) {
   await tx.insert(providerAccountHealth).values({
     id: createId("provider_account_health"),
@@ -287,6 +315,23 @@ async function recordHealthSuccess(tx: ProxyTransaction, input: {
       metadata: {}
     }
   });
+
+  const [existingModelHealth] = await tx
+    .select({
+      lastErrorType: providerModelHealth.lastErrorType,
+      metadata: providerModelHealth.metadata
+    })
+    .from(providerModelHealth)
+    .where(and(
+      eq(providerModelHealth.organizationId, input.organizationId),
+      eq(providerModelHealth.providerId, input.providerId),
+      eq(providerModelHealth.providerAccountId, input.providerAccountId),
+      eq(providerModelHealth.model, input.model)
+    ))
+    .limit(1);
+  if (!input.stream && streamPermissionHealth(existingModelHealth?.lastErrorType ?? undefined, healthMetadata(existingModelHealth?.metadata))) {
+    return;
+  }
 
   await tx.insert(providerModelHealth).values({
     id: createId("provider_model_health"),

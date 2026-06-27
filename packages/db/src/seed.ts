@@ -56,7 +56,8 @@ export type SeedModel = {
 
 const BUILTIN_PROVIDER_IDS: Record<BuiltinProvider, string> = {
   openai: "00000000-0000-0000-0000-000000000001",
-  anthropic: "00000000-0000-0000-0000-000000000002"
+  anthropic: "00000000-0000-0000-0000-000000000002",
+  "amazon-bedrock": "00000000-0000-0000-0000-000000000003"
 };
 
 type ModelsDevSnapshotEntry = {
@@ -252,6 +253,18 @@ export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
       name: "Anthropic",
       secretRef: "env:ANTHROPIC_API_KEY",
       settings: {}
+    },
+    {
+      id: `${options.organizationId}:provider:amazon-bedrock`,
+      organizationId: options.organizationId,
+      providerId: BUILTIN_PROVIDER_IDS["amazon-bedrock"],
+      name: "Amazon Bedrock",
+      secretRef: "aws:default-chain",
+      settings: {
+        credentialMode: "aws_default_chain",
+        region: "us-east-1",
+        discoveryRegions: ["us-east-1"]
+      }
     }
   ];
 
@@ -280,7 +293,7 @@ export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
       .insert(modelCatalog)
       .values(row)
       .onConflictDoUpdate({
-        target: [modelCatalog.organizationId, modelCatalog.providerId, modelCatalog.model],
+        target: [modelCatalog.organizationId, modelCatalog.providerId, modelCatalog.providerAccountId, modelCatalog.region, modelCatalog.model],
         set: {
           route: row.route,
           capabilities: row.capabilities,
@@ -431,6 +444,8 @@ async function upsertBuiltinProviders(db: ProxyDbSession, options: SeedOptions, 
       slug: "openai",
       displayName: "OpenAI",
       baseUrl: trimTrailingSlash(options.openaiBaseUrl),
+      adapterKind: "generic-http-json" as const,
+      adapterConfig: {},
       authStyle: "bearer" as const,
       endpoints: [
         { dialect: "openai-responses", path: "/responses" },
@@ -447,6 +462,8 @@ async function upsertBuiltinProviders(db: ProxyDbSession, options: SeedOptions, 
       slug: "anthropic",
       displayName: "Anthropic",
       baseUrl: trimTrailingSlash(options.anthropicBaseUrl),
+      adapterKind: "generic-http-json" as const,
+      adapterConfig: {},
       authStyle: "x-api-key" as const,
       endpoints: [
         { dialect: "anthropic-messages", path: "/messages" }
@@ -455,8 +472,32 @@ async function upsertBuiltinProviders(db: ProxyDbSession, options: SeedOptions, 
       capabilities: { efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"] },
       forwardHarnessHeaders: true,
       enabled: true
+    },
+    {
+      id: BUILTIN_PROVIDER_IDS["amazon-bedrock"],
+      organizationId: null,
+      slug: "amazon-bedrock",
+      displayName: "Amazon Bedrock",
+      baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com",
+      adapterKind: "aws-bedrock-converse" as const,
+      adapterConfig: {
+        service: "bedrock-runtime",
+        controlPlaneService: "bedrock",
+        defaultRegion: "us-east-1",
+        supportsBearerToken: true,
+        supportsInferenceProfiles: true
+      },
+      authStyle: "aws-sdk" as const,
+      endpoints: [
+        { dialect: "bedrock-converse", operation: "Converse" },
+        { dialect: "bedrock-converse", operation: "ConverseStream" }
+      ],
+      defaultHeaders: {},
+      capabilities: {},
+      forwardHarnessHeaders: false,
+      enabled: true
     }
-  ];
+  ] satisfies (typeof providers.$inferInsert)[];
 
   for (const row of rows) {
     await db
@@ -467,6 +508,8 @@ async function upsertBuiltinProviders(db: ProxyDbSession, options: SeedOptions, 
         set: {
           displayName: row.displayName,
           baseUrl: row.baseUrl,
+          adapterKind: row.adapterKind,
+          adapterConfig: row.adapterConfig,
           authStyle: row.authStyle,
           endpoints: row.endpoints,
           defaultHeaders: row.defaultHeaders,
@@ -618,6 +661,7 @@ function modelCatalogRows(options: SeedOptions) {
     route?: RouteName;
     capabilities: Record<string, unknown>;
     pricing: Record<string, unknown>;
+    catalogSource: "models.dev-snapshot" | "env";
   }>();
 
   for (const entry of modelsDevSnapshot) {
@@ -632,7 +676,8 @@ function modelCatalogRows(options: SeedOptions) {
         ...entry.capabilities,
         source: "models.dev-snapshot"
       },
-      pricing: entry.pricing
+      pricing: entry.pricing,
+      catalogSource: "models.dev-snapshot"
     });
   }
 
@@ -665,7 +710,8 @@ function modelCatalogRows(options: SeedOptions) {
       },
       pricing: {
         source: "env"
-      }
+      },
+      catalogSource: "env"
     });
   }
 

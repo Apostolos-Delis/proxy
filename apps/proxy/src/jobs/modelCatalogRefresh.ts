@@ -10,7 +10,7 @@ import {
   type ProxyTransactionalDatabase
 } from "@proxy/db";
 
-import type { Dialect } from "../types.js";
+import type { ProviderRegistryEndpoint } from "../persistence/providers.js";
 import { createId, sha256, stableJson } from "../util.js";
 
 const MODELS_DEV_API_URL = "https://models.dev/api.json";
@@ -26,7 +26,7 @@ type Fetcher = (url: string) => Promise<{
 type ProviderRow = {
   id: string;
   slug: string;
-  endpoints: { dialect: Dialect; path: string }[];
+  endpoints: ProviderRegistryEndpoint[];
 };
 
 type RefreshModel = {
@@ -231,21 +231,25 @@ async function applyRefresh(tx: ProxyTransaction, rows: RefreshModel[], now: Dat
     });
     await tx
       .insert(modelCatalog)
-      .values({
+        .values({
         id: existing?.id ?? `model:${row.provider}:${slug(row.model)}`,
         organizationId: null,
         providerId: provider.id,
+        providerAccountId: null,
+        region: null,
         model: row.model,
+        catalogSource: "models.dev-refresh",
         capabilities,
         pricing: row.pricing,
         createdAt: now,
         updatedAt: now
       })
       .onConflictDoUpdate({
-        target: [modelCatalog.organizationId, modelCatalog.providerId, modelCatalog.model],
+        target: [modelCatalog.organizationId, modelCatalog.providerId, modelCatalog.providerAccountId, modelCatalog.region, modelCatalog.model],
         set: {
           capabilities,
           pricing: row.pricing,
+          catalogSource: "models.dev-refresh",
           updatedAt: now
         }
       });

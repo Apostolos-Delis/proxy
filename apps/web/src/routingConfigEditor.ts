@@ -1,13 +1,19 @@
 import { anthropicEffortForModel, type Effort } from "@proxy/schema";
 
+import { targetCompatibility, providerDialects } from "./routing/targetCompatibility";
+
 export type RoutingConfigThinking = {
   type?: string;
   display?: string;
 };
 
+type DeploymentFamily = "openai" | "anthropic";
+
 export type RoutingConfigRouteTarget = {
   providerId: string;
   model: string;
+  family?: DeploymentFamily;
+  providerAccountId?: string;
   effort?: string;
   thinking?: RoutingConfigThinking;
   maxOutputTokens?: number;
@@ -69,22 +75,70 @@ export type RoutingCatalogProvider = {
   slug: string;
   displayName: string;
   authStyle: string;
+  adapterKind: string;
   enabled: boolean;
   builtin: boolean;
-  endpoints: { dialect: string; path: string }[];
+  endpoints: { dialect: string; path: string | null; operation?: string | null }[];
   capabilities: unknown;
 };
 
 export type RoutingCatalogModel = {
-  provider?: string | null;
+  provider: string;
   model: string;
-  source: string;
-  seenInTraffic: boolean;
+  displayName?: string | null;
+  catalogSource: string;
+  providerAccountId?: string | null;
+  region?: string | null;
+  bedrockModelSource?: string | null;
+  bedrockInferenceProfileArn?: string | null;
+  bedrockInferenceProfileId?: string | null;
+  bedrockInferenceProfileSource?: string | null;
+  bedrockInferenceProfileGeography?: string | null;
+  bedrockBaseModelId?: string | null;
+  bedrockFoundationModelId?: string | null;
+  dialects: string[];
+  contextWindow?: number | null;
+  maxOutputTokens?: number | null;
+  supportsStreaming?: boolean | null;
+  supportsTools?: boolean | null;
+  supportsImages?: boolean | null;
+  supportsReasoning?: boolean | null;
+  warnings: string[];
+  pricingKnown: boolean;
+  inputCostPerMtok?: number | null;
+  outputCostPerMtok?: number | null;
+};
+
+export type RoutingCatalogProviderAccount = {
+  id: string;
+  providerId: string;
+  provider: string;
+  name: string;
+  status: string;
+  credentialMode?: string | null;
+  credentialSourceCategory?: string | null;
+  region?: string | null;
+  endpointOverride?: string | null;
+  discoveryRegions: string[];
+  health?: {
+    status?: string | null;
+    lastErrorType?: string | null;
+    cooldownUntil?: string | null;
+    metadata?: unknown;
+    modelHealth: {
+      model: string;
+      status: string;
+      lastErrorType?: string | null;
+      lockoutUntil?: string | null;
+      metadata?: unknown;
+    }[];
+  } | null;
 };
 
 export type RoutingEditorCatalog = {
   providers: RoutingCatalogProvider[];
   models: RoutingCatalogModel[];
+  providerAccounts: RoutingCatalogProviderAccount[];
 };
 
 export const editorRouteOrder = ["fast", "balanced", "hard", "deep"] as const;
@@ -96,6 +150,8 @@ export const EFFORT_SCALE = ["minimal", "low", "medium", "high", "xhigh", "max",
 export type RouteTargetDraft = {
   providerId: string;
   model: string;
+  family?: DeploymentFamily;
+  providerAccountId?: string;
   effort: string;
   thinking?: RoutingConfigThinking;
   maxOutputTokens?: number;
@@ -131,10 +187,10 @@ export function draftFromConfig(config: RoutingConfigDocument): ConfigEditorDraf
   };
 }
 
-export function applyDraft(base: RoutingConfigDocument, draft: ConfigEditorDraft): RoutingConfigDocument {
+export function applyDraft(base: RoutingConfigDocument, draft: ConfigEditorDraft, catalog?: RoutingEditorCatalog): RoutingConfigDocument {
   const routes: RoutingConfigDocument["routes"] = { ...base.routes };
   for (const route of editorRouteOrder) {
-    routes[route] = routeFromDraft(base.routes[route] ?? {}, draft.routes[route].targets);
+    routes[route] = routeFromDraft(base.routes[route] ?? {}, draft.routes[route].targets, catalog);
   }
   const next = {
     ...base,
@@ -154,7 +210,7 @@ export function applyDraft(base: RoutingConfigDocument, draft: ConfigEditorDraft
   return next;
 }
 
-export function draftError(draft: ConfigEditorDraft): string | undefined {
+export function draftError(draft: ConfigEditorDraft, catalog?: RoutingEditorCatalog): string | undefined {
   const emptyRoutes = editorRouteOrder.filter((route) => draft.routes[route].targets.length === 0);
   if (emptyRoutes.length > 0) {
     return `Each tier needs at least one target. Missing: ${emptyRoutes.join(", ")}.`;
@@ -171,11 +227,14 @@ export function draftError(draft: ConfigEditorDraft): string | undefined {
     if (incompleteIndex >= 0) {
       return `${route} target ${incompleteIndex + 1} needs both a provider and model.`;
     }
-    const unsupportedIndex = draft.routes[route].targets.findIndex((target) =>
-      target.providerId.trim() !== "openai" && target.providerId.trim() !== "anthropic"
-    );
-    if (unsupportedIndex >= 0) {
-      return `${route} target ${unsupportedIndex + 1} must use openai or anthropic.`;
+    if (catalog) {
+      const unsupportedIndex = draft.routes[route].targets.findIndex((target) =>
+        targetCompatibility(target, catalog).reasonCode !== undefined
+      );
+      if (unsupportedIndex >= 0) {
+        const reason = targetCompatibility(draft.routes[route].targets[unsupportedIndex], catalog).reasonCode;
+        return `${route} target ${unsupportedIndex + 1} rejected by compatibility: ${reason}.`;
+      }
     }
   }
   return undefined;
@@ -211,6 +270,10 @@ export function emptyRouteTarget(providerId = "", model = ""): RouteTargetDraft 
     model,
     effort: ""
   };
+}
+
+export function emptyRoutingEditorCatalog(): RoutingEditorCatalog {
+  return { providers: [], models: [], providerAccounts: [] };
 }
 
 export function effectiveEffortForTarget(
@@ -253,6 +316,8 @@ function routeTargetFromDraft(target: RouteTargetDraft) {
   const model = target.model.trim();
   if (!providerId && !model) return undefined;
   const next: RoutingConfigRouteTarget = { providerId, model };
+  if (target.family) next.family = target.family;
+  if (target.providerAccountId) next.providerAccountId = target.providerAccountId;
   const effort = target.effort.trim();
   if (effort) next.effort = effort;
   if (target.thinking) next.thinking = target.thinking;
@@ -272,24 +337,29 @@ function routeTargetsFromConfig(route: RoutingConfigRoute | undefined): RouteTar
 }
 
 function deploymentsFromConfig(
-  providerId: "openai" | "anthropic",
+  family: DeploymentFamily,
   settings: RoutingConfigProviderSettings | undefined
 ): Array<RouteTargetDraft & { order: number }> {
-  return sortedDeployments(settings).map((deployment, index) => ({
-    providerId,
-    model: deployment.model ?? "",
-    effort: providerId === "openai"
-      ? deployment.reasoning?.effort ?? ""
-      : deployment.output_config?.effort ?? "",
-    thinking: providerId === "anthropic" ? deployment.thinking : undefined,
-    maxOutputTokens: providerId === "openai" ? deployment.maxOutputTokens : deployment.maxTokens,
-    verbosity: providerId === "openai" ? deployment.text?.verbosity : undefined,
-    metadata: deployment.metadata,
-    order: deployment.order ?? index
-  }));
+  return sortedDeployments(settings).map((deployment, index) => {
+    const providerId = deployment.provider?.trim() || family;
+    return {
+      providerId,
+      model: deployment.model ?? "",
+      family: providerId === family ? undefined : family,
+      providerAccountId: deployment.providerAccountId,
+      effort: family === "openai"
+        ? deployment.reasoning?.effort ?? ""
+        : deployment.output_config?.effort ?? "",
+      thinking: family === "anthropic" ? deployment.thinking : undefined,
+      maxOutputTokens: family === "openai" ? deployment.maxOutputTokens : deployment.maxTokens,
+      verbosity: family === "openai" ? deployment.text?.verbosity : undefined,
+      metadata: deployment.metadata,
+      order: deployment.order ?? index
+    };
+  });
 }
 
-function routeFromDraft(baseRoute: RoutingConfigRoute, targets: RouteTargetDraft[]): RoutingConfigRoute {
+function routeFromDraft(baseRoute: RoutingConfigRoute, targets: RouteTargetDraft[], catalog?: RoutingEditorCatalog): RoutingConfigRoute {
   const normalizedTargets = targets
     .map((target, order) => {
       const next = routeTargetFromDraft(target);
@@ -302,12 +372,12 @@ function routeFromDraft(baseRoute: RoutingConfigRoute, targets: RouteTargetDraft
   const openai = providerBlock(
     baseRoute.openai,
     "openai",
-    normalizedTargets.filter((target) => target.providerId === "openai")
+    normalizedTargets.filter((target) => targetFamily(target, catalog) === "openai")
   );
   const anthropic = providerBlock(
     baseRoute.anthropic,
     "anthropic",
-    normalizedTargets.filter((target) => target.providerId === "anthropic")
+    normalizedTargets.filter((target) => targetFamily(target, catalog) === "anthropic")
   );
   if (openai) nextRoute.openai = openai;
   if (anthropic) nextRoute.anthropic = anthropic;
@@ -336,7 +406,7 @@ function deploymentFromTarget(
 ): RoutingConfigDeploymentSettings {
   const deployment: RoutingConfigDeploymentSettings = {
     ...base,
-    provider,
+    provider: target.providerId,
     model: target.model,
     order: target.order,
     weight: base?.weight ?? 1,
@@ -357,7 +427,20 @@ function deploymentFromTarget(
     if (target.maxOutputTokens) deployment.maxTokens = target.maxOutputTokens;
   }
   if (target.metadata) deployment.metadata = target.metadata;
+  else delete deployment.metadata;
+  if (target.providerAccountId) deployment.providerAccountId = target.providerAccountId;
+  else delete deployment.providerAccountId;
   return deployment;
+}
+
+function targetFamily(target: Pick<RoutingConfigRouteTarget, "family" | "providerId">, catalog?: RoutingEditorCatalog): DeploymentFamily {
+  if (target.family) return target.family;
+  if (target.providerId === "anthropic") return "anthropic";
+  if (!catalog) return "openai";
+  const provider = catalog.providers.find((candidate) => candidate.slug === target.providerId);
+  const dialects = provider ? providerDialects(provider) : [];
+  if (dialects.length === 1 && dialects[0] === "anthropic-messages") return "anthropic";
+  return "openai";
 }
 
 function sortedDeployments(settings: RoutingConfigProviderSettings | undefined) {

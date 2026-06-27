@@ -52,7 +52,7 @@ describe("proxy traffic limits", () => {
   });
 
   it("releases concurrency after success and provider failure", async () => {
-    openai = await startOpenAIMock({ failProviderOnce: true });
+    openai = await startOpenAIMock({ failProviderOnce: true, failProviderOnceStatus: 400 });
     anthropic = await startAnthropicMock();
     const app = buildServer(loadConfig({
       ...testEnv(),
@@ -71,7 +71,7 @@ describe("proxy traffic limits", () => {
     await third.text();
     await app.close();
 
-    expect(first.status).toBe(500);
+    expect(first.status).toBe(400);
     expect(second.status).toBe(200);
     expect(third.status).toBe(200);
   });

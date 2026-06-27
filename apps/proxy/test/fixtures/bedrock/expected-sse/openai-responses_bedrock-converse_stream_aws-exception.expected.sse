@@ -1,0 +1,11 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_bedrock","status":"in_progress"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_bedrock_0","type":"message","status":"in_progress","role":"assistant","content":[]}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"msg_bedrock_0","output_index":0,"content_index":0,"delta":"Starting"}
+
+event: error
+data: {"type":"error","error":{"message":"Rate exceeded while streaming from Bedrock.","type":"rate_limit_error","code":"throttlingException"}}

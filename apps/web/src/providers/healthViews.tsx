@@ -6,6 +6,7 @@ import { Badge } from "../ui";
 import type { ProviderCredentialRow } from "./credentialsTableData";
 import type { ProviderAccountSummary } from "./data";
 import {
+  bedrockHealthMetadataSummary,
   modelHealthRows,
   providerHealthLabel,
   providerHealthTone,
@@ -29,6 +30,7 @@ export function ProviderHealthSection({ account }: { account: ProviderAccountSum
     );
   }
   const models = modelHealthRows(health);
+  const metadataSummary = bedrockHealthMetadataSummary(health.metadata);
   return (
     <section className="provider-health-panel">
       <div className="card-head">
@@ -41,6 +43,7 @@ export function ProviderHealthSection({ account }: { account: ProviderAccountSum
         <Fact label="Last error">{lastErrorLabel(health.lastErrorType, health.lastErrorAt)}</Fact>
         <Fact label="Last success">{health.lastSuccessAt ? formatDateTime(health.lastSuccessAt) : "none"}</Fact>
         <Fact label="Last checked">{health.lastCheckedAt ? formatDateTime(health.lastCheckedAt) : "not checked"}</Fact>
+        {metadataSummary ? <Fact label="Bedrock detail">{metadataSummary}</Fact> : null}
       </div>
       <div className="provider-model-health">
         <div className="provider-model-health-head">
@@ -98,6 +101,12 @@ function shortHealthDetail(health: ProviderAccountSummary["health"]) {
 }
 
 function modelDetail(model: ProviderModelHealth) {
+  const healthDetail = modelHealthDetail(model);
+  const bedrockDetail = bedrockHealthMetadataSummary(model.metadata);
+  return [healthDetail, bedrockDetail].filter(Boolean).join(" · ");
+}
+
+function modelHealthDetail(model: ProviderModelHealth) {
   if (model.lockoutUntil) return `lockout until ${formatDateTime(model.lockoutUntil)}`;
   if (model.lastErrorType) return lastErrorLabel(model.lastErrorType, model.lastErrorAt);
   if (model.lastSuccessAt) return `success ${formatDateTime(model.lastSuccessAt)}`;

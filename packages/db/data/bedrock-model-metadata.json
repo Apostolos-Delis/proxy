@@ -1,0 +1,230 @@
+[
+  {
+    "id": "anthropic.claude-3-5-sonnet-20240620-v1:0",
+    "modelIds": ["anthropic.claude-3-5-sonnet-20240620-v1:0"],
+    "capabilities": {
+      "contextWindow": 200000,
+      "maxOutputTokens": 8192,
+      "toolCall": true,
+      "image": true,
+      "reasoning": false,
+      "promptCaching": false,
+      "bedrockMetadataOverlay": "curated",
+      "bedrockMetadataAsOf": "2026-06-26"
+    },
+    "pricing": {
+      "source": "bedrock-curated",
+      "inputCostPerMtok": 6,
+      "outputCostPerMtok": 30,
+      "bedrockPricingAsOf": "2026-06-26",
+      "bedrockPricingScope": "aws-us-on-demand-public-extended-access"
+    }
+  },
+  {
+    "id": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "modelIds": ["anthropic.claude-3-5-sonnet-20241022-v2:0"],
+    "capabilities": {
+      "contextWindow": 200000,
+      "maxOutputTokens": 8192,
+      "toolCall": true,
+      "image": true,
+      "reasoning": false,
+      "promptCaching": true,
+      "bedrockMetadataOverlay": "curated",
+      "bedrockMetadataAsOf": "2026-06-26"
+    },
+    "pricing": {
+      "source": "bedrock-curated",
+      "inputCostPerMtok": 6,
+      "outputCostPerMtok": 30,
+      "cacheWriteCostPerMtok": 7.5,
+      "cacheReadCostPerMtok": 0.6,
+      "bedrockPricingAsOf": "2026-06-26",
+      "bedrockPricingScope": "aws-us-on-demand-public-extended-access"
+    }
+  },
+  {
+    "id": "anthropic.claude-3-7-sonnet-20250219-v1:0",
+    "modelIds": ["anthropic.claude-3-7-sonnet-20250219-v1:0"],
+    "capabilities": {
+      "contextWindow": 200000,
+      "maxOutputTokens": 64000,
+      "toolCall": true,
+      "image": true,
+      "reasoning": true,
+      "promptCaching": true,
+      "bedrockMetadataOverlay": "curated",
+      "bedrockMetadataAsOf": "2026-06-26"
+    },
+    "pricing": {
+      "source": "bedrock-curated",
+      "inputCostPerMtok": 3,
+      "outputCostPerMtok": 15,
+      "cacheWriteCostPerMtok": 3.75,
+      "cacheReadCostPerMtok": 0.3,
+      "bedrockPricingAsOf": "2026-06-26",
+      "bedrockPricingScope": "standard-us-on-demand"
+    }
+  },
+  {
+    "id": "anthropic.claude-sonnet-4-20250514-v1:0",
+    "modelIds": ["anthropic.claude-sonnet-4-20250514-v1:0"],
+    "capabilities": {
+      "contextWindow": 200000,
+      "maxOutputTokens": 64000,
+      "toolCall": true,
+      "image": true,
+      "reasoning": true,
+      "promptCaching": true,
+      "bedrockMetadataOverlay": "curated",
+      "bedrockMetadataAsOf": "2026-06-26"
+    },
+    "pricing": {
+      "source": "bedrock-curated",
+      "inputCostPerMtok": 3,
+      "outputCostPerMtok": 15,
+      "cacheWriteCostPerMtok": 3.75,
+      "cacheReadCostPerMtok": 0.3,
+      "bedrockPricingAsOf": "2026-06-26",
+      "bedrockPricingScope": "standard-us-on-demand"
+    }
+  },
+  {
+    "id": "anthropic.claude-sonnet-4-5",
+    "modelIdPrefixes": ["anthropic.claude-sonnet-4-5"],
+    "capabilities": {
+      "contextWindow": 200000,
+      "maxOutputTokens": 64000,
+      "toolCall": true,
+      "image": true,
+      "reasoning": true,
+      "promptCaching": true,
+      "bedrockMetadataOverlay": "curated",
+      "bedrockMetadataAsOf": "2026-06-26"
+    },
+    "pricing": {
+      "source": "bedrock-curated",
+      "inputCostPerMtok": 3,
+      "outputCostPerMtok": 15,
+      "cacheWriteCostPerMtok": 3.75,
+      "cacheReadCostPerMtok": 0.3,
+      "bedrockPricingAsOf": "2026-06-26",
+      "bedrockPricingScope": "standard-us-on-demand"
+    }
+  },
+  {
+    "id": "anthropic.claude-sonnet-4-6",
+    "modelIds": ["anthropic.claude-sonnet-4-6"],
+    "capabilities": {
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "toolCall": true,
+      "image": true,
+      "reasoning": true,
+      "promptCaching": true,
+      "bedrockMetadataOverlay": "curated",
+      "bedrockMetadataAsOf": "2026-06-26"
+    },
+    "pricing": {
+      "source": "bedrock-curated",
+      "inputCostPerMtok": 3,
+      "outputCostPerMtok": 15,
+      "cacheWriteCostPerMtok": 3.75,
+      "cacheReadCostPerMtok": 0.3,
+      "bedrockPricingAsOf": "2026-06-26",
+      "bedrockPricingScope": "standard-us-on-demand"
+    }
+  },
+  {
+    "id": "anthropic.claude-haiku-3-5-20241022-v1:0",
+    "modelIds": ["anthropic.claude-haiku-3-5-20241022-v1:0"],
+    "capabilities": {
+      "contextWindow": 200000,
+      "maxOutputTokens": 8192,
+      "toolCall": true,
+      "image": true,
+      "reasoning": false,
+      "promptCaching": true,
+      "bedrockMetadataOverlay": "curated",
+      "bedrockMetadataAsOf": "2026-06-26"
+    },
+    "pricing": {
+      "source": "bedrock-curated",
+      "inputCostPerMtok": 0.8,
+      "outputCostPerMtok": 4,
+      "cacheWriteCostPerMtok": 1,
+      "cacheReadCostPerMtok": 0.08,
+      "bedrockPricingAsOf": "2026-06-26",
+      "bedrockPricingScope": "standard-us-on-demand"
+    }
+  },
+  {
+    "id": "anthropic.claude-haiku-4-5-20251001-v1:0",
+    "modelIds": ["anthropic.claude-haiku-4-5-20251001-v1:0"],
+    "capabilities": {
+      "contextWindow": 200000,
+      "maxOutputTokens": 64000,
+      "toolCall": true,
+      "image": true,
+      "reasoning": true,
+      "promptCaching": true,
+      "bedrockMetadataOverlay": "curated",
+      "bedrockMetadataAsOf": "2026-06-26"
+    },
+    "pricing": {
+      "source": "bedrock-curated",
+      "inputCostPerMtok": 1,
+      "outputCostPerMtok": 5,
+      "cacheWriteCostPerMtok": 1.25,
+      "cacheReadCostPerMtok": 0.1,
+      "bedrockPricingAsOf": "2026-06-26",
+      "bedrockPricingScope": "standard-us-on-demand"
+    }
+  },
+  {
+    "id": "anthropic.claude-opus-4-20250514-v1:0",
+    "modelIds": ["anthropic.claude-opus-4-20250514-v1:0"],
+    "capabilities": {
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "toolCall": true,
+      "image": true,
+      "reasoning": true,
+      "promptCaching": true,
+      "bedrockMetadataOverlay": "curated",
+      "bedrockMetadataAsOf": "2026-06-26"
+    },
+    "pricing": {
+      "source": "bedrock-curated",
+      "inputCostPerMtok": 15,
+      "outputCostPerMtok": 75,
+      "cacheWriteCostPerMtok": 18.75,
+      "cacheReadCostPerMtok": 1.5,
+      "bedrockPricingAsOf": "2026-06-26",
+      "bedrockPricingScope": "standard-us-on-demand"
+    }
+  },
+  {
+    "id": "anthropic.claude-opus-4-8",
+    "modelIds": ["anthropic.claude-opus-4-8"],
+    "capabilities": {
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "toolCall": true,
+      "image": true,
+      "reasoning": false,
+      "promptCaching": true,
+      "bedrockMetadataOverlay": "curated",
+      "bedrockMetadataAsOf": "2026-06-26"
+    },
+    "pricing": {
+      "source": "bedrock-curated",
+      "inputCostPerMtok": 5,
+      "outputCostPerMtok": 25,
+      "cacheWriteCostPerMtok": 6.25,
+      "cacheReadCostPerMtok": 0.5,
+      "bedrockPricingAsOf": "2026-06-26",
+      "bedrockPricingScope": "standard-us-on-demand"
+    }
+  }
+]

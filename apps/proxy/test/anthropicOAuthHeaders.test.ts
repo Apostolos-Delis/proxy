@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AppConfig } from "../src/config.js";
 import type { ProviderRegistryEndpoint, ProviderRegistryEntry } from "../src/persistence/providers.js";
-import { providerRequestHeaders } from "../src/proxy.js";
+import { providerRequestHeaders } from "../src/providerAdapters/genericHttp.js";
 import type { UpstreamCredential } from "../src/types.js";
 
 const anthropicEndpoint: ProviderRegistryEndpoint = { dialect: "anthropic-messages", path: "/v1/messages" };
@@ -12,6 +12,8 @@ const anthropicProvider: ProviderRegistryEntry = {
   organizationId: null,
   slug: "anthropic",
   baseUrl: "https://api.anthropic.com",
+  adapterKind: "generic-http-json",
+  adapterConfig: {},
   authStyle: "x-api-key",
   endpoints: [anthropicEndpoint],
   defaultHeaders: {},

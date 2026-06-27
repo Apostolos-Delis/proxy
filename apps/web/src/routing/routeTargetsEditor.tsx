@@ -20,9 +20,10 @@ import {
   defaultTarget,
   modelForProvider,
   modelOptions,
-  providerDialects,
   providerOptions
 } from "./routeTargetMetadata";
+import { TargetControls } from "./routeTargetControls";
+import { providerDialects } from "./targetCompatibility";
 import { EffortMeter, TierGauge } from "./tierViz";
 
 export function RouteTargetsEditor({ draft, baseConfig, catalog, onChange }: {
@@ -121,7 +122,7 @@ function RouteTargetEditor({ route, index, target, targetCount, catalog, onChang
           value={target.providerId}
           ariaLabel={`${route} target ${index + 1} provider`}
           options={providerOptions(catalog, target)}
-          onChange={(providerId) => onChange({ ...target, providerId, model: modelForProvider(catalog, providerId) })}
+          onChange={(providerId) => onChange(targetForProvider(target, catalog, providerId))}
         />
         <ModelSelect
           value={target.model}
@@ -155,6 +156,15 @@ function RouteTargetEditor({ route, index, target, targetCount, catalog, onChang
         </button>
       </div>
       <TargetNotes target={target} catalog={catalog} effortChanged={Boolean(effortChanged)} effectiveEffort={effectiveEffort} />
+      <TargetControls target={target} catalog={catalog} onChange={onChange} />
     </div>
   );
+}
+
+function targetForProvider(target: RouteTargetDraft, catalog: RoutingEditorCatalog, providerId: string): RouteTargetDraft {
+  return {
+    providerId,
+    model: modelForProvider(catalog, providerId),
+    effort: target.effort
+  };
 }

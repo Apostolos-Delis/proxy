@@ -35,7 +35,8 @@ export type CostBaseline = Readonly<Record<Dialect, string>>;
 export const defaultCostBaseline: CostBaseline = Object.freeze({
   "anthropic-messages": "claude-fable-5",
   "openai-responses": "gpt-5.5",
-  "openai-chat": "gpt-5.5"
+  "openai-chat": "gpt-5.5",
+  "bedrock-converse": "amazon.nova-pro-v1:0"
 });
 
 export function baselineModelForSurface(baseline: CostBaseline, surface: Surface) {
@@ -62,6 +63,8 @@ export function providerForDialect(dialect: Dialect): Provider {
     case "openai-responses":
     case "openai-chat":
       return "openai";
+    case "bedrock-converse":
+      return "amazon-bedrock";
     default:
       return unreachable(dialect);
   }

@@ -4,6 +4,7 @@ import type {
   CompressionPolicy,
   Provider as SchemaProvider,
   ProviderAccountAuthType,
+  ProviderAdapterKind as SchemaProviderAdapterKind,
   RouteExecutionPlan,
   RoutingConfig,
   RoutingConfigRetryPolicy,
@@ -19,6 +20,8 @@ export type Surface = SchemaSurface;
 export type Dialect = SchemaDialect;
 
 export type Provider = SchemaProvider;
+
+export type ProviderAdapterKind = SchemaProviderAdapterKind;
 
 export type RouteName = "fast" | "balanced" | "hard" | "deep";
 
@@ -39,6 +42,7 @@ export type UpstreamCredential = {
   readonly chatgptAccountId?: string;
   readonly baseUrl?: string;
   readonly pinnedAddress?: PinnedUpstreamAddress;
+  readonly providerAccountSettings?: JsonObject;
 };
 
 export type Verbosity = RoutingVerbosity;
@@ -74,6 +78,7 @@ export type RouteContext = {
   toolCount: number;
   hasPreviousResponseId: boolean;
   hasImages: boolean;
+  isStreaming?: boolean;
   unsupportedFields?: string[];
   extractedHints: string[];
   routingExtractedHints: string[];
@@ -101,6 +106,7 @@ export type ProviderHealthSkip = {
   readonly healthStatus: string;
   readonly errorType?: string;
   readonly expiresAt?: string;
+  readonly metadata?: JsonObject;
 };
 
 export type ClassifierOutput = {
@@ -162,6 +168,7 @@ export type RouteDecision = {
   routingConfig?: RoutingConfigSnapshot;
   compressionPolicy?: CompressionPolicy;
   routeExecutionPlan?: RouteExecutionPlan;
+  selectedAdapterKind?: ProviderAdapterKind;
   policyVersion: string;
   error?: string;
   errorMessage?: string;
@@ -173,8 +180,10 @@ export type SelectedRouteSettings = SessionPinnedSettings;
 
 export type RouteProviderAttempt = {
   readonly route: RouteName;
+  readonly routeCandidateId?: string;
   readonly selectedModel: string;
   readonly provider: Provider;
+  readonly adapterKind?: ProviderAdapterKind;
   readonly deployment: SelectedDeployment;
   readonly reasoningEffort?: ProviderEffort;
   readonly verbosity?: Verbosity;
@@ -201,6 +210,8 @@ export type ProviderAttempt = {
   surface: Surface;
   provider: Provider;
   model: string;
+  adapterKind?: ProviderAdapterKind;
+  adapterClassification?: JsonObject;
   providerAccountId?: string;
   terminalStatus: "pending" | "completed" | "failed" | "cancelled";
   usage?: JsonValue;

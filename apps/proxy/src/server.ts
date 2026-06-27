@@ -197,10 +197,20 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     providerRegistry,
     persistence?.providerCredentials,
     persistence?.providerHealth,
+    persistence?.modelDiscovery,
     metrics,
     deploymentHealth
   );
   const proxy = new ProviderProxy(config, events, attempts, requestStates, providerRegistry, metrics, deploymentHealth);
+  const captureRequestArtifacts = async (input: Parameters<AppPersistence["promptArtifacts"]["capture"]>[0]) => {
+    if (!persistence) return [];
+    try {
+      return await persistence.promptArtifacts.capture(input);
+    } catch (error) {
+      app.log.warn({ err: error, requestId: input.requestId }, "prompt artifact capture failed");
+      return [];
+    }
+  };
   const assistantResponseCapture = (input: {
     identity: RequestIdentity;
     requestId: string;
@@ -460,7 +470,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         eventType: "proxy.request_received",
         payload: requestReceivedPayload("openai-responses", context, rawContext, identity)
       });
-      const capturedArtifacts = await persistence?.promptArtifacts.capture({
+      const capturedArtifacts = await captureRequestArtifacts({
         organizationId: identity.organizationId,
         workspaceId: identity.workspaceId,
         requestId,
@@ -469,7 +479,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         transport: context.transport,
         harness: context.harness,
         harnessProfileId: context.harnessProfileId
-      }) ?? [];
+      });
       await appendPromptCaptureEvent({
         events,
         identity,
@@ -684,7 +694,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         eventType: "proxy.request_received",
         payload: requestReceivedPayload(openAIChatSurface.surface, context, rawContext, identity)
       });
-      const capturedArtifacts = await persistence?.promptArtifacts.capture({
+      const capturedArtifacts = await captureRequestArtifacts({
         organizationId: identity.organizationId,
         workspaceId: identity.workspaceId,
         requestId,
@@ -693,7 +703,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         transport: context.transport,
         harness: context.harness,
         harnessProfileId: context.harnessProfileId
-      }) ?? [];
+      });
       await appendPromptCaptureEvent({
         events,
         identity,
@@ -901,7 +911,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         eventType: "proxy.request_received",
         payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
       });
-      const capturedArtifacts = await persistence?.promptArtifacts.capture({
+      const capturedArtifacts = await captureRequestArtifacts({
         organizationId: identity.organizationId,
         workspaceId: identity.workspaceId,
         requestId,
@@ -910,7 +920,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         transport: context.transport,
         harness: context.harness,
         harnessProfileId: context.harnessProfileId
-      }) ?? [];
+      });
       await appendPromptCaptureEvent({
         events,
         identity,
@@ -1319,8 +1329,10 @@ async function buildProviderForwardAttempts(input: {
     const attemptDecision = decisionForProviderAttempt(input.decision, candidate);
     attempts.push({
       route: candidate.route,
+      routeCandidateId: candidate.routeCandidateId,
       selectedModel: candidate.selectedModel,
       provider: candidate.provider,
+      adapterKind: candidate.adapterKind,
       deployment: candidate.deployment,
       reasoningEffort: candidate.reasoningEffort,
       body: input.rewrite(attemptDecision),
@@ -1351,8 +1363,10 @@ function candidateProviderAttempts(decision: RouteDecision): RouteProviderAttemp
   }
   return [{
     route: decision.finalRoute,
+    routeCandidateId: decision.routeExecutionPlan?.selected?.candidateId,
     selectedModel: decision.selectedModel,
     provider: decision.provider,
+    adapterKind: decision.selectedAdapterKind,
     deployment: decision.deployment,
     reasoningEffort: decision.reasoningEffort,
     verbosity: decision.verbosity,

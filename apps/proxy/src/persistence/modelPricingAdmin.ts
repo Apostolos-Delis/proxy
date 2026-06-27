@@ -53,15 +53,19 @@ export class ModelPricingAdminService {
           id: createId("model"),
           organizationId: input.organizationId,
           providerId: providerRow.id,
+          providerAccountId: null,
+          region: null,
           model,
+          catalogSource: "manual",
           pricing,
           createdAt: now,
           updatedAt: now
         })
         .onConflictDoUpdate({
-          target: [modelCatalog.organizationId, modelCatalog.providerId, modelCatalog.model],
+          target: [modelCatalog.organizationId, modelCatalog.providerId, modelCatalog.providerAccountId, modelCatalog.region, modelCatalog.model],
           set: {
             pricing,
+            catalogSource: "manual",
             updatedAt: now
           }
         });

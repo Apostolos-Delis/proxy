@@ -168,7 +168,7 @@ describe("database migrations", () => {
       select column_name
       from information_schema.columns
       where table_name = 'provider_attempts'
-        and column_name = 'provider_account_id'
+        and column_name in ('provider_account_id', 'adapter_kind', 'adapter_classification')
       order by column_name
     `);
     const providerBindingColumns = await client.query<{ column_name: string }>(`
@@ -182,14 +182,14 @@ describe("database migrations", () => {
       select column_name
       from information_schema.columns
       where table_name = 'model_catalog'
-        and column_name in ('organization_id', 'provider_id', 'model', 'capabilities', 'pricing')
+        and column_name in ('organization_id', 'provider_id', 'provider_account_id', 'region', 'model', 'catalog_source', 'capabilities', 'pricing')
       order by column_name
     `);
     const providerRegistryColumns = await client.query<{ column_name: string }>(`
       select column_name
       from information_schema.columns
       where table_name = 'providers'
-        and column_name in ('id', 'organization_id', 'slug', 'display_name', 'base_url', 'auth_style', 'endpoints', 'default_headers', 'capabilities', 'forward_harness_headers', 'enabled')
+        and column_name in ('id', 'organization_id', 'slug', 'display_name', 'base_url', 'adapter_kind', 'adapter_config', 'auth_style', 'endpoints', 'default_headers', 'capabilities', 'forward_harness_headers', 'enabled')
       order by column_name
     `);
     const providerAccountHealthColumns = await client.query<{ column_name: string }>(`
@@ -359,7 +359,7 @@ describe("database migrations", () => {
       "secret_ciphertext",
       "secret_hint"
     ]);
-    expect(providerAttemptColumns.rows.map((row) => row.column_name)).toEqual(["provider_account_id"]);
+    expect(providerAttemptColumns.rows.map((row) => row.column_name)).toEqual(["adapter_classification", "adapter_kind", "provider_account_id"]);
     expect(providerBindingColumns.rows.map((row) => row.column_name)).toEqual([
       "api_key_id",
       "organization_id",
@@ -368,12 +368,17 @@ describe("database migrations", () => {
     ]);
     expect(modelCatalogColumns.rows.map((row) => row.column_name)).toEqual([
       "capabilities",
+      "catalog_source",
       "model",
       "organization_id",
       "pricing",
-      "provider_id"
+      "provider_account_id",
+      "provider_id",
+      "region"
     ]);
     expect(providerRegistryColumns.rows.map((row) => row.column_name)).toEqual([
+      "adapter_config",
+      "adapter_kind",
       "auth_style",
       "base_url",
       "capabilities",

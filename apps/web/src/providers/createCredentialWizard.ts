@@ -4,6 +4,7 @@ import type { ProviderName } from "./data";
 export type CreateProviderCredentialMode = "api_key" | "claude_subscription" | "codex_subscription";
 export type CreateProviderCredentialSource = "claude_oauth" | "openai_oauth" | "local_auth" | "manual";
 export type CreateProviderCredentialStepId = "type" | "credentials" | "review" | "bind";
+export type BedrockCredentialMode = "aws_bedrock_bearer_token" | "aws_static_keys" | "aws_default_chain" | "aws_profile";
 
 export type CreateProviderCredentialDraft = {
   stepId: CreateProviderCredentialStepId;
@@ -14,6 +15,13 @@ export type CreateProviderCredentialDraft = {
   baseUrl: string;
   chatgptAccountId: string;
   source: CreateProviderCredentialSource;
+  bedrockCredentialMode: BedrockCredentialMode;
+  bedrockRegion: string;
+  bedrockEndpointOverride: string;
+  bedrockDiscoveryRegions: string;
+  bedrockAccessKeyId: string;
+  bedrockSecretAccessKey: string;
+  bedrockSessionToken: string;
 };
 
 export const SUBSCRIPTION_TOKEN_PREFIX = "sk-ant-oat01-";
@@ -34,7 +42,14 @@ export function initialProviderCredentialDraft(): CreateProviderCredentialDraft 
     apiKey: "",
     baseUrl: "",
     chatgptAccountId: "",
-    source: "manual"
+    source: "manual",
+    bedrockCredentialMode: "aws_bedrock_bearer_token",
+    bedrockRegion: "us-east-1",
+    bedrockEndpointOverride: "",
+    bedrockDiscoveryRegions: "us-east-1",
+    bedrockAccessKeyId: "",
+    bedrockSecretAccessKey: "",
+    bedrockSessionToken: ""
   };
 }
 
@@ -85,6 +100,13 @@ export function credentialModeLabel(mode: CreateProviderCredentialMode) {
   return "Provider API key";
 }
 
+export function bedrockCredentialModeLabel(mode: BedrockCredentialMode) {
+  if (mode === "aws_bedrock_bearer_token") return "Bedrock bearer token";
+  if (mode === "aws_static_keys") return "AWS static keys";
+  if (mode === "aws_default_chain") return "Deployment default chain";
+  return "Configured AWS profile";
+}
+
 export function secretLabelForDraft(draft: CreateProviderCredentialDraft) {
   if (draft.source === "claude_oauth" && draft.mode === "claude_subscription") return "Claude sign-in token";
   if (draft.source === "openai_oauth" && draft.mode === "codex_subscription") return "OpenAI sign-in";
@@ -117,20 +139,23 @@ export function namePlaceholderForDraft(draft: CreateProviderCredentialDraft) {
 
 export function stepBlockerMessage(
   draft: CreateProviderCredentialDraft,
-  subscriptionAuthEnabled: boolean
+  subscriptionAuthEnabled: boolean,
+  providerIsBedrock = false
 ): string | null {
   if (draft.stepId === "type" && draft.mode === "claude_subscription" && !subscriptionAuthEnabled) {
     return "Enable subscription auth before creating Claude subscription credentials.";
   }
   if (draft.stepId !== "credentials") return null;
-  return credentialBlockerMessage(draft, subscriptionAuthEnabled);
+  return credentialBlockerMessage(draft, subscriptionAuthEnabled, providerIsBedrock);
 }
 
 export function credentialBlockerMessage(
   draft: CreateProviderCredentialDraft,
-  subscriptionAuthEnabled: boolean
+  subscriptionAuthEnabled: boolean,
+  providerIsBedrock = false
 ): string | null {
   if (!draft.name.trim()) return "Enter a credential label.";
+  if (providerIsBedrock) return bedrockCredentialBlockerMessage(draft);
   if (draft.mode === "claude_subscription" && !subscriptionAuthEnabled) {
     return "Claude subscription auth has been disabled for this proxy.";
   }
@@ -149,6 +174,13 @@ export function credentialBlockerMessage(
     }
   }
   return null;
+}
+
+export function bedrockDiscoveryRegions(draft: CreateProviderCredentialDraft) {
+  return draft.bedrockDiscoveryRegions
+    .split(/[,\s]+/)
+    .map((region) => region.trim())
+    .filter(Boolean);
 }
 
 export function nextStepId(stepId: CreateProviderCredentialStepId): CreateProviderCredentialStepId | null {
@@ -279,4 +311,17 @@ function stringValue(value: unknown) {
 
 function stepIndex(stepId: CreateProviderCredentialStepId) {
   return createProviderCredentialSteps.findIndex((step) => step.id === stepId);
+}
+
+function bedrockCredentialBlockerMessage(draft: CreateProviderCredentialDraft): string | null {
+  if (!draft.bedrockRegion.trim()) return "Bedrock region is required.";
+  if (bedrockDiscoveryRegions(draft).length === 0) return "Enter at least one discovery region.";
+  if (draft.bedrockCredentialMode === "aws_bedrock_bearer_token" && !draft.apiKey.trim()) {
+    return "Bedrock bearer token is required.";
+  }
+  if (draft.bedrockCredentialMode === "aws_static_keys") {
+    if (!draft.bedrockAccessKeyId.trim()) return "AWS access key ID is required.";
+    if (!draft.bedrockSecretAccessKey.trim()) return "AWS secret access key is required.";
+  }
+  return null;
 }

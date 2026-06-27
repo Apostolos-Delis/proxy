@@ -8,8 +8,10 @@ const PROVIDER_FIELDS = `
   slug
   displayName
   baseUrl
+  adapterKind
+  adapterConfig
   authStyle
-  endpoints { dialect path }
+  endpoints { dialect path operation }
   defaultHeaders
   capabilities
   forwardHarnessHeaders
@@ -61,6 +63,8 @@ describe("provider registry admin GraphQL", () => {
       slug: "acme-openai",
       displayName: "Acme OpenAI",
       baseUrl: fixture.openai.url,
+      adapterKind: "generic-http-json",
+      adapterConfig: {},
       authStyle: "bearer",
       defaultHeaders: { "x-acme-region": "iad" },
       capabilities: { efforts: ["low", "medium", "high"] },
@@ -74,6 +78,8 @@ describe("provider registry admin GraphQL", () => {
         providerId: provider.id,
         displayName: "Acme OpenAI Gateway",
         baseUrl: fixture.openai.url,
+        adapterKind: "generic-http-json",
+        adapterConfig: {},
         authStyle: "none",
         endpoints: [{ dialect: "openai-responses", path: "/responses" }],
         defaultHeaders: {},
@@ -102,6 +108,102 @@ describe("provider registry admin GraphQL", () => {
     });
   });
 
+  it("accepts local OpenAI-compatible providers without auth when private upstreams are allowed", async () => {
+    const fixture = await setup("org_provider_admin_local_none");
+    const created = await gql(fixture, CREATE_PROVIDER, {
+      input: {
+        slug: "local-openai-compatible",
+        displayName: "Local OpenAI Compatible",
+        baseUrl: fixture.openai.url,
+        authStyle: "none",
+        endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
+        defaultHeaders: {},
+        forwardHarnessHeaders: false,
+        enabled: true
+      }
+    });
+
+    expect(created.errors).toBeUndefined();
+    expect(created.data?.createProvider).toMatchObject({
+      slug: "local-openai-compatible",
+      baseUrl: fixture.openai.url,
+      authStyle: "none",
+      endpoints: [{ dialect: "openai-chat", path: "/chat/completions", operation: null }],
+      builtin: false
+    });
+  });
+
+  it("accepts Bedrock adapter provider contracts", async () => {
+    const fixture = await setup("org_provider_admin_bedrock_contract");
+    const created = await gql(fixture, CREATE_PROVIDER, {
+      input: {
+        slug: "amazon-bedrock",
+        displayName: "Amazon Bedrock",
+        baseUrl: fixture.openai.url,
+        adapterKind: "aws-bedrock-converse",
+        adapterConfig: { defaultRegion: "us-east-1" },
+        authStyle: "aws-sdk",
+        endpoints: [
+          { dialect: "bedrock-converse", operation: "Converse" },
+          { dialect: "bedrock-converse", operation: "ConverseStream" }
+        ],
+        defaultHeaders: {},
+        capabilities: {},
+        forwardHarnessHeaders: false,
+        enabled: true
+      }
+    });
+
+    expect(created.errors).toBeUndefined();
+    expect(created.data?.createProvider).toMatchObject({
+      slug: "amazon-bedrock",
+      adapterKind: "aws-bedrock-converse",
+      adapterConfig: { defaultRegion: "us-east-1" },
+      authStyle: "aws-sdk",
+      endpoints: [
+        { dialect: "bedrock-converse", operation: "Converse", path: null },
+        { dialect: "bedrock-converse", operation: "ConverseStream", path: null }
+      ]
+    });
+  });
+
+  it("rejects invalid adapter and endpoint combinations", async () => {
+    const fixture = await setup("org_provider_admin_adapter_guards");
+    const genericAws = await gql(fixture, CREATE_PROVIDER, {
+      input: {
+        slug: "bad-auth",
+        displayName: "Bad Auth",
+        baseUrl: fixture.openai.url,
+        adapterKind: "generic-http-json",
+        authStyle: "aws-sdk",
+        endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
+        forwardHarnessHeaders: false,
+        enabled: true
+      }
+    });
+    const bedrockPath = await gql(fixture, CREATE_PROVIDER, {
+      input: {
+        slug: "bad-bedrock",
+        displayName: "Bad Bedrock",
+        baseUrl: fixture.openai.url,
+        adapterKind: "aws-bedrock-converse",
+        authStyle: "aws-sdk",
+        endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
+        forwardHarnessHeaders: false,
+        enabled: true
+      }
+    });
+
+    expect(genericAws.errors?.[0]?.message).toBe("invalid_provider_adapter");
+    expect(genericAws.errors?.[0]?.extensions?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "authStyle" })
+    ]));
+    expect(bedrockPath.errors?.[0]?.message).toBe("invalid_provider_adapter");
+    expect(bedrockPath.errors?.[0]?.extensions?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "endpoints.0.path" })
+    ]));
+  });
+
   it("returns field-level guard errors for unsafe provider writes", async () => {
     const fixture = await setup("org_provider_admin_guards");
     const authHeader = await gql(fixture, CREATE_PROVIDER, {
@@ -118,6 +220,23 @@ describe("provider registry admin GraphQL", () => {
     });
     expect(authHeader.errors?.[0]?.message).toBe("provider_default_header_forbidden");
     expect(authHeader.errors?.[0]?.extensions?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "defaultHeaders" })
+    ]));
+
+    const awsHeader = await gql(fixture, CREATE_PROVIDER, {
+      input: {
+        slug: "bad-aws-headers",
+        displayName: "Bad AWS Headers",
+        baseUrl: fixture.openai.url,
+        authStyle: "none",
+        endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
+        defaultHeaders: { "x-amz-security-token": "secret" },
+        forwardHarnessHeaders: false,
+        enabled: true
+      }
+    });
+    expect(awsHeader.errors?.[0]?.message).toBe("provider_default_header_forbidden");
+    expect(awsHeader.errors?.[0]?.extensions?.issues).toEqual(expect.arrayContaining([
       expect.objectContaining({ path: "defaultHeaders" })
     ]));
 

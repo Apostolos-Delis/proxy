@@ -84,6 +84,7 @@ export function providerCredentialRows(
 }
 
 export function authTypeLabel(account: ProviderAccountSummary) {
+  if (account.credentialSourceCategory) return account.credentialSourceCategory;
   if (account.authType !== "oauth") return "API key";
   if (account.provider === "anthropic") return "Claude sub";
   if (account.provider === "openai") return "ChatGPT sub";
@@ -146,6 +147,9 @@ export function providerCredentialSearchValue(
     authTypeLabel(row.account),
     row.account.status,
     row.account.secretHint ?? "",
+    row.account.credentialSourceCategory ?? "",
+    row.account.region ?? "",
+    row.account.discoveryRegions.join(" "),
     ownerLabel(users, row.account.ownerUserId),
     ...providerHealthSearchTokens(row.account),
     ...boundKeyNames(row, boundKeys)

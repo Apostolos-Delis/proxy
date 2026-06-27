@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type { ProviderAccountSummary } from "./data";
 import {
+  bedrockHealthCategoryLabel,
   modelHealthRows,
+  providerBedrockHealthCategories,
   providerHealthLabel,
   providerHealthSearchTokens,
   providerHealthTone
@@ -48,6 +50,34 @@ describe("provider health display helpers", () => {
       "locked_out",
       "model_unavailable"
     ]));
+  });
+
+  it("extracts Bedrock health categories and metadata tokens", () => {
+    const bedrockAccount = account({
+      status: "cooldown",
+      metadata: { bedrockErrorKind: "quota_exceeded", region: "us-east-1" },
+      modelHealth: [
+        model({
+          model: "anthropic.claude-3-5-sonnet",
+          status: "terminal",
+          lastErrorType: "model_access_denied",
+          metadata: {
+            bedrockErrorKind: "stream_permission_denied",
+            bedrockOperation: "ConverseStream",
+            region: "us-east-1"
+          }
+        })
+      ]
+    });
+
+    expect(providerBedrockHealthCategories(bedrockAccount)).toEqual(["quota_exceeded", "stream_permission_denied"]);
+    expect(providerHealthSearchTokens(bedrockAccount)).toEqual(expect.arrayContaining([
+      "quota_exceeded",
+      "stream_permission_denied",
+      "ConverseStream",
+      "us-east-1"
+    ]));
+    expect(bedrockHealthCategoryLabel("stream_permission_denied")).toBe("Stream permission denied");
   });
 
   it("orders model health rows by lockouts first, then by model", () => {

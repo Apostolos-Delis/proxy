@@ -1,0 +1,14 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_bedrock","status":"in_progress"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"call_list_files","type":"function_call","call_id":"call_list_files","name":"shell","arguments":"","status":"in_progress"}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"call_list_files","delta":"{\"cmd\""}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"call_list_files","delta":":\"ls apps/proxy\"}"}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_bedrock","status":"completed","usage":{}}}

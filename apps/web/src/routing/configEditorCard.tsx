@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 
 import { JsonEditor } from "../jsonView";
 import type { RoutingConfigDocument } from "../routingConfigEditor";
-import { applyDraft, draftError, draftFromConfig, parseConfigJson } from "../routingConfigEditor";
+import { applyDraft, draftError, draftFromConfig, emptyRoutingEditorCatalog, parseConfigJson } from "../routingConfigEditor";
 import { GlassCard } from "../ui";
 import {
   activateRoutingConfigVersion,
@@ -41,15 +41,17 @@ export function ConfigEditorCard({ configId, version }: { configId: string; vers
 
   const savedConfigJson = useMemo(() => JSON.stringify(version.config), [version.config]);
   const jsonResult = view === "json" ? parseConfigJson(jsonText) : undefined;
-  const candidate = view === "form" ? applyDraft(baseConfig, draft) : jsonResult?.config;
+  const catalog = catalogQuery.data ?? emptyRoutingEditorCatalog();
+  const candidate = view === "form" ? applyDraft(baseConfig, draft, catalog) : jsonResult?.config;
   const dirty = candidate !== undefined && JSON.stringify(candidate) !== savedConfigJson;
   const error = validationError ?? jsonResult?.error ?? saveMutation.error?.message;
+  const saveDisabled = !dirty || saveMutation.isPending || (view === "form" && catalogQuery.isLoading);
 
   const switchView = (next: "form" | "json") => {
     if (next === view) return;
     setValidationError(undefined);
     if (next === "json") {
-      setJsonText(JSON.stringify(applyDraft(baseConfig, draft), null, 2));
+      setJsonText(JSON.stringify(applyDraft(baseConfig, draft, catalog), null, 2));
       setView("json");
       return;
     }
@@ -59,13 +61,17 @@ export function ConfigEditorCard({ configId, version }: { configId: string; vers
     setDraft(draftFromConfig(parsed.config));
     setView("form");
   };
+  const formValidationError = () => {
+    if (catalogQuery.data) return draftError(draft, catalogQuery.data);
+    return catalogQuery.error?.message ?? "Routing model catalog is still loading.";
+  };
 
   return (
     <GlassCard>
       <form className="routing-config-edit-form" onSubmit={(event) => {
         event.preventDefault();
         if (!candidate) return;
-        const nextError = view === "form" ? draftError(draft) : undefined;
+        const nextError = view === "form" ? formValidationError() : undefined;
         setValidationError(nextError);
         if (!nextError) saveMutation.mutate(candidate);
       }}>
@@ -103,7 +109,7 @@ export function ConfigEditorCard({ configId, version }: { configId: string; vers
               />
               Activate immediately
             </label>
-            <button className="btn btn-primary" type="submit" disabled={!dirty || saveMutation.isPending}>
+            <button className="btn btn-primary" type="submit" disabled={saveDisabled}>
               {saveMutation.isPending ? "Saving" : "Save new version"}
             </button>
           </div>
@@ -116,7 +122,7 @@ export function ConfigEditorCard({ configId, version }: { configId: string; vers
             <RouteTargetsEditor
               draft={draft}
               baseConfig={baseConfig}
-              catalog={catalogQuery.data ?? { providers: [], models: [] }}
+              catalog={catalog}
               onChange={setDraft}
             />
             {catalogQuery.error ? <div className="action-error">{catalogQuery.error.message}</div> : null}

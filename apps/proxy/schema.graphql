@@ -49,6 +49,25 @@ type AuthUser {
   workspaceId: String!
 }
 
+type BedrockModelDiscoveryRegionError {
+  error: String!
+  region: String!
+}
+
+type BedrockModelDiscoveryResult {
+  error: String
+  errors: [BedrockModelDiscoveryRegionError!]!
+  inserted: Int!
+  modelsApplied: Int!
+  modelsSeen: Int!
+  provider: String
+  providerAccountId: String!
+  regions: [String!]!
+  skipped: Int!
+  status: String!
+  updated: Int!
+}
+
 type CacheBust {
   at: String!
   cause: String!
@@ -262,15 +281,24 @@ input CreateProviderCredentialFromLocalAuthInput {
 }
 
 input CreateProviderCredentialInput {
-  apiKey: String!
+  accessKeyId: String
+  apiKey: String
   authType: ProviderAccountAuthType
   baseUrl: String
   chatgptAccountId: String
+  credentialMode: String
+  discoveryRegions: [String!]
+  endpointOverride: String
   name: String!
   provider: String!
+  region: String
+  secretAccessKey: String
+  sessionToken: String
 }
 
 input CreateProviderInput {
+  adapterConfig: JSON
+  adapterKind: String
   authStyle: String!
   baseUrl: String!
   capabilities: JSON
@@ -412,6 +440,43 @@ enum MemberRole {
   viewer
 }
 
+type ModelCatalogEntry {
+  bedrockBaseModelId: String
+  bedrockFoundationModelId: String
+  bedrockInferenceProfileArn: String
+  bedrockInferenceProfileGeography: String
+  bedrockInferenceProfileId: String
+  bedrockInferenceProfileSource: String
+  bedrockModelSource: String
+  cacheReadCostPerMtok: Float
+  cacheWriteCostPerMtok: Float
+  catalogSource: String!
+  contextWindow: Int
+  dialects: [String!]!
+  displayName: String
+  inputCostPerMtok: Float
+  maxOutputTokens: Int
+  model: String!
+  outputCostPerMtok: Float
+  pricingKnown: Boolean!
+  provider: String!
+  providerAccountId: String
+  region: String
+  supportsImages: Boolean
+  supportsReasoning: Boolean
+  supportsStreaming: Boolean
+  supportsTools: Boolean
+  updatedAt: String!
+  warnings: [String!]!
+}
+
+input ModelCatalogPricingInput {
+  cacheReadCostPerMtok: Float
+  cacheWriteCostPerMtok: Float
+  inputCostPerMtok: Float
+  outputCostPerMtok: Float
+}
+
 type ModelPricingEntry {
   cacheReadCostPerMtok: Float
   cacheWriteCostPerMtok: Float
@@ -454,6 +519,7 @@ type Mutation {
   logout: Boolean!
   probeProviderCredential(input: ProbeProviderCredentialInput!): ProviderHealthProbeResult!
   reactivateUser(userId: ID!): UserStatusResult!
+  refreshBedrockModelCatalog(input: RefreshBedrockModelCatalogInput!): BedrockModelDiscoveryResult!
   resendInvitation(invitationId: ID!): InvitationActionResult!
   revokeApiKey(apiKeyId: ID!): ApiKey!
   revokeInvitation(invitationId: ID!): Invitation
@@ -463,8 +529,10 @@ type Mutation {
   switchOrganization(organizationId: ID!): Viewer!
   switchWorkspace(workspaceId: ID!): Viewer!
   updateProvider(input: UpdateProviderInput!): ProviderRegistryEntry
+  updateProviderCredential(input: UpdateProviderCredentialInput!): ProviderAccount
   updateSettings(input: SettingsInput!): Settings!
   updateUserRole(role: MemberRole!, userId: ID!): UpdateUserRoleResult!
+  upsertModelCatalogEntry(input: UpsertModelCatalogInput!): ModelCatalogEntry
 }
 
 type OrgMember {
@@ -498,6 +566,7 @@ type OverviewDashboard {
 
 input ProbeProviderCredentialInput {
   model: String!
+  operation: String
   providerAccountId: ID!
 }
 
@@ -636,6 +705,10 @@ type ProviderAccount {
   baseUrl: String
   boundKeyCount: Int!
   createdAt: String!
+  credentialMode: String
+  credentialSourceCategory: String
+  discoveryRegions: [String!]!
+  endpointOverride: String
   health: ProviderAccountHealth
   id: String!
   lastUsedAt: String
@@ -644,6 +717,7 @@ type ProviderAccount {
   ownerUserId: String
   provider: String!
   providerId: String!
+  region: String
   secretHint: String
   status: String!
 }
@@ -660,11 +734,14 @@ type ProviderAccountHealth {
   lastErrorAt: String
   lastErrorType: String
   lastSuccessAt: String
+  metadata: JSON!
   modelHealth: [ProviderModelHealth!]!
   status: String
 }
 
 type ProviderAttempt {
+  adapterClassification: JSON
+  adapterKind: String
   attemptIndex: Int
   completedAt: String
   error: String
@@ -700,12 +777,14 @@ type ProviderCredentialOAuthStatus {
 
 type ProviderEndpoint {
   dialect: String!
-  path: String!
+  operation: String
+  path: String
 }
 
 input ProviderEndpointInput {
   dialect: String!
-  path: String!
+  operation: String
+  path: String
 }
 
 type ProviderHealthProbeResult {
@@ -730,6 +809,7 @@ type ProviderModelHealth {
   lastErrorType: String
   lastSuccessAt: String
   lockoutUntil: String
+  metadata: JSON!
   model: String!
   providerAccountId: String!
   providerId: String!
@@ -737,6 +817,8 @@ type ProviderModelHealth {
 }
 
 type ProviderRegistryEntry {
+  adapterConfig: JSON!
+  adapterKind: String!
   authStyle: String!
   baseUrl: String!
   builtin: Boolean!
@@ -788,6 +870,7 @@ type Query {
   idleGaps(end: String, start: String): IdleGapReport!
   invitations: [Invitation!]!
   members: [OrgMember!]!
+  modelCatalog: [ModelCatalogEntry!]!
   modelPricing: [ModelPricingEntry!]!
   overview: Overview!
   overviewDashboard: OverviewDashboard!
@@ -814,6 +897,10 @@ type Query {
   user(userId: ID!): UserDetail
   users: [UserSummary!]!
   viewer: Viewer!
+}
+
+input RefreshBedrockModelCatalogInput {
+  providerAccountId: ID!
 }
 
 type RequestDetail {
@@ -1165,7 +1252,23 @@ type ToolResultCompressionPolicySettings {
   storeOriginalArtifact: Boolean
 }
 
+input UpdateProviderCredentialInput {
+  accessKeyId: String
+  apiKey: String
+  baseUrl: String
+  credentialMode: String
+  discoveryRegions: [String!]
+  endpointOverride: String
+  name: String
+  providerAccountId: ID!
+  region: String
+  secretAccessKey: String
+  sessionToken: String
+}
+
 input UpdateProviderInput {
+  adapterConfig: JSON
+  adapterKind: String
   authStyle: String!
   baseUrl: String!
   capabilities: JSON
@@ -1181,6 +1284,20 @@ type UpdateUserRoleResult {
   previousRole: String!
   role: String!
   userId: String!
+}
+
+input UpsertModelCatalogInput {
+  contextWindow: Int
+  dialects: [String!]
+  displayName: String
+  maxOutputTokens: Int
+  model: String!
+  pricing: ModelCatalogPricingInput
+  provider: String!
+  supportsImages: Boolean
+  supportsReasoning: Boolean
+  supportsStreaming: Boolean
+  supportsTools: Boolean
 }
 
 type UsageDashboard {

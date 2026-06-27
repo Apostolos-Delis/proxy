@@ -102,6 +102,40 @@ describe("classifyProviderTerminalHealth", () => {
     expect(result?.cooldownUntil).toBe("2026-06-18T12:00:15.000Z");
   });
 
+  it("uses adapter classifications when provided", () => {
+    const result = classifyProviderTerminalHealth({
+      provider: "openai",
+      model: "gpt-5",
+      terminalStatus: "failed",
+      statusCode: 400,
+      error: "provider body did not matter",
+      adapterClassification: {
+        category: "context_too_large",
+        errorType: "context_overflow",
+        source: "response_body",
+        retryable: false,
+        fatal: true,
+        scope: "request_only",
+        message: "adapter says context overflow"
+      },
+      now
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      errorType: "context_overflow",
+      source: "response_body",
+      retryable: false,
+      scope: "request_only",
+      message: "adapter says context overflow",
+      metadata: expect.objectContaining({
+        adapterCategory: "context_too_large",
+        fatal: true,
+        provider: "openai",
+        model: "gpt-5"
+      })
+    }));
+  });
+
   it("does not apply retry-after to request-only failures", () => {
     const result = classifyProviderTerminalHealth({
       provider: "anthropic",

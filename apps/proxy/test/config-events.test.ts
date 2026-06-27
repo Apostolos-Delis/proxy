@@ -24,7 +24,12 @@ describe("config and events", () => {
 
   it("parses request body limits", () => {
     expect(loadConfig({}).requestBodyLimitBytes).toBe(1024 * 1024 * 50);
-    expect(loadConfig({ NODE_ENV: "production" }).requestBodyLimitBytes).toBe(1024 * 1024 * 15);
+    expect(loadConfig({
+      NODE_ENV: "production",
+      PROXY_TOKEN: "production-proxy-token",
+      OPENAI_API_KEY: "production-openai-key",
+      ANTHROPIC_API_KEY: "production-anthropic-key"
+    }).requestBodyLimitBytes).toBe(1024 * 1024 * 15);
     expect(loadConfig({ REQUEST_BODY_LIMIT_BYTES: "1024" }).requestBodyLimitBytes).toBe(1024);
     expect(() => loadConfig({ REQUEST_BODY_LIMIT_BYTES: "0" })).toThrow();
   });
@@ -93,7 +98,7 @@ describe("config and events", () => {
   });
 
   it("bounds persistent event mirrors without changing no-db debug mirrors", async () => {
-    const persisted = new EventService(undefined, undefined, { append: async () => {} }, "org_mirror", {
+    const persisted = new EventService(undefined, undefined, { append: async () => {} }, "org_mirror", undefined, {
       mirrorLimit: 2
     });
     const local = new EventService();
@@ -130,7 +135,7 @@ describe("config and events", () => {
         sequences.set(key, sequence);
         return { sequence };
       }
-    }, "org_mirror", { scopeLimit: 1 });
+    }, "org_mirror", undefined, { scopeLimit: 1 });
 
     await events.append({
       scopeType: "request",

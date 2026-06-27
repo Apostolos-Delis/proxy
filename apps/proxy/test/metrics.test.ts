@@ -379,7 +379,7 @@ describe("routing and provider metrics", () => {
     })).toBe(12);
     expect(sampleValue(snapshot.counters, "proxy_routing_decisions_total", {
       final_route: "hard",
-      guardrail_action: "none",
+      guardrail_action: "translated_request:openai-responses_to_anthropic-messages",
       model: "gpt-routed-hard-test",
       provider: "openai",
       requested_route: "hard",

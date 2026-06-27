@@ -350,6 +350,25 @@ describe("harness block stripping", () => {
     expect(context.toolCount).toBe(1);
     expect(context.hasImages).toBe(true);
   });
+
+  it("marks streaming requests and signed Anthropic thinking as translation-sensitive", () => {
+    const context = buildAnthropicContext(
+      {
+        model: "claude-router-auto",
+        messages: [{
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "private chain", signature: "sig_1", encrypted_content: "ciphertext" }
+          ]
+        }],
+        stream: true
+      },
+      {}
+    );
+
+    expect(context.isStreaming).toBe(true);
+    expect(context.unsupportedFields).toEqual(["thinking.signature", "thinking.encrypted_content"]);
+  });
 });
 
 describe("tool_result handling", () => {

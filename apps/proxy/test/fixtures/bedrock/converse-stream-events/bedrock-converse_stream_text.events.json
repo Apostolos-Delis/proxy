@@ -1,0 +1,33 @@
+[
+  {
+    "messageStart": {
+      "role": "assistant"
+    }
+  },
+  {
+    "contentBlockDelta": {
+      "contentBlockIndex": 0,
+      "delta": {
+        "text": "The migration "
+      }
+    }
+  },
+  {
+    "contentBlockDelta": {
+      "contentBlockIndex": 0,
+      "delta": {
+        "text": "should land behind an adapter."
+      }
+    }
+  },
+  {
+    "contentBlockStop": {
+      "contentBlockIndex": 0
+    }
+  },
+  {
+    "messageStop": {
+      "stopReason": "end_turn"
+    }
+  }
+]

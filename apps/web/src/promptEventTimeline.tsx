@@ -16,6 +16,7 @@ import {
   type ProxyEvent,
   type RequestSummary
 } from "./promptDetailData";
+import { bedrockHealthMetadataSummary } from "./providers/healthData";
 import { Badge, DataTable, GlassCard, StatusBadge } from "./ui";
 
 export function EventTimeline({ events }: { events: ProxyEvent[] }) {
@@ -292,7 +293,8 @@ function healthSkipDetail(skip: HealthSkipEvidence) {
   const parts = [
     skip.healthStatus,
     skip.errorType,
-    skip.expiresAt ? `until ${formatDateTime(skip.expiresAt)}` : null
+    skip.expiresAt ? `until ${formatDateTime(skip.expiresAt)}` : null,
+    bedrockHealthMetadataSummary(skip.metadata)
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : "no additional health metadata";
 }

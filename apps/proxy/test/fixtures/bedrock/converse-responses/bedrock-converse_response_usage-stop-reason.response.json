@@ -1,0 +1,24 @@
+{
+  "output": {
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "Partial answer before the token limit."
+        }
+      ]
+    }
+  },
+  "stopReason": "max_tokens",
+  "usage": {
+    "inputTokens": 512,
+    "outputTokens": 256,
+    "totalTokens": 768
+  },
+  "metrics": {
+    "latencyMs": 240
+  },
+  "$metadata": {
+    "requestId": "bedrock-request-max-tokens"
+  }
+}

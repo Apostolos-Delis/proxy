@@ -10,16 +10,25 @@ import { CredentialSourceSelector } from "./credentialSourceSelector";
 import { ProviderMark } from "./icons";
 import { ClaudeSetupGuide, CodexSetupGuide } from "./subscriptionCredentialGuides";
 import {
+  bedrockCredentialModeLabel,
   namePlaceholderForDraft,
   secretLabelForDraft,
   secretPlaceholderForDraft,
   withCredentialSource,
+  type BedrockCredentialMode,
   type CreateProviderCredentialDraft,
   type CreateProviderCredentialMode,
   type CreateProviderCredentialSource
 } from "./createCredentialWizard";
 
-export type ProviderOption = { value: ProviderName; label: string };
+export type ProviderOption = { value: ProviderName; label: string; adapterKind?: string };
+
+const bedrockModeOptions: { value: BedrockCredentialMode; label: string }[] = [
+  { value: "aws_bedrock_bearer_token", label: bedrockCredentialModeLabel("aws_bedrock_bearer_token") },
+  { value: "aws_static_keys", label: bedrockCredentialModeLabel("aws_static_keys") },
+  { value: "aws_default_chain", label: bedrockCredentialModeLabel("aws_default_chain") },
+  { value: "aws_profile", label: bedrockCredentialModeLabel("aws_profile") }
+];
 
 export function CredentialDetailsStep({ draft, providerOptions, oauth, onChange }: {
   draft: CreateProviderCredentialDraft;
@@ -30,7 +39,9 @@ export function CredentialDetailsStep({ draft, providerOptions, oauth, onChange 
   const fixedProvider = draft.mode !== "api_key";
   const browserOAuth = draft.source === "claude_oauth" || draft.source === "openai_oauth";
   const managedSubscription = fixedProvider && (draft.source === "local_auth" || browserOAuth);
-  const showBaseUrl = !browserOAuth;
+  const bedrockProvider = draft.mode === "api_key" &&
+    providerOptions.find((option) => option.value === draft.provider)?.adapterKind === "aws-bedrock-converse";
+  const showBaseUrl = !browserOAuth && !bedrockProvider;
   const [advancedOpen, setAdvancedOpen] = useState(fixedProvider && !browserOAuth);
   const head = detailsHeadCopy(draft, browserOAuth);
   const toggleAdvanced = () => {
@@ -119,7 +130,8 @@ export function CredentialDetailsStep({ draft, providerOptions, oauth, onChange 
         {browserOAuth ? (
           <CredentialOAuthCard draft={draft} oauth={oauth} />
         ) : null}
-        {managedSubscription ? null : (
+        {bedrockProvider ? <BedrockCredentialFields draft={draft} onChange={onChange} /> : null}
+        {managedSubscription || bedrockProvider ? null : (
           <label className="routing-create-field">
             <span>{secretLabelForDraft(draft)}</span>
             {draft.mode === "codex_subscription" ? (
@@ -144,6 +156,103 @@ export function CredentialDetailsStep({ draft, providerOptions, oauth, onChange 
         )}
       </div>
     </GlassCard>
+  );
+}
+
+function BedrockCredentialFields({ draft, onChange }: {
+  draft: CreateProviderCredentialDraft;
+  onChange: (draft: CreateProviderCredentialDraft) => void;
+}) {
+  return (
+    <div className="bedrock-credential-fields">
+      <div className="routing-create-grid key-create-grid">
+        <div className="routing-create-field">
+          <span>Credential mode</span>
+          <MenuSelect
+            ariaLabel="Bedrock credential mode"
+            value={draft.bedrockCredentialMode}
+            options={bedrockModeOptions}
+            onChange={(bedrockCredentialMode) => onChange({ ...draft, bedrockCredentialMode: bedrockCredentialMode as BedrockCredentialMode })}
+          />
+        </div>
+        <label className="routing-create-field">
+          <span>Runtime region</span>
+          <input
+            value={draft.bedrockRegion}
+            onChange={(event) => onChange({ ...draft, bedrockRegion: event.target.value })}
+            placeholder="us-east-1"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <label className="routing-create-field">
+          <span>Discovery regions</span>
+          <input
+            value={draft.bedrockDiscoveryRegions}
+            onChange={(event) => onChange({ ...draft, bedrockDiscoveryRegions: event.target.value })}
+            placeholder="us-east-1, us-west-2"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <label className="routing-create-field">
+          <span>Runtime endpoint override</span>
+          <input
+            value={draft.bedrockEndpointOverride}
+            onChange={(event) => onChange({ ...draft, bedrockEndpointOverride: event.target.value })}
+            placeholder="https://bedrock-runtime.us-east-1.amazonaws.com"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+      </div>
+      {draft.bedrockCredentialMode === "aws_bedrock_bearer_token" ? (
+        <label className="routing-create-field">
+          <span>Bedrock bearer token</span>
+          <input
+            value={draft.apiKey}
+            onChange={(event) => onChange({ ...draft, apiKey: event.target.value })}
+            placeholder="AWS_BEARER_TOKEN_BEDROCK value"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+      ) : null}
+      {draft.bedrockCredentialMode === "aws_static_keys" ? (
+        <div className="routing-create-grid key-create-grid">
+          <label className="routing-create-field">
+            <span>AWS access key ID</span>
+            <input
+              value={draft.bedrockAccessKeyId}
+              onChange={(event) => onChange({ ...draft, bedrockAccessKeyId: event.target.value })}
+              placeholder="AKIA..."
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <label className="routing-create-field">
+            <span>AWS secret access key</span>
+            <input
+              value={draft.bedrockSecretAccessKey}
+              onChange={(event) => onChange({ ...draft, bedrockSecretAccessKey: event.target.value })}
+              placeholder="Secret access key"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <label className="routing-create-field">
+            <span>AWS session token</span>
+            <input
+              value={draft.bedrockSessionToken}
+              onChange={(event) => onChange({ ...draft, bedrockSessionToken: event.target.value })}
+              placeholder="Optional"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

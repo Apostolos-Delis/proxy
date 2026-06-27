@@ -1,0 +1,13 @@
+data: {"id":"chatcmpl_bedrock","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl_bedrock","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_list_files","type":"function","function":{"name":"shell","arguments":""}}]},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl_bedrock","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"cmd\""}}]},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl_bedrock","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":":\"ls apps/proxy\"}"}}]},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl_bedrock","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":null}
+
+data: {"id":"chatcmpl_bedrock","object":"chat.completion.chunk","choices":[],"usage":null}
+
+data: [DONE]

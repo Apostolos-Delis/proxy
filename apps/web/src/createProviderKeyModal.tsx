@@ -22,6 +22,7 @@ import {
 } from "./providers/createCredentialSteps";
 import {
   authTypeForMode,
+  bedrockDiscoveryRegions,
   credentialBlockerMessage,
   initialProviderCredentialDraft,
   nextStepId,
@@ -61,6 +62,8 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
   const providerOptions = providerRegistryQueryData
     ? providerOptionsFromRegistry(providerRegistryQueryData)
     : PROVIDER_OPTIONS;
+  const providerIsBedrock = draft.mode === "api_key" &&
+    providerOptions.find((option) => option.value === draft.provider)?.adapterKind === "aws-bedrock-converse";
   const subscriptionAuthEnabled = subscriptionAuthQueryData === true;
 
   const createMutation = useMutation({
@@ -164,7 +167,7 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
     : null;
   const created = createMutation.data ?? oauthCreated;
   const visibleDraft = created ? { ...draft, stepId: "bind" as const } : draft;
-  const blocker = created ? null : stepBlockerMessage(draft, subscriptionAuthEnabled) ??
+  const blocker = created ? null : stepBlockerMessage(draft, subscriptionAuthEnabled, providerIsBedrock) ??
     oauthBlockerMessage(draft, oauthStartMutation, oauthStatusQuery);
   const goNext = () => {
     const next = nextStepId(draft.stepId);
@@ -195,7 +198,7 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
   };
   const startOAuth = () => {
     if (oauthWaiting) return;
-    const nextError = credentialBlockerMessage(draft, subscriptionAuthEnabled);
+    const nextError = credentialBlockerMessage(draft, subscriptionAuthEnabled, providerIsBedrock);
     setFieldError(nextError);
     if (nextError) return;
     oauthStartMutation.mutate({
@@ -204,19 +207,10 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
     });
   };
   const submit = () => {
-    const nextError = credentialBlockerMessage(draft, subscriptionAuthEnabled);
+    const nextError = credentialBlockerMessage(draft, subscriptionAuthEnabled, providerIsBedrock);
     setFieldError(nextError);
     if (nextError) return;
-    createMutation.mutate({
-      provider: draft.provider,
-      name: draft.name.trim(),
-      authType: authTypeForMode(draft.mode),
-      apiKey: draft.apiKey.trim(),
-      baseUrl: draft.baseUrl.trim() || undefined,
-      chatgptAccountId: draft.chatgptAccountId.trim() || undefined,
-      mode: draft.mode,
-      source: draft.source
-    });
+    createMutation.mutate(providerIsBedrock ? bedrockCreateRequest(draft) : genericCreateRequest(draft));
   };
 
   return (
@@ -261,7 +255,7 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
               onChange={updateDraft}
             />
           ) : null}
-          {visibleDraft.stepId === "review" ? <CredentialReviewStep draft={draft} /> : null}
+          {visibleDraft.stepId === "review" ? <CredentialReviewStep draft={draft} providerIsBedrock={providerIsBedrock} /> : null}
           {visibleDraft.stepId === "bind" && created ? (
             <CreatedCredentialStep created={created} embedded={Boolean(onCreated)} onClose={requestClose} />
           ) : null}
@@ -281,4 +275,43 @@ export function CreateProviderKeyModal({ onClose, onCreated }: {
       </div>
     </Modal>
   );
+}
+
+function genericCreateRequest(draft: CreateProviderCredentialDraft): CreateProviderCredentialRequest {
+  return {
+    provider: draft.provider,
+    name: draft.name.trim(),
+    authType: authTypeForMode(draft.mode),
+    apiKey: draft.apiKey.trim(),
+    baseUrl: draft.baseUrl.trim() || undefined,
+    chatgptAccountId: draft.chatgptAccountId.trim() || undefined,
+    mode: draft.mode,
+    source: draft.source
+  };
+}
+
+function bedrockCreateRequest(draft: CreateProviderCredentialDraft): CreateProviderCredentialRequest {
+  const base = {
+    provider: draft.provider,
+    name: draft.name.trim(),
+    authType: "api_key" as const,
+    credentialMode: draft.bedrockCredentialMode,
+    region: draft.bedrockRegion.trim(),
+    endpointOverride: draft.bedrockEndpointOverride.trim() || undefined,
+    discoveryRegions: bedrockDiscoveryRegions(draft),
+    mode: draft.mode,
+    source: draft.source
+  };
+  if (draft.bedrockCredentialMode === "aws_bedrock_bearer_token") {
+    return { ...base, apiKey: draft.apiKey.trim() };
+  }
+  if (draft.bedrockCredentialMode === "aws_static_keys") {
+    return {
+      ...base,
+      accessKeyId: draft.bedrockAccessKeyId.trim(),
+      secretAccessKey: draft.bedrockSecretAccessKey.trim(),
+      sessionToken: draft.bedrockSessionToken.trim() || undefined
+    };
+  }
+  return base;
 }

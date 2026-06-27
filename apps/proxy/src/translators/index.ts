@@ -6,6 +6,11 @@ import {
   openAIResponsesToAnthropicMessages
 } from "./anthropicOpenAI.js";
 import { openAIChatToResponses, openAIResponsesToChat } from "./openai.js";
+import {
+  anthropicMessagesToBedrockConverse,
+  openAIChatToBedrockConverse,
+  openAIResponsesToBedrockConverse
+} from "./bedrockConverse.js";
 
 export type DialectTranslator = {
   request(body: unknown): unknown;
@@ -38,6 +43,9 @@ translators.register("anthropic-messages", "openai-chat", anthropicMessagesToOpe
 translators.register("openai-chat", "anthropic-messages", openAIChatToAnthropicMessages);
 translators.register("anthropic-messages", "openai-responses", anthropicMessagesToOpenAIResponses);
 translators.register("openai-responses", "anthropic-messages", openAIResponsesToAnthropicMessages);
+translators.register("openai-chat", "bedrock-converse", openAIChatToBedrockConverse);
+translators.register("anthropic-messages", "bedrock-converse", anthropicMessagesToBedrockConverse);
+translators.register("openai-responses", "bedrock-converse", openAIResponsesToBedrockConverse);
 
 export function translationTag(from: Dialect, to: Dialect) {
   return `translated_request:${from}_to_${to}`;

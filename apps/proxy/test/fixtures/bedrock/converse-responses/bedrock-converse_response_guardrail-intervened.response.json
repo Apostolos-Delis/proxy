@@ -1,0 +1,36 @@
+{
+  "output": {
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "text": "I cannot help with that request."
+        }
+      ]
+    }
+  },
+  "stopReason": "guardrail_intervened",
+  "usage": {
+    "inputTokens": 31,
+    "outputTokens": 8,
+    "totalTokens": 39
+  },
+  "trace": {
+    "guardrail": {
+      "action": "INTERVENED",
+      "inputAssessment": {
+        "topicPolicy": {
+          "topics": [
+            {
+              "name": "unsafe_test_topic",
+              "action": "BLOCKED"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "$metadata": {
+    "requestId": "bedrock-request-guardrail"
+  }
+}
