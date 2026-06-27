@@ -5589,6 +5589,10 @@ a.key-bound-row:hover {
   color: var(--accent-2);
 }
 
+.provider-icon[data-provider="amazon-bedrock"] {
+  color: #ff9900;
+}
+
 .provider-group-domain {
   font-size: 12px;
   color: var(--fg-faint);
