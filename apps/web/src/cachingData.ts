@@ -272,15 +272,23 @@ export const bustCauseLabels: Record<string, string> = {
   ttl_expiry: "TTL expiry",
   model_switch: "Model switch",
   provider_switch: "Provider switch",
+  org_prompt_edit: "Org prompt edit",
+  tool_schema_churn: "Tool schema churn",
+  translator_change: "Translator change",
+  compression_policy_change: "Compression policy change",
+  route_config_change: "Route config change",
   unknown: "Unknown"
 };
 
-// Cool analogous palette per the design; unknown stays neutral slate so an
-// unclassified bust never reads as a categorized one.
 export const bustCauses = [
   { key: "ttl_expiry", label: bustCauseLabels.ttl_expiry, color: "#14b8a6" },
   { key: "model_switch", label: bustCauseLabels.model_switch, color: "#38bdf8" },
   { key: "provider_switch", label: bustCauseLabels.provider_switch, color: "#34d399" },
+  { key: "org_prompt_edit", label: bustCauseLabels.org_prompt_edit, color: "#f59e0b" },
+  { key: "tool_schema_churn", label: bustCauseLabels.tool_schema_churn, color: "#f97316" },
+  { key: "translator_change", label: bustCauseLabels.translator_change, color: "#a78bfa" },
+  { key: "compression_policy_change", label: bustCauseLabels.compression_policy_change, color: "#ec4899" },
+  { key: "route_config_change", label: bustCauseLabels.route_config_change, color: "#eab308" },
   { key: "unknown", label: bustCauseLabels.unknown, color: "#64748b" }
 ] as const;
 

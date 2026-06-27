@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { actorForIdentity, type RequestIdentity } from "./auth.js";
 import { jsonPayload, type EventAppender } from "./events.js";
 import type { JsonObject, Surface } from "./types.js";
-import { isRecord, roughTokenEstimate, stableJson, stringField, unreachable } from "./util.js";
+import { isRecord, roughTokenEstimate, sha256, stableJson, stringField, unreachable } from "./util.js";
 
 // Bounds the per-name lists so a tool-heavy request cannot bloat the event
 // payload; overflow rolls up into a synthetic __other entry.
@@ -16,6 +16,7 @@ export type TokenAttribution = {
   requestedModel: string;
   systemPrompt: Bucket;
   orgSystemPrompt: Bucket;
+  orgSystemPromptHash: string | null;
   toolSchemas: Bucket & { count: number };
   history: Bucket & { messages: number };
   newToolResults: Bucket & { blocks: number };
@@ -44,6 +45,7 @@ export function attributeTokens(surface: Surface, body: unknown, orgSystemPrompt
     requestedModel: typeof request.model === "string" ? request.model : fallbackModel,
     systemPrompt: bucket(parts.systemChars),
     orgSystemPrompt: bucket(orgChars),
+    orgSystemPromptHash: orgSystemPrompt === undefined ? null : sha256(orgSystemPrompt),
     toolSchemas: { ...bucket(parts.toolSchemas.total), count: parts.toolSchemas.count },
     history: { ...bucket(parts.historyChars), messages: parts.historyMessages },
     newToolResults: { ...bucket(parts.newToolResults.total), blocks: parts.newToolResults.blocks },

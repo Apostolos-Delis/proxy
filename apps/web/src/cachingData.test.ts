@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  bustCauseLabels,
+  bustCauses,
   bustsByModel,
   cacheSavings,
   openAICacheGroupLabel,
@@ -42,6 +44,29 @@ describe("bustsByModel", () => {
 
   it("is empty for no busts", () => {
     expect(bustsByModel([])).toEqual([]);
+  });
+});
+
+describe("bust causes", () => {
+  it("exposes labels and chart keys for controllable churn causes", () => {
+    expect(bustCauseLabels).toMatchObject({
+      org_prompt_edit: "Org prompt edit",
+      tool_schema_churn: "Tool schema churn",
+      translator_change: "Translator change",
+      compression_policy_change: "Compression policy change",
+      route_config_change: "Route config change"
+    });
+    expect(bustCauses.map((cause) => cause.key)).toEqual([
+      "ttl_expiry",
+      "model_switch",
+      "provider_switch",
+      "org_prompt_edit",
+      "tool_schema_churn",
+      "translator_change",
+      "compression_policy_change",
+      "route_config_change",
+      "unknown"
+    ]);
   });
 });
 
