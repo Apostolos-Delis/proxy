@@ -165,6 +165,8 @@ export type UsageTimeseriesFilters = UsageAnalyticsFilters & {
 };
 
 export type UsageDashboardOptions = {
+  includeBaselineCost?: boolean;
+  includeUsageLatency?: boolean;
   includeTimeseriesLatency?: boolean;
 };
 
@@ -650,11 +652,19 @@ export class AdminQueryService {
     const limit = timeseriesGroupLimit(filters.limit);
     const scope = this.usageRollupScope(filters);
     const step = intervalMs(interval);
-    const latencyMode: UsageLatencyMode = options.includeTimeseriesLatency ? "full" : "report";
+    const includeTimeseriesLatency = options.includeTimeseriesLatency === true;
+    const includeUsageLatency = options.includeUsageLatency !== false;
+    const includeBaselineCost = options.includeBaselineCost !== false;
+    let latencyMode: UsageLatencyMode = "none";
+    if (includeTimeseriesLatency) {
+      latencyMode = "full";
+    } else if (includeUsageLatency) {
+      latencyMode = "report";
+    }
     const [pricing, costBaseline, bucketReport] = await Promise.all([
-      this.effectivePricing(),
-      this.effectiveCostBaseline(),
-      this.usageBucketRollupReport(scope, groupBy, step, null, latencyMode)
+      includeBaselineCost ? this.effectivePricing() : Promise.resolve({} as ModelPricingTable),
+      includeBaselineCost ? this.effectiveCostBaseline() : Promise.resolve({} as CostBaseline),
+      this.usageBucketRollupReport(scope, groupBy, step, null, latencyMode, includeBaselineCost)
     ]);
     return this.usageDashboardFromBucket(
       filters,
@@ -666,7 +676,8 @@ export class AdminQueryService {
       bucketReport,
       pricing,
       costBaseline,
-      options.includeTimeseriesLatency === true
+      includeTimeseriesLatency,
+      includeBaselineCost
     );
   }
 
@@ -707,7 +718,8 @@ export class AdminQueryService {
     bucketReport: UsageBucketRollupReport,
     pricing: ModelPricingTable,
     costBaseline: CostBaseline,
-    includeTimeseriesLatency: boolean
+    includeTimeseriesLatency: boolean,
+    includeBaselineCost: boolean
   ) {
     const { rollups } = bucketReport;
 
@@ -720,15 +732,15 @@ export class AdminQueryService {
     const totals = emptyUsageGroup("total");
     for (const row of rollups) {
       const group = groupTotals.get(row.groupKey) ?? emptyUsageGroup(row.groupKey);
-      this.addUsageRollup(group, row, pricing, costBaseline);
-      this.addUsageRollup(totals, row, pricing, costBaseline);
+      this.addUsageRollup(group, row, pricing, costBaseline, includeBaselineCost);
+      this.addUsageRollup(totals, row, pricing, costBaseline, includeBaselineCost);
       groupTotals.set(row.groupKey, group);
     }
     const ranked = [...groupTotals.values()].sort(compareUsageGroups);
     const keptKeys = new Set(ranked.slice(0, limit).map((group) => group.key));
     const collapseOthers = ranked.length > limit;
     const pointReport = collapseOthers && includeTimeseriesLatency
-      ? await this.usageBucketRollupReport(scope, groupBy, step, [...keptKeys], "full")
+      ? await this.usageBucketRollupReport(scope, groupBy, step, [...keptKeys], "full", includeBaselineCost)
       : bucketReport;
 
     const points = new Map<number, { totals: UsageGroup; groups: Map<string, UsageGroup> }>();
@@ -742,8 +754,8 @@ export class AdminQueryService {
         ? OTHER_ROLLUP_GROUP_KEY
         : row.groupKey;
       const group = point.groups.get(groupKey) ?? emptyUsageGroup(groupKey);
-      this.addUsageRollup(point.totals, row, pricing, costBaseline);
-      this.addUsageRollup(group, row, pricing, costBaseline);
+      this.addUsageRollup(point.totals, row, pricing, costBaseline, includeBaselineCost);
+      this.addUsageRollup(group, row, pricing, costBaseline, includeBaselineCost);
       point.groups.set(groupKey, group);
     }
 
@@ -827,10 +839,19 @@ export class AdminQueryService {
     groupBy: UsageGroupBy,
     step: number,
     keptKeys: string[] | null,
-    latencyMode: UsageLatencyMode = "full"
+    latencyMode: UsageLatencyMode = "full",
+    includePricingDimensions = true
   ): Promise<UsageBucketRollupReport> {
-    return this.cached(`usage-bucket-rollup-report:${groupBy}:${step}:${JSON.stringify(keptKeys)}:${latencyMode}:${usageScopeKey(scope)}`, () =>
-      this.recordDbQuery("usage_bucket_rollup", () => usageBucketRollupReportRows(this.db, scope, groupBy, step, keptKeys, latencyMode)));
+    return this.cached(`usage-bucket-rollup-report:${groupBy}:${step}:${JSON.stringify(keptKeys)}:${latencyMode}:${includePricingDimensions}:${usageScopeKey(scope)}`, () =>
+      this.recordDbQuery("usage_bucket_rollup", () => usageBucketRollupReportRows(
+        this.db,
+        scope,
+        groupBy,
+        step,
+        keptKeys,
+        latencyMode,
+        includePricingDimensions
+      )));
   }
 
   private async recordDbQuery<T>(operation: string, load: () => Promise<T>) {
@@ -861,7 +882,8 @@ export class AdminQueryService {
     group: UsageGroup,
     row: UsageRollupRow,
     pricing: ModelPricingTable,
-    costBaseline: CostBaseline
+    costBaseline: CostBaseline,
+    includeBaselineCost = true
   ) {
     group.requestCount += row.requestCount;
     group.failedRequests += row.failedRequests;
@@ -872,19 +894,21 @@ export class AdminQueryService {
     group.usage.outputTokens += row.outputTokens;
     group.usage.reasoningTokens += row.reasoningTokens;
     group.usage.totalTokens += row.totalTokens;
-    const baseline = baselineCostFor(pricing, costBaseline, row.surface, row.requestedModel, row.selectedProvider, row.selectedModel, {
-      inputTokens: row.uncachedInputTokens + row.cachedInputTokens + row.cacheCreationInputTokens,
-      cachedInputTokens: row.cachedInputTokens,
-      cacheCreationInputTokens: row.cacheCreationInputTokens,
-      outputTokens: row.outputTokens,
-      reasoningTokens: row.reasoningTokens,
-      totalTokens: row.totalTokens
-    });
+    const baseline = includeBaselineCost
+      ? baselineCostFor(pricing, costBaseline, row.surface, row.requestedModel, row.selectedProvider, row.selectedModel, {
+          inputTokens: row.uncachedInputTokens + row.cachedInputTokens + row.cacheCreationInputTokens,
+          cachedInputTokens: row.cachedInputTokens,
+          cacheCreationInputTokens: row.cacheCreationInputTokens,
+          outputTokens: row.outputTokens,
+          reasoningTokens: row.reasoningTokens,
+          totalTokens: row.totalTokens
+        })
+      : 0;
     const classifier = row.classifierCostMicros / 1_000_000;
     const selected = row.providerCostMicros / 1_000_000 + classifier;
     group.cost.selected += selected;
     group.cost.baseline += baseline;
-    group.cost.savings += baseline - selected;
+    group.cost.savings += includeBaselineCost ? baseline - selected : 0;
     group.cost.classifier += classifier;
   }
 

@@ -3,7 +3,7 @@ import { AlertTriangle, Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 import { isAdminRole } from "./access";
-import { fetchUnpricedModels, fetchUsageDashboard, fetchUsageLookups, fetchUsageReport, type UnpricedModel } from "./usageData";
+import { fetchUnpricedModels, fetchUsageDashboardWithBaseline, fetchUsageLookups, fetchUsageReport, type UnpricedModel } from "./usageData";
 import { ChartLegend, StackedBarsChart } from "./charts";
 import { downloadJson } from "./dashboard";
 import { formatCompactMoney, formatMoney, formatPercent } from "./format";
@@ -44,7 +44,7 @@ export function CostPage() {
     isPlaceholderData: isDashboardPlaceholderData
   } = useQuery({
     queryKey: ["usage-dashboard", dimension, start, end, interval],
-    queryFn: () => fetchUsageDashboard(dimension, { start, end, interval }),
+    queryFn: () => fetchUsageDashboardWithBaseline(dimension, { start, end, interval }),
     placeholderData: keepPreviousData
   });
   const dashboardReady = Boolean(dashboardQueryData) && !isDashboardPlaceholderData;

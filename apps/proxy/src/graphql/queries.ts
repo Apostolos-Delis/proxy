@@ -238,6 +238,12 @@ function selectionPathSelected(
 
 function usageDashboardOptions(info: GraphQLResolveInfo) {
   return {
+    includeBaselineCost: selectedBaselineCost(info, ["usage", "data"]) ||
+      selectedBaselineCost(info, ["usage", "totals"]) ||
+      selectedBaselineCost(info, ["timeseries", "groups"]) ||
+      selectedBaselineCost(info, ["timeseries", "points", "totals"]),
+    includeUsageLatency: selectedFieldPath(info, ["usage", "data", "latency"]) ||
+      selectedFieldPath(info, ["usage", "totals", "latency"]),
     includeTimeseriesLatency: selectedFieldPath(info, ["timeseries", "groups", "latency"]) ||
       selectedFieldPath(info, ["timeseries", "points", "totals", "latency"])
   };
@@ -245,9 +251,17 @@ function usageDashboardOptions(info: GraphQLResolveInfo) {
 
 function usageTimeseriesOptions(info: GraphQLResolveInfo) {
   return {
+    includeBaselineCost: selectedBaselineCost(info, ["groups"]) ||
+      selectedBaselineCost(info, ["points", "totals"]),
+    includeUsageLatency: false,
     includeTimeseriesLatency: selectedFieldPath(info, ["groups", "latency"]) ||
       selectedFieldPath(info, ["points", "totals", "latency"])
   };
+}
+
+function selectedBaselineCost(info: GraphQLResolveInfo, parentPath: string[]) {
+  return selectedFieldPath(info, [...parentPath, "cost", "baseline"]) ||
+    selectedFieldPath(info, [...parentPath, "cost", "savings"]);
 }
 
 builder.queryFields((t) => ({

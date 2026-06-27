@@ -648,6 +648,10 @@ export type UpdateSettingsMutation = { updateSettings: { organizationId: string,
 
 export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } };
 
+export type UsageGroupCostFieldsFragment = { key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } };
+
+export type UsageGroupDashboardFieldsFragment = { key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number } };
+
 export type UsageGroupChartFieldsFragment = { key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, totalTokens: number }, cost: { selected: number } };
 
 export type UsageReportViewQueryVariables = Exact<{
@@ -679,7 +683,18 @@ export type UsageDashboardViewQueryVariables = Exact<{
 }>;
 
 
-export type UsageDashboardViewQuery = { usageDashboard: { usage: { groupBy: UsageGroupBy, data: Array<{ key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, totals: { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } }, timeseries: { groupBy: UsageGroupBy, interval: UsageInterval, start: string, end: string, groups: Array<{ key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, totalTokens: number }, cost: { selected: number } }>, points: Array<{ ts: string, groups: unknown, totals: { key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, totalTokens: number }, cost: { selected: number } } }> } } };
+export type UsageDashboardViewQuery = { usageDashboard: { usage: { groupBy: UsageGroupBy, data: Array<{ key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number } }>, totals: { key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number } } }, timeseries: { groupBy: UsageGroupBy, interval: UsageInterval, start: string, end: string, groups: Array<{ key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, totalTokens: number }, cost: { selected: number } }>, points: Array<{ ts: string, groups: unknown, totals: { key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, totalTokens: number }, cost: { selected: number } } }> } } };
+
+export type UsageCostDashboardViewQueryVariables = Exact<{
+  groupBy: UsageGroupBy;
+  interval?: UsageInterval | null | undefined;
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+  limit?: number | null | undefined;
+}>;
+
+
+export type UsageCostDashboardViewQuery = { usageDashboard: { usage: { groupBy: UsageGroupBy, data: Array<{ key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } }>, totals: { key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } } }, timeseries: { groupBy: UsageGroupBy, interval: UsageInterval, start: string, end: string, groups: Array<{ key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, totalTokens: number }, cost: { selected: number } }>, points: Array<{ ts: string, groups: unknown, totals: { key: string, requestCount: number, usage: { inputTokens: number, cachedInputTokens: number, totalTokens: number }, cost: { selected: number } } }> } } };
 
 export type UsageLookupsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -916,6 +931,43 @@ export const UsageGroupFieldsFragmentDoc = new TypedDocumentString(`
   }
 }
     `, {"fragmentName":"UsageGroupFields"}) as unknown as TypedDocumentString<UsageGroupFieldsFragment, unknown>;
+export const UsageGroupCostFieldsFragmentDoc = new TypedDocumentString(`
+    fragment UsageGroupCostFields on UsageGroup {
+  key
+  requestCount
+  usage {
+    inputTokens
+    cachedInputTokens
+    cacheCreationInputTokens
+    outputTokens
+    reasoningTokens
+    totalTokens
+  }
+  cost {
+    selected
+    baseline
+    savings
+    classifier
+  }
+}
+    `, {"fragmentName":"UsageGroupCostFields"}) as unknown as TypedDocumentString<UsageGroupCostFieldsFragment, unknown>;
+export const UsageGroupDashboardFieldsFragmentDoc = new TypedDocumentString(`
+    fragment UsageGroupDashboardFields on UsageGroup {
+  key
+  requestCount
+  usage {
+    inputTokens
+    cachedInputTokens
+    cacheCreationInputTokens
+    outputTokens
+    reasoningTokens
+    totalTokens
+  }
+  cost {
+    selected
+  }
+}
+    `, {"fragmentName":"UsageGroupDashboardFields"}) as unknown as TypedDocumentString<UsageGroupDashboardFieldsFragment, unknown>;
 export const UsageGroupChartFieldsFragmentDoc = new TypedDocumentString(`
     fragment UsageGroupChartFields on UsageGroup {
   key
@@ -2635,10 +2687,10 @@ export const UsageDashboardViewDocument = new TypedDocumentString(`
     usage {
       groupBy
       data {
-        ...UsageGroupFields
+        ...UsageGroupDashboardFields
       }
       totals {
-        ...UsageGroupFields
+        ...UsageGroupDashboardFields
       }
     }
     timeseries {
@@ -2659,17 +2711,72 @@ export const UsageDashboardViewDocument = new TypedDocumentString(`
     }
   }
 }
-    fragment UsageGroupFields on UsageGroup {
+    fragment UsageGroupDashboardFields on UsageGroup {
   key
   requestCount
-  failedRequests
-  retriedRequests
-  failureRate
-  retryRate
-  latency {
-    averageMs
-    p95Ms
+  usage {
+    inputTokens
+    cachedInputTokens
+    cacheCreationInputTokens
+    outputTokens
+    reasoningTokens
+    totalTokens
   }
+  cost {
+    selected
+  }
+}
+fragment UsageGroupChartFields on UsageGroup {
+  key
+  requestCount
+  usage {
+    inputTokens
+    cachedInputTokens
+    totalTokens
+  }
+  cost {
+    selected
+  }
+}`) as unknown as TypedDocumentString<UsageDashboardViewQuery, UsageDashboardViewQueryVariables>;
+export const UsageCostDashboardViewDocument = new TypedDocumentString(`
+    query UsageCostDashboardView($groupBy: UsageGroupBy!, $interval: UsageInterval, $start: String, $end: String, $limit: Int) {
+  usageDashboard(
+    groupBy: $groupBy
+    interval: $interval
+    start: $start
+    end: $end
+    limit: $limit
+  ) {
+    usage {
+      groupBy
+      data {
+        ...UsageGroupCostFields
+      }
+      totals {
+        ...UsageGroupCostFields
+      }
+    }
+    timeseries {
+      groupBy
+      interval
+      start
+      end
+      groups {
+        ...UsageGroupChartFields
+      }
+      points {
+        ts
+        totals {
+          ...UsageGroupChartFields
+        }
+        groups
+      }
+    }
+  }
+}
+    fragment UsageGroupCostFields on UsageGroup {
+  key
+  requestCount
   usage {
     inputTokens
     cachedInputTokens
@@ -2696,7 +2803,7 @@ fragment UsageGroupChartFields on UsageGroup {
   cost {
     selected
   }
-}`) as unknown as TypedDocumentString<UsageDashboardViewQuery, UsageDashboardViewQueryVariables>;
+}`) as unknown as TypedDocumentString<UsageCostDashboardViewQuery, UsageCostDashboardViewQueryVariables>;
 export const UsageLookupsDocument = new TypedDocumentString(`
     query UsageLookups {
   members {

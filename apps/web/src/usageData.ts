@@ -1,6 +1,7 @@
 import { graphql } from "./gql";
 import type {
   RouteOutputViewQuery,
+  UsageCostDashboardViewQuery,
   UsageDashboardViewQuery,
   UsageLookupsQuery,
   UsageReportViewQuery,
@@ -33,6 +34,45 @@ graphql(`
       baseline
       savings
       classifier
+    }
+  }
+`);
+
+graphql(`
+  fragment UsageGroupCostFields on UsageGroup {
+    key
+    requestCount
+    usage {
+      inputTokens
+      cachedInputTokens
+      cacheCreationInputTokens
+      outputTokens
+      reasoningTokens
+      totalTokens
+    }
+    cost {
+      selected
+      baseline
+      savings
+      classifier
+    }
+  }
+`);
+
+graphql(`
+  fragment UsageGroupDashboardFields on UsageGroup {
+    key
+    requestCount
+    usage {
+      inputTokens
+      cachedInputTokens
+      cacheCreationInputTokens
+      outputTokens
+      reasoningTokens
+      totalTokens
+    }
+    cost {
+      selected
     }
   }
 `);
@@ -93,10 +133,42 @@ const UsageDashboardViewDocument = graphql(`
       usage {
         groupBy
         data {
-          ...UsageGroupFields
+          ...UsageGroupDashboardFields
         }
         totals {
-          ...UsageGroupFields
+          ...UsageGroupDashboardFields
+        }
+      }
+      timeseries {
+        groupBy
+        interval
+        start
+        end
+        groups {
+          ...UsageGroupChartFields
+        }
+        points {
+          ts
+          totals {
+            ...UsageGroupChartFields
+          }
+          groups
+        }
+      }
+    }
+  }
+`);
+
+const UsageCostDashboardViewDocument = graphql(`
+  query UsageCostDashboardView($groupBy: UsageGroupBy!, $interval: UsageInterval, $start: String, $end: String, $limit: Int) {
+    usageDashboard(groupBy: $groupBy, interval: $interval, start: $start, end: $end, limit: $limit) {
+      usage {
+        groupBy
+        data {
+          ...UsageGroupCostFields
+        }
+        totals {
+          ...UsageGroupCostFields
         }
       }
       timeseries {
@@ -210,6 +282,10 @@ export type UsageRangeFilters = {
 };
 
 type RawTimeseries = UsageTimeseriesViewQuery["usageTimeseries"];
+type RawDashboardUsage = UsageDashboardViewQuery["usageDashboard"]["usage"];
+type RawDashboardGroup = RawDashboardUsage["totals"];
+type RawCostDashboardUsage = UsageCostDashboardViewQuery["usageDashboard"]["usage"];
+type RawCostDashboardGroup = RawCostDashboardUsage["totals"];
 export type UsageChartGroup = Pick<UsageGroup, "key" | "requestCount"> & {
   usage: Pick<UsageGroup["usage"], "inputTokens" | "cachedInputTokens" | "totalTokens">;
   cost: Pick<UsageGroup["cost"], "selected">;
@@ -230,7 +306,7 @@ export type UsageTimeseries = Omit<RawTimeseries, "groups" | "points"> & {
   points: UsageTimeseriesPoint[];
 };
 export type UsageDashboard = {
-  usage: UsageDashboardViewQuery["usageDashboard"]["usage"];
+  usage: UsageResponse;
   timeseries: UsageTimeseries;
 };
 
@@ -254,8 +330,58 @@ export async function fetchUsageDashboard(
 ): Promise<UsageDashboard> {
   const raw = (await gqlFetch(UsageDashboardViewDocument, { groupBy, ...filters })).usageDashboard;
   return {
-    usage: raw.usage,
+    usage: normalizeDashboardUsage(raw.usage),
     timeseries: normalizeTimeseries(raw.timeseries)
+  };
+}
+
+export async function fetchUsageDashboardWithBaseline(
+  groupBy: UsageDimensionKey,
+  filters: UsageRangeFilters & { interval?: "hour" | "day"; limit?: number } = {}
+): Promise<UsageDashboard> {
+  const raw = (await gqlFetch(UsageCostDashboardViewDocument, { groupBy, ...filters })).usageDashboard;
+  return {
+    usage: normalizeCostDashboardUsage(raw.usage),
+    timeseries: normalizeTimeseries(raw.timeseries)
+  };
+}
+
+function normalizeDashboardUsage(raw: RawDashboardUsage): UsageResponse {
+  return {
+    ...raw,
+    data: raw.data.map(normalizeDashboardGroup),
+    totals: normalizeDashboardGroup(raw.totals)
+  };
+}
+
+function normalizeDashboardGroup(raw: RawDashboardGroup): UsageGroup {
+  return {
+    ...raw,
+    failedRequests: 0,
+    retriedRequests: 0,
+    failureRate: 0,
+    retryRate: 0,
+    latency: { averageMs: null, p95Ms: null },
+    cost: { ...raw.cost, baseline: 0, savings: 0, classifier: 0 }
+  };
+}
+
+function normalizeCostDashboardUsage(raw: RawCostDashboardUsage): UsageResponse {
+  return {
+    ...raw,
+    data: raw.data.map(normalizeCostDashboardGroup),
+    totals: normalizeCostDashboardGroup(raw.totals)
+  };
+}
+
+function normalizeCostDashboardGroup(raw: RawCostDashboardGroup): UsageGroup {
+  return {
+    ...raw,
+    failedRequests: 0,
+    retriedRequests: 0,
+    failureRate: 0,
+    retryRate: 0,
+    latency: { averageMs: null, p95Ms: null }
   };
 }
 

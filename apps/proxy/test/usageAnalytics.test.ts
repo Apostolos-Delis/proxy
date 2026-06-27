@@ -672,6 +672,22 @@ describe("usage analytics admin APIs", () => {
       usageRow("dashboard_latency_usage_slow", "dashboard_latency_request_slow", "dashboard_latency_attempt_slow", "org_usage_dashboard_latency", "openai", "gpt-fast", "fast", 200, 50, 2000)
     ]);
 
+    const latencyFree = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query {
+        usageDashboard(groupBy: route, interval: day) {
+          usage {
+            data { key requestCount }
+            totals { requestCount }
+          }
+          timeseries {
+            groups { key requestCount }
+            points { groups }
+          }
+        }
+      }`
+    );
     const reportOnly = await adminGql(
       fixture.proxyUrl,
       fixture.adminHeaders,
@@ -701,6 +717,12 @@ describe("usage analytics admin APIs", () => {
       }`
     );
 
+    expect(latencyFree.errors).toBeUndefined();
+    expect(latencyFree.data?.usageDashboard.usage.totals.requestCount).toBe(2);
+    const latencyFreePoint = latencyFree.data?.usageDashboard.timeseries.points.find(
+      (point: { groups: Record<string, { latency?: { averageMs: number | null; p95Ms: number | null } }> }) => point.groups.fast
+    );
+    expect(latencyFreePoint?.groups.fast.latency).toEqual({ averageMs: null, p95Ms: null });
     expect(reportOnly.errors).toBeUndefined();
     expect(reportOnly.data?.usageDashboard.usage.totals.latency).toEqual({ averageMs: 150, p95Ms: 200 });
     expect(reportOnly.data?.usageDashboard.usage.data[0].latency).toEqual({ averageMs: 150, p95Ms: 200 });
