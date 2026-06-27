@@ -5,6 +5,7 @@ import { buildAnthropicContext, buildOpenAIChatContext, buildOpenAIContext } fro
 import { anthropicEffortForModel, supportsAnthropicAdaptiveThinking } from "./catalog.js";
 import { resolveBedrockConverseModelId } from "./providerAdapters/bedrockModelIds.js";
 import type { RequestTiming } from "./requestTiming.js";
+import type { PromptCachePlan } from "./promptCachePlan.js";
 import { translators } from "./translators/index.js";
 import type {
   Dialect,
@@ -70,6 +71,7 @@ export type ProviderForwardAttemptInput = {
   body: unknown;
   credential?: UpstreamCredential;
   providerSettings?: SelectedRouteSettings;
+  promptCachePlan?: PromptCachePlan;
 };
 
 export type ProviderAdapter = {

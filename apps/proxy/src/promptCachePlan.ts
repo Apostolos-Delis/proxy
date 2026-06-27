@@ -1,0 +1,189 @@
+import { builtinProviderCachingCapabilities, type ProviderCachingCapabilities, type ProviderCacheTtl } from "@proxy/schema";
+
+import type { RouteContext, RouteDecision } from "./types.js";
+import { translators } from "./translators/index.js";
+import { isRecord, roughTokenEstimate, stableJson } from "./util.js";
+
+export type PromptCachePlan = {
+  mode: "off" | "observe" | "implicit" | "explicit";
+  provider: string;
+  dialect: string;
+  cacheKey?: "provided";
+  retention?: ProviderCacheTtl | "in_memory";
+  breakpointStrategy?: "preserve_client" | "top_level_auto" | "static_prefix";
+  appliedControls: string[];
+  skippedControls: Array<{ control: string; reason: string }>;
+};
+
+type PromptCachePlanSettings = {
+  automaticCaching?: boolean;
+  cacheTtlUpgrade?: boolean;
+};
+
+export function computePromptCachePlan(input: {
+  body: unknown;
+  context: Pick<RouteContext, "surface"> & Partial<Pick<RouteContext, "transport" | "harnessProfileId" | "estimatedInputTokens">>;
+  decision: RouteDecision;
+  capabilities?: ProviderCachingCapabilities;
+  settings?: PromptCachePlanSettings;
+}): PromptCachePlan {
+  const provider = input.decision.provider ?? input.decision.providerSettings?.provider ?? "unknown";
+  const dialect = input.decision.providerSettings?.dialect ?? input.context.surface;
+  const capabilities = input.capabilities ?? builtinProviderCachingCapabilities(provider);
+  const targetBody = bodyForTargetDialect(input.body, input.context.surface, dialect);
+  const body = isRecord(targetBody) ? targetBody : {};
+  const skippedControls: PromptCachePlan["skippedControls"] = [];
+  const appliedControls: string[] = [];
+
+  if (!input.decision.providerSettings) {
+    return {
+      mode: "off",
+      provider,
+      dialect,
+      appliedControls,
+      skippedControls: [{ control: "prompt_cache", reason: "missing_provider_settings" }]
+    };
+  }
+
+  if (capabilities.implicitPrefixCaching) {
+    appliedControls.push("implicit_prefix_caching");
+    const cacheKey = cacheKeyState(body, capabilities);
+    if (cacheKey) appliedControls.push("cache_key_preserved");
+    const retention = retentionState(body, capabilities);
+    if (retention) appliedControls.push("retention_preserved");
+    if (input.context.surface !== dialect) {
+      skippedControls.push({ control: "cross_dialect_cache_fields", reason: "translated_request" });
+    }
+    return {
+      mode: "implicit",
+      provider,
+      dialect,
+      cacheKey,
+      retention,
+      appliedControls,
+      skippedControls
+    };
+  }
+
+  if (capabilities.explicitBreakpoints) {
+    const hasBreakpoints = hasCacheControl(body);
+    const multiTurn = isMultiTurn(body);
+    const canAuto = input.settings?.automaticCaching === true && multiTurn && !hasBreakpoints;
+    const canUpgradeTtl = input.settings?.cacheTtlUpgrade === true &&
+      capabilities.supportedTtls.includes("1h") &&
+      multiTurn &&
+      roughTokenEstimate(largestCacheControlPrefixChars(body)) >= 2048;
+
+    if (hasBreakpoints) {
+      appliedControls.push("client_breakpoints_preserved");
+    } else if (canAuto) {
+      appliedControls.push("top_level_auto_breakpoint");
+    } else {
+      skippedControls.push({
+        control: "top_level_auto_breakpoint",
+        reason: input.settings?.automaticCaching === true
+          ? "not_multi_turn_or_no_cacheable_target"
+          : "setting_disabled"
+      });
+    }
+
+    if (canUpgradeTtl) {
+      appliedControls.push("ttl_1h");
+    } else if (input.settings?.cacheTtlUpgrade === true) {
+      skippedControls.push({ control: "ttl_1h", reason: "not_eligible" });
+    }
+
+    let strategy: PromptCachePlan["breakpointStrategy"];
+    if (hasBreakpoints) strategy = "preserve_client";
+    else if (canAuto) strategy = "top_level_auto";
+
+    return {
+      mode: appliedControls.length > 0 ? "explicit" : "observe",
+      provider,
+      dialect,
+      breakpointStrategy: strategy,
+      appliedControls,
+      skippedControls
+    };
+  }
+
+  return {
+    mode: "off",
+    provider,
+    dialect,
+    appliedControls,
+    skippedControls: [{ control: "prompt_cache", reason: "provider_capability_unavailable" }]
+  };
+}
+
+function bodyForTargetDialect(body: unknown, source: RouteContext["surface"], target: string) {
+  if (source === target) return body;
+  const translator = translators.get(source, target as RouteContext["surface"]);
+  return translator?.request(body) ?? body;
+}
+
+function cacheKeyState(body: Record<string, unknown>, capabilities: ProviderCachingCapabilities): "provided" | undefined {
+  if (!capabilities.cacheKeyField) return undefined;
+  return typeof body[capabilities.cacheKeyField] === "string" ? "provided" : undefined;
+}
+
+function retentionState(body: Record<string, unknown>, capabilities: ProviderCachingCapabilities): ProviderCacheTtl | "in_memory" | undefined {
+  if (!capabilities.retentionField) return undefined;
+  const value = body[capabilities.retentionField];
+  if (value === "in_memory" || value === "24h" || value === "1h" || value === "5m") return value;
+  return undefined;
+}
+
+function hasCacheControl(request: Record<string, unknown>): boolean {
+  if (request.cache_control !== undefined) return true;
+  if (anyBlockHasCacheControl(request.tools)) return true;
+  if (anyBlockHasCacheControl(request.system)) return true;
+  if (Array.isArray(request.messages)) {
+    for (const message of request.messages) {
+      if (isRecord(message) && anyBlockHasCacheControl(message.content)) return true;
+    }
+  }
+  return false;
+}
+
+function anyBlockHasCacheControl(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some((item) => anyBlockHasCacheControl(item));
+  if (!isRecord(value)) return false;
+  if (value.cache_control !== undefined) return true;
+  return Array.isArray(value.content) && anyBlockHasCacheControl(value.content);
+}
+
+function isMultiTurn(request: Record<string, unknown>): boolean {
+  return Array.isArray(request.messages) &&
+    request.messages.some((message) => isRecord(message) && message.role === "assistant");
+}
+
+function largestCacheControlPrefixChars(request: Record<string, unknown>) {
+  let largest = hasCacheControl(request) ? cacheablePrefixChars(request) : 0;
+  if (Array.isArray(request.messages) && isMultiTurn(request)) {
+    largest = Math.max(largest, cacheablePrefixChars(request));
+  }
+  return largest;
+}
+
+function cacheablePrefixChars(request: Record<string, unknown>) {
+  let chars = 0;
+  chars += request.tools === undefined ? 0 : stableJson(request.tools).length;
+  chars += contentChars(request.system);
+  if (Array.isArray(request.messages)) {
+    for (const message of request.messages) {
+      if (!isRecord(message)) continue;
+      chars += contentChars(message.content);
+    }
+  }
+  return chars;
+}
+
+function contentChars(value: unknown): number {
+  if (typeof value === "string") return value.length;
+  if (Array.isArray(value)) return value.reduce((sum, item) => sum + contentChars(item), 0);
+  if (!isRecord(value)) return 0;
+  if (typeof value.text === "string") return value.text.length;
+  if (typeof value.content === "string") return value.content.length;
+  return Array.isArray(value.content) ? contentChars(value.content) : 0;
+}

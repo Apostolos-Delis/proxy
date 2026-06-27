@@ -42,6 +42,7 @@ import { resolveRoutingSelection, type RoutingConfigResolverLike } from "./persi
 import type { SessionSystemPromptStore } from "./persistence/sessionRoute.js";
 import { classifyProviderTerminalHealth } from "./providerHealth.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
+import { computePromptCachePlan, type PromptCachePlan } from "./promptCachePlan.js";
 import { canAuthenticateOrgProvider, providerRequestHeaders } from "./providerAdapters/genericHttp.js";
 import type { RoutingService } from "./router.js";
 import type { JsonObject, Provider, RouteContext, RouteDecision, RouteName, UpstreamCredential } from "./types.js";
@@ -665,8 +666,15 @@ export class WebSocketRoutingProxy {
     const endpoint = providerEndpointForDialect(provider, decision.providerSettings.dialect);
     if (!endpoint) throw new Error("provider_endpoint_not_found");
     if (!canAuthenticateOrgProvider(provider, credential)) throw new Error("provider_credential_unresolved");
+    const promptCachePlan = computePromptCachePlan({
+      body,
+      context: { surface: openAIResponsesSurface.surface, harnessProfileId },
+      decision,
+      capabilities: provider.capabilities.promptCaching
+    });
     return {
       provider: provider.slug,
+      promptCachePlan,
       ...webSocketTargetUrl(provider, endpoint, this.config, credential),
       headers: providerRequestHeaders({
         config: this.config,
@@ -879,6 +887,7 @@ export class WebSocketRoutingProxy {
 
 type WebSocketUpstreamTarget = {
   provider: Provider;
+  promptCachePlan?: PromptCachePlan;
   url: string;
   headers: Record<string, string>;
   lookup?: LookupFunction;
