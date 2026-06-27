@@ -71,7 +71,7 @@ import {
   usageLedgerSummary
 } from "./adminSerializers.js";
 import { CACHE_TTL_DEFAULT_MS } from "../cacheWindows.js";
-import { CACHE_BUST_SAMPLE_CAP, detectCacheBusts } from "./cacheBusts.js";
+import { CACHE_BUST_SAMPLE_CAP, cacheBustEvidenceByRequest, detectCacheBusts } from "./cacheBusts.js";
 import {
   aggregateCompressionReceiptSavings,
   COMPRESSION_SAVINGS_SAMPLE_CAP
@@ -124,6 +124,10 @@ const PROMPT_CACHE_PREWARM_EVENTS = [
   "prompt_cache.prewarm_cancelled",
   "prompt_cache.prewarm_expired_unused"
 ];
+
+function routingConfigEvidence(requestRowId: string | null, value: string | null) {
+  return requestRowId === null ? undefined : value;
+}
 
 export type AdminQueryConfig = {
   routeQualityLowConfidenceThreshold: number;
@@ -1741,13 +1745,30 @@ export class AdminQueryService {
         inputTokens: usageLedger.inputTokens,
         cachedInputTokens: usageLedger.cachedInputTokens,
         cacheCreationInputTokens: usageLedger.cacheCreationInputTokens,
-        createdAt: usageLedger.createdAt
+        createdAt: usageLedger.createdAt,
+        requestRowId: requests.id,
+        decisionRequestId: routeDecisions.requestId,
+        translatorId: routeDecisions.translatorId,
+        decisionRoutingConfigHash: routeDecisions.routingConfigHash,
+        decisionRoutingConfigVersionId: routeDecisions.routingConfigVersionId,
+        requestRoutingConfigHash: requests.routingConfigHash,
+        requestRoutingConfigVersionId: requests.routingConfigVersionId
       })
       .from(usageLedger)
+      .leftJoin(requests, and(
+        this.scopedTo(requests),
+        eq(requests.id, usageLedger.requestId)
+      ))
+      .leftJoin(routeDecisions, and(
+        this.scopedTo(routeDecisions),
+        eq(routeDecisions.requestId, usageLedger.requestId)
+      ))
       .where(and(...conditions))
       .orderBy(desc(usageLedger.createdAt))
       .limit(CACHE_BUST_SAMPLE_CAP);
+    const evidenceByRequest = await this.loadCacheBustEvidenceByRequest(rows.map((row) => row.requestId));
     const report = detectCacheBusts(rows.map((row) => ({
+      ...evidenceByRequest.get(row.requestId),
       sessionId: row.sessionId ?? "",
       requestId: row.requestId,
       provider: row.provider,
@@ -1755,9 +1776,36 @@ export class AdminQueryService {
       inputTokens: row.inputTokens,
       cachedInputTokens: row.cachedInputTokens,
       cacheCreationInputTokens: row.cacheCreationInputTokens,
-      createdAt: row.createdAt
+      createdAt: row.createdAt,
+      translatorId: row.decisionRequestId === null ? undefined : row.translatorId,
+      routingConfigHash: row.decisionRequestId === null
+        ? routingConfigEvidence(row.requestRowId, row.requestRoutingConfigHash)
+        : row.decisionRoutingConfigHash ?? row.requestRoutingConfigHash,
+      routingConfigVersionId: row.decisionRequestId === null
+        ? routingConfigEvidence(row.requestRowId, row.requestRoutingConfigVersionId)
+        : row.decisionRoutingConfigVersionId ?? row.requestRoutingConfigVersionId
     })));
     return { ...report, sampled: rows.length === CACHE_BUST_SAMPLE_CAP };
+  }
+
+  private async loadCacheBustEvidenceByRequest(requestIds: string[]) {
+    const uniqueRequestIds = [...new Set(requestIds)];
+    if (uniqueRequestIds.length === 0) return new Map();
+    const evidenceRows = await this.db
+      .select({
+        requestId: events.scopeId,
+        eventType: events.eventType,
+        payload: events.payload
+      })
+      .from(events)
+      .where(and(
+        this.scopedTo(events),
+        eq(events.scopeType, "request"),
+        inArray(events.scopeId, uniqueRequestIds),
+        inArray(events.eventType, ["tokens.attributed", "routing.compression_evidence_recorded"])
+      ))
+      .orderBy(asc(events.createdAt));
+    return cacheBustEvidenceByRequest(evidenceRows);
   }
 
   async promptCachePlans(filters: DateRangeFilters = {}) {

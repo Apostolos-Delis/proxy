@@ -1,6 +1,19 @@
 import { CACHE_TTL_DEFAULT_MS } from "../cacheWindows.js";
+import { sha256, stableJson } from "../util.js";
 
-export type CacheBustCause = "ttl_expiry" | "model_switch" | "provider_switch" | "unknown";
+export const CACHE_BUST_CAUSES = [
+  "ttl_expiry",
+  "model_switch",
+  "provider_switch",
+  "org_prompt_edit",
+  "tool_schema_churn",
+  "translator_change",
+  "compression_policy_change",
+  "route_config_change",
+  "unknown"
+] as const;
+
+export type CacheBustCause = typeof CACHE_BUST_CAUSES[number];
 
 // Newest-first ledger sample cap; busts older than the cap fall out of view.
 export const CACHE_BUST_SAMPLE_CAP = 10_000;
@@ -14,6 +27,23 @@ export type CacheBustLedgerRow = {
   cachedInputTokens: number;
   cacheCreationInputTokens: number;
   createdAt: Date;
+  orgPromptHash?: string | null;
+  toolSchemaHash?: string | null;
+  translatorId?: string | null;
+  compressionPolicyHash?: string | null;
+  routingConfigHash?: string | null;
+  routingConfigVersionId?: string | null;
+};
+
+type CacheBustEvidence = Pick<
+  CacheBustLedgerRow,
+  "orgPromptHash" | "toolSchemaHash" | "compressionPolicyHash"
+>;
+
+export type CacheBustEvidenceEvent = {
+  requestId: string;
+  eventType: string;
+  payload: Record<string, unknown>;
 };
 
 export type CacheBust = {
@@ -90,12 +120,7 @@ export function detectCacheBusts(rows: CacheBustLedgerRow[]) {
   }
 
   busts.sort((left, right) => new Date(right.at).getTime() - new Date(left.at).getTime());
-  const countsByCause: Record<CacheBustCause, number> = {
-    ttl_expiry: 0,
-    model_switch: 0,
-    provider_switch: 0,
-    unknown: 0
-  };
+  const countsByCause = emptyCauseCounts();
   for (const bust of busts) countsByCause[bust.cause] += 1;
 
   return {
@@ -103,6 +128,25 @@ export function detectCacheBusts(rows: CacheBustLedgerRow[]) {
     countsByCause,
     sessionsScanned: bySession.size
   };
+}
+
+export function cacheBustEvidenceByRequest(events: CacheBustEvidenceEvent[]) {
+  const byRequest = new Map<string, CacheBustEvidence>();
+  for (const event of events) {
+    const evidence = byRequest.get(event.requestId) ?? {};
+    if (event.eventType === "tokens.attributed") {
+      const orgPromptHash = hashOrNull(event.payload.orgSystemPromptHash);
+      if (orgPromptHash !== undefined) evidence.orgPromptHash = orgPromptHash;
+      const toolSchemaHash = toolSchemaFingerprint(event.payload.toolSchemaHashesByName);
+      if (toolSchemaHash !== undefined) evidence.toolSchemaHash = toolSchemaHash;
+    }
+    if (event.eventType === "routing.compression_evidence_recorded") {
+      const compressionPolicyHash = compressionPolicyFingerprint(event.payload);
+      if (compressionPolicyHash !== undefined) evidence.compressionPolicyHash = compressionPolicyHash;
+    }
+    byRequest.set(event.requestId, evidence);
+  }
+  return byRequest;
 }
 
 // Tokens billed at uncached/write price on the busted request. Anthropic
@@ -115,6 +159,56 @@ function rebuiltContextTokens(row: CacheBustLedgerRow) {
 function classify(previous: CacheBustLedgerRow, current: CacheBustLedgerRow, gapMs: number): CacheBustCause {
   if (current.provider !== previous.provider) return "provider_switch";
   if (current.model !== previous.model) return "model_switch";
+  if (knownChange(previous.orgPromptHash, current.orgPromptHash)) return "org_prompt_edit";
+  if (knownChange(previous.toolSchemaHash, current.toolSchemaHash)) return "tool_schema_churn";
+  if (knownChange(previous.translatorId, current.translatorId)) return "translator_change";
+  if (knownChange(previous.compressionPolicyHash, current.compressionPolicyHash)) return "compression_policy_change";
+  if (routingConfigChanged(previous, current)) return "route_config_change";
   if (gapMs > CACHE_TTL_MS) return "ttl_expiry";
   return "unknown";
+}
+
+function emptyCauseCounts() {
+  return Object.fromEntries(CACHE_BUST_CAUSES.map((cause) => [cause, 0])) as Record<CacheBustCause, number>;
+}
+
+function knownChange(left: string | null | undefined, right: string | null | undefined) {
+  return left !== undefined && right !== undefined && left !== right;
+}
+
+function routingConfigChanged(previous: CacheBustLedgerRow, current: CacheBustLedgerRow) {
+  if (previous.routingConfigHash !== undefined && current.routingConfigHash !== undefined) {
+    return previous.routingConfigHash !== current.routingConfigHash;
+  }
+  return knownChange(previous.routingConfigVersionId, current.routingConfigVersionId);
+}
+
+function hashOrNull(value: unknown) {
+  if (value === null) return null;
+  return typeof value === "string" ? value : undefined;
+}
+
+function toolSchemaFingerprint(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+  const entries = value
+    .flatMap((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+      const entry = item as Record<string, unknown>;
+      const name = typeof entry.name === "string" ? entry.name : undefined;
+      const schemaHash = typeof entry.schemaHash === "string" ? entry.schemaHash : undefined;
+      return name && schemaHash ? [{ name, schemaHash }] : [];
+    })
+    .sort((left, right) => left.name.localeCompare(right.name) || left.schemaHash.localeCompare(right.schemaHash));
+  return sha256(stableJson(entries));
+}
+
+function compressionPolicyFingerprint(payload: Record<string, unknown>) {
+  if ("policy" in payload) return sha256(stableJson(payload.policy));
+  if (typeof payload.mode !== "string") return undefined;
+  return sha256(stableJson({ mode: payload.mode, ruleIds: stringArray(payload.ruleIds) }));
+}
+
+function stringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string").sort();
 }

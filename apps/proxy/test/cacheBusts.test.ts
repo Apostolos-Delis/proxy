@@ -7,14 +7,21 @@ import {
   hashApiKey,
   providerAttempts,
   requests,
+  routeDecisions,
   usageLedger,
   users
 } from "@proxy/db";
 
-import { detectCacheBusts, type CacheBustLedgerRow } from "../src/persistence/cacheBusts.js";
+import {
+  cacheBustEvidenceByRequest,
+  detectCacheBusts,
+  type CacheBustCause,
+  type CacheBustLedgerRow
+} from "../src/persistence/cacheBusts.js";
 import {
   adminGql,
   captureFixture,
+  usageDecision,
   usageAttempt,
   usageRequest,
   usageRow,
@@ -136,6 +143,100 @@ describe("detectCacheBusts", () => {
     expect(report.busts[0].cause).toBe("unknown");
     expect(report.busts[0].rebuiltTokens).toBe(100_000);
   });
+
+  it.each([
+    ["org_prompt_edit", { orgPromptHash: "sha256:org_v1" }, { orgPromptHash: "sha256:org_v2" }],
+    ["tool_schema_churn", { toolSchemaHash: "sha256:tools_v1" }, { toolSchemaHash: "sha256:tools_v2" }],
+    ["translator_change", { translatorId: null }, { translatorId: "openai-chat_to_anthropic-messages" }],
+    ["compression_policy_change", { compressionPolicyHash: "sha256:policy_v1" }, { compressionPolicyHash: "sha256:policy_v2" }],
+    ["route_config_change", { routingConfigHash: "sha256:route_v1" }, { routingConfigHash: "sha256:route_v2" }]
+  ] satisfies Array<[CacheBustCause, Partial<CacheBustLedgerRow>, Partial<CacheBustLedgerRow>]>)(
+    "classifies %s ahead of TTL when both rows carry evidence",
+    (cause, previousEvidence, currentEvidence) => {
+      const report = detectCacheBusts([
+        row({
+          requestId: "r1",
+          cachedInputTokens: 50_000,
+          createdAt: new Date("2026-06-08T12:00:00Z"),
+          ...previousEvidence
+        }),
+        row({
+          requestId: "r2",
+          cachedInputTokens: 0,
+          cacheCreationInputTokens: 40_000,
+          createdAt: new Date("2026-06-08T12:30:00Z"),
+          ...currentEvidence
+        })
+      ]);
+      expect(report.busts[0].cause).toBe(cause);
+      expect(report.countsByCause[cause]).toBe(1);
+    }
+  );
+
+  it("keeps unknown classification when operator-controlled evidence is incomplete", () => {
+    const report = detectCacheBusts([
+      row({
+        requestId: "r1",
+        cachedInputTokens: 50_000,
+        createdAt: new Date("2026-06-08T12:00:00Z")
+      }),
+      row({
+        requestId: "r2",
+        cachedInputTokens: 0,
+        cacheCreationInputTokens: 40_000,
+        orgPromptHash: "sha256:org_v2",
+        toolSchemaHash: "sha256:tools_v2",
+        translatorId: "openai-chat_to_anthropic-messages",
+        compressionPolicyHash: "sha256:policy_v2",
+        routingConfigHash: "sha256:route_v2",
+        createdAt: new Date("2026-06-08T12:01:00Z")
+      })
+    ]);
+
+    expect(report.busts[0].cause).toBe("unknown");
+  });
+});
+
+describe("cacheBustEvidenceByRequest", () => {
+  it("derives request fingerprints from token attribution and compression events", () => {
+    const evidence = cacheBustEvidenceByRequest([
+      {
+        requestId: "r1",
+        eventType: "tokens.attributed",
+        payload: {
+          orgSystemPromptHash: "sha256:org_v1",
+          toolSchemaHashesByName: [
+            { name: "Read", schemaHash: "sha256:read_v1" },
+            { name: "Bash", schemaHash: "sha256:bash_v1" }
+          ]
+        }
+      },
+      {
+        requestId: "r2",
+        eventType: "tokens.attributed",
+        payload: {
+          orgSystemPromptHash: "sha256:org_v2",
+          toolSchemaHashesByName: [{ name: "Bash", schemaHash: "sha256:bash_v2" }]
+        }
+      },
+      {
+        requestId: "r2",
+        eventType: "routing.compression_evidence_recorded",
+        payload: { policy: { mode: "compress_lossless", enabledRules: ["json-whitespace"] } }
+      }
+    ]);
+
+    expect(evidence.get("r1")).toMatchObject({
+      orgPromptHash: "sha256:org_v1",
+      toolSchemaHash: expect.stringMatching(/^sha256:/)
+    });
+    expect(evidence.get("r2")).toMatchObject({
+      orgPromptHash: "sha256:org_v2",
+      toolSchemaHash: expect.stringMatching(/^sha256:/),
+      compressionPolicyHash: expect.stringMatching(/^sha256:/)
+    });
+    expect(evidence.get("r1")?.toolSchemaHash).not.toBe(evidence.get("r2")?.toolSchemaHash);
+  });
 });
 
 describe("cacheBusts admin query", () => {
@@ -239,6 +340,80 @@ describe("cacheBusts admin query", () => {
     expect(idleGaps.sampleWindowEnd).toBe("2026-06-08T12:10:00.000Z");
     const gapCounts = Object.fromEntries(idleGaps.buckets.map((bucket: any) => [bucket.key, bucket.count]));
     expect(gapCounts["5m_15m"]).toBe(1);
+  });
+
+  it("attributes route config changes from route decision evidence", async () => {
+    activeFixture = await captureFixture("org_route_config_busts");
+    const fixture = activeFixture;
+    const first = new Date("2026-06-08T12:00:00.000Z");
+    const second = new Date("2026-06-08T12:01:00.000Z");
+
+    await fixture.db.insert(users).values([{ id: "user_route_bust", email: "route-bust@example.com", name: "Route Bust" }]);
+    await fixture.db.insert(agentSessions).values([
+      {
+        id: "session_route_bust",
+        organizationId: "org_route_config_busts",
+        workspaceId: defaultWorkspaceId("org_route_config_busts"),
+        userId: "user_route_bust",
+        surface: "anthropic-messages",
+        externalSessionId: "claude-route-bust",
+        startedAt: first,
+        updatedAt: second
+      }
+    ]);
+    await fixture.db.insert(requests).values([
+      usageRequest("route_bust_request_1", "org_route_config_busts", "user_route_bust", "session_route_bust", "anthropic-messages", first),
+      usageRequest("route_bust_request_2", "org_route_config_busts", "user_route_bust", "session_route_bust", "anthropic-messages", second)
+    ]);
+    await fixture.db.insert(routeDecisions).values([
+      {
+        ...usageDecision("route_bust_decision_1", "route_bust_request_1", "org_route_config_busts", "hard", "anthropic", "claude-hard"),
+        routingConfigHash: "sha256:route_v1",
+        routingConfigVersionId: "routing_config:v1"
+      },
+      {
+        ...usageDecision("route_bust_decision_2", "route_bust_request_2", "org_route_config_busts", "hard", "anthropic", "claude-hard"),
+        routingConfigHash: "sha256:route_v2",
+        routingConfigVersionId: "routing_config:v2"
+      }
+    ]);
+    await fixture.db.insert(providerAttempts).values([
+      usageAttempt("route_bust_attempt_1", "route_bust_request_1", "org_route_config_busts", "anthropic-messages", "anthropic", "claude-hard", "completed", first),
+      usageAttempt("route_bust_attempt_2", "route_bust_request_2", "org_route_config_busts", "anthropic-messages", "anthropic", "claude-hard", "completed", second)
+    ]);
+    await fixture.db.insert(usageLedger).values([
+      {
+        ...usageRow("route_bust_usage_1", "route_bust_request_1", "route_bust_attempt_1", "org_route_config_busts", "anthropic", "claude-hard", "hard", 100, 50, 1000),
+        sessionId: "session_route_bust",
+        cachedInputTokens: 60_000,
+        createdAt: first
+      },
+      {
+        ...usageRow("route_bust_usage_2", "route_bust_request_2", "route_bust_attempt_2", "org_route_config_busts", "anthropic", "claude-hard", "hard", 200, 50, 1000),
+        sessionId: "session_route_bust",
+        cachedInputTokens: 0,
+        cacheCreationInputTokens: 55_000,
+        createdAt: second
+      }
+    ]);
+
+    const report = (await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `query { cacheBusts {
+        busts { requestId cause gapMs }
+        countsByCause
+      } }`
+    )).data?.cacheBusts;
+
+    expect(report.busts).toHaveLength(1);
+    expect(report.busts[0]).toMatchObject({
+      requestId: "route_bust_request_2",
+      cause: "route_config_change",
+      gapMs: 60_000
+    });
+    expect(report.countsByCause.route_config_change).toBe(1);
+    expect(report.countsByCause.ttl_expiry).toBe(0);
   });
 
   it("counts sessions active within the cache-warm window for the blast-radius warning", async () => {
