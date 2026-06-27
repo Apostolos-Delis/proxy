@@ -6,7 +6,7 @@ Proxy already captures cache-read/cache-write usage, prices cached tokens separa
 
 What it does not yet have is a provider-agnostic prompt-caching layer like the Deep Agents approach: one policy surface that can choose the best available cache controls for each provider, preserve prompt-cache locality across translations and route changes, and report whether those controls actually saved money.
 
-This document scopes the path from today's Anthropic-specific behavior to a provider-capability-based caching system. It complements [Token Cost Reduction](token-cost-reduction.md), which covers the broader attribution, cache hygiene, compression, schema diet, and output-control program.
+This document scopes the path from today's Anthropic-specific behavior to a provider-capability-based caching system. It complements [Token Cost Reduction](token-cost-reduction.md), which covers the broader attribution, cache hygiene, compression, schema diet, and output-control program. The PR-sized implementation breakdown lives in [Provider Prompt Caching Expansion Tickets](provider-prompt-caching-tickets.md).
 
 ## Current State
 
