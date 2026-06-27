@@ -376,7 +376,7 @@ export class WebSocketRoutingProxy {
         warn: (err, message) => this.log?.warn({ err, requestId }, message)
       });
       activeRequest.compressionTelemetry = compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy);
-      forwardedBody = rewriteSurfaceRequest(compression.body, decision, systemPrompt, { upgradeCacheTtl: resolved.cacheTtlUpgrade, automaticCaching: resolved.automaticCaching });
+      forwardedBody = rewriteSurfaceRequest(compression.body, decision, systemPrompt);
       await appendCompressionEvidence({
         events: this.events,
         tenantId: identity.organizationId,

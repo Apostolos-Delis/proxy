@@ -1,6 +1,6 @@
 import { builtinProviderCachingCapabilities, type ProviderCachingCapabilities, type ProviderCacheTtl } from "@proxy/schema";
 
-import type { JsonObject, RouteContext, RouteDecision, Surface } from "./types.js";
+import type { Dialect, JsonObject, RouteContext, RouteDecision, Surface } from "./types.js";
 import { translators } from "./translators/index.js";
 import { isRecord, roughTokenEstimate, stableJson } from "./util.js";
 
@@ -34,6 +34,7 @@ const knownPromptCacheSkipReasons = new Set([
   "setting_disabled",
   "translated_request"
 ]);
+const MIN_TTL_UPGRADE_CACHEABLE_TOKENS = 2048;
 
 export function promptCachePlanEventPayload(input: {
   surface: Surface;
@@ -69,13 +70,14 @@ export function promptCacheSkipReasonLabel(reason: string) {
   return knownPromptCacheSkipReasons.has(reason) ? reason : "other";
 }
 
-type PromptCachePlanSettings = {
+export type PromptCachePlanSettings = {
   automaticCaching?: boolean;
   cacheTtlUpgrade?: boolean;
 };
 
 export function computePromptCachePlan(input: {
   body: unknown;
+  bodyDialect?: Surface | Dialect;
   context: Pick<RouteContext, "surface"> & Partial<Pick<RouteContext, "transport" | "harnessProfileId" | "estimatedInputTokens">>;
   decision: RouteDecision;
   capabilities?: ProviderCachingCapabilities;
@@ -84,7 +86,7 @@ export function computePromptCachePlan(input: {
   const provider = input.decision.provider ?? input.decision.providerSettings?.provider ?? "unknown";
   const dialect = input.decision.providerSettings?.dialect ?? input.context.surface;
   const capabilities = input.capabilities ?? builtinProviderCachingCapabilities(provider);
-  const targetBody = bodyForTargetDialect(input.body, input.context.surface, dialect);
+  const targetBody = bodyForTargetDialect(input.body, input.bodyDialect ?? input.context.surface, dialect);
   const body = isRecord(targetBody) ? targetBody : {};
   const skippedControls: PromptCachePlan["skippedControls"] = [];
   const appliedControls: string[] = [];
@@ -120,13 +122,16 @@ export function computePromptCachePlan(input: {
   }
 
   if (capabilities.explicitBreakpoints) {
-    const hasBreakpoints = hasCacheControl(body);
-    const multiTurn = isMultiTurn(body);
+    const hasBreakpoints = hasAnthropicCacheControl(body);
+    const multiTurn = isAnthropicMultiTurnRequest(body);
     const canAuto = input.settings?.automaticCaching === true && multiTurn && !hasBreakpoints;
+    const ttlBody = canAuto && body.cache_control === undefined
+      ? { ...body, cache_control: { type: "ephemeral" } }
+      : body;
     const canUpgradeTtl = input.settings?.cacheTtlUpgrade === true &&
       capabilities.supportedTtls.includes("1h") &&
-      multiTurn &&
-      roughTokenEstimate(largestCacheControlPrefixChars(body)) >= 2048;
+      hasAnthropicDefaultTtlCacheControl(ttlBody) &&
+      isAnthropicCacheTtlUpgradeEligible(ttlBody);
 
     if (hasBreakpoints) {
       appliedControls.push("client_breakpoints_preserved");
@@ -170,9 +175,9 @@ export function computePromptCachePlan(input: {
   };
 }
 
-function bodyForTargetDialect(body: unknown, source: RouteContext["surface"], target: string) {
+function bodyForTargetDialect(body: unknown, source: Surface | Dialect, target: string) {
   if (source === target) return body;
-  const translator = translators.get(source, target as RouteContext["surface"]);
+  const translator = translators.get(source as RouteContext["surface"], target as RouteContext["surface"]);
   return translator?.request(body) ?? body;
 }
 
@@ -188,13 +193,25 @@ function retentionState(body: Record<string, unknown>, capabilities: ProviderCac
   return undefined;
 }
 
-function hasCacheControl(request: Record<string, unknown>): boolean {
+export function hasAnthropicCacheControl(request: Record<string, unknown>): boolean {
   if (request.cache_control !== undefined) return true;
   if (anyBlockHasCacheControl(request.tools)) return true;
   if (anyBlockHasCacheControl(request.system)) return true;
   if (Array.isArray(request.messages)) {
     for (const message of request.messages) {
       if (isRecord(message) && anyBlockHasCacheControl(message.content)) return true;
+    }
+  }
+  return false;
+}
+
+export function hasAnthropicDefaultTtlCacheControl(request: Record<string, unknown>): boolean {
+  if (isDefaultTtlCacheControl(request)) return true;
+  if (anyBlockHasDefaultTtlCacheControl(request.tools)) return true;
+  if (anyBlockHasDefaultTtlCacheControl(request.system)) return true;
+  if (Array.isArray(request.messages)) {
+    for (const message of request.messages) {
+      if (isRecord(message) && anyBlockHasDefaultTtlCacheControl(message.content)) return true;
     }
   }
   return false;
@@ -207,17 +224,52 @@ function anyBlockHasCacheControl(value: unknown): boolean {
   return Array.isArray(value.content) && anyBlockHasCacheControl(value.content);
 }
 
-function isMultiTurn(request: Record<string, unknown>): boolean {
+function anyBlockHasDefaultTtlCacheControl(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some((item) => anyBlockHasDefaultTtlCacheControl(item));
+  if (!isRecord(value)) return false;
+  if (isDefaultTtlCacheControl(value)) return true;
+  return Array.isArray(value.content) && anyBlockHasDefaultTtlCacheControl(value.content);
+}
+
+function isDefaultTtlCacheControl(block: Record<string, unknown>) {
+  const cc = block.cache_control;
+  return isRecord(cc) && cc.type === "ephemeral" && !cc.ttl;
+}
+
+export function isAnthropicMultiTurnRequest(request: Record<string, unknown>): boolean {
   return Array.isArray(request.messages) &&
     request.messages.some((message) => isRecord(message) && message.role === "assistant");
 }
 
+export function isAnthropicCacheTtlUpgradeEligible(request: Record<string, unknown>) {
+  if (!Array.isArray(request.messages)) return false;
+  if (!isAnthropicMultiTurnRequest(request)) return false;
+  return roughTokenEstimate(largestCacheControlPrefixChars(request)) >= MIN_TTL_UPGRADE_CACHEABLE_TOKENS;
+}
+
 function largestCacheControlPrefixChars(request: Record<string, unknown>) {
-  let largest = hasCacheControl(request) ? cacheablePrefixChars(request) : 0;
-  if (Array.isArray(request.messages) && isMultiTurn(request)) {
-    largest = Math.max(largest, cacheablePrefixChars(request));
+  let max = request.cache_control === undefined ? 0 : cacheablePrefixChars(request);
+  let prefix = accumulateCacheablePrefix(request.tools, 0, (chars) => {
+    max = Math.max(max, chars);
+  });
+  prefix = accumulateCacheablePrefix(request.system, prefix, (chars) => {
+    max = Math.max(max, chars);
+  });
+  if (Array.isArray(request.messages)) {
+    for (const message of request.messages) {
+      if (isRecord(message)) {
+        prefix += contentChars(message.role);
+        prefix = accumulateCacheablePrefix(message.content, prefix, (chars) => {
+          max = Math.max(max, chars);
+        });
+      } else {
+        prefix = accumulateCacheablePrefix(message, prefix, (chars) => {
+          max = Math.max(max, chars);
+        });
+      }
+    }
   }
-  return largest;
+  return max;
 }
 
 function cacheablePrefixChars(request: Record<string, unknown>) {
@@ -226,18 +278,48 @@ function cacheablePrefixChars(request: Record<string, unknown>) {
   chars += contentChars(request.system);
   if (Array.isArray(request.messages)) {
     for (const message of request.messages) {
-      if (!isRecord(message)) continue;
-      chars += contentChars(message.content);
+      chars += isRecord(message) ? contentChars(message.content) : contentChars(message);
     }
   }
   return chars;
 }
 
+function accumulateCacheablePrefix(
+  value: unknown,
+  prefix: number,
+  onBreakpoint: (chars: number) => void
+): number {
+  if (Array.isArray(value)) {
+    let current = prefix;
+    for (const item of value) {
+      current = accumulateCacheablePrefix(item, current, onBreakpoint);
+    }
+    return current;
+  }
+  if (isRecord(value) && Array.isArray(value.content)) {
+    const base = prefix + recordShellChars(value);
+    const next = accumulateCacheablePrefix(value.content, base, onBreakpoint);
+    if (value.cache_control !== undefined) onBreakpoint(next);
+    return next;
+  }
+  const next = prefix + contentChars(value);
+  if (isRecord(value) && value.cache_control !== undefined) onBreakpoint(next);
+  return next;
+}
+
+function recordShellChars(value: Record<string, unknown>) {
+  return Object.entries(value)
+    .reduce((sum, [key, item]) => sum + key.length + (key === "content" ? 0 : contentChars(item)), 0);
+}
+
 function contentChars(value: unknown): number {
+  if (value === null || value === undefined) return 0;
   if (typeof value === "string") return value.length;
+  if (typeof value === "number" || typeof value === "boolean") return String(value).length;
   if (Array.isArray(value)) return value.reduce((sum, item) => sum + contentChars(item), 0);
-  if (!isRecord(value)) return 0;
-  if (typeof value.text === "string") return value.text.length;
-  if (typeof value.content === "string") return value.content.length;
-  return Array.isArray(value.content) ? contentChars(value.content) : 0;
+  if (isRecord(value)) {
+    return Object.entries(value)
+      .reduce((sum, [key, item]) => sum + key.length + contentChars(item), 0);
+  }
+  return 0;
 }

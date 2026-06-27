@@ -138,6 +138,52 @@ describe("computePromptCachePlan", () => {
     });
   });
 
+  it("skips Anthropic TTL upgrade when the marked prefix is below the threshold", () => {
+    const largeText = "x".repeat(12000);
+    const plan = computePromptCachePlan({
+      body: {
+        model: "claude-router-hard",
+        system: [{ type: "text", text: "short stable prefix", cache_control: { type: "ephemeral" } }],
+        messages: [
+          { role: "user", content: "first" },
+          { role: "assistant", content: largeText },
+          { role: "user", content: "follow up" }
+        ]
+      },
+      context: { surface: "anthropic-messages" },
+      decision: decision("anthropic", "anthropic-messages"),
+      capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
+      settings: { automaticCaching: true, cacheTtlUpgrade: true }
+    });
+
+    expect(plan.appliedControls).toContain("client_breakpoints_preserved");
+    expect(plan.appliedControls).not.toContain("ttl_1h");
+    expect(plan.skippedControls).toContainEqual({ control: "ttl_1h", reason: "not_eligible" });
+  });
+
+  it("skips Anthropic TTL upgrade when every breakpoint already has an explicit TTL", () => {
+    const largeText = "x".repeat(12000);
+    const plan = computePromptCachePlan({
+      body: {
+        model: "claude-router-hard",
+        system: [{ type: "text", text: largeText, cache_control: { type: "ephemeral", ttl: "5m" } }],
+        messages: [
+          { role: "user", content: "first" },
+          { role: "assistant", content: "answer" },
+          { role: "user", content: "follow up" }
+        ]
+      },
+      context: { surface: "anthropic-messages" },
+      decision: decision("anthropic", "anthropic-messages"),
+      capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
+      settings: { automaticCaching: true, cacheTtlUpgrade: true }
+    });
+
+    expect(plan.appliedControls).toContain("client_breakpoints_preserved");
+    expect(plan.appliedControls).not.toContain("ttl_1h");
+    expect(plan.skippedControls).toContainEqual({ control: "ttl_1h", reason: "not_eligible" });
+  });
+
   it("uses conservative defaults for providers without cache capabilities", () => {
     const plan = computePromptCachePlan({
       body: { model: "custom", messages: [{ role: "user", content: "hi" }] },
