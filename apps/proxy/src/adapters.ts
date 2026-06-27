@@ -334,7 +334,6 @@ function rewriteOpenAIResponsesRequest(
 ) {
   const request = structuredClone(isRecord(body) ? body : {});
   request.model = settings.model;
-  delete request.prompt_cache_retention;
   if (request.store === undefined) request.store = false;
   if (systemPrompt) {
     request.instructions = typeof request.instructions === "string" && request.instructions.trim()
@@ -376,7 +375,6 @@ function rewriteOpenAIChatRequest(
 ) {
   const request = structuredClone(isRecord(body) ? body : {});
   request.model = settings.model;
-  delete request.prompt_cache_retention;
   if (systemPrompt) {
     request.messages = prependOpenAIChatSystemPrompt(request.messages, systemPrompt);
   }
