@@ -17,7 +17,7 @@ import {
   type RequestSummary
 } from "./promptDetailData";
 import { bedrockHealthMetadataSummary } from "./providers/healthData";
-import { Badge, DataTable, GlassCard, StatusBadge } from "./ui";
+import { DataTable, GlassCard, StatusIndicator } from "./ui";
 
 export function EventTimeline({ events }: { events: ProxyEvent[] }) {
   const start = events.length > 0 ? new Date(events[0].createdAt).getTime() : 0;
@@ -69,7 +69,7 @@ export function CompressionReceiptsCard({ receipts }: { receipts: CompressionRec
               {receipts.map((receipt) => (
                 <tr key={receipt.id}>
                   <td>
-                    <StatusBadge status={receipt.status} />
+                    <StatusIndicator status={receipt.status} />
                     <div className="faint">{providerCompressionLabel(receipt)} · {providerForwardingLabel(receipt)}</div>
                   </td>
                   <td>
@@ -188,9 +188,7 @@ function ReceiptRetrieval({ receipt }: { receipt: CompressionReceipt }) {
   const originalArtifactId = receipt.retrievalAvailable ? receipt.originalArtifactId : null;
   return (
     <div className="receipt-retrieval-cell">
-      <Badge variant={receipt.retrievalAvailable ? "success" : undefined} dot>
-        {receipt.retrievalAvailable ? "available" : "unavailable"}
-      </Badge>
+      <StatusIndicator status={receipt.retrievalAvailable ? "available" : "unavailable"} tone={receipt.retrievalAvailable ? "success" : "default"} />
       <span className="mono faint receipt-retrieval-id" title={receipt.retrievalMarker ?? receipt.retrievalId}>
         {compactId(receipt.retrievalId, 8)}
       </span>
@@ -248,7 +246,7 @@ function HealthSkipRow({ skip }: { skip: HealthSkipEvidence }) {
         <strong>{title}</strong>
         <span className="faint mono">{skip.providerAccountId ?? skip.providerId ?? "unknown account"}</span>
       </div>
-      <Badge variant="warn" dot>{healthSkipLabel(skip)}</Badge>
+      <StatusIndicator tone="warn">{healthSkipLabel(skip)}</StatusIndicator>
       <span className="health-skip-detail">{healthSkipDetail(skip)}</span>
     </div>
   );

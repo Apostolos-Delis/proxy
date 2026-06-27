@@ -15,7 +15,7 @@ import {
   type ConversationTurn,
   type SessionArtifact
 } from "./sessionsPageData";
-import { GlassCard, StatusBadge } from "./ui";
+import { GlassCard, StatusIndicator } from "./ui";
 
 function RequestBlock({ turn, spans }: { turn: ConversationTurn; spans: Map<string, number> }) {
   const { request, index, gapMs, artifacts, priorMessages, priorTokens } = turn;
@@ -37,7 +37,7 @@ function RequestBlock({ turn, spans }: { turn: ConversationTurn; spans: Map<stri
             <Link to="/logs/$artifactId" params={{ artifactId: logArtifactId }} className="req-log-link">Open log</Link>
           ) : null}
           <TierGauge route={request.finalRoute ?? "unknown"} />
-          <StatusBadge status={request.terminalStatus} />
+          <StatusIndicator status={request.terminalStatus} />
         </span>
       </div>
       <div className="tl">

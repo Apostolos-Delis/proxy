@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { CompressionPreviewPanel } from "./compressionPreviewPanel";
 import { SettingRow, SettingsSectionCard } from "./settingsFields";
 import { changedRowIds, filterSections, restartPending, sectionsFor, validate, type EditableSettings } from "./settingsPageData";
-import { Badge } from "./ui";
+import { StatusIndicator } from "./ui";
 
 const sectionIcons: Record<string, ComponentType> = {
   system: Shield,
@@ -123,7 +123,7 @@ export function SettingsForm({
         ) : null}
 
         <div className="settings-storage">
-          <Badge variant={databaseEnabled ? "success" : "warn"} dot>{databaseEnabled ? "Database on" : "File only"}</Badge>
+          <StatusIndicator tone={databaseEnabled ? "success" : "warn"}>{databaseEnabled ? "Database on" : "File only"}</StatusIndicator>
           <FileJson />
           <span className="mono">{storagePath}</span>
           <span className="settings-storage-note">{storageReason}</span>
@@ -132,7 +132,7 @@ export function SettingsForm({
         {dirtyCount > 0 ? (
           <div className="settings-savebar" role="status">
             <span className="settings-savebar-count">{dirtyCount} unsaved {dirtyCount === 1 ? "change" : "changes"}</span>
-            {needsRestart ? <Badge variant="warn"><RotateCw />restart required</Badge> : null}
+            {needsRestart ? <StatusIndicator tone="warn">restart required</StatusIndicator> : null}
             {barError ? <span className="settings-savebar-error">{barError}</span> : null}
             <button className="btn btn-sm" type="button" onClick={() => setSettings(initial)}><RotateCw />Reset</button>
             <button className="btn btn-sm btn-primary" type="submit" disabled={saving || validation.length > 0}>

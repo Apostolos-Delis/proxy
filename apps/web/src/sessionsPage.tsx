@@ -21,7 +21,7 @@ import {
 } from "./sessionsPageData";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { TierGauge } from "./routing/tierViz";
-import { GlassCard, StatusBadge, UserCell } from "./ui";
+import { GlassCard, StatusIndicator, UserCell } from "./ui";
 
 const SessionsPageDocument = graphql(`
   query SessionsPage {
@@ -163,7 +163,7 @@ function SessionStatusCell({ session }: { session: SessionSummary }) {
   const breakdown = statuses.map(([status, count]) => `${count} ${status}`).join(" · ");
   return (
     <div className="status-cell">
-      <StatusBadge status={statuses[0]?.[0] ?? "unknown"} />
+      <StatusIndicator status={statuses[0]?.[0] ?? "unknown"} />
       {rest.length > 0 ? (
         <span className="status-extra mono faint" tabIndex={0}>
           +{rest.length}

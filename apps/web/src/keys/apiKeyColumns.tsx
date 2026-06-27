@@ -7,7 +7,7 @@ import type { ProviderAccountSummary } from "../providers/data";
 import { isDefaultConfig, type ApiKeySummary, type RoutingConfigSummary } from "../routing/data";
 import type { ConsoleTableColumn } from "../table";
 import { AnchoredPopover } from "../table/PopoverShell";
-import { StatusBadge } from "../ui";
+import { StatusIndicator } from "../ui";
 import { OwnerCell, ownerLabel, type UserDirectory } from "../userDirectory";
 import { apiKeyStatus, providerBindingValue, routingConfigLabel } from "./apiKeyTableData";
 
@@ -46,7 +46,7 @@ export function apiKeyColumns({
 }: ApiKeyColumnConfig): ConsoleTableColumn<ApiKeySummary>[] {
   return [
     { id: "name", header: "Name", size: 225, accessorFn: (apiKey) => apiKey.name, cell: ({ row }) => <ApiKeyNameCell apiKey={row.original} onInspect={() => onInspect(row.original.id)} /> },
-    { id: "status", header: "Status", size: 96, accessorFn: apiKeyStatus, cell: ({ row }) => <StatusBadge status={apiKeyStatus(row.original)} /> },
+    { id: "status", header: "Status", size: 96, accessorFn: apiKeyStatus, cell: ({ row }) => <StatusIndicator status={apiKeyStatus(row.original)} /> },
     { id: "owner", header: "Owner", size: 170, accessorFn: (apiKey) => ownerLabel(users, apiKey.userId), cell: ({ row }) => (
       <OwnerCell users={users} userId={row.original.userId} />
     ) },

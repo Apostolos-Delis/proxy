@@ -2642,14 +2642,14 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font-size: 11px;
 }
 
-.route-attempt-pill {
+.route-attempt-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
 
-.route-attempt-pill .badge {
+.route-attempt-status .status-indicator {
   flex: none;
 }
 

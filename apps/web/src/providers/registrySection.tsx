@@ -9,7 +9,7 @@ import {
   type ConsoleTableColumn,
   type ConsoleTableFilter
 } from "../table";
-import { Badge, StatusBadge } from "../ui";
+import { Badge, StatusIndicator } from "../ui";
 import {
   disableProvider,
   type ProviderRegistrySummary
@@ -133,7 +133,7 @@ function providerRegistryColumns({
       cell: ({ row }) => (
         <div className="cell-tags scope-tags provider-registry-state">
           {row.original.builtin ? <Badge>builtin</Badge> : <Badge variant="accent">custom</Badge>}
-          <StatusBadge status={row.original.enabled ? "active" : "disabled"} />
+          <StatusIndicator status={row.original.enabled ? "active" : "disabled"} />
         </div>
       )
     },

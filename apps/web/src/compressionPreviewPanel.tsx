@@ -9,7 +9,7 @@ import type { CompressionPreviewPanelQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
 import { JsonEditor, JsonView } from "./jsonView";
 import type { EditableSettings } from "./settingsPageData";
-import { Badge, DataTable, Segmented, StatusBadge } from "./ui";
+import { DataTable, Segmented, StatusIndicator } from "./ui";
 
 type Surface = "anthropic-messages" | "openai-responses" | "openai-chat";
 type PreviewResult = CompressionPreviewPanelQuery["compressionPreview"];
@@ -177,7 +177,7 @@ function CompressionPreviewResult({ preview }: { preview: PreviewResult }) {
           <tbody>
             {preview.previewBlocks.map((block) => (
               <tr key={`${block.blockPath}:${block.ruleId}:${block.status}`}>
-                <td><StatusBadge status={block.status} /></td>
+                <td><StatusIndicator status={block.status} /></td>
                 <td>
                   <div className="mono">{block.ruleId}</div>
                   {block.skipReason ? <div className="faint">{compressionSkipReasonLabel(block.skipReason)}</div> : null}
@@ -205,9 +205,7 @@ function PreviewRetrieval({ block }: { block: PreviewResult["previewBlocks"][num
   if (!block.retrievalId) return <span className="faint">not stored</span>;
   return (
     <div className="settings-preview-retrieval">
-      <Badge variant={block.retrievalAvailable ? "success" : undefined} dot>
-        {block.retrievalAvailable ? "available" : "unavailable"}
-      </Badge>
+      <StatusIndicator status={block.retrievalAvailable ? "available" : "unavailable"} tone={block.retrievalAvailable ? "success" : "default"} />
       <span className="mono faint" title={block.retrievalMarker ?? block.retrievalId}>
         {compactId(block.retrievalId, 8)}
       </span>

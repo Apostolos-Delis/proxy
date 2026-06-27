@@ -18,13 +18,13 @@ import {
 } from "./requestsPageData";
 import { RoutingConfigMicro } from "./routingSnapshot";
 import { optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
-import { StatusBadge, UserCell } from "./ui";
+import { StatusIndicator, UserCell } from "./ui";
 
 export { promptRows, requestSearchValue };
 
 export const requestColumns: ConsoleTableColumn<PromptLogRow>[] = [
   { id: "prompt", header: "Prompt", size: 420, accessorFn: (row) => row.prompt.preview ?? "", cell: ({ row }) => <PromptCell row={row.original} /> },
-  { id: "status", header: "Status", size: 126, accessorFn: terminalStatus, cell: ({ row }) => <StatusBadge status={terminalStatus(row.original)} /> },
+  { id: "status", header: "Status", size: 126, accessorFn: terminalStatus, cell: ({ row }) => <StatusIndicator status={terminalStatus(row.original)} /> },
   { id: "user", header: "User", size: 200, accessorFn: (row) => row.userName, cell: ({ row }) => <UserCell name={row.original.userName} detail={row.original.prompt.surface} email={row.original.userEmail} size={24} /> },
   { id: "model", header: "Model", size: 230, accessorFn: selectedModel, cell: ({ row }) => <ModelCell row={row.original} /> },
   { id: "tokens", header: "Tokens", size: 96, accessorFn: totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(totalTokens(row.original))}</span> },

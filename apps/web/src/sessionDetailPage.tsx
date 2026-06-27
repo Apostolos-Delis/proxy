@@ -20,7 +20,7 @@ import {
 } from "./sessionsPageData";
 import { SessionTimeline } from "./sessionTimeline";
 import { TierGauge } from "./routing/tierViz";
-import { Avatar, GlassCard, PageState, StatusBadge } from "./ui";
+import { Avatar, GlassCard, PageState, StatusIndicator } from "./ui";
 
 const MAX_SESSION_MINIBARS = 180;
 
@@ -106,7 +106,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }) {
       <header className="session-head">
         <div className="row gap-12">
           <h2 className="session-title">{session.surface}</h2>
-          <StatusBadge status={dominantRequestStatus(detail.requests)} />
+          <StatusIndicator status={dominantRequestStatus(detail.requests)} />
           <TierGauge route={dominantRequestRoute(detail.requests)} />
         </div>
         <div className="session-byline">

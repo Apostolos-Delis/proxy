@@ -3,7 +3,7 @@ import { GitBranch, Route } from "lucide-react";
 import { compactId } from "./format";
 import { attemptsForCandidate, decisionWithPlan, formatSkipReason, routePlanFromDecision } from "./routePlanData";
 import type { ProviderAttemptEvidence, RouteDecisionEvidence, RoutePlanCandidate, RoutePlanEvidence } from "./routePlanData";
-import { GlassCard, StatusBadge } from "./ui";
+import { GlassCard, StatusIndicator } from "./ui";
 
 export function RoutePlanCard({
   routeDecisions,
@@ -103,7 +103,7 @@ function CandidateRow({
         <span className={candidate.translated ? "badge badge-accent" : "badge"}>{candidate.translated ? "translated" : "native"}</span>
       </div>
       <div className="route-candidate-status">
-        <span className={candidate.eligible ? "badge badge-success" : "badge badge-warn"}>{candidate.eligible ? "eligible" : "skipped"}</span>
+        <StatusIndicator status={candidate.eligible ? "eligible" : "skipped"} />
         {candidate.skipReasons.length > 0 ? (
           <div className="route-skip-list">
             {candidate.skipReasons.map((reason) => <span key={reason}>{formatSkipReason(reason)}</span>)}
@@ -112,21 +112,21 @@ function CandidateRow({
       </div>
       <div className="route-attempt-list">
         {attempts.length > 0
-          ? attempts.map((attempt) => <AttemptBadge key={attempt.id} attempt={attempt} />)
+          ? attempts.map((attempt) => <AttemptStatus key={attempt.id} attempt={attempt} />)
           : <span className="faint">not attempted</span>}
       </div>
     </div>
   );
 }
 
-function AttemptBadge({ attempt }: { attempt: ProviderAttemptEvidence }) {
+function AttemptStatus({ attempt }: { attempt: ProviderAttemptEvidence }) {
   const label = [
     attempt.attemptIndex != null ? `#${attempt.attemptIndex}` : null,
     attempt.fallbackIndex != null ? `fb ${attempt.fallbackIndex}` : null
   ].filter(Boolean).join(" · ");
   return (
-    <span className="route-attempt-pill">
-      <StatusBadge status={attempt.terminalStatus} />
+    <span className="route-attempt-status">
+      <StatusIndicator status={attempt.terminalStatus} />
       {label ? <span className="mono faint">{label}</span> : null}
     </span>
   );

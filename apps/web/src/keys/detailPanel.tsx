@@ -10,7 +10,7 @@ import {
   useKeyTraffic
 } from "../keyTraffic";
 import type { ApiKeySummary } from "../routing/data";
-import { StatusBadge } from "../ui";
+import { StatusIndicator } from "../ui";
 import { apiKeyStatus } from "./apiKeyTableData";
 
 export function ApiKeyDetailPanel({ apiKey, onClose }: {
@@ -27,7 +27,7 @@ export function ApiKeyDetailPanel({ apiKey, onClose }: {
       title={apiKey.name}
       subtitle={(
         <span className="row gap-8">
-          <StatusBadge status={apiKeyStatus(apiKey)} />
+          <StatusIndicator status={apiKeyStatus(apiKey)} />
         </span>
       )}
       storageKey="key-panel-width"
@@ -89,7 +89,7 @@ function ProviderKeysSection({ apiKey }: { apiKey: ApiKeySummary }) {
             >
               <span className="code-pill">{binding.provider}</span>
               <strong>{binding.name ?? compactId(binding.providerAccountId, 8)}</strong>
-              {binding.status && binding.status !== "active" ? <StatusBadge status={binding.status} /> : null}
+              {binding.status && binding.status !== "active" ? <StatusIndicator status={binding.status} /> : null}
               <span className="mono faint" title={binding.providerAccountId}>{compactId(binding.providerAccountId, 8)}</span>
             </Link>
           ))}
