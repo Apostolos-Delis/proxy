@@ -328,6 +328,8 @@ const goldenCases: GoldenCase[] = [
       appliedControls: ["top_level_auto_breakpoint"],
       skippedControls: [
         { control: "ttl_1h", reason: "not_eligible" },
+        { control: "cache_key_preserved", reason: "translated_request" },
+        { control: "retention_preserved", reason: "translated_request" },
         { control: "cross_dialect_cache_fields", reason: "translated_request" }
       ]
     },
