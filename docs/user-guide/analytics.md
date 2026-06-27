@@ -55,6 +55,8 @@ Token attribution splits request cost and volume by useful dimensions:
 
 Use attribution when the question is "what part of the request made this expensive?"
 
+When investigating cache-related spend, use the [prompt caching runbook](../runbooks/prompt-caching.md) for baseline, canary, block-signal, and rollback steps before enabling mutating cache controls.
+
 ## Cost Investigation Workflow
 
 1. Open **Usage / Cost** and find the spike by time window.

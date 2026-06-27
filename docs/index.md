@@ -72,6 +72,7 @@
 - [Routing configs runbook](runbooks/routing-configs.md)
 - [AWS deployment runbook](runbooks/aws-deployment.md)
 - [Proxy metrics runbook](runbooks/proxy-metrics.md)
+- [Prompt caching runbook](runbooks/prompt-caching.md)
 - [Production SLOs and rollout gates](runbooks/production-rollout-gates.md)
 - [Subscription auth runbook](runbooks/subscription-auth.md)
 - [Provider account health and Bedrock failure runbook](runbooks/provider-account-health.md)
