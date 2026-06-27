@@ -34,7 +34,8 @@ The logs view is where operators inspect a request, session, selected model, rou
 4. [Monitoring](monitoring.md): use the overview, logs, metrics, and provider health signals.
 5. [Sessions And Request Replay](sessions.md): debug agent sessions and inspect prompt/request evidence.
 6. [Analytics And Spend](analytics.md): understand usage, cost, savings, pricing, and token attribution.
-7. [Token Compression](token-compression.md): enable, preview, and monitor deterministic tool-result compression.
+7. [Prompt Caching](prompt-caching.md): understand current provider cache controls, measurements, and operator workflow.
+8. [Token Compression](token-compression.md): enable, preview, and monitor deterministic tool-result compression.
 
 ## Mental Model
 
@@ -58,6 +59,7 @@ Each request follows the same shape:
 | See whether traffic is healthy | [Monitoring](monitoring.md) |
 | Debug a single agent session | [Sessions And Request Replay](sessions.md) |
 | Explain spend or token volume | [Analytics And Spend](analytics.md) |
+| Investigate prompt-cache hits or misses | [Prompt Caching](prompt-caching.md) |
 | Reduce repeated tool-result token cost | [Token Compression](token-compression.md) |
 
 ## Related Reference
