@@ -202,7 +202,16 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     metrics,
     deploymentHealth
   );
-  const proxy = new ProviderProxy(config, events, attempts, requestStates, providerRegistry, metrics, deploymentHealth);
+  const proxy = new ProviderProxy(
+    config,
+    observabilityEvents,
+    attempts,
+    requestStates,
+    providerRegistry,
+    metrics,
+    deploymentHealth,
+    (error, message) => app.log.warn({ err: error }, message)
+  );
   const captureRequestArtifacts = async (input: Parameters<AppPersistence["promptArtifacts"]["capture"]>[0]) => {
     if (!persistence) return [];
     try {
@@ -266,6 +275,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     routingConfigs,
     persistence?.sessionPrompts,
     persistence?.compressionCacheWindows,
+    metrics,
     app.log
   );
   const projections = new ProjectionService(config);

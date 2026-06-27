@@ -1,6 +1,6 @@
 import { builtinProviderCachingCapabilities, type ProviderCachingCapabilities, type ProviderCacheTtl } from "@proxy/schema";
 
-import type { RouteContext, RouteDecision } from "./types.js";
+import type { JsonObject, RouteContext, RouteDecision, Surface } from "./types.js";
 import { translators } from "./translators/index.js";
 import { isRecord, roughTokenEstimate, stableJson } from "./util.js";
 
@@ -14,6 +14,60 @@ export type PromptCachePlan = {
   appliedControls: string[];
   skippedControls: Array<{ control: string; reason: string }>;
 };
+
+const knownPromptCacheControls = new Set([
+  "cache_key_preserved",
+  "client_breakpoints_preserved",
+  "cross_dialect_cache_fields",
+  "implicit_prefix_caching",
+  "prompt_cache",
+  "retention_preserved",
+  "top_level_auto_breakpoint",
+  "ttl_1h"
+]);
+
+const knownPromptCacheSkipReasons = new Set([
+  "missing_provider_settings",
+  "not_eligible",
+  "not_multi_turn_or_no_cacheable_target",
+  "provider_capability_unavailable",
+  "setting_disabled",
+  "translated_request"
+]);
+
+export function promptCachePlanEventPayload(input: {
+  surface: Surface;
+  model: string;
+  route?: string | null;
+  plan: PromptCachePlan;
+}): JsonObject {
+  const payload: JsonObject = {
+    surface: input.surface,
+    provider: input.plan.provider,
+    model: input.model,
+    dialect: input.plan.dialect,
+    mode: input.plan.mode,
+    translated: input.surface !== input.plan.dialect,
+    appliedControls: input.plan.appliedControls.map(promptCacheControlLabel),
+    skippedControls: input.plan.skippedControls.map((skipped) => ({
+      control: promptCacheControlLabel(skipped.control),
+      reason: promptCacheSkipReasonLabel(skipped.reason)
+    }))
+  };
+  if (input.route) payload.route = input.route;
+  if (input.plan.cacheKey) payload.cacheKey = input.plan.cacheKey;
+  if (input.plan.retention) payload.retention = input.plan.retention;
+  if (input.plan.breakpointStrategy) payload.breakpointStrategy = input.plan.breakpointStrategy;
+  return payload;
+}
+
+export function promptCacheControlLabel(control: string) {
+  return knownPromptCacheControls.has(control) ? control : "other";
+}
+
+export function promptCacheSkipReasonLabel(reason: string) {
+  return knownPromptCacheSkipReasons.has(reason) ? reason : "other";
+}
 
 type PromptCachePlanSettings = {
   automaticCaching?: boolean;
