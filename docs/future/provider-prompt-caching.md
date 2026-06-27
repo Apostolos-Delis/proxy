@@ -60,6 +60,18 @@ Current alignment:
 6. Fail closed on unsupported controls.
    A selected target that cannot preserve required state or cache markers should be skipped during route planning, not rewritten into a best-effort approximation.
 
+## Provider Usage Normalization Contract
+
+Before cache analytics or request mutation is enabled for a new provider, its adapter must prove how wire usage maps into Proxy's normalized usage shape:
+
+- `inputTokens` is total model input, including cache reads and cache writes.
+- `cachedInputTokens` is the cache-read subset of `inputTokens`.
+- `cacheCreationInputTokens` is the cache-write subset of `inputTokens`.
+- `outputTokens`, `reasoningTokens`, and `totalTokens` must come from documented fields or deterministic sums.
+- Missing, partial, or unknown usage shapes must degrade to zero/default values rather than inventing provider-specific totals.
+
+Provider fixture tests must cover cached reads, cache writes, uncached input, output, reasoning, total tokens, partial usage, missing usage, unknown shapes, and the canonical adapter output shape. Billing, rollups, metrics, and the Caching page consume only the normalized contract; provider-specific branches belong inside the normalizer or provider adapter fixture, not downstream analytics.
+
 ## Proposed Architecture
 
 ### Provider caching capabilities
