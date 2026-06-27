@@ -9,6 +9,7 @@
 - [Monitoring](user-guide/monitoring.md)
 - [Sessions and request replay](user-guide/sessions.md)
 - [Analytics and spend](user-guide/analytics.md)
+- [Prompt caching](user-guide/prompt-caching.md)
 - [Token compression](user-guide/token-compression.md)
 
 ## Architecture
