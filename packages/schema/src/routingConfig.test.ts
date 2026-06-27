@@ -6,6 +6,7 @@ import {
   anthropicReasoningEffortsForModel,
   composeClassifierInstructions,
   CONSERVATIVE_PROVIDER_CACHING_CAPABILITIES,
+  GEMINI_PROVIDER_CACHING_CAPABILITIES,
   OPENAI_PROVIDER_CACHING_CAPABILITIES,
   providerCapabilitiesWithDefaults,
   providerCachingCapabilitiesSchema,
@@ -540,8 +541,8 @@ describe("routingConfigSchema", () => {
 describe("providerRegistryEntrySchema", () => {
   it("accepts custom provider registry entries", () => {
     const entry = {
-      slug: "acme-vllm",
-      base_url: "https://models.example.com/v1",
+      slug: "google-gemini-openai",
+      base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
       adapter_kind: "generic-http-json",
       adapter_config: {},
       auth_style: "bearer",
@@ -554,15 +555,7 @@ describe("providerRegistryEntrySchema", () => {
       },
       capabilities: {
         efforts: ["low", "medium", "high", "xhigh"],
-        promptCaching: {
-          implicitPrefixCaching: true,
-          explicitBreakpoints: false,
-          supportedTtls: ["24h"],
-          cacheKeyField: "prompt_cache_key",
-          retentionField: "prompt_cache_retention",
-          prewarm: false,
-          usageShape: "openai"
-        }
+        promptCaching: GEMINI_PROVIDER_CACHING_CAPABILITIES
       },
       forward_harness_headers: false,
       enabled: true
@@ -596,6 +589,8 @@ describe("providerRegistryEntrySchema", () => {
       .toEqual(OPENAI_PROVIDER_CACHING_CAPABILITIES);
     expect(providerCachingCapabilitiesSchema.parse(ANTHROPIC_PROVIDER_CACHING_CAPABILITIES))
       .toEqual(ANTHROPIC_PROVIDER_CACHING_CAPABILITIES);
+    expect(providerCachingCapabilitiesSchema.parse(GEMINI_PROVIDER_CACHING_CAPABILITIES))
+      .toEqual(GEMINI_PROVIDER_CACHING_CAPABILITIES);
 
     const result = providerCachingCapabilitiesSchema.safeParse({
       implicitPrefixCaching: true,

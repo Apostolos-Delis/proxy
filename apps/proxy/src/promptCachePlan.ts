@@ -99,6 +99,7 @@ export function computePromptCachePlan(input: {
   const body = isRecord(targetBody) ? targetBody : {};
   const sourceBody = isRecord(input.sourceBody) ? input.sourceBody : undefined;
   const translatedCacheFieldSkips = cacheFieldSkipsForTranslation(sourceBody, body, input.context.surface, dialect);
+  const unsupportedCacheFieldSkips = cacheFieldSkipsForUnsupportedCapabilities(body, capabilities);
   const skippedControls: PromptCachePlan["skippedControls"] = [];
   const appliedControls: string[] = [];
 
@@ -119,6 +120,7 @@ export function computePromptCachePlan(input: {
     if (cacheKey) appliedControls.push("cache_key_preserved");
     const retention = retentionState(body, capabilities);
     if (retention) appliedControls.push("retention_preserved");
+    skippedControls.push(...unsupportedCacheFieldSkips);
     skippedControls.push(...translatedCacheFieldSkips);
     return {
       mode: "implicit",
@@ -162,6 +164,7 @@ export function computePromptCachePlan(input: {
     } else if (input.settings?.cacheTtlUpgrade === true) {
       skippedControls.push({ control: "ttl_1h", reason: "not_eligible" });
     }
+    skippedControls.push(...unsupportedCacheFieldSkips);
     skippedControls.push(...translatedCacheFieldSkips);
 
     let strategy: PromptCachePlan["breakpointStrategy"];
@@ -183,7 +186,10 @@ export function computePromptCachePlan(input: {
     provider,
     dialect,
     appliedControls,
-    skippedControls: [{ control: "prompt_cache", reason: "provider_capability_unavailable" }]
+    skippedControls: [
+      { control: "prompt_cache", reason: "provider_capability_unavailable" },
+      ...unsupportedCacheFieldSkips
+    ]
   };
 }
 
@@ -240,6 +246,23 @@ function cacheFieldSkipsForTranslation(
   }
   if (skipped.length > 0) {
     skipped.push({ control: "cross_dialect_cache_fields", reason: "translated_request" });
+  }
+  return skipped;
+}
+
+function cacheFieldSkipsForUnsupportedCapabilities(
+  body: Record<string, unknown>,
+  capabilities: ProviderCachingCapabilities
+): PromptCachePlan["skippedControls"] {
+  const skipped: PromptCachePlan["skippedControls"] = [];
+  if (body.prompt_cache_key !== undefined && capabilities.cacheKeyField !== "prompt_cache_key") {
+    skipped.push({ control: "cache_key_preserved", reason: "provider_capability_unavailable" });
+  }
+  if (body.routing_key !== undefined && capabilities.cacheKeyField !== "routing_key") {
+    skipped.push({ control: "cache_key_preserved", reason: "provider_capability_unavailable" });
+  }
+  if (body.prompt_cache_retention !== undefined && capabilities.retentionField !== "prompt_cache_retention") {
+    skipped.push({ control: "retention_preserved", reason: "provider_capability_unavailable" });
   }
   return skipped;
 }

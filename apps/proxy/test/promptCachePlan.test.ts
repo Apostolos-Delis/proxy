@@ -1,7 +1,8 @@
 import {
   ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
   CONSERVATIVE_PROVIDER_CACHING_CAPABILITIES,
-  OPENAI_PROVIDER_CACHING_CAPABILITIES
+  OPENAI_PROVIDER_CACHING_CAPABILITIES,
+  type ProviderCachingCapabilities
 } from "@proxy/schema";
 import { describe, expect, it } from "vitest";
 
@@ -9,33 +10,56 @@ import { computePromptCachePlan, promptCachePlanEventPayload } from "../src/prom
 import type { RouteDecision } from "../src/types.js";
 import { sha256 } from "../src/util.js";
 
-function decision(provider: "openai" | "anthropic", dialect: "openai-responses" | "openai-chat" | "anthropic-messages"): RouteDecision {
+const GEMINI_PROVIDER_CACHING_CAPABILITIES = {
+  implicitPrefixCaching: true,
+  explicitBreakpoints: false,
+  supportedTtls: [],
+  prewarm: false,
+  usageShape: "gemini"
+} satisfies ProviderCachingCapabilities;
+
+function decision(
+  provider: string,
+  dialect: "openai-responses" | "openai-chat" | "anthropic-messages",
+  model = modelForProvider(provider)
+): RouteDecision {
+  let providerSpecificSettings = {};
+  if (provider === "openai") {
+    providerSpecificSettings = { openai: { provider, model, order: 0, weight: 1, timeoutMs: 60000 } };
+  } else if (provider === "anthropic") {
+    providerSpecificSettings = { anthropic: { provider, model, order: 0, weight: 1, timeoutMs: 60000 } };
+  }
+
   return {
     outcome: "route",
     surface: dialect,
     requestedModel: "router-hard",
     finalRoute: "hard",
-    selectedModel: provider === "openai" ? "gpt-5.5" : "claude-opus-4-8",
+    selectedModel: model,
     provider,
     providerSettings: {
       provider,
-      model: provider === "openai" ? "gpt-5.5" : "claude-opus-4-8",
+      model,
       dialect,
       deployment: {
         key: `test-${provider}`,
         provider,
-        model: provider === "openai" ? "gpt-5.5" : "claude-opus-4-8",
+        model,
         order: 0,
         weight: 1,
         timeoutMs: 60000
       },
-      ...(provider === "openai"
-        ? { openai: { provider, model: "gpt-5.5", order: 0, weight: 1, timeoutMs: 60000 } }
-        : { anthropic: { provider, model: "claude-opus-4-8", order: 0, weight: 1, timeoutMs: 60000 } })
+      ...providerSpecificSettings
     } as RouteDecision["providerSettings"],
     guardrailActions: [],
     reasonCodes: []
   };
+}
+
+function modelForProvider(provider: string) {
+  if (provider === "anthropic") return "claude-opus-4-8";
+  if (provider === "openai") return "gpt-5.5";
+  return "gemini-2.5-pro";
 }
 
 describe("computePromptCachePlan", () => {
@@ -337,6 +361,47 @@ describe("computePromptCachePlan", () => {
       dialect: "openai-chat",
       appliedControls: [],
       skippedControls: [{ control: "prompt_cache", reason: "provider_capability_unavailable" }]
+    });
+  });
+
+  it("represents Gemini implicit caching in observe-only plan data", () => {
+    const plan = computePromptCachePlan({
+      body: {
+        model: "gemini-2.5-pro",
+        messages: [{ role: "user", content: "large shared prefix" }],
+        prompt_cache_key: "client-cache-key",
+        prompt_cache_retention: "24h"
+      },
+      context: { surface: "openai-chat", sessionId: "session_gemini" },
+      decision: decision("google-gemini", "openai-chat"),
+      capabilities: GEMINI_PROVIDER_CACHING_CAPABILITIES
+    });
+
+    expect(plan).toEqual({
+      mode: "implicit",
+      provider: "google-gemini",
+      dialect: "openai-chat",
+      cacheGroup: { source: "session", key: "session_gemini" },
+      appliedControls: ["implicit_prefix_caching"],
+      skippedControls: [
+        { control: "cache_key_preserved", reason: "provider_capability_unavailable" },
+        { control: "retention_preserved", reason: "provider_capability_unavailable" }
+      ]
+    });
+
+    expect(promptCachePlanEventPayload({
+      surface: "openai-chat",
+      model: "gemini-2.5-pro",
+      route: "hard",
+      plan
+    })).toMatchObject({
+      provider: "google-gemini",
+      mode: "implicit",
+      appliedControls: ["implicit_prefix_caching"],
+      skippedControls: [
+        { control: "cache_key_preserved", reason: "provider_capability_unavailable" },
+        { control: "retention_preserved", reason: "provider_capability_unavailable" }
+      ]
     });
   });
 
