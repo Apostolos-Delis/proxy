@@ -56,6 +56,8 @@ describe("OpenAI Responses to Chat translator", () => {
       tools: [{ type: "function", name: "shell", description: "Run shell", parameters: { type: "object" } }],
       reasoning: { effort: "high" },
       max_output_tokens: 123,
+      prompt_cache_key: "responses-cache-key",
+      prompt_cache_retention: "24h",
       stream: true
     }) as any;
 
@@ -68,6 +70,8 @@ describe("OpenAI Responses to Chat translator", () => {
     ]);
     expect(request.reasoning_effort).toBe("high");
     expect(request.max_completion_tokens).toBe(123);
+    expect(request.prompt_cache_key).toBe("responses-cache-key");
+    expect(request.prompt_cache_retention).toBe("24h");
     expect(request.input).toBeUndefined();
     expect(request.max_output_tokens).toBeUndefined();
   });
@@ -132,6 +136,8 @@ describe("OpenAI Chat to Responses translator", () => {
       tools: [{ type: "function", function: { name: "shell", description: "Run shell", parameters: { type: "object" } } }],
       reasoning_effort: "high",
       max_completion_tokens: 123,
+      prompt_cache_key: "chat-cache-key",
+      prompt_cache_retention: "24h",
       stream_options: { include_usage: true }
     }) as any;
 
@@ -146,6 +152,8 @@ describe("OpenAI Chat to Responses translator", () => {
     ]);
     expect(request.reasoning).toEqual({ effort: "high" });
     expect(request.max_output_tokens).toBe(123);
+    expect(request.prompt_cache_key).toBe("chat-cache-key");
+    expect(request.prompt_cache_retention).toBe("24h");
     expect(request.messages).toBeUndefined();
     expect(request.stream_options).toBeUndefined();
   });
@@ -195,8 +203,9 @@ describe("Anthropic Messages to OpenAI translators", () => {
     const request = translator?.request({
       model: "claude-router-hard",
       system: "Use tools carefully.",
+      cache_control: { type: "ephemeral" },
       messages: [
-        { role: "user", content: [{ type: "text", text: "list files" }] },
+        { role: "user", content: [{ type: "text", text: "list files", cache_control: { type: "ephemeral" } }] },
         {
           role: "assistant",
           content: [{ type: "tool_use", id: "toolu_1", name: "shell", input: { cmd: "ls" } }]
@@ -243,12 +252,14 @@ describe("Anthropic Messages to OpenAI translators", () => {
     expect(request.context_management).toBeUndefined();
     expect(request.mcp_servers).toBeUndefined();
     expect(request.top_k).toBeUndefined();
+    expect(JSON.stringify(request)).not.toContain("cache_control");
   });
 
   it("maps Messages tool choice to OpenAI Responses", () => {
     const translator = translators.get("anthropic-messages", "openai-responses");
     const request = translator?.request({
       messages: [{ role: "user", content: "list files" }],
+      cache_control: { type: "ephemeral" },
       tools: [{ name: "shell", input_schema: { type: "object" } }],
       tool_choice: { type: "tool", name: "shell" },
       stop_sequences: ["DONE"],
@@ -275,6 +286,7 @@ describe("Anthropic Messages to OpenAI translators", () => {
     expect(request.context_management).toBeUndefined();
     expect(request.mcp_servers).toBeUndefined();
     expect(request.top_k).toBeUndefined();
+    expect(JSON.stringify(request)).not.toContain("cache_control");
   });
 
   it("transforms Anthropic SSE to Responses SSE", async () => {
@@ -326,6 +338,8 @@ describe("OpenAI to Anthropic Messages translators", () => {
       parallel_tool_calls: true,
       response_format: { type: "json_object" },
       stream_options: { include_usage: true },
+      prompt_cache_key: "chat-cache-key",
+      prompt_cache_retention: "24h",
       store: true
     }) as any;
 
@@ -341,6 +355,8 @@ describe("OpenAI to Anthropic Messages translators", () => {
     expect(request.parallel_tool_calls).toBeUndefined();
     expect(request.response_format).toBeUndefined();
     expect(request.stream_options).toBeUndefined();
+    expect(request.prompt_cache_key).toBeUndefined();
+    expect(request.prompt_cache_retention).toBeUndefined();
     expect(request.store).toBeUndefined();
   });
 
@@ -359,6 +375,7 @@ describe("OpenAI to Anthropic Messages translators", () => {
       include: ["reasoning.encrypted_content"],
       parallel_tool_calls: true,
       prompt_cache_key: "cache-key",
+      prompt_cache_retention: "24h",
       client_metadata: { session: "codex" },
       store: true,
       stop: "DONE",
@@ -387,6 +404,7 @@ describe("OpenAI to Anthropic Messages translators", () => {
     expect(request.include).toBeUndefined();
     expect(request.parallel_tool_calls).toBeUndefined();
     expect(request.prompt_cache_key).toBeUndefined();
+    expect(request.prompt_cache_retention).toBeUndefined();
     expect(request.client_metadata).toBeUndefined();
     expect(request.store).toBeUndefined();
   });

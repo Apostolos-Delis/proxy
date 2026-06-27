@@ -89,6 +89,113 @@ describe("computePromptCachePlan", () => {
     expect(plan.cacheGroup).toEqual({ source: "session", key: "session_abc" });
   });
 
+  it("preserves OpenAI cache fields across Responses to Chat translation", () => {
+    const body = {
+      model: "router-hard",
+      input: "hello",
+      prompt_cache_key: "responses-cache-key",
+      prompt_cache_retention: "24h"
+    };
+
+    const plan = computePromptCachePlan({
+      body,
+      sourceBody: body,
+      context: { surface: "openai-responses" },
+      decision: {
+        ...decision("openai", "openai-chat"),
+        surface: "openai-responses"
+      },
+      capabilities: OPENAI_PROVIDER_CACHING_CAPABILITIES
+    });
+
+    expect(plan.appliedControls).toEqual([
+      "implicit_prefix_caching",
+      "cache_key_preserved",
+      "retention_preserved"
+    ]);
+    expect(plan.skippedControls).toEqual([]);
+  });
+
+  it("preserves OpenAI cache fields across Chat to Responses translation", () => {
+    const body = {
+      model: "router-hard",
+      messages: [{ role: "user", content: "hello" }],
+      prompt_cache_key: "chat-cache-key",
+      prompt_cache_retention: "24h"
+    };
+
+    const plan = computePromptCachePlan({
+      body,
+      sourceBody: body,
+      context: { surface: "openai-chat" },
+      decision: {
+        ...decision("openai", "openai-responses"),
+        surface: "openai-chat"
+      },
+      capabilities: OPENAI_PROVIDER_CACHING_CAPABILITIES
+    });
+
+    expect(plan.appliedControls).toEqual([
+      "implicit_prefix_caching",
+      "cache_key_preserved",
+      "retention_preserved"
+    ]);
+    expect(plan.skippedControls).toEqual([]);
+  });
+
+  it("reports dropped OpenAI cache fields on Responses to Anthropic translation", () => {
+    const body = {
+      model: "router-hard",
+      input: "hello",
+      prompt_cache_key: "responses-cache-key",
+      prompt_cache_retention: "24h"
+    };
+
+    const plan = computePromptCachePlan({
+      body,
+      sourceBody: body,
+      context: { surface: "openai-responses" },
+      decision: {
+        ...decision("anthropic", "anthropic-messages"),
+        surface: "openai-responses"
+      },
+      capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
+      settings: { automaticCaching: false, cacheTtlUpgrade: false }
+    });
+
+    expect(plan.skippedControls).toEqual([
+      { control: "top_level_auto_breakpoint", reason: "setting_disabled" },
+      { control: "cache_key_preserved", reason: "translated_request" },
+      { control: "retention_preserved", reason: "translated_request" },
+      { control: "cross_dialect_cache_fields", reason: "translated_request" }
+    ]);
+  });
+
+  it("reports dropped Anthropic cache controls on Anthropic to OpenAI translation", () => {
+    const body = {
+      model: "claude-router-hard",
+      system: [{ type: "text", text: "stable", cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content: "hello" }]
+    };
+
+    const plan = computePromptCachePlan({
+      body,
+      sourceBody: body,
+      context: { surface: "anthropic-messages" },
+      decision: {
+        ...decision("openai", "openai-chat"),
+        surface: "anthropic-messages"
+      },
+      capabilities: OPENAI_PROVIDER_CACHING_CAPABILITIES
+    });
+
+    expect(plan.appliedControls).toEqual(["implicit_prefix_caching"]);
+    expect(plan.skippedControls).toEqual([
+      { control: "client_breakpoints_preserved", reason: "translated_request" },
+      { control: "cross_dialect_cache_fields", reason: "translated_request" }
+    ]);
+  });
+
   it("plans Anthropic automatic caching for eligible multi-turn requests", () => {
     const plan = computePromptCachePlan({
       body: {

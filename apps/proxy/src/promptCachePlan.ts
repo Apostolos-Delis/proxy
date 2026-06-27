@@ -98,7 +98,7 @@ export function computePromptCachePlan(input: {
   const targetBody = bodyForTargetDialect(input.body, input.bodyDialect ?? input.context.surface, dialect);
   const body = isRecord(targetBody) ? targetBody : {};
   const sourceBody = isRecord(input.sourceBody) ? input.sourceBody : undefined;
-  const translatedCacheFields = input.context.surface !== dialect && sourceBody !== undefined && hasProviderCacheField(sourceBody);
+  const translatedCacheFieldSkips = cacheFieldSkipsForTranslation(sourceBody, body, input.context.surface, dialect);
   const skippedControls: PromptCachePlan["skippedControls"] = [];
   const appliedControls: string[] = [];
 
@@ -119,9 +119,7 @@ export function computePromptCachePlan(input: {
     if (cacheKey) appliedControls.push("cache_key_preserved");
     const retention = retentionState(body, capabilities);
     if (retention) appliedControls.push("retention_preserved");
-    if (input.context.surface !== dialect) {
-      skippedControls.push({ control: "cross_dialect_cache_fields", reason: "translated_request" });
-    }
+    skippedControls.push(...translatedCacheFieldSkips);
     return {
       mode: "implicit",
       provider,
@@ -164,9 +162,7 @@ export function computePromptCachePlan(input: {
     } else if (input.settings?.cacheTtlUpgrade === true) {
       skippedControls.push({ control: "ttl_1h", reason: "not_eligible" });
     }
-    if (translatedCacheFields) {
-      skippedControls.push({ control: "cross_dialect_cache_fields", reason: "translated_request" });
-    }
+    skippedControls.push(...translatedCacheFieldSkips);
 
     let strategy: PromptCachePlan["breakpointStrategy"];
     if (hasBreakpoints) strategy = "preserve_client";
@@ -225,10 +221,27 @@ function retentionState(body: Record<string, unknown>, capabilities: ProviderCac
   return undefined;
 }
 
-function hasProviderCacheField(body: Record<string, unknown>) {
-  return body.prompt_cache_key !== undefined ||
-    body.prompt_cache_retention !== undefined ||
-    hasAnthropicCacheControl(body);
+function cacheFieldSkipsForTranslation(
+  sourceBody: Record<string, unknown> | undefined,
+  targetBody: Record<string, unknown>,
+  sourceDialect: Surface | Dialect,
+  targetDialect: string
+): PromptCachePlan["skippedControls"] {
+  if (!sourceBody || sourceDialect === targetDialect) return [];
+  const skipped: PromptCachePlan["skippedControls"] = [];
+  if (sourceBody.prompt_cache_key !== undefined && targetBody.prompt_cache_key === undefined) {
+    skipped.push({ control: "cache_key_preserved", reason: "translated_request" });
+  }
+  if (sourceBody.prompt_cache_retention !== undefined && targetBody.prompt_cache_retention === undefined) {
+    skipped.push({ control: "retention_preserved", reason: "translated_request" });
+  }
+  if (hasAnthropicCacheControl(sourceBody) && !hasAnthropicCacheControl(targetBody)) {
+    skipped.push({ control: "client_breakpoints_preserved", reason: "translated_request" });
+  }
+  if (skipped.length > 0) {
+    skipped.push({ control: "cross_dialect_cache_fields", reason: "translated_request" });
+  }
+  return skipped;
 }
 
 export function hasAnthropicCacheControl(request: Record<string, unknown>): boolean {
