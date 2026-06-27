@@ -91,8 +91,11 @@ import {
 import { aggregateTokenAttribution, TOKEN_ATTRIBUTION_SAMPLE_CAP } from "./tokenAttributionReport.js";
 import {
   OTHER_ROLLUP_GROUP_KEY,
+  openAICacheAnalyticsRows,
   usageBucketRollupReportRows,
   usageRollupReportRows,
+  type OpenAICacheAnalyticsRow,
+  type OpenAICacheTrendRow,
   type UsageBucketRollupReport,
   type UsageLatencyRow,
   type UsageRollupReport,
@@ -112,6 +115,7 @@ type DateRangeFilters = {
 };
 
 const PROMPT_CACHE_PLAN_SAMPLE_CAP = 5_000;
+const OPENAI_CACHE_ANALYTICS_GROUP_LIMIT = 12;
 
 export type AdminQueryConfig = {
   routeQualityLowConfidenceThreshold: number;
@@ -649,6 +653,29 @@ export class AdminQueryService {
 
   async usageTimeseries(filters: UsageTimeseriesFilters = {}) {
     return (await this.usageDashboard(filters)).timeseries;
+  }
+
+  async openAICacheAnalytics(filters: UsageTimeseriesFilters = {}) {
+    const interval = usageInterval(filters.interval);
+    const scope = this.usageRollupScope(filters);
+    const step = intervalMs(interval);
+    const report = await this.cached(`openai-cache-analytics:${step}:${usageScopeKey(scope)}`, () =>
+      this.recordDbQuery("openai_cache_analytics", () => openAICacheAnalyticsRows(this.db, scope, step)));
+    const totals = emptyOpenAICacheAggregate();
+    for (const row of report.trends) {
+      addOpenAICacheAggregate(totals, row);
+    }
+    return {
+      interval,
+      totals: finalizeOpenAICacheAggregate(totals),
+      groups: report.groups
+        .map(finalizeOpenAICacheGroup)
+        .sort(compareOpenAICacheGroups)
+        .slice(0, OPENAI_CACHE_ANALYTICS_GROUP_LIMIT),
+      trends: report.trends
+        .sort((left, right) => left.bucketTs - right.bucketTs)
+        .map(finalizeOpenAICacheTrend)
+    };
   }
 
   private async usageDashboardFromBucket(
@@ -2692,6 +2719,13 @@ type UsageGroup = {
   };
 };
 
+type OpenAICacheAggregate = {
+  requestCount: number;
+  cachedRequests: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+};
+
 const ALL_REQUEST_ROWS_KEY = "requests:all";
 
 function sessionIdsForRequests(requests: RequestSummary[]) {
@@ -2881,6 +2915,73 @@ function mergeUsageGroup(target: UsageGroup, source: UsageGroup) {
   target.cost.baseline += source.cost.baseline;
   target.cost.savings += source.cost.savings;
   target.cost.classifier += source.cost.classifier;
+}
+
+function emptyOpenAICacheAggregate(): OpenAICacheAggregate {
+  return {
+    requestCount: 0,
+    cachedRequests: 0,
+    inputTokens: 0,
+    cachedInputTokens: 0
+  };
+}
+
+function addOpenAICacheAggregate(target: OpenAICacheAggregate, source: OpenAICacheAnalyticsRow | OpenAICacheTrendRow) {
+  target.requestCount += source.requestCount;
+  target.cachedRequests += source.cachedRequests;
+  target.inputTokens += source.inputTokens;
+  target.cachedInputTokens += source.cachedInputTokens;
+}
+
+function finalizeOpenAICacheAggregate(aggregate: OpenAICacheAggregate) {
+  return {
+    requestCount: aggregate.requestCount,
+    cachedRequests: aggregate.cachedRequests,
+    inputTokens: aggregate.inputTokens,
+    cachedInputTokens: aggregate.cachedInputTokens,
+    cacheHitRate: tokenHitRate(aggregate),
+    requestHitRate: requestHitRate(aggregate)
+  };
+}
+
+function finalizeOpenAICacheGroup(row: OpenAICacheAnalyticsRow) {
+  return {
+    surface: row.surface,
+    provider: row.provider,
+    model: row.model,
+    route: row.route,
+    cacheGroupSource: row.cacheGroupSource,
+    cacheGroupKey: row.cacheGroupKey,
+    ...finalizeOpenAICacheAggregate(row)
+  };
+}
+
+function finalizeOpenAICacheTrend(row: OpenAICacheTrendRow) {
+  return {
+    ts: new Date(row.bucketTs).toISOString(),
+    ...finalizeOpenAICacheAggregate(row)
+  };
+}
+
+function tokenHitRate(row: Pick<OpenAICacheAggregate, "inputTokens" | "cachedInputTokens">) {
+  return row.inputTokens > 0 ? row.cachedInputTokens / row.inputTokens : 0;
+}
+
+function requestHitRate(row: Pick<OpenAICacheAggregate, "requestCount" | "cachedRequests">) {
+  return row.requestCount > 0 ? row.cachedRequests / row.requestCount : 0;
+}
+
+function compareOpenAICacheGroups(
+  left: ReturnType<typeof finalizeOpenAICacheGroup>,
+  right: ReturnType<typeof finalizeOpenAICacheGroup>
+) {
+  return (right.cachedInputTokens - left.cachedInputTokens) ||
+    (right.requestCount - left.requestCount) ||
+    left.provider.localeCompare(right.provider) ||
+    left.model.localeCompare(right.model) ||
+    left.route.localeCompare(right.route) ||
+    left.cacheGroupSource.localeCompare(right.cacheGroupSource) ||
+    left.cacheGroupKey.localeCompare(right.cacheGroupKey);
 }
 
 function modelUsageReportFromRequests(requests: RequestSummary[]) {

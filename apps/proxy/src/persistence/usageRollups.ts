@@ -74,6 +74,32 @@ export type UsageBucketRollupReport = {
   latencies: UsageLatencyRow[];
 };
 
+export type OpenAICacheAnalyticsRow = {
+  surface: string;
+  provider: string;
+  model: string;
+  route: string;
+  cacheGroupSource: string;
+  cacheGroupKey: string;
+  requestCount: number;
+  cachedRequests: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+};
+
+export type OpenAICacheTrendRow = {
+  bucketTs: number;
+  requestCount: number;
+  cachedRequests: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+};
+
+export type OpenAICacheAnalyticsRows = {
+  groups: OpenAICacheAnalyticsRow[];
+  trends: OpenAICacheTrendRow[];
+};
+
 const GROUP_KEY_SQL: Record<UsageRollupGroupBy, string> = {
   user: "coalesce(r.user_id, 'unknown')",
   api_key: "coalesce(r.api_key_id, 'unknown')",
@@ -274,6 +300,147 @@ export async function usageBucketRollupReportRows(
     reportSelect(scope, keyExpression(groupBy, keptKeys), bucketExpression(stepMs))
   );
   return splitReportRows(rows, true);
+}
+
+export async function openAICacheAnalyticsRows(
+  db: ProxyDbSession,
+  scope: UsageRollupScope,
+  stepMs: number
+): Promise<OpenAICacheAnalyticsRows> {
+  const rows = await executeRows(db, openAICacheAnalyticsSelect(scope, bucketExpression(stepMs)));
+  const groups: OpenAICacheAnalyticsRow[] = [];
+  const trends: OpenAICacheTrendRow[] = [];
+  for (const row of rows) {
+    if (row.row_kind === "group") {
+      groups.push({
+        surface: String(row.surface),
+        provider: String(row.provider),
+        model: String(row.model),
+        route: String(row.route),
+        cacheGroupSource: String(row.cache_group_source),
+        cacheGroupKey: String(row.cache_group_key),
+        requestCount: toNumber(row.request_count),
+        cachedRequests: toNumber(row.cached_requests),
+        inputTokens: toNumber(row.input_tokens),
+        cachedInputTokens: toNumber(row.cached_input_tokens)
+      });
+    } else if (row.row_kind === "trend") {
+      trends.push({
+        bucketTs: toNumber(row.bucket_ts),
+        requestCount: toNumber(row.request_count),
+        cachedRequests: toNumber(row.cached_requests),
+        inputTokens: toNumber(row.input_tokens),
+        cachedInputTokens: toNumber(row.cached_input_tokens)
+      });
+    }
+  }
+  return { groups, trends };
+}
+
+function openAICacheAnalyticsSelect(scope: UsageRollupScope, bucketExpr: SQL): SQL {
+  const { organizationId, workspaceId, start, end } = scope;
+  return sql`
+    with scoped_requests as (
+      select id, session_id, surface, created_at
+      from requests
+      where organization_id = ${organizationId}
+        and workspace_id = ${workspaceId}
+        and surface in ('openai-responses', 'openai-chat')
+        ${start ? sql`and created_at >= ${start.toISOString()}` : sql``}
+        ${end ? sql`and created_at <= ${end.toISOString()}` : sql``}
+    ),
+    plan_agg as (
+      select
+        e.scope_id as request_id,
+        (array_agg(e.payload->'cacheGroup'->>'source' order by e.created_at desc))[1] as cache_group_source,
+        (array_agg(e.payload->'cacheGroup'->>'key' order by e.created_at desc))[1] as cache_group_key
+      from events e
+      join scoped_requests sr on sr.id = e.scope_id
+      where e.organization_id = ${organizationId}
+        and e.workspace_id = ${workspaceId}
+        and e.event_type = 'prompt_cache.plan_applied'
+        and e.payload->>'provider' = 'openai'
+      group by e.scope_id
+    ),
+    request_metrics as (
+      select
+        r.id as request_id,
+        ${bucketExpr} as bucket_ts,
+        r.surface as surface,
+        coalesce(ul.provider, 'openai') as provider,
+        coalesce(ul.model, d.selected_model, 'unknown') as model,
+        coalesce(ul.route, d.final_route, 'unknown') as route,
+        coalesce(pa.cache_group_source, case when r.session_id is not null then 'session' else 'unknown' end) as cache_group_source,
+        coalesce(pa.cache_group_key, r.session_id, 'unknown') as cache_group_key,
+        coalesce(sum(ul.input_tokens), 0)::double precision as input_tokens,
+        coalesce(sum(ul.cached_input_tokens), 0)::double precision as cached_input_tokens
+      from scoped_requests r
+      join usage_ledger ul
+        on ul.request_id = r.id
+        and ul.organization_id = ${organizationId}
+        and ul.workspace_id = ${workspaceId}
+        and ul.provider_attempt_id is not null
+        and ul.provider = 'openai'
+      left join route_decisions d
+        on d.request_id = r.id
+        and d.organization_id = ${organizationId}
+        and d.workspace_id = ${workspaceId}
+      left join plan_agg pa on pa.request_id = r.id
+      group by
+        r.id,
+        bucket_ts,
+        r.surface,
+        ul.provider,
+        ul.model,
+        d.selected_model,
+        ul.route,
+        d.final_route,
+        pa.cache_group_source,
+        pa.cache_group_key,
+        r.session_id
+    ),
+    request_totals as (
+      select
+        request_id,
+        bucket_ts,
+        coalesce(sum(input_tokens), 0)::double precision as input_tokens,
+        coalesce(sum(cached_input_tokens), 0)::double precision as cached_input_tokens
+      from request_metrics
+      group by request_id, bucket_ts
+    )
+    select
+      'group'::text as row_kind,
+      null::double precision as bucket_ts,
+      surface,
+      provider,
+      model,
+      route,
+      cache_group_source,
+      cache_group_key,
+      count(*)::int as request_count,
+      (count(*) filter (where cached_input_tokens > 0))::int as cached_requests,
+      coalesce(sum(input_tokens), 0)::double precision as input_tokens,
+      coalesce(sum(cached_input_tokens), 0)::double precision as cached_input_tokens
+    from request_metrics
+    group by surface, provider, model, route, cache_group_source, cache_group_key
+    union all
+    select
+      'trend'::text as row_kind,
+      bucket_ts,
+      null::text as surface,
+      null::text as provider,
+      null::text as model,
+      null::text as route,
+      null::text as cache_group_source,
+      null::text as cache_group_key,
+      count(*)::int as request_count,
+      (count(*) filter (where cached_input_tokens > 0))::int as cached_requests,
+      coalesce(sum(input_tokens), 0)::double precision as input_tokens,
+      coalesce(sum(cached_input_tokens), 0)::double precision as cached_input_tokens
+    from request_totals
+    group by bucket_ts
+    order by row_kind, bucket_ts
+  `;
 }
 
 type RawRow = Record<string, unknown>;

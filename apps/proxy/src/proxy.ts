@@ -153,6 +153,7 @@ export class ProviderProxy implements ProviderAdapter {
       scopeId: input.requestId,
       correlationId: input.requestId,
       idempotencyKey: `${input.idempotencyKey}:prompt-cache-plan:${attemptIndex}`,
+      sessionId: input.sessionId,
       surface: input.surface,
       provider: input.provider,
       model: selectedModel,
@@ -926,7 +927,7 @@ function providerForwardAttempts(input: ProviderForwardInput): ProviderForwardAt
     promptCachePlan: computePromptCachePlan({
       body: input.body,
       sourceBody: input.body,
-      context: { surface: input.surface, harnessProfileId: input.harnessProfileId },
+      context: { surface: input.surface, harnessProfileId: input.harnessProfileId, sessionId: input.sessionId },
       decision: input.decision
     })
   }];
@@ -956,7 +957,7 @@ function providerForwardAttempt(input: ProviderForwardInput, attempt: RouteProvi
     promptCachePlan: computePromptCachePlan({
       body: input.body,
       sourceBody: input.body,
-      context: { surface: input.surface, harnessProfileId: input.harnessProfileId },
+      context: { surface: input.surface, harnessProfileId: input.harnessProfileId, sessionId: input.sessionId },
       decision,
       capabilities: attempt.providerCachingCapabilities
     })

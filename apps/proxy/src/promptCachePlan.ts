@@ -2,13 +2,17 @@ import { builtinProviderCachingCapabilities, type ProviderCachingCapabilities, t
 
 import type { Dialect, JsonObject, RouteContext, RouteDecision, Surface } from "./types.js";
 import { translators } from "./translators/index.js";
-import { isRecord, roughTokenEstimate, stableJson } from "./util.js";
+import { isRecord, roughTokenEstimate, sha256, stableJson } from "./util.js";
 
 export type PromptCachePlan = {
   mode: "off" | "observe" | "implicit" | "explicit";
   provider: string;
   dialect: string;
   cacheKey?: "provided";
+  cacheGroup?: {
+    source: "prompt_cache_key" | "session" | "unknown";
+    key: string;
+  };
   retention?: ProviderCacheTtl | "in_memory";
   breakpointStrategy?: "preserve_client" | "top_level_auto" | "static_prefix";
   appliedControls: string[];
@@ -57,6 +61,10 @@ export function promptCachePlanEventPayload(input: {
   };
   if (input.route) payload.route = input.route;
   if (input.plan.cacheKey) payload.cacheKey = input.plan.cacheKey;
+  if (input.plan.cacheGroup) payload.cacheGroup = {
+    source: input.plan.cacheGroup.source,
+    key: input.plan.cacheGroup.key
+  };
   if (input.plan.retention) payload.retention = input.plan.retention;
   if (input.plan.breakpointStrategy) payload.breakpointStrategy = input.plan.breakpointStrategy;
   return payload;
@@ -79,7 +87,7 @@ export function computePromptCachePlan(input: {
   body: unknown;
   bodyDialect?: Surface | Dialect;
   sourceBody?: unknown;
-  context: Pick<RouteContext, "surface"> & Partial<Pick<RouteContext, "transport" | "harnessProfileId" | "estimatedInputTokens">>;
+  context: Pick<RouteContext, "surface"> & Partial<Pick<RouteContext, "transport" | "harnessProfileId" | "estimatedInputTokens" | "sessionId">>;
   decision: RouteDecision;
   capabilities?: ProviderCachingCapabilities;
   settings?: PromptCachePlanSettings;
@@ -107,6 +115,7 @@ export function computePromptCachePlan(input: {
   if (capabilities.implicitPrefixCaching) {
     appliedControls.push("implicit_prefix_caching");
     const cacheKey = cacheKeyState(body, capabilities);
+    const cacheGroup = implicitCacheGroup(body, capabilities, input.context.sessionId);
     if (cacheKey) appliedControls.push("cache_key_preserved");
     const retention = retentionState(body, capabilities);
     if (retention) appliedControls.push("retention_preserved");
@@ -118,6 +127,7 @@ export function computePromptCachePlan(input: {
       provider,
       dialect,
       cacheKey,
+      cacheGroup,
       retention,
       appliedControls,
       skippedControls
@@ -190,6 +200,22 @@ function bodyForTargetDialect(body: unknown, source: Surface | Dialect, target: 
 function cacheKeyState(body: Record<string, unknown>, capabilities: ProviderCachingCapabilities): "provided" | undefined {
   if (!capabilities.cacheKeyField) return undefined;
   return typeof body[capabilities.cacheKeyField] === "string" ? "provided" : undefined;
+}
+
+function implicitCacheGroup(
+  body: Record<string, unknown>,
+  capabilities: ProviderCachingCapabilities,
+  sessionId: string | undefined
+): NonNullable<PromptCachePlan["cacheGroup"]> {
+  const cacheKey = capabilities.cacheKeyField ? body[capabilities.cacheKeyField] : undefined;
+  if (typeof cacheKey === "string") {
+    return {
+      source: "prompt_cache_key",
+      key: sha256(`prompt_cache_key:${cacheKey}`)
+    };
+  }
+  if (sessionId) return { source: "session", key: sessionId };
+  return { source: "unknown", key: "unknown" };
 }
 
 function retentionState(body: Record<string, unknown>, capabilities: ProviderCachingCapabilities): ProviderCacheTtl | "in_memory" | undefined {

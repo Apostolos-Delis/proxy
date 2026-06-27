@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { bustsByModel, cacheSavings, promptCacheControlRows, type PromptCachePlanReport } from "./cachingData";
+import {
+  bustsByModel,
+  cacheSavings,
+  openAICacheGroupLabel,
+  promptCacheControlRows,
+  type PromptCachePlanReport
+} from "./cachingData";
 import type { UsageGroup } from "./usageData";
 
 function modelGroup(key: string, usage: Partial<UsageGroup["usage"]>): Pick<UsageGroup, "key" | "usage"> {
@@ -100,6 +106,19 @@ describe("promptCacheControlRows", () => {
       "retention_preserved"
     ]);
     expect(promptCacheControlRows(report, 2)).toHaveLength(2);
+  });
+});
+
+describe("openAICacheGroupLabel", () => {
+  it("uses a short hash label for prompt cache keys and session fallback labels otherwise", () => {
+    expect(openAICacheGroupLabel({
+      cacheGroupSource: "prompt_cache_key",
+      cacheGroupKey: "sha256:1234567890abcdef"
+    })).toBe("Key 1234567890ab");
+    expect(openAICacheGroupLabel({
+      cacheGroupSource: "session",
+      cacheGroupKey: "session_abc"
+    })).toBe("Session session_abc");
   });
 });
 

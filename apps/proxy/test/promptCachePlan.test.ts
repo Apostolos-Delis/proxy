@@ -5,8 +5,9 @@ import {
 } from "@proxy/schema";
 import { describe, expect, it } from "vitest";
 
-import { computePromptCachePlan } from "../src/promptCachePlan.js";
+import { computePromptCachePlan, promptCachePlanEventPayload } from "../src/promptCachePlan.js";
 import type { RouteDecision } from "../src/types.js";
+import { sha256 } from "../src/util.js";
 
 function decision(provider: "openai" | "anthropic", dialect: "openai-responses" | "openai-chat" | "anthropic-messages"): RouteDecision {
   return {
@@ -48,7 +49,7 @@ describe("computePromptCachePlan", () => {
 
     const plan = computePromptCachePlan({
       body,
-      context: { surface: "openai-responses", estimatedInputTokens: 1200 },
+      context: { surface: "openai-responses", estimatedInputTokens: 1200, sessionId: "session_abc" },
       decision: decision("openai", "openai-responses"),
       capabilities: OPENAI_PROVIDER_CACHING_CAPABILITIES
     });
@@ -58,10 +59,34 @@ describe("computePromptCachePlan", () => {
       provider: "openai",
       dialect: "openai-responses",
       cacheKey: "provided",
+      cacheGroup: {
+        source: "prompt_cache_key",
+        key: sha256("prompt_cache_key:customer-session-123")
+      },
       retention: "24h",
       appliedControls: ["implicit_prefix_caching", "cache_key_preserved", "retention_preserved"]
     });
     expect(JSON.stringify(plan)).not.toContain("customer-session-123");
+    expect(JSON.stringify(promptCachePlanEventPayload({
+      surface: "openai-responses",
+      model: "gpt-5.5",
+      route: "hard",
+      plan
+    }))).not.toContain("customer-session-123");
+  });
+
+  it("falls OpenAI implicit cache grouping back to the session identity", () => {
+    const plan = computePromptCachePlan({
+      body: {
+        model: "router-hard",
+        input: "hello"
+      },
+      context: { surface: "openai-responses", sessionId: "session_abc" },
+      decision: decision("openai", "openai-responses"),
+      capabilities: OPENAI_PROVIDER_CACHING_CAPABILITIES
+    });
+
+    expect(plan.cacheGroup).toEqual({ source: "session", key: "session_abc" });
   });
 
   it("plans Anthropic automatic caching for eligible multi-turn requests", () => {

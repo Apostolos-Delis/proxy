@@ -10,11 +10,12 @@ import {
   fetchCompressionSavings,
   fetchCachePricingRates,
   fetchIdleGaps,
+  fetchOpenAICacheAnalytics,
   fetchPromptCachePlans,
   fetchTokenAttribution,
   type CacheSavings
 } from "./cachingData";
-import { KeyHitRates, MissTable } from "./cachingMissPanels";
+import { KeyHitRates, MissTable, OpenAICacheEffectiveness } from "./cachingMissPanels";
 import { LayeredAreaChart, MiniBars, Sparkline, type LayeredAreaSeries } from "./charts";
 import { formatCompact, formatMoney } from "./format";
 import { Delta, GlassCard, PageSkeleton, PageState, Segmented } from "./ui";
@@ -111,11 +112,17 @@ export function CachingPage() {
     placeholderData: keepPreviousData,
     enabled: dashboardReady
   });
+  const { error: openAICacheQueryError, data: openAICacheQueryData } = useQuery({
+    queryKey: ["openai-cache-analytics", start, end, interval],
+    queryFn: () => fetchOpenAICacheAnalytics({ start, end, interval }),
+    placeholderData: keepPreviousData,
+    enabled: dashboardReady
+  });
 
   const error = dashboardQueryError ?? bustsQueryError
     ?? keyUsageQueryError ?? modelUsageQueryError ?? ratesQueryError
     ?? compressionSavingsQueryError ?? attributionQueryError ?? idleGapsQueryError
-    ?? promptCachePlansQueryError;
+    ?? promptCachePlansQueryError ?? openAICacheQueryError;
   if (error) return <PageState title="Caching" label={error.message} />;
 
   const usage = dashboardQueryData?.usage;
@@ -194,6 +201,7 @@ export function CachingPage() {
 
       <div className="caching-grid">
         <MissTable report={bustsQueryData} />
+        <OpenAICacheEffectiveness report={openAICacheQueryData} />
         <KeyHitRates groups={keyUsageQueryData?.data} lookups={lookups} />
       </div>
 
