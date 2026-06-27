@@ -59,6 +59,7 @@ import { ConfigProviderRegistry } from "./persistence/providers.js";
 import { resolveRoutingSelection, type RoutingConfigResolverLike } from "./persistence/routingConfig.js";
 import { modelDiscoveryResponse } from "./modelDiscovery.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
+import { computePromptCachePlan } from "./promptCachePlan.js";
 import { ProjectionService } from "./projections.js";
 import { appendTokensAttributed } from "./tokenAttribution.js";
 import {
@@ -561,6 +562,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       const providerAttempts = await buildProviderForwardAttempts({
         persistence,
         identity,
+        body: compression.body,
+        context,
+        cacheSettings: { automaticCaching: resolved.automaticCaching, cacheTtlUpgrade: resolved.cacheTtlUpgrade },
         decision,
         rewrite: (attemptDecision) => rewriteSurfaceRequest(
           compression.body,
@@ -777,6 +781,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       const providerAttempts = await buildProviderForwardAttempts({
         persistence,
         identity,
+        body: compression.body,
+        context,
+        cacheSettings: { automaticCaching: resolved.automaticCaching, cacheTtlUpgrade: resolved.cacheTtlUpgrade },
         decision,
         rewrite: (attemptDecision) => rewriteSurfaceRequest(
           compression.body,
@@ -1002,6 +1009,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       const providerAttempts = await buildProviderForwardAttempts({
         persistence,
         identity,
+        body: compression.body,
+        context,
+        cacheSettings: { automaticCaching: resolved.automaticCaching, cacheTtlUpgrade: resolved.cacheTtlUpgrade },
         decision,
         rewrite: (attemptDecision) => rewriteSurfaceRequest(
           compression.body,
@@ -1175,6 +1185,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       const providerAttempts = await buildProviderForwardAttempts({
         persistence,
         identity,
+        body: countCompression.body,
+        context,
+        cacheSettings: { automaticCaching: false, cacheTtlUpgrade: resolved.cacheTtlUpgrade },
         decision,
         rewrite: (attemptDecision) => rewriteTokenCountRequest(
           countCompression.body,
@@ -1307,6 +1320,12 @@ function sendTrafficLimitDenied(reply: FastifyReply, result: TrafficLimitDenied)
 async function buildProviderForwardAttempts(input: {
   persistence: AppPersistence | undefined;
   identity: RequestIdentity;
+  body: unknown;
+  context: RouteContext;
+  cacheSettings: {
+    automaticCaching: boolean;
+    cacheTtlUpgrade: boolean;
+  };
   decision: RouteDecision;
   rewrite: (decision: RouteDecision) => unknown;
 }): Promise<ProviderForwardAttemptInput[]> {
@@ -1327,6 +1346,13 @@ async function buildProviderForwardAttempts(input: {
     }
 
     const attemptDecision = decisionForProviderAttempt(input.decision, candidate);
+    const promptCachePlan = computePromptCachePlan({
+      body: input.body,
+      context: input.context,
+      decision: attemptDecision,
+      capabilities: candidate.providerCachingCapabilities,
+      settings: input.cacheSettings
+    });
     attempts.push({
       route: candidate.route,
       routeCandidateId: candidate.routeCandidateId,
@@ -1337,7 +1363,8 @@ async function buildProviderForwardAttempts(input: {
       reasoningEffort: candidate.reasoningEffort,
       body: input.rewrite(attemptDecision),
       credential,
-      providerSettings: candidate.providerSettings
+      providerSettings: candidate.providerSettings,
+      promptCachePlan
     });
   }
 

@@ -5,6 +5,7 @@ import type {
   Provider as SchemaProvider,
   ProviderAccountAuthType,
   ProviderAdapterKind as SchemaProviderAdapterKind,
+  ProviderCachingCapabilities,
   RouteExecutionPlan,
   RoutingConfig,
   RoutingConfigRetryPolicy,
@@ -188,6 +189,7 @@ export type RouteProviderAttempt = {
   readonly reasoningEffort?: ProviderEffort;
   readonly verbosity?: Verbosity;
   readonly providerSettings: SelectedRouteSettings;
+  readonly providerCachingCapabilities?: ProviderCachingCapabilities;
 };
 
 export type RoutingConfigSnapshot = {

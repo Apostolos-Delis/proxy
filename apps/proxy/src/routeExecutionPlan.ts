@@ -5,6 +5,7 @@ import {
   type RouteExecutionPlan,
   type RoutePolicyResult,
   type RoutingConfig,
+  type ProviderCachingCapabilities,
   type RoutingConfigAnthropicDeployment,
   type RoutingConfigOpenAIDeployment
 } from "@proxy/schema";
@@ -41,7 +42,7 @@ type ConfiguredRouteCandidates = {
 };
 
 export type TargetAvailability =
-  | { status: "available"; dialect: Dialect; adapterKind?: ProviderAdapterKind; supportedEfforts?: ProviderEffort[]; providerAccountId?: string; contextWindowOk?: boolean | null }
+  | { status: "available"; dialect: Dialect; adapterKind?: ProviderAdapterKind; supportedEfforts?: ProviderEffort[]; providerAccountId?: string; contextWindowOk?: boolean | null; providerCachingCapabilities?: ProviderCachingCapabilities }
   | { status: "unavailable"; reason: string; dialect?: Dialect; adapterKind?: ProviderAdapterKind; healthSkip?: ProviderHealthSkip; contextWindowOk?: boolean | null };
 
 export type TargetAvailabilityResolver = (

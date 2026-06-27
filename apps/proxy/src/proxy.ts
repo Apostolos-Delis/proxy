@@ -28,6 +28,7 @@ import type { ProviderAdapterFailureClassification } from "./providerAdapters/ty
 import { ProviderMetrics } from "./providerMetrics.js";
 import { ProviderDeploymentHealthStore, type ProviderDeploymentFailureReason } from "./providerDeploymentHealth.js";
 import { classifyProviderTerminalHealth } from "./providerHealth.js";
+import { computePromptCachePlan } from "./promptCachePlan.js";
 import { sseObserverForDialect, streamObservationEventMetadata, type StreamObservation } from "./sseObserver.js";
 import { providerCompressionTerminalTelemetry, requestBodyHash } from "./toolResultCompression.js";
 import type { JsonObject, Provider, ProviderAttempt, RouteDecision, RouteProviderAttempt, Surface, UpstreamCredential } from "./types.js";
@@ -904,11 +905,25 @@ function providerForwardAttempts(input: ProviderForwardInput): ProviderForwardAt
     reasoningEffort: input.decision.reasoningEffort,
     body: input.body,
     credential: input.credential,
-    providerSettings: input.decision.providerSettings
+    providerSettings: input.decision.providerSettings,
+    promptCachePlan: computePromptCachePlan({
+      body: input.body,
+      context: { surface: input.surface, harnessProfileId: input.harnessProfileId },
+      decision: input.decision
+    })
   }];
 }
 
 function providerForwardAttempt(input: ProviderForwardInput, attempt: RouteProviderAttempt): ProviderForwardAttemptInput {
+  const decision = {
+    ...input.decision,
+    finalRoute: attempt.route,
+    selectedModel: attempt.selectedModel,
+    provider: attempt.provider,
+    deployment: attempt.deployment,
+    reasoningEffort: attempt.reasoningEffort,
+    providerSettings: attempt.providerSettings
+  };
   return {
     route: attempt.route,
     routeCandidateId: attempt.routeCandidateId,
@@ -919,7 +934,13 @@ function providerForwardAttempt(input: ProviderForwardInput, attempt: RouteProvi
     reasoningEffort: attempt.reasoningEffort,
     body: input.body,
     credential: input.credential,
-    providerSettings: attempt.providerSettings
+    providerSettings: attempt.providerSettings,
+    promptCachePlan: computePromptCachePlan({
+      body: input.body,
+      context: { surface: input.surface, harnessProfileId: input.harnessProfileId },
+      decision,
+      capabilities: attempt.providerCachingCapabilities
+    })
   };
 }
 

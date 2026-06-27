@@ -3,6 +3,7 @@ import {
   TRANSLATION_COMPATIBILITY_DIALECTS,
   harnessCompatibilityForTarget,
   type HarnessCompatibilityProfileId,
+  type ProviderCachingCapabilities,
   type RoutingConfig,
   type RoutingConfigAnthropicDeployment,
   type RoutingConfigOpenAIDeployment,
@@ -75,6 +76,7 @@ type ResolvedRouteSettings = {
   verbosity?: Verbosity;
   provider: Provider;
   adapterKind?: ProviderAdapterKind;
+  providerCachingCapabilities?: ProviderCachingCapabilities;
 };
 
 type ProviderCredentialResolver = {
@@ -125,7 +127,11 @@ type DeploymentSelection = {
   deployment: SelectedDeployment;
 };
 
-function settingsForSurface(selected: SelectedRouteSettings, adapterKind?: ProviderAdapterKind): ResolvedRouteSettings {
+function settingsForSurface(
+  selected: SelectedRouteSettings,
+  adapterKind?: ProviderAdapterKind,
+  providerCachingCapabilities?: ProviderCachingCapabilities
+): ResolvedRouteSettings {
   const selectedModel = selectedModelForSettings(selected, adapterKind);
   if ("openai" in selected) {
     return {
@@ -135,7 +141,8 @@ function settingsForSurface(selected: SelectedRouteSettings, adapterKind?: Provi
       reasoningEffort: selected.openai.reasoning?.effort,
       verbosity: selected.openai.text?.verbosity,
       adapterKind,
-      providerSettings: selected
+      providerSettings: selected,
+      providerCachingCapabilities
     };
   }
   const requestedEffort = selected.anthropic.output_config?.effort;
@@ -148,7 +155,8 @@ function settingsForSurface(selected: SelectedRouteSettings, adapterKind?: Provi
     deployment: selected.deployment,
     reasoningEffort: effort,
     adapterKind,
-    providerSettings: selected
+    providerSettings: selected,
+    providerCachingCapabilities
   };
 }
 
@@ -187,7 +195,8 @@ function routeProviderAttempt(route: RouteName, settings: ResolvedRouteSettings,
     deployment: settings.deployment,
     reasoningEffort: settings.reasoningEffort,
     verbosity: settings.verbosity,
-    providerSettings: settings.providerSettings
+    providerSettings: settings.providerSettings,
+    providerCachingCapabilities: settings.providerCachingCapabilities
   };
 }
 
@@ -944,7 +953,11 @@ export class RoutingService {
         continue;
       }
       appendTranslationAction(guardrailActions, context.surface, availability.dialect);
-      resolved.push(settingsForSurface(settingsWithAvailability(selected, availability), availability.adapterKind));
+      resolved.push(settingsForSurface(
+        settingsWithAvailability(selected, availability),
+        availability.adapterKind,
+        availability.providerCachingCapabilities
+      ));
     }
     for (const selected of translatedCandidates) {
       const target = deploymentTarget(selected.deployment);
@@ -956,7 +969,11 @@ export class RoutingService {
         continue;
       }
       appendTranslationAction(guardrailActions, context.surface, availability.dialect);
-      resolved.push(settingsForSurface(settingsWithAvailability(selected, availability), availability.adapterKind));
+      resolved.push(settingsForSurface(
+        settingsWithAvailability(selected, availability),
+        availability.adapterKind,
+        availability.providerCachingCapabilities
+      ));
     }
     return resolved;
   }
@@ -1025,7 +1042,7 @@ export class RoutingService {
       ...settings,
       dialect: availability.dialect,
       deployment: deploymentWithProviderAccount(settings.deployment, availability.providerAccountId)
-    } as SelectedRouteSettings, availability.adapterKind);
+    } as SelectedRouteSettings, availability.adapterKind, availability.providerCachingCapabilities);
   }
 
   private async targetAvailability(
@@ -1137,6 +1154,7 @@ export class RoutingService {
       adapterKind: provider.adapterKind,
       supportedEfforts: reasoningEffortsFromCapabilities(provider.capabilities),
       providerAccountId: credential?.providerAccountId,
+      providerCachingCapabilities: provider.capabilities.promptCaching,
       contextWindowOk: capabilityCheck.contextWindowOk
     };
   }
@@ -1170,7 +1188,11 @@ export class RoutingService {
   ) {
     const payload = {
       ...decision,
-      providerAttempts: decision.providerAttempts?.map(({ providerSettings: _settings, ...attempt }) => attempt)
+      providerAttempts: decision.providerAttempts?.map(({
+        providerSettings: _settings,
+        providerCachingCapabilities: _capabilities,
+        ...attempt
+      }) => attempt)
     };
     delete payload.providerSettings;
     delete payload.routeExecutionPlan;
