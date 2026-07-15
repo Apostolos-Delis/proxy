@@ -5,7 +5,6 @@ import {
   logicalModels
 } from "@proxy/db";
 
-import { createId } from "../util.js";
 import {
   accessProfileCreateSchema,
   accessProfileUpdateSchema,
@@ -13,6 +12,7 @@ import {
   modelGrantUpdateSchema,
   parseGatewayBody
 } from "./gatewayConfigSchemas.js";
+import { gatewayResourceId } from "./gatewayConfigIds.js";
 import {
   assertActiveDependencies,
   assertSlugAvailable,
@@ -27,11 +27,15 @@ import {
   type GatewayConfigMutationContext
 } from "./gatewayConfigTypes.js";
 
-export async function createAccessProfile(context: GatewayConfigMutationContext, input: unknown) {
+export async function createAccessProfile(
+  context: GatewayConfigMutationContext,
+  input: unknown,
+  preparedId?: string
+) {
   const { tx, actor } = context;
   const body = parseGatewayBody(accessProfileCreateSchema, input, "invalid_access_profile");
   await assertSlugAvailable(tx, accessProfiles, actor, body.slug, "access_profile_slug_exists");
-  const id = createId("access_profile");
+  const id = gatewayResourceId("accessProfile", preparedId);
   const now = new Date();
   await tx.insert(accessProfiles).values({
     id,
@@ -90,14 +94,18 @@ export async function setAccessProfileEnabled(
   return { resource: "accessProfile" as const, id };
 }
 
-export async function createModelGrant(context: GatewayConfigMutationContext, input: unknown) {
+export async function createModelGrant(
+  context: GatewayConfigMutationContext,
+  input: unknown,
+  preparedId?: string
+) {
   const { tx, actor } = context;
   const body = parseGatewayBody(modelGrantCreateSchema, input, "invalid_model_grant");
   const profile = await requireScopedRow(tx, accessProfiles, actor, body.accessProfileId, "access_profile_not_found");
   const logicalModel = await requireScopedRow(tx, logicalModels, actor, body.logicalModelId, "logical_model_not_found");
   if (body.enabled) assertActiveDependencies([profile, logicalModel]);
   const allowedOperations = [...new Set(body.allowedOperations)];
-  const id = createId("model_grant");
+  const id = gatewayResourceId("modelGrant", preparedId);
   const now = new Date();
   await tx.insert(accessProfileModelGrants).values({
     id,

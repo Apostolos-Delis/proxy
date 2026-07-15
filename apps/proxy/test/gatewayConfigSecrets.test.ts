@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { events, providerConnections } from "@proxy/db";
+import { parseGatewayConfigDocument } from "../src/persistence/gatewayConfigDocument.js";
+import { applyGatewayConfig } from "../src/persistence/gatewayConfigPlan.js";
 import {
   createGatewayConfig as create,
   setupGatewayConfig as setup,
@@ -330,6 +332,40 @@ describe("gateway configuration secret boundaries", () => {
     }
   });
 
+  it("can disable and clear a connection after its secret reference becomes unavailable", async () => {
+    let secretAvailable = true;
+    const fixture = await setup("org_gateway_secret_emergency_disable", () => secretAvailable);
+    client = fixture.client;
+    await create(fixture, "providerConnection", providerInput("emergency-provider", {
+      authStyle: "bearer",
+      secretRef: "env:EMERGENCY_PROVIDER_KEY",
+      enabled: true
+    }));
+    secretAvailable = false;
+
+    const plan = await applyGatewayConfig(
+      fixture.service,
+      parseGatewayConfigDocument(`
+version = 1
+[scope]
+organization_id = "${fixture.actor.organizationId}"
+workspace_id = "${fixture.actor.workspaceId}"
+[[provider_connections]]
+slug = "emergency-provider"
+name = "emergency-provider"
+adapter_kind = "generic-http-json"
+auth_style = "bearer"
+base_url = "${providerBaseUrl}"
+clear_secret = true
+enabled = false
+`),
+      fixture.actor.actorUserId
+    );
+    expect(plan.commands.map((command) => command.action)).toEqual(["setEnabled", "update"]);
+    expect(await bySlug(fixture.service.providerConnections(fixture.actor), "emergency-provider"))
+      .toMatchObject({ status: "disabled", credentialConfigured: false, secretRef: null });
+  });
+
   it("never exposes raw credentials through reads, rows, or audit events", async () => {
     const fixture = await setup("org_gateway_secret_non_exposure", supportsSecretReference);
     client = fixture.client;
@@ -406,4 +442,8 @@ function supportsSecretReference(input: { reference: string; provider: string; b
     input.provider === "acme-secret-manager"
   );
   return referenceSupported && input.baseUrl === providerBaseUrl;
+}
+
+async function bySlug<T extends { slug: string }>(rows: Promise<T[]>, slug: string) {
+  return (await rows).find((row) => row.slug === slug);
 }

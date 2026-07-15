@@ -16,6 +16,7 @@
 
 - [Model routing proxy design](model-routing-proxy.md)
 - [AI gateway core data model V1](scopes/ai-gateway-core-model-v1/PLAN.md)
+- [Gateway configuration TOML V1](scopes/ai-gateway-core-model-v1/TOML.md)
 - [Frontend guidelines](frontend-guidelines.md)
 - [Persistence and admin console scope](scopes/persistence-admin-v1/PLAN.md)
 - [TanStack admin app scope](scopes/tanstack-admin-app-v1/PLAN.md)

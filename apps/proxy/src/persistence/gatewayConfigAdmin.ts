@@ -24,6 +24,7 @@ import {
   updateWireBinding
 } from "./gatewayConfigDeploymentMutations.js";
 import {
+  assertCreatedLogicalModelReady,
   createLogicalModel,
   createLogicalModelTarget,
   setLogicalModelEnabled,
@@ -44,6 +45,7 @@ import {
   GatewayConfigQueryStore,
   mapGatewayConstraintError
 } from "./gatewayConfigStore.js";
+import { gatewayResourceId } from "./gatewayConfigIds.js";
 import {
   GatewayConfigAdminError,
   type GatewayConfigActor,
@@ -80,20 +82,30 @@ export class GatewayConfigAdminService {
 
   async applyCommands(input: GatewayConfigActor & { commands: GatewayConfigCommand[] }) {
     if (input.commands.length === 0) return [];
-    if (input.commands.length > 1_000) {
-      throw new GatewayConfigAdminError("gateway_config_command_limit_exceeded", 400);
-    }
-    await preflightProviderCommands(this.queries, this.options, input);
+    await this.preflightCommands(input);
     const pendingEvents: CommittedTransactionEvent[] = [];
+    const deferredLogicalModelIds = new Set(input.commands.flatMap((command) => (
+      command.resource === "logicalModel" && command.action === "create" && command.id
+        ? [command.id]
+        : []
+    )));
     let results: GatewayConfigCommandResult[];
     try {
       results = await this.transactional.transaction(async (tx) => {
         this.pendingEvents.set(tx, pendingEvents);
         try {
-          const context = this.mutationContext(tx, input);
+          const context = this.mutationContext(tx, input, deferredLogicalModelIds);
           const commandResults: GatewayConfigCommandResult[] = [];
+          const createdLogicalModelIds: string[] = [];
           for (const command of input.commands) {
-            commandResults.push(await this.executeCommand(context, command));
+            const result = await this.executeCommand(context, command);
+            commandResults.push(result);
+            if (command.resource === "logicalModel" && command.action === "create") {
+              createdLogicalModelIds.push(result.id);
+            }
+          }
+          for (const id of createdLogicalModelIds) {
+            await assertCreatedLogicalModelReady(context, id);
           }
           return commandResults;
         } finally {
@@ -105,6 +117,18 @@ export class GatewayConfigAdminService {
     }
     await this.events.commitTransactionEvents(pendingEvents);
     return results;
+  }
+
+  async preflightCommands(input: GatewayConfigScope & { commands: GatewayConfigCommand[] }) {
+    if (input.commands.length > 1_000) {
+      throw new GatewayConfigAdminError("gateway_config_command_limit_exceeded", 400);
+    }
+    for (const command of input.commands) {
+      if (command.action === "create" && command.id) {
+        gatewayResourceId(command.resource, command.id);
+      }
+    }
+    await preflightProviderCommands(this.queries, this.options, input);
   }
 
   providerConnections(scope: GatewayConfigScope) {
@@ -171,11 +195,20 @@ export class GatewayConfigAdminService {
     return this.queries.modelGrant(scope, id);
   }
 
-  private mutationContext(tx: ProxyTransaction, actor: GatewayConfigActor): GatewayConfigMutationContext {
+  apiKeyAccessProfiles(scope: GatewayConfigScope, ids: string[]) {
+    return this.queries.apiKeyAccessProfiles(scope, ids);
+  }
+
+  private mutationContext(
+    tx: ProxyTransaction,
+    actor: GatewayConfigActor,
+    deferredLogicalModelIds: ReadonlySet<string>
+  ): GatewayConfigMutationContext {
     return {
       tx,
       actor,
       options: this.options,
+      deferredLogicalModelIds,
       appendEvent: (scopeType, scopeId, action, payload, createdAt) =>
         this.appendGatewayEvent(tx, actor, scopeType, scopeId, action, payload, createdAt)
     };
@@ -188,21 +221,26 @@ export class GatewayConfigAdminService {
     if (command.resource === "apiKey") {
       return assignApiKeyAccessProfile(context, command.id, command.accessProfileId);
     }
-    if (command.action === "create") return this.createResource(context, command.resource, command.body);
+    if (command.action === "create") return this.createResource(context, command.resource, command.body, command.id);
     if (command.action === "update") return this.updateResource(context, command.resource, command.id, command.body);
     return this.setResourceEnabled(context, command.resource, command.id, command.enabled);
   }
 
-  private createResource(context: GatewayConfigMutationContext, resource: GatewayConfigResource, body: unknown) {
+  private createResource(
+    context: GatewayConfigMutationContext,
+    resource: GatewayConfigResource,
+    body: unknown,
+    id?: string
+  ) {
     switch (resource) {
-      case "providerConnection": return createProviderConnection(context, body);
-      case "canonicalModel": return createCanonicalModel(context, body);
-      case "modelDeployment": return createModelDeployment(context, body);
-      case "wireBinding": return createWireBinding(context, body);
-      case "logicalModel": return createLogicalModel(context, body);
-      case "logicalModelTarget": return createLogicalModelTarget(context, body);
-      case "accessProfile": return createAccessProfile(context, body);
-      case "modelGrant": return createModelGrant(context, body);
+      case "providerConnection": return createProviderConnection(context, body, id);
+      case "canonicalModel": return createCanonicalModel(context, body, id);
+      case "modelDeployment": return createModelDeployment(context, body, id);
+      case "wireBinding": return createWireBinding(context, body, id);
+      case "logicalModel": return createLogicalModel(context, body, id);
+      case "logicalModelTarget": return createLogicalModelTarget(context, body, id);
+      case "accessProfile": return createAccessProfile(context, body, id);
+      case "modelGrant": return createModelGrant(context, body, id);
     }
   }
 

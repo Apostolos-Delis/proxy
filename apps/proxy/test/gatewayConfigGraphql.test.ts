@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { organizationMembers, users } from "@proxy/db";
+import { defaultWorkspaceId, organizationMembers, users } from "@proxy/db";
+
+import type { ProxyEvent } from "../src/events.js";
+import { parseGatewayConfigDocument } from "../src/persistence/gatewayConfigDocument.js";
+import { applyGatewayConfig } from "../src/persistence/gatewayConfigPlan.js";
 
 import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
@@ -80,6 +84,7 @@ describe("gateway configuration GraphQL", () => {
         enabled: true
       }
     });
+    const logicalEventOffset = fixture.persistence.eventService.listEvents().length;
     const logicalModel = await mutation(fixture, `
       mutation Create($input: CreateGatewayLogicalModelInput!) {
         value: createGatewayLogicalModel(input: $input) { id slug resolutionKind enabled }
@@ -89,19 +94,40 @@ describe("gateway configuration GraphQL", () => {
         slug: "graphql-direct",
         name: "GraphQL Direct",
         resolutionKind: "direct",
-        enabled: false
+        enabled: true,
+        initialTarget: { deploymentId: deployment.id, priority: 0, enabled: true }
       }
     });
-    const target = await mutation(fixture, `
-      mutation Create($input: CreateGatewayLogicalModelTargetInput!) {
-        value: createGatewayLogicalModelTarget(input: $input) { id logicalModelId deploymentId priority enabled }
-      }
-    `, {
-      input: { logicalModelId: logicalModel.id, deploymentId: deployment.id, priority: 0, enabled: true }
-    });
-    await mutation(fixture, `mutation Enable($id: ID!) {
-      value: enableGatewayLogicalModel(id: $id) { id enabled }
-    }`, { id: logicalModel.id });
+    const scope = {
+      organizationId: fixture.config.defaultOrganizationId,
+      workspaceId: defaultWorkspaceId(fixture.config.defaultOrganizationId)
+    };
+    const target = (await fixture.persistence.gatewayConfigAdmin.logicalModelTargets(scope))
+      .find((row) => row.logicalModelId === logicalModel.id)!;
+    const graphqlLifecycle = fixture.persistence.eventService.listEvents().slice(logicalEventOffset);
+    const tomlEventOffset = fixture.persistence.eventService.listEvents().length;
+    await applyGatewayConfig(
+      fixture.persistence.gatewayConfigAdmin,
+      parseGatewayConfigDocument(`
+version = 1
+[scope]
+organization_id = "${scope.organizationId}"
+workspace_id = "${scope.workspaceId}"
+[[logical_models]]
+slug = "toml-direct"
+name = "TOML Direct"
+resolution_kind = "direct"
+enabled = true
+[[logical_model_targets]]
+logical_model = "toml-direct"
+deployment = "graphql-deployment"
+priority = 0
+enabled = true
+`),
+      fixture.config.seedUserId
+    );
+    const tomlLifecycle = fixture.persistence.eventService.listEvents().slice(tomlEventOffset);
+    expect(normalizeLogicalLifecycle(tomlLifecycle)).toEqual(normalizeLogicalLifecycle(graphqlLifecycle));
     const profile = await mutation(fixture, `
       mutation Create($input: CreateGatewayAccessProfileInput!) {
         value: createGatewayAccessProfile(input: $input) { id slug limits enabled }
@@ -283,4 +309,15 @@ async function headersForMember(fixture: PromptTestFixture) {
     ttlSeconds: 3_600
   });
   return { cookie: `${fixture.config.adminSessionCookieName}=${encodeURIComponent(session!.token)}` };
+}
+
+function normalizeLogicalLifecycle(events: ProxyEvent[]) {
+  return events.map((event) => {
+    const payload = { ...event.payload };
+    delete payload.id;
+    delete payload.slug;
+    delete payload.name;
+    delete payload.logicalModelId;
+    return { eventType: event.eventType, payload };
+  });
 }

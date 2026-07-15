@@ -12,6 +12,7 @@ import {
 } from "@proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
 import type { ProxyEvent } from "../src/events.js";
+import { gatewayResourceId } from "../src/persistence/gatewayConfigIds.js";
 import {
   createGatewayConfig as create,
   setGatewayConfigEnabled as enabled,
@@ -430,6 +431,64 @@ describe("gateway configuration admin", () => {
     await expect(enabled(fixture, "logicalModel", emptyDirectId, true))
       .rejects.toThrow("direct_logical_model_target_count_invalid");
     expect(await fixture.service.logicalModel(fixture.actor, emptyDirectId)).toMatchObject({ status: "disabled" });
+  });
+
+  it("rolls back a deferred direct-model batch when final target cardinality is invalid", async () => {
+    const fixture = await setup("org_gateway_admin_deferred_direct_rollback");
+    client = fixture.client;
+    const observedEvents: ProxyEvent[] = [];
+    fixture.eventService.subscribe((event) => observedEvents.push(event));
+    const logicalModelId = gatewayResourceId("logicalModel");
+    const firstTargetId = gatewayResourceId("logicalModelTarget");
+    const secondTargetId = gatewayResourceId("logicalModelTarget");
+    const workspaceId = fixture.actor.workspaceId;
+
+    await expect(fixture.service.applyCommands({
+      ...fixture.actor,
+      commands: [
+        {
+          resource: "logicalModel",
+          action: "create",
+          id: logicalModelId,
+          body: {
+            slug: "invalid-deferred-direct",
+            name: "Invalid Deferred Direct",
+            resolutionKind: "direct",
+            enabled: true
+          }
+        },
+        {
+          resource: "logicalModelTarget",
+          action: "create",
+          id: firstTargetId,
+          body: {
+            logicalModelId,
+            deploymentId: `${workspaceId}:deployment:openai:gpt-5.4-mini`,
+            priority: 0,
+            enabled: true
+          }
+        },
+        {
+          resource: "logicalModelTarget",
+          action: "create",
+          id: secondTargetId,
+          body: {
+            logicalModelId,
+            deploymentId: `${workspaceId}:deployment:anthropic:claude-fable-5`,
+            priority: 1,
+            enabled: true
+          }
+        }
+      ]
+    })).rejects.toThrow("direct_logical_model_target_count_invalid");
+
+    expect(await fixture.service.logicalModel(fixture.actor, logicalModelId)).toBeNull();
+    expect(await fixture.service.logicalModelTarget(fixture.actor, firstTargetId)).toBeNull();
+    expect(await fixture.service.logicalModelTarget(fixture.actor, secondTargetId)).toBeNull();
+    const auditEvents = await fixture.db.select().from(events);
+    const rejectedIds = new Set([logicalModelId, firstTargetId, secondTargetId]);
+    expect(auditEvents.some((event) => rejectedIds.has(event.scopeId))).toBe(false);
+    expect(observedEvents.some((event) => rejectedIds.has(event.scopeId))).toBe(false);
   });
 
   it("rolls back a command batch and rejects cross-workspace references", async () => {
