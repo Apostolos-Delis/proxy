@@ -314,6 +314,8 @@ The resolver does not parse provider response bodies, fetch credentials, send ne
 - Add a TOML `plan` and `apply` command that produces the same database mutations as the API.
 - Keep the database as the only runtime truth; do not implement live two-way sync.
 
+The implemented V1 document shape and operator commands are defined in [TOML.md](TOML.md).
+
 ## Implementation Tickets
 
 The dependency-ordered, PR-sized implementation breakdown lives in [TICKETS.md](TICKETS.md).

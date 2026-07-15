@@ -16,6 +16,7 @@ import {
 } from "@proxy/schema";
 
 import { GatewayConfigAdminError } from "./gatewayConfigTypes.js";
+import { assertSafeNonSecretConfig, NonSecretConfigError } from "./nonSecretConfig.js";
 
 export const idSchema = z.string().trim().min(1).max(1_024);
 export const slugSchema = z.string().trim().min(1).max(128).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
@@ -28,13 +29,15 @@ export const capabilitiesSchema = gatewayModelCapabilitiesSchema.superRefine((va
     context.addIssue({ code: "custom", message: "Model capabilities exceed the configured bound." });
   }
 });
+export const nonSecretJsonObjectSchema = jsonObjectSchema.superRefine(assertNonSecretSchema);
+export const nonSecretCapabilitiesSchema = capabilitiesSchema.superRefine(assertNonSecretSchema);
 
 const defaultHeadersSchema = z.record(
   z.string().trim().min(1).max(256),
   z.string().max(8_192)
 ).refine((headers) => Object.keys(headers).length <= 64, "At most 64 default headers are allowed.");
-const secretReferenceSchema = z.string().trim().max(2_048).refine(
-  (value) => /^env:[A-Za-z_][A-Za-z0-9_]*$/.test(value) || /^[a-z][a-z0-9+.-]*:\/\/\S+$/i.test(value),
+export const secretReferenceSchema = z.string().trim().max(2_048).refine(
+  (value) => isSecretReference(value),
   "Secret references must use env:NAME or a scheme://locator format."
 );
 const hasDefinedField = (body: Record<string, unknown>) => Object.values(body).some((value) => value !== undefined);
@@ -192,6 +195,15 @@ function connectionCredentialIssues(body: ConnectionCredentialInput, context: z.
   }
 }
 
+function assertNonSecretSchema(value: Record<string, unknown>, context: z.RefinementCtx) {
+  try {
+    assertSafeNonSecretConfig(value);
+  } catch (error) {
+    if (!(error instanceof NonSecretConfigError)) throw error;
+    context.addIssue({ code: "custom", path: [error.field], message: error.message });
+  }
+}
+
 function jsonByteLength(value: unknown) {
   return Buffer.byteLength(JSON.stringify(value), "utf8");
 }
@@ -251,4 +263,11 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   } catch {
     return false;
   }
+}
+
+function isSecretReference(value: string) {
+  if (/^env:[A-Za-z_][A-Za-z0-9_]*$/.test(value)) return true;
+  if (!/^[a-z][a-z0-9+.-]*:\/\/\S+$/i.test(value)) return false;
+  const authority = value.slice(value.indexOf("://") + 3).split(/[/?#]/, 1)[0];
+  return Boolean(authority) && !authority!.includes("@");
 }

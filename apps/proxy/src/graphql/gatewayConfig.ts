@@ -1,5 +1,6 @@
 import type { GraphQLContext } from "./context.js";
 import type { GatewayConfigCommand, GatewayConfigResource } from "../persistence/gatewayConfigAdmin.js";
+import { gatewayResourceId } from "../persistence/gatewayConfigIds.js";
 import { requireAdminRole } from "./authz.js";
 import { builder } from "./builder.js";
 import { notFoundError, mapAdminError } from "./errors.js";
@@ -112,6 +113,17 @@ const UpdateGatewayWireBindingInput = builder.inputType("UpdateGatewayWireBindin
   })
 });
 
+const CreateGatewayLogicalModelInitialTargetInput = builder.inputType(
+  "CreateGatewayLogicalModelInitialTargetInput",
+  {
+    fields: (t) => ({
+      deploymentId: t.id({ required: true }),
+      priority: t.int({ required: true }),
+      enabled: t.boolean({ required: true })
+    })
+  }
+);
+
 const CreateGatewayLogicalModelInput = builder.inputType("CreateGatewayLogicalModelInput", {
   fields: (t) => ({
     slug: t.string({ required: true }),
@@ -119,7 +131,8 @@ const CreateGatewayLogicalModelInput = builder.inputType("CreateGatewayLogicalMo
     description: t.string(),
     resolutionKind: t.string({ required: true }),
     routerConfig: t.field({ type: "JSON" }),
-    enabled: t.boolean()
+    enabled: t.boolean(),
+    initialTarget: t.field({ type: CreateGatewayLogicalModelInitialTargetInput })
   })
 });
 
@@ -422,7 +435,27 @@ builder.mutationFields((t) => ({
         routerConfig: args.input.routerConfig ?? undefined,
         enabled: args.input.enabled ?? undefined
       });
-      const id = await applyGatewayCommand(context, { resource: "logicalModel", action: "create", body });
+      let id: string;
+      if (args.input.initialTarget) {
+        id = gatewayResourceId("logicalModel");
+        const targetId = gatewayResourceId("logicalModelTarget");
+        await applyGatewayCommands(context, [
+          { resource: "logicalModel", action: "create", id, body },
+          {
+            resource: "logicalModelTarget",
+            action: "create",
+            id: targetId,
+            body: {
+              logicalModelId: id,
+              deploymentId: String(args.input.initialTarget.deploymentId),
+              priority: args.input.initialTarget.priority,
+              enabled: args.input.initialTarget.enabled
+            }
+          }
+        ]);
+      } else {
+        id = await applyGatewayCommand(context, { resource: "logicalModel", action: "create", body });
+      }
       return requiredResult(await gatewayAdmin(context).logicalModel(gatewayScope(context), id));
     }
   }),
@@ -703,16 +736,20 @@ function gatewayScope(context: GraphQLContext) {
 }
 
 async function applyGatewayCommand(context: GraphQLContext, command: GatewayConfigCommand) {
+  const [result] = await applyGatewayCommands(context, [command]);
+  if (!result) throw new Error("gateway_config_command_result_missing");
+  return result.id;
+}
+
+async function applyGatewayCommands(context: GraphQLContext, commands: GatewayConfigCommand[]) {
   const identity = requireAdminRole(context);
   try {
-    const [result] = await gatewayAdmin(context).applyCommands({
+    return await gatewayAdmin(context).applyCommands({
       organizationId: identity.organizationId,
       workspaceId: identity.workspaceId,
       actorUserId: identity.userId,
-      commands: [command]
+      commands
     });
-    if (!result) throw new Error("gateway_config_command_result_missing");
-    return result.id;
   } catch (error) {
     mapAdminError(error);
   }

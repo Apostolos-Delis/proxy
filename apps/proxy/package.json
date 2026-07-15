@@ -16,6 +16,7 @@
     "smoke:bedrock": "node --env-file-if-exists=../../.env dist/scripts/smoke-bedrock.js",
     "smoke": "node --env-file-if-exists=../../.env dist/scripts/smoke-proxy.js",
     "load": "node --env-file-if-exists=../../.env dist/scripts/load-proxy.js",
+    "gateway-config": "tsx --env-file-if-exists=../../.env scripts/gateway-config.ts",
     "schema:print": "tsx scripts/print-schema.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -37,6 +38,7 @@
     "graphql-yoga": "^5.21.2",
     "ipaddr.js": "2.4.0",
     "pino": "^10.1.0",
+    "smol-toml": "1.7.0",
     "undici": "^8.4.1",
     "ws": "^8.21.0",
     "zod": "^4.1.13"

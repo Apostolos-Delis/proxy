@@ -6,7 +6,6 @@ import {
 } from "@proxy/db";
 import type { GatewayModelCapabilities } from "@proxy/schema";
 
-import { createId } from "../util.js";
 import {
   modelDeploymentCreateSchema,
   modelDeploymentUpdateSchema,
@@ -14,6 +13,7 @@ import {
   wireBindingCreateSchema,
   wireBindingUpdateSchema
 } from "./gatewayConfigSchemas.js";
+import { gatewayResourceId } from "./gatewayConfigIds.js";
 import {
   assertActiveDependencies,
   assertNonSecretJson,
@@ -27,7 +27,11 @@ import {
 } from "./gatewayConfigStore.js";
 import type { GatewayConfigMutationContext } from "./gatewayConfigTypes.js";
 
-export async function createModelDeployment(context: GatewayConfigMutationContext, input: unknown) {
+export async function createModelDeployment(
+  context: GatewayConfigMutationContext,
+  input: unknown,
+  preparedId?: string
+) {
   const { tx, actor } = context;
   const body = parseGatewayBody(modelDeploymentCreateSchema, input, "invalid_model_deployment");
   assertNonSecretJson(body.config, "config");
@@ -44,7 +48,7 @@ export async function createModelDeployment(context: GatewayConfigMutationContex
   assertCapabilitiesWithin(canonical.capabilities, body.capabilities);
   if (body.enabled) assertActiveDependencies([canonical, connection]);
   await assertSlugAvailable(tx, modelDeployments, actor, body.slug, "model_deployment_slug_exists");
-  const id = createId("deployment");
+  const id = gatewayResourceId("modelDeployment", preparedId);
   const now = new Date();
   await tx.insert(modelDeployments).values({
     id,
@@ -131,7 +135,11 @@ export async function setModelDeploymentEnabled(
   return { resource: "modelDeployment" as const, id };
 }
 
-export async function createWireBinding(context: GatewayConfigMutationContext, input: unknown) {
+export async function createWireBinding(
+  context: GatewayConfigMutationContext,
+  input: unknown,
+  preparedId?: string
+) {
   const { tx, actor } = context;
   const body = parseGatewayBody(wireBindingCreateSchema, input, "invalid_wire_binding");
   assertNonSecretJson(body.requestConfig, "requestConfig");
@@ -145,7 +153,7 @@ export async function createWireBinding(context: GatewayConfigMutationContext, i
   );
   validateWireBinding(connection.adapterKind, body.apiWireId, body.endpointPath ?? null);
   if (body.enabled) assertActiveDependencies([deployment, connection]);
-  const id = createId("wire_binding");
+  const id = gatewayResourceId("wireBinding", preparedId);
   const now = new Date();
   await tx.insert(deploymentWireBindings).values({
     id,
@@ -232,7 +240,7 @@ export async function setWireBindingEnabled(
   return { resource: "wireBinding" as const, id };
 }
 
-function validateWireBinding(adapterKind: string, wireId: string, endpointPath: string | null) {
+export function validateWireBinding(adapterKind: string, wireId: string, endpointPath: string | null) {
   const bedrockWire = wireId === "bedrock-converse";
   const bedrockAdapter = adapterKind === "aws-bedrock-converse";
   if (bedrockWire !== bedrockAdapter) {
@@ -254,7 +262,7 @@ function validateWireBinding(adapterKind: string, wireId: string, endpointPath: 
   }
 }
 
-function assertCapabilitiesWithin(canonical: GatewayModelCapabilities, deployment: GatewayModelCapabilities) {
+export function assertCapabilitiesWithin(canonical: GatewayModelCapabilities, deployment: GatewayModelCapabilities) {
   for (const [key, value] of Object.entries(deployment)) {
     if (!capabilityWithin(canonical[key], value)) {
       throw fieldError(

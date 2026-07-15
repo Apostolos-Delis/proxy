@@ -14,7 +14,7 @@ export type GatewayConfigResource =
   | "modelGrant";
 
 export type GatewayConfigCommand =
-  | { resource: GatewayConfigResource; action: "create"; body: unknown }
+  | { resource: GatewayConfigResource; action: "create"; body: unknown; id?: string }
   | { resource: GatewayConfigResource; action: "update"; id: string; body: unknown }
   | { resource: GatewayConfigResource; action: "setEnabled"; id: string; enabled: boolean }
   | { resource: "apiKey"; action: "assignAccessProfile"; id: string; accessProfileId: string };
@@ -45,6 +45,7 @@ export type GatewayConfigMutationContext = {
   tx: ProxyTransaction;
   actor: GatewayConfigActor;
   options: GatewayConfigAdminOptions;
+  deferredLogicalModelIds: ReadonlySet<string>;
   appendEvent: (
     scopeType: string,
     scopeId: string,

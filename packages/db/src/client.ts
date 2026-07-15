@@ -20,8 +20,19 @@ export type PostgresDatabaseOptions = {
   max?: number;
 };
 
+export function createPostgresDatabaseConnection(
+  databaseUrl: string,
+  options: PostgresDatabaseOptions = {}
+) {
+  const client = postgres(databaseUrl, { max: options.max ?? 5 });
+  return {
+    db: drizzlePostgres(client, { schema }),
+    close: () => client.end()
+  };
+}
+
 export function createPostgresDatabase(databaseUrl: string, options: PostgresDatabaseOptions = {}): ProxyPostgresDatabase {
-  return drizzlePostgres(postgres(databaseUrl, { max: options.max ?? 5 }), { schema });
+  return createPostgresDatabaseConnection(databaseUrl, options).db;
 }
 
 export function createPgliteDatabase(client = new PGlite()): ProxyPgliteDatabase {

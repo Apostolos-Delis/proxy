@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import {
   accessProfileModelGrants,
@@ -93,6 +93,18 @@ export class GatewayConfigQueryStore {
 
   async modelGrant(scope: GatewayConfigScope, id: string) {
     return (await this.modelGrantRows(scope, id))[0] ?? null;
+  }
+
+  apiKeyAccessProfiles(scope: GatewayConfigScope, ids: string[]) {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.db.select({
+      id: apiKeys.id,
+      name: apiKeys.name,
+      accessProfileId: apiKeys.accessProfileId
+    }).from(apiKeys).where(and(
+      workspaceScope(apiKeys, scope.organizationId, scope.workspaceId),
+      inArray(apiKeys.id, ids)
+    ));
   }
 
   private async connectionRows(scope: GatewayConfigScope, id?: string) {

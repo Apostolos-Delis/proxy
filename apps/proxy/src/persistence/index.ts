@@ -16,6 +16,7 @@ import { AdminSessionStore } from "./adminSessions.js";
 import { ApiKeyAdminService } from "./apiKeyAdmin.js";
 import { CompressionRetrievalResolver } from "./compressionReceipts.js";
 import { DatabaseEventSink } from "./eventSink.js";
+import { createEnvironmentSecretReferenceResolver } from "./environmentSecretReferences.js";
 import { GatewayConfigAdminService, type GatewayConfigAdminOptions } from "./gatewayConfigAdmin.js";
 import { ApiKeyIdentityStore } from "./identity.js";
 import { ModelCatalogAdminService } from "./modelCatalogAdmin.js";
@@ -59,19 +60,7 @@ export type DatabasePersistenceConfig = AdminQueryConfig & {
 
 export function createPostgresPersistence(databaseUrl: string, config: AppConfig, metrics?: MetricsCollector) {
   const db = createPostgresDatabase(databaseUrl, { max: config.dbPoolMax });
-  const resolveSecretReference = ({ reference, provider, baseUrl }: {
-    reference: string;
-    provider: string;
-    baseUrl: string;
-  }) => {
-    if (reference === "env:OPENAI_API_KEY" && provider === "openai" && baseUrl === config.openaiBaseUrl) {
-      return config.openaiApiKey;
-    }
-    if (reference === "env:ANTHROPIC_API_KEY" && provider === "anthropic" && baseUrl === config.anthropicBaseUrl) {
-      return config.anthropicApiKey;
-    }
-    return undefined;
-  };
+  const resolveSecretReference = createEnvironmentSecretReferenceResolver(config);
   const classifierTargets = new ProviderConnectionClassifierTargetResolver(db, {
     allowedPrivateUpstreamCidrs: config.allowedPrivateUpstreamCidrs,
     encryptionKey: config.providerSecretEncryptionKey,
@@ -123,16 +112,9 @@ export function createDatabasePersistence(
     metrics,
     { mirrorLimit: 1_000, scopeLimit: 50_000 }
   );
+  const resolveSecretReference = createEnvironmentSecretReferenceResolver(config);
   const gatewaySecretReferenceSupported = secretReferenceSupported ?? ((input) => (
-    input.reference === "env:OPENAI_API_KEY" &&
-    input.provider === "openai" &&
-    input.baseUrl === config.openaiBaseUrl &&
-    Boolean(config.openaiApiKey)
-  ) || (
-    input.reference === "env:ANTHROPIC_API_KEY" &&
-    input.provider === "anthropic" &&
-    input.baseUrl === config.anthropicBaseUrl &&
-    Boolean(config.anthropicApiKey)
+    Boolean(resolveSecretReference(input))
   ));
   return {
     apiKeyAdmin: new ApiKeyAdminService(transactional, () => apiKeys.clearCache()),
