@@ -1,7 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
-import { defaultWorkspaceId, routeDecisions, type ProxyTransaction } from "@proxy/db";
+import { defaultWorkspaceId, requests, routeDecisions, type ProxyTransaction } from "@proxy/db";
 
+import { gatewayResolutionEvidenceValue } from "../gatewayEvidence.js";
 import { createId } from "../util.js";
 import {
   basisPoints,
@@ -24,6 +25,8 @@ export async function persistRouteDecision(tx: ProxyTransaction, event: {
   payload: Record<string, unknown>;
 }) {
   const payload = event.payload;
+  const workspaceId = event.workspaceId ?? defaultWorkspaceId(event.tenantId);
+  const gatewayEvidence = gatewayResolutionEvidenceValue(payload);
   const classifier = recordValue(payload.classifier) ?? {};
   const routingConfig = routingConfigSnapshotValue(payload.routingConfig);
   const routeExecutionPlan = routeExecutionPlanValue(payload.routeExecutionPlan ?? payload.plan);
@@ -78,14 +81,16 @@ export async function persistRouteDecision(tx: ProxyTransaction, event: {
   if (selectedCandidateId) updateValues.selectedCandidateId = selectedCandidateId;
   if (translated !== undefined) updateValues.translated = translated;
   if (translatorId !== undefined) updateValues.translatorId = translatorId;
+  if (gatewayEvidence) Object.assign(updateValues, gatewayEvidence);
   await tx
     .insert(routeDecisions)
     .values({
       id: createId("route_decision"),
       requestId: event.scopeId,
       organizationId: event.tenantId,
-      workspaceId: event.workspaceId ?? defaultWorkspaceId(event.tenantId),
+      workspaceId,
       requestedModel: stringValue(payload.requestedModel) ?? "unknown",
+      ...gatewayEvidence,
       classifierRoute,
       finalRoute,
       selectedProvider,
@@ -111,6 +116,17 @@ export async function persistRouteDecision(tx: ProxyTransaction, event: {
       target: routeDecisions.requestId,
       set: updateValues
     });
+
+  if (gatewayEvidence) {
+    await tx
+      .update(requests)
+      .set(gatewayEvidence)
+      .where(and(
+        eq(requests.id, event.scopeId),
+        eq(requests.organizationId, event.tenantId),
+        eq(requests.workspaceId, workspaceId)
+      ));
+  }
 }
 
 export async function routeForRequest(tx: ProxyTransaction, requestId: string) {

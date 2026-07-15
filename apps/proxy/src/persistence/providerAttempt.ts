@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import {
   defaultWorkspaceId,
@@ -9,6 +9,7 @@ import {
 } from "@proxy/db";
 import type { ProviderAdapterKind, ProviderAttemptStatus } from "@proxy/schema";
 
+import { gatewayProviderAttemptEvidenceValue } from "../gatewayEvidence.js";
 import { usageCostMicros } from "../pricing.js";
 import { createId } from "../util.js";
 import { catalogPricingForModel } from "./modelPricing.js";
@@ -33,10 +34,16 @@ export async function persistProviderStarted(tx: ProxyTransaction, event: {
   payload: Record<string, unknown>;
 }) {
   const payload = event.payload;
+  const workspaceId = event.workspaceId ?? defaultWorkspaceId(event.tenantId);
+  const gatewayEvidence = gatewayProviderAttemptEvidenceValue(payload);
   await tx
     .update(requests)
     .set({ status: "provider_pending" })
-    .where(eq(requests.id, event.scopeId));
+    .where(and(
+      eq(requests.id, event.scopeId),
+      eq(requests.organizationId, event.tenantId),
+      eq(requests.workspaceId, workspaceId)
+    ));
 
   await tx
     .insert(providerAttempts)
@@ -44,13 +51,14 @@ export async function persistProviderStarted(tx: ProxyTransaction, event: {
       id: stringValue(payload.providerAttemptId) ?? createId("provider_attempt"),
       requestId: event.scopeId,
       organizationId: event.tenantId,
-      workspaceId: event.workspaceId ?? defaultWorkspaceId(event.tenantId),
+      workspaceId,
       surface: surfaceValue(payload.surface) ?? "unknown",
       provider: providerValue(payload.provider) ?? "unknown",
       model: stringValue(payload.model) ?? "unknown",
       adapterKind: providerAdapterKindValue(payload.adapterKind),
       adapterClassification: recordValue(payload.adapterClassification),
       providerAccountId: stringValue(payload.providerAccountId),
+      ...gatewayEvidence,
       terminalStatus: "pending",
       routeCandidateId: stringValue(payload.routeCandidateId),
       attemptIndex: numberValue(payload.attemptIndex),
@@ -75,6 +83,7 @@ export async function persistStreamStarted(tx: ProxyTransaction, event: {
 
 export async function persistProviderTerminal(tx: ProxyTransaction, event: {
   tenantId: string;
+  workspaceId: string;
   scopeId: string;
   createdAt: string;
   eventType: string;
@@ -90,6 +99,28 @@ export async function persistProviderTerminal(tx: ProxyTransaction, event: {
   const error = errorText(payload.error) ?? errorText(event.metadata.error);
   const adapterKind = providerAdapterKindValue(payload.adapterKind);
   const adapterClassification = recordValue(payload.adapterClassification);
+  const gatewayEvidence = gatewayProviderAttemptEvidenceValue(payload);
+  const [attempt] = await tx
+    .select()
+    .from(providerAttempts)
+    .where(and(
+      eq(providerAttempts.id, providerAttemptId),
+      eq(providerAttempts.organizationId, event.tenantId),
+      eq(providerAttempts.workspaceId, event.workspaceId),
+      eq(providerAttempts.requestId, event.scopeId)
+    ))
+    .limit(1);
+  if (!attempt) throw new Error("Provider terminal event does not match a scoped provider attempt.");
+  if (
+    gatewayEvidence && (
+      attempt.deploymentId !== gatewayEvidence.deploymentId ||
+      attempt.providerConnectionId !== gatewayEvidence.providerConnectionId ||
+      attempt.egressWireId !== gatewayEvidence.egressWireId ||
+      attempt.providerAdapterContractVersion !== gatewayEvidence.providerAdapterContractVersion
+    )
+  ) {
+    throw new Error("Provider terminal evidence does not match the provider attempt target.");
+  }
   const update = {
     terminalStatus: status,
     statusCode: numberValue(payload.upstreamStatus),
@@ -104,7 +135,12 @@ export async function persistProviderTerminal(tx: ProxyTransaction, event: {
   await tx
     .update(providerAttempts)
     .set(update)
-    .where(eq(providerAttempts.id, providerAttemptId));
+    .where(and(
+      eq(providerAttempts.id, providerAttemptId),
+      eq(providerAttempts.organizationId, event.tenantId),
+      eq(providerAttempts.workspaceId, event.workspaceId),
+      eq(providerAttempts.requestId, event.scopeId)
+    ));
 
   await tx
     .update(requests)
@@ -112,20 +148,23 @@ export async function persistProviderTerminal(tx: ProxyTransaction, event: {
       status,
       completedAt
     })
-    .where(eq(requests.id, event.scopeId));
+    .where(and(
+      eq(requests.id, event.scopeId),
+      eq(requests.organizationId, event.tenantId),
+      eq(requests.workspaceId, event.workspaceId)
+    ));
 
   if (!usage) return;
-  const [attempt] = await tx
-    .select()
-    .from(providerAttempts)
-    .where(eq(providerAttempts.id, providerAttemptId))
-    .limit(1);
   const [request] = await tx
     .select()
     .from(requests)
-    .where(eq(requests.id, event.scopeId))
+    .where(and(
+      eq(requests.id, event.scopeId),
+      eq(requests.organizationId, event.tenantId),
+      eq(requests.workspaceId, event.workspaceId)
+    ))
     .limit(1);
-  if (!attempt || !request) return;
+  if (!request) return;
 
   const normalized = normalizeUsage(usage);
   const modelPricing = await catalogPricingForModel(tx, event.tenantId, attempt.provider, attempt.model);

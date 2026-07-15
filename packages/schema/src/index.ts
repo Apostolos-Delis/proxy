@@ -513,6 +513,38 @@ export const builtinProviderSchema = z.enum(BUILTIN_PROVIDER_NAMES);
 export const providerAuthStyleSchema = z.enum(PROVIDER_AUTH_STYLES);
 export const providerAdapterKindSchema = z.enum(PROVIDER_ADAPTER_KINDS);
 export const providerAdapterContractVersionSchema = z.enum(PROVIDER_ADAPTER_CONTRACT_VERSIONS);
+const gatewayEvidenceIdSchema = z.string().min(1).max(1_024).refine((value) => value === value.trim(), {
+  message: "Gateway evidence IDs must not include leading or trailing whitespace."
+});
+const gatewayEvidenceModelSchema = z.string().min(1).max(512).refine((value) => value === value.trim(), {
+  message: "Gateway evidence model names must not include leading or trailing whitespace."
+});
+const gatewayEvidenceVersionSchema = z.string().min(1).max(128).refine((value) => value === value.trim(), {
+  message: "Gateway evidence versions must not include leading or trailing whitespace."
+});
+export const gatewayRequestAdmissionEvidenceSchema = z.strictObject({
+  ingressWireId: dialectSchema,
+  operationId: gatewayOperationIdSchema,
+  requestedLogicalModel: gatewayEvidenceModelSchema
+});
+export type GatewayRequestAdmissionEvidence = z.infer<typeof gatewayRequestAdmissionEvidenceSchema>;
+export const gatewayResolutionEvidenceSchema = gatewayRequestAdmissionEvidenceSchema.extend({
+  resolvedLogicalModelId: gatewayEvidenceIdSchema,
+  accessProfileId: gatewayEvidenceIdSchema,
+  routerKind: logicalModelRouterKindSchema.nullable(),
+  deploymentId: gatewayEvidenceIdSchema,
+  providerConnectionId: gatewayEvidenceIdSchema,
+  egressWireId: dialectSchema,
+  wireAdapterVersion: gatewayEvidenceVersionSchema.nullable()
+});
+export type GatewayResolutionEvidence = z.infer<typeof gatewayResolutionEvidenceSchema>;
+export const gatewayProviderAttemptEvidenceSchema = z.strictObject({
+  deploymentId: gatewayEvidenceIdSchema,
+  providerConnectionId: gatewayEvidenceIdSchema,
+  egressWireId: dialectSchema,
+  providerAdapterContractVersion: providerAdapterContractVersionSchema
+});
+export type GatewayProviderAttemptEvidence = z.infer<typeof gatewayProviderAttemptEvidenceSchema>;
 export const bedrockProviderOperationSchema = z.enum(BEDROCK_PROVIDER_OPERATIONS);
 export const providerCacheTtlSchema = z.enum(PROVIDER_CACHE_TTLS);
 export const providerCacheKeyFieldSchema = z.enum(PROVIDER_CACHE_KEY_FIELDS);

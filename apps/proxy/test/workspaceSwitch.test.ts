@@ -255,7 +255,7 @@ describe("workspace switching", () => {
     ]);
   });
 
-  it("does not attach route decisions from a different workspace to scoped prompt summaries", async () => {
+  it("rejects route decisions from a different workspace before prompt summaries", async () => {
     const fixture = await setup("org_ws_prompt_decisions");
     const created = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, createMutation, {
       input: { name: "Second" }
@@ -277,10 +277,10 @@ describe("workspace switching", () => {
       rawText: "Prompt with a mismatched decision row",
       createdAt: at
     });
-    await fixture.db.insert(routeDecisions).values({
+    await expect(fixture.db.insert(routeDecisions).values({
       ...usageDecision("decision_wrong_workspace", "request_prompt_decision_scope", "org_ws_prompt_decisions", "fast", "openai", "gpt-fast"),
       workspaceId: created.id
-    });
+    })).rejects.toMatchObject({ cause: { constraint: "route_decisions_request_scope_fk" } });
 
     const prompts = (await adminGql(
       fixture.proxyUrl,

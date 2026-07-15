@@ -956,6 +956,16 @@ export const requests = pgTable(
     routingConfigVersionId: text("routing_config_version_id"),
     routingConfigVersion: integer("routing_config_version"),
     routingConfigHash: text("routing_config_hash"),
+    ingressWireId: text("ingress_wire_id").$type<Dialect>(),
+    operationId: text("operation_id").$type<GatewayOperationId>(),
+    requestedLogicalModel: text("requested_logical_model"),
+    resolvedLogicalModelId: text("resolved_logical_model_id"),
+    accessProfileId: text("access_profile_id"),
+    routerKind: text("router_kind").$type<LogicalModelRouterKind>(),
+    deploymentId: text("deployment_id"),
+    providerConnectionId: text("provider_connection_id"),
+    egressWireId: text("egress_wire_id").$type<Dialect>(),
+    wireAdapterVersion: text("wire_adapter_version"),
     status: text("status").$type<RequestStatus>().notNull().default("received"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -963,11 +973,61 @@ export const requests = pgTable(
   },
   (table) => [
     uniqueIndex("requests_org_workspace_idempotency_idx").on(table.organizationId, table.workspaceId, table.idempotencyKey),
+    uniqueIndex("requests_org_workspace_id_idx").on(table.organizationId, table.workspaceId, table.id),
     index("requests_org_workspace_created_idx").on(table.organizationId, table.workspaceId, table.createdAt),
     index("requests_session_id_idx").on(table.sessionId),
     index("requests_user_id_idx").on(table.organizationId, table.userId),
     index("requests_routing_config_idx").on(table.organizationId, table.routingConfigId),
-    index("requests_api_key_idx").on(table.organizationId, table.apiKeyId)
+    index("requests_api_key_idx").on(table.organizationId, table.apiKeyId),
+    index("requests_org_workspace_logical_model_created_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.resolvedLogicalModelId,
+      table.createdAt
+    ),
+    foreignKey({
+      name: "requests_resolved_logical_model_fk",
+      columns: [table.organizationId, table.workspaceId, table.resolvedLogicalModelId],
+      foreignColumns: [logicalModels.organizationId, logicalModels.workspaceId, logicalModels.id]
+    }),
+    foreignKey({
+      name: "requests_access_profile_fk",
+      columns: [table.organizationId, table.workspaceId, table.accessProfileId],
+      foreignColumns: [accessProfiles.organizationId, accessProfiles.workspaceId, accessProfiles.id]
+    }),
+    foreignKey({
+      name: "requests_physical_target_fk",
+      columns: [table.organizationId, table.workspaceId, table.deploymentId, table.providerConnectionId],
+      foreignColumns: [
+        modelDeployments.organizationId,
+        modelDeployments.workspaceId,
+        modelDeployments.id,
+        modelDeployments.providerConnectionId
+      ]
+    }),
+    foreignKey({
+      name: "requests_egress_binding_fk",
+      columns: [table.organizationId, table.workspaceId, table.deploymentId, table.egressWireId],
+      foreignColumns: [
+        deploymentWireBindings.organizationId,
+        deploymentWireBindings.workspaceId,
+        deploymentWireBindings.deploymentId,
+        deploymentWireBindings.apiWireId
+      ]
+    }),
+    check(
+      "requests_gateway_admission_evidence_chk",
+      sql`(${table.ingressWireId} is null and ${table.operationId} is null and ${table.requestedLogicalModel} is null) or (${table.ingressWireId} is not null and ${table.operationId} is not null and ${table.requestedLogicalModel} is not null)`
+    ),
+    check(
+      "requests_gateway_resolution_evidence_chk",
+      sql`(${table.resolvedLogicalModelId} is null and ${table.accessProfileId} is null and ${table.routerKind} is null and ${table.deploymentId} is null and ${table.providerConnectionId} is null and ${table.egressWireId} is null and ${table.wireAdapterVersion} is null) or (${table.ingressWireId} is not null and ${table.operationId} is not null and ${table.requestedLogicalModel} is not null and ${table.resolvedLogicalModelId} is not null and ${table.accessProfileId} is not null and ${table.deploymentId} is not null and ${table.providerConnectionId} is not null and ${table.egressWireId} is not null)`
+    ),
+    check("requests_ingress_wire_chk", sql`${table.ingressWireId} is null or ${table.ingressWireId} in ('anthropic-messages', 'openai-responses', 'openai-chat', 'bedrock-converse')`),
+    check("requests_operation_chk", sql`${table.operationId} is null or ${table.operationId} in ('text.generate', 'text.count_tokens', 'model.list')`),
+    check("requests_router_kind_chk", sql`${table.routerKind} is null or ${table.routerKind} = 'classifier'`),
+    check("requests_egress_wire_chk", sql`${table.egressWireId} is null or ${table.egressWireId} in ('anthropic-messages', 'openai-responses', 'openai-chat', 'bedrock-converse')`),
+    check("requests_wire_adapter_version_chk", sql`${table.wireAdapterVersion} is null or (${table.wireAdapterVersion} = btrim(${table.wireAdapterVersion}) and ${table.wireAdapterVersion} <> '')`)
   ]
 );
 
@@ -995,6 +1055,16 @@ export const routeDecisions = pgTable(
     routingConfigVersionId: text("routing_config_version_id"),
     routingConfigVersion: integer("routing_config_version"),
     routingConfigHash: text("routing_config_hash"),
+    ingressWireId: text("ingress_wire_id").$type<Dialect>(),
+    operationId: text("operation_id").$type<GatewayOperationId>(),
+    requestedLogicalModel: text("requested_logical_model"),
+    resolvedLogicalModelId: text("resolved_logical_model_id"),
+    accessProfileId: text("access_profile_id"),
+    routerKind: text("router_kind").$type<LogicalModelRouterKind>(),
+    deploymentId: text("deployment_id"),
+    providerConnectionId: text("provider_connection_id"),
+    egressWireId: text("egress_wire_id").$type<Dialect>(),
+    wireAdapterVersion: text("wire_adapter_version"),
     confidence: integer("confidence_basis_points"),
     reasonCodes: jsonb("reason_codes").$type<string[]>().notNull().default([]),
     guardrailActions: jsonb("guardrail_actions").$type<string[]>().notNull().default([]),
@@ -1011,7 +1081,60 @@ export const routeDecisions = pgTable(
     uniqueIndex("route_decisions_request_id_idx").on(table.requestId),
     index("route_decisions_organization_id_idx").on(table.organizationId),
     index("route_decisions_final_route_idx").on(table.organizationId, table.workspaceId, table.finalRoute),
-    index("route_decisions_routing_config_idx").on(table.organizationId, table.routingConfigId)
+    index("route_decisions_routing_config_idx").on(table.organizationId, table.routingConfigId),
+    index("route_decisions_org_workspace_logical_model_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.resolvedLogicalModelId
+    ),
+    foreignKey({
+      name: "route_decisions_request_scope_fk",
+      columns: [table.organizationId, table.workspaceId, table.requestId],
+      foreignColumns: [requests.organizationId, requests.workspaceId, requests.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "route_decisions_resolved_logical_model_fk",
+      columns: [table.organizationId, table.workspaceId, table.resolvedLogicalModelId],
+      foreignColumns: [logicalModels.organizationId, logicalModels.workspaceId, logicalModels.id]
+    }),
+    foreignKey({
+      name: "route_decisions_access_profile_fk",
+      columns: [table.organizationId, table.workspaceId, table.accessProfileId],
+      foreignColumns: [accessProfiles.organizationId, accessProfiles.workspaceId, accessProfiles.id]
+    }),
+    foreignKey({
+      name: "route_decisions_physical_target_fk",
+      columns: [table.organizationId, table.workspaceId, table.deploymentId, table.providerConnectionId],
+      foreignColumns: [
+        modelDeployments.organizationId,
+        modelDeployments.workspaceId,
+        modelDeployments.id,
+        modelDeployments.providerConnectionId
+      ]
+    }),
+    foreignKey({
+      name: "route_decisions_egress_binding_fk",
+      columns: [table.organizationId, table.workspaceId, table.deploymentId, table.egressWireId],
+      foreignColumns: [
+        deploymentWireBindings.organizationId,
+        deploymentWireBindings.workspaceId,
+        deploymentWireBindings.deploymentId,
+        deploymentWireBindings.apiWireId
+      ]
+    }),
+    check(
+      "route_decisions_gateway_admission_evidence_chk",
+      sql`(${table.ingressWireId} is null and ${table.operationId} is null and ${table.requestedLogicalModel} is null) or (${table.ingressWireId} is not null and ${table.operationId} is not null and ${table.requestedLogicalModel} is not null)`
+    ),
+    check(
+      "route_decisions_gateway_resolution_evidence_chk",
+      sql`(${table.resolvedLogicalModelId} is null and ${table.accessProfileId} is null and ${table.routerKind} is null and ${table.deploymentId} is null and ${table.providerConnectionId} is null and ${table.egressWireId} is null and ${table.wireAdapterVersion} is null) or (${table.ingressWireId} is not null and ${table.operationId} is not null and ${table.requestedLogicalModel} is not null and ${table.resolvedLogicalModelId} is not null and ${table.accessProfileId} is not null and ${table.deploymentId} is not null and ${table.providerConnectionId} is not null and ${table.egressWireId} is not null)`
+    ),
+    check("route_decisions_ingress_wire_chk", sql`${table.ingressWireId} is null or ${table.ingressWireId} in ('anthropic-messages', 'openai-responses', 'openai-chat', 'bedrock-converse')`),
+    check("route_decisions_operation_chk", sql`${table.operationId} is null or ${table.operationId} in ('text.generate', 'text.count_tokens', 'model.list')`),
+    check("route_decisions_router_kind_chk", sql`${table.routerKind} is null or ${table.routerKind} = 'classifier'`),
+    check("route_decisions_egress_wire_chk", sql`${table.egressWireId} is null or ${table.egressWireId} in ('anthropic-messages', 'openai-responses', 'openai-chat', 'bedrock-converse')`),
+    check("route_decisions_wire_adapter_version_chk", sql`${table.wireAdapterVersion} is null or (${table.wireAdapterVersion} = btrim(${table.wireAdapterVersion}) and ${table.wireAdapterVersion} <> '')`)
   ]
 );
 
@@ -1034,6 +1157,10 @@ export const providerAttempts = pgTable(
     adapterKind: text("adapter_kind").$type<ProviderAdapterKind>(),
     adapterClassification: jsonb("adapter_classification").$type<Record<string, unknown>>(),
     providerAccountId: text("provider_account_id"),
+    deploymentId: text("deployment_id"),
+    providerConnectionId: text("provider_connection_id"),
+    egressWireId: text("egress_wire_id").$type<Dialect>(),
+    providerAdapterContractVersion: text("provider_adapter_contract_version").$type<ProviderAdapterContractVersion>(),
     upstreamRequestId: text("upstream_request_id"),
     terminalStatus: text("terminal_status").$type<ProviderAttemptStatus>().notNull().default("pending"),
     statusCode: integer("status_code"),
@@ -1058,11 +1185,53 @@ export const providerAttempts = pgTable(
     ),
     index("provider_attempts_model_idx").on(table.organizationId, table.workspaceId, table.provider, table.model),
     index("provider_attempts_org_provider_account_idx").on(table.organizationId, table.providerAccountId),
+    index("provider_attempts_org_workspace_deployment_started_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.deploymentId,
+      table.startedAt
+    ),
     foreignKey({
       name: "provider_attempts_provider_account_fk",
       columns: [table.organizationId, table.providerAccountId],
       foreignColumns: [providerAccounts.organizationId, providerAccounts.id]
-    })
+    }),
+    foreignKey({
+      name: "provider_attempts_request_scope_fk",
+      columns: [table.organizationId, table.workspaceId, table.requestId],
+      foreignColumns: [requests.organizationId, requests.workspaceId, requests.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "provider_attempts_physical_target_fk",
+      columns: [table.organizationId, table.workspaceId, table.deploymentId, table.providerConnectionId],
+      foreignColumns: [
+        modelDeployments.organizationId,
+        modelDeployments.workspaceId,
+        modelDeployments.id,
+        modelDeployments.providerConnectionId
+      ]
+    }),
+    foreignKey({
+      name: "provider_attempts_egress_binding_fk",
+      columns: [
+        table.organizationId,
+        table.workspaceId,
+        table.deploymentId,
+        table.egressWireId
+      ],
+      foreignColumns: [
+        deploymentWireBindings.organizationId,
+        deploymentWireBindings.workspaceId,
+        deploymentWireBindings.deploymentId,
+        deploymentWireBindings.apiWireId
+      ]
+    }),
+    check(
+      "provider_attempts_gateway_evidence_chk",
+      sql`(${table.deploymentId} is null and ${table.providerConnectionId} is null and ${table.egressWireId} is null and ${table.providerAdapterContractVersion} is null) or (${table.deploymentId} is not null and ${table.providerConnectionId} is not null and ${table.egressWireId} is not null and ${table.providerAdapterContractVersion} is not null)`
+    ),
+    check("provider_attempts_egress_wire_chk", sql`${table.egressWireId} is null or ${table.egressWireId} in ('anthropic-messages', 'openai-responses', 'openai-chat', 'bedrock-converse')`),
+    check("provider_attempts_adapter_version_chk", sql`${table.providerAdapterContractVersion} is null or ${table.providerAdapterContractVersion} in ('1')`)
   ]
 );
 

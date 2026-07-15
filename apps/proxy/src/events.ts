@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { defaultWorkspaceId, type ProxyTransaction } from "@proxy/db";
 import { z } from "zod";
 
+import { validateGatewayEventEvidence } from "./gatewayEvidence.js";
 import {
   type MetricsCollector,
   NoopMetricsCollector
@@ -37,6 +38,16 @@ const eventSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
   metadata: z.record(z.string(), z.unknown()),
   createdAt: z.string().min(1)
+}).superRefine((event, context) => {
+  try {
+    validateGatewayEventEvidence(event.eventType, event.payload);
+  } catch (error) {
+    context.addIssue({
+      code: "custom",
+      message: error instanceof Error ? error.message : "Invalid gateway evidence payload.",
+      path: ["payload"]
+    });
+  }
 });
 
 export type ProxyEvent = z.infer<typeof eventSchema>;
@@ -317,11 +328,10 @@ export class EventService {
     const sequence = (previousScope?.sequence ?? 0) + 1;
     const tenantId = input.tenantId ?? previousScope?.tenantId ?? this.defaultTenantId;
     const workspaceId = input.workspaceId ?? previousScope?.workspaceId ?? defaultWorkspaceId(tenantId);
-    this.scopes.delete(scopeKey);
-    this.scopes.set(scopeKey, { sequence, tenantId, workspaceId });
-
     const event = this.buildEvent(input, sequence, tenantId, workspaceId);
     const outboxItem = this.buildOutbox(event);
+    this.scopes.delete(scopeKey);
+    this.scopes.set(scopeKey, { sequence, tenantId, workspaceId });
     let appendSucceeded = false;
 
     try {

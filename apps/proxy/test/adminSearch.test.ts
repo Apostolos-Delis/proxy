@@ -185,7 +185,7 @@ describe("admin global search", () => {
     expect(shortQuery.results).toEqual([]);
   });
 
-  it("does not attach route decisions from a different workspace to log search hits", async () => {
+  it("rejects route decisions from a different workspace before log search", async () => {
     const fixture = await setup("org_search_route_scope");
     const createdAt = new Date("2026-06-08T12:00:00.000Z");
 
@@ -209,10 +209,10 @@ describe("admin global search", () => {
     await fixture.db.insert(promptArtifacts).values(
       sessionPrompt("artifact_search_route", "org_search_route_scope", "request_search_route", "Find the workspace leak", createdAt)
     );
-    await fixture.db.insert(routeDecisions).values({
+    await expect(fixture.db.insert(routeDecisions).values({
       ...usageDecision("decision_search_route_wrong_workspace", "request_search_route", "org_search_route_scope", "fast", "openai", "gpt-wrong-workspace"),
       workspaceId: "ws_search_route_other"
-    });
+    })).rejects.toMatchObject({ cause: { constraint: "route_decisions_request_scope_fk" } });
 
     const search = await fetchSearch(fixture, "workspace leak");
     expect(search.results).toEqual([
