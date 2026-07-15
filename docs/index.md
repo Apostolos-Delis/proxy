@@ -15,6 +15,7 @@
 ## Architecture
 
 - [Model routing proxy design](model-routing-proxy.md)
+- [AI gateway core data model V1](scopes/ai-gateway-core-model-v1/PLAN.md)
 - [Frontend guidelines](frontend-guidelines.md)
 - [Persistence and admin console scope](scopes/persistence-admin-v1/PLAN.md)
 - [TanStack admin app scope](scopes/tanstack-admin-app-v1/PLAN.md)
@@ -33,6 +34,7 @@
 
 ## Research
 
+- [Enterprise AI gateway strategy and target architecture](research/enterprise-ai-gateway-analysis.md)
 - [Router research aggregate recommendations](research/router-research-recommendations.md)
 - [LiteLLM scoping review](research/litellm-scope.md)
 - [9router scoping review](research/9router-scope.md)
