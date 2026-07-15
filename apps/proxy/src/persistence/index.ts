@@ -16,6 +16,7 @@ import { CompressionRetrievalResolver } from "./compressionReceipts.js";
 import { DatabaseEventSink } from "./eventSink.js";
 import { ApiKeyIdentityStore } from "./identity.js";
 import { ModelCatalogAdminService } from "./modelCatalogAdmin.js";
+import { ModelResolutionService } from "./modelResolution.js";
 import { ModelPricingAdminService } from "./modelPricingAdmin.js";
 import { OrganizationSettingsStore } from "./organizationSettings.js";
 import { ProviderCredentialAdminService } from "./providerCredentialAdmin.js";
@@ -94,6 +95,7 @@ export function createDatabasePersistence(
     }),
     bedrockModelDiscovery: new BedrockModelDiscoveryJob(transactional, providerCredentials, config),
     modelCatalogAdmin: new ModelCatalogAdminService(transactional),
+    modelResolution: new ModelResolutionService(db),
     modelDiscovery: new ModelDiscoveryStore(db),
     modelPricingAdmin: new ModelPricingAdminService(transactional),
     organizationSettings: new OrganizationSettingsStore(db, clearRoutingConfigCache),
