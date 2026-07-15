@@ -28,6 +28,11 @@ export const DIALECTS = {
 } as const;
 
 export const GATEWAY_OPERATION_IDS = ["text.generate", "text.count_tokens", "model.list"] as const;
+export const GATEWAY_PARAMETER_CAP_IDS = ["max_tokens", "max_output_tokens", "max_completion_tokens"] as const;
+export const GATEWAY_ACCESS_PROFILE_LIMIT_IDS = ["concurrent_requests", "requests_per_minute", "tokens_per_minute"] as const;
+export const GATEWAY_RESOURCE_STATUSES = ["active", "disabled"] as const;
+export const LOGICAL_MODEL_RESOLUTION_KINDS = ["direct", "router"] as const;
+export const LOGICAL_MODEL_ROUTER_KINDS = ["classifier"] as const;
 
 export const BUILTIN_PROVIDER_NAMES = ["openai", "anthropic", "amazon-bedrock"] as const;
 
@@ -266,8 +271,15 @@ export type RouteName = typeof ROUTE_NAMES[number];
 export type Surface = typeof SURFACE_NAMES[number];
 export type Dialect = typeof DIALECT_NAMES[number];
 export type GatewayOperationId = typeof GATEWAY_OPERATION_IDS[number];
+export type GatewayParameterCapId = typeof GATEWAY_PARAMETER_CAP_IDS[number];
+export type GatewayAccessProfileLimitId = typeof GATEWAY_ACCESS_PROFILE_LIMIT_IDS[number];
+export type GatewayResourceStatus = typeof GATEWAY_RESOURCE_STATUSES[number];
+export type LogicalModelResolutionKind = typeof LOGICAL_MODEL_RESOLUTION_KINDS[number];
+export type LogicalModelRouterKind = typeof LOGICAL_MODEL_ROUTER_KINDS[number];
 export type GatewayModelCapability = boolean | number | string[];
 export type GatewayModelCapabilities = Record<string, GatewayModelCapability>;
+export type GatewayParameterCaps = Partial<Record<GatewayParameterCapId, number>>;
+export type GatewayAccessProfileLimits = Partial<Record<GatewayAccessProfileLimitId, number>>;
 export type HttpProviderDialect = typeof HTTP_PROVIDER_DIALECT_NAMES[number];
 export type BuiltinProvider = typeof BUILTIN_PROVIDER_NAMES[number];
 export type Provider = string;
@@ -388,10 +400,25 @@ export const routeNameSchema = z.enum(ROUTE_NAMES);
 export const surfaceSchema = z.enum(SURFACE_NAMES);
 export const dialectSchema = z.enum(DIALECT_NAMES);
 export const gatewayOperationIdSchema = z.enum(GATEWAY_OPERATION_IDS);
+export const gatewayParameterCapIdSchema = z.enum(GATEWAY_PARAMETER_CAP_IDS);
+export const gatewayAccessProfileLimitIdSchema = z.enum(GATEWAY_ACCESS_PROFILE_LIMIT_IDS);
+export const gatewayResourceStatusSchema = z.enum(GATEWAY_RESOURCE_STATUSES);
+export const logicalModelResolutionKindSchema = z.enum(LOGICAL_MODEL_RESOLUTION_KINDS);
+export const logicalModelRouterKindSchema = z.enum(LOGICAL_MODEL_ROUTER_KINDS);
 export const gatewayModelCapabilitiesSchema: z.ZodType<GatewayModelCapabilities> = z.record(
   z.string(),
   z.union([z.boolean(), z.number().positive(), z.array(z.string())])
 );
+export const gatewayParameterCapsSchema: z.ZodType<GatewayParameterCaps> = z.object({
+  max_tokens: z.number().int().nonnegative().optional(),
+  max_output_tokens: z.number().int().nonnegative().optional(),
+  max_completion_tokens: z.number().int().nonnegative().optional()
+}).strict();
+export const gatewayAccessProfileLimitsSchema: z.ZodType<GatewayAccessProfileLimits> = z.object({
+  concurrent_requests: z.number().int().positive().optional(),
+  requests_per_minute: z.number().int().positive().optional(),
+  tokens_per_minute: z.number().int().positive().optional()
+}).strict();
 export const httpProviderDialectSchema = z.enum(HTTP_PROVIDER_DIALECT_NAMES);
 export const providerSchema = z.string().min(1, "Provider slug is required.").refine(
   (value) => value.trim().length > 0,

@@ -3,9 +3,14 @@ import { describe, expect, it } from "vitest";
 import { PROMPT_CAPTURE_MODES } from "@proxy/schema";
 
 import {
+  accessProfileModelGrants,
+  accessProfiles,
+  apiKeys,
   canonicalModels,
   deploymentWireBindings,
   events,
+  logicalModels,
+  logicalModelTargets,
   modelDeployments,
   providerAccountHealth,
   providerModelHealth,
@@ -24,9 +29,14 @@ import {
 
 describe("proxy database schema", () => {
   it("exposes the core durable tables", () => {
+    expect(accessProfileModelGrants).toBeTruthy();
+    expect(accessProfiles).toBeTruthy();
+    expect(apiKeys.accessProfileId).toBeTruthy();
     expect(events).toBeTruthy();
     expect(canonicalModels).toBeTruthy();
     expect(deploymentWireBindings).toBeTruthy();
+    expect(logicalModels).toBeTruthy();
+    expect(logicalModelTargets).toBeTruthy();
     expect(modelDeployments).toBeTruthy();
     expect(providerAccountHealth).toBeTruthy();
     expect(providerModelHealth).toBeTruthy();

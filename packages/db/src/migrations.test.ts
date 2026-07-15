@@ -41,7 +41,7 @@ describe("database migrations", () => {
       select column_name
       from information_schema.columns
       where table_name = 'api_keys'
-        and column_name = 'routing_config_id'
+        and column_name in ('access_profile_id', 'routing_config_id')
       order by column_name
     `);
     const organizationSettingsColumns = await client.query<{ column_name: string }>(`
@@ -242,7 +242,10 @@ describe("database migrations", () => {
       "routing_config_id",
       "version"
     ]);
-    expect(keyColumns.rows.map((row) => row.column_name)).toEqual(["routing_config_id"]);
+    expect(keyColumns.rows.map((row) => row.column_name)).toEqual([
+      "access_profile_id",
+      "routing_config_id"
+    ]);
     expect(organizationSettingsColumns.rows.map((row) => row.column_name)).toEqual([]);
     expect(workspaceColumns.rows.map((row) => row.column_name)).toEqual([
       "default_routing_config_id",
@@ -251,6 +254,8 @@ describe("database migrations", () => {
       "slug"
     ]);
     expect(workspaceScopedColumns.rows.map((row) => row.table_name)).toEqual([
+      "access_profile_model_grants",
+      "access_profiles",
       "agent_sessions",
       "api_key_provider_accounts",
       "api_keys",
@@ -258,6 +263,8 @@ describe("database migrations", () => {
       "compression_receipts",
       "deployment_wire_bindings",
       "events",
+      "logical_model_targets",
+      "logical_models",
       "model_deployments",
       "prompt_access_audit",
       "prompt_artifacts",
