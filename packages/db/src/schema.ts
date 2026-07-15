@@ -5,7 +5,13 @@ import type {
   Dialect,
   EventOutboxStatus,
   GatewayModelCapabilities,
+  GatewayOperationId,
+  GatewayAccessProfileLimits,
+  GatewayParameterCaps,
+  GatewayResourceStatus,
   InvitationStatus,
+  LogicalModelResolutionKind,
+  LogicalModelRouterKind,
   ModelCatalogSource,
   OrganizationMemberRole,
   OrganizationMemberStatus,
@@ -246,6 +252,7 @@ export const apiKeys = pgTable(
     keyHash: text("key_hash").notNull(),
     name: text("name").notNull(),
     routingConfigId: text("routing_config_id"),
+    accessProfileId: text("access_profile_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
@@ -256,10 +263,16 @@ export const apiKeys = pgTable(
     uniqueIndex("api_keys_org_workspace_id_idx").on(table.organizationId, table.workspaceId, table.id),
     index("api_keys_organization_id_idx").on(table.organizationId),
     index("api_keys_routing_config_idx").on(table.organizationId, table.routingConfigId),
+    index("api_keys_access_profile_idx").on(table.organizationId, table.workspaceId, table.accessProfileId),
     foreignKey({
       name: "api_keys_routing_config_fk",
       columns: [table.organizationId, table.workspaceId, table.routingConfigId],
       foreignColumns: [routingConfigs.organizationId, routingConfigs.workspaceId, routingConfigs.id]
+    }),
+    foreignKey({
+      name: "api_keys_access_profile_fk",
+      columns: [table.organizationId, table.workspaceId, table.accessProfileId],
+      foreignColumns: [accessProfiles.organizationId, accessProfiles.workspaceId, accessProfiles.id]
     })
   ]
 );
@@ -567,6 +580,183 @@ export const deploymentWireBindings = pgTable(
       sql`(${table.apiWireId} = 'bedrock-converse' and ${table.endpointPath} is null) or (${table.apiWireId} <> 'bedrock-converse' and ${table.endpointPath} is not null and ${table.endpointPath} = btrim(${table.endpointPath}) and ${table.endpointPath} like '/%')`
     ),
     check("deployment_wire_bindings_adapter_version_chk", sql`${table.adapterContractVersion} in ('1')`)
+  ]
+);
+
+export const logicalModels = pgTable(
+  "logical_models",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    resolutionKind: text("resolution_kind").$type<LogicalModelResolutionKind>().notNull(),
+    routerKind: text("router_kind").$type<LogicalModelRouterKind>(),
+    routerConfig: jsonb("router_config").$type<Record<string, unknown>>().notNull().default({}),
+    status: text("status").$type<GatewayResourceStatus>().notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("logical_models_org_workspace_id_idx").on(table.organizationId, table.workspaceId, table.id),
+    uniqueIndex("logical_models_org_workspace_slug_idx").on(table.organizationId, table.workspaceId, table.slug),
+    index("logical_models_org_workspace_status_idx").on(table.organizationId, table.workspaceId, table.status),
+    foreignKey({
+      name: "logical_models_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade"),
+    check(
+      "logical_models_resolution_chk",
+      sql`(${table.resolutionKind} = 'direct' and ${table.routerKind} is null) or (${table.resolutionKind} = 'router' and ${table.routerKind} is not null and ${table.routerKind} = 'classifier')`
+    ),
+    check("logical_models_router_config_chk", sql`jsonb_typeof(${table.routerConfig}) = 'object'`),
+    check("logical_models_status_chk", sql`${table.status} in ('active', 'disabled')`)
+  ]
+);
+
+export const logicalModelTargets = pgTable(
+  "logical_model_targets",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    logicalModelId: text("logical_model_id").notNull(),
+    deploymentId: text("deployment_id").notNull(),
+    priority: integer("priority").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("logical_model_targets_org_workspace_id_idx").on(table.organizationId, table.workspaceId, table.id),
+    uniqueIndex("logical_model_targets_org_workspace_model_deployment_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.logicalModelId,
+      table.deploymentId
+    ),
+    uniqueIndex("logical_model_targets_org_workspace_model_priority_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.logicalModelId,
+      table.priority
+    ),
+    index("logical_model_targets_org_workspace_deployment_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.deploymentId
+    ),
+    foreignKey({
+      name: "logical_model_targets_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "logical_model_targets_logical_model_fk",
+      columns: [table.organizationId, table.workspaceId, table.logicalModelId],
+      foreignColumns: [logicalModels.organizationId, logicalModels.workspaceId, logicalModels.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "logical_model_targets_deployment_fk",
+      columns: [table.organizationId, table.workspaceId, table.deploymentId],
+      foreignColumns: [modelDeployments.organizationId, modelDeployments.workspaceId, modelDeployments.id]
+    }),
+    check("logical_model_targets_priority_chk", sql`${table.priority} >= 0`)
+  ]
+);
+
+export const accessProfiles = pgTable(
+  "access_profiles",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    limits: jsonb("limits").$type<GatewayAccessProfileLimits>().notNull().default({}),
+    status: text("status").$type<GatewayResourceStatus>().notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("access_profiles_org_workspace_id_idx").on(table.organizationId, table.workspaceId, table.id),
+    uniqueIndex("access_profiles_org_workspace_slug_idx").on(table.organizationId, table.workspaceId, table.slug),
+    index("access_profiles_org_workspace_status_idx").on(table.organizationId, table.workspaceId, table.status),
+    foreignKey({
+      name: "access_profiles_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade"),
+    check(
+      "access_profiles_limits_chk",
+      sql`jsonb_typeof(${table.limits}) = 'object' and ${table.limits} - array['concurrent_requests', 'requests_per_minute', 'tokens_per_minute']::text[] = '{}'::jsonb and not jsonb_path_exists(${table.limits}, '$.* ? (@.type() != "number" || @ <= 0 || @.floor() != @)')`
+    ),
+    check("access_profiles_status_chk", sql`${table.status} in ('active', 'disabled')`)
+  ]
+);
+
+export const accessProfileModelGrants = pgTable(
+  "access_profile_model_grants",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    accessProfileId: text("access_profile_id").notNull(),
+    logicalModelId: text("logical_model_id").notNull(),
+    allowedOperations: text("allowed_operations").array().$type<GatewayOperationId[]>().notNull(),
+    parameterCaps: jsonb("parameter_caps").$type<GatewayParameterCaps>().notNull().default({}),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("access_profile_model_grants_org_workspace_id_idx").on(table.organizationId, table.workspaceId, table.id),
+    uniqueIndex("access_profile_model_grants_org_workspace_profile_model_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.accessProfileId,
+      table.logicalModelId
+    ),
+    index("access_profile_model_grants_org_workspace_model_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.logicalModelId
+    ),
+    foreignKey({
+      name: "access_profile_model_grants_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "access_profile_model_grants_profile_fk",
+      columns: [table.organizationId, table.workspaceId, table.accessProfileId],
+      foreignColumns: [accessProfiles.organizationId, accessProfiles.workspaceId, accessProfiles.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "access_profile_model_grants_logical_model_fk",
+      columns: [table.organizationId, table.workspaceId, table.logicalModelId],
+      foreignColumns: [logicalModels.organizationId, logicalModels.workspaceId, logicalModels.id]
+    }).onDelete("cascade"),
+    check(
+      "access_profile_model_grants_operations_chk",
+      sql`cardinality(${table.allowedOperations}) > 0 and ${table.allowedOperations} <@ array['text.generate', 'text.count_tokens', 'model.list']::text[]`
+    ),
+    check(
+      "access_profile_model_grants_parameter_caps_chk",
+      sql`jsonb_typeof(${table.parameterCaps}) = 'object' and ${table.parameterCaps} - array['max_tokens', 'max_output_tokens', 'max_completion_tokens']::text[] = '{}'::jsonb and not jsonb_path_exists(${table.parameterCaps}, '$.* ? (@.type() != "number" || @ < 0 || @.floor() != @)')`
+    )
   ]
 );
 

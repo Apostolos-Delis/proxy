@@ -6,8 +6,6 @@ import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import {
-  ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
-  OPENAI_PROVIDER_CACHING_CAPABILITIES,
   routingConfigSchema,
   type BuiltinProvider,
   type RouteName,
@@ -15,7 +13,13 @@ import {
 } from "@proxy/schema";
 
 import { hashApiKey } from "./apiKeyHash.js";
+import {
+  BUILTIN_PROVIDER_IDS,
+  builtinProviderSeedDefinitions,
+  type BuiltinProviderSeedDefinition
+} from "./builtinProviderSeed.js";
 import type { ProxyDbSession } from "./client.js";
+import { seedGatewayResources, type GatewaySeedSnapshotEntry } from "./gatewaySeed.js";
 import * as schema from "./schema.js";
 import {
   apiKeys,
@@ -46,6 +50,7 @@ export type SeedOptions = {
   openaiBaseUrl: string;
   anthropicBaseUrl: string;
   proxyToken: string;
+  externalEconomyToken?: string;
   models: SeedModel[];
 };
 
@@ -56,22 +61,15 @@ export type SeedModel = {
   surface: "openai-responses" | "openai-chat" | "anthropic-messages";
 };
 
-const BUILTIN_PROVIDER_IDS: Record<BuiltinProvider, string> = {
-  openai: "00000000-0000-0000-0000-000000000001",
-  anthropic: "00000000-0000-0000-0000-000000000002",
-  "amazon-bedrock": "00000000-0000-0000-0000-000000000003"
-};
-
-type ModelsDevSnapshotEntry = {
-  provider: BuiltinProvider;
-  model: string;
-  capabilities: Record<string, unknown>;
-  pricing: Record<string, unknown>;
-};
+const ECONOMY_SEED_MODELS = [
+  { provider: "openai" as const, model: "gpt-5.4-mini", surface: "openai-responses" as const },
+  { provider: "openai" as const, model: "gpt-5.4-mini", surface: "openai-chat" as const },
+  { provider: "anthropic" as const, model: "claude-haiku-4-5", surface: "anthropic-messages" as const }
+];
 
 const modelsDevSnapshot = JSON.parse(
   readFileSync(new URL("../data/models-dev-snapshot.json", import.meta.url), "utf8")
-) as ModelsDevSnapshotEntry[];
+) as GatewaySeedSnapshotEntry[];
 
 export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
   const now = new Date();
@@ -79,20 +77,30 @@ export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
   const workspaceId = defaultWorkspaceId(options.organizationId);
   const routingConfigId = `${options.organizationId}:routing-config:default`;
   const defaultApiKeyId = `${options.organizationId}:api-key:default`;
+  const externalEconomyApiKeyId = `${options.organizationId}:api-key:external-economy`;
   const proxyTokenHash = hashApiKey(options.proxyToken);
-  const [tokenOwner] = await db
-    .select({
-      id: apiKeys.id,
-      organizationId: apiKeys.organizationId
-    })
-    .from(apiKeys)
-    .where(eq(apiKeys.keyHash, proxyTokenHash))
-    .limit(1);
-
-  if (tokenOwner && tokenOwner.id !== defaultApiKeyId) {
-    throw new Error(
-      `PROXY_TOKEN is already assigned to ${tokenOwner.id} in organization ${tokenOwner.organizationId}; set a unique PROXY_TOKEN for ${options.organizationId}.`
-    );
+  const externalEconomyTokenHash = options.externalEconomyToken
+    ? hashApiKey(options.externalEconomyToken)
+    : undefined;
+  if (externalEconomyTokenHash === proxyTokenHash) {
+    throw new Error("SEED_EXTERNAL_ECONOMY_TOKEN must differ from PROXY_TOKEN.");
+  }
+  for (const token of [
+    { envName: "PROXY_TOKEN", hash: proxyTokenHash, apiKeyId: defaultApiKeyId },
+    ...(externalEconomyTokenHash
+      ? [{ envName: "SEED_EXTERNAL_ECONOMY_TOKEN", hash: externalEconomyTokenHash, apiKeyId: externalEconomyApiKeyId }]
+      : [])
+  ]) {
+    const [owner] = await db
+      .select({ id: apiKeys.id, organizationId: apiKeys.organizationId })
+      .from(apiKeys)
+      .where(eq(apiKeys.keyHash, token.hash))
+      .limit(1);
+    if (owner && owner.id !== token.apiKeyId) {
+      throw new Error(
+        `${token.envName} is already assigned to ${owner.id} in organization ${owner.organizationId}; set a unique ${token.envName} for ${options.organizationId}.`
+      );
+    }
   }
 
   await db
@@ -237,38 +245,17 @@ export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
     });
 
   await upsertDefaultWorkspace(db, sandboxOrganizationId, now);
-  await upsertBuiltinProviders(db, options, now);
+  const builtinProviders = builtinProviderSeedDefinitions(options);
+  await upsertBuiltinProviders(db, builtinProviders, now);
 
-  const providerRows = [
-    {
-      id: `${options.organizationId}:provider:openai`,
-      organizationId: options.organizationId,
-      providerId: BUILTIN_PROVIDER_IDS.openai,
-      name: "OpenAI",
-      secretRef: "env:OPENAI_API_KEY",
-      settings: {}
-    },
-    {
-      id: `${options.organizationId}:provider:anthropic`,
-      organizationId: options.organizationId,
-      providerId: BUILTIN_PROVIDER_IDS.anthropic,
-      name: "Anthropic",
-      secretRef: "env:ANTHROPIC_API_KEY",
-      settings: {}
-    },
-    {
-      id: `${options.organizationId}:provider:amazon-bedrock`,
-      organizationId: options.organizationId,
-      providerId: BUILTIN_PROVIDER_IDS["amazon-bedrock"],
-      name: "Amazon Bedrock",
-      secretRef: "aws:default-chain",
-      settings: {
-        credentialMode: "aws_default_chain",
-        region: "us-east-1",
-        discoveryRegions: ["us-east-1"]
-      }
-    }
-  ];
+  const providerRows = builtinProviders.map((provider) => ({
+    id: `${options.organizationId}:provider:${provider.provider}`,
+    organizationId: options.organizationId,
+    providerId: provider.id,
+    name: provider.displayName,
+    secretRef: provider.accountSecretRef,
+    settings: provider.accountSettings
+  }));
 
   for (const row of providerRows) {
     await db
@@ -303,6 +290,23 @@ export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
         }
       });
   }
+
+  const gatewayResources = await seedGatewayResources(db, {
+    organizationId: options.organizationId,
+    workspaceId,
+    classifierModel: options.classifierModel,
+    openaiBaseUrl: options.openaiBaseUrl,
+    anthropicBaseUrl: options.anthropicBaseUrl,
+    models: [
+      ...options.models.map(({ provider, model, surface }) => ({ provider, model, surface })),
+      ...ECONOMY_SEED_MODELS
+    ],
+    codingTargets: uniqueGatewayTargets([
+      ...options.models.map(({ provider, model }) => ({ provider, model })),
+      { provider: "anthropic", model: "claude-fable-5" }
+    ]),
+    economyTargets: uniqueGatewayTargets(ECONOMY_SEED_MODELS)
+  }, modelsDevSnapshot);
 
   const routingConfig = defaultRoutingConfig(options);
   const routingConfigVersionId = `${routingConfigId}:v1`;
@@ -388,7 +392,8 @@ export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
       userId: options.userId,
       keyHash: proxyTokenHash,
       name: "Default local API key",
-      routingConfigId
+      routingConfigId,
+      accessProfileId: gatewayResources.engineerAccessProfileId
     })
     .onConflictDoUpdate({
       target: apiKeys.id,
@@ -396,9 +401,34 @@ export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
         userId: options.userId,
         keyHash: proxyTokenHash,
         name: "Default local API key",
-        routingConfigId
+        routingConfigId,
+        accessProfileId: gatewayResources.engineerAccessProfileId
       }
     });
+
+  if (externalEconomyTokenHash) {
+    await db
+      .insert(apiKeys)
+      .values({
+        id: externalEconomyApiKeyId,
+        organizationId: options.organizationId,
+        workspaceId,
+        keyHash: externalEconomyTokenHash,
+        name: "External economy seed key",
+        accessProfileId: gatewayResources.externalEconomyAccessProfileId,
+        revokedAt: now
+      })
+      .onConflictDoUpdate({
+        target: apiKeys.id,
+        set: {
+          keyHash: externalEconomyTokenHash,
+          name: "External economy seed key",
+          routingConfigId: null,
+          accessProfileId: gatewayResources.externalEconomyAccessProfileId,
+          revokedAt: now
+        }
+      });
+  }
 
   await db
     .update(workspaces)
@@ -438,76 +468,27 @@ async function upsertDefaultWorkspace(db: ProxyDbSession, organizationId: string
     });
 }
 
-async function upsertBuiltinProviders(db: ProxyDbSession, options: SeedOptions, now: Date) {
-  const rows = [
-    {
-      id: BUILTIN_PROVIDER_IDS.openai,
+async function upsertBuiltinProviders(
+  db: ProxyDbSession,
+  definitions: BuiltinProviderSeedDefinition[],
+  now: Date
+) {
+  for (const definition of definitions) {
+    const row = {
+      id: definition.id,
       organizationId: null,
-      slug: "openai",
-      displayName: "OpenAI",
-      baseUrl: trimTrailingSlash(options.openaiBaseUrl),
-      adapterKind: "generic-http-json" as const,
-      adapterConfig: {},
-      authStyle: "bearer" as const,
-      endpoints: [
-        { dialect: "openai-responses", path: "/responses" },
-        { dialect: "openai-chat", path: "/chat/completions" }
-      ],
-      defaultHeaders: {},
-      capabilities: {
-        efforts: ["low", "medium", "high", "xhigh"],
-        promptCaching: OPENAI_PROVIDER_CACHING_CAPABILITIES
-      },
-      forwardHarnessHeaders: true,
+      slug: definition.provider,
+      displayName: definition.displayName,
+      baseUrl: definition.baseUrl,
+      adapterKind: definition.adapterKind,
+      adapterConfig: definition.adapterConfig,
+      authStyle: definition.authStyle,
+      endpoints: definition.endpoints,
+      defaultHeaders: definition.defaultHeaders,
+      capabilities: definition.capabilities,
+      forwardHarnessHeaders: definition.forwardHarnessHeaders,
       enabled: true
-    },
-    {
-      id: BUILTIN_PROVIDER_IDS.anthropic,
-      organizationId: null,
-      slug: "anthropic",
-      displayName: "Anthropic",
-      baseUrl: trimTrailingSlash(options.anthropicBaseUrl),
-      adapterKind: "generic-http-json" as const,
-      adapterConfig: {},
-      authStyle: "x-api-key" as const,
-      endpoints: [
-        { dialect: "anthropic-messages", path: "/messages" }
-      ],
-      defaultHeaders: {},
-      capabilities: {
-        efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"],
-        promptCaching: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES
-      },
-      forwardHarnessHeaders: true,
-      enabled: true
-    },
-    {
-      id: BUILTIN_PROVIDER_IDS["amazon-bedrock"],
-      organizationId: null,
-      slug: "amazon-bedrock",
-      displayName: "Amazon Bedrock",
-      baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com",
-      adapterKind: "aws-bedrock-converse" as const,
-      adapterConfig: {
-        service: "bedrock-runtime",
-        controlPlaneService: "bedrock",
-        defaultRegion: "us-east-1",
-        supportsBearerToken: true,
-        supportsInferenceProfiles: true
-      },
-      authStyle: "aws-sdk" as const,
-      endpoints: [
-        { dialect: "bedrock-converse", operation: "Converse" },
-        { dialect: "bedrock-converse", operation: "ConverseStream" }
-      ],
-      defaultHeaders: {},
-      capabilities: {},
-      forwardHarnessHeaders: false,
-      enabled: true
-    }
-  ] satisfies (typeof providers.$inferInsert)[];
-
-  for (const row of rows) {
+    } satisfies typeof providers.$inferInsert;
     await db
       .insert(providers)
       .values(row)
@@ -530,10 +511,6 @@ async function upsertBuiltinProviders(db: ProxyDbSession, options: SeedOptions, 
   }
 }
 
-function trimTrailingSlash(value: string) {
-  return value.replace(/\/+$/g, "");
-}
-
 export function seedOptionsFromEnv(env: NodeJS.ProcessEnv): SeedOptions {
   return {
     organizationId: env.DEFAULT_ORGANIZATION_ID ?? "local",
@@ -548,6 +525,7 @@ export function seedOptionsFromEnv(env: NodeJS.ProcessEnv): SeedOptions {
     openaiBaseUrl: env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
     anthropicBaseUrl: env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1",
     proxyToken: env.PROXY_TOKEN ?? "dev-token",
+    externalEconomyToken: env.SEED_EXTERNAL_ECONOMY_TOKEN,
     models: [
       model("openai", env.OPENAI_FAST_MODEL ?? "gpt-5.4-mini", "fast", "openai-responses"),
       model("openai", env.OPENAI_FAST_MODEL ?? "gpt-5.4-mini", "fast", "openai-chat"),
@@ -572,6 +550,13 @@ function model(provider: BuiltinProvider, modelName: string, route: RouteName, s
     route,
     surface
   };
+}
+
+function uniqueGatewayTargets(models: { provider: BuiltinProvider; model: string }[]) {
+  return [...new Map(models.map((entry) => [`${entry.provider}:${entry.model}`, {
+    provider: entry.provider,
+    model: entry.model
+  }])).values()];
 }
 
 function defaultRoutingConfig(options: SeedOptions): RoutingConfig {
