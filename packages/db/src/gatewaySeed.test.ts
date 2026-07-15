@@ -87,6 +87,33 @@ describe("AI gateway seed", () => {
       "claude-haiku-4-5"
     ]);
 
+    const routerConfigs = await client.query<{ slug: string; router_config: Record<string, unknown> }>(`
+      select slug, router_config
+      from logical_models
+      where organization_id = '${options.organizationId}' and resolution_kind = 'router'
+      order by slug
+    `);
+    expect(routerConfigs.rows).toEqual([
+      {
+        slug: "coding-auto",
+        router_config: {
+          classifierDeploymentId: `${defaultWorkspaceId(options.organizationId)}:deployment:openai:${options.classifierModel}`,
+          instructions: expect.stringContaining("Select exactly one eligible target"),
+          timeoutMs: options.classifierTimeoutMs,
+          maxAttempts: options.classifierMaxAttempts
+        }
+      },
+      {
+        slug: "economy-auto",
+        router_config: {
+          classifierDeploymentId: `${defaultWorkspaceId(options.organizationId)}:deployment:openai:${options.classifierModel}`,
+          instructions: expect.stringContaining("Select exactly one eligible target"),
+          timeoutMs: options.classifierTimeoutMs,
+          maxAttempts: options.classifierMaxAttempts
+        }
+      }
+    ]);
+
     const grants = await client.query<{ profile: string; logical_model: string }>(`
       select ap.slug as profile, lm.slug as logical_model
       from access_profile_model_grants g
@@ -312,6 +339,8 @@ function gatewayInput(options: ReturnType<typeof seedOptionsFromEnv>, workspaceI
     organizationId: options.organizationId,
     workspaceId,
     classifierModel: options.classifierModel,
+    classifierTimeoutMs: options.classifierTimeoutMs,
+    classifierMaxAttempts: options.classifierMaxAttempts,
     openaiBaseUrl: options.openaiBaseUrl,
     anthropicBaseUrl: options.anthropicBaseUrl,
     models: [

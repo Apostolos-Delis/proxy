@@ -5,6 +5,7 @@ import {
 } from "@proxy/db";
 
 import type { AppConfig } from "../config.js";
+import { LlmClassifier, type LogicalModelClassifier } from "../classifier.js";
 import { CompressionCacheWindowResolver } from "../compressionCacheWindow.js";
 import { ModelDiscoveryStore } from "../modelDiscovery.js";
 import { BedrockModelDiscoveryJob } from "../jobs/bedrockModelDiscovery.js";
@@ -22,6 +23,7 @@ import { OrganizationSettingsStore } from "./organizationSettings.js";
 import { ProviderCredentialAdminService } from "./providerCredentialAdmin.js";
 import { ProviderCredentialOAuthService } from "./providerCredentialOAuth.js";
 import { ProviderCredentialStore, type ProviderCredentialOptions } from "./providerCredentials.js";
+import { ProviderConnectionClassifierTargetResolver } from "./providerConnectionClassifierTarget.js";
 import { ProviderHealthStore } from "./providerHealth.js";
 import { ProviderRegistryAdminService } from "./providerRegistryAdmin.js";
 import { ProviderRegistryStore } from "./providers.js";
@@ -49,14 +51,35 @@ export type DatabasePersistenceConfig = AdminQueryConfig & {
 };
 
 export function createPostgresPersistence(databaseUrl: string, config: AppConfig, metrics?: MetricsCollector) {
-  return createDatabasePersistence(createPostgresDatabase(databaseUrl, { max: config.dbPoolMax }), config, true, metrics);
+  const db = createPostgresDatabase(databaseUrl, { max: config.dbPoolMax });
+  const classifierTargets = new ProviderConnectionClassifierTargetResolver(db, {
+    allowedPrivateUpstreamCidrs: config.allowedPrivateUpstreamCidrs,
+    encryptionKey: config.providerSecretEncryptionKey,
+    resolveSecretReference: ({ reference, provider, baseUrl }) => {
+      if (reference === "env:OPENAI_API_KEY" && provider === "openai" && baseUrl === config.openaiBaseUrl) {
+        return config.openaiApiKey;
+      }
+      if (reference === "env:ANTHROPIC_API_KEY" && provider === "anthropic" && baseUrl === config.anthropicBaseUrl) {
+        return config.anthropicApiKey;
+      }
+      return undefined;
+    }
+  });
+  return createDatabasePersistence(
+    db,
+    config,
+    true,
+    metrics,
+    new LlmClassifier(config, metrics, classifierTargets)
+  );
 }
 
 export function createDatabasePersistence(
   db: ProxyDatabase,
   config: DatabasePersistenceConfig,
   useAdvisoryLocks: boolean,
-  metrics?: MetricsCollector
+  metrics?: MetricsCollector,
+  classifier?: LogicalModelClassifier
 ) {
   const transactional = createTransactionalDatabase(db);
   const apiKeys = new ApiKeyIdentityStore(db);
@@ -95,7 +118,7 @@ export function createDatabasePersistence(
     }),
     bedrockModelDiscovery: new BedrockModelDiscoveryJob(transactional, providerCredentials, config),
     modelCatalogAdmin: new ModelCatalogAdminService(transactional),
-    modelResolution: new ModelResolutionService(db),
+    modelResolution: new ModelResolutionService(db, { classifier }),
     modelDiscovery: new ModelDiscoveryStore(db),
     modelPricingAdmin: new ModelPricingAdminService(transactional),
     organizationSettings: new OrganizationSettingsStore(db, clearRoutingConfigCache),

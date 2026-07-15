@@ -1,5 +1,5 @@
 import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import ipaddr from "ipaddr.js";
 
 import { providers, type ProxyDbSession } from "@proxy/db";
 import {
@@ -230,16 +230,30 @@ export async function validateProviderBaseUrl(
 }
 
 async function addressesForHostname(hostname: string) {
-  const ipFamily = isIP(hostname);
-  if (ipFamily) return [{ address: hostname, family: pinnedFamily(ipFamily) }];
+  const literal = hostname.startsWith("[") && hostname.endsWith("]")
+    ? hostname.slice(1, -1)
+    : hostname;
+  if (ipaddr.isValid(literal)) return [canonicalPinnedAddress(literal)];
   try {
-    return (await lookup(hostname, { all: true, verbatim: true })).map((entry) => ({
-      address: entry.address,
-      family: pinnedFamily(entry.family)
-    }));
+    return (await lookup(hostname, { all: true, verbatim: true })).map((entry) => {
+      pinnedFamily(entry.family);
+      return canonicalPinnedAddress(entry.address);
+    });
   } catch {
     throw new ProviderRegistryError("provider_base_url_unresolvable");
   }
+}
+
+function canonicalPinnedAddress(address: string): PinnedUpstreamAddress {
+  let parsed = ipaddr.parse(address);
+  if (parsed instanceof ipaddr.IPv6 && parsed.isIPv4MappedAddress()) {
+    parsed = parsed.toIPv4Address();
+  }
+  return {
+    hostname: address,
+    address: parsed.toString(),
+    family: parsed.kind() === "ipv4" ? 4 : 6
+  };
 }
 
 function pinnedFamily(family: number): 4 | 6 {
@@ -248,27 +262,18 @@ function pinnedFamily(family: number): 4 | 6 {
 }
 
 function isBlockedAddress(address: string) {
-  const version = isIP(address);
-  if (version === 4) {
-    return inIpv4Cidr(address, "169.254.0.0/16") ||
-      inIpv4Cidr(address, "168.63.129.16/32") ||
-      inIpv4Cidr(address, "100.100.100.200/32");
-  }
-  const normalized = address.toLowerCase();
-  return normalized === "::" || normalized.startsWith("fe80:");
+  const parsed = ipaddr.process(address);
+  if (parsed.kind() === "ipv4" && (
+    parsed.match(ipaddr.parseCIDR("168.63.129.16/32")) ||
+    parsed.match(ipaddr.parseCIDR("100.100.100.200/32"))
+  )) return true;
+  return !new Set(["unicast", "private", "carrierGradeNat", "loopback", "uniqueLocal"])
+    .has(parsed.range());
 }
 
 function isPrivateAddress(address: string) {
-  const version = isIP(address);
-  if (version === 4) {
-    return inIpv4Cidr(address, "10.0.0.0/8") ||
-      inIpv4Cidr(address, "172.16.0.0/12") ||
-      inIpv4Cidr(address, "192.168.0.0/16") ||
-      inIpv4Cidr(address, "127.0.0.0/8") ||
-      inIpv4Cidr(address, "100.64.0.0/10");
-  }
-  const normalized = address.toLowerCase();
-  return normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd");
+  return new Set(["private", "carrierGradeNat", "loopback", "uniqueLocal"])
+    .has(ipaddr.process(address).range());
 }
 
 function isAllowedPrivateAddress(address: string, cidrs: readonly string[]) {
@@ -276,21 +281,16 @@ function isAllowedPrivateAddress(address: string, cidrs: readonly string[]) {
 }
 
 function addressMatchesCidr(address: string, cidr: string) {
-  if (isIP(address) === 4) return inIpv4Cidr(address, cidr);
-  return cidr === address;
-}
-
-function inIpv4Cidr(address: string, cidr: string) {
-  const [range, bitsValue] = cidr.split("/");
-  if (!range || isIP(range) !== 4 || isIP(address) !== 4) return false;
-  const bits = bitsValue === undefined ? 32 : Number(bitsValue);
-  if (!Number.isInteger(bits) || bits < 0 || bits > 32) return false;
-  const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
-  return (ipv4ToInt(address) & mask) === (ipv4ToInt(range) & mask);
-}
-
-function ipv4ToInt(address: string) {
-  return address.split(".").reduce((value, part) => ((value << 8) + Number(part)) >>> 0, 0);
+  try {
+    const parsedAddress = ipaddr.process(address);
+    const [range, bits] = ipaddr.parseCIDR(cidr);
+    const parsedRange = range instanceof ipaddr.IPv6 && range.isIPv4MappedAddress()
+      ? range.toIPv4Address()
+      : range;
+    return parsedAddress.kind() === parsedRange.kind() && parsedAddress.match(parsedRange, bits);
+  } catch {
+    return false;
+  }
 }
 
 function isProviderEndpoint(value: {

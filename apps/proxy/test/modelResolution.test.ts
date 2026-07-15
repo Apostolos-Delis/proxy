@@ -325,7 +325,7 @@ describe("logical model resolution", () => {
     client = fixture.client;
     const keyId = `${fixture.organizationId}:api-key:default`;
     const now = new Date("2026-07-15T12:00:00.000Z");
-    const resolver = new ModelResolutionService(fixture.db, () => now);
+    const resolver = new ModelResolutionService(fixture.db, { now: () => now });
 
     await fixture.db.update(apiKeys).set({ revokedAt: now }).where(eq(apiKeys.id, keyId));
     expectDenial(await resolver.resolve(resolveInput(fixture.organizationId)), "api_key_inactive");
@@ -346,12 +346,12 @@ describe("logical model resolution", () => {
     expectDenial(await resolver.resolve(resolveInput(fixture.organizationId)), "access_profile_missing");
   });
 
-  it("defers classifier models without invoking routing work", async () => {
+  it("fails closed when no classifier runtime is installed", async () => {
     const fixture = await setup("org_resolution_router");
     client = fixture.client;
     expectDenial(await fixture.resolver.resolve(resolveInput(fixture.organizationId, {
       requestedModel: "coding-auto"
-    })), "router_resolution_required");
+    })), "classifier_unavailable");
   });
 });
 

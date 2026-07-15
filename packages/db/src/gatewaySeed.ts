@@ -4,6 +4,7 @@ import { and, asc, eq, notInArray } from "drizzle-orm";
 
 import {
   GATEWAY_OPERATION_IDS,
+  logicalModelClassifierConfigSchema,
   type BuiltinProvider,
   type Dialect,
   type GatewayModelCapabilities
@@ -33,6 +34,8 @@ export type GatewaySeedInput = {
   organizationId: string;
   workspaceId: string;
   classifierModel: string;
+  classifierTimeoutMs: number;
+  classifierMaxAttempts: number;
   openaiBaseUrl: string;
   anthropicBaseUrl: string;
   models: {
@@ -49,6 +52,11 @@ export type GatewaySeedTarget = {
   model: string;
 };
 
+const DEFAULT_CLASSIFIER_INSTRUCTIONS = [
+  "Select exactly one eligible target for this AI gateway request.",
+  "Use the request context and advertised target capabilities."
+].join(" ");
+
 type SeedModel = {
   provider: BuiltinProvider;
   model: string;
@@ -62,6 +70,7 @@ export async function seedGatewayResources(
   input: GatewaySeedInput,
   snapshot: GatewaySeedSnapshotEntry[]
 ) {
+  const classifierRouterConfig = classifierConfig(input);
   const now = new Date();
   const providerDefinitions = builtinProviderSeedDefinitions(input);
   const models = collectModels(input, snapshot, providerDefinitions);
@@ -180,7 +189,8 @@ export async function seedGatewayResources(
       name: "Fable",
       description: "Direct access to Claude Fable 5.",
       resolutionKind: "direct" as const,
-      routerKind: null
+      routerKind: null,
+      routerConfig: {}
     },
     {
       id: logicalModelId(input.workspaceId, "coding-auto"),
@@ -188,7 +198,8 @@ export async function seedGatewayResources(
       name: "Coding Auto",
       description: "Classifier-routed access to the configured coding model set.",
       resolutionKind: "router" as const,
-      routerKind: "classifier" as const
+      routerKind: "classifier" as const,
+      routerConfig: classifierRouterConfig
     },
     {
       id: logicalModelId(input.workspaceId, "economy-auto"),
@@ -196,7 +207,8 @@ export async function seedGatewayResources(
       name: "Economy Auto",
       description: "Classifier-routed access limited to economy deployments.",
       resolutionKind: "router" as const,
-      routerKind: "classifier" as const
+      routerKind: "classifier" as const,
+      routerConfig: classifierRouterConfig
     }
   ];
 
@@ -207,7 +219,6 @@ export async function seedGatewayResources(
         ...row,
         organizationId: input.organizationId,
         workspaceId: input.workspaceId,
-        routerConfig: {},
         status: "active"
       })
       .onConflictDoUpdate({
@@ -217,7 +228,7 @@ export async function seedGatewayResources(
           description: row.description,
           resolutionKind: row.resolutionKind,
           routerKind: row.routerKind,
-          routerConfig: {},
+          routerConfig: row.routerConfig,
           status: "active",
           updatedAt: now
         }
@@ -278,6 +289,15 @@ export async function seedGatewayResources(
     engineerAccessProfileId: accessProfileId(input.workspaceId, "opendoor-engineer"),
     externalEconomyAccessProfileId: accessProfileId(input.workspaceId, "external-economy")
   };
+}
+
+function classifierConfig(input: GatewaySeedInput) {
+  return logicalModelClassifierConfigSchema.parse({
+    classifierDeploymentId: modelDeploymentId(input.workspaceId, "openai", input.classifierModel),
+    instructions: DEFAULT_CLASSIFIER_INSTRUCTIONS,
+    timeoutMs: input.classifierTimeoutMs,
+    maxAttempts: input.classifierMaxAttempts
+  });
 }
 
 function connectionRows(input: GatewaySeedInput, definitions: BuiltinProviderSeedDefinition[]) {

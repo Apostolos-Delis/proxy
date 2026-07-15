@@ -45,6 +45,7 @@ export type SeedOptions = {
   classifierModel: string;
   classifierPromptVersion: string;
   classifierTimeoutMs: number;
+  classifierMaxAttempts: number;
   classifierAllowRedactedExcerpt: boolean;
   replaceRoutingConfigVersion: boolean;
   openaiBaseUrl: string;
@@ -295,6 +296,8 @@ export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
     organizationId: options.organizationId,
     workspaceId,
     classifierModel: options.classifierModel,
+    classifierTimeoutMs: options.classifierTimeoutMs,
+    classifierMaxAttempts: options.classifierMaxAttempts,
     openaiBaseUrl: options.openaiBaseUrl,
     anthropicBaseUrl: options.anthropicBaseUrl,
     models: [
@@ -520,6 +523,7 @@ export function seedOptionsFromEnv(env: NodeJS.ProcessEnv): SeedOptions {
     classifierModel: env.CLASSIFIER_MODEL ?? "gpt-5-nano-2025-08-07",
     classifierPromptVersion: env.CLASSIFIER_PROMPT_VERSION ?? "2026-06-08",
     classifierTimeoutMs: positiveIntegerEnv(env.CLASSIFIER_TIMEOUT_MS, 30000),
+    classifierMaxAttempts: positiveIntegerEnv(env.CLASSIFIER_MAX_ATTEMPTS, 2),
     classifierAllowRedactedExcerpt: booleanEnv(env.CLASSIFIER_ALLOW_REDACTED_EXCERPT),
     replaceRoutingConfigVersion: booleanEnv(env.SEED_REPLACE_ROUTING_CONFIG),
     openaiBaseUrl: env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",

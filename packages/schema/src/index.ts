@@ -419,6 +419,88 @@ export const gatewayAccessProfileLimitsSchema: z.ZodType<GatewayAccessProfileLim
   requests_per_minute: z.number().int().positive().optional(),
   tokens_per_minute: z.number().int().positive().optional()
 }).strict();
+export const logicalModelClassifierConfigSchema = z.strictObject({
+  classifierDeploymentId: z.string().min(1).max(1_024).refine((value) => value === value.trim(), {
+    message: "Classifier deployment ID must not include leading or trailing whitespace."
+  }),
+  instructions: z.string().min(1).max(20_000).refine((value) => value.trim().length > 0, {
+    message: "Classifier instructions must contain non-whitespace text."
+  }),
+  timeoutMs: z.number().int().positive().max(30_000),
+  maxAttempts: z.number().int().positive().max(5)
+});
+export type LogicalModelClassifierConfig = z.infer<typeof logicalModelClassifierConfigSchema>;
+export const logicalModelClassificationFeaturesSchema = z.strictObject({
+  estimatedInputTokens: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  inputChars: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  hasTools: z.boolean().optional(),
+  toolCount: z.number().int().nonnegative().max(10_000).optional(),
+  hasImages: z.boolean().optional(),
+  hasPreviousResponseId: z.boolean().optional(),
+  extractedHints: z.array(z.string().min(1).max(64)).max(32).optional(),
+  requestShapeHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  redactedInputExcerpt: z.string().max(2_000).nullable().optional()
+});
+export type LogicalModelClassificationFeatures = z.infer<typeof logicalModelClassificationFeaturesSchema>;
+export const logicalModelClassificationContextSchema = logicalModelClassificationFeaturesSchema.extend({
+  requestedModel: z.string().min(1).max(512),
+  operationId: gatewayOperationIdSchema
+});
+export type LogicalModelClassificationContext = z.infer<typeof logicalModelClassificationContextSchema>;
+export const logicalModelClassifierCapabilitiesSchema = z.strictObject({
+  contextWindow: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  maxOutputTokens: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  modalities: z.array(z.string().min(1).max(64)).max(16).optional(),
+  efforts: z.array(z.string().min(1).max(64)).max(16).optional(),
+  tools: z.boolean().optional(),
+  images: z.boolean().optional(),
+  toolCall: z.boolean().optional(),
+  image: z.boolean().optional(),
+  reasoning: z.boolean().optional(),
+  streaming: z.boolean().optional()
+});
+export type LogicalModelClassifierCapabilities = z.infer<typeof logicalModelClassifierCapabilitiesSchema>;
+export const logicalModelClassifierCandidateSchema = z.strictObject({
+  targetId: z.string().min(1).max(1_024),
+  capabilities: logicalModelClassifierCapabilitiesSchema
+});
+export type LogicalModelClassifierCandidate = z.infer<typeof logicalModelClassifierCandidateSchema>;
+export const logicalModelClassificationRequestSchema = z.strictObject({
+  context: logicalModelClassificationContextSchema,
+  candidates: z.array(logicalModelClassifierCandidateSchema).min(1).max(64)
+}).superRefine((request, context) => {
+  if (new Set(request.candidates.map((candidate) => candidate.targetId)).size !== request.candidates.length) {
+    context.addIssue({
+      code: "custom",
+      message: "Classifier target IDs must be unique.",
+      path: ["candidates"]
+    });
+  }
+});
+export type LogicalModelClassificationRequest = z.infer<typeof logicalModelClassificationRequestSchema>;
+
+const LOGICAL_MODEL_CLASSIFIER_CAPABILITY_KEYS = [
+  "contextWindow",
+  "maxOutputTokens",
+  "modalities",
+  "efforts",
+  "tools",
+  "images",
+  "toolCall",
+  "image",
+  "reasoning",
+  "streaming"
+] as const;
+
+export function projectLogicalModelClassifierCapabilities(
+  capabilities: GatewayModelCapabilities
+): Record<string, GatewayModelCapability> {
+  return Object.fromEntries(
+    LOGICAL_MODEL_CLASSIFIER_CAPABILITY_KEYS.flatMap((key) => (
+      capabilities[key] === undefined ? [] : [[key, capabilities[key]]]
+    ))
+  );
+}
 export const httpProviderDialectSchema = z.enum(HTTP_PROVIDER_DIALECT_NAMES);
 export const providerSchema = z.string().min(1, "Provider slug is required.").refine(
   (value) => value.trim().length > 0,

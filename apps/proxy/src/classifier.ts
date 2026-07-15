@@ -2,6 +2,8 @@ import { z } from "zod";
 import { performance } from "node:perf_hooks";
 import {
   composeClassifierInstructions,
+  type LogicalModelClassificationRequest,
+  type LogicalModelClassifierConfig,
   type RoutingConfigClassifier
 } from "@proxy/schema";
 
@@ -41,6 +43,12 @@ const classifierOutputSchema = z.object({
   confidence: z.number().min(0).max(1)
 });
 
+const logicalModelClassifierOutputSchema = z.strictObject({
+  target_id: z.string().min(1).max(1_024),
+  reason_codes: z.array(z.string().min(1).max(100)).min(1).max(20),
+  confidence: z.number().min(0).max(1)
+});
+
 export type ClassificationResult = {
   output: ClassifierOutput;
   attempts: number;
@@ -55,6 +63,36 @@ export type ClassifierTarget = {
   credential?: UpstreamCredential;
 };
 
+export type LogicalModelClassificationInput = {
+  config: LogicalModelClassifierConfig;
+  classifierModel: string;
+  request: LogicalModelClassificationRequest;
+};
+
+export type LogicalModelClassifierDeployment = {
+  deploymentId: string;
+  organizationId: string;
+  workspaceId: string;
+  model: string;
+  provider: string;
+  providerConnectionId: string;
+  bindingId: string;
+};
+
+export type LogicalModelClassifierTargetResolver = {
+  resolve(deployment: LogicalModelClassifierDeployment, signal?: AbortSignal): Promise<ClassifierTarget>;
+};
+
+export type LogicalModelClassificationResult = {
+  targetId: string;
+  reasonCodes: string[];
+  confidence: number;
+  attempts: number;
+  usage?: Record<string, unknown>;
+};
+
+export type LogicalModelClassifier = Pick<LlmClassifier, "classifyLogicalModel">;
+
 export class ClassifierError extends Error {
   constructor(message: string) {
     super(message);
@@ -65,7 +103,8 @@ export class ClassifierError extends Error {
 export class LlmClassifier {
   constructor(
     private readonly config: AppConfig,
-    private readonly metrics: MetricsCollector = new NoopMetricsCollector()
+    private readonly metrics: MetricsCollector = new NoopMetricsCollector(),
+    private readonly logicalModelTargets?: LogicalModelClassifierTargetResolver
   ) {}
 
   async classify(
@@ -73,25 +112,138 @@ export class LlmClassifier {
     settings: ClassifierSettings,
     target: ClassifierTarget
   ): Promise<ClassificationResult> {
+    return this.runWithRetries(
+      settings,
+      settings.maxAttempts,
+      settings.timeoutMs,
+      (signal) => this.callClassifier(context, settings, target, signal)
+    );
+  }
+
+  async classifyLogicalModel(
+    input: LogicalModelClassificationInput,
+    deployment: LogicalModelClassifierDeployment
+  ): Promise<LogicalModelClassificationResult> {
+    if (input.request.candidates.length === 0) {
+      throw new ClassifierError("Logical model classifier requires at least one eligible target.");
+    }
+    if (!this.logicalModelTargets) {
+      throw new ClassifierError("Logical model classifier target resolver is unavailable.");
+    }
+    const metricSettings = {
+      providerId: deployment.provider,
+      model: input.classifierModel
+    };
+    const result = await this.runWithRetries(
+      metricSettings,
+      input.config.maxAttempts,
+      input.config.timeoutMs,
+      async (signal) => {
+        const target = await this.logicalModelTargets!.resolve(deployment, signal);
+        signal.throwIfAborted();
+        return this.callLogicalModelClassifier(input, target, signal);
+      }
+    );
+    return {
+      targetId: result.output.target_id,
+      reasonCodes: result.output.reason_codes,
+      confidence: result.output.confidence,
+      attempts: result.attempts,
+      usage: result.usage
+    };
+  }
+
+  private async callClassifier(
+    context: RouteContext,
+    settings: ClassifierSettings,
+    target: ClassifierTarget,
+    signal: AbortSignal
+  ): Promise<{ output: ClassifierOutput; usage?: Record<string, unknown> }> {
+    const view = classifierView(context, settings.allowRedactedExcerpt);
+    const json = await this.request(target, classifierRequest(settings, view), signal);
+    const parsed = extractStructuredOutput(json);
+    const result = classifierOutputSchema.safeParse(parsed);
+    if (!result.success) {
+      throw new ClassifierError("Classifier returned invalid structured output.");
+    }
+
+    return { output: result.data, usage: extractUsage(json) };
+  }
+
+  private async callLogicalModelClassifier(
+    input: LogicalModelClassificationInput,
+    target: ClassifierTarget,
+    signal: AbortSignal
+  ) {
+    const json = await this.request(
+      target,
+      logicalModelClassifierRequest(input),
+      signal
+    );
+    const result = logicalModelClassifierOutputSchema.safeParse(extractStructuredOutput(json));
+    if (!result.success || !input.request.candidates.some((candidate) => candidate.targetId === result.data.target_id)) {
+      throw new ClassifierError("Classifier returned an invalid logical model target.");
+    }
+    return { output: result.data, usage: extractUsage(json) };
+  }
+
+  private async request(target: ClassifierTarget, body: unknown, signal: AbortSignal) {
+    const response = await fetchWithPinnedAddress(providerRequestUrl({
+      provider: target.provider,
+      endpoint: target.endpoint,
+      config: this.config,
+      credential: target.credential
+    }), {
+      method: "POST",
+      headers: classifierHeaders(this.config, target),
+      body: JSON.stringify(body),
+      redirect: providerRequestRedirect({ provider: target.provider, credential: target.credential }),
+      signal
+    }, providerRequestPinnedAddress({
+      provider: target.provider,
+      config: this.config,
+      credential: target.credential
+    }));
+
+    if (!response.ok) throw new ClassifierError(`Classifier HTTP ${response.status}`);
+    return response.json();
+  }
+
+  private async runWithRetries<Output>(
+    settings: Pick<ClassifierSettings, "providerId" | "model">,
+    maxAttempts: number,
+    timeoutMs: number,
+    call: (signal: AbortSignal) => Promise<{ output: Output; usage?: Record<string, unknown> }>
+  ) {
     let lastError: unknown;
 
-    for (let attempt = 1; attempt <= settings.maxAttempts; attempt += 1) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       const startedAtMs = performance.now();
+      const controller = new AbortController();
+      let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
-        const { output, usage } = await this.callClassifier(context, settings, target);
+        const deadline = new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => {
+            controller.abort();
+            reject(new ClassifierError("Classifier attempt timed out."));
+          }, timeoutMs);
+        });
+        const { output, usage } = await Promise.race([call(controller.signal), deadline]);
         this.recordClassifierAttempt(settings, startedAtMs, "succeeded", "none");
         this.recordClassifierUsage(settings, usage);
         return { output, attempts: attempt, usage };
       } catch (error) {
         lastError = error;
         this.recordClassifierAttempt(settings, startedAtMs, "failed", "classifier");
-        if (attempt < settings.maxAttempts) {
+        if (attempt < maxAttempts) {
           this.metrics.incrementCounter("proxy_classifier_retries_total", {
             provider: settings.providerId,
             model: settings.model,
             error_class: "classifier"
           });
         }
+      } finally {
+        if (timeout) clearTimeout(timeout);
       }
     }
 
@@ -100,52 +252,8 @@ export class LlmClassifier {
     );
   }
 
-  private async callClassifier(
-    context: RouteContext,
-    settings: ClassifierSettings,
-    target: ClassifierTarget
-  ): Promise<{ output: ClassifierOutput; usage?: Record<string, unknown> }> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), settings.timeoutMs);
-
-    try {
-      const view = classifierView(context, settings.allowRedactedExcerpt);
-      const response = await fetchWithPinnedAddress(providerRequestUrl({
-        provider: target.provider,
-        endpoint: target.endpoint,
-        config: this.config,
-        credential: target.credential
-      }), {
-        method: "POST",
-        headers: classifierHeaders(this.config, target),
-        body: JSON.stringify(classifierRequest(settings, view)),
-        redirect: providerRequestRedirect({ provider: target.provider, credential: target.credential }),
-        signal: controller.signal
-      }, providerRequestPinnedAddress({
-        provider: target.provider,
-        config: this.config,
-        credential: target.credential
-      }));
-
-      if (!response.ok) {
-        throw new ClassifierError(`Classifier HTTP ${response.status}`);
-      }
-
-      const json = await response.json();
-      const parsed = extractStructuredOutput(json);
-      const result = classifierOutputSchema.safeParse(parsed);
-      if (!result.success) {
-        throw new ClassifierError("Classifier returned invalid structured output.");
-      }
-
-      return { output: result.data, usage: extractUsage(json) };
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
   private recordClassifierAttempt(
-    settings: ClassifierSettings,
+    settings: Pick<ClassifierSettings, "providerId" | "model">,
     startedAtMs: number,
     outcome: "succeeded" | "failed",
     errorClass: string
@@ -164,7 +272,10 @@ export class LlmClassifier {
     });
   }
 
-  private recordClassifierUsage(settings: ClassifierSettings, usage: Record<string, unknown> | undefined) {
+  private recordClassifierUsage(
+    settings: Pick<ClassifierSettings, "providerId" | "model">,
+    usage: Record<string, unknown> | undefined
+  ) {
     if (!usage) return;
     const normalized = normalizeUsage(usage);
     const labels = {
@@ -253,6 +364,43 @@ function classifierRequest(settings: ClassifierSettings, view: unknown) {
             can_use_fast_model: { type: "boolean" },
             needs_deep_reasoning: { type: "boolean" },
             reason_codes: { type: "array", items: { type: "string" }, minItems: 1 },
+            confidence: { type: "number", minimum: 0, maximum: 1 }
+          }
+        }
+      }
+    }
+  };
+}
+
+function logicalModelClassifierRequest(input: LogicalModelClassificationInput) {
+  const targetIds = input.request.candidates.map((candidate) => candidate.targetId);
+  return {
+    model: input.classifierModel,
+    stream: false,
+    instructions: input.config.instructions,
+    input: JSON.stringify({
+      request: input.request.context,
+      targets: input.request.candidates.map((candidate) => ({
+        id: candidate.targetId,
+        capabilities: candidate.capabilities
+      }))
+    }),
+    text: {
+      format: {
+        type: "json_schema",
+        name: "logical_model_target_selection",
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["target_id", "reason_codes", "confidence"],
+          properties: {
+            target_id: { type: "string", enum: targetIds },
+            reason_codes: {
+              type: "array",
+              items: { type: "string", minLength: 1, maxLength: 100 },
+              minItems: 1,
+              maxItems: 20
+            },
             confidence: { type: "number", minimum: 0, maximum: 1 }
           }
         }
