@@ -11,7 +11,12 @@ import {
   gatewayModelCapabilitiesSchema,
   gatewayOperationIdSchema,
   gatewayAccessProfileLimitsSchema,
-  gatewayParameterCapsSchema
+  gatewayParameterCapsSchema,
+  logicalModelClassificationContextSchema,
+  logicalModelClassificationFeaturesSchema,
+  logicalModelClassificationRequestSchema,
+  projectLogicalModelClassifierCapabilities,
+  logicalModelClassifierConfigSchema
 } from "./index.js";
 
 describe("gateway model contracts", () => {
@@ -63,5 +68,78 @@ describe("gateway model contracts", () => {
     });
     expect(gatewayAccessProfileLimitsSchema.safeParse({ max_tokens: 8_192 }).success).toBe(false);
     expect(gatewayAccessProfileLimitsSchema.safeParse({ requests_per_minute: 1.5 }).success).toBe(false);
+  });
+
+  it("bounds classifier router configuration", () => {
+    const config = {
+      classifierDeploymentId: "deployment_classifier",
+      instructions: "Choose one eligible target.",
+      timeoutMs: 10_000,
+      maxAttempts: 2
+    };
+    expect(logicalModelClassifierConfigSchema.parse(config)).toEqual(config);
+    expect(logicalModelClassifierConfigSchema.safeParse({ ...config, classifierDeploymentId: " " }).success).toBe(false);
+    expect(logicalModelClassifierConfigSchema.safeParse({ ...config, classifierDeploymentId: "x".repeat(1_025) }).success).toBe(false);
+    expect(logicalModelClassifierConfigSchema.safeParse({ ...config, instructions: " " }).success).toBe(false);
+    expect(logicalModelClassifierConfigSchema.safeParse({ ...config, timeoutMs: 30_001 }).success).toBe(false);
+    expect(logicalModelClassifierConfigSchema.safeParse({ ...config, maxAttempts: 6 }).success).toBe(false);
+    expect(logicalModelClassifierConfigSchema.safeParse({ ...config, fallbackTargetId: "target_a" }).success).toBe(false);
+  });
+
+  it("bounds and redacts classifier request features", () => {
+    const features = {
+      estimatedInputTokens: 100,
+      hasTools: true,
+      extractedHints: ["security"],
+      requestShapeHash: "a".repeat(64),
+      redactedInputExcerpt: "redacted request"
+    };
+    expect(logicalModelClassificationFeaturesSchema.parse(features)).toEqual(features);
+    expect(logicalModelClassificationContextSchema.parse({
+      requestedModel: "coding-auto",
+      operationId: "text.generate",
+      ...features
+    })).toEqual({
+      requestedModel: "coding-auto",
+      operationId: "text.generate",
+      ...features
+    });
+    expect(logicalModelClassificationFeaturesSchema.safeParse({ rawPrompt: "secret" }).success).toBe(false);
+    expect(logicalModelClassificationFeaturesSchema.safeParse({ redactedInputExcerpt: "x".repeat(2_001) }).success).toBe(false);
+    expect(logicalModelClassificationFeaturesSchema.safeParse({ extractedHints: ["x".repeat(65)] }).success).toBe(false);
+  });
+
+  it("bounds the complete classifier projection and allowlists capabilities", () => {
+    const candidate = {
+      targetId: "target_a",
+      capabilities: projectLogicalModelClassifierCapabilities({
+        contextWindow: 200_000,
+        tools: true,
+        internalMetadata: ["must-not-leak"]
+      })
+    };
+    expect(logicalModelClassificationRequestSchema.parse({
+      context: { requestedModel: "coding-auto", operationId: "text.generate" },
+      candidates: [candidate]
+    })).toEqual({
+      context: { requestedModel: "coding-auto", operationId: "text.generate" },
+      candidates: [{ targetId: "target_a", capabilities: { contextWindow: 200_000, tools: true } }]
+    });
+    expect(logicalModelClassificationRequestSchema.safeParse({
+      context: { requestedModel: "coding-auto", operationId: "text.generate" },
+      candidates: Array.from({ length: 65 }, (_, index) => ({ targetId: `target_${index}`, capabilities: {} }))
+    }).success).toBe(false);
+    expect(logicalModelClassificationRequestSchema.safeParse({
+      context: { requestedModel: "coding-auto", operationId: "text.generate" },
+      candidates: [{ targetId: "x".repeat(1_025), capabilities: {} }]
+    }).success).toBe(false);
+    expect(logicalModelClassificationRequestSchema.safeParse({
+      context: { requestedModel: "coding-auto", operationId: "text.generate" },
+      candidates: [candidate, candidate]
+    }).success).toBe(false);
+    expect(logicalModelClassificationRequestSchema.safeParse({
+      context: { requestedModel: "coding-auto", operationId: "text.generate" },
+      candidates: [{ targetId: "target_a", capabilities: { efforts: ["x".repeat(65)] } }]
+    }).success).toBe(false);
   });
 });

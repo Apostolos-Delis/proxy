@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { and, asc, eq } from "drizzle-orm";
 
 import {
@@ -14,14 +16,23 @@ import {
 } from "@proxy/db";
 import {
   gatewayParameterCapsSchema,
+  logicalModelClassificationRequestSchema,
+  logicalModelClassifierConfigSchema,
+  projectLogicalModelClassifierCapabilities,
   type Dialect,
+  type GatewayModelCapabilities,
   type GatewayOperationId,
   type GatewayParameterCaps,
   type HarnessCompatibilityProfileId,
+  type LogicalModelClassificationFeatures,
   type ProviderAdapterContractVersion,
   type ProviderAdapterKind
 } from "@proxy/schema";
 
+import type {
+  LogicalModelClassifier,
+  LogicalModelClassifierDeployment
+} from "../classifier.js";
 import { resolveWireCompatibility } from "../wireCompatibility.js";
 import { workspaceScope } from "./scope.js";
 
@@ -39,6 +50,16 @@ export type ResolveModelInput = {
   hasPreviousResponseId?: boolean;
   unsupportedFields?: readonly string[];
   bedrockSettingsOnNonBedrockTarget?: boolean;
+  classificationFeatures?: LogicalModelClassificationFeatures;
+};
+
+export type ClassifierDecisionEvidence = {
+  kind: "classifier";
+  classifierDeploymentId: string;
+  selectedTargetId: string;
+  attempts: number;
+  reasonCodes: string[];
+  confidence: number;
 };
 
 export type ResolvedModelTarget = {
@@ -56,7 +77,8 @@ export type ResolvedModelTarget = {
   providerAdapterContractVersion: ProviderAdapterContractVersion;
   wireAdapterId: string | null;
   wireAdapterVersion: string | null;
-  routerDecisionId: null;
+  routerDecisionId: string | null;
+  routerDecision: ClassifierDecisionEvidence | null;
 };
 
 export const MODEL_RESOLUTION_DENIAL_CODES = [
@@ -69,7 +91,11 @@ export const MODEL_RESOLUTION_DENIAL_CODES = [
   "invalid_parameters",
   "parameter_cap_exceeded",
   "model_inactive",
-  "router_resolution_required",
+  "router_config_invalid",
+  "classification_context_invalid",
+  "classifier_target_unavailable",
+  "classifier_unavailable",
+  "classifier_failed",
   "local_operation_not_resolvable",
   "model_unavailable",
   "direct_target_count_invalid"
@@ -86,15 +112,25 @@ export type ModelResolutionDenial = {
 
 export type ModelResolutionResult = ResolvedModelTarget | ModelResolutionDenial;
 
-type EligibleTarget = Omit<ResolvedModelTarget, "outcome" | "accessProfileId" | "logicalModelId" | "logicalModelSlug" | "routerDecisionId"> & {
+type EligibleTarget = Omit<
+  ResolvedModelTarget,
+  "outcome" | "accessProfileId" | "logicalModelId" | "logicalModelSlug" | "routerDecisionId" | "routerDecision"
+> & {
   targetId: string;
   priority: number;
+  capabilities: GatewayModelCapabilities;
+};
+
+export type ModelResolutionOptions = {
+  classifier?: LogicalModelClassifier;
+  now?: () => Date;
+  decisionId?: () => string;
 };
 
 export class ModelResolutionService {
   constructor(
     private readonly db: ProxyDbSession,
-    private readonly now = () => new Date()
+    private readonly options: ModelResolutionOptions = {}
   ) {}
 
   async resolve(input: ResolveModelInput): Promise<ModelResolutionResult> {
@@ -113,7 +149,7 @@ export class ModelResolutionService {
       .limit(1);
 
     if (!apiKey) return denial(input, "api_key_not_found");
-    const now = this.now();
+    const now = this.options.now?.() ?? new Date();
     if (apiKey.revokedAt || (apiKey.expiresAt && apiKey.expiresAt <= now)) {
       return denial(input, "api_key_inactive");
     }
@@ -134,6 +170,8 @@ export class ModelResolutionService {
         id: logicalModels.id,
         slug: logicalModels.slug,
         resolutionKind: logicalModels.resolutionKind,
+        routerKind: logicalModels.routerKind,
+        routerConfig: logicalModels.routerConfig,
         status: logicalModels.status
       })
       .from(logicalModels)
@@ -170,31 +208,65 @@ export class ModelResolutionService {
         return denial(input, "parameter_cap_exceeded");
       }
     }
-    if (logicalModel.resolutionKind !== "direct") return denial(input, "router_resolution_required");
-
     const targets = await this.eligibleTargets(input, logicalModel.id);
     if (targets.length === 0) return denial(input, "model_unavailable");
-    if (targets.length !== 1) return denial(input, "direct_target_count_invalid");
-    const [target] = targets;
-    if (!target) return denial(input, "model_unavailable");
+    if (logicalModel.resolutionKind === "direct") {
+      if (targets.length !== 1) return denial(input, "direct_target_count_invalid");
+      return resolvedTarget(profile.id, logicalModel, targets[0]!, null, null);
+    }
+    if (logicalModel.routerKind !== "classifier") return denial(input, "router_config_invalid");
 
-    return {
-      outcome: "resolved",
-      accessProfileId: profile.id,
-      logicalModelId: logicalModel.id,
-      logicalModelSlug: logicalModel.slug,
-      deploymentId: target.deploymentId,
-      upstreamModelId: target.upstreamModelId,
-      providerConnectionId: target.providerConnectionId,
-      bindingId: target.bindingId,
-      egressWireId: target.egressWireId,
-      endpointPath: target.endpointPath,
-      providerAdapterKind: target.providerAdapterKind,
-      providerAdapterContractVersion: target.providerAdapterContractVersion,
-      wireAdapterId: target.wireAdapterId,
-      wireAdapterVersion: target.wireAdapterVersion,
-      routerDecisionId: null
+    const config = logicalModelClassifierConfigSchema.safeParse(logicalModel.routerConfig);
+    if (!config.success) return denial(input, "router_config_invalid");
+    const classificationRequest = logicalModelClassificationRequestSchema.safeParse({
+      context: {
+        ...input.classificationFeatures,
+        requestedModel: input.requestedModel,
+        operationId: input.operationId
+      },
+      candidates: targets.map((target) => ({
+        targetId: target.targetId,
+        capabilities: projectLogicalModelClassifierCapabilities(target.capabilities)
+      }))
+    });
+    if (!classificationRequest.success) return denial(input, "classification_context_invalid");
+    const classifierTarget = await this.classifierTarget(
+      input.organizationId,
+      input.workspaceId,
+      config.data.classifierDeploymentId
+    );
+    if (classifierTarget === "recursive") return denial(input, "router_config_invalid");
+    if (!classifierTarget) return denial(input, "classifier_target_unavailable");
+    if (!this.options.classifier) return denial(input, "classifier_unavailable");
+
+    let decision;
+    try {
+      decision = await this.options.classifier.classifyLogicalModel({
+        config: config.data,
+        classifierModel: classifierTarget.model,
+        request: classificationRequest.data
+      }, classifierTarget);
+    } catch {
+      return denial(input, "classifier_failed");
+    }
+
+    const selected = targets.find((target) => target.targetId === decision.targetId);
+    if (!selected) return denial(input, "classifier_failed");
+    const evidence: ClassifierDecisionEvidence = {
+      kind: "classifier",
+      classifierDeploymentId: config.data.classifierDeploymentId,
+      selectedTargetId: selected.targetId,
+      attempts: decision.attempts,
+      reasonCodes: decision.reasonCodes,
+      confidence: decision.confidence
     };
+    return resolvedTarget(
+      profile.id,
+      logicalModel,
+      selected,
+      this.options.decisionId?.() ?? randomUUID(),
+      evidence
+    );
   }
 
   private async eligibleTargets(input: ResolveModelInput, logicalModelId: string) {
@@ -206,6 +278,8 @@ export class ModelResolutionService {
         upstreamModelId: modelDeployments.upstreamModelId,
         providerConnectionId: providerConnections.id,
         providerAdapterKind: providerConnections.adapterKind,
+        canonicalCapabilities: canonicalModels.capabilities,
+        deploymentCapabilities: modelDeployments.capabilities,
         bindingId: deploymentWireBindings.id,
         egressWireId: deploymentWireBindings.apiWireId,
         endpointPath: deploymentWireBindings.endpointPath,
@@ -276,12 +350,111 @@ export class ModelResolutionService {
       if (!binding) continue;
       targets.set(targetId, {
         ...binding,
+        capabilities: {
+          ...binding.canonicalCapabilities,
+          ...binding.deploymentCapabilities
+        },
         wireAdapterId: compatibility.wireAdapterId,
         wireAdapterVersion: compatibility.wireAdapterVersion
       });
     }
     return [...targets.values()].sort((left, right) => left.priority - right.priority);
   }
+
+  private async classifierTarget(
+    organizationId: string,
+    workspaceId: string,
+    classifierDeploymentId: string
+  ): Promise<LogicalModelClassifierDeployment | "recursive" | undefined> {
+    const [logicalReference] = await this.db
+      .select({ id: logicalModels.id })
+      .from(logicalModels)
+      .where(and(
+        workspaceScope(logicalModels, organizationId, workspaceId),
+        eq(logicalModels.id, classifierDeploymentId)
+      ))
+      .limit(1);
+    if (logicalReference) return "recursive";
+
+    const [row] = await this.db
+      .select({
+        deploymentId: modelDeployments.id,
+        model: modelDeployments.upstreamModelId,
+        provider: providerConnections.slug,
+        connectionId: providerConnections.id,
+        adapterKind: providerConnections.adapterKind,
+        bindingId: deploymentWireBindings.id,
+        endpointPath: deploymentWireBindings.endpointPath
+      })
+      .from(modelDeployments)
+      .innerJoin(canonicalModels, and(
+        eq(canonicalModels.organizationId, modelDeployments.organizationId),
+        eq(canonicalModels.workspaceId, modelDeployments.workspaceId),
+        eq(canonicalModels.id, modelDeployments.canonicalModelId)
+      ))
+      .innerJoin(providerConnections, and(
+        eq(providerConnections.organizationId, modelDeployments.organizationId),
+        eq(providerConnections.workspaceId, modelDeployments.workspaceId),
+        eq(providerConnections.id, modelDeployments.providerConnectionId)
+      ))
+      .innerJoin(deploymentWireBindings, and(
+        eq(deploymentWireBindings.organizationId, modelDeployments.organizationId),
+        eq(deploymentWireBindings.workspaceId, modelDeployments.workspaceId),
+        eq(deploymentWireBindings.deploymentId, modelDeployments.id),
+        eq(deploymentWireBindings.providerConnectionId, providerConnections.id),
+        eq(deploymentWireBindings.apiWireId, "openai-responses")
+      ))
+      .where(and(
+        workspaceScope(modelDeployments, organizationId, workspaceId),
+        workspaceScope(canonicalModels, organizationId, workspaceId),
+        workspaceScope(providerConnections, organizationId, workspaceId),
+        workspaceScope(deploymentWireBindings, organizationId, workspaceId),
+        eq(modelDeployments.id, classifierDeploymentId),
+        eq(modelDeployments.status, "active"),
+        eq(canonicalModels.status, "active"),
+        eq(providerConnections.status, "active"),
+        eq(deploymentWireBindings.enabled, true)
+      ))
+      .limit(1);
+    if (!row?.endpointPath || row.adapterKind !== "generic-http-json") return undefined;
+
+    return {
+      deploymentId: row.deploymentId,
+      organizationId,
+      workspaceId,
+      model: row.model,
+      provider: row.provider,
+      providerConnectionId: row.connectionId,
+      bindingId: row.bindingId
+    };
+  }
+}
+
+function resolvedTarget(
+  accessProfileId: string,
+  logicalModel: { id: string; slug: string },
+  target: EligibleTarget,
+  routerDecisionId: string | null,
+  routerDecision: ClassifierDecisionEvidence | null
+): ResolvedModelTarget {
+  return {
+    outcome: "resolved",
+    accessProfileId,
+    logicalModelId: logicalModel.id,
+    logicalModelSlug: logicalModel.slug,
+    deploymentId: target.deploymentId,
+    upstreamModelId: target.upstreamModelId,
+    providerConnectionId: target.providerConnectionId,
+    bindingId: target.bindingId,
+    egressWireId: target.egressWireId,
+    endpointPath: target.endpointPath,
+    providerAdapterKind: target.providerAdapterKind,
+    providerAdapterContractVersion: target.providerAdapterContractVersion,
+    wireAdapterId: target.wireAdapterId,
+    wireAdapterVersion: target.wireAdapterVersion,
+    routerDecisionId,
+    routerDecision
+  };
 }
 
 function exceedsParameterCap(caps: GatewayParameterCaps, parameters: GatewayParameterCaps | undefined) {
