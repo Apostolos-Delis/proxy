@@ -14,6 +14,7 @@ import { z } from "zod";
 import { AdminMutationError } from "./adminErrors.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
 import {
+  assertProviderAdapterConfig,
   assertSafeDefaultHeaders,
   ProviderRegistryError,
   trimProviderBaseUrl,
@@ -210,11 +211,16 @@ async function validateProviderBody(
     throw new ProviderRegistryAdminError("invalid_provider_adapter", 400, compatibilityIssues);
   }
   try {
+    assertProviderAdapterConfig(body.adapterKind, body.adapterConfig);
     assertSafeDefaultHeaders(body.defaultHeaders);
     await validateProviderBaseUrl(body.baseUrl, networkPolicy);
   } catch (error) {
     if (error instanceof ProviderRegistryError) {
-      const path = error.code === "provider_default_header_forbidden" ? "defaultHeaders" : "baseUrl";
+      let path = "baseUrl";
+      if (error.code === "provider_adapter_config_invalid") path = "adapterConfig";
+      if (error.code === "provider_default_header_forbidden" || error.code === "provider_default_header_invalid") {
+        path = "defaultHeaders";
+      }
       throw new ProviderRegistryAdminError(error.code, 400, [
         { path, message: error.message }
       ]);

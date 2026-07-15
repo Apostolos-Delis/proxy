@@ -1,7 +1,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { defaultWorkspaceId } from "@proxy/db";
+import { defaultWorkspaceId, type ProxyTransaction } from "@proxy/db";
 import { z } from "zod";
 
 import {
@@ -55,6 +55,17 @@ type PersistentEventAppendResult = {
 
 export type PersistentEventSink = {
   append(event: ProxyEvent, outbox: OutboxItem): Promise<PersistentEventAppendResult | void>;
+  appendInTransaction?(
+    transaction: ProxyTransaction,
+    event: ProxyEvent,
+    outbox: OutboxItem
+  ): Promise<PersistentEventAppendResult | void>;
+  afterTransactionCommit?(committed: readonly CommittedTransactionEvent[]): Promise<void>;
+};
+
+export type CommittedTransactionEvent = {
+  event: ProxyEvent;
+  outbox: OutboxItem;
 };
 
 export type AppendEventInput = {
@@ -75,6 +86,7 @@ export type AppendEventInput = {
   redactionState?: ProxyEvent["redactionState"];
   payload?: JsonObject;
   metadata?: JsonObject;
+  createdAt?: string;
 };
 
 export type EventAppender = {
@@ -308,38 +320,8 @@ export class EventService {
     this.scopes.delete(scopeKey);
     this.scopes.set(scopeKey, { sequence, tenantId, workspaceId });
 
-    const payload = input.payload ?? {};
-    const event = eventSchema.parse({
-      eventId: createId("event"),
-      sequence,
-      schemaVersion: 1,
-      tenantId,
-      workspaceId,
-      scopeType: input.scopeType,
-      scopeId: input.scopeId,
-      sessionId: input.sessionId,
-      turnId: input.turnId,
-      parentEventId: input.parentEventId,
-      causationId: input.causationId,
-      correlationId: input.correlationId,
-      idempotencyKey: input.idempotencyKey,
-      actor: input.actor ?? { type: "proxy", id: "proxy" },
-      producer: input.producer,
-      eventType: input.eventType,
-      payloadHash: sha256(stableJson(payload)),
-      sensitivity: input.sensitivity ?? "internal",
-      redactionState: input.redactionState ?? "redacted",
-      payload,
-      metadata: input.metadata ?? {},
-      createdAt: new Date().toISOString()
-    });
-
-    const outboxItem: OutboxItem = {
-      outboxId: createId("outbox"),
-      eventId: event.eventId,
-      status: "queued",
-      queuedAt: new Date().toISOString()
-    };
+    const event = this.buildEvent(input, sequence, tenantId, workspaceId);
+    const outboxItem = this.buildOutbox(event);
     let appendSucceeded = false;
 
     try {
@@ -362,27 +344,13 @@ export class EventService {
         throw error;
       }
 
-      this.trimMap(this.scopes, this.scopeLimit);
-      this.pushMirror(this.events, event);
-      this.pushMirror(this.outbox, outboxItem);
-
-      // Listeners observe committed events only; a throwing listener must not
-      // fail the append.
-      for (const listener of this.listeners) {
-        try {
-          listener(event);
-        } catch {
-          // ignore
-        }
-      }
+      this.recordCommitted(event, outboxItem);
 
       if (this.filePath) {
         await mkdir(dirname(this.filePath), { recursive: true });
         await appendFile(this.filePath, `${JSON.stringify(event)}\n`);
       }
 
-      this.metrics.incrementCounter("proxy_event_appends_total", { outcome: "succeeded", error_class: "none" });
-      this.metrics.incrementCounter("proxy_event_outbox_items_total", { outcome: "queued", error_class: "none" });
       if (!this.persistentSink) this.recordOutboxHealth();
       appendSucceeded = true;
 
@@ -398,6 +366,123 @@ export class EventService {
       }
       throw error;
     }
+  }
+
+  async appendInTransaction(transaction: ProxyTransaction, input: AppendEventInput) {
+    if (!this.persistentSink?.appendInTransaction) {
+      throw new Error("transactional_event_sink_not_configured");
+    }
+    const scopeKey = `${input.scopeType}:${input.scopeId}`;
+    const previousScope = this.scopes.get(scopeKey);
+    const tenantId = input.tenantId ?? previousScope?.tenantId ?? this.defaultTenantId;
+    const workspaceId = input.workspaceId ?? previousScope?.workspaceId ?? defaultWorkspaceId(tenantId);
+    const event = this.buildEvent(input, (previousScope?.sequence ?? 0) + 1, tenantId, workspaceId);
+    const outbox = this.buildOutbox(event);
+    const result = await this.persistentSink.appendInTransaction(transaction, event, outbox);
+    if (result) event.sequence = result.sequence;
+    return { event, outbox } satisfies CommittedTransactionEvent;
+  }
+
+  async commitTransactionEvents(committed: readonly CommittedTransactionEvent[]) {
+    try {
+      await this.persistentSink?.afterTransactionCommit?.(committed);
+    } catch {
+      this.metrics.incrementCounter("proxy_db_errors_total", {
+        operation: "event_append_transaction_commit",
+        error_class: "persistence"
+      });
+    }
+    for (const { event, outbox } of committed) {
+      this.recordCommitted(event, outbox);
+      if (this.filePath) {
+        try {
+          await mkdir(dirname(this.filePath), { recursive: true });
+          await appendFile(this.filePath, `${JSON.stringify(event)}\n`);
+        } catch {
+          this.metrics.incrementCounter("proxy_event_appends_total", {
+            outcome: "failed",
+            error_class: "mirror"
+          });
+        }
+      }
+    }
+    if (this.outboxHandler) {
+      try {
+        await this.processOutbox(this.outboxHandler);
+      } catch {
+        this.metrics.incrementCounter("proxy_event_outbox_items_total", {
+          outcome: "failed",
+          error_class: "handler"
+        });
+      }
+    }
+  }
+
+  private buildEvent(
+    input: AppendEventInput,
+    sequence: number,
+    tenantId: string,
+    workspaceId: string
+  ) {
+    const payload = input.payload ?? {};
+    return eventSchema.parse({
+      eventId: createId("event"),
+      sequence,
+      schemaVersion: 1,
+      tenantId,
+      workspaceId,
+      scopeType: input.scopeType,
+      scopeId: input.scopeId,
+      sessionId: input.sessionId,
+      turnId: input.turnId,
+      parentEventId: input.parentEventId,
+      causationId: input.causationId,
+      correlationId: input.correlationId,
+      idempotencyKey: input.idempotencyKey,
+      actor: input.actor ?? { type: "proxy", id: "proxy" },
+      producer: input.producer,
+      eventType: input.eventType,
+      payloadHash: sha256(stableJson(payload)),
+      sensitivity: input.sensitivity ?? "internal",
+      redactionState: input.redactionState ?? "redacted",
+      payload,
+      metadata: input.metadata ?? {},
+      createdAt: input.createdAt ?? new Date().toISOString()
+    });
+  }
+
+  private buildOutbox(event: ProxyEvent): OutboxItem {
+    return {
+      outboxId: createId("outbox"),
+      eventId: event.eventId,
+      status: "queued",
+      queuedAt: new Date().toISOString()
+    };
+  }
+
+  private recordCommitted(event: ProxyEvent, outbox: OutboxItem) {
+    const scopeKey = `${event.scopeType}:${event.scopeId}`;
+    const previous = this.scopes.get(scopeKey);
+    if (!previous || event.sequence >= previous.sequence) {
+      this.scopes.delete(scopeKey);
+      this.scopes.set(scopeKey, {
+        sequence: event.sequence,
+        tenantId: event.tenantId,
+        workspaceId: event.workspaceId
+      });
+    }
+    this.trimMap(this.scopes, this.scopeLimit);
+    this.pushMirror(this.events, event);
+    this.pushMirror(this.outbox, outbox);
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch {
+        // ignore
+      }
+    }
+    this.metrics.incrementCounter("proxy_event_appends_total", { outcome: "succeeded", error_class: "none" });
+    this.metrics.incrementCounter("proxy_event_outbox_items_total", { outcome: "queued", error_class: "none" });
   }
 
   subscribe(listener: (event: ProxyEvent) => void) {

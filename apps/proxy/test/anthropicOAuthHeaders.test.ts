@@ -39,6 +39,7 @@ const apiKeyCredential: UpstreamCredential = {
 
 function headersFor(input: {
   credential?: UpstreamCredential;
+  defaultHeaders?: Record<string, string>;
   subscriptionOAuthEnabled?: boolean;
   noOperatorKey?: boolean;
   incoming?: Record<string, string | undefined>;
@@ -49,7 +50,7 @@ function headersFor(input: {
   } as AppConfig;
   return providerRequestHeaders({
     config,
-    provider: anthropicProvider,
+    provider: { ...anthropicProvider, defaultHeaders: input.defaultHeaders ?? {} },
     endpoint: anthropicEndpoint,
     surface: "anthropic-messages",
     body: { model: "claude-sonnet-4-6", messages: [{ role: "user", content: "hi" }] },
@@ -59,6 +60,13 @@ function headersFor(input: {
 }
 
 describe("anthropic subscription OAuth headers", () => {
+  it("rejects gateway-owned framing headers at the runtime boundary", () => {
+    expect(() => headersFor({ defaultHeaders: { "content-type": "text/plain" } }))
+      .toThrow("Default header 'content-type' is not allowed.");
+    expect(() => headersFor({ defaultHeaders: { "content-encoding": "gzip" } }))
+      .toThrow("Default header 'content-encoding' is not allowed.");
+  });
+
   it("injects the oauth beta flag for translated harnesses that send no anthropic-beta", () => {
     const headers = headersFor({ credential: oauthCredential });
     expect(headers.authorization).toBe("Bearer oauth-token-xyz");
