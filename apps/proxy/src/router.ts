@@ -1,5 +1,4 @@
 import {
-  TRANSLATABLE_DIALECT_PAIRS,
   TRANSLATION_COMPATIBILITY_DIALECTS,
   harnessCompatibilityForTarget,
   type HarnessCompatibilityProfileId,
@@ -1075,7 +1074,7 @@ export class RoutingService {
       unsupportedFields: context.unsupportedFields,
       bedrockSettingsOnNonBedrockTarget: target.bedrockOnlySettings,
       targetDialects,
-      availableTranslators: availableTranslatorPairs()
+      availableTranslators: translators.availablePairs()
     });
     if (compatibility.status === "unavailable") {
       return {
@@ -1502,10 +1501,6 @@ function isTranslationCompatibilityDialect(dialect: string): dialect is Translat
 
 function runtimeAdapterAvailable(adapterKind: ProviderAdapterKind) {
   return adapterKind === "generic-http-json" || adapterKind === "aws-bedrock-converse";
-}
-
-function availableTranslatorPairs() {
-  return TRANSLATABLE_DIALECT_PAIRS.filter(([from, to]) => translators.get(from, to));
 }
 
 function compatibilityProfileId(context: RouteContext): HarnessCompatibilityProfileId {
