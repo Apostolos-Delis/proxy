@@ -15,7 +15,9 @@ import {
 import { and, eq, isNull } from "drizzle-orm";
 
 import type { AppConfig } from "../config.js";
+import { isProviderAdapterConfigValid } from "../providerAdapters/config.js";
 import type { PinnedUpstreamAddress } from "../types.js";
+import { isCredentialFieldName } from "./nonSecretConfig.js";
 
 export type ProviderRegistryHttpEndpoint = SchemaProviderRegistryHttpEndpoint;
 export type ProviderRegistryEndpoint = SchemaProviderRegistryEndpoint;
@@ -88,7 +90,6 @@ export class ProviderRegistryStore implements ProviderRegistryResolver {
       .limit(1);
     if (orgProvider) {
       const entry = providerEntry(orgProvider);
-      assertSafeDefaultHeaders(entry.defaultHeaders);
       const pinnedAddress = await validateProviderBaseUrl(entry.baseUrl, this.networkPolicy);
       return { ...entry, pinnedAddress };
     }
@@ -157,7 +158,7 @@ export class ConfigProviderRegistry implements ProviderRegistryResolver {
 }
 
 function providerEntry(row: typeof providers.$inferSelect): ProviderRegistryEntry {
-  return {
+  const entry = {
     id: row.id,
     organizationId: row.organizationId,
     slug: row.slug,
@@ -172,11 +173,22 @@ function providerEntry(row: typeof providers.$inferSelect): ProviderRegistryEntr
     enabled: row.enabled,
     builtin: row.organizationId === null
   };
+  assertProviderAdapterConfig(entry.adapterKind, entry.adapterConfig);
+  assertSafeDefaultHeaders(entry.defaultHeaders);
+  return entry;
 }
 
 const authHeaderNames = new Set([
+  "auth",
+  "authentication",
   "authorization",
+  "api-key",
+  "apikey",
   "x-api-key",
+  "x-auth",
+  "x-authentication",
+  "x-goog-api-key",
+  "ocp-apim-subscription-key",
   "proxy-authorization",
   "cookie",
   "host",
@@ -189,19 +201,50 @@ const authHeaderNames = new Set([
   "x-amz-security-token",
   "x-amz-signature"
 ]);
+const reservedHeaderNames = new Set([
+  "connection",
+  "content-encoding",
+  "content-length",
+  "content-type",
+  "expect",
+  "keep-alive",
+  "proxy-connection",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade"
+]);
+
+export function assertProviderAdapterConfig(
+  adapterKind: ProviderAdapterKind,
+  adapterConfig: Record<string, unknown>
+) {
+  if (!isProviderAdapterConfigValid(adapterKind, adapterConfig)) {
+    throw new ProviderRegistryError(
+      "provider_adapter_config_invalid",
+      "Adapter configuration contains fields not owned by the installed adapter."
+    );
+  }
+}
 
 export function assertSafeDefaultHeaders(headers: Record<string, string>) {
-  for (const key of Object.keys(headers)) {
-    if (authHeaderNames.has(key.toLowerCase())) {
+  try {
+    new Headers(headers);
+  } catch {
+    throw new ProviderRegistryError(
+      "provider_default_header_invalid",
+      "Default headers must use valid HTTP names and values."
+    );
+  }
+  for (const [key, value] of Object.entries(headers)) {
+    const normalizedKey = key.toLowerCase();
+    if (authHeaderNames.has(normalizedKey) || reservedHeaderNames.has(normalizedKey) || isCredentialFieldName(key, value)) {
       throw new ProviderRegistryError("provider_default_header_forbidden", `Default header '${key}' is not allowed.`);
     }
   }
 }
 
-export async function validateProviderBaseUrl(
-  baseUrl: string,
-  policy: ProviderNetworkPolicy
-) {
+export function validateProviderBaseUrlShape(baseUrl: string) {
   let url: URL;
   try {
     url = new URL(baseUrl);
@@ -211,6 +254,17 @@ export async function validateProviderBaseUrl(
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new ProviderRegistryError("provider_base_url_scheme_forbidden");
   }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new ProviderRegistryError("provider_base_url_credentials_forbidden");
+  }
+  return url;
+}
+
+export async function validateProviderBaseUrl(
+  baseUrl: string,
+  policy: ProviderNetworkPolicy
+) {
+  const url = validateProviderBaseUrlShape(baseUrl);
 
   const addresses = await addressesForHostname(url.hostname);
   if (addresses.length === 0) throw new ProviderRegistryError("provider_base_url_unresolvable");

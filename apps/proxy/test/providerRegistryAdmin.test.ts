@@ -247,6 +247,23 @@ describe("provider registry admin GraphQL", () => {
       expect.objectContaining({ path: "defaultHeaders" })
     ]));
 
+    const invalidHeader = await gql(fixture, CREATE_PROVIDER, {
+      input: {
+        slug: "invalid-header",
+        displayName: "Invalid Header",
+        baseUrl: fixture.openai.url,
+        authStyle: "none",
+        endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
+        defaultHeaders: { "bad header": "value" },
+        forwardHarnessHeaders: false,
+        enabled: true
+      }
+    });
+    expect(invalidHeader.errors?.[0]?.message).toBe("provider_default_header_invalid");
+    expect(invalidHeader.errors?.[0]?.extensions?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "defaultHeaders" })
+    ]));
+
     const blockedBaseUrl = await gql(fixture, CREATE_PROVIDER, {
       input: {
         slug: "metadata",

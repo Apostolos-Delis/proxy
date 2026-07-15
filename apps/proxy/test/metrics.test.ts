@@ -3,7 +3,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
-import { createPgliteDatabase } from "@proxy/db";
+import {
+  createPgliteDatabase,
+  createTransactionalDatabase,
+  defaultWorkspaceId
+} from "@proxy/db";
 import { describe, expect, it } from "vitest";
 
 import { buildServer } from "../src/server.js";
@@ -580,6 +584,43 @@ describe("event and outbox metrics", () => {
       const snapshot = metrics.snapshot();
       expect(sampleValue(snapshot.gauges, "proxy_outbox_backlog", {})).toBe(1);
       expect(sampleValue(snapshot.gauges, "proxy_outbox_oldest_item_age_seconds", {})).toBeGreaterThanOrEqual(0);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("records transactional event append timing and post-commit outbox health", async () => {
+    const client = await migratedClient();
+    try {
+      const db = createPgliteDatabase(client);
+      const metrics = new InMemoryMetricsCollector();
+      const config = loadConfig({ DATABASE_URL: "", EVENT_STORE_PATH: "", LOG_LEVEL: "fatal" });
+      const persistence = createDatabasePersistence(db, config, false, metrics);
+      const events = new EventService(undefined, undefined, persistence.eventSink, "local", metrics);
+      const transactional = createTransactionalDatabase(db);
+      const organizationId = "org_transaction_metrics";
+      const committed = await transactional.transaction((tx) => events.appendInTransaction(tx, {
+        tenantId: organizationId,
+        workspaceId: defaultWorkspaceId(organizationId),
+        scopeType: "access_profile",
+        scopeId: "profile-1",
+        producer: "test.transaction",
+        eventType: "test.transaction.committed"
+      }));
+
+      await events.commitTransactionEvents([committed]);
+
+      const snapshot = metrics.snapshot();
+      expect(sampleValue(snapshot.gauges, "proxy_outbox_backlog", {})).toBe(1);
+      expect(snapshot.histograms).toContainEqual(expect.objectContaining({
+        name: "proxy_db_query_duration_seconds",
+        labels: { operation: "event_append_transaction", outcome: "succeeded" },
+        count: 1
+      }));
+      expect(sampleValue(snapshot.counters, "proxy_event_appends_total", {
+        error_class: "none",
+        outcome: "succeeded"
+      })).toBe(1);
     } finally {
       await client.close();
     }

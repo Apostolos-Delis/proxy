@@ -25,6 +25,32 @@ describe("provider registry guards", () => {
       () => assertSafeDefaultHeaders({ "aws-secret-access-key": "secret" }),
       "provider_default_header_forbidden"
     );
+    expectProviderRegistryCode(
+      () => assertSafeDefaultHeaders({ "x-auth": "secret" }),
+      "provider_default_header_forbidden"
+    );
+    expectProviderRegistryCode(
+      () => assertSafeDefaultHeaders({ "x-authentication": "secret" }),
+      "provider_default_header_forbidden"
+    );
+    for (const name of [
+      "connection",
+      "content-encoding",
+      "content-length",
+      "content-type",
+      "expect",
+      "keep-alive",
+      "proxy-connection",
+      "te",
+      "trailer",
+      "transfer-encoding",
+      "upgrade"
+    ]) {
+      expectProviderRegistryCode(
+        () => assertSafeDefaultHeaders({ [name]: "value" }),
+        "provider_default_header_forbidden"
+      );
+    }
     expect(() => assertSafeDefaultHeaders({ "anthropic-version": "2023-06-01" })).not.toThrow();
   });
 

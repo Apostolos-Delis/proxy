@@ -11,6 +11,7 @@ import {
   identityHeadersFor
 } from "../harness.js";
 import {
+  assertSafeDefaultHeaders,
   operatorTokenForProvider,
   type ProviderRegistryEntry,
   type ProviderRegistryEndpoint,
@@ -414,9 +415,10 @@ export function providerRequestHeaders(input: {
   incoming: Record<string, string | undefined>;
   credential?: UpstreamCredential;
 }) {
+  assertSafeDefaultHeaders(input.provider.defaultHeaders);
   const headers: Record<string, string> = {
-    "content-type": "application/json",
-    ...input.provider.defaultHeaders
+    ...input.provider.defaultHeaders,
+    "content-type": "application/json"
   };
   const credentialForProvider = input.credential && input.credential.provider === input.provider.slug
     ? input.credential

@@ -147,16 +147,12 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     : undefined);
   metrics.setGauge("proxy_persistence_enabled", persistence ? 1 : 0);
   const routingConfigs = persistence?.routingConfigs ?? new DefaultRoutingConfigResolver(config);
-  const events = new EventService(
+  const events = persistence?.eventService ?? new EventService(
     config.eventStorePath,
     undefined,
-    persistence?.eventSink,
+    undefined,
     config.defaultOrganizationId,
-    metrics,
-    {
-      mirrorLimit: persistence ? 1_000 : undefined,
-      scopeLimit: persistence ? 50_000 : undefined
-    }
+    metrics
   );
   const auth = new ProxyAuthService(config, persistence?.apiKeys);
   const adminAuth = new AdminAuthService(config, persistence?.adminSessions);

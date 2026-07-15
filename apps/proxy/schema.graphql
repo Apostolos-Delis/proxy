@@ -268,6 +268,84 @@ type CreateApiKeyResult {
   secret: String!
 }
 
+input CreateGatewayAccessProfileInput {
+  description: String
+  enabled: Boolean
+  limits: JSON
+  name: String!
+  slug: String!
+}
+
+input CreateGatewayCanonicalModelInput {
+  capabilities: JSON
+  enabled: Boolean
+  family: String!
+  name: String!
+  release: String
+  slug: String!
+  vendor: String!
+}
+
+input CreateGatewayLogicalModelInput {
+  description: String
+  enabled: Boolean
+  name: String!
+  resolutionKind: String!
+  routerConfig: JSON
+  slug: String!
+}
+
+input CreateGatewayLogicalModelTargetInput {
+  deploymentId: ID!
+  enabled: Boolean
+  logicalModelId: ID!
+  priority: Int!
+}
+
+input CreateGatewayModelDeploymentInput {
+  canonicalModelId: ID!
+  capabilities: JSON
+  config: JSON
+  enabled: Boolean
+  name: String!
+  pricing: JSON
+  providerConnectionId: ID!
+  region: String
+  slug: String!
+  upstreamModelId: String!
+}
+
+input CreateGatewayModelGrantInput {
+  accessProfileId: ID!
+  allowedOperations: [String!]!
+  enabled: Boolean
+  logicalModelId: ID!
+  parameterCaps: JSON
+}
+
+input CreateGatewayProviderConnectionInput {
+  adapterConfig: JSON
+  adapterKind: String!
+  authStyle: String!
+  baseUrl: String!
+  defaultHeaders: JSON
+  enabled: Boolean
+  name: String!
+  region: String
+  secret: String
+  secretRef: String
+  slug: String!
+}
+
+input CreateGatewayWireBindingInput {
+  adapterContractVersion: String
+  apiWireId: String!
+  deploymentId: ID!
+  enabled: Boolean
+  endpointPath: String
+  requestConfig: JSON
+}
+
 input CreateInvitationInput {
   email: String!
   name: String
@@ -346,6 +424,137 @@ type EmailDelivery {
   delivered: Boolean!
   error: String
   transport: String!
+}
+
+type GatewayAccessProfile {
+  createdAt: String!
+  description: String
+  enabled: Boolean!
+  id: ID!
+  limits: JSON!
+  name: String!
+  organizationId: ID!
+  slug: String!
+  status: String!
+  updatedAt: String!
+  workspaceId: ID!
+}
+
+type GatewayApiKeyAccessProfileAssignment {
+  accessProfileId: ID!
+  apiKeyId: ID!
+}
+
+type GatewayCanonicalModel {
+  capabilities: JSON!
+  createdAt: String!
+  enabled: Boolean!
+  family: String!
+  id: ID!
+  name: String!
+  organizationId: ID!
+  release: String
+  slug: String!
+  status: String!
+  updatedAt: String!
+  vendor: String!
+  workspaceId: ID!
+}
+
+type GatewayLogicalModel {
+  createdAt: String!
+  description: String
+  enabled: Boolean!
+  id: ID!
+  name: String!
+  organizationId: ID!
+  resolutionKind: String!
+  routerConfig: JSON!
+  routerKind: String
+  slug: String!
+  status: String!
+  updatedAt: String!
+  workspaceId: ID!
+}
+
+type GatewayLogicalModelTarget {
+  createdAt: String!
+  deploymentId: ID!
+  enabled: Boolean!
+  id: ID!
+  logicalModelId: ID!
+  organizationId: ID!
+  priority: Int!
+  updatedAt: String!
+  workspaceId: ID!
+}
+
+type GatewayModelDeployment {
+  canonicalModelId: ID!
+  capabilities: JSON!
+  config: JSON!
+  createdAt: String!
+  enabled: Boolean!
+  id: ID!
+  name: String!
+  organizationId: ID!
+  pricing: JSON!
+  providerConnectionId: ID!
+  region: String
+  slug: String!
+  status: String!
+  updatedAt: String!
+  upstreamModelId: String!
+  workspaceId: ID!
+}
+
+type GatewayModelGrant {
+  accessProfileId: ID!
+  allowedOperations: [String!]!
+  createdAt: String!
+  enabled: Boolean!
+  id: ID!
+  logicalModelId: ID!
+  organizationId: ID!
+  parameterCaps: JSON!
+  updatedAt: String!
+  workspaceId: ID!
+}
+
+type GatewayProviderConnection {
+  adapterConfig: JSON!
+  adapterKind: String!
+  authStyle: String!
+  baseUrl: String!
+  createdAt: String!
+  credentialConfigured: Boolean!
+  defaultHeaders: JSON!
+  enabled: Boolean!
+  id: ID!
+  name: String!
+  organizationId: ID!
+  region: String
+  secretHint: String
+  secretRef: String
+  slug: String!
+  status: String!
+  updatedAt: String!
+  workspaceId: ID!
+}
+
+type GatewayWireBinding {
+  adapterContractVersion: String!
+  apiWireId: String!
+  createdAt: String!
+  deploymentId: ID!
+  enabled: Boolean!
+  endpointPath: String
+  id: ID!
+  organizationId: ID!
+  providerConnectionId: ID!
+  requestConfig: JSON!
+  updatedAt: String!
+  workspaceId: ID!
 }
 
 type HarnessCompatibilityMatrixEntry {
@@ -502,10 +711,19 @@ type Mutation {
   archiveRoutingConfig(configId: ID!): RoutingConfigDetail!
   assignApiKeyProviderAccount(apiKeyId: ID!, provider: String!, providerAccountId: ID): ApiKey!
   assignApiKeyRoutingConfig(apiKeyId: ID!, routingConfigId: ID): ApiKey!
+  assignGatewayApiKeyAccessProfile(accessProfileId: ID!, apiKeyId: ID!): GatewayApiKeyAccessProfileAssignment!
   cancelProviderCredentialOAuth(loginId: ID!): ProviderCredentialOAuthStatus
   clearModelPricing(model: String!, provider: String!): [ModelPricingEntry!]!
   configurePromptCapture(promptCaptureMode: String!, retentionDays: Int!): PromptCaptureConfig!
   createApiKey(input: CreateApiKeyInput!): CreateApiKeyResult!
+  createGatewayAccessProfile(input: CreateGatewayAccessProfileInput!): GatewayAccessProfile!
+  createGatewayCanonicalModel(input: CreateGatewayCanonicalModelInput!): GatewayCanonicalModel!
+  createGatewayLogicalModel(input: CreateGatewayLogicalModelInput!): GatewayLogicalModel!
+  createGatewayLogicalModelTarget(input: CreateGatewayLogicalModelTargetInput!): GatewayLogicalModelTarget!
+  createGatewayModelDeployment(input: CreateGatewayModelDeploymentInput!): GatewayModelDeployment!
+  createGatewayModelGrant(input: CreateGatewayModelGrantInput!): GatewayModelGrant!
+  createGatewayProviderConnection(input: CreateGatewayProviderConnectionInput!): GatewayProviderConnection!
+  createGatewayWireBinding(input: CreateGatewayWireBindingInput!): GatewayWireBinding!
   createInvitation(input: CreateInvitationInput!): InvitationActionResult!
   createProvider(input: CreateProviderInput!): ProviderRegistryEntry
   createProviderCredential(input: CreateProviderCredentialInput!): ProviderAccount
@@ -514,7 +732,23 @@ type Mutation {
   createRoutingConfigVersion(config: JSON!, configId: ID!): RoutingConfigDetail!
   createWorkspace(input: CreateWorkspaceInput!): WorkspaceSummary!
   deactivateUser(userId: ID!): UserStatusResult!
+  disableGatewayAccessProfile(id: ID!): GatewayAccessProfile!
+  disableGatewayCanonicalModel(id: ID!): GatewayCanonicalModel!
+  disableGatewayLogicalModel(id: ID!): GatewayLogicalModel!
+  disableGatewayLogicalModelTarget(id: ID!): GatewayLogicalModelTarget!
+  disableGatewayModelDeployment(id: ID!): GatewayModelDeployment!
+  disableGatewayModelGrant(id: ID!): GatewayModelGrant!
+  disableGatewayProviderConnection(id: ID!): GatewayProviderConnection!
+  disableGatewayWireBinding(id: ID!): GatewayWireBinding!
   disableProvider(providerId: ID!): ProviderRegistryEntry
+  enableGatewayAccessProfile(id: ID!): GatewayAccessProfile!
+  enableGatewayCanonicalModel(id: ID!): GatewayCanonicalModel!
+  enableGatewayLogicalModel(id: ID!): GatewayLogicalModel!
+  enableGatewayLogicalModelTarget(id: ID!): GatewayLogicalModelTarget!
+  enableGatewayModelDeployment(id: ID!): GatewayModelDeployment!
+  enableGatewayModelGrant(id: ID!): GatewayModelGrant!
+  enableGatewayProviderConnection(id: ID!): GatewayProviderConnection!
+  enableGatewayWireBinding(id: ID!): GatewayWireBinding!
   login(email: String!, password: String!): Viewer!
   logout: Boolean!
   probeProviderCredential(input: ProbeProviderCredentialInput!): ProviderHealthProbeResult!
@@ -528,6 +762,14 @@ type Mutation {
   startProviderCredentialOAuth(input: StartProviderCredentialOAuthInput!): ProviderCredentialOAuthStart!
   switchOrganization(organizationId: ID!): Viewer!
   switchWorkspace(workspaceId: ID!): Viewer!
+  updateGatewayAccessProfile(input: UpdateGatewayAccessProfileInput!): GatewayAccessProfile!
+  updateGatewayCanonicalModel(input: UpdateGatewayCanonicalModelInput!): GatewayCanonicalModel!
+  updateGatewayLogicalModel(input: UpdateGatewayLogicalModelInput!): GatewayLogicalModel!
+  updateGatewayLogicalModelTarget(input: UpdateGatewayLogicalModelTargetInput!): GatewayLogicalModelTarget!
+  updateGatewayModelDeployment(input: UpdateGatewayModelDeploymentInput!): GatewayModelDeployment!
+  updateGatewayModelGrant(input: UpdateGatewayModelGrantInput!): GatewayModelGrant!
+  updateGatewayProviderConnection(input: UpdateGatewayProviderConnectionInput!): GatewayProviderConnection!
+  updateGatewayWireBinding(input: UpdateGatewayWireBindingInput!): GatewayWireBinding!
   updateProvider(input: UpdateProviderInput!): ProviderRegistryEntry
   updateProviderCredential(input: UpdateProviderCredentialInput!): ProviderAccount
   updateSettings(input: SettingsInput!): Settings!
@@ -954,6 +1196,22 @@ type Query {
   compressionPreview(input: CompressionPreviewInput!): CompressionPreview!
   compressionRules: [CompressionRuleCatalog!]!
   compressionSavings(end: String, start: String): CompressionSavingsReport!
+  gatewayAccessProfile(id: ID!): GatewayAccessProfile
+  gatewayAccessProfiles: [GatewayAccessProfile!]!
+  gatewayCanonicalModel(id: ID!): GatewayCanonicalModel
+  gatewayCanonicalModels: [GatewayCanonicalModel!]!
+  gatewayLogicalModel(id: ID!): GatewayLogicalModel
+  gatewayLogicalModelTarget(id: ID!): GatewayLogicalModelTarget
+  gatewayLogicalModelTargets: [GatewayLogicalModelTarget!]!
+  gatewayLogicalModels: [GatewayLogicalModel!]!
+  gatewayModelDeployment(id: ID!): GatewayModelDeployment
+  gatewayModelDeployments: [GatewayModelDeployment!]!
+  gatewayModelGrant(id: ID!): GatewayModelGrant
+  gatewayModelGrants: [GatewayModelGrant!]!
+  gatewayProviderConnection(id: ID!): GatewayProviderConnection
+  gatewayProviderConnections: [GatewayProviderConnection!]!
+  gatewayWireBinding(id: ID!): GatewayWireBinding
+  gatewayWireBindings: [GatewayWireBinding!]!
   harnessCompatibilityMatrix: [HarnessCompatibilityMatrixEntry!]!
   idleGaps(end: String, start: String): IdleGapReport!
   invitations: [Invitation!]!
@@ -1341,6 +1599,68 @@ type ToolResultCompressionPolicySettings {
   mode: String!
   storeCompressedArtifact: Boolean
   storeOriginalArtifact: Boolean
+}
+
+input UpdateGatewayAccessProfileInput {
+  description: String
+  id: ID!
+  limits: JSON
+  name: String
+}
+
+input UpdateGatewayCanonicalModelInput {
+  id: ID!
+  name: String
+}
+
+input UpdateGatewayLogicalModelInput {
+  description: String
+  id: ID!
+  name: String
+  resolutionKind: String
+  routerConfig: JSON
+}
+
+input UpdateGatewayLogicalModelTargetInput {
+  deploymentId: ID
+  id: ID!
+  priority: Int
+}
+
+input UpdateGatewayModelDeploymentInput {
+  capabilities: JSON
+  config: JSON
+  id: ID!
+  name: String
+  pricing: JSON
+  region: String
+  upstreamModelId: String
+}
+
+input UpdateGatewayModelGrantInput {
+  allowedOperations: [String!]
+  id: ID!
+  parameterCaps: JSON
+}
+
+input UpdateGatewayProviderConnectionInput {
+  adapterConfig: JSON
+  authStyle: String
+  baseUrl: String
+  clearSecret: Boolean
+  defaultHeaders: JSON
+  id: ID!
+  name: String
+  region: String
+  secret: String
+  secretRef: String
+}
+
+input UpdateGatewayWireBindingInput {
+  adapterContractVersion: String
+  endpointPath: String
+  id: ID!
+  requestConfig: JSON
 }
 
 input UpdateProviderCredentialInput {

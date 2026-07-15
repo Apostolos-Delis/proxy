@@ -11,7 +11,9 @@ import "./types/invitations.js";
 import "./types/search.js";
 import "./types/settings.js";
 import "./types/harness.js";
+import "./types/gatewayConfig.js";
 import "./queries.js";
 import "./mutations.js";
+import "./gatewayConfig.js";
 
 export const schema = builder.toSchema();

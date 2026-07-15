@@ -34,6 +34,7 @@ import type {
   LogicalModelClassifierDeployment
 } from "../classifier.js";
 import { resolveWireCompatibility } from "../wireCompatibility.js";
+import { activeClassifierDeployment } from "./classifierDeployment.js";
 import { workspaceScope } from "./scope.js";
 
 export type ResolveModelInput = {
@@ -376,57 +377,7 @@ export class ModelResolutionService {
       .limit(1);
     if (logicalReference) return "recursive";
 
-    const [row] = await this.db
-      .select({
-        deploymentId: modelDeployments.id,
-        model: modelDeployments.upstreamModelId,
-        provider: providerConnections.slug,
-        connectionId: providerConnections.id,
-        adapterKind: providerConnections.adapterKind,
-        bindingId: deploymentWireBindings.id,
-        endpointPath: deploymentWireBindings.endpointPath
-      })
-      .from(modelDeployments)
-      .innerJoin(canonicalModels, and(
-        eq(canonicalModels.organizationId, modelDeployments.organizationId),
-        eq(canonicalModels.workspaceId, modelDeployments.workspaceId),
-        eq(canonicalModels.id, modelDeployments.canonicalModelId)
-      ))
-      .innerJoin(providerConnections, and(
-        eq(providerConnections.organizationId, modelDeployments.organizationId),
-        eq(providerConnections.workspaceId, modelDeployments.workspaceId),
-        eq(providerConnections.id, modelDeployments.providerConnectionId)
-      ))
-      .innerJoin(deploymentWireBindings, and(
-        eq(deploymentWireBindings.organizationId, modelDeployments.organizationId),
-        eq(deploymentWireBindings.workspaceId, modelDeployments.workspaceId),
-        eq(deploymentWireBindings.deploymentId, modelDeployments.id),
-        eq(deploymentWireBindings.providerConnectionId, providerConnections.id),
-        eq(deploymentWireBindings.apiWireId, "openai-responses")
-      ))
-      .where(and(
-        workspaceScope(modelDeployments, organizationId, workspaceId),
-        workspaceScope(canonicalModels, organizationId, workspaceId),
-        workspaceScope(providerConnections, organizationId, workspaceId),
-        workspaceScope(deploymentWireBindings, organizationId, workspaceId),
-        eq(modelDeployments.id, classifierDeploymentId),
-        eq(modelDeployments.status, "active"),
-        eq(canonicalModels.status, "active"),
-        eq(providerConnections.status, "active"),
-        eq(deploymentWireBindings.enabled, true)
-      ))
-      .limit(1);
-    if (!row?.endpointPath || row.adapterKind !== "generic-http-json") return undefined;
-
-    return {
-      deploymentId: row.deploymentId,
-      organizationId,
-      workspaceId,
-      model: row.model,
-      provider: row.provider,
-      providerConnectionId: row.connectionId,
-      bindingId: row.bindingId
-    };
+    return activeClassifierDeployment(this.db, organizationId, workspaceId, classifierDeploymentId);
   }
 }
 

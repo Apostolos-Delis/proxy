@@ -7,6 +7,7 @@ import {
 import type { AppConfig } from "../config.js";
 import { LlmClassifier, type LogicalModelClassifier } from "../classifier.js";
 import { CompressionCacheWindowResolver } from "../compressionCacheWindow.js";
+import { EventService } from "../events.js";
 import { ModelDiscoveryStore } from "../modelDiscovery.js";
 import { BedrockModelDiscoveryJob } from "../jobs/bedrockModelDiscovery.js";
 import { ModelCatalogRefreshJob } from "../jobs/modelCatalogRefresh.js";
@@ -15,6 +16,7 @@ import { AdminSessionStore } from "./adminSessions.js";
 import { ApiKeyAdminService } from "./apiKeyAdmin.js";
 import { CompressionRetrievalResolver } from "./compressionReceipts.js";
 import { DatabaseEventSink } from "./eventSink.js";
+import { GatewayConfigAdminService, type GatewayConfigAdminOptions } from "./gatewayConfigAdmin.js";
 import { ApiKeyIdentityStore } from "./identity.js";
 import { ModelCatalogAdminService } from "./modelCatalogAdmin.js";
 import { ModelResolutionService } from "./modelResolution.js";
@@ -48,29 +50,40 @@ export type DatabasePersistenceConfig = AdminQueryConfig & {
   bedrockLocalCredentialsEnabled: boolean;
   bedrockAwsProfile?: string;
   subscriptionOAuthEnabled: boolean;
+  eventStorePath?: string;
+  openaiApiKey?: string;
+  openaiBaseUrl?: string;
+  anthropicApiKey?: string;
+  anthropicBaseUrl?: string;
 };
 
 export function createPostgresPersistence(databaseUrl: string, config: AppConfig, metrics?: MetricsCollector) {
   const db = createPostgresDatabase(databaseUrl, { max: config.dbPoolMax });
+  const resolveSecretReference = ({ reference, provider, baseUrl }: {
+    reference: string;
+    provider: string;
+    baseUrl: string;
+  }) => {
+    if (reference === "env:OPENAI_API_KEY" && provider === "openai" && baseUrl === config.openaiBaseUrl) {
+      return config.openaiApiKey;
+    }
+    if (reference === "env:ANTHROPIC_API_KEY" && provider === "anthropic" && baseUrl === config.anthropicBaseUrl) {
+      return config.anthropicApiKey;
+    }
+    return undefined;
+  };
   const classifierTargets = new ProviderConnectionClassifierTargetResolver(db, {
     allowedPrivateUpstreamCidrs: config.allowedPrivateUpstreamCidrs,
     encryptionKey: config.providerSecretEncryptionKey,
-    resolveSecretReference: ({ reference, provider, baseUrl }) => {
-      if (reference === "env:OPENAI_API_KEY" && provider === "openai" && baseUrl === config.openaiBaseUrl) {
-        return config.openaiApiKey;
-      }
-      if (reference === "env:ANTHROPIC_API_KEY" && provider === "anthropic" && baseUrl === config.anthropicBaseUrl) {
-        return config.anthropicApiKey;
-      }
-      return undefined;
-    }
+    resolveSecretReference
   });
   return createDatabasePersistence(
     db,
     config,
     true,
     metrics,
-    new LlmClassifier(config, metrics, classifierTargets)
+    new LlmClassifier(config, metrics, classifierTargets),
+    (input) => Boolean(resolveSecretReference(input))
   );
 }
 
@@ -79,7 +92,8 @@ export function createDatabasePersistence(
   config: DatabasePersistenceConfig,
   useAdvisoryLocks: boolean,
   metrics?: MetricsCollector,
-  classifier?: LogicalModelClassifier
+  classifier?: LogicalModelClassifier,
+  secretReferenceSupported?: GatewayConfigAdminOptions["secretReferenceSupported"]
 ) {
   const transactional = createTransactionalDatabase(db);
   const apiKeys = new ApiKeyIdentityStore(db);
@@ -100,19 +114,45 @@ export function createDatabasePersistence(
     credentialOptions,
     () => providerCredentials.clearCache()
   );
+  const eventSink = new DatabaseEventSink(transactional, useAdvisoryLocks, metrics);
+  const eventService = new EventService(
+    config.eventStorePath,
+    undefined,
+    eventSink,
+    config.defaultOrganizationId,
+    metrics,
+    { mirrorLimit: 1_000, scopeLimit: 50_000 }
+  );
+  const gatewaySecretReferenceSupported = secretReferenceSupported ?? ((input) => (
+    input.reference === "env:OPENAI_API_KEY" &&
+    input.provider === "openai" &&
+    input.baseUrl === config.openaiBaseUrl &&
+    Boolean(config.openaiApiKey)
+  ) || (
+    input.reference === "env:ANTHROPIC_API_KEY" &&
+    input.provider === "anthropic" &&
+    input.baseUrl === config.anthropicBaseUrl &&
+    Boolean(config.anthropicApiKey)
+  ));
   return {
     apiKeyAdmin: new ApiKeyAdminService(transactional, () => apiKeys.clearCache()),
     apiKeys,
     adminSessions: new AdminSessionStore(db),
     compressionCacheWindows: new CompressionCacheWindowResolver(db),
     compressionRetrieval: new CompressionRetrievalResolver(db),
+    gatewayConfigAdmin: new GatewayConfigAdminService(db, transactional, eventService, {
+      allowedPrivateUpstreamCidrs: config.allowedPrivateUpstreamCidrs,
+      encryptionKey: config.providerSecretEncryptionKey,
+      secretReferenceSupported: gatewaySecretReferenceSupported
+    }),
     providerCredentials,
     providerCredentialAdmin,
     providerCredentialOAuth: new ProviderCredentialOAuthService(providerCredentialAdmin),
     providerHealth: new ProviderHealthStore(db),
     providerRegistryAdmin: new ProviderRegistryAdminService(transactional, config),
     providerRegistry: new ProviderRegistryStore(db, config),
-    eventSink: new DatabaseEventSink(transactional, useAdvisoryLocks, metrics),
+    eventService,
+    eventSink,
     modelCatalogRefresh: new ModelCatalogRefreshJob(transactional, {
       auditOrganizationId: config.defaultOrganizationId
     }),
