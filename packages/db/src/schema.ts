@@ -1,13 +1,16 @@
 import { sql } from "drizzle-orm";
-import { boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, type PgTableExtraConfigValue } from "drizzle-orm/pg-core";
+import { boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, type PgTableExtraConfigValue } from "drizzle-orm/pg-core";
 
 import type {
+  Dialect,
   EventOutboxStatus,
+  GatewayModelCapabilities,
   InvitationStatus,
   ModelCatalogSource,
   OrganizationMemberRole,
   OrganizationMemberStatus,
   PromptCaptureMode,
+  ProviderAdapterContractVersion,
   ProviderAdapterKind,
   ProviderAccountAuthType,
   ProviderAttemptStatus,
@@ -381,6 +384,189 @@ export const apiKeyProviderAccounts = pgTable(
       columns: [table.organizationId, table.providerAccountId],
       foreignColumns: [providerAccounts.organizationId, providerAccounts.id]
     }).onDelete("cascade")
+  ]
+);
+
+export const providerConnections = pgTable(
+  "provider_connections",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    adapterKind: text("adapter_kind").$type<ProviderAdapterKind>().notNull(),
+    authStyle: text("auth_style").$type<ProviderAuthStyle>().notNull(),
+    baseUrl: text("base_url").notNull(),
+    region: text("region"),
+    secretRef: text("secret_ref"),
+    secretCiphertext: text("secret_ciphertext"),
+    secretHint: text("secret_hint"),
+    adapterConfig: jsonb("adapter_config").$type<Record<string, unknown>>().notNull().default({}),
+    defaultHeaders: jsonb("default_headers").$type<Record<string, string>>().notNull().default({}),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("provider_connections_org_workspace_id_idx").on(table.organizationId, table.workspaceId, table.id),
+    uniqueIndex("provider_connections_org_workspace_slug_idx").on(table.organizationId, table.workspaceId, table.slug),
+    index("provider_connections_org_workspace_status_idx").on(table.organizationId, table.workspaceId, table.status),
+    foreignKey({
+      name: "provider_connections_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade"),
+    check("provider_connections_credential_source_chk", sql`not (${table.secretRef} is not null and ${table.secretCiphertext} is not null)`),
+    check(
+      "provider_connections_adapter_auth_chk",
+      sql`(${table.adapterKind} = 'generic-http-json' and ${table.authStyle} in ('bearer', 'x-api-key', 'none')) or (${table.adapterKind} = 'aws-bedrock-converse' and ${table.authStyle} = 'aws-sdk')`
+    ),
+    check("provider_connections_status_chk", sql`${table.status} in ('active', 'disabled')`)
+  ]
+);
+
+export const canonicalModels = pgTable(
+  "canonical_models",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    vendor: text("vendor").notNull(),
+    family: text("family").notNull(),
+    release: text("release"),
+    capabilities: jsonb("capabilities").$type<GatewayModelCapabilities>().notNull().default({}),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("canonical_models_org_workspace_id_idx").on(table.organizationId, table.workspaceId, table.id),
+    uniqueIndex("canonical_models_org_workspace_slug_idx").on(table.organizationId, table.workspaceId, table.slug),
+    index("canonical_models_org_workspace_vendor_family_idx").on(table.organizationId, table.workspaceId, table.vendor, table.family),
+    index("canonical_models_org_workspace_status_idx").on(table.organizationId, table.workspaceId, table.status),
+    foreignKey({
+      name: "canonical_models_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade"),
+    check("canonical_models_status_chk", sql`${table.status} in ('active', 'disabled')`)
+  ]
+);
+
+export const modelDeployments = pgTable(
+  "model_deployments",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    canonicalModelId: text("canonical_model_id").notNull(),
+    providerConnectionId: text("provider_connection_id").notNull(),
+    upstreamModelId: text("upstream_model_id").notNull(),
+    region: text("region"),
+    config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
+    capabilities: jsonb("capabilities").$type<GatewayModelCapabilities>().notNull().default({}),
+    pricing: jsonb("pricing").$type<Record<string, unknown>>().notNull().default({}),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("model_deployments_org_workspace_id_idx").on(table.organizationId, table.workspaceId, table.id),
+    uniqueIndex("model_deployments_org_workspace_id_connection_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.id,
+      table.providerConnectionId
+    ),
+    uniqueIndex("model_deployments_org_workspace_slug_idx").on(table.organizationId, table.workspaceId, table.slug),
+    index("model_deployments_org_workspace_canonical_idx").on(table.organizationId, table.workspaceId, table.canonicalModelId),
+    index("model_deployments_org_workspace_connection_idx").on(table.organizationId, table.workspaceId, table.providerConnectionId),
+    index("model_deployments_org_workspace_status_idx").on(table.organizationId, table.workspaceId, table.status),
+    foreignKey({
+      name: "model_deployments_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "model_deployments_canonical_model_fk",
+      columns: [table.organizationId, table.workspaceId, table.canonicalModelId],
+      foreignColumns: [canonicalModels.organizationId, canonicalModels.workspaceId, canonicalModels.id]
+    }),
+    foreignKey({
+      name: "model_deployments_provider_connection_fk",
+      columns: [table.organizationId, table.workspaceId, table.providerConnectionId],
+      foreignColumns: [providerConnections.organizationId, providerConnections.workspaceId, providerConnections.id]
+    }),
+    check("model_deployments_status_chk", sql`${table.status} in ('active', 'disabled')`)
+  ]
+);
+
+export const deploymentWireBindings = pgTable(
+  "deployment_wire_bindings",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    deploymentId: text("deployment_id").notNull(),
+    providerConnectionId: text("provider_connection_id").notNull(),
+    apiWireId: text("api_wire_id").$type<Dialect>().notNull(),
+    endpointPath: text("endpoint_path"),
+    requestConfig: jsonb("request_config").$type<Record<string, unknown>>().notNull().default({}),
+    adapterContractVersion: text("adapter_contract_version").$type<ProviderAdapterContractVersion>().notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("deployment_wire_bindings_org_workspace_id_idx").on(table.organizationId, table.workspaceId, table.id),
+    uniqueIndex("deployment_wire_bindings_org_workspace_deployment_wire_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.deploymentId,
+      table.apiWireId
+    ),
+    index("deployment_wire_bindings_org_workspace_connection_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.providerConnectionId
+    ),
+    foreignKey({
+      name: "deployment_wire_bindings_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "deployment_wire_bindings_deployment_fk",
+      columns: [table.organizationId, table.workspaceId, table.deploymentId, table.providerConnectionId],
+      foreignColumns: [
+        modelDeployments.organizationId,
+        modelDeployments.workspaceId,
+        modelDeployments.id,
+        modelDeployments.providerConnectionId
+      ]
+    }).onDelete("cascade"),
+    check(
+      "deployment_wire_bindings_api_wire_chk",
+      sql`${table.apiWireId} in ('anthropic-messages', 'openai-responses', 'openai-chat', 'bedrock-converse')`
+    ),
+    check(
+      "deployment_wire_bindings_endpoint_shape_chk",
+      sql`(${table.apiWireId} = 'bedrock-converse' and ${table.endpointPath} is null) or (${table.apiWireId} <> 'bedrock-converse' and ${table.endpointPath} is not null and ${table.endpointPath} = btrim(${table.endpointPath}) and ${table.endpointPath} like '/%')`
+    ),
+    check("deployment_wire_bindings_adapter_version_chk", sql`${table.adapterContractVersion} in ('1')`)
   ]
 );
 

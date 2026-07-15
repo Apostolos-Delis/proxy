@@ -27,6 +27,8 @@ export const DIALECTS = {
   BEDROCK_CONVERSE: DIALECT_NAMES[3]
 } as const;
 
+export const GATEWAY_OPERATION_IDS = ["text.generate", "text.count_tokens", "model.list"] as const;
+
 export const BUILTIN_PROVIDER_NAMES = ["openai", "anthropic", "amazon-bedrock"] as const;
 
 export const PROVIDERS = {
@@ -37,6 +39,7 @@ export const PROVIDERS = {
 
 export const PROVIDER_AUTH_STYLES = ["bearer", "x-api-key", "none", "aws-sdk"] as const;
 export const PROVIDER_ADAPTER_KINDS = ["generic-http-json", "aws-bedrock-converse"] as const;
+export const PROVIDER_ADAPTER_CONTRACT_VERSIONS = ["1"] as const;
 export const BEDROCK_PROVIDER_OPERATIONS = ["Converse", "ConverseStream"] as const;
 export const MODEL_CATALOG_SOURCES = ["models.dev-snapshot", "models.dev-refresh", "env", "manual", "bedrock-discovery"] as const;
 
@@ -262,11 +265,15 @@ export function composeClassifierInstructions(rules?: string): string {
 export type RouteName = typeof ROUTE_NAMES[number];
 export type Surface = typeof SURFACE_NAMES[number];
 export type Dialect = typeof DIALECT_NAMES[number];
+export type GatewayOperationId = typeof GATEWAY_OPERATION_IDS[number];
+export type GatewayModelCapability = boolean | number | string[];
+export type GatewayModelCapabilities = Record<string, GatewayModelCapability>;
 export type HttpProviderDialect = typeof HTTP_PROVIDER_DIALECT_NAMES[number];
 export type BuiltinProvider = typeof BUILTIN_PROVIDER_NAMES[number];
 export type Provider = string;
 export type ProviderAuthStyle = typeof PROVIDER_AUTH_STYLES[number];
 export type ProviderAdapterKind = typeof PROVIDER_ADAPTER_KINDS[number];
+export type ProviderAdapterContractVersion = typeof PROVIDER_ADAPTER_CONTRACT_VERSIONS[number];
 export type BedrockProviderOperation = typeof BEDROCK_PROVIDER_OPERATIONS[number];
 export type ModelCatalogSource = typeof MODEL_CATALOG_SOURCES[number];
 export type ProviderAccountAuthType = typeof PROVIDER_ACCOUNT_AUTH_TYPES[number];
@@ -380,6 +387,11 @@ export type JsonObject = { [key: string]: JsonValue };
 export const routeNameSchema = z.enum(ROUTE_NAMES);
 export const surfaceSchema = z.enum(SURFACE_NAMES);
 export const dialectSchema = z.enum(DIALECT_NAMES);
+export const gatewayOperationIdSchema = z.enum(GATEWAY_OPERATION_IDS);
+export const gatewayModelCapabilitiesSchema: z.ZodType<GatewayModelCapabilities> = z.record(
+  z.string(),
+  z.union([z.boolean(), z.number().positive(), z.array(z.string())])
+);
 export const httpProviderDialectSchema = z.enum(HTTP_PROVIDER_DIALECT_NAMES);
 export const providerSchema = z.string().min(1, "Provider slug is required.").refine(
   (value) => value.trim().length > 0,
@@ -391,6 +403,7 @@ export const providerSchema = z.string().min(1, "Provider slug is required.").re
 export const builtinProviderSchema = z.enum(BUILTIN_PROVIDER_NAMES);
 export const providerAuthStyleSchema = z.enum(PROVIDER_AUTH_STYLES);
 export const providerAdapterKindSchema = z.enum(PROVIDER_ADAPTER_KINDS);
+export const providerAdapterContractVersionSchema = z.enum(PROVIDER_ADAPTER_CONTRACT_VERSIONS);
 export const bedrockProviderOperationSchema = z.enum(BEDROCK_PROVIDER_OPERATIONS);
 export const providerCacheTtlSchema = z.enum(PROVIDER_CACHE_TTLS);
 export const providerCacheKeyFieldSchema = z.enum(PROVIDER_CACHE_KEY_FIELDS);
