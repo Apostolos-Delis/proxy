@@ -11,6 +11,7 @@ import {
 } from "@proxy/db";
 
 import { jsonPayload, type RequestState, type RequestStateGate, type RequestStateStoreLike } from "../events.js";
+import { gatewayRequestEvidenceValue } from "../gatewayEvidence.js";
 import type { RouteContext } from "../types.js";
 import { createId } from "../util.js";
 import { ensureOrganization, ensureSession, ensureUser } from "./identity.js";
@@ -204,6 +205,7 @@ export async function persistRequestReceived(tx: ProxyTransaction, event: {
   const surface = surfaceValue(payload.surface);
   const sessionId = stringValue(payload.sessionId);
   const apiKeyId = stringValue(payload.apiKeyId);
+  const gatewayEvidence = gatewayRequestEvidenceValue(payload);
   await ensureUser(tx, userId);
   const dbSessionId = await ensureSession(tx, {
     organizationId: event.tenantId,
@@ -228,6 +230,7 @@ export async function persistRequestReceived(tx: ProxyTransaction, event: {
       requestedModel: stringValue(payload.requestedModel) ?? "unknown",
       inputHash: stringValue(payload.inputHash) ?? event.payloadHash,
       inputChars: numberValue(payload.inputChars) ?? 0,
+      ...gatewayEvidence,
       status: "received",
       metadata: payload
     })
@@ -240,6 +243,7 @@ export async function persistRequestReceived(tx: ProxyTransaction, event: {
         requestedModel: stringValue(payload.requestedModel) ?? "unknown",
         inputHash: stringValue(payload.inputHash) ?? event.payloadHash,
         inputChars: numberValue(payload.inputChars) ?? 0,
+        ...gatewayEvidence,
         metadata: payload
       }
     });
