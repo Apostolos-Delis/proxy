@@ -96,9 +96,10 @@ Each wire definition owns its route, request validation, stream framing, error r
 
 ### Operations
 
-The initial operation is:
+The initial operations are:
 
 - `text.generate`
+- `text.count_tokens`
 
 `model.list` remains a local catalog operation. Embeddings and other modalities add new operation definitions only after the core resolution path works.
 
@@ -312,6 +313,10 @@ The resolver does not parse provider response bodies, fetch credentials, send ne
 - Add minimal administrative CRUD for connections, deployments, logical models, targets, profiles, and grants.
 - Add a TOML `plan` and `apply` command that produces the same database mutations as the API.
 - Keep the database as the only runtime truth; do not implement live two-way sync.
+
+## Implementation Tickets
+
+The dependency-ordered, PR-sized implementation breakdown lives in [TICKETS.md](TICKETS.md).
 
 ## Acceptance Criteria
 
