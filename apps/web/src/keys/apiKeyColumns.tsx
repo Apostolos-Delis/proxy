@@ -1,26 +1,23 @@
 import { Ban, ChevronDown } from "lucide-react";
 import { useRef, useState } from "react";
 
-import { ApiKeyProviderBinding } from "../apiKeyProviderBinding";
 import { compactId, formatDate, formatDateTime } from "../format";
-import type { ProviderAccountSummary } from "../providers/data";
-import { isDefaultConfig, type ApiKeySummary, type RoutingConfigSummary } from "../routing/data";
 import type { ConsoleTableColumn } from "../table";
 import { AnchoredPopover } from "../table/PopoverShell";
 import { StatusIndicator } from "../ui";
 import { OwnerCell, ownerLabel, type UserDirectory } from "../userDirectory";
-import { apiKeyStatus, providerBindingValue, routingConfigLabel } from "./apiKeyTableData";
+import { accessProfileLabel, apiKeyStatus } from "./apiKeyTableData";
+import type { AccessProfileSummary, ApiKeySummary } from "./data";
 
 export type ApiKeyColumnConfig = {
-  configs: RoutingConfigSummary[];
-  providerAccounts: ProviderAccountSummary[];
+  profiles: AccessProfileSummary[];
   users: UserDirectory;
   openKeyId: string | null;
   pendingKeyId?: string;
   errorKeyId?: string;
   errorMessage?: string;
   onOpenChange: (apiKeyId: string, open: boolean) => void;
-  onAssign: (apiKeyId: string, routingConfigId: string | null) => void;
+  onAssign: (apiKeyId: string, accessProfileId: string) => void;
   onInspect: (apiKeyId: string) => void;
   revokePendingKeyId?: string;
   revokeErrorKeyId?: string;
@@ -29,8 +26,7 @@ export type ApiKeyColumnConfig = {
 };
 
 export function apiKeyColumns({
-  configs,
-  providerAccounts,
+  profiles,
   users,
   openKeyId,
   pendingKeyId,
@@ -50,24 +46,23 @@ export function apiKeyColumns({
     { id: "owner", header: "Owner", size: 170, accessorFn: (apiKey) => ownerLabel(users, apiKey.userId), cell: ({ row }) => (
       <OwnerCell users={users} userId={row.original.userId} />
     ) },
-    { id: "routingConfig", header: "Routing", size: 200, accessorFn: routingConfigLabel, cell: ({ row }) => (
+    { id: "accessProfile", header: "Access profile", size: 220, accessorFn: accessProfileLabel, cell: ({ row }) => (
       apiKeyStatus(row.original) === "active" ? (
         <>
           <AssignmentMenu
             apiKey={row.original}
-            configs={configs}
+            profiles={profiles}
             open={openKeyId === row.original.id}
             pending={pendingKeyId === row.original.id}
             onOpenChange={(open) => onOpenChange(row.original.id, open)}
-            onAssign={(routingConfigId) => onAssign(row.original.id, routingConfigId)}
+            onAssign={(accessProfileId) => onAssign(row.original.id, accessProfileId)}
           />
           {errorKeyId === row.original.id && errorMessage ? <div className="action-error">{errorMessage}</div> : null}
         </>
       ) : (
-        <span className="faint">{routingConfigLabel(row.original)}</span>
+        <span className="faint">{accessProfileLabel(row.original)}</span>
       )
     ) },
-    { id: "providerKey", header: "Provider key", size: 220, enableSorting: false, accessorFn: providerBindingValue, cell: ({ row }) => <ApiKeyProviderBinding apiKey={row.original} providerAccounts={providerAccounts} /> },
     { id: "created", header: "Created", size: 105, accessorFn: (apiKey) => apiKey.createdAt, cell: ({ row }) => (
       <span className="nowrap" title={formatDateTime(row.original.createdAt)}>{formatDate(row.original.createdAt)}</span>
     ) },
@@ -121,7 +116,7 @@ function RevokeKeyAction({ apiKey, pending, error, onRevoke }: {
 }
 
 function revokeContent(pending: boolean, confirming: boolean) {
-  if (pending) return "Revoking…";
+  if (pending) return "Revoking...";
   if (confirming) return "Revoke?";
   return <Ban />;
 }
@@ -140,17 +135,15 @@ function ApiKeyNameCell({ apiKey, onInspect }: { apiKey: ApiKeySummary; onInspec
   );
 }
 
-function AssignmentMenu({ apiKey, configs, open, pending, onOpenChange, onAssign }: {
+function AssignmentMenu({ apiKey, profiles, open, pending, onOpenChange, onAssign }: {
   apiKey: ApiKeySummary;
-  configs: RoutingConfigSummary[];
+  profiles: AccessProfileSummary[];
   open: boolean;
   pending: boolean;
   onOpenChange: (open: boolean) => void;
-  onAssign: (routingConfigId: string | null) => void;
+  onAssign: (accessProfileId: string) => void;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const label = apiKey.routingConfig?.name ?? "Organization default";
-  const options = configs.filter((config) => !isDefaultConfig(config) || apiKey.routingConfigId === config.id);
   return (
     <div
       className="assignment-menu"
@@ -162,26 +155,22 @@ function AssignmentMenu({ apiKey, configs, open, pending, onOpenChange, onAssign
     >
       <button
         ref={triggerRef}
-        className={`cell-select${apiKey.routingConfig ? "" : " unset"}`}
+        className={`cell-select${apiKey.accessProfile ? "" : " unset"}`}
         type="button"
         disabled={pending}
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}
       >
-        <span>{pending ? "Updating…" : label}</span>
+        <span>{pending ? "Updating..." : accessProfileLabel(apiKey)}</span>
         <ChevronDown />
       </button>
       {open ? (
         <AnchoredPopover anchorRef={triggerRef} onDismiss={() => onOpenChange(false)}>
           <div className="assignment-popover">
-            <button type="button" className={!apiKey.routingConfigId ? "active" : ""} onClick={() => onAssign(null)}>
-              <strong>Organization default</strong>
-              <span>Clear key-specific routing</span>
-            </button>
-            {options.map((config) => (
-              <button key={config.id} type="button" className={apiKey.routingConfigId === config.id ? "active" : ""} onClick={() => onAssign(config.id)}>
-                <strong>{config.name}</strong>
-                <span>v{config.activeVersion?.version ?? "?"} · {config.assignedApiKeyCount} keys</span>
+            {profiles.map((profile) => (
+              <button key={profile.id} type="button" className={apiKey.accessProfileId === profile.id ? "active" : ""} onClick={() => onAssign(profile.id)}>
+                <strong>{profile.name}</strong>
+                <span>{profile.description ?? profile.slug}</span>
               </button>
             ))}
           </div>

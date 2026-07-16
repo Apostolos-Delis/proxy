@@ -4,14 +4,13 @@ import type { ProxyEvent } from "../events.js";
 import { persistClassifierUsage } from "./classifierUsage.js";
 import { persistCompressionReceipts } from "./compressionReceipts.js";
 import { persistProviderStarted, persistProviderTerminal, persistStreamStarted } from "./providerAttempt.js";
-import { projectProviderHealthProbe, projectProviderHealthTerminal } from "./providerHealth.js";
+import { projectProviderHealthTerminal } from "./providerHealth.js";
 import {
   persistProviderRequestStartFailed,
   persistRequestReceived,
   persistRoutingContext
 } from "./requestState.js";
 import { persistRouteDecision } from "./routeDecision.js";
-import { persistSessionRoute } from "./sessionRoute.js";
 
 export async function projectEvent(tx: ProxyTransaction, event: ProxyEvent) {
   if (event.eventType === "proxy.request_received") {
@@ -22,7 +21,7 @@ export async function projectEvent(tx: ProxyTransaction, event: ProxyEvent) {
     await persistRoutingContext(tx, event);
     return;
   }
-  if (event.eventType === "routing.decision_recorded" || event.eventType === "routing.plan_recorded") {
+  if (event.eventType === "routing.decision_recorded") {
     await persistRouteDecision(tx, event);
     return;
   }
@@ -54,12 +53,5 @@ export async function projectEvent(tx: ProxyTransaction, event: ProxyEvent) {
     await persistProviderTerminal(tx, event);
     await projectProviderHealthTerminal(tx, event);
     return;
-  }
-  if (event.eventType === "provider_account.health_probe_completed") {
-    await projectProviderHealthProbe(tx, event);
-    return;
-  }
-  if (event.eventType === "session.route_memory_recorded") {
-    await persistSessionRoute(tx, event);
   }
 }

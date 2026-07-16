@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { mkdtemp, writeFile } from "node:fs/promises";
-import { AddressInfo } from "node:net";
+import { type AddressInfo } from "node:net";
 import { join } from "node:path";
 
 import { WebSocketServer } from "ws";
@@ -16,12 +17,16 @@ import {
   type RealHarnessSmokeStatus
 } from "../src/harnessSmokeStatus.js";
 import { createSmokePersistence } from "./smoke-persistence.js";
-import { assertPersistedRoutingDecision } from "./smoke-routing-assertions.js";
+import { assertPersistedGatewayResolution } from "./smoke-gateway-assertions.js";
 
 type Recorded = {
   path: string;
-  body: any;
+  body: Record<string, unknown>;
 };
+
+const classifierModel = "route-classifier-cheap";
+const codexModel = "gpt-5.4-mini";
+const claudeModel = "claude-haiku-4-5";
 
 const openaiRecords: Recorded[] = [];
 const anthropicRecords: Recorded[] = [];
@@ -35,23 +40,20 @@ const smokeEnv = {
   OPENAI_API_KEY: "openai-upstream-key",
   ANTHROPIC_API_KEY: "anthropic-upstream-key",
   OPENAI_BASE_URL: openai.url,
-  OPENAI_FAST_MODEL: "gpt-5.4-mini",
-  OPENAI_HARD_MODEL: "gpt-5.5",
   ANTHROPIC_BASE_URL: anthropic.url,
-  ANTHROPIC_FAST_MODEL: "claude-haiku-4-5",
-  ANTHROPIC_HARD_MODEL: "claude-sonnet-4-6",
-  CLASSIFIER_PROVIDER: "openai",
-  CLASSIFIER_MODEL: "route-classifier-cheap",
+  GATEWAY_SEED_CLASSIFIER_MODEL: classifierModel,
+  ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.1/32",
   LOG_LEVEL: "fatal"
 };
 const config = loadConfig(smokeEnv);
 const smokePersistence = await createSmokePersistence(config, smokeEnv);
 const app = buildServer(config, { persistence: smokePersistence.persistence });
+const workspaceId = defaultWorkspaceId(config.defaultOrganizationId);
 const smokeAdminQueries = smokePersistence.persistence.adminQueries.forScope(
   config.defaultOrganizationId,
-  defaultWorkspaceId(config.defaultOrganizationId)
+  workspaceId
 );
-const defaultRoutingConfigId = `${config.defaultOrganizationId}:routing-config:default`;
+const accessProfileId = `${workspaceId}:access-profile:opendoor-engineer`;
 
 try {
   const proxyUrl = await app.listen({ port: 0, host: "127.0.0.1" }).then(() => {
@@ -65,31 +67,41 @@ try {
   const claudeSmoke = await runOptionalHarnessSmoke("claude-code", "claude", () => runClaudeWithDebug(proxyUrl));
   realHarnesses.push(claudeSmoke);
 
-  if (codexSmoke.status === "passed" && !openaiRecords.some((record) => record.body.model === config.openaiHardModel)) {
-    throw new Error("Codex CLI did not route to OpenAI hard model.");
+  if (codexSmoke.status === "passed" && !openaiRecords.some((record) => record.body.model === codexModel)) {
+    throw new Error(`Codex CLI did not resolve coding-auto to ${codexModel}.`);
   }
-  if (claudeSmoke.status === "passed" && !anthropicRecords.some((record) => record.body.model === config.anthropicHardModel)) {
-    throw new Error("Claude Code CLI did not route to Anthropic hard model.");
+  if (claudeSmoke.status === "passed" && !anthropicRecords.some((record) => record.body.model === claudeModel)) {
+    throw new Error(`Claude Code CLI did not resolve economy-auto to ${claudeModel}.`);
   }
   if (codexSmoke.status === "passed") {
-    await assertPersistedRoutingDecision(smokeAdminQueries, {
+    await assertPersistedGatewayResolution(smokeAdminQueries, {
       label: "Codex CLI",
       surface: "openai-responses",
-      finalRoute: "hard",
-      selectedModel: config.openaiHardModel,
-      routingConfigId: defaultRoutingConfigId
+      requestedLogicalModel: "coding-auto",
+      resolvedLogicalModelId: `${workspaceId}:logical-model:coding-auto`,
+      accessProfileId,
+      selectedModel: codexModel,
+      deploymentId: `${workspaceId}:deployment:openai:${codexModel}`,
+      providerConnectionId: `${workspaceId}:connection:openai`,
+      ingressWireId: "openai-responses",
+      egressWireId: "openai-responses"
     });
-    console.log(`codex_cli_route=hard model=${config.openaiHardModel} config=${defaultRoutingConfigId}`);
+    console.log(`codex_cli_logical_model=coding-auto model=${codexModel}`);
   }
   if (claudeSmoke.status === "passed") {
-    await assertPersistedRoutingDecision(smokeAdminQueries, {
+    await assertPersistedGatewayResolution(smokeAdminQueries, {
       label: "Claude Code CLI",
       surface: "anthropic-messages",
-      finalRoute: "hard",
-      selectedModel: config.anthropicHardModel,
-      routingConfigId: defaultRoutingConfigId
+      requestedLogicalModel: "economy-auto",
+      resolvedLogicalModelId: `${workspaceId}:logical-model:economy-auto`,
+      accessProfileId,
+      selectedModel: claudeModel,
+      deploymentId: `${workspaceId}:deployment:anthropic:${claudeModel}`,
+      providerConnectionId: `${workspaceId}:connection:anthropic`,
+      ingressWireId: "anthropic-messages",
+      egressWireId: "anthropic-messages"
     });
-    console.log(`claude_cli_route=hard model=${config.anthropicHardModel} config=${defaultRoutingConfigId}`);
+    console.log(`claude_cli_logical_model=economy-auto model=${claudeModel}`);
   }
 
   const statusArtifact = buildHarnessSmokeStatusArtifact({ realHarnesses });
@@ -154,7 +166,7 @@ async function runCodex(proxyUrl: string) {
   await writeFile(
     join(codexHome, "config.toml"),
     [
-      'model = "router-auto"',
+      'model = "coding-auto"',
       'model_provider = "proxy"',
       "",
       "[model_providers.proxy]",
@@ -189,7 +201,7 @@ async function runClaude(proxyUrl: string) {
     "-p",
     "--bare",
     "--model",
-    "claude-router-auto",
+    "economy-auto",
     "--output-format",
     "json",
     "--tools",
@@ -294,15 +306,11 @@ async function mockOpenAI(records: Recorded[]) {
     const body = await readJson(request);
     records.push({ path: request.url ?? "", body });
 
-    if (body.model === "route-classifier-cheap") {
+    if (body.model === classifierModel) {
       sendJson(response, {
         output_text: JSON.stringify({
-          complexity: "hard",
-          risk: ["auth"],
-          recommended_route: "hard",
-          can_use_fast_model: false,
-          needs_deep_reasoning: false,
-          reason_codes: ["auth_risk"],
+          target_id: classifierTarget(body),
+          reason_codes: ["harness_smoke"],
           confidence: 0.9
         })
       });
@@ -346,7 +354,7 @@ async function mockOpenAI(records: Recorded[]) {
     }
     wss.handleUpgrade(request, socket, head, (client) => {
       client.on("message", (data) => {
-        const body = JSON.parse(String(data));
+        const body = asRecord(JSON.parse(String(data)));
         records.push({ path: request.url ?? "", body });
         client.send(JSON.stringify({
           type: "response.created",
@@ -449,13 +457,35 @@ function listen(server: ReturnType<typeof createServer>) {
 }
 
 function readJson(request: IncomingMessage) {
-  return new Promise<any>((resolve) => {
+  return new Promise<Record<string, unknown>>((resolve) => {
     let body = "";
     request.on("data", (chunk) => {
       body += String(chunk);
     });
-    request.on("end", () => resolve(body ? JSON.parse(body) : {}));
+    request.on("end", () => resolve(body ? asRecord(JSON.parse(body)) : {}));
   });
+}
+
+function classifierTarget(body: Record<string, unknown>) {
+  const input = typeof body.input === "string" ? asRecord(JSON.parse(body.input)) : {};
+  const request = asRecord(input.request);
+  const logicalModel = typeof request.requestedModel === "string" ? request.requestedModel : "";
+  const deploymentId = logicalModel === "economy-auto"
+    ? `${workspaceId}:deployment:anthropic:${claudeModel}`
+    : `${workspaceId}:deployment:openai:${codexModel}`;
+  const logicalModelId = `${workspaceId}:logical-model:${logicalModel}`;
+  const expected = `${logicalModelId}:target:${createHash("sha256").update(deploymentId).digest("hex").slice(0, 12)}`;
+  const targets = Array.isArray(input.targets) ? input.targets : [];
+  if (!targets.some((target) => asRecord(target).id === expected)) {
+    throw new Error(`classifier target ${expected} is not eligible: ${JSON.stringify(input)}`);
+  }
+  return expected;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 function sendJson(response: { writeHead: (status: number, headers: Record<string, string>) => void; end: (body: string) => void }, body: unknown) {

@@ -1,6 +1,5 @@
 import { builder } from "../builder.js";
 import type { ProviderAttemptModel, RouteDecisionModel } from "../models.js";
-import { RoutingConfigSnapshot } from "./core.js";
 
 export const ProviderAttempt = builder
   .objectRef<ProviderAttemptModel>("ProviderAttempt")
@@ -17,16 +16,15 @@ export const ProviderAttempt = builder
         nullable: true,
         resolve: (attempt) => attempt.adapterClassification ?? null
       }),
-      providerAccountId: t.exposeString("providerAccountId", { nullable: true }),
+      deploymentId: t.exposeString("deploymentId", { nullable: true }),
+      providerConnectionId: t.exposeString("providerConnectionId", { nullable: true }),
+      egressWireId: t.exposeString("egressWireId", { nullable: true }),
+      providerAdapterContractVersion: t.exposeString("providerAdapterContractVersion", { nullable: true }),
       upstreamRequestId: t.exposeString("upstreamRequestId", { nullable: true }),
       terminalStatus: t.exposeString("terminalStatus"),
       statusCode: t.exposeInt("statusCode", { nullable: true }),
       error: t.exposeString("error", { nullable: true }),
       usage: t.field({ type: "JSON", resolve: (attempt) => attempt.usage }),
-      routeCandidateId: t.exposeString("routeCandidateId", { nullable: true }),
-      attemptIndex: t.exposeInt("attemptIndex", { nullable: true }),
-      fallbackIndex: t.exposeInt("fallbackIndex", { nullable: true }),
-      skipReason: t.exposeString("skipReason", { nullable: true }),
       startedAt: t.exposeString("startedAt"),
       firstByteAt: t.exposeString("firstByteAt", { nullable: true }),
       completedAt: t.exposeString("completedAt", { nullable: true })
@@ -38,33 +36,27 @@ export const RouteDecision = builder.objectRef<RouteDecisionModel>("RouteDecisio
     id: t.exposeString("id"),
     requestId: t.exposeString("requestId"),
     requestedModel: t.exposeString("requestedModel"),
-    classifierRoute: t.exposeString("classifierRoute", { nullable: true }),
-    finalRoute: t.exposeString("finalRoute", { nullable: true }),
     selectedProvider: t.exposeString("selectedProvider", { nullable: true }),
     selectedModel: t.exposeString("selectedModel", { nullable: true }),
     reasoningEffort: t.exposeString("reasoningEffort", { nullable: true }),
     verbosity: t.exposeString("verbosity", { nullable: true }),
-    routingConfig: t.field({
-      type: RoutingConfigSnapshot,
-      nullable: true,
-      resolve: (decision) => decision.routingConfig
-    }),
-    classifier: t.field({
-      type: "JSON",
-      nullable: true,
-      resolve: (decision) => decision.classifier ?? null
-    }),
-    routeExecutionPlan: t.field({
-      type: "JSON",
-      resolve: (decision) => decision.routeExecutionPlan
-    }),
-    selectedCandidateId: t.exposeString("selectedCandidateId", { nullable: true }),
-    translated: t.exposeBoolean("translated"),
-    translatorId: t.exposeString("translatorId", { nullable: true }),
+    ingressWireId: t.exposeString("ingressWireId", { nullable: true }),
+    operationId: t.exposeString("operationId", { nullable: true }),
+    requestedLogicalModel: t.exposeString("requestedLogicalModel", { nullable: true }),
+    resolvedLogicalModelId: t.exposeString("resolvedLogicalModelId", { nullable: true }),
+    accessProfileId: t.exposeString("accessProfileId", { nullable: true }),
+    routerKind: t.exposeString("routerKind", { nullable: true }),
+    deploymentId: t.exposeString("deploymentId", { nullable: true }),
+    providerConnectionId: t.exposeString("providerConnectionId", { nullable: true }),
+    egressWireId: t.exposeString("egressWireId", { nullable: true }),
+    wireAdapterVersion: t.exposeString("wireAdapterVersion", { nullable: true }),
     confidence: t.exposeFloat("confidence", { nullable: true }),
     reasonCodes: t.exposeStringList("reasonCodes"),
     guardrailActions: t.exposeStringList("guardrailActions"),
-    budgetChecks: t.field({ type: "JSON", resolve: (decision) => decision.budgetChecks }),
+    routerDecisionId: t.exposeString("routerDecisionId", { nullable: true }),
+    routerDecision: t.field({ type: "JSON", resolve: (decision) => decision.routerDecision }),
+    translated: t.exposeBoolean("translated"),
+    translatorId: t.exposeString("translatorId", { nullable: true }),
     policyVersion: t.exposeString("policyVersion"),
     createdAt: t.exposeString("createdAt")
   })

@@ -16,8 +16,6 @@ Use the [prompt caching rollout runbook](../runbooks/prompt-caching.md) before e
 | Translated Anthropic target | Anthropic controls can apply after translation to Anthropic Messages | OpenAI-only cache fields are not copied into Anthropic requests | Anthropic usage is normalized into the same ledger fields |
 | Translated OpenAI target | None | Anthropic `cache_control` is not copied into OpenAI requests | OpenAI usage is normalized into the same ledger fields |
 
-Subscription ChatGPT OAuth credentials use a separate upstream path from the public OpenAI API. Proxy still strips `prompt_cache_retention` on that path unless that upstream is verified to support it.
-
 ## Anthropic Controls
 
 Enable Anthropic cache controls in **Settings -> Token optimization**.
@@ -52,7 +50,7 @@ Proxy normalizes provider usage into:
 
 Those fields feed **Usage / Cost**, **Caching**, request logs, session views, token attribution, and spend accounting. Cache savings are estimates based on local model pricing: cached tokens are compared against the full input-token price for the same model.
 
-Use cache-bust reporting when cache read tokens collapse between adjacent requests in the same session. Current causes include likely TTL expiry, model switch, provider switch, org prompt edit, tool schema churn, translator change, compression policy change, route config change, or unknown when evidence is incomplete. Use token attribution when you need to find whether system prompts, org prompts, tool schemas, history, latest user text, or tool results are dominating the uncached prefix.
+Use cache-bust reporting when cache read tokens collapse between adjacent requests in the same session. Current causes include likely TTL expiry, model switch, provider switch, logical-model change, org prompt edit, tool schema churn, translator change, compression policy change, or unknown when evidence is incomplete. Use token attribution when you need to find whether system prompts, org prompts, tool schemas, history, latest user text, or tool results are dominating the uncached prefix.
 
 ## Operator Workflow
 
@@ -61,7 +59,7 @@ Use cache-bust reporting when cache read tokens collapse between adjacent reques
 3. Use key/session hit rates to find whether a workspace, API key, or session identity is getting stable cache locality.
 4. Use token attribution to find which request bucket is driving uncached input.
 5. For Anthropic traffic, decide whether `Auto-enable prompt caching` or `Adapt cache TTL to 1 hour` matches the observed pattern.
-6. For OpenAI traffic, keep static content at the start of prompts, preserve stable `prompt_cache_key` values when callers provide them, and avoid translation or route changes that move traffic away from a warm provider/model prefix.
+6. For OpenAI traffic, keep static content at the start of prompts, preserve stable `prompt_cache_key` values when callers provide them, and avoid logical-model target or translation changes that move traffic away from a warm provider/model prefix.
 
 ## Related Pages
 

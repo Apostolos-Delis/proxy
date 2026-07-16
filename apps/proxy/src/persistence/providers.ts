@@ -1,9 +1,7 @@
 import { lookup } from "node:dns/promises";
 import ipaddr from "ipaddr.js";
 
-import { providers, type ProxyDbSession } from "@proxy/db";
 import {
-  providerCapabilitiesWithDefaults,
   type Dialect,
   type Provider,
   type ProviderAdapterKind,
@@ -12,7 +10,6 @@ import {
   type ProviderRegistryEndpoint as SchemaProviderRegistryEndpoint,
   type ProviderRegistryHttpEndpoint as SchemaProviderRegistryHttpEndpoint
 } from "@proxy/schema";
-import { and, eq, isNull } from "drizzle-orm";
 
 import type { AppConfig } from "../config.js";
 import { isProviderAdapterConfigValid } from "../providerAdapters/config.js";
@@ -39,10 +36,6 @@ export type ProviderRegistryEntry = {
   pinnedAddress?: PinnedUpstreamAddress;
 };
 
-export type ProviderRegistryResolver = {
-  resolve(input: { organizationId: string; provider: Provider }): Promise<ProviderRegistryEntry | undefined>;
-};
-
 export function providerEndpointForDialect(provider: ProviderRegistryEntry, dialect: Dialect): ProviderRegistryHttpEndpoint | undefined {
   return provider.endpoints.find((endpoint): endpoint is ProviderRegistryHttpEndpoint =>
     "path" in endpoint && endpoint.dialect === dialect
@@ -51,15 +44,6 @@ export function providerEndpointForDialect(provider: ProviderRegistryEntry, dial
 
 export function providerEndpointForAnyDialect(provider: ProviderRegistryEntry, dialect: Dialect): ProviderRegistryEndpoint | undefined {
   return provider.endpoints.find((endpoint) => endpoint.dialect === dialect);
-}
-
-export function operatorTokenForProvider(
-  provider: Provider,
-  config: Pick<AppConfig, "openaiApiKey" | "anthropicApiKey">
-) {
-  if (provider === "openai") return config.openaiApiKey;
-  if (provider === "anthropic") return config.anthropicApiKey;
-  return undefined;
 }
 
 export class ProviderRegistryError extends Error {
@@ -72,111 +56,6 @@ export class ProviderRegistryError extends Error {
 }
 
 export type ProviderNetworkPolicy = Pick<AppConfig, "allowedPrivateUpstreamCidrs">;
-
-export class ProviderRegistryStore implements ProviderRegistryResolver {
-  constructor(
-    private readonly db: ProxyDbSession,
-    private readonly networkPolicy: ProviderNetworkPolicy
-  ) {}
-
-  async resolve(input: { organizationId: string; provider: Provider }) {
-    const [orgProvider] = await this.db
-      .select()
-      .from(providers)
-      .where(and(
-        eq(providers.organizationId, input.organizationId),
-        eq(providers.slug, input.provider)
-      ))
-      .limit(1);
-    if (orgProvider) {
-      const entry = providerEntry(orgProvider);
-      const pinnedAddress = await validateProviderBaseUrl(entry.baseUrl, this.networkPolicy);
-      return { ...entry, pinnedAddress };
-    }
-
-    const [builtinProvider] = await this.db
-      .select()
-      .from(providers)
-      .where(and(
-        eq(providers.slug, input.provider),
-        isNull(providers.organizationId)
-      ))
-      .limit(1);
-    return builtinProvider ? providerEntry(builtinProvider) : undefined;
-  }
-}
-
-export class ConfigProviderRegistry implements ProviderRegistryResolver {
-  constructor(private readonly config: AppConfig) {}
-
-  async resolve(input: { provider: Provider }) {
-    if (input.provider === "openai") {
-      return {
-        id: "00000000-0000-0000-0000-000000000001",
-        organizationId: null,
-        slug: "openai",
-        baseUrl: this.config.openaiBaseUrl,
-        adapterKind: "generic-http-json" as const,
-        adapterConfig: {},
-        authStyle: "bearer" as const,
-        endpoints: [
-          { dialect: "openai-responses" as const, path: "/responses" },
-          { dialect: "openai-chat" as const, path: "/chat/completions" }
-        ],
-        defaultHeaders: {},
-        capabilities: providerCapabilitiesWithDefaults("openai", {
-          efforts: ["low", "medium", "high", "xhigh"]
-        }),
-        forwardHarnessHeaders: true,
-        enabled: true,
-        builtin: true
-      };
-    }
-    if (input.provider === "anthropic") {
-      return {
-        id: "00000000-0000-0000-0000-000000000002",
-        organizationId: null,
-        slug: "anthropic",
-        baseUrl: this.config.anthropicBaseUrl,
-        adapterKind: "generic-http-json" as const,
-        adapterConfig: {},
-        authStyle: "x-api-key" as const,
-        endpoints: [
-          { dialect: "anthropic-messages" as const, path: "/messages" }
-        ],
-        defaultHeaders: {},
-        capabilities: providerCapabilitiesWithDefaults("anthropic", {
-          efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"]
-        }),
-        forwardHarnessHeaders: true,
-        enabled: true,
-        builtin: true
-      };
-    }
-    return undefined;
-  }
-}
-
-function providerEntry(row: typeof providers.$inferSelect): ProviderRegistryEntry {
-  const entry = {
-    id: row.id,
-    organizationId: row.organizationId,
-    slug: row.slug,
-    baseUrl: trimProviderBaseUrl(row.baseUrl),
-    adapterKind: row.adapterKind,
-    adapterConfig: row.adapterConfig,
-    authStyle: row.authStyle,
-    endpoints: row.endpoints.filter(isProviderEndpoint),
-    defaultHeaders: row.defaultHeaders,
-    capabilities: providerCapabilitiesWithDefaults(row.slug, row.capabilities),
-    forwardHarnessHeaders: row.forwardHarnessHeaders,
-    enabled: row.enabled,
-    builtin: row.organizationId === null
-  };
-  assertProviderAdapterConfig(entry.adapterKind, entry.adapterConfig);
-  assertSafeDefaultHeaders(entry.defaultHeaders);
-  return entry;
-}
 
 const authHeaderNames = new Set([
   "auth",
@@ -345,22 +224,6 @@ function addressMatchesCidr(address: string, cidr: string) {
   } catch {
     return false;
   }
-}
-
-function isProviderEndpoint(value: {
-  dialect?: unknown;
-  path?: unknown;
-  operation?: unknown;
-}): value is ProviderRegistryEndpoint {
-  if (
-    (value.dialect === "anthropic-messages" || value.dialect === "openai-responses" || value.dialect === "openai-chat") &&
-    typeof value.path === "string" &&
-    value.path.startsWith("/")
-  ) {
-    return true;
-  }
-  return value.dialect === "bedrock-converse" &&
-    (value.operation === "Converse" || value.operation === "ConverseStream");
 }
 
 export function trimProviderBaseUrl(value: string) {

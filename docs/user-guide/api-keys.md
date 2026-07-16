@@ -1,133 +1,175 @@
 # API Keys And Harness Setup
 
-Proxy API keys authenticate client traffic and attach requests to an organization, workspace, user, routing config, and optional provider credential bindings.
+Proxy API keys authenticate gateway traffic and bind a caller to one organization, workspace, optional user, and access profile. Keys are stored as hashes and the plaintext secret is returned only when the key is created.
 
-## What A Proxy API Key Controls
+## Access Profiles
 
-A key can carry:
+An access profile is a reusable entitlement set. Its model grants define:
 
-- Owner/user attribution.
-- Workspace scope.
-- Routing config assignment.
-- Provider credential bindings for BYOK or subscription traffic.
-- Setup snippets for one or more harnesses.
+- which logical models the key may request;
+- which operations are allowed, such as `text.generate` or `model.list`;
+- optional output-token parameter caps;
+- optional concurrent-request, request-rate, and token-rate limits.
 
-The raw key is shown only once when created. Proxy stores a hash, not the plaintext key.
+The seeded profiles demonstrate the intended split:
+
+| Profile | Intended caller | Initial logical models |
+| --- | --- | --- |
+| `opendoor-engineer` | Trusted internal engineers and services | `fable`, `coding-auto`, `economy-auto` |
+| `external-economy` | External or lower-trust harnesses | `economy-auto` |
+
+Access profiles grant logical models, not provider models or credentials. Physical deployments can change without reissuing keys.
 
 ## Create A Key
 
-1. Open the console.
-2. Go to **API keys**.
-3. Choose **Create key**.
-4. Name the key after the person, service, or harness that will use it.
-5. Pick the target workspace and routing config.
-6. Select the harnesses you want setup snippets for.
-7. Create the key and copy the generated secret immediately.
+1. Open **API keys**.
+2. Select **Create key**.
+3. Enter a descriptive application, environment, or harness name.
+4. Choose the access profile.
+5. Choose the harnesses whose setup instructions should be shown.
+6. Create the key and store the secret immediately.
 
-Use separate keys when you want different routing configs, attribution, provider bindings, or revocation boundaries.
+The console derives a recommended setup model from the profile's enabled grants. It cannot create a key with a disabled profile or a profile that has no usable generate/list grant.
 
-## Use The Hosted Setup Script
+GraphQL callers must also supply the profile:
 
-The proxy hosts an idempotent setup script that writes only Proxy-owned marker blocks.
-
-Configure all supported local harnesses with one key:
-
-```shell
-curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- <proxy-api-key>
-```
-
-Configure a single harness:
-
-```shell
-curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness codex <proxy-api-key>
-curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code <proxy-api-key>
-curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness opencode <proxy-api-key>
-```
-
-Configure a selected set:
-
-```shell
-curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code --harness codex <proxy-api-key>
-```
-
-By default, shared setup stores the key at `~/.proxy/token`. Harness-specific setup stores keys such as `~/.proxy/codex.token` and `~/.proxy/claude-code.token`.
-
-## Manual Codex Setup
-
-In `~/.codex/config.toml`:
-
-```toml
-# >>> proxy codex defaults >>>
-model = "router-auto"
-model_provider = "proxy"
-# <<< proxy codex defaults <<<
-
-# >>> proxy codex provider proxy >>>
-[model_providers.proxy]
-name = "Proxy"
-base_url = "http://127.0.0.1:8787/v1"
-env_key = "PROXY_TOKEN"
-wire_api = "responses"
-supports_websockets = true
-# <<< proxy codex provider proxy <<<
-```
-
-In your shell profile:
-
-```shell
-export PROXY_TOKEN="$(cat ~/.proxy/token)"
-```
-
-## Manual Claude Code Setup
-
-In `~/.claude/settings.json`:
-
-```json
-{
-  "model": "claude-router-auto",
-  "env": {
-    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8787",
-    "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"
-  },
-  "apiKeyHelper": "cat ~/.proxy/token"
+```graphql
+mutation {
+  createApiKey(input: {
+    name: "payments-production"
+    accessProfileId: "workspace:access-profile:service-default"
+  }) {
+    apiKey { id name accessProfileId }
+    secret
+  }
 }
 ```
 
-Claude Code strips `ANTHROPIC_BASE_URL` from project settings, so use user-level or managed settings.
+## Application SDKs
 
-## Manual opencode Setup
+OpenAI SDKs use the `/v1` base URL and bearer authentication:
 
-Use the generated snippets from the API-key wizard when possible. The full manual reference is [opencode setup](../harnesses/opencode.md).
+```ts
+const client = new OpenAI({
+  baseURL: "https://proxy.example.com/v1",
+  apiKey: process.env.PROXY_API_KEY
+});
 
-## Manual Cursor BYOK Setup
+await client.responses.create({
+  model: "coding-auto",
+  input: "Summarize the ticket."
+});
+```
 
-Cursor uses an OpenAI-compatible base URL. Use the generated snippets when possible, or follow [Cursor BYOK setup](../harnesses/cursor-byok.md).
+Anthropic SDKs use the gateway origin and the same Proxy secret:
 
-## Assign Routing Configs
+```ts
+const client = new Anthropic({
+  baseURL: "https://proxy.example.com",
+  apiKey: process.env.PROXY_API_KEY
+});
 
-Routing config precedence is:
+await client.messages.create({
+  model: "fable",
+  max_tokens: 1024,
+  messages: [{ role: "user", content: "Review the change." }]
+});
+```
 
-1. API key assignment.
-2. Workspace default.
-3. Seeded default.
+Check `GET /v1/models` with the key before deployment. It is the authoritative caller-visible logical-model list.
 
-Use API-key assignment for controlled experiments, team-specific policy, or a key that should pin a provider/model tier map.
+## Hosted Harness Setup
 
-## Revoke Or Rotate A Key
+Configure Claude Code, Codex, and opencode with one command:
 
-1. Open **API keys**.
-2. Find the key.
-3. Revoke it.
-4. Create a replacement key.
-5. Re-run the hosted setup script for affected harnesses.
+```shell
+curl -fsSL https://proxy.example.com/setup.sh | bash -s -- <proxy-api-key>
+```
 
-Revocation takes effect at Proxy auth. Existing upstream requests already on the wire can still complete.
+Select one or more harnesses:
+
+```shell
+curl -fsSL https://proxy.example.com/setup.sh | bash -s -- --harness codex <key>
+curl -fsSL https://proxy.example.com/setup.sh | bash -s -- --harness claude-code --harness opencode <key>
+```
+
+The script stores the key with mode `0600`, updates only Proxy-owned marker blocks, and reports conflicts with user-managed settings instead of overwriting them.
+
+Use separate keys when harnesses need different profiles, attribution, rate limits, environments, or revocation boundaries.
+
+## Manual Claude Code Setup
+
+Merge into `~/.claude/settings.json`:
+
+```json
+{
+  "model": "economy-auto",
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://proxy.example.com",
+    "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"
+  },
+  "apiKeyHelper": "cat ~/.proxy/claude-code.token"
+}
+```
+
+`ANTHROPIC_BASE_URL` must be user-level or managed Claude Code settings. The model must be granted to the key.
+
+## Manual Codex Setup
+
+Store the key in an environment variable, then configure `~/.codex/config.toml`:
+
+```toml
+model = "coding-auto"
+model_provider = "proxy"
+
+[model_providers.proxy]
+name = "Proxy"
+base_url = "https://proxy.example.com/v1"
+env_key = "PROXY_API_KEY"
+wire_api = "responses"
+supports_websockets = false
+```
+
+WebSockets stay disabled in the general setup because automatic logical models can select a non-Responses-native deployment. HTTP supports the registered compatibility translations; WebSocket traffic is native-wire only.
+
+## Change A Key's Profile
+
+Use the profile menu on the API-key table or GraphQL:
+
+```graphql
+mutation {
+  assignGatewayApiKeyAccessProfile(
+    apiKeyId: "api_key_123"
+    accessProfileId: "workspace:access-profile:external-economy"
+  ) {
+    apiKeyId
+    accessProfileId
+  }
+}
+```
+
+The new catalog and authorization take effect on the next request. This operation is audited.
+
+## Revoke Or Replace A Key
+
+Keys are not recoverable or rotated in place:
+
+1. Create a replacement key with the intended access profile.
+2. Deploy it to the caller.
+3. Verify `lastUsedAt` on the replacement.
+4. Revoke the old key.
+
+A revoked key fails authentication immediately. Never paste plaintext keys into events, prompts, configuration TOML, or issue text.
 
 ## Troubleshooting
 
 | Symptom | Check |
 | --- | --- |
-| Client gets 401 | Wrong key, revoked key, missing `PROXY_TOKEN`, or using provider key instead of Proxy key |
-| Request appears under wrong user | Key owner/attribution or harness identity headers |
-| Request uses unexpected model | API-key routing config assignment and model alias |
-| Setup script reports conflicts | Existing unmarked config blocks; inspect the reported file before rerunning |
+| Key is unauthorized | Secret value, revoked state, workspace, auth header |
+| Model missing from discovery | Profile, enabled grant, `model.list`, logical-model status |
+| Generate request denied | `text.generate` grant and parameter caps |
+| Unexpected physical model | Logical-model targets and resolution evidence, not key configuration |
+| Harness uses wrong model | Harness config and the profile's granted logical-model slugs |
+| Codex WebSocket failure | Keep `supports_websockets = false` unless the logical model is native Responses-only |
+
+See the [gateway control-plane runbook](../runbooks/gateway-control-plane.md) to create or change profiles and grants.

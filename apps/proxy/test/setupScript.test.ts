@@ -510,10 +510,10 @@ env_key = "OLD_PROXY_TOKEN"
             npm: "@ai-sdk/openai-compatible",
             name: "User Proxy",
             options: { baseURL: "http://user-managed/v1" },
-            models: { "router-auto": { name: "User Router" } }
+            models: { "coding-auto": { name: "User Router" } }
           }
         },
-        model: "prompt-chat/router-auto"
+        model: "prompt-chat/coding-auto"
       }));
       writeFileSync(join(xdgData, "opencode", "auth.json"), JSON.stringify({
         "prompt-chat": { type: "api", key: "user-token" }

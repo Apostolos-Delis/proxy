@@ -39,45 +39,19 @@ export async function settingsResponse(
     toolResultCompressionPolicy: editable.toolResultCompressionPolicy,
     duplicateToolResultReferences: editable.duplicateToolResultReferences,
     costBaseline: editable.costBaseline,
-    classifier: {
-      model: fileSettings.classifier.model ?? config.classifierModel,
-      timeoutMs: fileSettings.classifier.timeoutMs ?? config.classifierTimeoutMs,
-      maxAttempts: fileSettings.classifier.maxAttempts ?? config.classifierMaxAttempts,
-      allowRedactedExcerpt: fileSettings.classifier.allowRedactedExcerpt ?? config.classifierAllowRedactedExcerpt
-    },
-    routeQuality: {
-      lowConfidenceThreshold: fileSettings.routeQuality.lowConfidenceThreshold ?? config.routeQualityLowConfidenceThreshold
-    },
     promptCapture
   };
   return {
     organizationId,
     databaseEnabled: Boolean(config.databaseUrl),
-    subscriptionOAuthEnabled: config.subscriptionOAuthEnabled,
-    classifier: {
-      provider: config.classifierProvider,
-      model: config.classifierModel,
-      timeoutMs: config.classifierTimeoutMs,
-      maxAttempts: config.classifierMaxAttempts,
-      contentMode: config.classifierAllowRedactedExcerpt ? "redacted_excerpt" : "features_only"
-    },
     promptCapture,
     storage: {
       format: "json",
       path: config.settingsPath,
       reason: "The repo already uses JSON package/config conventions and has no YAML parser dependency."
     },
-    restartRequiredFor: ["classifier", "routeQuality"],
+    restartRequiredFor: [],
     settings,
-    runtime: {
-      classifier: {
-        provider: config.classifierProvider,
-        model: config.classifierModel,
-        timeoutMs: config.classifierTimeoutMs,
-        maxAttempts: config.classifierMaxAttempts,
-        contentMode: config.classifierAllowRedactedExcerpt ? "redacted_excerpt" : "features_only"
-      }
-    },
     file: fileSettings,
     defaults: emptyProxySettings
   };

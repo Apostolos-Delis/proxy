@@ -29,7 +29,6 @@ import { canAuthenticateOrgProvider, GenericHttpProviderAdapter } from "./provid
 import { BedrockRuntimeProviderAdapter } from "./providerAdapters/bedrockRuntime.js";
 import type { ProviderAdapterFailureClassification } from "./providerAdapters/types.js";
 import { ProviderMetrics } from "./providerMetrics.js";
-import { ProviderDeploymentHealthStore, type ProviderDeploymentFailureReason } from "./providerDeploymentHealth.js";
 import { classifyProviderTerminalHealth } from "./providerHealth.js";
 import { sseObserverForDialect, streamObservationEventMetadata, type StreamObservation } from "./sseObserver.js";
 import { providerCompressionTerminalTelemetry } from "./toolResultCompression.js";
@@ -72,10 +71,9 @@ export class ProviderProxy {
     private readonly requestStates: RequestStateStoreLike,
     private readonly lifecycle: GatewayRequestLifecycle,
     private readonly metrics: MetricsCollector = new NoopMetricsCollector(),
-    private readonly deploymentHealth = new ProviderDeploymentHealthStore(),
     providerAdapters: { bedrockRuntime?: BedrockRuntimeProviderAdapter } = {}
   ) {
-    this.providerMetrics = new ProviderMetrics(config, attempts, metrics);
+    this.providerMetrics = new ProviderMetrics(attempts, metrics);
     this.genericHttp = new GenericHttpProviderAdapter(config, events);
     this.bedrockRuntime = providerAdapters.bedrockRuntime ?? new BedrockRuntimeProviderAdapter(config, events);
   }
@@ -129,7 +127,6 @@ export class ProviderProxy {
       credential: prepared.target.credential,
       decision: {
         ...prepared.decision,
-        finalRoute: selected.route ?? prepared.decision.finalRoute,
         selectedModel,
         provider: selected.provider,
         deployment: selected.deployment ?? prepared.decision.deployment,
@@ -218,8 +215,6 @@ export class ProviderProxy {
       if (timeout) clearTimeout(timeout);
       input.reply.raw.off("close", abortUpstream);
       const aborted = !providerTimedOut && clientGone();
-      const failureReason = transportFailureReason(providerTimedOut, aborted);
-      if (failureReason) this.deploymentHealth.recordFailure(selected.deployment, failureReason);
       if (aborted) {
         this.providerMetrics.recordClientCancellation({
           surface: input.surface,
@@ -270,7 +265,6 @@ export class ProviderProxy {
     copyResponseHeaders(upstream, input.reply);
     input.reply.code(upstream.status);
     input.reply.header("x-proxy-model", selectedModel);
-    input.reply.header("x-proxy-route", input.decision.finalRoute ?? "");
     if (selected.deployment) {
       input.reply.header("x-proxy-deployment", selected.deployment.key);
     }
@@ -309,7 +303,6 @@ export class ProviderProxy {
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
 
-      this.recordDeploymentStatus(selected, status, upstream.status);
       await this.appendTerminal(input, attempt.id, status, usage, upstream.status, error ? { error } : {}, adapterMetadata);
       this.attempts.update(attempt.id, {
         terminalStatus: status,
@@ -366,7 +359,6 @@ export class ProviderProxy {
         input.reply.raw.off("close", abortUpstream);
 
         input.timing?.markStreamCompletion();
-        this.recordDeploymentStatus(selected, status, upstream.status);
         await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, withoutOutputText(observation), adapterMetadata);
         this.attempts.update(attempt.id, {
           terminalStatus: status,
@@ -391,8 +383,6 @@ export class ProviderProxy {
         const observation = observer.finish("cancelled");
         const message = error instanceof Error ? error.message : "Stream failed.";
         const aborted = clientGone();
-        const failureReason = transportFailureReason(false, aborted);
-        if (failureReason) this.deploymentHealth.recordFailure(selected.deployment, failureReason);
         if (aborted) {
           this.providerMetrics.recordClientCancellation({
             surface: input.surface,
@@ -455,7 +445,6 @@ export class ProviderProxy {
     input.reply.raw.statusCode = upstream.status;
     input.reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
     input.reply.raw.setHeader("x-proxy-model", selectedModel);
-    input.reply.raw.setHeader("x-proxy-route", input.decision.finalRoute ?? "");
     if (selected.deployment) {
       input.reply.raw.setHeader("x-proxy-deployment", selected.deployment.key);
     }
@@ -486,8 +475,6 @@ export class ProviderProxy {
         const message = error instanceof Error ? error.message : "Stream failed.";
         const aborted = clientGone();
         const status = aborted ? "cancelled" : "failed";
-        const failureReason = transportFailureReason(false, aborted);
-        if (failureReason) this.deploymentHealth.recordFailure(selected.deployment, failureReason);
         input.timing?.markStreamCompletion();
         this.providerMetrics.recordStreamBytes({
           surface: input.surface,
@@ -544,7 +531,6 @@ export class ProviderProxy {
         bytes: forwardedBytes
       });
       input.timing?.markStreamCompletion();
-      this.recordDeploymentStatus(selected, status, upstream.status);
       const adapterClassification = status === "failed"
         ? streamAdapterClassification(providerAdapter, upstream, observation)
         : undefined;
@@ -703,19 +689,6 @@ export class ProviderProxy {
     input.reply.code(502).send({ error });
   }
 
-  private recordDeploymentStatus(
-    selected: ProviderForwardAttemptInput,
-    status: "completed" | "failed" | "cancelled",
-    upstreamStatus: number
-  ) {
-    if (status === "completed") {
-      this.deploymentHealth.recordSuccess(selected.deployment);
-      return;
-    }
-    const failureReason = deploymentFailureReason(upstreamStatus);
-    if (failureReason) this.deploymentHealth.recordFailure(selected.deployment, failureReason);
-  }
-
   private providerAdapterFor(provider: ProviderRegistryEntry) {
     if (provider.adapterKind === "generic-http-json") return this.genericHttp;
     if (provider.adapterKind === "aws-bedrock-converse") return this.bedrockRuntime;
@@ -727,18 +700,6 @@ function terminalEventType(status: "completed" | "failed" | "cancelled") {
   if (status === "completed") return "provider.response_completed";
   if (status === "cancelled") return "provider.response_cancelled";
   return "provider.response_failed";
-}
-
-function deploymentFailureReason(status: number): ProviderDeploymentFailureReason | undefined {
-  if (status === 429) return "rate_limited";
-  if (status >= 500 && status < 600) return "server_error";
-  return undefined;
-}
-
-function transportFailureReason(providerTimedOut: boolean, clientAborted: boolean): ProviderDeploymentFailureReason | undefined {
-  if (clientAborted) return undefined;
-  if (providerTimedOut) return "timeout";
-  return "connection_error";
 }
 
 function terminalError(metadata: JsonObject) {

@@ -1,252 +1,137 @@
-# Provider Auth
+# Provider Connections And Credentials
 
-Provider auth decides which upstream OpenAI, Anthropic, OpenAI-compatible, or Bedrock credential Proxy uses after routing chooses a provider target.
+Provider connections are the gateway's physical endpoint and credential boundary. Applications never supply provider credentials and Proxy API keys never bind directly to them.
 
-## Credential Types
+## Supported Connection Types
 
-| Type | Use when | Stored as |
+| Adapter kind | Auth styles | Typical use |
 | --- | --- | --- |
-| Environment provider key | You want shared company/provider keys for all traffic | Environment variable or secret reference |
-| BYOK provider credential | A customer, teammate, or API key should pay with its own provider key | Encrypted `provider_accounts` material |
-| Subscription credential | A developer routes Codex or Claude Code through a personal subscription account | Encrypted provider secret bundle |
-| Bedrock credential mode | A route target should call Amazon Bedrock through AWS SDK auth | Encrypted Bedrock secret material or operator AWS default-chain/profile reference |
+| `generic-http-json` | `bearer`, `x-api-key`, `none` | OpenAI, Anthropic, and compatible HTTP APIs |
+| `aws-bedrock-converse` | `aws-sdk` | Bedrock Converse and ConverseStream |
 
-Provider keys are never returned after creation. API keys are hashed; provider secrets are encrypted or referenced as external secrets.
+The connection also stores base URL, optional region, safe default headers, adapter configuration, status, and either a secret reference or encrypted credential material.
 
-## Required Encryption Key
+## Credential Storage
 
-Set `PROVIDER_SECRET_ENCRYPTION_KEY` before storing provider credentials in Postgres:
+Use one of two forms:
+
+- `secretRef` for a deployment-resolved secret such as `env:OPENAI_API_KEY`;
+- `secret` on an admin mutation, which Proxy encrypts before persistence.
+
+Admin reads return `credentialConfigured`, `secretRef`, and a safe hint. They never return the raw or decrypted value. Set `PROVIDER_SECRET_ENCRYPTION_KEY` to a base64-encoded 32-byte key before storing encrypted material:
 
 ```shell
 openssl rand -base64 32
 ```
 
-The value must be a base64-encoded 32-byte key.
+Raw secrets are rejected in gateway TOML. Declarative configuration accepts `secret_ref` only.
 
-## Add A Provider Credential
+## Origin-Bound Environment References
 
-1. Open **Model providers**.
-2. Choose **Add credential**.
-3. Select the provider and credential type.
-4. Paste the provider key, complete OAuth, or import a local auth file depending on the type.
-5. Name the credential so operators can recognize who owns it.
-6. Save it.
+The stock resolver recognizes `env:OPENAI_API_KEY` for the configured OpenAI origin and `env:ANTHROPIC_API_KEY` for the configured Anthropic origin.
 
-Proxy validates supported credential shapes, stores the secret encrypted, records a hint, and tracks health once traffic or probes use the credential.
-
-## Bind Provider Credentials To API Keys
-
-1. Open **API keys**.
-2. Select a Proxy API key.
-3. Bind an OpenAI and/or Anthropic provider credential.
-4. Save the assignment.
-
-On each request, Proxy resolves the API key, chooses the provider target from routing, then uses the bound credential for that provider. For OpenAI, Anthropic, and generic HTTP providers, an unbound key can fall back to the environment provider key for that provider. Bedrock route targets must select an active Bedrock provider account.
-
-## Local OpenAI-Compatible Providers
-
-Private OpenAI-compatible providers can be registered as org-scoped providers with `authStyle: "none"` for local development or with a provider credential for authenticated upstreams. The provider must expose an `openai-chat` endpoint such as `/chat/completions`, and route targets should reference a manual model catalog row for that provider/model.
-
-For local vLLM, Ollama, or LM Studio style servers, set the provider base URL to the upstream root, for example `http://127.0.0.1:8000/v1` or `http://127.0.0.1:11434/v1`. Private loopback URLs require `ALLOWED_PRIVATE_UPSTREAM_CIDRS=127.0.0.0/8`.
-
-Run the no-credential smoke harness with:
+For a custom variable, configure the secret and an exact origin allowlist:
 
 ```shell
-pnpm build:runtime
-pnpm smoke:local-openai
+ACME_LLM_KEY=...
+ACME_LLM_KEY_ALLOWED_ORIGINS=https://llm.acme.internal,https://llm-backup.acme.internal
 ```
 
-The smoke starts a local OpenAI-compatible mock, creates an org-scoped provider and manual catalog row, assigns a routing config, and verifies non-streaming and streaming Chat Completions traffic reaches `/chat/completions`.
+Then use `secret_ref = "env:ACME_LLM_KEY"`. Planning and runtime resolution reject a missing variable, an invalid URL, or an origin mismatch. This prevents a valid secret reference from being redirected to an arbitrary endpoint.
 
-## Amazon Bedrock Provider Credentials
+## Create An HTTP Connection
 
-Bedrock uses the builtin `amazon-bedrock` provider, `authStyle: "aws-sdk"`, and the internal `bedrock-converse` dialect. Route targets must reference an active Bedrock provider account; Proxy does not treat Bedrock as a generic bearer-token HTTP provider.
-
-Create or update Bedrock credentials from **Model providers**:
-
-1. Select `amazon-bedrock`.
-2. Choose a credential mode.
-3. Set the runtime region, for example `us-east-1`.
-4. Set discovery regions, for example `us-east-1, us-west-2`.
-5. Optionally set a runtime endpoint override.
-6. Save the credential, bind it to the API key, then use the routing config editor to choose the credential/region for Bedrock targets.
-
-Credential modes:
-
-| Mode | Stores a secret? | Use when | Required operator config |
-| --- | --- | --- | --- |
-| `aws_bedrock_bearer_token` | Yes, encrypted bearer token | You use Bedrock API-key style auth | `PROVIDER_SECRET_ENCRYPTION_KEY` |
-| `aws_static_keys` | Yes, encrypted access key, secret key, and optional session token | You need an explicit IAM principal per provider account | `PROVIDER_SECRET_ENCRYPTION_KEY` |
-| `aws_default_chain` | No | The builtin `amazon-bedrock` account should use the deployment role, workload identity, environment, or local AWS SDK default chain | `BEDROCK_OPERATOR_DEFAULT_CHAIN_ENABLED=true` |
-| `aws_profile` | No | Local development or controlled operator deployments should use `BEDROCK_AWS_PROFILE` or `AWS_PROFILE` | `BEDROCK_LOCAL_CREDENTIALS_ENABLED=true` |
-
-Operator credentials are only allowed for builtin Bedrock provider accounts. Org-defined Bedrock providers cannot inherit deployment AWS credentials.
-
-### Local Bedrock Development
-
-Default chain path:
-
-```shell
-export BEDROCK_OPERATOR_DEFAULT_CHAIN_ENABLED=true
-export BEDROCK_LOCAL_CREDENTIALS_ENABLED=true
-export AWS_REGION=us-east-1
-export AWS_PROFILE=bedrock-dev
-
-pnpm build:runtime
-AWS_BEDROCK_TEST_MODEL=anthropic.claude-3-5-haiku-20241022-v1:0 pnpm smoke:bedrock
-```
-
-Bearer-token path:
-
-```shell
-export BEDROCK_LOCAL_CREDENTIALS_ENABLED=true
-export AWS_REGION=us-east-1
-export AWS_BEARER_TOKEN_BEDROCK=...
-export AWS_BEDROCK_TEST_MODEL=anthropic.claude-3-5-haiku-20241022-v1:0
-
-pnpm --filter @proxy/proxy exec vitest run test/bedrockLive.test.ts
-```
-
-For normal routed traffic, prefer creating a Bedrock provider account with `aws_bedrock_bearer_token` and storing the token through the admin flow instead of relying on `AWS_BEARER_TOKEN_BEDROCK`.
-
-### Least-Privilege IAM Examples
-
-Runtime-only role for direct foundation-model invocation:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "bedrock:InvokeModel",
-        "bedrock:InvokeModelWithResponseStream"
-      ],
-      "Resource": [
-        "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0"
-      ]
-    }
-  ]
+```graphql
+mutation {
+  createGatewayProviderConnection(input: {
+    slug: "openai-production"
+    name: "OpenAI Production"
+    adapterKind: "generic-http-json"
+    authStyle: "bearer"
+    baseUrl: "https://api.openai.com/v1"
+    secretRef: "env:OPENAI_API_KEY"
+    adapterConfig: {}
+    defaultHeaders: {}
+    enabled: true
+  }) {
+    id
+    slug
+    credentialConfigured
+    status
+  }
 }
 ```
 
-Add inference-profile and guardrail permissions only when routes use them:
+For Anthropic, use `authStyle: "x-api-key"`. Use `none` only for explicitly trusted, unauthenticated endpoints. Private upstream IP ranges are denied unless allowed through `ALLOWED_PRIVATE_UPSTREAM_CIDRS`.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "bedrock:InvokeModel",
-        "bedrock:InvokeModelWithResponseStream",
-        "bedrock:GetInferenceProfile"
-      ],
-      "Resource": [
-        "arn:aws:bedrock:us-east-1::foundation-model/*",
-        "arn:aws:bedrock:us-east-1:123456789012:inference-profile/*",
-        "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "bedrock:GetGuardrail",
-        "bedrock:ApplyGuardrail"
-      ],
-      "Resource": [
-        "arn:aws:bedrock:us-east-1:123456789012:guardrail/*"
-      ]
-    }
-  ]
+After the connection exists, create a deployment and at least one wire binding. A connection alone is not caller-visible.
+
+## Rotate Or Clear A Credential
+
+Update an encrypted secret:
+
+```graphql
+mutation {
+  updateGatewayProviderConnection(input: {
+    id: "workspace:connection:openai"
+    secret: "<new-secret>"
+  }) {
+    id
+    credentialConfigured
+    secretHint
+  }
 }
 ```
 
-Discovery role for importing region/account-specific catalog data:
+Setting a new `secret` or `secretRef` replaces the previous credential form. Use `clearSecret: true` to remove it. Omit all credential fields to preserve the existing credential.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "bedrock:ListFoundationModels",
-        "bedrock:GetFoundationModel",
-        "bedrock:ListInferenceProfiles",
-        "bedrock:GetInferenceProfile"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
+Rotate the external secret first when a secret reference remains stable. Send a controlled request after rotation and confirm connection health returns to `healthy`.
+
+## Bedrock
+
+Bedrock connections use `adapterKind: "aws-bedrock-converse"`, `authStyle: "aws-sdk"`, and an explicit region. The seeded connection uses the AWS default credential chain. Production deployments must deliberately enable the required credential mode and IAM permissions.
+
+Key checks:
+
+1. The connection region and deployment region agree with the model or inference profile.
+2. The deployment uses the exact Bedrock model or inference-profile ID.
+3. The deployment has a `bedrock-converse` binding.
+4. IAM permits both Converse and ConverseStream when streaming traffic is enabled.
+5. Cross-region inference profiles are granted in every required region.
+
+`BEDROCK_OPERATOR_DEFAULT_CHAIN_ENABLED` gates operator-chain use. `BEDROCK_LOCAL_CREDENTIALS_ENABLED` and `BEDROCK_AWS_PROFILE` are local-development controls and should not become implicit production credential paths.
+
+A non-streaming success does not clear a stream-permission lockout. Verify with a streaming request.
+
+## Custom OpenAI-Compatible Endpoints
+
+Use `generic-http-json` and bind the deployment to the actual native wire:
+
+- `openai-responses` with an endpoint such as `/responses`;
+- `openai-chat` with an endpoint such as `/chat/completions`.
+
+Do not claim an Anthropic or Responses binding merely because a server accepts JSON. Wire bindings are executable protocol contracts, including streaming and error semantics.
+
+## Caller Access Is Separate
+
+Provider connections do not grant caller access. The full path is:
+
+```text
+API key -> access profile -> model grant -> logical model -> target -> deployment -> connection
 ```
 
-Keep discovery permissions separate from runtime invocation when possible. Runtime traffic needs `InvokeModel`; streaming traffic also needs `InvokeModelWithResponseStream`; inference profiles need `GetInferenceProfile`; guardrail-enabled routes need `GetGuardrail` and `ApplyGuardrail`.
+To restrict external users to cheaper supply, grant only `economy-auto` to their access profile. Do not create separate copies of provider credentials per caller and do not put caller authorization inside connection configuration.
 
-### Bedrock Route Controls
+## Troubleshooting
 
-Bedrock targets expose Bedrock-only controls in the routing editor:
+| Symptom | Check |
+| --- | --- |
+| `credentialConfigured` is false | `secretRef`, encrypted secret, encryption key |
+| Secret reference fails | Environment variable, allowed origins, exact connection origin |
+| 401 or invalid auth | Auth style, header rendering, secret value, provider connection status upstream |
+| Connection cooldown | Rate limit, quota, provider availability, retry deadline |
+| Deployment locked out | Exact model access, region, wire, Bedrock IAM |
+| Custom endpoint denied | URL normalization and `ALLOWED_PRIVATE_UPSTREAM_CIDRS` |
+| Model absent for caller | Access profile and logical-model grant, not provider credentials |
 
-- Credential / region selects the provider account and runtime region.
-- Inference profile and profile geography control cross-region/profile model IDs.
-- Service tier maps to Bedrock performance configuration.
-- Guardrail ID and version map to Bedrock guardrail config.
-- Request metadata template sends string-valued Bedrock request metadata.
-
-These settings live in route-target metadata and are only applied to `amazon-bedrock` targets.
-
-### LiteLLM And Kong Bridge Mode
-
-LiteLLM or Kong can front Bedrock and expose an OpenAI-compatible endpoint. Register that bridge as a generic OpenAI-compatible provider, add manual model catalog rows, and use the local OpenAI-compatible provider workflow.
-
-Bridge mode is for spikes or customer-specific evaluation. Proxy will see the bridge as generic HTTP, not as native Bedrock, so Bedrock credential source, discovery, inference profile, guardrail, region, and Bedrock-specific health evidence remain outside Proxy.
-
-## Live Bedrock Integration Test
-
-The Bedrock live test is skipped unless a workstation or CI job explicitly provides AWS access:
-
-```shell
-AWS_REGION=us-east-1 \
-AWS_BEDROCK_TEST_MODEL=anthropic.claude-3-5-haiku-20241022-v1:0 \
-pnpm --filter @proxy/proxy exec vitest run test/bedrockLive.test.ts
-```
-
-The test uses the AWS SDK default chain or `AWS_BEARER_TOKEN_BEDROCK` from the local environment, covers `Converse` and `ConverseStream`, and never runs by default. Set `AWS_BEDROCK_TEST_TOOL_MODEL` to also verify forced tool use for a model that supports tools.
-
-## Subscription Auth
-
-Subscription credentials are useful when an engineer wants Codex or Claude Code traffic to use their own provider subscription instead of a shared company API key.
-
-OpenAI Codex subscription options:
-
-- Sign in with OpenAI.
-- Import local `~/.codex/auth.json`.
-- Paste a Codex token or auth JSON.
-
-Anthropic Claude subscription options:
-
-- Sign in with Claude.
-- Paste a `claude setup-token` value.
-
-Detailed guardrails and fallback behavior are in the [subscription auth runbook](../runbooks/subscription-auth.md).
-
-## Provider Health
-
-Provider account health appears in the console after failures, probes, cooldowns, or successful traffic. Use it to answer:
-
-- Is a provider account active, cooling down, locked out, or revoked?
-- Which model failed?
-- Was the failure auth, rate limit, model availability, network, or protocol related?
-- Is Proxy skipping a candidate because a credential is unhealthy?
-
-See [provider account health](../runbooks/provider-account-health.md) for the operational model.
-
-## Security Notes
-
-- Do not paste provider keys into routing configs, docs, or event payloads.
-- Do not give a user-owned subscription credential to another user's API key; Proxy enforces owner binding for subscription credentials.
-- Rotate or revoke upstream provider credentials at the provider first, then revoke or replace the Proxy credential.
-- In production, configure real company provider keys even if most traffic uses BYOK; fallback paths depend on them.
+See [provider health](../runbooks/provider-health.md) and the [gateway control-plane runbook](../runbooks/gateway-control-plane.md).

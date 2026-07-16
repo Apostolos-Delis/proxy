@@ -18,7 +18,6 @@ import {
 } from "@proxy/db";
 
 import {
-  dropLegacyRuntimeTables,
   gatewayHeaders,
   logicalTarget,
   nextMessage,
@@ -38,7 +37,6 @@ describe("logical-model gateway runtime", () => {
     fixture = await captureFixture("org_gateway_runtime_direct", "hash_only", false, {
       anthropicOptions: { outputText: "gateway answer" }
     });
-    await dropLegacyRuntimeTables(fixture);
     const headers = gatewayHeaders("proxy-token");
 
     const modelsResponse = await fetch(`${fixture.proxyUrl}/v1/models`, { headers });
@@ -129,7 +127,6 @@ describe("logical-model gateway runtime", () => {
         outputText: "classified answer"
       }
     });
-    await dropLegacyRuntimeTables(fixture);
     await fixture.db
       .update(modelDeployments)
       .set({ pricing: { inputCostPerMtok: 2, outputCostPerMtok: 10 } })
@@ -250,7 +247,6 @@ describe("logical-model gateway runtime", () => {
         }
       }
     });
-    await dropLegacyRuntimeTables(fixture);
     const classifierDeploymentId = `${defaultWorkspaceId(organizationId)}:deployment:openai:route-classifier-cheap`;
     await fixture.db
       .update(modelDeployments)

@@ -1,10 +1,8 @@
 import { z } from "zod";
 import { performance } from "node:perf_hooks";
 import {
-  composeClassifierInstructions,
   type LogicalModelClassificationRequest,
-  type LogicalModelClassifierConfig,
-  type RoutingConfigClassifier
+  type LogicalModelClassifierConfig
 } from "@proxy/schema";
 
 import type { AppConfig } from "./config.js";
@@ -13,15 +11,9 @@ import {
   NoopMetricsCollector
 } from "./metrics.js";
 import { normalizeUsage } from "./persistence/values.js";
-import { pricingForProviderModel, usageCostMicros } from "./pricing.js";
-import type {
-  ClassifierOutput,
-  RouteContext,
-  UpstreamCredential
-} from "./types.js";
-import { classifierView } from "./features.js";
+import { usageCostMicros, type ModelPricing } from "./pricing.js";
+import type { UpstreamCredential } from "./types.js";
 import {
-  operatorTokenForProvider,
   type ProviderRegistryEndpoint,
   type ProviderRegistryEntry
 } from "./persistence/providers.js";
@@ -33,29 +25,11 @@ import {
 } from "./upstream.js";
 import { isRecord } from "./util.js";
 
-const classifierOutputSchema = z.object({
-  complexity: z.enum(["trivial", "simple", "normal", "hard", "deep"]),
-  risk: z.array(z.string()),
-  recommended_route: z.enum(["fast", "balanced", "hard", "deep"]),
-  can_use_fast_model: z.boolean(),
-  needs_deep_reasoning: z.boolean(),
-  reason_codes: z.array(z.string()).min(1),
-  confidence: z.number().min(0).max(1)
-});
-
 const logicalModelClassifierOutputSchema = z.strictObject({
   target_id: z.string().min(1).max(1_024),
   reason_codes: z.array(z.string().min(1).max(100)).min(1).max(20),
   confidence: z.number().min(0).max(1)
 });
-
-export type ClassificationResult = {
-  output: ClassifierOutput;
-  attempts: number;
-  usage?: Record<string, unknown>;
-};
-
-export type ClassifierSettings = RoutingConfigClassifier;
 
 export type ClassifierTarget = {
   provider: ProviderRegistryEntry;
@@ -77,6 +51,7 @@ export type LogicalModelClassifierDeployment = {
   provider: string;
   providerConnectionId: string;
   bindingId: string;
+  pricing?: ModelPricing;
 };
 
 export type LogicalModelClassifierTargetResolver = {
@@ -111,19 +86,6 @@ export class LlmClassifier {
     private readonly logicalModelTargets?: LogicalModelClassifierTargetResolver
   ) {}
 
-  async classify(
-    context: RouteContext,
-    settings: ClassifierSettings,
-    target: ClassifierTarget
-  ): Promise<ClassificationResult> {
-    return this.runWithRetries(
-      settings,
-      settings.maxAttempts,
-      settings.timeoutMs,
-      (signal) => this.callClassifier(context, settings, target, signal)
-    );
-  }
-
   async classifyLogicalModel(
     input: LogicalModelClassificationInput,
     deployment: LogicalModelClassifierDeployment
@@ -136,7 +98,8 @@ export class LlmClassifier {
     }
     const metricSettings = {
       providerId: deployment.provider,
-      model: input.classifierModel
+      model: input.classifierModel,
+      pricing: deployment.pricing
     };
     const result = await this.runWithRetries(
       metricSettings,
@@ -155,24 +118,6 @@ export class LlmClassifier {
       attempts: result.attempts,
       usage: result.usage
     };
-  }
-
-  private async callClassifier(
-    context: RouteContext,
-    settings: ClassifierSettings,
-    target: ClassifierTarget,
-    signal: AbortSignal
-  ): Promise<{ output: ClassifierOutput; usage?: Record<string, unknown> }> {
-    const view = classifierView(context, settings.allowRedactedExcerpt);
-    const json = await this.request(target, classifierRequest(settings, view), signal);
-    const usage = extractUsage(json);
-    const parsed = extractStructuredOutput(json);
-    const result = classifierOutputSchema.safeParse(parsed);
-    if (!result.success) {
-      throw new ClassifierError("Classifier returned invalid structured output.", usage);
-    }
-
-    return { output: result.data, usage };
   }
 
   private async callLogicalModelClassifier(
@@ -201,9 +146,9 @@ export class LlmClassifier {
       credential: target.credential
     }), {
       method: "POST",
-      headers: classifierHeaders(this.config, target),
+      headers: classifierHeaders(target),
       body: JSON.stringify(body),
-      redirect: providerRequestRedirect({ provider: target.provider, credential: target.credential }),
+      redirect: providerRequestRedirect(),
       signal
     }, providerRequestPinnedAddress({
       provider: target.provider,
@@ -216,7 +161,7 @@ export class LlmClassifier {
   }
 
   private async runWithRetries<Output>(
-    settings: Pick<ClassifierSettings, "providerId" | "model">,
+    settings: ClassifierMetricSettings,
     maxAttempts: number,
     timeoutMs: number,
     call: (signal: AbortSignal) => Promise<{ output: Output; usage?: Record<string, unknown> }>
@@ -266,7 +211,7 @@ export class LlmClassifier {
   }
 
   private recordClassifierAttempt(
-    settings: Pick<ClassifierSettings, "providerId" | "model">,
+    settings: ClassifierMetricSettings,
     startedAtMs: number,
     outcome: "succeeded" | "failed",
     errorClass: string
@@ -286,7 +231,7 @@ export class LlmClassifier {
   }
 
   private recordClassifierUsage(
-    settings: Pick<ClassifierSettings, "providerId" | "model">,
+    settings: ClassifierMetricSettings,
     usage: Record<string, unknown> | undefined
   ) {
     if (!usage) return;
@@ -301,13 +246,19 @@ export class LlmClassifier {
     this.metrics.incrementCounter("proxy_classifier_tokens_total", { ...labels, usage_kind: "output" }, normalized.outputTokens);
     this.metrics.incrementCounter("proxy_classifier_tokens_total", { ...labels, usage_kind: "reasoning" }, normalized.reasoningTokens);
     this.metrics.incrementCounter("proxy_classifier_tokens_total", { ...labels, usage_kind: "total" }, normalized.totalTokens);
-    const cost = usageCostMicros(pricingForProviderModel(this.config.modelCosts, settings.providerId, settings.model), normalized);
+    const cost = usageCostMicros(settings.pricing, normalized);
     this.metrics.incrementCounter("proxy_classifier_cost_usd_total", {
       ...labels,
       cost_kind: "classifier"
     }, cost.totalCostMicros / 1_000_000);
   }
 }
+
+type ClassifierMetricSettings = {
+  providerId: string;
+  model: string;
+  pricing?: ModelPricing;
+};
 
 function mergeClassifierUsage(
   aggregate: Record<string, unknown> | undefined,
@@ -327,30 +278,13 @@ function mergeClassifierUsage(
   };
 }
 
-export function defaultClassifierSettings(config: AppConfig): ClassifierSettings {
-  return {
-    providerId: config.classifierProvider,
-    model: config.classifierModel,
-    timeoutMs: config.classifierTimeoutMs,
-    maxAttempts: config.classifierMaxAttempts,
-    allowRedactedExcerpt: config.classifierAllowRedactedExcerpt,
-    structuredOutput: {
-      mode: "json_schema",
-      schemaName: "route_classification"
-    }
-  };
-}
-
-function classifierHeaders(config: AppConfig, target: ClassifierTarget) {
+function classifierHeaders(target: ClassifierTarget) {
   const headers: Record<string, string> = {
     "content-type": "application/json",
     ...target.provider.defaultHeaders
   };
   const credential = target.credential?.provider === target.provider.slug ? target.credential : undefined;
-  const operatorToken = target.provider.builtin
-    ? operatorTokenForProvider(target.provider.slug, config)
-    : undefined;
-  const token = credential?.token ?? operatorToken;
+  const token = credential?.token;
 
   if (target.provider.authStyle === "bearer" && token) headers.authorization = `Bearer ${token}`;
   if (target.provider.authStyle === "x-api-key" && token) headers["x-api-key"] = token;
@@ -359,48 +293,6 @@ function classifierHeaders(config: AppConfig, target: ClassifierTarget) {
   }
 
   return headers;
-}
-
-function classifierRequest(settings: ClassifierSettings, view: unknown) {
-  const reasoningEffort = normalizeReasoningEffort(
-    settings.model,
-    settings.effort ?? defaultReasoningEffort(settings.model)
-  );
-  return {
-    model: settings.model,
-    stream: false,
-    ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
-    instructions: composeClassifierInstructions(settings.rules),
-    input: JSON.stringify(view),
-    text: {
-      format: {
-        type: "json_schema",
-        name: settings.structuredOutput.schemaName ?? "route_classification",
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          required: [
-            "complexity",
-            "risk",
-            "recommended_route",
-            "can_use_fast_model",
-            "needs_deep_reasoning",
-            "reason_codes",
-            "confidence"
-          ],
-          properties: {
-            complexity: { enum: ["trivial", "simple", "normal", "hard", "deep"] },
-            risk: { type: "array", items: { type: "string" } },
-            recommended_route: { enum: ["fast", "balanced", "hard", "deep"] },
-            can_use_fast_model: { type: "boolean" },
-            needs_deep_reasoning: { type: "boolean" },
-            reason_codes: { type: "array", items: { type: "string" }, minItems: 1 },
-            confidence: { type: "number", minimum: 0, maximum: 1 }
-          }
-        }
-      }
-    }
-  };
 }
 
 function logicalModelClassifierRequest(input: LogicalModelClassificationInput) {
@@ -438,19 +330,6 @@ function logicalModelClassifierRequest(input: LogicalModelClassificationInput) {
       }
     }
   };
-}
-
-// Non-reasoning models reject the reasoning parameter outright, so only
-// default to minimal effort for model families known to accept it.
-function defaultReasoningEffort(model: string) {
-  return /^(gpt-5|o\d)/.test(model) ? ("minimal" as const) : undefined;
-}
-
-// Dotted gpt-5.x releases dropped the "minimal" tier in favor of "none";
-// sending minimal to them is a hard 400 and the classifier never succeeds.
-function normalizeReasoningEffort(model: string, effort?: string) {
-  if (effort === "minimal" && model.startsWith("gpt-5.")) return "none";
-  return effort;
 }
 
 function extractUsage(json: unknown): Record<string, unknown> | undefined {

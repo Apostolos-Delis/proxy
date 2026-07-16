@@ -1,51 +1,32 @@
 # Cursor BYOK Setup
 
-Cursor can use Proxy through its OpenAI-compatible BYOK path. Cursor sends Chat Completions requests to the proxy, and Proxy routes them through the selected routing config.
+Cursor can use Proxy through its OpenAI-compatible BYOK path. Cursor sends Chat Completions requests to `POST /v1/chat/completions`; Proxy resolves the requested logical model to an eligible physical deployment.
 
 ## Prerequisites
 
 - Proxy is running at a URL Cursor can reach.
 - You have a Proxy API key from the console's API keys page.
-- The API key is assigned to a routing config with at least one `openai-chat` target, or an `openai-responses` target that can be served through the Chat to Responses translator.
+- The key's access profile grants a logical model with an eligible Chat-native or translatable target.
 
-Cursor BYOK means Cursor uses your Proxy API key. It does not mean Cursor receives upstream provider keys. If you want requests authenticated with a customer-owned OpenAI or custom-provider key, add that key in Proxy's Model providers screen and bind it to the same Proxy API key.
+Cursor receives the Proxy API key, never an upstream provider credential.
 
 ## Configure Cursor
 
-1. Open Cursor Settings.
-2. Go to Models.
-3. In API Keys, add or update the OpenAI API key with your Proxy API key.
-4. Enable Override OpenAI Base URL.
-5. Set the base URL to:
-
-```text
-http://127.0.0.1:8787/v1
-```
-
-Use your deployed HTTPS URL instead for shared environments.
-
-6. Add custom models with these exact names:
-
-```text
-router-auto
-router-fast
-router-balanced
-router-hard
-router-deep
-```
-
-7. Select `router-auto` for normal use, or a tier-specific alias when you want to pin the route.
+1. Query authenticated `GET /v1/models` and note the logical model IDs available to this key.
+2. Open Cursor Settings, then Models.
+3. Set the OpenAI API key to the Proxy API key.
+4. Enable **Override OpenAI Base URL**.
+5. Set the base URL to `http://127.0.0.1:8787/v1`, or the deployed HTTPS equivalent.
+6. Add the desired returned model ID as a custom model, for example `coding-auto`.
+7. Select that model and send a small prompt.
 
 ## Verify
 
-1. Open Cursor chat or the BYOK-backed model picker.
-2. Select `router-auto`.
-3. Send a small prompt.
-4. In Proxy, open Logs and confirm a request with surface `openai-chat`.
+In Proxy, confirm the request has inbound wire `openai-chat`, then inspect the resolved logical model, target, deployment, connection, translation path, and provider attempt.
 
 ## Notes
 
-- Cursor's OpenAI base-URL override is an OpenAI-compatible Chat Completions path. Do not use `claude-router-*` aliases there.
-- The override can affect other Cursor model selections that use the same OpenAI-compatible setting. Turn it off when you want Cursor-hosted models to bypass Proxy.
-- If local loopback is blocked in your Cursor environment, expose Proxy through a trusted HTTPS tunnel or use a deployed proxy URL.
-- If you see model-not-found errors, confirm the custom model name is one of the `router-*` aliases and that the assigned routing config has a compatible target.
+- The OpenAI base URL override can affect other Cursor model selections that share that setting. Disable it when those requests should bypass Proxy.
+- If loopback is unavailable to Cursor, use a trusted HTTPS endpoint.
+- A model ID is authorized only when it appears in `GET /v1/models` for the same API key.
+- Translation is request-dependent. A target that cannot preserve the request's features is skipped and recorded in resolution evidence.

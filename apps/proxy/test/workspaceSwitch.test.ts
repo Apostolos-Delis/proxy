@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -8,7 +7,6 @@ import {
   providerAttempts,
   requests,
   routeDecisions,
-  routingConfigs,
   usageLedger,
   workspaces
 } from "@proxy/db";
@@ -88,64 +86,6 @@ describe("workspace switching", () => {
     )).data?.viewer;
     expect(me.workspaceId).toBe(created.id);
     expect(me.workspaces).toHaveLength(2);
-  });
-
-  it("provisions a default routing config cloned from the org default for new workspaces", async () => {
-    const fixture = await setup("org_ws_provision");
-    const created = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, createMutation, {
-      input: { name: "Staging" }
-    })).data?.createWorkspace;
-
-    await adminGql(fixture.proxyUrl, fixture.adminHeaders, switchMutation, { workspaceId: created.id });
-    const configs = (await adminGql(
-      fixture.proxyUrl,
-      fixture.adminHeaders,
-      "query { routingConfigs { slug status activeVersion { version } } }"
-    )).data?.routingConfigs;
-    expect(configs).toEqual([
-      expect.objectContaining({ slug: "default", status: "active", activeVersion: { version: 1 } })
-    ]);
-
-    // Traffic resolution no longer dead-ends at routing_config_not_found.
-    const resolved = await fixture.persistence.routingConfigs.resolve({
-      organizationId: "org_ws_provision",
-      workspaceId: created.id,
-      routingConfigId: null
-    });
-    expect(resolved.config.routes.balanced.openai?.deployments[0]?.model)
-      .toBe("gpt-5.4");
-  });
-
-  it("self-heals a config-less workspace on the next routing-config read and stays idempotent", async () => {
-    const fixture = await setup("org_ws_selfheal");
-    // Simulate a workspace created before provisioning-on-creation existed.
-    await fixture.db.insert(workspaces).values({
-      id: "ws_legacy",
-      organizationId: "org_ws_selfheal",
-      slug: "legacy",
-      name: "Legacy"
-    });
-    await adminGql(fixture.proxyUrl, fixture.adminHeaders, switchMutation, { workspaceId: "ws_legacy" });
-
-    const first = (await adminGql(
-      fixture.proxyUrl,
-      fixture.adminHeaders,
-      "query { routingConfigs { id slug status } }"
-    )).data?.routingConfigs;
-    expect(first).toEqual([expect.objectContaining({ slug: "default", status: "active" })]);
-
-    // A second read must not provision a duplicate — same single config id.
-    const second = (await adminGql(
-      fixture.proxyUrl,
-      fixture.adminHeaders,
-      "query { routingConfigs { id } }"
-    )).data?.routingConfigs;
-    expect(second).toEqual([{ id: first[0].id }]);
-    const persisted = await fixture.db
-      .select({ id: routingConfigs.id })
-      .from(routingConfigs)
-      .where(eq(routingConfigs.workspaceId, "ws_legacy"));
-    expect(persisted).toHaveLength(1);
   });
 
   it("rejects duplicate workspace slugs and foreign workspace ids", async () => {
@@ -231,13 +171,13 @@ describe("workspace switching", () => {
       sessionId: null
     });
     await fixture.db.insert(routeDecisions).values(
-      usageDecision("decision_usage_scope", "request_usage_scope", "org_ws_usage_scope", "fast", "openai", "gpt-fast")
+      usageDecision("decision_usage_scope", "request_usage_scope", "org_ws_usage_scope", "openai-responses", "openai", "gpt-fast")
     );
     await fixture.db.insert(providerAttempts).values(
       usageAttempt("attempt_usage_scope", "request_usage_scope", "org_ws_usage_scope", "openai-responses", "openai", "gpt-fast", "completed", at)
     );
     await fixture.db.insert(usageLedger).values({
-      ...usageRow("usage_wrong_workspace", "request_usage_scope", "attempt_usage_scope", "org_ws_usage_scope", "openai", "gpt-fast", "fast", 100, 25, 1000),
+      ...usageRow("usage_wrong_workspace", "request_usage_scope", "attempt_usage_scope", "org_ws_usage_scope", "openai", "gpt-fast", 100, 25, 1000),
       workspaceId: created.id
     });
 
@@ -255,7 +195,7 @@ describe("workspace switching", () => {
     ]);
   });
 
-  it("rejects route decisions from a different workspace before prompt summaries", async () => {
+  it("rejects gateway decisions from a different workspace before prompt summaries", async () => {
     const fixture = await setup("org_ws_prompt_decisions");
     const created = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, createMutation, {
       input: { name: "Second" }
@@ -278,20 +218,21 @@ describe("workspace switching", () => {
       createdAt: at
     });
     await expect(fixture.db.insert(routeDecisions).values({
-      ...usageDecision("decision_wrong_workspace", "request_prompt_decision_scope", "org_ws_prompt_decisions", "fast", "openai", "gpt-fast"),
+      ...usageDecision("decision_wrong_workspace", "request_prompt_decision_scope", "org_ws_prompt_decisions", "openai-responses", "openai", "gpt-fast"),
       workspaceId: created.id
     })).rejects.toMatchObject({ cause: { constraint: "route_decisions_request_scope_fk" } });
 
     const prompts = (await adminGql(
       fixture.proxyUrl,
       fixture.adminHeaders,
-      "query { prompts { data { artifactId finalRoute selectedModel } } }"
+      "query { prompts { data { artifactId requestedLogicalModel resolvedLogicalModelId selectedModel } } }"
     )).data?.prompts;
     const prompt = prompts.data.find((item: { artifactId: string }) => item.artifactId === "artifact_prompt_decision_scope");
 
     expect(prompt).toEqual({
       artifactId: "artifact_prompt_decision_scope",
-      finalRoute: null,
+      requestedLogicalModel: "coding-auto",
+      resolvedLogicalModelId: null,
       selectedModel: null
     });
   });

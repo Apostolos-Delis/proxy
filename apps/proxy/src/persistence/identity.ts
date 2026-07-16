@@ -14,8 +14,6 @@ import {
 } from "@proxy/db";
 import { eq } from "drizzle-orm";
 
-import type { RouteName } from "../types.js";
-
 type ApiKeyIdentityStoreOptions = {
   cacheTtlMs?: number;
   lastUsedFlushDelayMs?: number;
@@ -196,7 +194,6 @@ export async function ensureSession(tx: ProxyTransaction, input: {
   sessionId: string | undefined;
   requestId?: string;
   userId: string | undefined;
-  route?: RouteName;
 }) {
   if (!input.surface) return undefined;
   const externalSessionId = input.sessionId ?? (input.requestId ? `request:${input.requestId}` : undefined);
@@ -210,7 +207,6 @@ export async function ensureSession(tx: ProxyTransaction, input: {
     userId: input.userId,
     updatedAt: new Date()
   };
-  if (input.route) updateValues.currentRoute = input.route;
   // RETURNING resolves the surviving row id when the upsert hits a session
   // created before the workspace migration (old id format, same unique key).
   const [row] = await tx
@@ -222,7 +218,6 @@ export async function ensureSession(tx: ProxyTransaction, input: {
       userId: input.userId,
       surface: input.surface,
       externalSessionId,
-      currentRoute: input.route,
       metadata
     })
     .onConflictDoUpdate({

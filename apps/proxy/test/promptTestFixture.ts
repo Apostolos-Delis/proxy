@@ -20,7 +20,7 @@ import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
 
 import { loadConfig } from "../src/config.js";
 import { LlmClassifier } from "../src/classifier.js";
-import { NoopMetricsCollector } from "../src/metrics.js";
+import { NoopMetricsCollector, type MetricsCollector } from "../src/metrics.js";
 import { createEnvironmentSecretReferenceResolver } from "../src/persistence/environmentSecretReferences.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
 import { ProviderConnectionClassifierTargetResolver } from "../src/persistence/providerConnectionClassifierTarget.js";
@@ -40,25 +40,15 @@ export function testEnv(overrides: NodeJS.ProcessEnv = {}) {
     PROXY_TOKEN: "proxy-token",
     OPENAI_API_KEY: "openai-upstream-key",
     OPENAI_BASE_URL: "http://127.0.0.1",
-    OPENAI_CHATGPT_BASE_URL: "http://127.0.0.1",
-    OPENAI_FAST_MODEL: "gpt-5.4-mini",
-    OPENAI_BALANCED_MODEL: "gpt-5.4",
-    OPENAI_HARD_MODEL: "gpt-5.5",
-    OPENAI_DEEP_MODEL: "gpt-5.5-pro",
     ANTHROPIC_API_KEY: "anthropic-upstream-key",
     ANTHROPIC_BASE_URL: "http://127.0.0.1",
-    ANTHROPIC_FAST_MODEL: "claude-haiku-4-5",
-    ANTHROPIC_BALANCED_MODEL: "claude-sonnet-4-5",
-    ANTHROPIC_HARD_MODEL: "claude-sonnet-4-5",
-    ANTHROPIC_DEEP_MODEL: "claude-opus-4-5",
-    CLASSIFIER_PROVIDER: "openai",
-    CLASSIFIER_MODEL: "route-classifier-cheap",
-    MODEL_COSTS_JSON: "",
+    GATEWAY_SEED_CLASSIFIER_MODEL: "route-classifier-cheap",
     ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8",
     ADMIN_DEV_LOGIN_ENABLED: "true",
     ADMIN_DEV_LOGIN_EMAIL: "local@example.com",
     ADMIN_DEV_LOGIN_PASSWORD: "dev-password",
     SEED_USER_ID: "local-user",
+    SEED_USER_NAME: "Local User",
     ...overrides
   };
 }
@@ -70,8 +60,8 @@ export async function captureFixture(
   options: {
     envOverrides?: NodeJS.ProcessEnv;
     openAIOptions?: OpenAIOptions;
-    openAIChatGPTOptions?: OpenAIOptions;
     anthropicOptions?: Parameters<typeof startAnthropicMock>[0];
+    metrics?: MetricsCollector;
   } = {}
 ) {
   const client = new PGlite();
@@ -82,19 +72,16 @@ export async function captureFixture(
   }
   const db = createPgliteDatabase(client);
   const openai = await startOpenAIMock(options.openAIOptions);
-  const openaiChatgpt = options.openAIChatGPTOptions
-    ? await startOpenAIMock(options.openAIChatGPTOptions)
-    : openai;
   const anthropic = await startAnthropicMock(options.anthropicOptions);
   const env = testEnv(options.envOverrides);
   const config = loadConfig({
     ...env,
     DEFAULT_ORGANIZATION_ID: organizationId,
     OPENAI_BASE_URL: openai.url,
-    OPENAI_CHATGPT_BASE_URL: openaiChatgpt.url,
     ANTHROPIC_BASE_URL: anthropic.url,
     LOG_LEVEL: "fatal"
   });
+  const metrics = options.metrics ?? new NoopMetricsCollector();
   const classifierTargets = new ProviderConnectionClassifierTargetResolver(db, {
     allowedPrivateUpstreamCidrs: config.allowedPrivateUpstreamCidrs,
     encryptionKey: config.providerSecretEncryptionKey,
@@ -105,7 +92,7 @@ export async function captureFixture(
     config,
     false,
     undefined,
-    new LlmClassifier(config, new NoopMetricsCollector(), classifierTargets)
+    new LlmClassifier(config, metrics, classifierTargets)
   );
   if (failCapture) {
     persistence.promptArtifacts.capture = async () => {
@@ -142,7 +129,6 @@ export async function captureFixture(
     ...env,
     DEFAULT_ORGANIZATION_ID: organizationId,
     OPENAI_BASE_URL: openai.url,
-    OPENAI_CHATGPT_BASE_URL: openaiChatgpt.url,
     ANTHROPIC_BASE_URL: anthropic.url,
     PROXY_TOKEN: env.PROXY_TOKEN,
     SEED_USER_ID: "local-user"
@@ -152,7 +138,7 @@ export async function captureFixture(
     .set({ promptCaptureMode })
     .where(eq(organizationSettings.organizationId, organizationId));
 
-  const app = buildServer(config, { persistence });
+  const app = buildServer(config, { persistence, metrics });
   const proxyUrl = await listen(app);
 
   return {
@@ -164,11 +150,10 @@ export async function captureFixture(
     proxyUrl,
     app,
     openai,
-    openaiChatgpt,
     anthropic,
     client,
     adminHeaders: await loginAdmin(proxyUrl),
-    close: () => closeFixture({ app, openai, openaiChatgpt, anthropic, client })
+    close: () => closeFixture({ app, openai, anthropic, client })
   };
 }
 
@@ -230,7 +215,10 @@ export function usageRequest(
     apiKeyId,
     surface,
     idempotencyKey: `idem_${id}`,
-    requestedModel: "router-auto",
+    requestedModel: "coding-auto",
+    ingressWireId: surface,
+    operationId: "text.generate" as const,
+    requestedLogicalModel: "coding-auto",
     inputHash: `sha256:${id}`,
     inputChars: 10,
     status: "completed" as const,
@@ -242,7 +230,7 @@ export function usageDecision(
   id: string,
   requestId: string,
   organizationId: string,
-  finalRoute: "fast" | "hard",
+  ingressWireId: "openai-responses" | "anthropic-messages" | "openai-chat",
   selectedProvider: "openai" | "anthropic",
   selectedModel: string
 ) {
@@ -251,8 +239,10 @@ export function usageDecision(
     requestId,
     organizationId,
     workspaceId: defaultWorkspaceId(organizationId),
-    requestedModel: "router-auto",
-    finalRoute,
+    requestedModel: "coding-auto",
+    ingressWireId,
+    operationId: "text.generate" as const,
+    requestedLogicalModel: "coding-auto",
     selectedProvider,
     selectedModel,
     policyVersion: "test"
@@ -290,7 +280,6 @@ export function usageRow(
   organizationId: string,
   provider: "openai" | "anthropic",
   model: string,
-  route: "fast" | "hard",
   inputTokens: number,
   outputTokens: number,
   totalCostMicros: number
@@ -303,7 +292,6 @@ export function usageRow(
     providerAttemptId,
     provider,
     model,
-    route,
     inputTokens,
     outputTokens,
     totalTokens: inputTokens + outputTokens,
@@ -359,7 +347,7 @@ export function sessionEvent(
     redactionState: "redacted",
     payload: {
       surface: "openai-responses",
-      requestedModel: "router-auto"
+      requestedModel: "coding-auto"
     },
     metadata: {},
     createdAt
@@ -373,16 +361,12 @@ export function eventPayloadText(rows: Array<typeof events.$inferSelect>) {
 async function closeFixture(input: {
   app: ReturnType<typeof buildServer>;
   openai: MockServer;
-  openaiChatgpt: MockServer;
   anthropic: MockServer;
   client: PGlite;
 }) {
   input.app.server.closeAllConnections();
   await input.app.close();
   await input.openai.close();
-  if (input.openaiChatgpt !== input.openai) {
-    await input.openaiChatgpt.close();
-  }
   await input.anthropic.close();
   await input.client.close();
 }

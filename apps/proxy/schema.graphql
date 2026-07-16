@@ -12,28 +12,19 @@ type ActiveSessionCount {
 }
 
 type ApiKey {
+  accessProfile: ApiKeyAccessProfileRef
+  accessProfileId: String
   createdAt: String!
   expiresAt: String
   id: String!
   lastUsedAt: String
   name: String!
   organizationId: String!
-  providerCredentials: [ApiKeyProviderBinding!]!
   revokedAt: String
-  routingConfig: ApiKeyRoutingConfigRef
-  routingConfigId: String
   userId: String
 }
 
-type ApiKeyProviderBinding {
-  name: String
-  provider: String!
-  providerAccountId: String!
-  providerId: String!
-  status: String
-}
-
-type ApiKeyRoutingConfigRef {
+type ApiKeyAccessProfileRef {
   id: String!
   name: String
   status: String
@@ -47,25 +38,6 @@ type AuthUser {
   sessionId: String!
   userId: String!
   workspaceId: String!
-}
-
-type BedrockModelDiscoveryRegionError {
-  error: String!
-  region: String!
-}
-
-type BedrockModelDiscoveryResult {
-  error: String
-  errors: [BedrockModelDiscoveryRegionError!]!
-  inserted: Int!
-  modelsApplied: Int!
-  modelsSeen: Int!
-  provider: String
-  providerAccountId: String!
-  regions: [String!]!
-  skipped: Int!
-  status: String!
-  updated: Int!
 }
 
 type CacheBust {
@@ -85,21 +57,6 @@ type CacheBustReport {
   countsByCause: JSON!
   sampled: Boolean!
   sessionsScanned: Float!
-}
-
-type ClassifierRuntime {
-  contentMode: String!
-  maxAttempts: Int!
-  model: String!
-  provider: String!
-  timeoutMs: Int!
-}
-
-input ClassifierSettingsInput {
-  allowRedactedExcerpt: Boolean
-  maxAttempts: Int
-  model: String
-  timeoutMs: Int
 }
 
 type CompressionPreview {
@@ -359,69 +316,18 @@ input CreateInvitationInput {
   role: MemberRole!
 }
 
-input CreateProviderCredentialFromLocalAuthInput {
-  baseUrl: String
-  name: String!
-  provider: String!
-}
-
-input CreateProviderCredentialInput {
-  accessKeyId: String
-  apiKey: String
-  authType: ProviderAccountAuthType
-  baseUrl: String
-  chatgptAccountId: String
-  credentialMode: String
-  discoveryRegions: [String!]
-  endpointOverride: String
-  name: String!
-  provider: String!
-  region: String
-  secretAccessKey: String
-  sessionToken: String
-}
-
-input CreateProviderInput {
-  adapterConfig: JSON
-  adapterKind: String
-  authStyle: String!
-  baseUrl: String!
-  capabilities: JSON
-  defaultHeaders: JSON
-  displayName: String!
-  enabled: Boolean
-  endpoints: [ProviderEndpointInput!]!
-  forwardHarnessHeaders: Boolean
-  slug: String!
-}
-
-input CreateRoutingConfigInput {
-  config: JSON!
-  description: String
-  name: String!
-}
-
 input CreateWorkspaceInput {
   description: String
   name: String!
   slug: String
 }
 
-type EditableClassifier {
-  allowRedactedExcerpt: Boolean!
-  maxAttempts: Int!
-  model: String!
-  timeoutMs: Int!
-}
-
 type EditableSettings {
   automaticCaching: Boolean!
   cacheTtlUpgrade: Boolean!
-  classifier: EditableClassifier!
   costBaseline: CostBaselineSettings!
   duplicateToolResultReferences: Boolean!
   promptCapture: PromptCaptureState!
-  routeQuality: RouteQualitySettings!
   schemaVersion: Int!
   systemPrompt: String
   toolResultCompressionPolicy: ToolResultCompressionPolicySettings!
@@ -656,71 +562,9 @@ enum MemberRole {
   viewer
 }
 
-type ModelCatalogEntry {
-  bedrockBaseModelId: String
-  bedrockFoundationModelId: String
-  bedrockInferenceProfileArn: String
-  bedrockInferenceProfileGeography: String
-  bedrockInferenceProfileId: String
-  bedrockInferenceProfileSource: String
-  bedrockModelSource: String
-  cacheReadCostPerMtok: Float
-  cacheWriteCostPerMtok: Float
-  catalogSource: String!
-  contextWindow: Int
-  dialects: [String!]!
-  displayName: String
-  inputCostPerMtok: Float
-  maxOutputTokens: Int
-  model: String!
-  outputCostPerMtok: Float
-  pricingKnown: Boolean!
-  provider: String!
-  providerAccountId: String
-  region: String
-  supportsImages: Boolean
-  supportsReasoning: Boolean
-  supportsStreaming: Boolean
-  supportsTools: Boolean
-  updatedAt: String!
-  warnings: [String!]!
-}
-
-input ModelCatalogPricingInput {
-  cacheReadCostPerMtok: Float
-  cacheWriteCostPerMtok: Float
-  inputCostPerMtok: Float
-  outputCostPerMtok: Float
-}
-
-type ModelPricingEntry {
-  cacheReadCostPerMtok: Float
-  cacheWriteCostPerMtok: Float
-  inputCostPerMtok: Float
-  model: String!
-  outputCostPerMtok: Float
-  provider: String
-  seenInTraffic: Boolean!
-  source: ModelPricingSource!
-  updatedAt: String
-}
-
-enum ModelPricingSource {
-  custom
-  default
-  env
-  unpriced
-}
-
 type Mutation {
   acceptInvitation(name: String, token: String!): AcceptedInvitation!
-  activateRoutingConfigVersion(configId: ID!, versionId: ID!): RoutingConfigDetail!
-  archiveRoutingConfig(configId: ID!): RoutingConfigDetail!
-  assignApiKeyProviderAccount(apiKeyId: ID!, provider: String!, providerAccountId: ID): ApiKey!
-  assignApiKeyRoutingConfig(apiKeyId: ID!, routingConfigId: ID): ApiKey!
   assignGatewayApiKeyAccessProfile(accessProfileId: ID!, apiKeyId: ID!): GatewayApiKeyAccessProfileAssignment!
-  cancelProviderCredentialOAuth(loginId: ID!): ProviderCredentialOAuthStatus
-  clearModelPricing(model: String!, provider: String!): [ModelPricingEntry!]!
   configurePromptCapture(promptCaptureMode: String!, retentionDays: Int!): PromptCaptureConfig!
   createApiKey(input: CreateApiKeyInput!): CreateApiKeyResult!
   createGatewayAccessProfile(input: CreateGatewayAccessProfileInput!): GatewayAccessProfile!
@@ -732,11 +576,6 @@ type Mutation {
   createGatewayProviderConnection(input: CreateGatewayProviderConnectionInput!): GatewayProviderConnection!
   createGatewayWireBinding(input: CreateGatewayWireBindingInput!): GatewayWireBinding!
   createInvitation(input: CreateInvitationInput!): InvitationActionResult!
-  createProvider(input: CreateProviderInput!): ProviderRegistryEntry
-  createProviderCredential(input: CreateProviderCredentialInput!): ProviderAccount
-  createProviderCredentialFromLocalAuth(input: CreateProviderCredentialFromLocalAuthInput!): ProviderAccount
-  createRoutingConfig(input: CreateRoutingConfigInput!): RoutingConfigDetail!
-  createRoutingConfigVersion(config: JSON!, configId: ID!): RoutingConfigDetail!
   createWorkspace(input: CreateWorkspaceInput!): WorkspaceSummary!
   deactivateUser(userId: ID!): UserStatusResult!
   disableGatewayAccessProfile(id: ID!): GatewayAccessProfile!
@@ -747,7 +586,6 @@ type Mutation {
   disableGatewayModelGrant(id: ID!): GatewayModelGrant!
   disableGatewayProviderConnection(id: ID!): GatewayProviderConnection!
   disableGatewayWireBinding(id: ID!): GatewayWireBinding!
-  disableProvider(providerId: ID!): ProviderRegistryEntry
   enableGatewayAccessProfile(id: ID!): GatewayAccessProfile!
   enableGatewayCanonicalModel(id: ID!): GatewayCanonicalModel!
   enableGatewayLogicalModel(id: ID!): GatewayLogicalModel!
@@ -758,15 +596,12 @@ type Mutation {
   enableGatewayWireBinding(id: ID!): GatewayWireBinding!
   login(email: String!, password: String!): Viewer!
   logout: Boolean!
-  probeProviderCredential(input: ProbeProviderCredentialInput!): ProviderHealthProbeResult!
   reactivateUser(userId: ID!): UserStatusResult!
-  refreshBedrockModelCatalog(input: RefreshBedrockModelCatalogInput!): BedrockModelDiscoveryResult!
   resendInvitation(invitationId: ID!): InvitationActionResult!
+  resetGatewayModelDeploymentHealth(id: ID!): GatewayModelDeployment!
+  resetGatewayProviderConnectionHealth(id: ID!): GatewayProviderConnection!
   revokeApiKey(apiKeyId: ID!): ApiKey!
   revokeInvitation(invitationId: ID!): Invitation
-  revokeProviderCredential(providerAccountId: ID!): ProviderAccount
-  setModelPricing(input: SetModelPricingInput!): [ModelPricingEntry!]!
-  startProviderCredentialOAuth(input: StartProviderCredentialOAuthInput!): ProviderCredentialOAuthStart!
   switchOrganization(organizationId: ID!): Viewer!
   switchWorkspace(workspaceId: ID!): Viewer!
   updateGatewayAccessProfile(input: UpdateGatewayAccessProfileInput!): GatewayAccessProfile!
@@ -777,11 +612,8 @@ type Mutation {
   updateGatewayModelGrant(input: UpdateGatewayModelGrantInput!): GatewayModelGrant!
   updateGatewayProviderConnection(input: UpdateGatewayProviderConnectionInput!): GatewayProviderConnection!
   updateGatewayWireBinding(input: UpdateGatewayWireBindingInput!): GatewayWireBinding!
-  updateProvider(input: UpdateProviderInput!): ProviderRegistryEntry
-  updateProviderCredential(input: UpdateProviderCredentialInput!): ProviderAccount
   updateSettings(input: SettingsInput!): Settings!
   updateUserRole(role: MemberRole!, userId: ID!): UpdateUserRoleResult!
-  upsertModelCatalogEntry(input: UpsertModelCatalogInput!): ModelCatalogEntry
 }
 
 type OpenAICacheAggregate {
@@ -807,11 +639,11 @@ type OpenAICacheGroup {
   cachedInputTokens: Float!
   cachedRequests: Float!
   inputTokens: Float!
+  logicalModel: String!
   model: String!
   provider: String!
   requestCount: Float!
   requestHitRate: Float!
-  route: String!
   surface: String!
 }
 
@@ -854,12 +686,6 @@ type OverviewDashboard {
   requests: [RequestSummary!]!
 }
 
-input ProbeProviderCredentialInput {
-  model: String!
-  operation: String
-  providerAccountId: ID!
-}
-
 type PromptAccessAuditEntry {
   accessPath: String!
   adminSessionId: String
@@ -868,24 +694,26 @@ type PromptAccessAuditEntry {
   id: String!
   organizationId: String!
   requestId: String!
-  route: String
   userId: String
 }
 
 interface PromptArtifactBase {
+  accessProfileId: String
   artifactId: String!
   chars: Float
-  classifier: JSON
   contentHash: String!
   cost: PromptCost!
   createdAt: String!
-  finalRoute: String
+  deploymentId: String
   kind: String!
   organizationId: String!
   preview: String
   provider: String
+  providerConnectionId: String
   requestId: String!
-  routingConfig: RoutingConfigSnapshot
+  requestedLogicalModel: String
+  resolvedLogicalModelId: String
+  routerDecision: JSON
   selectedModel: String
   sessionId: String
   sourceIndex: Int
@@ -897,24 +725,27 @@ interface PromptArtifactBase {
 }
 
 type PromptArtifactDetail implements PromptArtifactBase {
+  accessProfileId: String
   artifactId: String!
   chars: Float
-  classifier: JSON
   contentHash: String!
   cost: PromptCost!
   createdAt: String!
+  deploymentId: String
   encryptedBlobRef: String
   expiresAt: String
-  finalRoute: String
   kind: String!
   metadata: JSON!
   organizationId: String!
   preview: String
   provider: String
+  providerConnectionId: String
   rawText: String
   redactedText: String
   requestId: String!
-  routingConfig: RoutingConfigSnapshot
+  requestedLogicalModel: String
+  resolvedLogicalModelId: String
+  routerDecision: JSON
   selectedModel: String
   sessionId: String
   sourceIndex: Int
@@ -1014,19 +845,22 @@ type PromptPagination {
 }
 
 type PromptSummary implements PromptArtifactBase {
+  accessProfileId: String
   artifactId: String!
   chars: Float
-  classifier: JSON
   contentHash: String!
   cost: PromptCost!
   createdAt: String!
-  finalRoute: String
+  deploymentId: String
   kind: String!
   organizationId: String!
   preview: String
   provider: String
+  providerConnectionId: String
   requestId: String!
-  routingConfig: RoutingConfigSnapshot
+  requestedLogicalModel: String
+  resolvedLogicalModelId: String
+  routerDecision: JSON
   selectedModel: String
   sessionId: String
   sourceIndex: Int
@@ -1037,137 +871,26 @@ type PromptSummary implements PromptArtifactBase {
   userId: String
 }
 
-type ProviderAccount {
-  authType: ProviderAccountAuthType!
-  baseUrl: String
-  boundKeyCount: Int!
-  createdAt: String!
-  credentialMode: String
-  credentialSourceCategory: String
-  discoveryRegions: [String!]!
-  endpointOverride: String
-  health: ProviderAccountHealth
-  id: String!
-  lastUsedAt: String
-  name: String!
-  organizationId: String!
-  ownerUserId: String
-  provider: String!
-  providerId: String!
-  region: String
-  secretHint: String
-  status: String!
-}
-
-enum ProviderAccountAuthType {
-  api_key
-  oauth
-}
-
-type ProviderAccountHealth {
-  consecutiveFailures: Int!
-  cooldownUntil: String
-  lastCheckedAt: String
-  lastErrorAt: String
-  lastErrorType: String
-  lastSuccessAt: String
-  metadata: JSON!
-  modelHealth: [ProviderModelHealth!]!
-  status: String
-}
-
 type ProviderAttempt {
   adapterClassification: JSON
   adapterKind: String
-  attemptIndex: Int
   completedAt: String
+  deploymentId: String
+  egressWireId: String
   error: String
-  fallbackIndex: Int
   firstByteAt: String
   id: String!
   model: String!
   provider: String!
-  providerAccountId: String
+  providerAdapterContractVersion: String
+  providerConnectionId: String
   requestId: String!
-  routeCandidateId: String
-  skipReason: String
   startedAt: String!
   statusCode: Int
   surface: String!
   terminalStatus: String!
   upstreamRequestId: String
   usage: JSON!
-}
-
-type ProviderCredentialOAuthStart {
-  loginId: String!
-  userCode: String
-  verificationUrl: String!
-}
-
-type ProviderCredentialOAuthStatus {
-  error: String
-  loginId: String!
-  providerAccountId: String
-  status: String!
-}
-
-type ProviderEndpoint {
-  dialect: String!
-  operation: String
-  path: String
-}
-
-input ProviderEndpointInput {
-  dialect: String!
-  operation: String
-  path: String
-}
-
-type ProviderHealthProbeResult {
-  checkedAt: String!
-  dimensions: JSON!
-  errorType: String
-  healthStatus: String!
-  latencyMs: Int!
-  message: String
-  model: String!
-  probeId: String!
-  provider: String!
-  providerAccountId: String!
-  stateUpdated: Boolean!
-  status: String!
-  statusCode: Int
-}
-
-type ProviderModelHealth {
-  consecutiveFailures: Int!
-  lastErrorAt: String
-  lastErrorType: String
-  lastSuccessAt: String
-  lockoutUntil: String
-  metadata: JSON!
-  model: String!
-  providerAccountId: String!
-  providerId: String!
-  status: String!
-}
-
-type ProviderRegistryEntry {
-  adapterConfig: JSON!
-  adapterKind: String!
-  authStyle: String!
-  baseUrl: String!
-  builtin: Boolean!
-  capabilities: JSON!
-  defaultHeaders: JSON!
-  displayName: String!
-  enabled: Boolean!
-  endpoints: [ProviderEndpoint!]!
-  forwardHarnessHeaders: Boolean!
-  id: String!
-  organizationId: String
-  slug: String!
 }
 
 type ProxyEvent {
@@ -1223,8 +946,6 @@ type Query {
   idleGaps(end: String, start: String): IdleGapReport!
   invitations: [Invitation!]!
   members: [OrgMember!]!
-  modelCatalog: [ModelCatalogEntry!]!
-  modelPricing: [ModelPricingEntry!]!
   openAICacheAnalytics(end: String, interval: UsageInterval, start: String): OpenAICacheAnalytics!
   overview: Overview!
   overviewDashboard: OverviewDashboard!
@@ -1232,16 +953,10 @@ type Query {
   promptAccessAudit: [PromptAccessAuditEntry!]!
   promptCachePlans(end: String, start: String): PromptCachePlanReport!
   promptCachePrewarms(end: String, start: String): PromptCachePrewarmReport!
-  prompts(end: String, limit: Int, model: String, offset: Int, route: String, start: String, surface: String, userId: String): PromptPage!
-  providerAccounts: [ProviderAccount!]!
-  providerCredentialOAuthStatus(loginId: ID!): ProviderCredentialOAuthStatus
-  providers: [ProviderRegistryEntry!]!
+  prompts(end: String, limit: Int, logicalModel: String, model: String, offset: Int, start: String, surface: String, userId: String): PromptPage!
   publicInvitation(token: String!): PublicInvitation
   request(requestId: ID!): RequestDetail!
   requests(end: String, limit: Int, start: String): [RequestSummary!]!
-  routeOutputReport(end: String, start: String): RouteOutputReport!
-  routingConfig(configId: ID!): RoutingConfigDetail
-  routingConfigs: [RoutingConfigSummary!]!
   search(query: String!): SearchResult!
   session(sessionId: ID!): SessionDetail
   sessions: [SessionSummary!]!
@@ -1255,36 +970,40 @@ type Query {
   viewer: Viewer!
 }
 
-input RefreshBedrockModelCatalogInput {
-  providerAccountId: ID!
-}
-
 type RequestDetail {
   compressionReceipts: [CompressionReceipt!]!
   events: [ProxyEvent!]!
-  healthSkips: JSON!
   providerAttempts: [ProviderAttempt!]!
   request: RequestSummary
   routeDecisions: [RouteDecision!]!
 }
 
 type RequestSummary {
+  accessProfileId: String
   apiKeyId: String
   attemptCount: Int
   baselineCost: Float!
-  classifier: JSON
+  classifierCost: Float
   completedAt: String
+  confidence: Float
   createdAt: String
-  finalRoute: String
+  deploymentId: String
+  egressWireId: String
+  ingressWireId: String
   inputChars: Float
   latencyMs: Float
+  operationId: String
   provider: String
+  providerConnectionId: String
+  providerCost: Float
   requestId: String!
+  requestedLogicalModel: String
   requestedModel: String
-  routeSkipReasons: [String!]!
-  routingConfig: RoutingConfigSnapshot
+  resolvedLogicalModelId: String
+  routerDecision: JSON!
+  routerDecisionId: String
+  routerKind: String
   savings: Float!
-  selectedCandidateId: String
   selectedCost: Float!
   selectedModel: String
   sessionId: String
@@ -1294,155 +1013,40 @@ type RequestSummary {
   translated: Boolean
   usage: TokenTotals!
   userId: String
+  wireAdapterVersion: String
 }
 
 type RouteDecision {
-  budgetChecks: JSON!
-  classifier: JSON
-  classifierRoute: String
+  accessProfileId: String
   confidence: Float
   createdAt: String!
-  finalRoute: String
+  deploymentId: String
+  egressWireId: String
   guardrailActions: [String!]!
   id: String!
+  ingressWireId: String
+  operationId: String
   policyVersion: String!
+  providerConnectionId: String
   reasonCodes: [String!]!
   reasoningEffort: String
   requestId: String!
+  requestedLogicalModel: String
   requestedModel: String!
-  routeExecutionPlan: JSON!
-  routingConfig: RoutingConfigSnapshot
-  selectedCandidateId: String
+  resolvedLogicalModelId: String
+  routerDecision: JSON!
+  routerDecisionId: String
+  routerKind: String
   selectedModel: String
   selectedProvider: String
   translated: Boolean!
   translatorId: String
   verbosity: String
-}
-
-type RouteOutputGroupRow {
-  avgOutputTokens: Float!
-  key: String!
-  outputCost: Float!
-  outputTokens: Float!
-  reasoningShare: Float!
-  reasoningTokens: Float!
-  requests: Float!
-}
-
-type RouteOutputReport {
-  apiKeys: [RouteOutputGroupRow!]!
-  models: [RouteOutputGroupRow!]!
-  routes: [RouteOutputRow!]!
-  users: [RouteOutputGroupRow!]!
-  workspaces: [RouteOutputGroupRow!]!
-}
-
-type RouteOutputRow {
-  avgOutputTokens: Float!
-  outputCost: Float!
-  outputTokens: Float!
-  reasoningShare: Float!
-  reasoningTokens: Float!
-  requests: Float!
-  route: String!
+  wireAdapterVersion: String
 }
 
 type RouteQuality {
-  cheapCausedRetriesOrRepairsCount: Int!
-  cheaperLikelyWouldWorkCount: Int!
   lowConfidenceCount: Int!
-}
-
-type RouteQualitySettings {
-  lowConfidenceThreshold: Float!
-}
-
-input RouteQualitySettingsInput {
-  lowConfidenceThreshold: Float
-}
-
-type RouteTarget {
-  effectiveEffort: String
-  effort: String
-  maxOutputTokens: Int
-  metadata: JSON
-  model: String!
-  providerId: String!
-  thinking: JSON
-  verbosity: String
-}
-
-type RoutingConfigDetail {
-  config: RoutingConfigSummary!
-  versions: [RoutingConfigVersionDetail!]!
-}
-
-type RoutingConfigRoute {
-  description: String
-  route: String!
-  targets: [RouteTarget!]!
-}
-
-type RoutingConfigSnapshot {
-  configHash: String
-  configId: String!
-  configName: String
-  version: Int
-  versionId: String
-}
-
-type RoutingConfigSummary {
-  activeVersion: RoutingConfigVersion
-  activeVersionId: String
-  assignedApiKeyCount: Int!
-  createdAt: String!
-  description: String
-  id: String!
-  name: String!
-  organizationId: String!
-  routes: [RoutingConfigRoute!]!
-  slug: String!
-  status: String!
-
-  """
-  Share of routed requests handled by this config over the trailing 7 days (0..1).
-  """
-  trafficShare: Float!
-  updatedAt: String!
-}
-
-type RoutingConfigVersion {
-  activatedAt: String
-  active: Boolean!
-  archivedAt: String
-  configHash: String!
-  createdAt: String!
-  createdByUserId: String
-  id: String!
-  organizationId: String!
-  routingConfigId: String!
-  status: String!
-  version: Int!
-}
-
-type RoutingConfigVersionDetail {
-  activatedAt: String
-  active: Boolean!
-  archivedAt: String
-  config: JSON!
-  configHash: String!
-  createdAt: String!
-  createdByUserId: String
-  id: String!
-  organizationId: String!
-  routingConfigId: String!
-  status: String!
-  version: Int!
-}
-
-type RuntimeSettings {
-  classifier: ClassifierRuntime!
 }
 
 type SearchHit {
@@ -1458,7 +1062,7 @@ type SearchHit {
 enum SearchHitKind {
   api_key
   log
-  routing_config
+  logical_model
   session
   user
 }
@@ -1482,15 +1086,15 @@ type SessionDetail {
 type SessionSummary {
   cacheHitRate: Float
   cost: CostTotals!
-  currentRoute: String
+  deploymentMix: JSON!
   endedAt: String
   externalSessionId: String
+  logicalModelChanges: Float!
+  logicalModelMix: JSON!
   modelMix: JSON!
   organizationId: String!
   recentActivity: String
   requestCount: Float!
-  routeChanges: Float!
-  routeMix: JSON!
   sessionId: String!
   sessionIdentity: String
   startedAt: String!
@@ -1501,45 +1105,26 @@ type SessionSummary {
   userId: String
 }
 
-input SetModelPricingInput {
-  cacheReadCostPerMtok: Float
-  cacheWriteCostPerMtok: Float
-  inputCostPerMtok: Float!
-  model: String!
-  outputCostPerMtok: Float!
-  provider: String!
-}
-
 type Settings {
-  classifier: ClassifierRuntime!
   databaseEnabled: Boolean!
   defaults: JSON!
   file: JSON!
   organizationId: String!
   promptCapture: PromptCaptureState!
   restartRequiredFor: [String!]!
-  runtime: RuntimeSettings!
   settings: EditableSettings!
   storage: StorageInfo!
-  subscriptionOAuthEnabled: Boolean!
 }
 
 input SettingsInput {
   automaticCaching: Boolean
   cacheTtlUpgrade: Boolean
-  classifier: ClassifierSettingsInput
   costBaseline: CostBaselineSettingsInput
   duplicateToolResultReferences: Boolean
   promptCapture: PromptCaptureSettingsInput
-  routeQuality: RouteQualitySettingsInput
   schemaVersion: Int
   systemPrompt: String
   toolResultCompressionPolicy: ToolResultCompressionPolicyInput
-}
-
-input StartProviderCredentialOAuthInput {
-  name: String!
-  provider: String!
 }
 
 type StorageInfo {
@@ -1670,52 +1255,10 @@ input UpdateGatewayWireBindingInput {
   requestConfig: JSON
 }
 
-input UpdateProviderCredentialInput {
-  accessKeyId: String
-  apiKey: String
-  baseUrl: String
-  credentialMode: String
-  discoveryRegions: [String!]
-  endpointOverride: String
-  name: String
-  providerAccountId: ID!
-  region: String
-  secretAccessKey: String
-  sessionToken: String
-}
-
-input UpdateProviderInput {
-  adapterConfig: JSON
-  adapterKind: String
-  authStyle: String!
-  baseUrl: String!
-  capabilities: JSON
-  defaultHeaders: JSON
-  displayName: String!
-  enabled: Boolean
-  endpoints: [ProviderEndpointInput!]!
-  forwardHarnessHeaders: Boolean
-  providerId: ID!
-}
-
 type UpdateUserRoleResult {
   previousRole: String!
   role: String!
   userId: String!
-}
-
-input UpsertModelCatalogInput {
-  contextWindow: Int
-  dialects: [String!]
-  displayName: String
-  maxOutputTokens: Int
-  model: String!
-  pricing: ModelCatalogPricingInput
-  provider: String!
-  supportsImages: Boolean
-  supportsReasoning: Boolean
-  supportsStreaming: Boolean
-  supportsTools: Boolean
 }
 
 type UsageDashboard {
@@ -1737,10 +1280,11 @@ type UsageGroup {
 
 enum UsageGroupBy {
   api_key
+  deployment
+  logical_model
   model
   model_effort
   provider
-  route
   session
   surface
   user
@@ -1766,7 +1310,6 @@ type UsageLedgerRow {
   providerAttemptId: String
   reasoningTokens: Float!
   requestId: String!
-  route: String
   sessionId: String
   totalCostMicros: Float!
   totalTokens: Float!

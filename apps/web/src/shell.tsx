@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, CircleDollarSign, Command, CreditCard, Gauge, GitBranch, KeyRound, Layers, Logs, Moon, PanelLeft, PanelLeftClose, Search, ServerCog, Settings, Sun, Users } from "lucide-react";
+import { BarChart3, CircleDollarSign, Command, CreditCard, Gauge, KeyRound, Layers, Logs, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -19,10 +19,8 @@ type NavPath =
   | "/cost"
   | "/caching"
   | "/logs"
-  | "/routing"
   | "/settings"
   | "/api-keys"
-  | "/providers"
   | "/users"
   | "/billing";
 
@@ -37,13 +35,11 @@ const workspaceNav = [
 ] as const;
 
 const operationsNav = [
-  { to: "/routing", label: "Routing", icon: GitBranch },
   { to: "/settings", label: "Settings", icon: Settings }
 ] as const;
 
 const manageNav = [
   { to: "/api-keys", label: "API keys", icon: KeyRound },
-  { to: "/providers", label: "Model providers", icon: ServerCog },
   { to: "/users", label: "Users", icon: Users },
   { to: "/billing", label: "Billing", icon: CreditCard }
 ] as const;
@@ -55,12 +51,9 @@ const titles: Record<string, [string, string | null]> = {
   "/caching": ["Caching", "Prompt-cache performance"],
   "/api-keys": ["API keys", "Manage secrets"],
   "/api-keys/new": ["API keys", "Create key"],
-  "/providers": ["Model providers", "Registry and credentials"],
   "/users": ["Users", "Team & access"],
   "/billing": ["Billing", "Spend & pricing"],
   "/settings": ["Settings", "Runtime configuration"],
-  "/routing": ["Routing", "Config versions"],
-  "/routing/new": ["Routing", "New config"],
   "/prompts": ["Prompts", "Captured prompt artifacts"]
 };
 
@@ -192,6 +185,5 @@ function titleForPath(pathname: string, search: { view?: unknown }) {
   if (pathname.startsWith("/logs/")) return ["Logs", "Prompt detail"] as const;
   if (pathname.startsWith("/prompts/")) return ["Prompts", "Prompt detail"] as const;
   if (pathname.startsWith("/sessions/")) return ["Logs", "Session replay"] as const;
-  if (pathname.startsWith("/routing/")) return ["Routing", "Config detail"] as const;
   return ["Proxy", "LLM cost console"] as const;
 }

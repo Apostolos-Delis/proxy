@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 
+import { DeploymentPricingCard } from "./deploymentPricingCard";
 import { formatInteger, formatMoney } from "./format";
 import { graphql } from "./gql";
 import { gqlFetch } from "./graphql";
-import { ModelPricingCard } from "./modelPricingCard";
 import { GlassCard, PageSkeleton, PageState, PageTitle, ProgressMeter } from "./ui";
 
 const BillingPageDocument = graphql(`
@@ -54,7 +54,7 @@ export function BillingPage() {
           <div className="stat-sub">from the usage ledger</div>
         </GlassCard>
       </div>
-      <ModelPricingCard />
+      <DeploymentPricingCard />
     </div>
   );
 }

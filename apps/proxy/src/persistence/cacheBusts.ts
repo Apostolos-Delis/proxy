@@ -9,7 +9,7 @@ export const CACHE_BUST_CAUSES = [
   "tool_schema_churn",
   "translator_change",
   "compression_policy_change",
-  "route_config_change",
+  "logical_model_change",
   "unknown"
 ] as const;
 
@@ -31,8 +31,8 @@ export type CacheBustLedgerRow = {
   toolSchemaHash?: string | null;
   translatorId?: string | null;
   compressionPolicyHash?: string | null;
-  routingConfigHash?: string | null;
-  routingConfigVersionId?: string | null;
+  logicalModelId?: string | null;
+  deploymentId?: string | null;
 };
 
 type CacheBustEvidence = Pick<
@@ -163,7 +163,10 @@ function classify(previous: CacheBustLedgerRow, current: CacheBustLedgerRow, gap
   if (knownChange(previous.toolSchemaHash, current.toolSchemaHash)) return "tool_schema_churn";
   if (knownChange(previous.translatorId, current.translatorId)) return "translator_change";
   if (knownChange(previous.compressionPolicyHash, current.compressionPolicyHash)) return "compression_policy_change";
-  if (routingConfigChanged(previous, current)) return "route_config_change";
+  if (
+    knownChange(previous.logicalModelId, current.logicalModelId) ||
+    knownChange(previous.deploymentId, current.deploymentId)
+  ) return "logical_model_change";
   if (gapMs > CACHE_TTL_MS) return "ttl_expiry";
   return "unknown";
 }
@@ -174,13 +177,6 @@ export function emptyCacheBustCauseCounts() {
 
 function knownChange(left: string | null | undefined, right: string | null | undefined) {
   return left !== undefined && right !== undefined && left !== right;
-}
-
-function routingConfigChanged(previous: CacheBustLedgerRow, current: CacheBustLedgerRow) {
-  if (previous.routingConfigHash !== undefined && current.routingConfigHash !== undefined) {
-    return previous.routingConfigHash !== current.routingConfigHash;
-  }
-  return knownChange(previous.routingConfigVersionId, current.routingConfigVersionId);
 }
 
 function hashOrNull(value: unknown) {

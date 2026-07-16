@@ -18,13 +18,13 @@ describe("classifyProviderTerminalHealth", () => {
   });
 
   it.each([
-    ["auth_invalid", 401, "invalid api key", "provider_account"],
-    ["auth_expired", 401, "access token expired", "provider_account"],
-    ["rate_limited", 429, "too many requests", "provider_account"],
-    ["quota_exhausted", 429, "insufficient_quota", "provider_account"],
-    ["provider_unavailable", 503, "upstream unavailable", "provider"],
-    ["model_unavailable", 404, "model claude-missing not found", "provider_account_model"],
-    ["model_access_denied", 403, "does not have access to model claude-opus", "provider_account_model"],
+    ["auth_invalid", 401, "invalid api key", "provider_connection"],
+    ["auth_expired", 401, "access token expired", "provider_connection"],
+    ["rate_limited", 429, "too many requests", "provider_connection"],
+    ["quota_exhausted", 429, "insufficient_quota", "provider_connection"],
+    ["provider_unavailable", 503, "upstream unavailable", "provider_connection"],
+    ["model_unavailable", 404, "model claude-missing not found", "deployment"],
+    ["model_access_denied", 403, "does not have access to model claude-opus", "deployment"],
     ["context_overflow", 400, "context_length_exceeded", "request_only"],
     ["request_incompatible", 400, "unsupported_parameter: temperature", "request_only"],
     ["unknown_terminal", 418, "teapot", "request_only"]
@@ -83,7 +83,7 @@ describe("classifyProviderTerminalHealth", () => {
     expect(result).toEqual(expect.objectContaining({
       errorType: "unknown_transient",
       retryable: true,
-      scope: "provider_account",
+      scope: "provider_connection",
       cooldownUntil: "2026-06-18T12:00:30.000Z"
     }));
   });

@@ -239,7 +239,7 @@ Integration tests:
 2. Deploy code that projects terminal provider events and probe events into health state.
 3. Watch `routing.decision_recorded.healthSkips`, `provider_account.cooldown_started`, `provider_model.lockout_started`, and `provider_account.health_probe_completed`.
 4. Use the Model providers console or admin GraphQL probe mutation to clear false-positive terminal/cooldown state after validating credentials.
-5. See the [provider account health runbook](../../runbooks/provider-account-health.md) for operational commands and post-deploy checks.
+5. See the current [provider health runbook](../../runbooks/provider-health.md) for operational commands and post-deploy checks.
 
 ## Non-Goals
 

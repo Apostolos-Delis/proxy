@@ -6,58 +6,56 @@ Claude Code reaches Proxy through the Anthropic Messages surface at `POST /v1/me
 
 - Proxy is running, for example at `http://127.0.0.1:8787`.
 - You have a Proxy API key from the console's API keys page.
-- The routing config assigned to that key has native Anthropic targets or translated OpenAI Chat/Responses targets.
+- The key's access profile grants a logical model with an Anthropic-native or translatable target.
 
-Use the Proxy API key in Claude Code. Upstream Anthropic or OpenAI keys belong in Proxy provider credentials, not in the harness, unless you intentionally want to bypass the proxy.
+Use the Proxy API key in Claude Code. Provider credentials stay on provider connections inside Proxy.
 
 ## One-Liner Setup
-
-Use a Claude Code-specific install when you want this key to have its own routing config:
 
 ```shell
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code <api-key>
 ```
 
-It stores the key at `~/.proxy/claude-code.token` and points `~/.claude/settings.json` at Proxy. The default setup command without `--harness` still configures one shared key for both Claude Code and Codex.
-Pass `--harness` more than once when Claude Code should share the same Proxy API key with another local harness.
+The script authenticates `GET /v1/models`, chooses a granted logical model, stores the key at `~/.proxy/claude-code.token`, and points `~/.claude/settings.json` at Proxy. It tracks the fields it owns in `~/.proxy/claude-code-settings.marker.json` and leaves unmarked user-managed values unchanged.
 
-The hosted setup script tracks Claude Code fields it owns in `~/.proxy/claude-code-settings.marker.json`. If `model`, `apiKeyHelper`, or the relevant `env` entries already exist without that marker, setup reports the conflict and leaves those user-managed values unchanged.
+Pass `--harness` more than once to share one Proxy API key across local harnesses.
 
-## Environment
+## Manual Setup
+
+First list the models granted to the key:
+
+```shell
+curl -sS http://127.0.0.1:8787/v1/models \
+  -H 'Authorization: Bearer <proxy-api-key>'
+```
+
+Then configure one returned logical model, such as `coding-auto` or `economy-auto`:
 
 ```shell
 export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
 export ANTHROPIC_API_KEY=<proxy-api-key>
+export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
+claude --model coding-auto
 ```
 
-Use router aliases as the model:
-
-- `claude-router-auto`
-- `claude-router-fast`
-- `claude-router-balanced`
-- `claude-router-hard`
-- `claude-router-deep`
-
-`claude-router-auto` runs the classifier. Tier-specific aliases pin the route before provider selection.
+`coding-auto` and `economy-auto` are classifier-backed logical models in the development seed. `fable` is a direct logical model. The API key's access profile determines which IDs are visible and usable.
 
 ## Target Coverage
 
-Claude Code requests are native when a target exposes `anthropic-messages`. They can also route to OpenAI targets through translation:
+Claude Code requests are native when the selected target exposes `anthropic-messages`. Proxy can also translate them to targets exposing `openai-chat` or `openai-responses`. Resolution fails before provider spend when no eligible target can safely serve the request features.
 
-- OpenAI Chat targets receive Chat Completions requests and return Anthropic Messages-shaped responses/SSE to Claude Code.
-- OpenAI Responses targets receive Responses requests and return Anthropic Messages-shaped responses/SSE to Claude Code.
-
-Route decisions include `translated_request:anthropic-messages_to_openai-chat` or `translated_request:anthropic-messages_to_openai-responses` when translation is used.
+The request inspector records the requested and resolved logical model, selected target and deployment, provider connection, wire binding, translator, and fallback evidence.
 
 ## Verify
 
-1. Start Proxy.
-2. Run a small Claude Code prompt using one of the router aliases.
-3. In Proxy, open Logs and confirm the request surface is `anthropic-messages`.
-4. Check the selected provider/model and route decision guardrail actions.
+1. Run `GET /v1/models` with the same API key and confirm the configured logical model is present.
+2. Send a small Claude Code prompt.
+3. In Proxy, open Requests and confirm the inbound wire is `anthropic-messages`.
+4. Check the resolution evidence and terminal provider attempt.
 
 ## Troubleshooting
 
-- `401` or auth errors: `ANTHROPIC_API_KEY` must be the Proxy API key.
-- Request reaches Anthropic directly: confirm `ANTHROPIC_BASE_URL` points to Proxy and includes `/v1`.
-- Target unavailable: check provider enabled state, provider key binding, and whether the target exposes `anthropic-messages`, `openai-chat`, or `openai-responses`.
+- `401`: `ANTHROPIC_API_KEY` must be the Proxy API key.
+- Model not found or denied: use an ID returned by authenticated `GET /v1/models` and check the key's access profile.
+- Request reaches Anthropic directly: confirm `ANTHROPIC_BASE_URL` points to Proxy.
+- No compatible target: check the logical model targets, deployment status, wire bindings, connection health, and translator support.

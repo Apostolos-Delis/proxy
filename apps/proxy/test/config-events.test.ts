@@ -6,19 +6,8 @@ import { describe, expect, it } from "vitest";
 
 import { loadConfig } from "../src/config.js";
 import { BoundedEventWriter, EventService, ProviderAttemptStore, type AppendEventInput } from "../src/events.js";
-import { SessionRouteStore } from "../src/policy.js";
 
 describe("config and events", () => {
-  it("ignores legacy route policy JSON keys", () => {
-    const config = loadConfig({
-      ROUTE_POLICY_SOURCE: "repo",
-      ROUTE_POLICY_JSON: JSON.stringify({ budgetMaxRoute: "deep" }),
-      TRUSTED_REPO_POLICY_HASH: "sha256:legacy"
-    });
-
-    expect("routePolicyTrust" in config).toBe(false);
-  });
-
   it("parses database pool limits", () => {
     expect(loadConfig({}).dbPoolMax).toBe(5);
     expect(loadConfig({ DB_POOL_MAX: "12" }).dbPoolMax).toBe(12);
@@ -332,19 +321,4 @@ describe("config and events", () => {
     };
   }
 
-  it("bounds session route debug state", () => {
-    const sessions = new SessionRouteStore(undefined, 2);
-
-    for (const sessionId of ["session-1", "session-2", "session-3"]) {
-      sessions.commit({
-        sessionKey: sessionId,
-        sessionId,
-        currentRoute: "fast",
-        selectedRoute: "fast",
-        action: "stored"
-      });
-    }
-
-    expect(sessions.list().map((session) => session.sessionId)).toEqual(["session-2", "session-3"]);
-  });
 });

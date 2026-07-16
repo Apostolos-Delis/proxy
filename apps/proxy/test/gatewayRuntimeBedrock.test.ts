@@ -115,8 +115,8 @@ describe("logical-model Bedrock runtime", () => {
     });
     expect(target.credential).toMatchObject({
       token: "",
-      providerAccountId: connection!.id,
-      providerAccountSettings: {
+      providerConnectionId: connection!.id,
+      connectionSettings: {
         defaultRegion: "us-east-1",
         credentialMode: "aws_default_chain",
         region: "us-east-1"

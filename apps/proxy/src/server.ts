@@ -38,7 +38,6 @@ import {
   metricTerminalStatusFor,
   type MetricsCollector
 } from "./metrics.js";
-import { SessionRouteStore } from "./policy.js";
 import { createPostgresPersistence } from "./persistence/index.js";
 import type {
   CompressionRetrievalFailureReason,
@@ -47,7 +46,6 @@ import type {
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
 import { ProviderProxy } from "./proxy.js";
-import { ProviderDeploymentHealthStore } from "./providerDeploymentHealth.js";
 import { RequestTiming, requestBodySizeBytes } from "./requestTiming.js";
 import { buildSetupScript } from "./setupScript.js";
 import { TrafficLimitStore, type TrafficLimitDenied, type TrafficLimitLease } from "./trafficLimits.js";
@@ -62,7 +60,6 @@ import type { GatewayOperationId } from "@proxy/schema";
 type AppPersistence = ReturnType<typeof createPostgresPersistence>;
 
 const persistentProviderAttemptMirrorLimit = 10_000;
-const persistentSessionMirrorLimit = 10_000;
 
 export function buildServer(config: AppConfig = loadConfig(), options: { persistence?: AppPersistence; metrics?: MetricsCollector } = {}) {
   const app = Fastify({
@@ -158,10 +155,6 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       warn: (error, message) => app.log.warn({ err: error }, message)
     }
   );
-  const sessions = new SessionRouteStore(
-    persistence?.sessionPins,
-    persistence ? persistentSessionMirrorLimit : Number.POSITIVE_INFINITY
-  );
   const observabilityWriter = new BoundedEventWriter(events, {
     maxEntries: config.eventWriterMaxEntries,
     maxBytes: config.eventWriterMaxBytes,
@@ -178,7 +171,6 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       app.log.warn({ stats }, "observability event writer shutdown drain timed out");
     }
   });
-  const deploymentHealth = new ProviderDeploymentHealthStore();
   const trafficLimits = new TrafficLimitStore(config.trafficLimits);
   const proxy = new ProviderProxy(
     config,
@@ -186,8 +178,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     attempts,
     requestStates,
     gatewayLifecycle,
-    metrics,
-    deploymentHealth
+    metrics
   );
   const assistantResponseCapture = (input: {
     identity: RequestIdentity;
@@ -240,7 +231,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     persistence?.promptArtifacts,
     app.log
   );
-  const projections = new ProjectionService(config);
+  const projections = new ProjectionService();
   const emailService = new EmailService(config, app.log);
   registerAdminGraphQL(app, { config, adminAuth, emailService, events, projections, persistence });
   registerAdminEventStream(app, events, adminAuth);
@@ -387,10 +378,6 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     app.get("/_debug/event-writer", async (request) => {
       requireAuth(request.headers, config.proxyToken);
       return observabilityWriter.stats();
-    });
-    app.get("/_debug/sessions", async (request) => {
-      requireAuth(request.headers, config.proxyToken);
-      return sessions.list();
     });
     app.get("/_debug/projections", async (request) => {
       requireAuth(request.headers, config.proxyToken);
@@ -907,24 +894,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     : undefined;
   const app = buildServer(config, { persistence, metrics });
   await app.listen({ port: config.port, host: "0.0.0.0" });
-  // Heal historical ledger rows: first fold legacy exclusive-shape cache
-  // counts into input/total, then reprice rows that booked $0 before their
-  // model's rate existed — in that order, so repricing sees healed tokens.
-  if (persistence) {
-    void persistence
-      .normalizeLegacyCachedUsage()
-      .then(
-        (healed) => {
-          if (healed > 0) app.log.info({ healed }, "normalized legacy cached-usage ledger rows");
-        },
-        (error) => app.log.warn({ err: error }, "legacy cached-usage normalization failed")
-      )
-      .then(() => persistence.repriceZeroCostUsage())
-      .then(
-        (repriced) => {
-          if (repriced > 0) app.log.info({ repriced }, "repriced zero-cost usage ledger rows");
-        },
-        (error) => app.log.warn({ err: error }, "zero-cost usage repricing failed")
-      );
-  }
 }

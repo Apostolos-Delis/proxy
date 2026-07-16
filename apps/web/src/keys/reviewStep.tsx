@@ -1,6 +1,6 @@
 import { ClipboardCheck } from "lucide-react";
 
-import type { AccessProfileSummary } from "../routing/data";
+import type { AccessProfileSummary } from "./data";
 import { GlassCard } from "../ui";
 import { harnessSetupLabel } from "./setupSnippets";
 import { WizardStepHead } from "./stepHead";

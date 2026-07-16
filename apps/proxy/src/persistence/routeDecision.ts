@@ -8,11 +8,7 @@ import {
   basisPoints,
   booleanValue,
   providerValue,
-  recordArray,
   recordValue,
-  routeValue,
-  routeExecutionPlanValue,
-  routingConfigSnapshotValue,
   stringArray,
   stringValue
 } from "./values.js";
@@ -21,67 +17,28 @@ export async function persistRouteDecision(tx: ProxyTransaction, event: {
   tenantId: string;
   workspaceId?: string;
   scopeId: string;
-  eventType: string;
   payload: Record<string, unknown>;
 }) {
   const payload = event.payload;
   const workspaceId = event.workspaceId ?? defaultWorkspaceId(event.tenantId);
   const gatewayEvidence = gatewayResolutionEvidenceValue(payload);
-  const classifier = recordValue(payload.classifier) ?? {};
-  const routingConfig = routingConfigSnapshotValue(payload.routingConfig);
-  const routeExecutionPlan = routeExecutionPlanValue(payload.routeExecutionPlan ?? payload.plan);
-  if (event.eventType === "routing.plan_recorded" && !routeExecutionPlan) {
-    throw new Error("Route execution plan event is missing routeExecutionPlan.");
-  }
-  const planRoutingConfig = routeExecutionPlan?.routingConfig;
-  const selectedCandidateId = stringValue(payload.selectedCandidateId) ?? routeExecutionPlan?.selected?.candidateId;
-  const selectedCandidate = selectedCandidateId
-    ? routeExecutionPlan?.candidates.find((candidate) => candidate.id === selectedCandidateId)
-    : undefined;
-  const translated = booleanValue(payload.translated) ?? routeExecutionPlan?.selected?.translated;
-  const translatorId = stringValue(payload.translatorId) ?? selectedCandidate?.translatorId;
-  const selectedProvider = providerValue(payload.provider) ?? routeExecutionPlan?.selected?.providerId;
-  const selectedModel = stringValue(payload.selectedModel) ?? routeExecutionPlan?.selected?.model;
-  const classifierRoute = routeValue(payload.classifierRoute) ?? routeExecutionPlan?.classifier.route;
-  const finalRoute = routeValue(payload.finalRoute) ?? routeExecutionPlan?.classifier.route;
-  const routingConfigId = routingConfig?.configId ?? planRoutingConfig?.id;
-  const routingConfigVersionId = routingConfig?.versionId ?? planRoutingConfig?.versionId;
-  const routingConfigVersion = routingConfig?.version ?? planRoutingConfig?.version;
-  const routingConfigHash = routingConfig?.configHash ?? planRoutingConfig?.hash;
-  const updateValues: Partial<typeof routeDecisions.$inferInsert> = event.eventType === "routing.plan_recorded"
-    ? {}
-    : {
-        classifierRoute,
-        finalRoute,
-        selectedProvider,
-        selectedModel,
-        reasoningEffort: stringValue(payload.reasoningEffort),
-        verbosity: stringValue(payload.verbosity),
-        routingConfigId,
-        routingConfigVersionId,
-        routingConfigVersion,
-        routingConfigHash,
-        confidence: basisPoints(recordValue(payload.classifier)?.confidence),
-        reasonCodes: stringArray(payload.reasonCodes),
-        guardrailActions: stringArray(payload.guardrailActions),
-        budgetChecks: recordArray(payload.budgetChecks),
-        classifier
-      };
-  if (event.eventType === "routing.plan_recorded") {
-    if (classifierRoute !== undefined) updateValues.classifierRoute = classifierRoute;
-    if (finalRoute !== undefined) updateValues.finalRoute = finalRoute;
-    if (selectedProvider !== undefined) updateValues.selectedProvider = selectedProvider;
-    if (selectedModel !== undefined) updateValues.selectedModel = selectedModel;
-    if (routingConfigId !== undefined) updateValues.routingConfigId = routingConfigId;
-    if (routingConfigVersionId !== undefined) updateValues.routingConfigVersionId = routingConfigVersionId;
-    if (routingConfigVersion !== undefined) updateValues.routingConfigVersion = routingConfigVersion;
-    if (routingConfigHash !== undefined) updateValues.routingConfigHash = routingConfigHash;
-  }
-  if (routeExecutionPlan) updateValues.routeExecutionPlan = routeExecutionPlan;
-  if (selectedCandidateId) updateValues.selectedCandidateId = selectedCandidateId;
-  if (translated !== undefined) updateValues.translated = translated;
-  if (translatorId !== undefined) updateValues.translatorId = translatorId;
-  if (gatewayEvidence) Object.assign(updateValues, gatewayEvidence);
+  const routerDecision = recordValue(payload.routerDecision) ?? {};
+  const values = {
+    requestedModel: stringValue(payload.requestedModel) ?? "unknown",
+    selectedProvider: providerValue(payload.provider),
+    selectedModel: stringValue(payload.selectedModel),
+    reasoningEffort: stringValue(payload.reasoningEffort),
+    verbosity: stringValue(payload.verbosity),
+    ...gatewayEvidence,
+    confidence: basisPoints(routerDecision.confidence),
+    reasonCodes: stringArray(payload.reasonCodes),
+    guardrailActions: stringArray(payload.guardrailActions),
+    routerDecisionId: stringValue(payload.routerDecisionId),
+    routerDecision,
+    translated: booleanValue(payload.translated) ?? false,
+    translatorId: stringValue(payload.translatorId),
+    policyVersion: stringValue(payload.policyVersion) ?? "unknown"
+  };
   await tx
     .insert(routeDecisions)
     .values({
@@ -89,33 +46,9 @@ export async function persistRouteDecision(tx: ProxyTransaction, event: {
       requestId: event.scopeId,
       organizationId: event.tenantId,
       workspaceId,
-      requestedModel: stringValue(payload.requestedModel) ?? "unknown",
-      ...gatewayEvidence,
-      classifierRoute,
-      finalRoute,
-      selectedProvider,
-      selectedModel,
-      reasoningEffort: stringValue(payload.reasoningEffort),
-      verbosity: stringValue(payload.verbosity),
-      routingConfigId,
-      routingConfigVersionId,
-      routingConfigVersion,
-      routingConfigHash,
-      confidence: basisPoints(recordValue(payload.classifier)?.confidence),
-      reasonCodes: stringArray(payload.reasonCodes),
-      guardrailActions: stringArray(payload.guardrailActions),
-      budgetChecks: recordArray(payload.budgetChecks),
-      classifier,
-      routeExecutionPlan: routeExecutionPlan ?? {},
-      selectedCandidateId,
-      translated: translated ?? false,
-      translatorId,
-      policyVersion: stringValue(payload.policyVersion) ?? "unknown"
+      ...values
     })
-    .onConflictDoUpdate({
-      target: routeDecisions.requestId,
-      set: updateValues
-    });
+    .onConflictDoUpdate({ target: routeDecisions.requestId, set: values });
 
   if (gatewayEvidence) {
     await tx
@@ -127,13 +60,4 @@ export async function persistRouteDecision(tx: ProxyTransaction, event: {
         eq(requests.workspaceId, workspaceId)
       ));
   }
-}
-
-export async function routeForRequest(tx: ProxyTransaction, requestId: string) {
-  const [decision] = await tx
-    .select()
-    .from(routeDecisions)
-    .where(eq(routeDecisions.requestId, requestId))
-    .limit(1);
-  return decision?.finalRoute ?? undefined;
 }

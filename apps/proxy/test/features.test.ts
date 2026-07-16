@@ -36,7 +36,7 @@ const dashboardAsk = [
 ].join("\n");
 
 function anthropicBody(messages: unknown) {
-  return { model: "claude-router-auto", messages };
+  return { model: "coding-auto", messages };
 }
 
 type DetectionFixture = {
@@ -161,23 +161,10 @@ describe("harness block stripping", () => {
     expect(dialectHeaders).not.toHaveProperty("x-not-forwarded");
   });
 
-  it("recognizes every router alias spelling on every surface", () => {
-    expect(buildOpenAIContext({ model: "claude-router-fast", input: "status" }, {}).explicitAlias).toBe("fast");
-    expect(buildOpenAIContext({ model: "anthropic-router-deep", input: "status" }, {}).explicitAlias).toBe("deep");
-    expect(buildAnthropicContext({
-      model: "router-hard",
-      messages: [{ role: "user", content: "status" }]
-    }, {}).explicitAlias).toBe("hard");
-    expect(buildOpenAIChatContext({
-      model: "anthropic-router-balanced",
-      messages: [{ role: "user", content: "status" }]
-    }, {}).explicitAlias).toBe("balanced");
-  });
-
   it("detects Codex sessions from prompt_cache_key", () => {
     const context = buildOpenAIContext(
       {
-        model: "router-auto",
+        model: "coding-auto",
         input: "fix the parser",
         prompt_cache_key: "codex-session-1234"
       },
@@ -193,7 +180,7 @@ describe("harness block stripping", () => {
   it("keeps Codex websocket session ids", () => {
     const context = buildOpenAIContext(
       {
-        model: "router-auto",
+        model: "coding-auto",
         input: "fix the parser"
       },
       { session_id: "codex-ws-session" },
@@ -209,7 +196,7 @@ describe("harness block stripping", () => {
   it("detects opencode chat sessions from prompt_cache_key", () => {
     const context = buildOpenAIChatContext(
       {
-        model: "router-auto",
+        model: "coding-auto",
         prompt_cache_key: "opencode-session-1234",
         messages: [{ role: "user", content: "fix the parser" }]
       },
@@ -225,7 +212,7 @@ describe("harness block stripping", () => {
   it("detects Cursor chat sessions and strips harness blocks", () => {
     const context = buildOpenAIChatContext(
       {
-        model: "router-auto",
+        model: "coding-auto",
         messages: [{
           role: "user",
           content: [
@@ -250,7 +237,7 @@ describe("harness block stripping", () => {
   it("detects Claude Code sessions from metadata", () => {
     const context = buildAnthropicContext(
       {
-        model: "claude-router-auto",
+        model: "coding-auto",
         metadata: { user_id: "user_abcd_account_1234_session_12345678-abcd" },
         messages: [{ role: "user", content: "fix the parser" }]
       },
@@ -312,7 +299,7 @@ describe("harness block stripping", () => {
   it("strips harness blocks from OpenAI string input", () => {
     const context = buildOpenAIContext(
       {
-        model: "router-auto",
+        model: "coding-auto",
         input: `<environment_context>cwd: /repo</environment_context>\nadd a unit test for the parser`
       },
       {}
@@ -324,7 +311,7 @@ describe("harness block stripping", () => {
   it("builds OpenAI Chat context from messages, tools, and image parts", () => {
     const context = buildOpenAIChatContext(
       {
-        model: "anthropic-router-hard",
+        model: "fable",
         messages: [
           { role: "system", content: "You are terse." },
           { role: "user", content: "debug the production checkout bug" },
@@ -343,7 +330,6 @@ describe("harness block stripping", () => {
     );
 
     expect(context.surface).toBe("openai-chat");
-    expect(context.explicitAlias).toBe("hard");
     expect(context.routingInputText).toBe("git status");
     expect(context.routingExtractedHints).toEqual([]);
     expect(context.hasTools).toBe(true);
@@ -354,7 +340,7 @@ describe("harness block stripping", () => {
   it("marks streaming requests and signed Anthropic thinking as translation-sensitive", () => {
     const context = buildAnthropicContext(
       {
-        model: "claude-router-auto",
+        model: "coding-auto",
         messages: [{
           role: "assistant",
           content: [
@@ -409,7 +395,7 @@ describe("tool_result handling", () => {
   it("classifies OpenAI Chat tool-result tails on the previous human turn", () => {
     const context = buildOpenAIChatContext(
       {
-        model: "router-auto",
+        model: "coding-auto",
         messages: [
           { role: "user", content: "investigate the production payment outage" },
           {

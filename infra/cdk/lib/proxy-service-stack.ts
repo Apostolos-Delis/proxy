@@ -1,5 +1,5 @@
 import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
-import { Alarm, ComparisonOperator, Metric, TreatMissingData } from "aws-cdk-lib/aws-cloudwatch";
+import { Alarm, ComparisonOperator, Metric, TreatMissingData, type AlarmProps } from "aws-cdk-lib/aws-cloudwatch";
 import { SubnetType } from "aws-cdk-lib/aws-ec2";
 import {
   Cluster,
@@ -136,7 +136,7 @@ function createProxyAlarms(
   targetGroup: ApplicationTargetGroup
 ) {
   const period = Duration.minutes(5);
-  new Alarm(scope, "ProxyHighCpuAlarm", {
+  new Alarm(scope, "ProxyHighCpuAlarm", namedAlarmProps({
     alarmName: resourceName(config, "proxy-high-cpu"),
     metric: service.metricCpuUtilization({ period }),
     threshold: 85,
@@ -144,8 +144,8 @@ function createProxyAlarms(
     datapointsToAlarm: 2,
     comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
     treatMissingData: TreatMissingData.NOT_BREACHING
-  });
-  new Alarm(scope, "ProxyHighMemoryAlarm", {
+  }));
+  new Alarm(scope, "ProxyHighMemoryAlarm", namedAlarmProps({
     alarmName: resourceName(config, "proxy-high-memory"),
     metric: service.metricMemoryUtilization({ period }),
     threshold: 85,
@@ -153,16 +153,16 @@ function createProxyAlarms(
     datapointsToAlarm: 2,
     comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
     treatMissingData: TreatMissingData.NOT_BREACHING
-  });
-  new Alarm(scope, "ProxyTarget5xxAlarm", {
+  }));
+  new Alarm(scope, "ProxyTarget5xxAlarm", namedAlarmProps({
     alarmName: resourceName(config, "proxy-target-5xx"),
     metric: targetGroup.metrics.httpCodeTarget(HttpCodeTarget.TARGET_5XX_COUNT, { period }),
     threshold: 5,
     evaluationPeriods: 2,
     comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
     treatMissingData: TreatMissingData.NOT_BREACHING
-  });
-  new Alarm(scope, "ProxyTargetResponseTimeAlarm", {
+  }));
+  new Alarm(scope, "ProxyTargetResponseTimeAlarm", namedAlarmProps({
     alarmName: resourceName(config, "proxy-target-response-time"),
     metric: targetGroup.metrics.targetResponseTime({ period, statistic: "p95" }),
     threshold: 30,
@@ -170,16 +170,16 @@ function createProxyAlarms(
     datapointsToAlarm: 2,
     comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
     treatMissingData: TreatMissingData.NOT_BREACHING
-  });
-  new Alarm(scope, "ProxyUnhealthyTargetsAlarm", {
+  }));
+  new Alarm(scope, "ProxyUnhealthyTargetsAlarm", namedAlarmProps({
     alarmName: resourceName(config, "proxy-unhealthy-targets"),
     metric: targetGroup.metrics.unhealthyHostCount({ period }),
     threshold: 1,
     evaluationPeriods: 2,
     comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
     treatMissingData: TreatMissingData.NOT_BREACHING
-  });
-  new Alarm(scope, "ProxyRestartCountAlarm", {
+  }));
+  new Alarm(scope, "ProxyRestartCountAlarm", namedAlarmProps({
     alarmName: resourceName(config, "proxy-restarts"),
     metric: new Metric({
       namespace: "ECS/ContainerInsights",
@@ -195,7 +195,17 @@ function createProxyAlarms(
     evaluationPeriods: 1,
     comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
     treatMissingData: TreatMissingData.NOT_BREACHING
-  });
+  }));
+}
+
+function namedAlarmProps(props: AlarmProps & {
+  readonly alarmName: string;
+  readonly evaluationPeriods: number;
+  readonly datapointsToAlarm?: number;
+  readonly comparisonOperator?: ComparisonOperator;
+  readonly treatMissingData?: TreatMissingData;
+}): AlarmProps {
+  return props;
 }
 
 export function runtimeEnvironment(config: ProxyEnvironmentConfig) {
@@ -208,11 +218,9 @@ export function runtimeEnvironment(config: ProxyEnvironmentConfig) {
     ADMIN_SESSION_TTL_SECONDS: "28800",
     ALLOW_DEV_PROXY_TOKEN_FALLBACK: "false",
     ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
-    CLASSIFIER_ALLOW_REDACTED_EXCERPT: "false",
-    CLASSIFIER_MAX_ATTEMPTS: "2",
-    CLASSIFIER_MODEL: "gpt-5-nano-2025-08-07",
-    CLASSIFIER_PROVIDER: "openai",
-    CLASSIFIER_TIMEOUT_MS: "30000",
+    GATEWAY_SEED_CLASSIFIER_MAX_ATTEMPTS: "2",
+    GATEWAY_SEED_CLASSIFIER_MODEL: "gpt-5-nano-2025-08-07",
+    GATEWAY_SEED_CLASSIFIER_TIMEOUT_MS: "30000",
     DB_POOL_MAX: String(config.databasePoolMax),
     DEFAULT_ORGANIZATION_ID: `proxy-${config.envName}`,
     DEBUG_ENDPOINTS_ENABLED: "false",
@@ -225,7 +233,6 @@ export function runtimeEnvironment(config: ProxyEnvironmentConfig) {
     OPENAI_BASE_URL: "https://api.openai.com/v1",
     PORT: "8787",
     REQUEST_BODY_LIMIT_BYTES: String(config.requestBodyLimitBytes),
-    SEED_REPLACE_ROUTING_CONFIG: "true",
     SEED_USER_ID: `proxy-${config.envName}-admin`
   };
 }

@@ -10,8 +10,8 @@ import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 // A minimal RouteDecision shape that satisfies rewriteSurfaceRequest
 function anthropicDecision(model = "claude-opus-4-8") {
   return {
-    outcome: "forward" as const,
-    finalRoute: "hard" as const,
+    outcome: "route" as const,
+    requestedModel: "fable",
     selectedModel: model,
     surface: "anthropic-messages" as const,
     provider: "anthropic" as const,
@@ -42,14 +42,17 @@ function anthropicDecision(model = "claude-opus-4-8") {
         weight: 1,
         timeoutMs: 60000
       }
-    }
+    },
+    guardrailActions: [],
+    reasonCodes: [],
+    policyVersion: "test"
   };
 }
 
 function openaiDecision(model = "gpt-5.5") {
   return {
-    outcome: "forward" as const,
-    finalRoute: "hard" as const,
+    outcome: "route" as const,
+    requestedModel: "coding-auto",
     selectedModel: model,
     surface: "openai-responses" as const,
     provider: "openai" as const,
@@ -80,7 +83,10 @@ function openaiDecision(model = "gpt-5.5") {
         weight: 1,
         timeoutMs: 60000
       }
-    }
+    },
+    guardrailActions: [],
+    reasonCodes: [],
+    policyVersion: "test"
   };
 }
 
@@ -106,14 +112,14 @@ describe("injectAutomaticCacheControl transform", () => {
   ];
 
   it("injects the top-level field on multi-turn requests with no breakpoints", () => {
-    const body = { model: "claude-router-hard", messages: multiTurnMessages };
+    const body = { model: "fable", messages: multiTurnMessages };
 
     const result = rewriteAnthropicWithPlan(body, { automaticCaching: true });
     expect(result.cache_control).toEqual({ type: "ephemeral" });
   });
 
   it("skips single-turn requests so one-shot prompts never pay the write surcharge", () => {
-    const body = { model: "claude-router-hard", messages: [{ role: "user", content: "hi" }] };
+    const body = { model: "fable", messages: [{ role: "user", content: "hi" }] };
 
     const result = rewriteAnthropicWithPlan(body, { automaticCaching: true });
     expect(result.cache_control).toBeUndefined();
@@ -121,7 +127,7 @@ describe("injectAutomaticCacheControl transform", () => {
 
   it("skips requests that already carry a system breakpoint", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       system: [{ type: "text", text: "stable", cache_control: { type: "ephemeral" } }],
       messages: multiTurnMessages
     };
@@ -132,7 +138,7 @@ describe("injectAutomaticCacheControl transform", () => {
 
   it("skips requests that already carry a tool-definition breakpoint", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       tools: [{ name: "get_weather", input_schema: { type: "object" }, cache_control: { type: "ephemeral" } }],
       messages: multiTurnMessages
     };
@@ -143,7 +149,7 @@ describe("injectAutomaticCacheControl transform", () => {
 
   it("skips requests that already carry a message-content breakpoint", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       messages: [
         { role: "user", content: "q" },
         { role: "assistant", content: "a" },
@@ -157,7 +163,7 @@ describe("injectAutomaticCacheControl transform", () => {
 
   it("skips requests with a breakpoint nested inside tool_result content", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       messages: [
         { role: "user", content: "q" },
         { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "search", input: {} }] },
@@ -180,7 +186,7 @@ describe("injectAutomaticCacheControl transform", () => {
 
   it("leaves a client-sent top-level field as-is", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       cache_control: { type: "ephemeral", ttl: "1h" },
       messages: multiTurnMessages
     };
@@ -190,7 +196,7 @@ describe("injectAutomaticCacheControl transform", () => {
   });
 
   it("gives an injected breakpoint the 1h TTL when both settings are on", () => {
-    const body = { model: "claude-router-hard", messages: largeMultiTurnMessages };
+    const body = { model: "fable", messages: largeMultiTurnMessages };
 
     const result = rewriteAnthropicWithPlan(body, {
       automaticCaching: true,
@@ -200,7 +206,7 @@ describe("injectAutomaticCacheControl transform", () => {
   });
 
   it("keeps an injected breakpoint at the default TTL for small multi-turn requests", () => {
-    const body = { model: "claude-router-hard", messages: multiTurnMessages };
+    const body = { model: "fable", messages: multiTurnMessages };
 
     const result = rewriteAnthropicWithPlan(body, {
       automaticCaching: true,
@@ -210,7 +216,7 @@ describe("injectAutomaticCacheControl transform", () => {
   });
 
   it("is a no-op when automaticCaching is not set", () => {
-    const body = { model: "claude-router-hard", messages: multiTurnMessages };
+    const body = { model: "fable", messages: multiTurnMessages };
 
     const result = rewriteAnthropicWithPlan(body, {});
     expect(result.cache_control).toBeUndefined();
@@ -219,14 +225,14 @@ describe("injectAutomaticCacheControl transform", () => {
 
 describe("prompt_cache_retention on OpenAI rewrites", () => {
   it("does not add prompt_cache_retention", () => {
-    const body = { model: "router-hard", input: "hi" };
+    const body = { model: "coding-auto", input: "hi" };
 
     const result = rewriteSurfaceRequest(body, openaiDecision(), undefined, {}) as any;
     expect(result.prompt_cache_retention).toBeUndefined();
   });
 
   it("preserves a client-set prompt_cache_retention", () => {
-    const body = { model: "router-hard", input: "hi", prompt_cache_retention: "in_memory" };
+    const body = { model: "coding-auto", input: "hi", prompt_cache_retention: "in_memory" };
 
     const result = rewriteSurfaceRequest(body, openaiDecision(), undefined, {}) as any;
     expect(result.prompt_cache_retention).toBe("in_memory");
@@ -249,7 +255,7 @@ describe("automatic caching end to end (DB-backed)", () => {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         messages: [
           { role: "user", content: "first question" },
@@ -269,11 +275,13 @@ describe("automatic caching end to end (DB-backed)", () => {
     const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
-      body: JSON.stringify({ model: "router-hard", input: "hello", stream: true, prompt_cache_retention: "24h" })
+      body: JSON.stringify({ model: "coding-auto", input: "hello", stream: true, prompt_cache_retention: "24h" })
     });
     await response.text();
 
-    const providerCall = fixture.openai.records.find((rec) => rec.path === "/responses");
+    const providerCall = fixture.openai.records.find((rec) =>
+      rec.path === "/responses" && rec.body.model !== "route-classifier-cheap"
+    );
     expect(providerCall?.body.prompt_cache_retention).toBe("24h");
   });
 

@@ -463,7 +463,7 @@ If no explicit routing config exists for an API key, local/dev should still rout
 
 ## Implementation Tickets
 
-Detailed implementation tickets live in [TICKETS.md](TICKETS.md). Operator setup, assignment, and verification steps live in [../../runbooks/routing-configs.md](../../runbooks/routing-configs.md).
+Detailed implementation tickets live in [TICKETS.md](TICKETS.md). The superseding logical-model operator flow lives in the [gateway control-plane runbook](../../runbooks/gateway-control-plane.md).
 
 Recommended delivery order:
 

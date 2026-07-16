@@ -8,24 +8,24 @@ Use this runbook when enabling, changing, or rolling back prompt-cache controls.
 4. Hold until cache reads, cost, and error rates are stable.
 5. Ramp gradually or roll back.
 
-Durable data in `usage_ledger`, `events`, route decisions, and the Caching console is the source of truth. Metrics are useful for alerting, but they can reset on deploy.
+Durable data in `usage_ledger`, `events`, resolution decisions, and the Caching console is the source of truth. Metrics are useful for alerting, but they can reset on deploy.
 
 ## Before You Start
 
 Confirm:
 
 - Persistence is enabled. Without `DATABASE_URL`, cache-bust history, prompt-cache plans, prewarm events, and usage rollups are not durable.
-- Model pricing is configured for the models you will compare. Unpriced cached tokens are reported but cannot produce reliable savings.
-- The target workspace, API key, and routing config are known.
-- Provider credentials are healthy.
+- Deployment pricing is configured for the physical targets you will compare. Unpriced cached tokens are reported but cannot produce reliable savings.
+- The target workspace, API key, logical model, and deployment set are known.
+- Provider connections and deployments are healthy.
 - You know whether the selected traffic is native or translated. Native targets preserve provider-owned cache semantics better than translated targets.
 
 Choose the smallest rollout scope that still has repeated sessions:
 
 - Prefer one workspace or one API key.
 - Prefer one provider/model pair.
-- Avoid changing route configs, org system prompts, compression policy, or tool schema sets during the baseline and canary windows.
-- Current **Settings -> Token optimization** toggles are org-wide across all routing configs. For those controls, use a staging org or treat all Anthropic traffic in the org as the rollout scope. Workspace and API-key scoping are still useful for observe-only analysis, routing-config canaries, and future per-scope controls.
+- Avoid changing logical-model targets, org system prompts, compression policy, or tool schema sets during the baseline and canary windows.
+- Current **Settings -> Token optimization** toggles are org-wide across all logical models. For those controls, use a staging org or treat all Anthropic traffic in the org as the rollout scope. Workspace and API-key scoping remain useful for observe-only analysis and future per-scope controls.
 
 ## Baseline
 
@@ -36,15 +36,15 @@ In the console:
 1. Open **Caching**.
 2. Record cache read ratio, cached input tokens, cache creation tokens, estimated cache savings, idle gaps, and cache miss tokens.
 3. Check **Prompt-cache plans** for applied and skipped controls.
-4. Check **Cache miss tokens** by cause. Treat `org_prompt_edit`, `tool_schema_churn`, `translator_change`, `compression_policy_change`, and `route_config_change` as operator-controlled churn.
+4. Check **Cache miss tokens** by cause. Treat `org_prompt_edit`, `tool_schema_churn`, `translator_change`, `compression_policy_change`, and `logical_model_change` as operator-controlled churn.
 5. Check **OpenAI cache effectiveness** for session/key hit rates when OpenAI traffic is in scope.
 6. Check **Prewarm jobs** only if a prewarm adapter and trigger are explicitly enabled.
 
 In **Usage / Cost**:
 
-1. Group by workspace, API key, provider, model, route, and surface.
+1. Group by logical model, deployment, API key, provider, model, and surface.
 2. Record total input, cached input, cache creation input, output, and total cost.
-3. Open example requests from the target scope and confirm the route decision, selected model, session id, and prompt-cache evidence match the rollout target.
+3. Open example requests from the target scope and confirm the logical model, selected deployment/model, session ID, and prompt-cache evidence match the rollout target.
 
 Stop before enabling mutation if the baseline already has:
 
@@ -94,7 +94,7 @@ Do not move to mutation when:
 - Plans are missing for the canary scope.
 - Most planned controls are skipped for reasons you cannot explain.
 - New operator-controlled bust causes appear during observe-only.
-- The target provider/model changes mid-session.
+- The target deployment or provider changes mid-session.
 
 ## Anthropic Controls
 
@@ -106,7 +106,7 @@ This adds top-level `cache_control: { "type": "ephemeral" }` to eligible multi-t
 
 Canary sequence:
 
-1. Keep route config, org prompt, compression policy, and tool schema set stable.
+1. Keep logical-model targets, org prompt, compression policy, and tool schema set stable.
 2. Enable **Auto-enable prompt caching** for the rollout org.
 3. Watch cache creation tokens for the first cacheable turns.
 4. Confirm later turns show cache reads and estimated savings.
@@ -115,14 +115,14 @@ Canary sequence:
 Rollback:
 
 1. Disable **Auto-enable prompt caching**.
-2. Keep active sessions on their current provider/model until the provider TTL expires unless correctness requires immediate route changes.
+2. Keep active sessions on their current provider/model until the provider TTL expires unless correctness requires an immediate target change.
 3. Verify new prompt-cache plans show the control skipped or absent.
 4. Watch cache creation tokens return to baseline.
 
 Block rollout when:
 
 - Cache write tokens increase without a later cache-read lift.
-- Cache-bust causes show tool schema, org prompt, translator, compression policy, or route config churn.
+- Cache-bust causes show tool schema, org prompt, translator, compression policy, or logical-model churn.
 - Provider rejects requests with cache fields.
 
 ### Adapt Cache TTL To 1 Hour
@@ -156,11 +156,11 @@ Use OpenAI analytics to find stable or unstable cache groups:
 - Prefer native OpenAI targets for stateful Responses sessions.
 - Keep static content early in the prompt.
 - Preserve stable caller-provided `prompt_cache_key` values when the caller sends them.
-- Avoid route, model, provider, translator, org prompt, compression, or tool schema changes during active cache-sensitive sessions.
+- Avoid logical-model target, model, provider, translator, org prompt, compression, or tool schema changes during active cache-sensitive sessions.
 
 Rollback for OpenAI cache regressions:
 
-1. Reassign traffic to the previous native OpenAI routing config version.
+1. Restore the previous native OpenAI target set through GraphQL or gateway TOML.
 2. Stop forwarding newly introduced caller cache fields if the caller rollout caused the regression.
 3. Keep session pins stable until active sessions age out.
 4. Verify OpenAI key/session hit rates return to baseline.
@@ -171,24 +171,24 @@ Block rollout when:
 - `prompt_cache_key` groups fragment unexpectedly.
 - Cache hit rate falls while input tokens and cache-bust counts rise.
 
-## Translation And Route Changes
+## Translation And Logical-Model Changes
 
-Translation can change prompt bytes and provider-specific cache fields. Route changes can move sessions away from warm provider/model prefixes.
+Translation can change prompt bytes and provider-specific cache fields. Logical-model target changes can move sessions away from warm provider/model prefixes.
 
 Rules:
 
 - Prefer native targets for active cache-sensitive sessions.
 - Do not copy OpenAI-only cache fields into Anthropic requests.
 - Do not copy Anthropic `cache_control` markers into OpenAI requests.
-- Treat `translator_change` and `route_config_change` cache-bust causes as operator-controlled churn.
-- Use the routing configs runbook to roll back a config version or API-key assignment.
+- Treat `translator_change` and `logical_model_change` cache-bust causes as operator-controlled churn.
+- Use the gateway control-plane runbook to restore the previous target graph.
 
 Rollback:
 
-1. Restore the previous routing config assignment or active version.
+1. Restore the previous logical-model targets and deployment bindings.
 2. Stop the rollout for new sessions.
 3. Avoid forcing active sessions across providers unless correctness requires it.
-4. Watch `provider_switch`, `model_switch`, `translator_change`, and `route_config_change` bust counts.
+4. Watch `provider_switch`, `model_switch`, `translator_change`, and `logical_model_change` bust counts.
 
 ## Compression And Tool Schema Changes
 
@@ -203,7 +203,7 @@ Rules:
 
 Rollback:
 
-1. Restore the previous compression policy or routing config version.
+1. Restore the previous compression policy.
 2. Stop the tool schema rollout for new sessions.
 3. Let already-busted sessions age out; changing back mid-session can cause another bust.
 4. Verify the Caching page stops reporting the operator-controlled cause.
@@ -264,7 +264,7 @@ Do not ramp if any signal below is true for the canary scope.
 
 After a clean canary:
 
-1. Increase one supported dimension at a time: more API keys, more workspaces, one additional provider/model, or one additional org-wide control.
+1. Increase one supported dimension at a time: more API keys, more workspaces, one additional deployment, or one additional org-wide control.
 2. Keep each ramp step for at least one business day or one representative session cycle.
 3. Re-check Caching, Usage / Cost, request examples, and metrics after each step.
 4. Record the baseline window, canary scope, enabled controls, rollback point, and observed savings in the rollout notes.
@@ -273,6 +273,6 @@ After a clean canary:
 
 - [Prompt caching user guide](../user-guide/prompt-caching.md)
 - [Analytics and spend](../user-guide/analytics.md)
-- [Routing configs runbook](routing-configs.md)
+- [Gateway control-plane runbook](gateway-control-plane.md)
 - [Proxy metrics runbook](proxy-metrics.md)
 - [Provider prompt caching expansion](../future/provider-prompt-caching.md)

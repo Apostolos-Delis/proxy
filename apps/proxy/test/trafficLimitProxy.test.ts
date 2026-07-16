@@ -17,29 +17,23 @@ describe("proxy traffic limits", () => {
   });
 
   it("rejects overlapping global concurrency and releases after cancellation", async () => {
-    openai = await startOpenAIMock({ slowProvider: true });
-    anthropic = await startAnthropicMock();
-    const app = buildServer(loadConfig({
-      ...testEnv(),
-      OPENAI_BASE_URL: openai.url,
-      ANTHROPIC_BASE_URL: anthropic.url,
-      GATEWAY_GLOBAL_CONCURRENCY_LIMIT: "1",
-      LOG_LEVEL: "fatal"
-    }));
-    const proxyUrl = await listen(app);
+    const fixture = await captureFixture("org_traffic_global_concurrency", "hash_only", false, {
+      envOverrides: { GATEWAY_GLOBAL_CONCURRENCY_LIMIT: "1" },
+      openAIOptions: { slowProvider: true }
+    });
     const firstController = new AbortController();
     const thirdController = new AbortController();
 
-    const first = await fetch(`${proxyUrl}/v1/responses`, requestInit(firstController.signal, "global concurrency first"));
-    const second = await fetch(`${proxyUrl}/v1/responses`, requestInit(undefined, "global concurrency second"));
+    const first = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(firstController.signal, "global concurrency first"));
+    const second = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(undefined, "global concurrency second"));
     const secondBody = await second.json() as { error: string; scope: string };
     firstController.abort();
     await first.text().catch(() => "");
     await new Promise((resolve) => setTimeout(resolve, 25));
-    const third = await fetch(`${proxyUrl}/v1/responses`, requestInit(thirdController.signal, "global concurrency third"));
+    const third = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(thirdController.signal, "global concurrency third"));
     thirdController.abort();
     await third.text().catch(() => "");
-    await app.close();
+    await fixture.close();
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(429);
@@ -52,24 +46,18 @@ describe("proxy traffic limits", () => {
   });
 
   it("releases concurrency after success and provider failure", async () => {
-    openai = await startOpenAIMock({ failProviderOnce: true, failProviderOnceStatus: 400 });
-    anthropic = await startAnthropicMock();
-    const app = buildServer(loadConfig({
-      ...testEnv(),
-      OPENAI_BASE_URL: openai.url,
-      ANTHROPIC_BASE_URL: anthropic.url,
-      GATEWAY_GLOBAL_CONCURRENCY_LIMIT: "1",
-      LOG_LEVEL: "fatal"
-    }));
-    const proxyUrl = await listen(app);
+    const fixture = await captureFixture("org_traffic_release", "hash_only", false, {
+      envOverrides: { GATEWAY_GLOBAL_CONCURRENCY_LIMIT: "1" },
+      openAIOptions: { failProviderOnce: true, failProviderOnceStatus: 400 }
+    });
 
-    const first = await fetch(`${proxyUrl}/v1/responses`, requestInit(undefined, "provider failure releases first"));
+    const first = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(undefined, "provider failure releases first"));
     await first.text();
-    const second = await fetch(`${proxyUrl}/v1/responses`, requestInit(undefined, "provider failure releases second"));
+    const second = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(undefined, "provider failure releases second"));
     await second.text();
-    const third = await fetch(`${proxyUrl}/v1/responses`, requestInit(undefined, "provider failure releases third"));
+    const third = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(undefined, "provider failure releases third"));
     await third.text();
-    await app.close();
+    await fixture.close();
 
     expect(first.status).toBe(400);
     expect(second.status).toBe(200);
@@ -134,24 +122,18 @@ describe("proxy traffic limits", () => {
   });
 
   it("applies provider-model concurrency limits", async () => {
-    openai = await startOpenAIMock({ slowProvider: true });
-    anthropic = await startAnthropicMock();
-    const app = buildServer(loadConfig({
-      ...testEnv(),
-      OPENAI_BASE_URL: openai.url,
-      ANTHROPIC_BASE_URL: anthropic.url,
-      GATEWAY_PROVIDER_MODEL_CONCURRENCY_LIMIT: "1",
-      LOG_LEVEL: "fatal"
-    }));
-    const proxyUrl = await listen(app);
+    const fixture = await captureFixture("org_traffic_provider_model", "hash_only", false, {
+      envOverrides: { GATEWAY_PROVIDER_MODEL_CONCURRENCY_LIMIT: "1" },
+      openAIOptions: { slowProvider: true }
+    });
     const firstController = new AbortController();
 
-    const first = await fetch(`${proxyUrl}/v1/responses`, requestInit(firstController.signal, "provider model first"));
-    const second = await fetch(`${proxyUrl}/v1/responses`, requestInit(undefined, "provider model second"));
+    const first = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(firstController.signal, "provider model first"));
+    const second = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(undefined, "provider model second"));
     const body = await second.json() as { error: string; scope: string };
     firstController.abort();
     await first.text().catch(() => "");
-    await app.close();
+    await fixture.close();
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(429);
@@ -170,7 +152,7 @@ function requestInit(signal?: AbortSignal, input = "debug this request") {
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      model: "router-auto",
+      model: "coding-auto",
       input,
       stream: true
     }),

@@ -7,15 +7,8 @@ import {
   type ProviderRegistryEndpoint
 } from "@proxy/schema";
 
-export const BUILTIN_PROVIDER_IDS: Record<BuiltinProvider, string> = {
-  openai: "00000000-0000-0000-0000-000000000001",
-  anthropic: "00000000-0000-0000-0000-000000000002",
-  "amazon-bedrock": "00000000-0000-0000-0000-000000000003"
-};
-
 export type BuiltinProviderSeedDefinition = {
   provider: BuiltinProvider;
-  id: string;
   displayName: string;
   baseUrl: string;
   adapterKind: ProviderAdapterKind;
@@ -25,8 +18,6 @@ export type BuiltinProviderSeedDefinition = {
   defaultHeaders: Record<string, string>;
   capabilities: Record<string, unknown>;
   forwardHarnessHeaders: boolean;
-  accountSecretRef: string;
-  accountSettings: Record<string, unknown>;
   connectionRegion: string | null;
   connectionSecretRef: string | null;
   connectionSecretHint: string;
@@ -39,7 +30,6 @@ export function builtinProviderSeedDefinitions(input: {
   return [
     {
       provider: "openai",
-      id: BUILTIN_PROVIDER_IDS.openai,
       displayName: "OpenAI",
       baseUrl: trimTrailingSlash(input.openaiBaseUrl),
       adapterKind: "generic-http-json",
@@ -55,15 +45,12 @@ export function builtinProviderSeedDefinitions(input: {
         promptCaching: OPENAI_PROVIDER_CACHING_CAPABILITIES
       },
       forwardHarnessHeaders: true,
-      accountSecretRef: "env:OPENAI_API_KEY",
-      accountSettings: {},
       connectionRegion: null,
       connectionSecretRef: "env:OPENAI_API_KEY",
       connectionSecretHint: "OPENAI_API_KEY"
     },
     {
       provider: "anthropic",
-      id: BUILTIN_PROVIDER_IDS.anthropic,
       displayName: "Anthropic",
       baseUrl: trimTrailingSlash(input.anthropicBaseUrl),
       adapterKind: "generic-http-json",
@@ -76,15 +63,12 @@ export function builtinProviderSeedDefinitions(input: {
         promptCaching: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES
       },
       forwardHarnessHeaders: true,
-      accountSecretRef: "env:ANTHROPIC_API_KEY",
-      accountSettings: {},
       connectionRegion: null,
       connectionSecretRef: "env:ANTHROPIC_API_KEY",
       connectionSecretHint: "ANTHROPIC_API_KEY"
     },
     {
       provider: "amazon-bedrock",
-      id: BUILTIN_PROVIDER_IDS["amazon-bedrock"],
       displayName: "Amazon Bedrock",
       baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com",
       adapterKind: "aws-bedrock-converse",
@@ -106,12 +90,6 @@ export function builtinProviderSeedDefinitions(input: {
       defaultHeaders: {},
       capabilities: {},
       forwardHarnessHeaders: false,
-      accountSecretRef: "aws:default-chain",
-      accountSettings: {
-        credentialMode: "aws_default_chain",
-        region: "us-east-1",
-        discoveryRegions: ["us-east-1"]
-      },
       connectionRegion: "us-east-1",
       connectionSecretRef: null,
       connectionSecretHint: "AWS default credential chain"

@@ -178,12 +178,11 @@ export async function materializeProviderConnection(
     credential: token || row.authStyle === "aws-sdk" ? {
       provider: row.provider,
       token: token ?? "",
-      providerAccountId: input.providerConnectionId,
-      authType: "api_key",
+      providerConnectionId: input.providerConnectionId,
       baseUrl,
       pinnedAddress,
       ...(row.authStyle === "aws-sdk"
-        ? { providerAccountSettings: credentialSettings as JsonObject }
+        ? { connectionSettings: credentialSettings as JsonObject }
         : {})
     } : undefined
   };

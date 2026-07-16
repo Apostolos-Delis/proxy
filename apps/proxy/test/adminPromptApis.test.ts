@@ -28,8 +28,8 @@ import {
   type PromptTestFixture
 } from "./promptTestFixture.js";
 
-const promptListQuery = `query Prompts($userId: String, $surface: String, $route: String, $model: String, $limit: Int, $offset: Int) {
-  prompts(userId: $userId, surface: $surface, route: $route, model: $model, limit: $limit, offset: $offset) {
+const promptListQuery = `query Prompts($userId: String, $surface: String, $logicalModel: String, $model: String, $limit: Int, $offset: Int) {
+  prompts(userId: $userId, surface: $surface, logicalModel: $logicalModel, model: $model, limit: $limit, offset: $offset) {
     data {
       artifactId
       requestId
@@ -38,11 +38,14 @@ const promptListQuery = `query Prompts($userId: String, $surface: String, $route
       surface
       storageMode
       preview
-      finalRoute
+      requestedLogicalModel
+      resolvedLogicalModelId
+      accessProfileId
+      deploymentId
+      providerConnectionId
       provider
       selectedModel
-      routingConfig { configId configName version configHash }
-      classifier
+      routerDecision
       cost { selected }
     }
     pagination { limit offset count }
@@ -55,29 +58,26 @@ const promptDetailQuery = `query Prompt($artifactId: ID!) {
       artifactId
       requestId
       rawText
-      routingConfig { configId configName version configHash }
-      classifier
+      requestedLogicalModel
+      resolvedLogicalModelId
+      accessProfileId
+      deploymentId
+      providerConnectionId
+      routerDecision
     }
     request {
       requestId
       surface
       provider
       selectedModel
-      finalRoute
-      routingConfig { configId configName version }
+      requestedLogicalModel
+      resolvedLogicalModelId
+      accessProfileId
+      deploymentId
+      providerConnectionId
+      routerDecision
     }
     events { eventType }
-  }
-}`;
-
-const apiKeysQuery = `query {
-  apiKeys {
-    id
-    organizationId
-    userId
-    name
-    routingConfigId
-    routingConfig { id name status }
   }
 }`;
 
@@ -144,7 +144,7 @@ describe("admin prompt APIs", () => {
         "x-proxy-user-id": "user_prompt_admin"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: "Investigate prompt admin APIs.",
         stream: true
       })
@@ -154,8 +154,8 @@ describe("admin prompt APIs", () => {
     const prompts = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptListQuery, {
       userId: "local-user",
       surface: "openai-responses",
-      route: "hard",
-      model: "gpt-5.5",
+      logicalModel: `${defaultWorkspaceId("org_prompt_admin")}:logical-model:coding-auto`,
+      model: "gpt-5.4-mini",
       limit: 10,
       offset: 0
     })).data?.prompts;
@@ -163,7 +163,7 @@ describe("admin prompt APIs", () => {
     const usageBeforeDetail = await adminGql(
       fixture.proxyUrl,
       fixture.adminHeaders,
-      "query { usage(groupBy: route) { totals { requestCount } } }"
+      "query { usage(groupBy: logical_model) { totals { requestCount } } }"
     );
     const auditAfterListAndUsage = await fixture.db.select().from(promptAccessAudit);
     const detail = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptDetailQuery, {
@@ -187,7 +187,7 @@ describe("admin prompt APIs", () => {
       workspaceId: defaultWorkspaceId("org_other"),
       surface: "openai-responses",
       idempotencyKey: "idem_other",
-      requestedModel: "router-auto",
+      requestedModel: "coding-auto",
       inputHash: "sha256:other",
       inputChars: 5
     });
@@ -208,7 +208,7 @@ describe("admin prompt APIs", () => {
     const auditList = (await adminGql(
       fixture.proxyUrl,
       fixture.adminHeaders,
-      "query { promptAccessAudit { artifactId requestId userId route accessPath } }"
+      "query { promptAccessAudit { artifactId requestId userId accessPath } }"
     )).data?.promptAccessAudit;
 
     expect(response.status).toBe(200);
@@ -221,40 +221,28 @@ describe("admin prompt APIs", () => {
       surface: "openai-responses",
       storageMode: "raw_text",
       preview: "Investigate prompt admin APIs.",
-      finalRoute: "hard",
+      requestedLogicalModel: "coding-auto",
       provider: "openai",
-      selectedModel: "gpt-5.5"
+      selectedModel: "gpt-5.4-mini",
+      accessProfileId: expect.stringContaining("opendoor-engineer"),
+      deploymentId: expect.stringContaining("gpt-5.4-mini"),
+      providerConnectionId: expect.stringContaining("connection:openai")
     }));
-    expect(latestUser.routingConfig).toEqual(expect.objectContaining({
-      configId: "org_prompt_admin:routing-config:default",
-      configName: "Default routing config",
-      version: 1,
-      configHash: expect.stringMatching(/^[a-f0-9]{64}$/)
-    }));
-    expect(latestUser.classifier).toEqual(expect.objectContaining({
-      model: "route-classifier-cheap"
+    expect(latestUser.routerDecision).toEqual(expect.objectContaining({
+      kind: "classifier",
+      classifierDeploymentId: expect.stringContaining("route-classifier-cheap")
     }));
     expect(detail.artifact.rawText).toBe("Investigate prompt admin APIs.");
-    expect(detail.artifact.routingConfig).toEqual(expect.objectContaining({
-      configId: "org_prompt_admin:routing-config:default",
-      configName: "Default routing config",
-      version: 1,
-      configHash: expect.stringMatching(/^[a-f0-9]{64}$/)
-    }));
-    expect(detail.artifact.classifier).toEqual(expect.objectContaining({
-      provider: "openai",
-      model: "route-classifier-cheap"
-    }));
+    expect(detail.artifact.requestedLogicalModel).toBe("coding-auto");
+    expect(detail.artifact.routerDecision).toEqual(latestUser.routerDecision);
     expect(detail.request).toEqual(expect.objectContaining({
       requestId: latestUser.requestId,
       provider: "openai",
-      selectedModel: "gpt-5.5",
-      finalRoute: "hard"
-    }));
-    expect(detail.request.routingConfig).toEqual(expect.objectContaining({
-      configId: "org_prompt_admin:routing-config:default",
-      configName: "Default routing config",
-      version: 1
+      selectedModel: "gpt-5.4-mini",
+      requestedLogicalModel: "coding-auto",
+      accessProfileId: latestUser.accessProfileId,
+      deploymentId: latestUser.deploymentId,
+      providerConnectionId: latestUser.providerConnectionId
     }));
     expect(detail.events.map((event: any) => event.eventType)).toContain("prompt_artifacts.captured");
     expect(crossOrg?.prompt).toBeNull();
@@ -264,7 +252,6 @@ describe("admin prompt APIs", () => {
         artifactId: latestUser.artifactId,
         requestId: latestUser.requestId,
         userId: "local-user",
-        route: "hard",
         accessPath: "/admin/graphql#prompt"
       })
     ]);
@@ -272,8 +259,7 @@ describe("admin prompt APIs", () => {
       expect.objectContaining({
         artifactId: latestUser.artifactId,
         requestId: latestUser.requestId,
-        userId: "local-user",
-        route: "hard"
+        userId: "local-user"
       })
     ]);
   });
@@ -291,7 +277,7 @@ describe("admin prompt APIs", () => {
         "x-proxy-user-id": "claude_user"
       },
       body: JSON.stringify({
-        model: "claude-router-auto",
+        model: "fable",
         system: "Use the underwriting rules.",
         messages: [{ role: "user", content: "Review this Claude Code task." }],
         max_tokens: 256,
@@ -303,8 +289,8 @@ describe("admin prompt APIs", () => {
     const prompts = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptListQuery, {
       userId: "local-user",
       surface: "anthropic-messages",
-      route: "hard",
-      model: "claude-sonnet-4-5"
+      logicalModel: `${defaultWorkspaceId("org_anthropic_prompt_admin")}:logical-model:fable`,
+      model: "claude-fable-5"
     })).data?.prompts;
     const latestUser = prompts.data.find((item: any) => item.kind === "user_message");
     const detail = (await adminGql(fixture.proxyUrl, fixture.adminHeaders, promptDetailQuery, {
@@ -315,17 +301,19 @@ describe("admin prompt APIs", () => {
     expect(latestUser).toEqual(expect.objectContaining({
       surface: "anthropic-messages",
       preview: "Review this Claude Code task.",
-      finalRoute: "hard",
+      requestedLogicalModel: "fable",
       provider: "anthropic",
-      selectedModel: "claude-sonnet-4-5"
+      selectedModel: "claude-fable-5",
+      routerDecision: {}
     }));
     expect(detail.artifact.rawText).toBe("Review this Claude Code task.");
     expect(detail.request).toEqual(expect.objectContaining({
       requestId: latestUser.requestId,
       surface: "anthropic-messages",
       provider: "anthropic",
-      selectedModel: "claude-sonnet-4-5",
-      finalRoute: "hard"
+      selectedModel: "claude-fable-5",
+      requestedLogicalModel: "fable",
+      routerDecision: {}
     }));
     expect(detail.events.map((event: any) => event.eventType)).toContain("prompt_artifacts.captured");
   });
@@ -348,7 +336,7 @@ describe("admin prompt APIs", () => {
       "decision_prompt_usage_join",
       "request_prompt_usage_join",
       "org_prompt_usage_join",
-      "hard",
+      "openai-responses",
       "openai",
       "gpt-5.5"
     ));
@@ -381,7 +369,6 @@ describe("admin prompt APIs", () => {
         "org_prompt_usage_join",
         "openai",
         "gpt-5.5",
-        "hard",
         10,
         20,
         2_000
@@ -394,7 +381,6 @@ describe("admin prompt APIs", () => {
         kind: "classifier",
         provider: "openai",
         model: "route-classifier-cheap",
-        route: "hard",
         inputTokens: 1,
         outputTokens: 1,
         totalTokens: 2,
@@ -435,7 +421,8 @@ describe("admin prompt APIs", () => {
       workspaceId: defaultWorkspaceId("org_api_key_identity"),
       userId: "api_owner",
       keyHash: hashApiKey("owned-token"),
-      name: "Owned Proxy Token"
+      name: "Owned Proxy Token",
+      accessProfileId: `${defaultWorkspaceId("org_api_key_identity")}:access-profile:opendoor-engineer`
     });
 
     const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
@@ -448,7 +435,7 @@ describe("admin prompt APIs", () => {
         "x-codex-session-id": "api-key-session"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: "Store this under the API key owner.",
         stream: true
       })
@@ -475,14 +462,16 @@ describe("admin prompt APIs", () => {
     expect(promptForSpoofedUser.data).toEqual([]);
     expect(requestRows[0]).toEqual(expect.objectContaining({
       organizationId: "org_api_key_identity",
-      userId: "api_owner"
+      userId: "api_owner",
+      accessProfileId: expect.stringContaining("opendoor-engineer"),
+      requestedLogicalModel: "coding-auto"
     }));
     expect(received?.actorType).toBe("user");
     expect(received?.actorId).toBe("api_owner");
     expect(received?.payload).toEqual(expect.objectContaining({
       authSource: "api_key",
       apiKeyId: "api_key_owned",
-      routingConfigId: null,
+      requestedLogicalModel: "coding-auto",
       userId: "api_owner",
       teamId: null,
       harnessUserId: "spoofed_user",
@@ -510,7 +499,7 @@ describe("admin prompt APIs", () => {
         "x-codex-session-id": "seeded-api-key-session"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: "Store this under the key owner.",
         stream: true
       })
@@ -532,69 +521,12 @@ describe("admin prompt APIs", () => {
     expect(received?.payload).toEqual(expect.objectContaining({
       authSource: "api_key",
       apiKeyId: "org_seeded_key_identity:api-key:default",
-      routingConfigId: "org_seeded_key_identity:routing-config:default",
+      requestedLogicalModel: "coding-auto",
       userId: "local-user",
       teamId: null,
       harnessUserId: "codex_seeded_user",
       harnessTeamId: "codex_seeded_team"
     }));
-  });
-
-  it("lists API key routing assignments without key hashes", async () => {
-    const fixture = await setup("org_admin_api_keys");
-    await seedDatabase(fixture.db, seedOptionsFromEnv({
-      DEFAULT_ORGANIZATION_ID: "org_admin_api_keys",
-      SEED_USER_ID: "local-user",
-      PROXY_TOKEN: "proxy-token",
-      OPENAI_BASE_URL: fixture.openai.url,
-      ANTHROPIC_BASE_URL: fixture.anthropic.url
-    }));
-
-    const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, apiKeysQuery);
-    const body = result.data?.apiKeys;
-
-    expect(result.status).toBe(200);
-    expect(body).toEqual([
-      expect.objectContaining({
-        id: "org_admin_api_keys:api-key:default",
-        organizationId: "org_admin_api_keys",
-        userId: "local-user",
-        name: "Default local API key",
-        routingConfigId: "org_admin_api_keys:routing-config:default",
-        routingConfig: expect.objectContaining({
-          id: "org_admin_api_keys:routing-config:default",
-          name: "Default routing config",
-          status: "active"
-        })
-      })
-    ]);
-    expect(body[0]).not.toHaveProperty("keyHash");
-    expect(body[0]).not.toHaveProperty("secret");
-  });
-
-  it("lists unassigned API keys with explicit null routing assignment", async () => {
-    const fixture = await setup("org_unassigned_admin_api_keys");
-    await fixture.db.insert(apiKeys).values({
-      id: "api_key_unassigned",
-      organizationId: "org_unassigned_admin_api_keys",
-      workspaceId: defaultWorkspaceId("org_unassigned_admin_api_keys"),
-      keyHash: hashApiKey("unassigned-token"),
-      name: "Unassigned key"
-    });
-
-    const result = await adminGql(fixture.proxyUrl, fixture.adminHeaders, apiKeysQuery);
-    const body = result.data?.apiKeys;
-    const unassigned = body.find((item: any) => item.id === "api_key_unassigned");
-
-    expect(result.status).toBe(200);
-    expect(body).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: "api_key_unassigned",
-        routingConfigId: null,
-        routingConfig: null
-      })
-    ]));
-    expect(unassigned).not.toHaveProperty("keyHash");
   });
 
   async function setup(organizationId: string) {

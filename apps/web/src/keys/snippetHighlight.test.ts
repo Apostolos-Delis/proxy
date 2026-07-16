@@ -59,10 +59,10 @@ describe("highlightSnippet", () => {
   });
 
   it("marks toml tables, keys, and values", () => {
-    const marked = tokens(highlightSnippet('[model_providers.proxy]\nname = "Proxy"\nsupports_websockets = true', "toml"));
+    const marked = tokens(highlightSnippet('[model_providers.proxy]\nname = "Proxy"\nsupports_websockets = false', "toml"));
     expect(marked).toContainEqual({ className: "json-literal", text: "[model_providers.proxy]" });
     expect(marked).toContainEqual({ className: "json-key", text: "name" });
     expect(marked).toContainEqual({ className: "json-string", text: '"Proxy"' });
-    expect(marked).toContainEqual({ className: "json-literal", text: "true" });
+    expect(marked).toContainEqual({ className: "json-literal", text: "false" });
   });
 });

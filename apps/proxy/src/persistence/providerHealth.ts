@@ -1,10 +1,9 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import {
-  providerAccountHealth,
-  providerModelHealth,
-  providers,
-  type ProxyDbSession,
+  defaultWorkspaceId,
+  deploymentHealth,
+  providerConnectionHealth,
   type ProxyTransaction
 } from "@proxy/db";
 import {
@@ -13,296 +12,82 @@ import {
   type ProviderHealthStatus
 } from "@proxy/schema";
 
-import { jsonPayload } from "../events.js";
-import { classifyProviderTerminalHealth } from "../providerHealth.js";
-import type { JsonObject, Provider, ProviderHealthSkip } from "../types.js";
+import type { ProxyEvent } from "../events.js";
+import { gatewayProviderAttemptEvidenceValue } from "../gatewayEvidence.js";
 import { createId } from "../util.js";
-import { numberValue, providerValue, recordValue, stringValue } from "./values.js";
+import { recordValue } from "./values.js";
 
-export type ProviderHealthTarget = {
-  provider: Provider;
-  providerId: string;
-  providerAccountId: string;
-  model: string;
-  isStreaming?: boolean;
-};
+export async function projectProviderHealthTerminal(tx: ProxyTransaction, event: ProxyEvent) {
+  const evidence = gatewayProviderAttemptEvidenceValue(event.payload);
+  if (!evidence) return;
+  const workspaceId = event.workspaceId ?? defaultWorkspaceId(event.tenantId);
+  const occurredAt = new Date(event.createdAt);
 
-export class ProviderHealthStore {
-  constructor(private readonly db: ProxyDbSession) {}
-
-  async skipsForTargets(input: {
-    organizationId: string;
-    targets: ProviderHealthTarget[];
-    now?: Date;
-  }) {
-    const targets = uniqueTargets(input.targets);
-    const result = new Map<string, ProviderHealthSkip>();
-    if (targets.length === 0) return result;
-
-    const now = input.now ?? new Date();
-    const accountIds = [...new Set(targets.map((target) => target.providerAccountId))];
-    const providerIds = [...new Set(targets.map((target) => target.providerId))];
-    const models = [...new Set(targets.map((target) => target.model))];
-
-    const accountRows = await this.db
-      .select({
-        providerAccountId: providerAccountHealth.providerAccountId,
-        status: providerAccountHealth.status,
-        lastErrorType: providerAccountHealth.lastErrorType,
-        cooldownUntil: providerAccountHealth.cooldownUntil,
-        metadata: providerAccountHealth.metadata
-      })
-      .from(providerAccountHealth)
-      .where(and(
-        eq(providerAccountHealth.organizationId, input.organizationId),
-        inArray(providerAccountHealth.providerAccountId, accountIds)
-      ));
-    const accountsById = new Map(accountRows.map((row) => [row.providerAccountId, row]));
-
-    const modelRows = await this.db
-      .select({
-        providerId: providerModelHealth.providerId,
-        providerAccountId: providerModelHealth.providerAccountId,
-        model: providerModelHealth.model,
-        status: providerModelHealth.status,
-        lastErrorType: providerModelHealth.lastErrorType,
-        lockoutUntil: providerModelHealth.lockoutUntil,
-        metadata: providerModelHealth.metadata
-      })
-      .from(providerModelHealth)
-      .where(and(
-        eq(providerModelHealth.organizationId, input.organizationId),
-        inArray(providerModelHealth.providerAccountId, accountIds),
-        inArray(providerModelHealth.providerId, providerIds),
-        inArray(providerModelHealth.model, models)
-      ));
-    const modelsByKey = new Map(modelRows.map((row) => [healthKey(row), row]));
-
-    for (const target of targets) {
-      const account = accountsById.get(target.providerAccountId);
-      if (account?.status === "terminal" || (account?.cooldownUntil && account.cooldownUntil > now)) {
-        const metadata = healthMetadata(account.metadata);
-        result.set(healthKey(target), healthSkip(target, {
-          scope: "provider_account",
-          healthStatus: account.status,
-          errorType: account.lastErrorType ?? undefined,
-          expiresAt: account.cooldownUntil ?? undefined,
-          metadata
-        }));
-        continue;
-      }
-
-      const model = modelsByKey.get(healthKey(target));
-      if (model?.status === "terminal" || (model?.lockoutUntil && model.lockoutUntil > now)) {
-        const metadata = healthMetadata(model.metadata);
-        if (streamPermissionHealth(model.lastErrorType ?? undefined, metadata) && target.isStreaming !== true) continue;
-        result.set(healthKey(target), healthSkip(target, {
-          scope: "provider_account_model",
-          healthStatus: model.status,
-          errorType: model.lastErrorType ?? undefined,
-          expiresAt: model.lockoutUntil ?? undefined,
-          metadata
-        }));
-      }
-    }
-
-    return result;
-  }
-}
-
-export function providerHealthTargetKey(target: Pick<ProviderHealthTarget, "providerId" | "providerAccountId" | "model">) {
-  return healthKey(target);
-}
-
-function uniqueTargets(targets: ProviderHealthTarget[]) {
-  const seen = new Set<string>();
-  const unique: ProviderHealthTarget[] = [];
-  for (const target of targets) {
-    const key = healthKey(target);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(target);
-  }
-  return unique;
-}
-
-function healthKey(target: Pick<ProviderHealthTarget, "providerId" | "providerAccountId" | "model">) {
-  return `${target.providerId}:${target.providerAccountId}:${target.model}`;
-}
-
-function healthMetadata(value: unknown): JsonObject {
-  const payload = jsonPayload(value);
-  return payload && typeof payload === "object" && !Array.isArray(payload) ? payload as JsonObject : {};
-}
-
-function streamPermissionHealth(errorType: string | undefined, metadata: JsonObject) {
-  return errorType === "stream_permission_denied" || metadata.bedrockErrorKind === "stream_permission_denied";
-}
-
-function healthSkip(
-  target: ProviderHealthTarget,
-  input: {
-    scope: ProviderHealthSkip["scope"];
-    healthStatus: string;
-    errorType?: string;
-    expiresAt?: Date;
-    metadata?: JsonObject;
-  }
-): ProviderHealthSkip {
-  return {
-    scope: input.scope,
-    provider: target.provider,
-    providerId: target.providerId,
-    providerAccountId: target.providerAccountId,
-    model: target.model,
-    healthStatus: input.healthStatus,
-    ...(input.errorType ? { errorType: input.errorType } : {}),
-    ...(input.expiresAt ? { expiresAt: input.expiresAt.toISOString() } : {}),
-    ...(input.metadata && Object.keys(input.metadata).length > 0 ? { metadata: input.metadata } : {})
-  };
-}
-
-export async function projectProviderHealthTerminal(tx: ProxyTransaction, event: {
-  tenantId: string;
-  workspaceId?: string;
-  createdAt: string;
-  payload: Record<string, unknown>;
-}) {
-  const providerAccountId = stringValue(event.payload.providerAccountId);
-  if (!providerAccountId) return;
-
-  const provider = providerValue(event.payload.provider);
-  const model = stringValue(event.payload.selectedModel) ?? stringValue(event.payload.model);
-  if (!provider || !model) return;
-
-  const providerRow = await providerForSlug(tx, event.tenantId, provider);
-  if (!providerRow) return;
-
-  const status = stringValue(event.payload.terminalStatus);
-  if (status === "completed") {
-    await recordHealthSuccess(tx, {
+  if (event.eventType === "provider.response_completed") {
+    await markConnectionHealthy(tx, {
       organizationId: event.tenantId,
-      workspaceId: event.workspaceId,
-      providerAccountId,
-      providerId: providerRow.id,
-      model,
-      at: new Date(event.createdAt),
+      workspaceId,
+      providerConnectionId: evidence.providerConnectionId,
+      occurredAt
+    });
+    await markDeploymentHealthy(tx, {
+      organizationId: event.tenantId,
+      workspaceId,
+      deploymentId: evidence.deploymentId,
+      providerConnectionId: evidence.providerConnectionId,
+      occurredAt,
       stream: event.payload.stream === true
     });
     return;
   }
 
-  const classification = payloadHealthClassification(event.payload) ?? classifyProviderTerminalHealth({
-    provider,
-    model,
-    terminalStatus: status === "cancelled" ? "cancelled" : "failed",
-    statusCode: numberValue(event.payload.upstreamStatus),
-    error: stringValue(event.payload.error),
-    now: new Date(event.createdAt)
-  });
-  if (!classification || classification.scope === "request_only" || classification.scope === "provider") return;
-
-  if (classification.scope === "provider_account") {
-    await recordAccountFailure(tx, {
+  const classification = providerHealthClassificationSchema.safeParse(
+    recordValue(event.payload.healthClassification)
+  );
+  if (!classification.success || classification.data.scope === "request_only") return;
+  if (classification.data.scope === "provider_connection") {
+    await markConnectionFailure(tx, {
       organizationId: event.tenantId,
-      workspaceId: event.workspaceId,
-      providerAccountId,
-      providerId: providerRow.id,
-      classification,
-      at: new Date(event.createdAt)
+      workspaceId,
+      providerConnectionId: evidence.providerConnectionId,
+      classification: classification.data,
+      occurredAt
     });
     return;
   }
-
-  await recordModelFailure(tx, {
+  await markDeploymentFailure(tx, {
     organizationId: event.tenantId,
-    workspaceId: event.workspaceId,
-    providerAccountId,
-    providerId: providerRow.id,
-    model,
-    classification,
-    at: new Date(event.createdAt)
+    workspaceId,
+    deploymentId: evidence.deploymentId,
+    providerConnectionId: evidence.providerConnectionId,
+    classification: classification.data,
+    occurredAt
   });
 }
 
-export async function projectProviderHealthProbe(tx: ProxyTransaction, event: {
-  tenantId: string;
-  workspaceId?: string;
-  createdAt: string;
-  payload: Record<string, unknown>;
-}) {
-  const providerAccountId = stringValue(event.payload.providerAccountId);
-  const providerId = stringValue(event.payload.providerId);
-  const model = stringValue(event.payload.model);
-  const status = stringValue(event.payload.status);
-  if (!providerAccountId || !providerId || !model || event.payload.stateUpdated !== true) return;
-
-  if (status === "success") {
-    await recordHealthSuccess(tx, {
-      organizationId: event.tenantId,
-      workspaceId: event.workspaceId,
-      providerAccountId,
-      providerId,
-      model,
-      at: new Date(event.createdAt),
-      stream: event.payload.streamingSucceeded === true
-    });
-    return;
+async function markConnectionHealthy(
+  tx: ProxyTransaction,
+  input: {
+    organizationId: string;
+    workspaceId: string;
+    providerConnectionId: string;
+    occurredAt: Date;
   }
-
-  const classification = providerHealthClassificationSchema.safeParse(recordValue(event.payload.classification));
-  if (!classification.success) return;
-  if (classification.data.scope === "provider_account") {
-    await recordAccountFailure(tx, {
-      organizationId: event.tenantId,
-      workspaceId: event.workspaceId,
-      providerAccountId,
-      providerId,
-      classification: classification.data,
-      at: new Date(event.createdAt)
-    });
-    return;
-  }
-  if (classification.data.scope === "provider_account_model") {
-    await recordModelFailure(tx, {
-      organizationId: event.tenantId,
-      workspaceId: event.workspaceId,
-      providerAccountId,
-      providerId,
-      model,
-      classification: classification.data,
-      at: new Date(event.createdAt)
-    });
-  }
-}
-
-function payloadHealthClassification(payload: Record<string, unknown>) {
-  const classification = providerHealthClassificationSchema.safeParse(recordValue(payload.healthClassification));
-  return classification.success ? classification.data : undefined;
-}
-
-async function recordHealthSuccess(tx: ProxyTransaction, input: {
-  organizationId: string;
-  workspaceId?: string;
-  providerAccountId: string;
-  providerId: string;
-  model: string;
-  at: Date;
-  stream: boolean;
-}) {
-  await tx.insert(providerAccountHealth).values({
-    id: createId("provider_account_health"),
+) {
+  await tx.insert(providerConnectionHealth).values({
+    id: createId("provider_connection_health"),
     organizationId: input.organizationId,
     workspaceId: input.workspaceId,
-    providerAccountId: input.providerAccountId,
-    providerId: input.providerId,
+    providerConnectionId: input.providerConnectionId,
     status: "healthy",
-    consecutiveFailures: 0,
-    lastSuccessAt: input.at,
-    lastCheckedAt: input.at,
-    metadata: {}
+    lastSuccessAt: input.occurredAt,
+    lastCheckedAt: input.occurredAt
   }).onConflictDoUpdate({
-    target: [providerAccountHealth.organizationId, providerAccountHealth.providerAccountId],
+    target: [
+      providerConnectionHealth.organizationId,
+      providerConnectionHealth.workspaceId,
+      providerConnectionHealth.providerConnectionId
+    ],
     set: {
       status: "healthy",
       lastErrorType: null,
@@ -310,169 +95,167 @@ async function recordHealthSuccess(tx: ProxyTransaction, input: {
       lastErrorAt: null,
       cooldownUntil: null,
       consecutiveFailures: 0,
-      lastSuccessAt: input.at,
-      lastCheckedAt: input.at,
+      lastSuccessAt: input.occurredAt,
+      lastCheckedAt: input.occurredAt,
       metadata: {}
     }
   });
+}
 
-  const [existingModelHealth] = await tx
+async function markDeploymentHealthy(
+  tx: ProxyTransaction,
+  input: {
+    organizationId: string;
+    workspaceId: string;
+    deploymentId: string;
+    providerConnectionId: string;
+    occurredAt: Date;
+    stream: boolean;
+  }
+) {
+  const [existing] = await tx
     .select({
-      lastErrorType: providerModelHealth.lastErrorType,
-      metadata: providerModelHealth.metadata
+      lastErrorType: deploymentHealth.lastErrorType,
+      metadata: deploymentHealth.metadata
     })
-    .from(providerModelHealth)
+    .from(deploymentHealth)
     .where(and(
-      eq(providerModelHealth.organizationId, input.organizationId),
-      eq(providerModelHealth.providerId, input.providerId),
-      eq(providerModelHealth.providerAccountId, input.providerAccountId),
-      eq(providerModelHealth.model, input.model)
+      eq(deploymentHealth.organizationId, input.organizationId),
+      eq(deploymentHealth.workspaceId, input.workspaceId),
+      eq(deploymentHealth.deploymentId, input.deploymentId)
     ))
     .limit(1);
-  if (!input.stream && streamPermissionHealth(existingModelHealth?.lastErrorType ?? undefined, healthMetadata(existingModelHealth?.metadata))) {
+  if (!input.stream && isStreamPermissionHealth(existing?.lastErrorType, recordValue(existing?.metadata))) {
     return;
   }
-
-  await tx.insert(providerModelHealth).values({
-    id: createId("provider_model_health"),
+  await tx.insert(deploymentHealth).values({
+    id: createId("deployment_health"),
     organizationId: input.organizationId,
     workspaceId: input.workspaceId,
-    providerId: input.providerId,
-    providerAccountId: input.providerAccountId,
-    model: input.model,
+    deploymentId: input.deploymentId,
+    providerConnectionId: input.providerConnectionId,
     status: "healthy",
-    consecutiveFailures: 0,
-    lastSuccessAt: input.at,
-    metadata: {}
+    lastSuccessAt: input.occurredAt
   }).onConflictDoUpdate({
     target: [
-      providerModelHealth.organizationId,
-      providerModelHealth.providerId,
-      providerModelHealth.providerAccountId,
-      providerModelHealth.model
+      deploymentHealth.organizationId,
+      deploymentHealth.workspaceId,
+      deploymentHealth.deploymentId
     ],
     set: {
+      providerConnectionId: input.providerConnectionId,
       status: "healthy",
       lastErrorType: null,
       lastErrorAt: null,
       lockoutUntil: null,
       consecutiveFailures: 0,
-      lastSuccessAt: input.at,
+      lastSuccessAt: input.occurredAt,
       metadata: {}
     }
   });
 }
 
-async function recordAccountFailure(tx: ProxyTransaction, input: {
-  organizationId: string;
-  workspaceId?: string;
-  providerAccountId: string;
-  providerId: string;
-  classification: ProviderHealthClassification;
-  at: Date;
-}) {
-  await tx.insert(providerAccountHealth).values({
-    id: createId("provider_account_health"),
+async function markConnectionFailure(
+  tx: ProxyTransaction,
+  input: {
+    organizationId: string;
+    workspaceId: string;
+    providerConnectionId: string;
+    classification: ProviderHealthClassification;
+    occurredAt: Date;
+  }
+) {
+  const status = healthStatus(input.classification, "cooldown");
+  const cooldownUntil = dateValue(input.classification.cooldownUntil);
+  await tx.insert(providerConnectionHealth).values({
+    id: createId("provider_connection_health"),
     organizationId: input.organizationId,
     workspaceId: input.workspaceId,
-    providerAccountId: input.providerAccountId,
-    providerId: input.providerId,
-    status: accountStatus(input.classification),
+    providerConnectionId: input.providerConnectionId,
+    status,
     lastErrorType: input.classification.errorType,
     lastErrorMessage: input.classification.message,
-    lastErrorAt: input.at,
-    cooldownUntil: timestamp(input.classification.cooldownUntil),
+    lastErrorAt: input.occurredAt,
+    cooldownUntil,
     consecutiveFailures: 1,
-    lastCheckedAt: input.at,
+    lastCheckedAt: input.occurredAt,
     metadata: input.classification.metadata
   }).onConflictDoUpdate({
-    target: [providerAccountHealth.organizationId, providerAccountHealth.providerAccountId],
+    target: [
+      providerConnectionHealth.organizationId,
+      providerConnectionHealth.workspaceId,
+      providerConnectionHealth.providerConnectionId
+    ],
     set: {
-      status: accountStatus(input.classification),
+      status,
       lastErrorType: input.classification.errorType,
       lastErrorMessage: input.classification.message,
-      lastErrorAt: input.at,
-      cooldownUntil: timestamp(input.classification.cooldownUntil),
-      consecutiveFailures: sql`${providerAccountHealth.consecutiveFailures} + 1`,
-      lastCheckedAt: input.at,
+      lastErrorAt: input.occurredAt,
+      cooldownUntil,
+      consecutiveFailures: sql`${providerConnectionHealth.consecutiveFailures} + 1`,
+      lastCheckedAt: input.occurredAt,
       metadata: input.classification.metadata
     }
   });
 }
 
-async function recordModelFailure(tx: ProxyTransaction, input: {
-  organizationId: string;
-  workspaceId?: string;
-  providerAccountId: string;
-  providerId: string;
-  model: string;
-  classification: ProviderHealthClassification;
-  at: Date;
-}) {
-  await tx.insert(providerModelHealth).values({
-    id: createId("provider_model_health"),
+async function markDeploymentFailure(
+  tx: ProxyTransaction,
+  input: {
+    organizationId: string;
+    workspaceId: string;
+    deploymentId: string;
+    providerConnectionId: string;
+    classification: ProviderHealthClassification;
+    occurredAt: Date;
+  }
+) {
+  const status = healthStatus(input.classification, "locked_out");
+  const lockoutUntil = dateValue(input.classification.cooldownUntil);
+  await tx.insert(deploymentHealth).values({
+    id: createId("deployment_health"),
     organizationId: input.organizationId,
     workspaceId: input.workspaceId,
-    providerId: input.providerId,
-    providerAccountId: input.providerAccountId,
-    model: input.model,
-    status: modelStatus(input.classification),
+    deploymentId: input.deploymentId,
+    providerConnectionId: input.providerConnectionId,
+    status,
     lastErrorType: input.classification.errorType,
-    lastErrorAt: input.at,
-    lockoutUntil: timestamp(input.classification.cooldownUntil),
+    lastErrorAt: input.occurredAt,
+    lockoutUntil,
     consecutiveFailures: 1,
     metadata: input.classification.metadata
   }).onConflictDoUpdate({
     target: [
-      providerModelHealth.organizationId,
-      providerModelHealth.providerId,
-      providerModelHealth.providerAccountId,
-      providerModelHealth.model
+      deploymentHealth.organizationId,
+      deploymentHealth.workspaceId,
+      deploymentHealth.deploymentId
     ],
     set: {
-      status: modelStatus(input.classification),
+      providerConnectionId: input.providerConnectionId,
+      status,
       lastErrorType: input.classification.errorType,
-      lastErrorAt: input.at,
-      lockoutUntil: timestamp(input.classification.cooldownUntil),
-      consecutiveFailures: sql`${providerModelHealth.consecutiveFailures} + 1`,
+      lastErrorAt: input.occurredAt,
+      lockoutUntil,
+      consecutiveFailures: sql`${deploymentHealth.consecutiveFailures} + 1`,
       metadata: input.classification.metadata
     }
   });
 }
 
-function accountStatus(classification: ProviderHealthClassification): ProviderHealthStatus {
-  if (classification.errorType === "auth_invalid") return "terminal";
-  if (classification.cooldownUntil) return "cooldown";
-  return "unknown";
+function healthStatus(
+  classification: ProviderHealthClassification,
+  cooldownStatus: Extract<ProviderHealthStatus, "cooldown" | "locked_out">
+): ProviderHealthStatus {
+  return classification.cooldownUntil ? cooldownStatus : "terminal";
 }
 
-function modelStatus(classification: ProviderHealthClassification): ProviderHealthStatus {
-  if (classification.errorType === "model_access_denied") return "terminal";
-  if (classification.cooldownUntil) return "locked_out";
-  return "unknown";
-}
-
-function timestamp(value: string | null) {
+function dateValue(value: string | null) {
   return value ? new Date(value) : null;
 }
 
-async function providerForSlug(tx: ProxyTransaction, organizationId: string, slug: string) {
-  const [orgProvider] = await tx
-    .select({ id: providers.id })
-    .from(providers)
-    .where(and(
-      eq(providers.organizationId, organizationId),
-      eq(providers.slug, slug)
-    ))
-    .limit(1);
-  if (orgProvider) return orgProvider;
-  const [builtinProvider] = await tx
-    .select({ id: providers.id })
-    .from(providers)
-    .where(and(
-      isNull(providers.organizationId),
-      eq(providers.slug, slug)
-    ))
-    .limit(1);
-  return builtinProvider;
+export function isStreamPermissionHealth(
+  errorType: string | null | undefined,
+  metadata: Record<string, unknown> | null | undefined
+) {
+  return errorType === "stream_permission_denied" || metadata?.bedrockErrorKind === "stream_permission_denied";
 }

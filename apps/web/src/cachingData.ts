@@ -2,9 +2,8 @@ import { graphql } from "./gql";
 import type {
   CacheBustsViewQuery,
   CompressionSavingsViewQuery,
-  CachePricingRatesQuery,
   IdleGapsViewQuery,
-  OpenAICacheAnalyticsViewQuery,
+  OpenAiCacheAnalyticsViewQuery,
   PromptCachePlansViewQuery,
   PromptCachePrewarmsViewQuery,
   TokenAttributionViewQuery
@@ -175,7 +174,7 @@ const OpenAICacheAnalyticsViewDocument = graphql(`
         surface
         provider
         model
-        route
+        logicalModel
         cacheGroupSource
         cacheGroupKey
         requestCount
@@ -198,13 +197,12 @@ const OpenAICacheAnalyticsViewDocument = graphql(`
   }
 `);
 
-const CachePricingRatesDocument = graphql(`
-  query CachePricingRates {
-    modelPricing {
-      model
-      inputCostPerMtok
-      cacheReadCostPerMtok
-      cacheWriteCostPerMtok
+const CacheDeploymentPricingDocument = graphql(`
+  query CacheDeploymentPricing {
+    gatewayModelDeployments {
+      upstreamModelId
+      pricing
+      enabled
     }
   }
 `);
@@ -219,9 +217,14 @@ export type CompressionSavingsRow = CompressionSavingsReport["rows"][number];
 export type PromptCachePlanReport = PromptCachePlansViewQuery["promptCachePlans"];
 export type PromptCachePlanControl = PromptCachePlanReport["controls"][number];
 export type PromptCachePrewarmReport = PromptCachePrewarmsViewQuery["promptCachePrewarms"];
-export type OpenAICacheAnalyticsReport = OpenAICacheAnalyticsViewQuery["openAICacheAnalytics"];
+export type OpenAICacheAnalyticsReport = OpenAiCacheAnalyticsViewQuery["openAICacheAnalytics"];
 export type OpenAICacheAnalyticsGroup = OpenAICacheAnalyticsReport["groups"][number];
-export type CachePricingRate = CachePricingRatesQuery["modelPricing"][number];
+export type CachePricingRate = {
+  model: string;
+  inputCostPerMtok: number | null;
+  cacheReadCostPerMtok: number | null;
+  cacheWriteCostPerMtok: number | null;
+};
 
 export async function fetchTokenAttribution(filters: UsageRangeFilters = {}) {
   return (await gqlFetch(TokenAttributionViewDocument, { ...filters })).tokenAttribution;
@@ -265,7 +268,20 @@ export async function fetchIdleGaps(filters: UsageRangeFilters = {}) {
 }
 
 export async function fetchCachePricingRates() {
-  return (await gqlFetch(CachePricingRatesDocument)).modelPricing;
+  const data = await gqlFetch(CacheDeploymentPricingDocument);
+  return data.gatewayModelDeployments.flatMap((deployment) => {
+    if (!deployment.enabled) return [];
+    const pricing = deployment.pricing;
+    if (!pricing || typeof pricing !== "object" || Array.isArray(pricing)) return [];
+    const rates = pricing as Record<string, unknown>;
+    if (typeof rates.inputCostPerMtok !== "number") return [];
+    return [{
+      model: deployment.upstreamModelId,
+      inputCostPerMtok: rates.inputCostPerMtok,
+      cacheReadCostPerMtok: typeof rates.cacheReadCostPerMtok === "number" ? rates.cacheReadCostPerMtok : null,
+      cacheWriteCostPerMtok: typeof rates.cacheWriteCostPerMtok === "number" ? rates.cacheWriteCostPerMtok : null
+    }];
+  });
 }
 
 export const bustCauseLabels: Record<string, string> = {
@@ -276,7 +292,7 @@ export const bustCauseLabels: Record<string, string> = {
   tool_schema_churn: "Tool schema churn",
   translator_change: "Translator change",
   compression_policy_change: "Compression policy change",
-  route_config_change: "Route config change",
+  logical_model_change: "Logical model change",
   unknown: "Unknown"
 };
 
@@ -288,7 +304,7 @@ export const bustCauses = [
   { key: "tool_schema_churn", label: bustCauseLabels.tool_schema_churn, color: "#f97316" },
   { key: "translator_change", label: bustCauseLabels.translator_change, color: "#a78bfa" },
   { key: "compression_policy_change", label: bustCauseLabels.compression_policy_change, color: "#ec4899" },
-  { key: "route_config_change", label: bustCauseLabels.route_config_change, color: "#eab308" },
+  { key: "logical_model_change", label: bustCauseLabels.logical_model_change, color: "#eab308" },
   { key: "unknown", label: bustCauseLabels.unknown, color: "#64748b" }
 ] as const;
 

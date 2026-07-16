@@ -17,6 +17,7 @@ export type GatewayConfigCommand =
   | { resource: GatewayConfigResource; action: "create"; body: unknown; id?: string }
   | { resource: GatewayConfigResource; action: "update"; id: string; body: unknown }
   | { resource: GatewayConfigResource; action: "setEnabled"; id: string; enabled: boolean }
+  | { resource: "providerConnection" | "modelDeployment"; action: "resetHealth"; id: string }
   | { resource: "apiKey"; action: "assignAccessProfile"; id: string; accessProfileId: string };
 
 export type GatewayConfigCommandResult = {

@@ -30,8 +30,6 @@ function makeSettings(overrides: Partial<EditableSettings> = {}): EditableSettin
       openaiResponsesModel: "gpt-5.5",
       openaiChatModel: "gpt-5.5"
     },
-    classifier: { model: "gpt-5-nano", timeoutMs: 4000, maxAttempts: 2, allowRedactedExcerpt: true },
-    routeQuality: { lowConfidenceThreshold: 0.55 },
     promptCapture: { promptCaptureMode: "raw_text", retentionDays: 30 },
     ...overrides
   };
@@ -43,14 +41,12 @@ describe("sectionsFor", () => {
       "system",
       "optimization",
       "baseline",
-      "classifier",
-      "capture",
-      "quality"
+      "capture"
     ]);
   });
 
   it("drops database-backed sections in file-only mode", () => {
-    expect(sectionsFor(false).map((section) => section.id)).toEqual(["classifier", "capture", "quality"]);
+    expect(sectionsFor(false).map((section) => section.id)).toEqual(["capture"]);
   });
 });
 
@@ -119,25 +115,17 @@ describe("changedRowIds", () => {
     const edited = {
       ...initial,
       cacheTtlUpgrade: true,
-      classifier: { ...initial.classifier, model: "gpt-6-nano" }
+      promptCapture: { ...initial.promptCapture, retentionDays: 7 }
     };
-    expect(changedRowIds(settingsSections, edited, initial)).toEqual(["cacheTtlUpgrade", "classifierModel"]);
+    expect(changedRowIds(settingsSections, edited, initial)).toEqual(["cacheTtlUpgrade", "promptRetentionDays"]);
   });
 });
 
 describe("restartPending", () => {
-  const restartRequiredFor = ["classifier", "routeQuality"];
-
-  it("flags edits inside restart-gated sections", () => {
-    const initial = makeSettings();
-    const edited = { ...initial, classifier: { ...initial.classifier, timeoutMs: 9000 } };
-    expect(restartPending(settingsSections, restartRequiredFor, edited, initial)).toBe(true);
-  });
-
-  it("ignores edits in sections that apply immediately", () => {
+  it("returns false because active settings apply immediately", () => {
     const initial = makeSettings();
     const edited = { ...initial, promptCapture: { ...initial.promptCapture, retentionDays: 7 } };
-    expect(restartPending(settingsSections, restartRequiredFor, edited, initial)).toBe(false);
+    expect(restartPending(settingsSections, [], edited, initial)).toBe(false);
   });
 });
 
@@ -146,16 +134,8 @@ describe("validate", () => {
     expect(validate(makeSettings())).toEqual([]);
   });
 
-  it("rejects out-of-range classifier and quality values", () => {
-    const settings = makeSettings({
-      classifier: { model: " ", timeoutMs: 0, maxAttempts: 9, allowRedactedExcerpt: false },
-      routeQuality: { lowConfidenceThreshold: 1.5 }
-    });
-    expect(validate(settings)).toEqual([
-      "Classifier model is required.",
-      "Classifier timeout must be between 1 and 30000 ms.",
-      "Classifier attempts must be between 1 and 5.",
-      "Low confidence threshold must be between 0 and 1."
-    ]);
+  it("rejects an invalid prompt retention", () => {
+    const settings = makeSettings({ promptCapture: { promptCaptureMode: "raw_text", retentionDays: -1 } });
+    expect(validate(settings)).toEqual(["Prompt retention must be zero or more days."]);
   });
 });

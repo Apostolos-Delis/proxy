@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 
-import type { Provider, RouteDecision, RouteName, Surface } from "./types.js";
+import type { Provider, RouteDecision, Surface } from "./types.js";
 
 type TimingLogger = {
   info: (payload: unknown, message: string) => void;
@@ -17,7 +17,7 @@ export type RequestTimingMetadata = {
   workspaceId?: string;
   surface: Surface;
   provider?: Provider;
-  route?: RouteName;
+  logicalModel?: string;
   selectedModel?: string;
   requestBodyBytes?: number;
 };
@@ -81,7 +81,7 @@ export class RequestTiming {
   recordDecision(decision: RouteDecision) {
     this.addMetadata({
       provider: decision.provider,
-      route: decision.finalRoute,
+      logicalModel: decision.requestedModel,
       selectedModel: decision.selectedModel
     });
   }

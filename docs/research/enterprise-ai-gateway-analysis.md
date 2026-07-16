@@ -11654,7 +11654,7 @@ Every new contract or adapter should answer the relevant questions below.
 - [Shared schemas](../../packages/schema/src/index.ts)
 - [Database schema](../../packages/db/src/schema.ts)
 - [Proxy server routes](../../apps/proxy/src/server.ts)
-- [Route execution plan](../../apps/proxy/src/routeExecutionPlan.ts)
+- [Gateway model resolution](../../apps/proxy/src/persistence/modelResolution.ts)
 - [Generic HTTP adapter](../../apps/proxy/src/providerAdapters/genericHttp.ts)
 - [Translator registry](../../apps/proxy/src/translators/index.ts)
 - [Provider architecture V1](../scopes/provider-architecture-v1/PLAN.md)

@@ -33,7 +33,7 @@ const sessionDetailQuery = `query SessionDetail($sessionId: ID!) {
     user
     requests { requestId }
     promptArtifacts { rawText provider selectedModel cost { selected } }
-    routeDecisions { finalRoute }
+    routeDecisions { requestedLogicalModel resolvedLogicalModelId deploymentId }
     providerAttempts { terminalStatus }
     usageLedger { totalCostMicros }
     events { eventType }
@@ -81,7 +81,6 @@ describe("session replay admin APIs", () => {
         userId: "user_session_admin",
         surface: "openai-responses",
         externalSessionId: "codex-session",
-        currentRoute: "hard",
         metadata: { sessionIdentity: "harness" },
         startedAt: first,
         updatedAt: second
@@ -101,19 +100,29 @@ describe("session replay admin APIs", () => {
       usageRequest("session_request_other", "org_session_other", "user_other_org", "session_other", "openai-responses", second)
     ]);
     await fixture.db.insert(routeDecisions).values([
-      usageDecision("session_decision_fast", "session_request_fast", "org_users_sessions", "fast", "openai", "gpt-fast"),
-      usageDecision("session_decision_hard", "session_request_hard", "org_users_sessions", "hard", "openai", "gpt-hard"),
-      usageDecision("session_decision_other", "session_request_other", "org_session_other", "fast", "openai", "gpt-other")
+      gatewayUsageDecision(
+        usageDecision("session_decision_economy", "session_request_fast", "org_users_sessions", "openai-responses", "openai", "gpt-5.4-mini"),
+        "org_users_sessions",
+        "economy-auto",
+        "gpt-5.4-mini"
+      ),
+      gatewayUsageDecision(
+        usageDecision("session_decision_coding", "session_request_hard", "org_users_sessions", "openai-responses", "openai", "gpt-5.5"),
+        "org_users_sessions",
+        "coding-auto",
+        "gpt-5.5"
+      ),
+      usageDecision("session_decision_other", "session_request_other", "org_session_other", "openai-responses", "openai", "gpt-other")
     ]);
     await fixture.db.insert(providerAttempts).values([
-      usageAttempt("session_attempt_fast", "session_request_fast", "org_users_sessions", "openai-responses", "openai", "gpt-fast", "completed", first),
-      usageAttempt("session_attempt_hard", "session_request_hard", "org_users_sessions", "openai-responses", "openai", "gpt-hard", "failed", second),
+      usageAttempt("session_attempt_fast", "session_request_fast", "org_users_sessions", "openai-responses", "openai", "gpt-5.4-mini", "completed", first),
+      usageAttempt("session_attempt_hard", "session_request_hard", "org_users_sessions", "openai-responses", "openai", "gpt-5.5", "failed", second),
       usageAttempt("session_attempt_other", "session_request_other", "org_session_other", "openai-responses", "openai", "gpt-other", "completed", second)
     ]);
     await fixture.db.insert(usageLedger).values([
-      usageRow("session_usage_fast", "session_request_fast", "session_attempt_fast", "org_users_sessions", "openai", "gpt-fast", "fast", 100, 20, 1000),
-      usageRow("session_usage_hard", "session_request_hard", "session_attempt_hard", "org_users_sessions", "openai", "gpt-hard", "hard", 200, 30, 3000),
-      usageRow("session_usage_other", "session_request_other", "session_attempt_other", "org_session_other", "openai", "gpt-other", "fast", 999, 999, 9999)
+      usageRow("session_usage_fast", "session_request_fast", "session_attempt_fast", "org_users_sessions", "openai", "gpt-5.4-mini", 100, 20, 1000),
+      usageRow("session_usage_hard", "session_request_hard", "session_attempt_hard", "org_users_sessions", "openai", "gpt-5.5", 200, 30, 3000),
+      usageRow("session_usage_other", "session_request_other", "session_attempt_other", "org_session_other", "openai", "gpt-other", 999, 999, 9999)
     ]);
     await fixture.db.insert(promptArtifacts).values([
       sessionPrompt("session_prompt_fast", "org_users_sessions", "session_request_fast", "First session prompt", first),
@@ -143,7 +152,7 @@ describe("session replay admin APIs", () => {
       `query UserDetail($userId: ID!) {
         user(userId: $userId) {
           user { userId requestCount sessionCount }
-          sessions { sessionId routeChanges }
+          sessions { sessionId logicalModelChanges }
           requests { requestId }
         }
       }`,
@@ -156,9 +165,10 @@ describe("session replay admin APIs", () => {
         sessionId
         userId
         requestCount
-        routeChanges
+        logicalModelChanges
         modelMix
-        routeMix
+        logicalModelMix
+        deploymentMix
         terminalStatusSummary
       } }`
     )).data?.sessions;
@@ -202,7 +212,7 @@ describe("session replay admin APIs", () => {
     }));
     expect(userDetail.sessions[0]).toEqual(expect.objectContaining({
       sessionId: "session_admin",
-      routeChanges: 1
+      logicalModelChanges: 1
     }));
     expect(userDetail.requests).toHaveLength(2);
     expect(sessionsList).toEqual([
@@ -210,9 +220,16 @@ describe("session replay admin APIs", () => {
         sessionId: "session_admin",
         userId: "user_session_admin",
         requestCount: 2,
-        routeChanges: 1,
-        modelMix: { "gpt-fast": 1, "gpt-hard": 1 },
-        routeMix: { fast: 1, hard: 1 },
+        logicalModelChanges: 1,
+        modelMix: { "gpt-5.4-mini": 1, "gpt-5.5": 1 },
+        logicalModelMix: {
+          [`${defaultWorkspaceId("org_users_sessions")}:logical-model:economy-auto`]: 1,
+          [`${defaultWorkspaceId("org_users_sessions")}:logical-model:coding-auto`]: 1
+        },
+        deploymentMix: {
+          [`${defaultWorkspaceId("org_users_sessions")}:deployment:openai:gpt-5.4-mini`]: 1,
+          [`${defaultWorkspaceId("org_users_sessions")}:deployment:openai:gpt-5.5`]: 1
+        },
         terminalStatusSummary: { completed: 1, failed: 1 }
       })
     ]);
@@ -230,16 +247,16 @@ describe("session replay admin APIs", () => {
     expect(sessionDetail.promptArtifacts).toEqual([
       expect.objectContaining({
         provider: "openai",
-        selectedModel: "gpt-fast",
+        selectedModel: "gpt-5.4-mini",
         cost: { selected: 0.001 }
       }),
       expect.objectContaining({
         provider: "openai",
-        selectedModel: "gpt-hard",
+        selectedModel: "gpt-5.5",
         cost: { selected: 0.003 }
       })
     ]);
-    expect(sessionDetail.routeDecisions.map((decision: any) => decision.finalRoute).sort()).toEqual(["fast", "hard"]);
+    expect(sessionDetail.routeDecisions.map((decision: any) => decision.requestedLogicalModel).sort()).toEqual(["coding-auto", "economy-auto"]);
     expect(sessionDetail.providerAttempts.map((attempt: any) => attempt.terminalStatus).sort()).toEqual(["completed", "failed"]);
     expect(sessionDetail.usageLedger.map((usage: any) => usage.totalCostMicros).sort()).toEqual([1000, 3000]);
     expect(sessionDetail.events.map((event: any) => event.eventType)).toEqual(["proxy.request_received"]);
@@ -312,7 +329,7 @@ describe("session replay admin APIs", () => {
         "x-proxy-user-id": "codex_real_user"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: "Real session prompt.",
         stream: true
       })
@@ -327,7 +344,7 @@ describe("session replay admin APIs", () => {
         "x-proxy-user-id": "fallback_user"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: "Fallback session prompt.",
         stream: true
       })
@@ -417,8 +434,8 @@ describe("session replay admin APIs", () => {
       usageRequest("cache_request_openai", "org_cache_sessions", "user_cache", "session_cache_openai", "openai-responses", at)
     ]);
     await fixture.db.insert(routeDecisions).values([
-      usageDecision("cache_decision", "cache_request", "org_cache_sessions", "hard", "anthropic", "claude-hard"),
-      usageDecision("cache_decision_openai", "cache_request_openai", "org_cache_sessions", "hard", "openai", "gpt-hard")
+      usageDecision("cache_decision", "cache_request", "org_cache_sessions", "anthropic-messages", "anthropic", "claude-hard"),
+      usageDecision("cache_decision_openai", "cache_request_openai", "org_cache_sessions", "openai-responses", "openai", "gpt-hard")
     ]);
     await fixture.db.insert(providerAttempts).values([
       usageAttempt("cache_attempt", "cache_request", "org_cache_sessions", "anthropic-messages", "anthropic", "claude-hard", "completed", at),
@@ -429,7 +446,7 @@ describe("session replay admin APIs", () => {
         // Normalized convention: the inputTokens column is the total prompt
         // input with reads/writes as subsets; only the raw jsonb stays
         // exclusive the way Anthropic reported it.
-        ...usageRow("cache_usage", "cache_request", "cache_attempt", "org_cache_sessions", "anthropic", "claude-hard", "hard", 1000, 50, 2000),
+        ...usageRow("cache_usage", "cache_request", "cache_attempt", "org_cache_sessions", "anthropic", "claude-hard", 1000, 50, 2000),
         cachedInputTokens: 800,
         cacheCreationInputTokens: 100,
         usage: {
@@ -441,7 +458,7 @@ describe("session replay admin APIs", () => {
       },
       {
         // OpenAI reports cached tokens as a subset of input_tokens.
-        ...usageRow("cache_usage_openai", "cache_request_openai", "cache_attempt_openai", "org_cache_sessions", "openai", "gpt-hard", "hard", 1000, 50, 1500),
+        ...usageRow("cache_usage_openai", "cache_request_openai", "cache_attempt_openai", "org_cache_sessions", "openai", "gpt-hard", 1000, 50, 1500),
         cachedInputTokens: 250,
         usage: {
           input_tokens: 1000,
@@ -495,14 +512,14 @@ describe("session replay admin APIs", () => {
       { ...usageRequest("unrouted_request", "org_rejected_sessions", "user_rejected", "session_rejected", "openai-responses", at), status: "failed" as const }
     ]);
     await fixture.db.insert(routeDecisions).values([
-      usageDecision("served_decision", "served_request", "org_rejected_sessions", "hard", "openai", "gpt-hard"),
+      usageDecision("served_decision", "served_request", "org_rejected_sessions", "openai-responses", "openai", "gpt-hard"),
       {
         // Router rejection: decision recorded, but no model was ever selected.
         id: "rejected_decision",
         requestId: "rejected_request",
         organizationId: "org_rejected_sessions",
         workspaceId: defaultWorkspaceId("org_rejected_sessions"),
-        requestedModel: "router-auto",
+        requestedModel: "coding-auto",
         reasonCodes: ["request_estimated_input_limit"],
         policyVersion: "test"
       }
@@ -530,3 +547,25 @@ describe("session replay admin APIs", () => {
     return activeFixture;
   }
 });
+
+function gatewayUsageDecision(
+  decision: ReturnType<typeof usageDecision>,
+  organizationId: string,
+  logicalModel: "economy-auto" | "coding-auto",
+  model: string
+) {
+  const workspaceId = defaultWorkspaceId(organizationId);
+  return {
+    ...decision,
+    requestedModel: logicalModel,
+    requestedLogicalModel: logicalModel,
+    resolvedLogicalModelId: `${workspaceId}:logical-model:${logicalModel}`,
+    accessProfileId: `${workspaceId}:access-profile:opendoor-engineer`,
+    routerKind: "classifier" as const,
+    deploymentId: `${workspaceId}:deployment:openai:${model}`,
+    providerConnectionId: `${workspaceId}:connection:openai`,
+    egressWireId: "openai-responses" as const,
+    wireAdapterVersion: "1" as const,
+    selectedModel: model
+  };
+}

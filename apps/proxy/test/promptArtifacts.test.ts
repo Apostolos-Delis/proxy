@@ -26,7 +26,7 @@ describe("prompt artifact capture", () => {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         instructions: "Always answer in terse bullets.",
         input: "Write tests for @filename.",
         tools: [{ type: "function", name: "shell", parameters: { type: "object" } }],
@@ -124,7 +124,7 @@ describe("prompt artifact capture", () => {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: [
           { type: "message", role: "user", content: [{ type: "input_text", text: "old request" }] },
           { type: "message", role: "assistant", content: [{ type: "output_text", text: "ack" }] },
@@ -185,7 +185,7 @@ describe("prompt artifact capture", () => {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-router-auto",
+        model: "coding-auto",
         system: "Use the mortgage domain rules.",
         messages: [
           { role: "user", content: "older question" },
@@ -268,7 +268,7 @@ describe("prompt artifact capture", () => {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-router-auto",
+        model: "coding-auto",
         messages: [
           {
             role: "user",
@@ -348,14 +348,14 @@ describe("prompt artifact capture", () => {
     const first = await fetch(`${fixture.proxyUrl}/v1/messages`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ model: "claude-router-auto", system, messages: firstTurn, max_tokens: 256, stream: true })
+      body: JSON.stringify({ model: "coding-auto", system, messages: firstTurn, max_tokens: 256, stream: true })
     });
     await first.text();
     const second = await fetch(`${fixture.proxyUrl}/v1/messages`, {
       method: "POST",
       headers,
       body: JSON.stringify({
-        model: "claude-router-auto",
+        model: "coding-auto",
         system,
         messages: [
           ...firstTurn,
@@ -399,7 +399,7 @@ describe("prompt artifact capture", () => {
       method: "POST",
       headers,
       body: JSON.stringify({
-        model: "claude-router-auto",
+        model: "coding-auto",
         messages: [{ role: "user", content: "first long-session question" }],
         max_tokens: 256,
         stream: true
@@ -435,7 +435,7 @@ describe("prompt artifact capture", () => {
       method: "POST",
       headers,
       body: JSON.stringify({
-        model: "claude-router-auto",
+        model: "coding-auto",
         messages: [
           { role: "user", content: "first long-session question" },
           { role: "user", content: "fresh long-session question" }
@@ -468,7 +468,7 @@ describe("prompt artifact capture", () => {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-router-auto",
+        model: "coding-auto",
         metadata: { user_id: "user_abc123_account_def456_session_9f8e7d6c-1a2b-3c4d-5e6f-7a8b9c0d1e2f" },
         messages: [{ role: "user", content: "metadata session linking" }],
         max_tokens: 256,
@@ -498,7 +498,7 @@ describe("prompt artifact capture", () => {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: "this should still reach the provider",
         stream: true
       })
@@ -508,7 +508,7 @@ describe("prompt artifact capture", () => {
     expect(response.status).toBe(200);
     expect(body).toContain("response.completed");
     expect(fixture.openai.records.find((record) => record.body.model === "route-classifier-cheap")).toBeTruthy();
-    expect(fixture.openai.records.find((record) => record.body.model === "gpt-5.5")).toBeTruthy();
+    expect(fixture.openai.records.find((record) => record.body.model !== "route-classifier-cheap")).toBeTruthy();
   });
 
   it("keeps prompt content hash-only when raw capture is not enabled", async () => {
@@ -521,7 +521,7 @@ describe("prompt artifact capture", () => {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: "Do not store me raw.",
         stream: true
       })
@@ -552,7 +552,7 @@ describe("prompt artifact capture", () => {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: [],
         stream: true
       })
@@ -578,7 +578,7 @@ describe("prompt artifact capture", () => {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: "Summarize the build failure.",
         stream: true
       })
@@ -614,7 +614,7 @@ describe("prompt artifact capture", () => {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-router-auto",
+        model: "fable",
         messages: [{ role: "user", content: "What changed?" }],
         max_tokens: 256,
         stream: true
@@ -649,7 +649,7 @@ describe("prompt artifact capture", () => {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: "hash only please",
         stream: true
       })

@@ -8,7 +8,7 @@ import {
   createApiKey,
   fetchAccessProfiles,
   type CreateApiKeyInput
-} from "../routing/data";
+} from "./data";
 import { PageState, PageTitle } from "../ui";
 import { ConfigureStep } from "./configureStep";
 import { ReviewStep } from "./reviewStep";

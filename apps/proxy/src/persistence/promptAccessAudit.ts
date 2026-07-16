@@ -4,8 +4,6 @@ import {
   promptAccessAudit,
   type ProxyDbSession
 } from "@proxy/db";
-import type { RouteName } from "@proxy/schema";
-
 import { createId } from "../util.js";
 
 export class PromptAccessAuditStore {
@@ -18,7 +16,6 @@ export class PromptAccessAuditStore {
     requestId: string;
     userId?: string;
     adminSessionId?: string;
-    route?: RouteName;
     accessPath: string;
   }) {
     const [row] = await this.db
@@ -31,7 +28,6 @@ export class PromptAccessAuditStore {
         requestId: input.requestId,
         userId: input.userId,
         adminSessionId: input.adminSessionId,
-        route: input.route,
         accessPath: input.accessPath
       })
       .returning();
@@ -53,7 +49,6 @@ export class PromptAccessAuditStore {
         requestId: row.requestId,
         userId: row.userId ?? undefined,
         adminSessionId: row.adminSessionId ?? undefined,
-        route: row.route ?? undefined,
         accessPath: row.accessPath,
         createdAt: row.createdAt.toISOString()
       }))

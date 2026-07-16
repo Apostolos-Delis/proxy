@@ -1,5 +1,8 @@
+import { and, eq } from "drizzle-orm";
+
 import {
   canonicalModels,
+  deploymentHealth,
   deploymentWireBindings,
   modelDeployments,
   providerConnections
@@ -131,6 +134,25 @@ export async function setModelDeploymentEnabled(
     id,
     slug: current.slug,
     status: enabled ? "active" : "disabled"
+  });
+  return { resource: "modelDeployment" as const, id };
+}
+
+export async function resetModelDeploymentHealth(
+  context: GatewayConfigMutationContext,
+  id: string
+) {
+  const { tx, actor } = context;
+  const current = await lockScopedRow(tx, modelDeployments, actor, id, "model_deployment_not_found");
+  await tx.delete(deploymentHealth).where(and(
+    eq(deploymentHealth.organizationId, actor.organizationId),
+    eq(deploymentHealth.workspaceId, actor.workspaceId),
+    eq(deploymentHealth.deploymentId, id)
+  ));
+  await context.appendEvent("model_deployment", id, "health_reset", {
+    id,
+    slug: current.slug,
+    providerConnectionId: current.providerConnectionId
   });
   return { resource: "modelDeployment" as const, id };
 }

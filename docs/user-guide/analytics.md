@@ -1,78 +1,59 @@
 # Analytics And Spend
 
-Proxy computes usage and spend from provider token counts, routing decisions, and local pricing. The console turns that into operator dashboards.
+Proxy separates caller intent from physical supply:
 
-## What Proxy Records
+- group by `logical_model` to understand what applications requested;
+- group by `deployment` to understand where traffic and spend landed;
+- group by provider, model, surface, API key, user, or session for operational attribution.
 
-For each request, Proxy can record:
+## Usage Dimensions
 
-- Input, cached input, cache creation, output, reasoning, and total tokens.
-- Selected model and provider.
-- Baseline model for savings comparisons.
-- Cost at the rates active when the usage row was written.
-- Classifier usage and provider attempts.
-- Workspace, user, session, API key, route, and surface dimensions.
+Each group reports request/failure/retry counts, latency, input tokens, cached input, cache creation, output, reasoning, total tokens, and cost. Classifier cost is tracked separately from provider execution cost.
 
-## Usage And Cost Pages
+Use logical-model and deployment views together. A stable logical model can move between deployments without an application change; a deployment can serve several logical models.
 
-Use **Usage / Cost** to answer:
+## Pricing
 
-- Which users, workspaces, sessions, providers, or routes drive volume?
-- How much did the selected model cost?
-- How much would the balanced baseline have cost?
-- Which routes produce savings or overruns?
-- Are cached tokens actually reducing effective cost?
+Pricing belongs to `model_deployments`. It can represent the actual upstream model, region, or private endpoint contract being invoked. Provider usage is normalized and priced at write time across:
 
-## Pricing Resolution
+- uncached input;
+- cache reads;
+- cache writes;
+- output.
 
-Pricing resolves in this order:
+Usage ledger rows retain their computed costs. Updating deployment pricing affects future traffic and current baseline comparisons, not the historical ledger value.
 
-1. Built-in defaults in `apps/proxy/src/pricing.ts`.
-2. `MODEL_COSTS_JSON` at process start.
-3. Per-organization overrides from the console.
+The Billing page edits deployment pricing. Unpriced deployment checks compare observed deployment usage with configured deployment rows.
 
-Ledger rows keep the rates in effect when they were written. Baseline comparisons can use current pricing for what-if analysis.
+## Baselines And Savings
 
-## Savings Model
+Baseline models are configured per ingress wire for comparative reporting. Savings are analytical, not a substitute for physical cost accounting. Confirm that the baseline model and rates are appropriate before using savings in business reporting.
 
-Proxy compares the actual selected model against a baseline route model using the same token counts. This gives an operational estimate of routing savings, not provider invoice truth.
+Do not describe a classifier's cheaper selection as savings unless the same normalized token usage and current pricing are compared consistently.
 
-Use savings to spot:
+## Cache Analytics
 
-- Requests where a cheaper tier worked.
-- Requests where an expensive tier was justified.
-- Workspaces that consistently need deeper models.
-- Routing configs that drift from expected cost behavior.
+Cached input and cache-creation tokens are separate from ordinary input because providers bill them differently. Watch both token share and request hit rate. A high token hit rate with a low request hit rate can be valid when only large requests reuse prefixes.
 
-## Token Attribution
+Use Caching reports for cache bust causes, idle gaps, prewarm outcomes, and compression savings before changing provider cache controls.
 
-Token attribution splits request cost and volume by useful dimensions:
+## Investigation Workflow
 
-- Prompt artifacts and request artifacts.
-- Tool-result compression receipts.
-- Provider attempts.
-- Session and route context.
+1. Set the organization, workspace, and time range.
+2. Start with `logical_model` to find the caller-facing change.
+3. Compare `deployment` and provider groups to locate physical movement.
+4. Split by API key or user for ownership.
+5. Inspect representative requests for resolution and attempt evidence.
+6. Verify deployment pricing and normalized token fields.
+7. Change logical targets, access policy, pricing, or optimization settings only after the evidence identifies the correct boundary.
 
-Use attribution when the question is "what part of the request made this expensive?"
+## Common Misreads
 
-When investigating cache-related spend, use the [prompt caching runbook](../runbooks/prompt-caching.md) for baseline, canary, block-signal, and rollback steps before enabling mutating cache controls.
-
-## Cost Investigation Workflow
-
-1. Open **Usage / Cost** and find the spike by time window.
-2. Group by workspace, user, provider, model, route, or surface.
-3. Open example requests from the expensive group.
-4. Inspect prompt artifacts and compression receipts.
-5. Check whether the route was pinned or classifier-selected.
-6. Adjust routing config, provider pricing, or compression settings if the examples prove a pattern.
-
-## Metrics Versus Ledger
-
-Metrics are process-local operational telemetry. The durable usage ledger and SQL rollups are the audit source of truth.
-
-If metrics and dashboards disagree, trust:
-
-1. `usage_ledger`
-2. Request/session SQL rollups
-3. Durable events
-4. Metrics counters
+| Observation | Verify before concluding |
+| --- | --- |
+| Logical-model spend rose | Request volume, token size, target deployment mix |
+| Deployment spend rose | Pricing change, physical selection, provider cache rate |
+| Classifier cost rose | Router request volume, classifier deployment, retries |
+| Cache savings fell | Deployment change, prefix stability, TTL, request shape |
+| User has unexpected spend | API-key attribution and workspace selection |
+| Historical cost changed in a chart | Whether the chart is ledger cost or recomputed baseline |

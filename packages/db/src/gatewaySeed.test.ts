@@ -14,7 +14,9 @@ describe("AI gateway seed", () => {
   let client: PGlite | undefined;
 
   afterEach(async () => {
-    await client?.close();
+    const current = client;
+    client = undefined;
+    await current?.close();
   });
 
   it("seeds bounded logical models without overwriting operator state on rerun", async () => {
@@ -24,9 +26,7 @@ describe("AI gateway seed", () => {
       DEFAULT_ORGANIZATION_ID: "org_gateway_seed",
       SEED_USER_ID: "user_gateway_seed",
       PROXY_TOKEN: "gateway-seed-token",
-      SEED_EXTERNAL_ECONOMY_TOKEN: "gateway-external-economy-token",
-      ANTHROPIC_BALANCED_MODEL: "claude-sonnet-seed",
-      ANTHROPIC_HARD_MODEL: "claude-sonnet-seed"
+      SEED_EXTERNAL_ECONOMY_TOKEN: "gateway-external-economy-token"
     });
 
     await seedDatabase(db, options);
@@ -42,11 +42,11 @@ describe("AI gateway seed", () => {
     expect(secondCounts).toEqual(firstCounts);
     expect(secondCounts).toEqual({
       connections: 3,
-      canonicalModels: 9,
-      deployments: 9,
-      bindings: 13,
+      canonicalModels: 8,
+      deployments: 8,
+      bindings: 11,
       logicalModels: 3,
-      targets: 11,
+      targets: 10,
       profiles: 2,
       grants: 4
     });
@@ -78,7 +78,7 @@ describe("AI gateway seed", () => {
       priority: 0,
       enabled: false
     }]);
-    expect(codingRows).toHaveLength(8);
+    expect(codingRows).toHaveLength(7);
     expect(codingRows.every((row) => row.resolution_kind === "router" && row.router_kind === "classifier")).toBe(true);
     expect(codingRows.map((row) => row.upstream_model_id)).toContain("claude-fable-5");
     expect(codingRows.map((row) => row.upstream_model_id)).not.toContain(options.classifierModel);
@@ -138,7 +138,7 @@ describe("AI gateway seed", () => {
     `);
     expect(keys.rows).toEqual([
       { name: "Default local API key", profile: "opendoor-engineer", revoked: false },
-      { name: "External economy seed key", profile: "external-economy", revoked: true }
+      { name: "External economy seed key", profile: "external-economy", revoked: false }
     ]);
     const externalTargets = await client.query<{ upstream_model_id: string }>(`
       select md.upstream_model_id
@@ -193,16 +193,19 @@ describe("AI gateway seed", () => {
     expect(afterCapabilities).toEqual(beforeCapabilities);
   });
 
-  it("keeps economy targets independent from arbitrary fast-model overrides", async () => {
+  it("keeps economy targets independent from additional coding models", async () => {
     client = await migratedClient();
     const db = createPgliteDatabase(client);
     const options = seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "org_gateway_economy",
       SEED_USER_ID: "user_gateway_economy",
-      PROXY_TOKEN: "gateway-economy-token",
-      OPENAI_FAST_MODEL: "gpt-5.5-pro",
-      ANTHROPIC_FAST_MODEL: "claude-fable-5"
+      PROXY_TOKEN: "gateway-economy-token"
     });
+    options.models = [
+      ...options.models,
+      { provider: "openai", model: "gpt-5.5-pro", surface: "openai-responses" },
+      { provider: "anthropic", model: "claude-fable-5", surface: "anthropic-messages" }
+    ];
 
     await seedDatabase(db, options);
 

@@ -12,8 +12,6 @@
     "start:prod": "node --env-file-if-exists=../../.env dist/src/server.js",
     "smoke:harnesses": "node --env-file-if-exists=../../.env dist/scripts/smoke-harnesses.js",
     "smoke:deployed": "node --env-file-if-exists=../../.env dist/scripts/smoke-deployed.js",
-    "smoke:local-openai": "node --env-file-if-exists=../../.env dist/scripts/smoke-local-openai-provider.js",
-    "smoke:bedrock": "node --env-file-if-exists=../../.env dist/scripts/smoke-bedrock.js",
     "smoke": "node --env-file-if-exists=../../.env dist/scripts/smoke-proxy.js",
     "load": "node --env-file-if-exists=../../.env dist/scripts/load-proxy.js",
     "gateway-config": "tsx --env-file-if-exists=../../.env scripts/gateway-config.ts",

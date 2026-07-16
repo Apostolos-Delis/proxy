@@ -17,7 +17,7 @@ export function ConfigureStep({ draft, onChange }: {
         sub="Name the key after the workload that will hold it, then choose the harness setup snippets to generate."
       />
       <div className="wizard-step-body">
-        <label className="routing-create-field wizard-name-field">
+        <label className="inline-form-field wizard-name-field">
           <span>Name</span>
           <input
             value={draft.name}

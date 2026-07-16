@@ -1,6 +1,5 @@
 import { graphql } from "./gql";
 import type {
-  RouteOutputViewQuery,
   UsageCostDashboardViewQuery,
   UsageDashboardViewQuery,
   UsageLookupsQuery,
@@ -206,65 +205,19 @@ const UsageLookupsDocument = graphql(`
   }
 `);
 
-const RouteOutputViewDocument = graphql(`
-  query RouteOutputView($start: String, $end: String) {
-    routeOutputReport(start: $start, end: $end) {
-      routes {
-        route
-        requests
-        outputTokens
-        reasoningTokens
-        avgOutputTokens
-        reasoningShare
-        outputCost
-      }
-      models {
+const UnpricedDeploymentsDocument = graphql(`
+  query UnpricedDeployments {
+    usage(groupBy: deployment) {
+      data {
         key
-        requests
-        outputTokens
-        reasoningTokens
-        avgOutputTokens
-        reasoningShare
-        outputCost
-      }
-      users {
-        key
-        requests
-        outputTokens
-        reasoningTokens
-        avgOutputTokens
-        reasoningShare
-        outputCost
-      }
-      apiKeys {
-        key
-        requests
-        outputTokens
-        reasoningTokens
-        avgOutputTokens
-        reasoningShare
-        outputCost
-      }
-      workspaces {
-        key
-        requests
-        outputTokens
-        reasoningTokens
-        avgOutputTokens
-        reasoningShare
-        outputCost
+        requestCount
       }
     }
-  }
-`);
-
-const UnpricedModelsDocument = graphql(`
-  query UnpricedModels {
-    modelPricing {
-      model
-      provider
-      source
-      seenInTraffic
+    gatewayModelDeployments {
+      id
+      upstreamModelId
+      providerConnectionId
+      pricing
     }
   }
 `);
@@ -273,8 +226,6 @@ export type UsageResponse = UsageReportViewQuery["usage"];
 export type UsageGroup = UsageResponse["totals"];
 export type UsageLookupUser = UsageLookupsQuery["members"][number];
 export type UsageLookupApiKey = UsageLookupsQuery["apiKeys"][number];
-export type RouteOutputReport = RouteOutputViewQuery["routeOutputReport"];
-export type RouteOutputRow = RouteOutputReport["routes"][number];
 
 export type UsageRangeFilters = {
   start?: string;
@@ -290,14 +241,16 @@ export type UsageChartGroup = Pick<UsageGroup, "key" | "requestCount"> & {
   usage: Pick<UsageGroup["usage"], "inputTokens" | "cachedInputTokens" | "totalTokens">;
   cost: Pick<UsageGroup["cost"], "selected">;
 };
-type RawTimeseriesLike = Omit<RawTimeseries, "groups" | "points"> & {
+type RawTimeseriesLike = Pick<RawTimeseries, "groupBy" | "interval" | "start" | "end"> & {
   groups: UsageChartGroup[];
-  points: Array<Omit<RawTimeseries["points"][number], "totals" | "groups"> & {
+  points: Array<{
+    ts: string;
     totals: UsageChartGroup;
-    groups?: Record<string, UsageGroup> | null;
+    groups: unknown;
   }>;
 };
-export type UsageTimeseriesPoint = Omit<RawTimeseries["points"][number], "totals" | "groups"> & {
+export type UsageTimeseriesPoint = {
+  ts: string;
   totals: UsageChartGroup;
   groups: Record<string, UsageGroup>;
 };
@@ -399,18 +352,33 @@ export async function fetchUsageLookups() {
   return gqlFetch(UsageLookupsDocument);
 }
 
-export async function fetchRouteOutputReport(filters: UsageRangeFilters = {}) {
-  return (await gqlFetch(RouteOutputViewDocument, filters)).routeOutputReport;
-}
-
-export type UnpricedModel = { model: string; provider: string | null };
+export type UnpricedModel = {
+  deploymentId: string;
+  model: string;
+  providerConnectionId: string | null;
+};
 
 // Models that carried traffic but have no rate, so their spend books as $0 and
 // silently understates total cost. The "unknown" attempt model can never be
 // priced, so it always belongs here when present.
 export async function fetchUnpricedModels(): Promise<UnpricedModel[]> {
-  const rows = (await gqlFetch(UnpricedModelsDocument)).modelPricing;
-  return rows
-    .filter((row) => row.seenInTraffic && (row.source === "unpriced" || row.model === "unknown"))
-    .map((row) => ({ model: row.model, provider: row.provider ?? null }));
+  const data = await gqlFetch(UnpricedDeploymentsDocument);
+  const deployments = new Map(data.gatewayModelDeployments.map((deployment) => [deployment.id, deployment]));
+  return data.usage.data.flatMap((group): UnpricedModel[] => {
+    if (group.requestCount <= 0) return [];
+    const deployment = deployments.get(group.key);
+    if (!deployment) {
+      return [{ deploymentId: group.key, model: "unknown", providerConnectionId: null }];
+    }
+    const pricing = deployment.pricing;
+    const priced = pricing && typeof pricing === "object" && !Array.isArray(pricing) &&
+      typeof (pricing as Record<string, unknown>).inputCostPerMtok === "number" &&
+      typeof (pricing as Record<string, unknown>).outputCostPerMtok === "number";
+    if (priced) return [];
+    return [{
+      deploymentId: deployment.id,
+      model: deployment.upstreamModelId,
+      providerConnectionId: deployment.providerConnectionId
+    }];
+  });
 }

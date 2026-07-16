@@ -8,12 +8,8 @@ import { CreateApiKeyPage } from "./keys/createKeyPage";
 import { KeysPage } from "./keysPage";
 import { LogsPage } from "./logsPage";
 import { OverviewPage } from "./overviewPage";
-import { ProvidersPage } from "./providersPage";
 import { PromptDetailPage } from "./promptDetailPage";
 import { PromptsPage } from "./promptsPage";
-import { CreateRoutingConfigPage } from "./routing/createConfigPage";
-import { RoutingConfigDetailPage } from "./routingConfigDetailPage";
-import { RoutingConfigsPage } from "./routingConfigsPage";
 import { SessionDetailPage } from "./sessionDetailPage";
 import { SettingsPage } from "./settingsPage";
 import { AppShell } from "./shell";
@@ -114,34 +110,6 @@ const keysCreateRoute = createRoute({
   component: CreateApiKeyPage
 });
 
-const providersRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/providers",
-  beforeLoad: requireAdmin,
-  component: ProvidersPage
-});
-
-const routingConfigsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/routing",
-  beforeLoad: requireAdmin,
-  component: RoutingConfigsPage
-});
-
-const routingConfigCreateRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/routing/new",
-  beforeLoad: requireAdmin,
-  component: CreateRoutingConfigPage
-});
-
-const routingConfigDetailRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/routing/$configId",
-  beforeLoad: requireAdmin,
-  component: RoutingConfigDetailRoutePage
-});
-
 const usersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/users",
@@ -177,10 +145,6 @@ const routeTree = rootRoute.addChildren([
   logDetailRoute,
   keysRoute,
   keysCreateRoute,
-  providersRoute,
-  routingConfigsRoute,
-  routingConfigCreateRoute,
-  routingConfigDetailRoute,
   usersRoute,
   billingRoute,
   settingsRoute
@@ -216,9 +180,4 @@ function SessionDetailRoutePage() {
 function LogDetailRoutePage() {
   const { artifactId } = logDetailRoute.useParams();
   return <PromptDetailPage artifactId={artifactId} />;
-}
-
-function RoutingConfigDetailRoutePage() {
-  const { configId } = routingConfigDetailRoute.useParams();
-  return <RoutingConfigDetailPage configId={configId} />;
 }

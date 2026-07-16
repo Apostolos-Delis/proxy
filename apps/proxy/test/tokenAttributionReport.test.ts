@@ -8,7 +8,7 @@ import { adminGql, captureFixture, type PromptTestFixture } from "./promptTestFi
 function attributionPayload(overrides: Record<string, unknown> = {}) {
   return {
     surface: "anthropic-messages",
-    requestedModel: "claude-router-auto",
+    requestedModel: "coding-auto",
     systemPrompt: { chars: 1000, estimatedTokens: 250 },
     orgSystemPrompt: { chars: 40, estimatedTokens: 10 },
     toolSchemas: { chars: 2000, estimatedTokens: 500, count: 3 },

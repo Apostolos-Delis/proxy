@@ -17,48 +17,34 @@ describe("persistent settings admin APIs", () => {
     tempDir = undefined;
   });
 
-  it("loads JSON settings at startup with environment overrides taking precedence", async () => {
+  it("loads prompt-capture JSON settings without creating runtime routing controls", async () => {
     const settingsPath = await tempSettingsPath();
     await writeFile(settingsPath, JSON.stringify({
       schemaVersion: 1,
-      classifier: {
-        model: "settings-classifier",
-        timeoutMs: 2400,
-        maxAttempts: 4,
-        allowRedactedExcerpt: true
+      promptCapture: {
+        promptCaptureMode: "hash_only",
+        retentionDays: 14
       },
-      routeQuality: {
-        lowConfidenceThreshold: 0.42
-      },
-      promptCapture: {}
-    }), "utf8");
-
-    const config = loadConfig({
-      PROXY_SETTINGS_PATH: settingsPath,
-      CLASSIFIER_MODEL: "env-classifier"
-    });
-
-    expect(config.settingsPath).toBe(settingsPath);
-    expect(config.classifierModel).toBe("env-classifier");
-    expect(config.classifierTimeoutMs).toBe(2400);
-    expect(config.classifierMaxAttempts).toBe(4);
-    expect(config.classifierAllowRedactedExcerpt).toBe(true);
-    expect(config.routeQualityLowConfidenceThreshold).toBe(0.42);
-  });
-
-  it("ignores the budgets block in settings files saved before limits moved to routing configs", async () => {
-    const settingsPath = await tempSettingsPath();
-    await writeFile(settingsPath, JSON.stringify({
-      schemaVersion: 1,
-      classifier: { model: "legacy-classifier" },
-      budgets: { warningEstimatedInputTokens: 1000, maxEstimatedInputTokens: 2000, maxRoute: "hard" },
-      routeQuality: {},
-      promptCapture: {}
     }), "utf8");
 
     const config = loadConfig({ PROXY_SETTINGS_PATH: settingsPath });
 
-    expect(config.classifierModel).toBe("legacy-classifier");
+    expect(config.settingsPath).toBe(settingsPath);
+    expect("classifierModel" in config).toBe(false);
+    expect("routeQualityLowConfidenceThreshold" in config).toBe(false);
+  });
+
+  it("rejects legacy control-plane blocks instead of keeping dual configuration paths", async () => {
+    const settingsPath = await tempSettingsPath();
+    await writeFile(settingsPath, JSON.stringify({
+      schemaVersion: 1,
+      classifier: { model: "legacy-classifier" },
+      budgets: { maxEstimatedInputTokens: 2000 },
+      routeQuality: {},
+      promptCapture: {}
+    }), "utf8");
+
+    expect(() => loadConfig({ PROXY_SETTINGS_PATH: settingsPath })).toThrow("Unrecognized keys");
   });
 
   it("writes validated JSON settings and applies prompt capture persistence", async () => {
@@ -79,7 +65,7 @@ describe("persistent settings admin APIs", () => {
         query: `mutation UpdateSettings($input: SettingsInput!) {
           updateSettings(input: $input) {
             storage { format path }
-            settings { systemPrompt classifier { model } costBaseline { anthropicMessagesModel openaiResponsesModel openaiChatModel } }
+            settings { systemPrompt costBaseline { anthropicMessagesModel openaiResponsesModel openaiChatModel } }
           }
         }`,
         variables: {
@@ -90,15 +76,6 @@ describe("persistent settings admin APIs", () => {
               anthropicMessagesModel: "claude-opus-4-8",
               openaiResponsesModel: "gpt-5.5-pro",
               openaiChatModel: "gpt-5.5-chat-baseline"
-            },
-            classifier: {
-              model: "route-classifier-ui",
-              timeoutMs: 1800,
-              maxAttempts: 3,
-              allowRedactedExcerpt: false
-            },
-            routeQuality: {
-              lowConfidenceThreshold: 0.6
             },
             promptCapture: {
               promptCaptureMode: "hash_only",
@@ -115,15 +92,17 @@ describe("persistent settings admin APIs", () => {
 
     expect(response.statusCode).toBe(200);
     expect(body.storage).toEqual(expect.objectContaining({ format: "json", path: settingsPath }));
-    expect(body.settings.classifier.model).toBe("route-classifier-ui");
     expect(body.settings.systemPrompt).toBe("Follow organization proxy policy.");
     expect(body.settings.costBaseline).toEqual({
       anthropicMessagesModel: "claude-opus-4-8",
       openaiResponsesModel: "gpt-5.5-pro",
       openaiChatModel: "gpt-5.5-chat-baseline"
     });
-    expect(file.classifier.timeoutMs).toBe(1800);
     expect(file.promptCapture.promptCaptureMode).toBe("hash_only");
+    expect(file).toEqual({
+      schemaVersion: 1,
+      promptCapture: { promptCaptureMode: "hash_only", retentionDays: 7 }
+    });
     expect(file.systemPrompt).toBeUndefined();
     expect(file.costBaseline).toBeUndefined();
     expect(orgSystemPrompt.value).toBe("Follow organization proxy policy.");
@@ -131,52 +110,6 @@ describe("persistent settings admin APIs", () => {
       promptCaptureMode: "hash_only",
       retentionDays: 7
     });
-  });
-
-  it("rejects unpriced baseline models before writing settings", async () => {
-    const settingsPath = await tempSettingsPath();
-    const app = buildServer(loadConfig({
-      PROXY_SETTINGS_PATH: settingsPath,
-      LOG_LEVEL: "fatal"
-    }), { persistence: fakePersistence() });
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/admin/graphql",
-      headers: adminHeaders(),
-      payload: {
-        query: `mutation UpdateSettings($input: SettingsInput!) {
-          updateSettings(input: $input) {
-            organizationId
-          }
-        }`,
-        variables: {
-          input: {
-            schemaVersion: 1,
-            costBaseline: {
-              anthropicMessagesModel: "claude-fable-5",
-              openaiResponsesModel: "gpt-5.5",
-              openaiChatModel: "gpt-chat-not-a-model"
-            },
-            classifier: {
-              model: "route-classifier-ui",
-              timeoutMs: 1800,
-              maxAttempts: 3,
-              allowRedactedExcerpt: false
-            },
-            routeQuality: {},
-            promptCapture: {}
-          }
-        }
-      }
-    });
-    const body = response.json();
-
-    await app.close();
-
-    expect(body.errors?.[0]?.message).toBe("baseline_model_unpriced: gpt-chat-not-a-model");
-    expect(body.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
-    await expect(readFile(settingsPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("rejects invalid settings without writing them", async () => {
@@ -199,14 +132,10 @@ describe("persistent settings admin APIs", () => {
         variables: {
           input: {
             schemaVersion: 1,
-            classifier: {
-              model: "route-classifier-ui",
-              timeoutMs: 0,
-              maxAttempts: 3,
-              allowRedactedExcerpt: false
-            },
-            routeQuality: {},
-            promptCapture: {}
+            promptCapture: {
+              promptCaptureMode: "raw_text",
+              retentionDays: -1
+            }
           }
         }
       }
@@ -219,54 +148,6 @@ describe("persistent settings admin APIs", () => {
     expect(body.errors?.[0]?.message).toBe("invalid_settings");
     expect(body.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
     await expect(readFile(settingsPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("exposes the subscription oauth flag on the settings query when enabled", async () => {
-    const app = buildServer(
-      loadConfig({ SUBSCRIPTION_OAUTH_ENABLED: "true", LOG_LEVEL: "fatal" }),
-      { persistence: fakePersistence() }
-    );
-    const response = await app.inject({
-      method: "POST",
-      url: "/admin/graphql",
-      headers: adminHeaders(),
-      payload: { query: "query { settings { subscriptionOAuthEnabled } }" }
-    });
-    await app.close();
-
-    expect(response.json().data?.settings?.subscriptionOAuthEnabled).toBe(true);
-  });
-
-  it("defaults the subscription oauth flag to true on the settings query", async () => {
-    const app = buildServer(
-      loadConfig({ LOG_LEVEL: "fatal" }),
-      { persistence: fakePersistence() }
-    );
-    const response = await app.inject({
-      method: "POST",
-      url: "/admin/graphql",
-      headers: adminHeaders(),
-      payload: { query: "query { settings { subscriptionOAuthEnabled } }" }
-    });
-    await app.close();
-
-    expect(response.json().data?.settings?.subscriptionOAuthEnabled).toBe(true);
-  });
-
-  it("exposes the disabled subscription oauth flag on the settings query", async () => {
-    const app = buildServer(
-      loadConfig({ SUBSCRIPTION_OAUTH_ENABLED: "false", LOG_LEVEL: "fatal" }),
-      { persistence: fakePersistence() }
-    );
-    const response = await app.inject({
-      method: "POST",
-      url: "/admin/graphql",
-      headers: adminHeaders(),
-      payload: { query: "query { settings { subscriptionOAuthEnabled } }" }
-    });
-    await app.close();
-
-    expect(response.json().data?.settings?.subscriptionOAuthEnabled).toBe(false);
   });
 
   async function tempSettingsPath() {
@@ -289,13 +170,7 @@ function fakePersistence(
     openaiResponsesModel: "gpt-5.5",
     openaiChatModel: "gpt-5.5"
   };
-  const pricedModels = ["claude-fable-5", "claude-opus-4-8", "gpt-5.5", "gpt-5.5-pro", "gpt-5.5-chat-baseline"];
   return {
-    adminQueries: {
-      forScope: () => ({
-        modelPricing: async () => pricedModels.map((model) => ({ model, source: "default" }))
-      })
-    },
     adminSessions: {
       resolve: async (token: string) => token === "test-admin-session"
         ? {

@@ -42,17 +42,6 @@ export function classifierCostByRequestId(classifierUsageRows: UsageLedgerRow[])
   return byRequest;
 }
 
-export function providerSkipReasonsByRequest(attempts: ProviderAttemptRow[]) {
-  const byRequest = new Map<string, string[]>();
-  for (const attempt of attempts) {
-    if (!attempt.skipReason) continue;
-    const reasons = byRequest.get(attempt.requestId) ?? [];
-    if (!reasons.includes(attempt.skipReason)) reasons.push(attempt.skipReason);
-    byRequest.set(attempt.requestId, reasons);
-  }
-  return byRequest;
-}
-
 export function usageAggregateForRow(row: UsageLedgerRow) {
   const usage = emptyUsageAggregate();
   addUsageRow(usage, row);

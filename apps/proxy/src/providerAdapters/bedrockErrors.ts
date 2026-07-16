@@ -110,25 +110,25 @@ function normalizeBedrockError(input: BedrockErrorClassificationInput) {
 
 function bedrockClassificationRule(input: ReturnType<typeof normalizeBedrockError>): BedrockClassificationRule {
   if (input.timedOut || input.lowerName.includes("timeout")) {
-    return rule("upstream_timeout", "upstream_timeout", "unknown_transient", "proxy_policy", true, false, "provider_account", 30_000);
+    return rule("upstream_timeout", "upstream_timeout", "unknown_transient", "proxy_policy", true, false, "provider_connection", 30_000);
   }
   if (streamPermissionDenied(input)) {
-    return rule("stream_permission_denied", "auth_denied", "model_access_denied", "response_body", false, true, "provider_account_model");
+    return rule("stream_permission_denied", "auth_denied", "model_access_denied", "response_body", false, true, "deployment");
   }
   if (modelAccessDenied(input)) {
-    return rule("model_access_denied", "auth_denied", "model_access_denied", "response_body", false, true, "provider_account_model");
+    return rule("model_access_denied", "auth_denied", "model_access_denied", "response_body", false, true, "deployment");
   }
   if (authMissing(input)) {
-    return rule("auth_missing", "auth_denied", "auth_invalid", "proxy_policy", false, true, "provider_account");
+    return rule("auth_missing", "auth_denied", "auth_invalid", "proxy_policy", false, true, "provider_connection");
   }
   if (authDenied(input)) {
-    return rule("auth_denied", "auth_denied", "auth_invalid", "provider_status", false, true, "provider_account");
+    return rule("auth_denied", "auth_denied", "auth_invalid", "provider_status", false, true, "provider_connection");
   }
   if (quotaExceeded(input)) {
-    return rule("quota_exceeded", "quota_exceeded", "quota_exhausted", "response_body", true, false, "provider_account", 5 * minuteMs);
+    return rule("quota_exceeded", "quota_exceeded", "quota_exhausted", "response_body", true, false, "provider_connection", 5 * minuteMs);
   }
   if (rateLimited(input)) {
-    return rule("rate_limited", "rate_limited", "rate_limited", "provider_status", true, false, "provider_account", minuteMs);
+    return rule("rate_limited", "rate_limited", "rate_limited", "provider_status", true, false, "provider_connection", minuteMs);
   }
   if (contextTooLarge(input)) {
     return rule("context_too_large", "context_too_large", "context_overflow", "response_body", false, true, "request_only");
@@ -140,16 +140,16 @@ function bedrockClassificationRule(input: ReturnType<typeof normalizeBedrockErro
     return rule("unsupported_request_shape", "unsupported_request_shape", "request_incompatible", "response_body", false, true, "request_only");
   }
   if (regionUnavailable(input)) {
-    return rule("region_unavailable", "upstream_unavailable", "provider_unavailable", "response_body", true, false, "provider_account", 10 * minuteMs);
+    return rule("region_unavailable", "upstream_unavailable", "provider_unavailable", "response_body", true, false, "provider_connection", 10 * minuteMs);
   }
   if (modelUnavailable(input)) {
-    return rule("model_unavailable", "upstream_unavailable", "model_unavailable", "response_body", true, false, "provider_account_model", 10 * minuteMs);
+    return rule("model_unavailable", "upstream_unavailable", "model_unavailable", "response_body", true, false, "deployment", 10 * minuteMs);
   }
   if (providerUnavailable(input)) {
-    return rule("transport_failure", "upstream_unavailable", "provider_unavailable", "provider_status", true, false, "provider", 30_000);
+    return rule("transport_failure", "upstream_unavailable", "provider_unavailable", "provider_status", true, false, "provider_connection", 30_000);
   }
   if (input.status !== undefined && input.status >= 500) {
-    return rule("transport_failure", "network_error", "unknown_transient", "provider_status", true, false, "provider_account", 30_000);
+    return rule("transport_failure", "network_error", "unknown_transient", "provider_status", true, false, "provider_connection", 30_000);
   }
   return rule("unknown", "unknown", "unknown_terminal", "proxy_policy", false, true, "request_only");
 }

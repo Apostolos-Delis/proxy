@@ -35,7 +35,6 @@ export type PromptCachePrewarmCandidate = {
   estimatedCostMicros: number;
   currentDailySpendMicros?: number;
   currentHourlyJobs?: number;
-  routingConfigVersionId?: string;
   sessionId?: string;
   now?: Date;
   ttlMs?: number;
@@ -199,7 +198,7 @@ function prewarmJob(settings: PromptCachePrewarmSettings, candidate: PromptCache
     candidate.provider,
     candidate.model,
     candidate.triggerSource,
-    candidate.routingConfigVersionId ?? candidate.sessionId ?? "none",
+    candidate.sessionId ?? "none",
     candidate.prefixDigest,
     ttlBucket
   ].join(":");
@@ -214,7 +213,6 @@ function prewarmJob(settings: PromptCachePrewarmSettings, candidate: PromptCache
     status: settings.enabled ? "queued" : "planned",
     idempotencyKey: sha256(idempotencyKey),
     prefixDigest: candidate.prefixDigest,
-    routingConfigVersionId: candidate.routingConfigVersionId,
     sessionId: candidate.sessionId,
     scheduledFor: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
@@ -238,7 +236,6 @@ function prewarmEventPayload(job: PromptCachePrewarmJob, extra: JsonObject): Jso
     spendCapMicros: job.spendCapMicros,
     estimatedCostMicros: job.estimatedCostMicros,
   };
-  if (job.routingConfigVersionId !== undefined) payload.routingConfigVersionId = job.routingConfigVersionId;
   if (job.sessionId !== undefined) payload.sessionId = job.sessionId;
   if (job.actualCostMicros !== undefined) payload.actualCostMicros = job.actualCostMicros;
   if (job.providerCacheRef !== undefined) payload.providerCacheRef = job.providerCacheRef;

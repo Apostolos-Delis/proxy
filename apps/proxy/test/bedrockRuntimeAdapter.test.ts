@@ -238,14 +238,14 @@ describe("Bedrock runtime adapter", () => {
   it("rewrites selected Bedrock model, system prompt, and allowlisted metadata", () => {
     const body = rewriteSurfaceRequest(
       {
-        model: "router-hard",
+        model: "coding-auto",
         messages: [{ role: "user", content: "hello" }],
         stream: true
       },
       {
         outcome: "route",
         surface: "openai-chat",
-        requestedModel: "router-hard",
+        requestedModel: "coding-auto",
         selectedModel: "amazon.nova-pro-v1:0",
         provider: "amazon-bedrock",
         providerSettings: {
@@ -253,7 +253,7 @@ describe("Bedrock runtime adapter", () => {
           model: "amazon.nova-pro-v1:0",
           dialect: "bedrock-converse",
           deployment: {
-            key: "hard:0",
+            key: "deployment_bedrock_nova_pro",
             provider: "amazon-bedrock",
             model: "amazon.nova-pro-v1:0",
             order: 0,
@@ -269,7 +269,7 @@ describe("Bedrock runtime adapter", () => {
             maxOutputTokens: 512,
             metadata: {
               bedrock: {
-                requestMetadata: { route: "hard" },
+                requestMetadata: { workload: "coding" },
                 guardrailIdentifier: "guardrail-1",
                 guardrailVersion: "1",
                 serviceTier: "optimized",
@@ -289,7 +289,7 @@ describe("Bedrock runtime adapter", () => {
       modelId: "amazon.nova-pro-v1:0",
       system: [{ text: "System prompt" }],
       inferenceConfig: { maxTokens: 512 },
-      requestMetadata: { route: "hard" },
+      requestMetadata: { workload: "coding" },
       guardrailConfig: {
         guardrailIdentifier: "guardrail-1",
         guardrailVersion: "1"
@@ -322,7 +322,7 @@ describe("Bedrock runtime adapter", () => {
     };
     const body = rewriteSurfaceRequest(
       {
-        model: "router-hard",
+        model: "coding-auto",
         messages: [{ role: "user", content: "hello" }]
       },
       bedrockRouteDecision({
@@ -357,7 +357,7 @@ describe("Bedrock runtime adapter", () => {
     const arn = "arn:aws:bedrock:us-east-1:123456789012:inference-profile/app-profile";
     const body = rewriteSurfaceRequest(
       {
-        model: "router-hard",
+        model: "coding-auto",
         messages: [{ role: "user", content: "hello" }]
       },
       bedrockRouteDecision({
@@ -401,7 +401,7 @@ function forwardInput(input: {
     decision: {
       outcome: "route",
       surface: input.surface,
-      requestedModel: "router-hard",
+      requestedModel: "coding-auto",
       selectedModel,
       provider: "amazon-bedrock",
       providerSettings: {
@@ -409,7 +409,7 @@ function forwardInput(input: {
         model: selectedModel,
         dialect: "bedrock-converse",
         deployment: {
-          key: "hard:0",
+          key: `deployment_bedrock_${selectedModel}`,
           provider: "amazon-bedrock",
           model: selectedModel,
           order: 0,
@@ -432,10 +432,9 @@ function forwardInput(input: {
     reply: {} as ProviderForwardInput["reply"],
     credential: {
       provider: "amazon-bedrock",
-      providerAccountId: "bedrock_account",
+      providerConnectionId: "bedrock_connection",
       token: "bedrock-bearer",
-      authType: "api_key",
-      providerAccountSettings: {
+      connectionSettings: {
         credentialMode: "aws_bedrock_bearer_token",
         region: "us-east-1"
       }
@@ -450,7 +449,7 @@ function bedrockRouteDecision(input: {
   return {
     outcome: "route" as const,
     surface: "openai-chat" as const,
-    requestedModel: "router-hard",
+    requestedModel: "coding-auto",
     selectedModel: input.selectedModel,
     provider: "amazon-bedrock" as const,
     providerSettings: {
@@ -458,7 +457,7 @@ function bedrockRouteDecision(input: {
       model: input.selectedModel,
       dialect: "bedrock-converse" as const,
       deployment: {
-        key: "hard:0",
+        key: `deployment_bedrock_${input.selectedModel}`,
         provider: "amazon-bedrock" as const,
         model: input.selectedModel,
         order: 0,

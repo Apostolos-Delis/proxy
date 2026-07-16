@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Boxes, Languages, Layers, Shield, TriangleAlert, Users } from "lucide-react";
+import { Boxes, Languages, Layers, Shield, Users } from "lucide-react";
 
 import { compactId, formatCompact, formatDateTime, formatMoney } from "./format";
 import { promptDetailQueryOptions } from "./promptDetailPage";
@@ -9,16 +9,15 @@ import {
   promptRows,
   requestSearchValue,
   selectedCost,
+  selectedLogicalModel,
   selectedModel,
-  skipReasonLabel,
   terminalStatus,
   totalTokens,
   translationMode,
   type PromptLogRow
 } from "./requestsPageData";
-import { RoutingConfigMicro } from "./routingSnapshot";
 import { optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
-import { StatusIndicator, UserCell } from "./ui";
+import { RouteBadge, StatusIndicator, UserCell } from "./ui";
 
 export { promptRows, requestSearchValue };
 
@@ -40,11 +39,12 @@ export const requestAdvancedFields: ConsoleTableAdvancedField<PromptLogRow>[] = 
   { id: "model", label: "Model", getValue: selectedModel },
   { id: "status", label: "Status", getValue: terminalStatus },
   { id: "surface", label: "Surface", getValue: (row) => row.prompt.surface },
-  { id: "route", label: "Route", getValue: (row) => row.prompt.finalRoute ?? row.request?.finalRoute },
+  { id: "logicalModel", label: "Logical model", getValue: selectedLogicalModel },
   { id: "provider", label: "Provider", getValue: (row) => row.prompt.provider ?? row.request?.provider },
+  { id: "deployment", label: "Deployment", getValue: (row) => row.prompt.deploymentId ?? row.request?.deploymentId },
+  { id: "providerConnection", label: "Provider connection", getValue: (row) => row.prompt.providerConnectionId ?? row.request?.providerConnectionId },
   { id: "session", label: "Session", getValue: (row) => row.prompt.sessionId ?? row.request?.sessionId },
   { id: "apiKey", label: "API key", getValue: (row) => row.request?.apiKeyId },
-  { id: "routingConfig", label: "Routing config", getValue: (row) => row.prompt.routingConfig?.configName ?? row.request?.routingConfig?.configName }
 ];
 
 export function requestFilters(rows: PromptLogRow[]): ConsoleTableFilter<PromptLogRow>[] {
@@ -53,7 +53,6 @@ export function requestFilters(rows: PromptLogRow[]): ConsoleTableFilter<PromptL
     { id: "surface", label: "Surface", allLabel: "All surfaces", icon: <Layers />, options: optionItems(rows.map((row) => row.prompt.surface)), getValue: (row) => row.prompt.surface },
     { id: "model", label: "Model", allLabel: "All models", icon: <Boxes />, options: optionItems(rows.map(selectedModel)), getValue: selectedModel },
     { id: "translation", label: "Translation", allLabel: "All modes", icon: <Languages />, options: optionItems(rows.map(translationMode)), getValue: translationMode },
-    { id: "skipReason", label: "Skip reason", allLabel: "All skips", icon: <TriangleAlert />, options: optionItems(rows.flatMap((row) => row.request?.routeSkipReasons.map(skipReasonLabel) ?? [])), getValue: (row) => row.request?.routeSkipReasons.map(skipReasonLabel) ?? [] },
     { id: "status", label: "Status", allLabel: "All statuses", icon: <Shield />, options: optionItems(rows.map(terminalStatus)), getValue: terminalStatus }
   ];
 }
@@ -100,7 +99,7 @@ function ModelCell({ row }: { row: PromptLogRow }) {
         <span className="model-dot" />
         <span className="mono">{selectedModel(row)}</span>
       </span>
-      <RoutingConfigMicro snapshot={row.prompt.routingConfig ?? row.request?.routingConfig} />
+      <RouteBadge route={selectedLogicalModel(row)} />
     </>
   );
 }

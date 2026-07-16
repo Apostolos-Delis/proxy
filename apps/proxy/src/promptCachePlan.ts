@@ -43,7 +43,6 @@ const MIN_TTL_UPGRADE_CACHEABLE_TOKENS = 2048;
 export function promptCachePlanEventPayload(input: {
   surface: Surface;
   model: string;
-  route?: string | null;
   plan: PromptCachePlan;
 }): JsonObject {
   const payload: JsonObject = {
@@ -59,7 +58,6 @@ export function promptCachePlanEventPayload(input: {
       reason: promptCacheSkipReasonLabel(skipped.reason)
     }))
   };
-  if (input.route) payload.route = input.route;
   if (input.plan.cacheKey) payload.cacheKey = input.plan.cacheKey;
   if (input.plan.cacheGroup) payload.cacheGroup = {
     source: input.plan.cacheGroup.source,

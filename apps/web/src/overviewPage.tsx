@@ -28,8 +28,6 @@ const OverviewPageDocument = graphql(`
         }
         routeQuality {
           lowConfidenceCount
-          cheaperLikelyWouldWorkCount
-          cheapCausedRetriesOrRepairsCount
         }
       }
       requests {
@@ -98,7 +96,7 @@ export function OverviewPage() {
           {isAdmin ? (
             <>
               <Link to="/api-keys" className="btn"><KeyRound />Get API key</Link>
-              <Link to="/settings" className="btn btn-primary"><Sparkles />Configure routing</Link>
+              <Link to="/settings" className="btn btn-primary"><Sparkles />Runtime settings</Link>
             </>
           ) : null}
           <ConsoleButton variant="ghost" onClick={exportOverview}><Download />Export</ConsoleButton>
@@ -160,30 +158,16 @@ export function OverviewPage() {
 
       <GlassCard>
         <div className="card-head">
-          <div className="card-title">Route quality</div>
+          <div className="card-title">Gateway quality</div>
           {isAdmin ? <Link to="/logs" className="btn btn-sm"><ArrowUpRight />Open logs</Link> : null}
         </div>
         <div className="quality-grid">
           <QualitySignal
             label="Low confidence"
             count={quality.lowConfidenceCount}
-            caption="flagged route decisions"
+            caption="flagged gateway decisions"
             tone="warn-text"
-            title="Route decisions the classifier marked as lower confidence."
-          />
-          <QualitySignal
-            label="Cheaper likely worked"
-            count={quality.cheaperLikelyWouldWorkCount}
-            caption="downgrade candidates"
-            tone="accent-text"
-            title="Requests where a cheaper route probably would have been acceptable."
-          />
-          <QualitySignal
-            label="Cheap-route retries"
-            count={quality.cheapCausedRetriesOrRepairsCount}
-            caption="retries or repairs after a cheap route"
-            tone="danger-text"
-            title="Requests where a cheap route led to retries or repair attempts."
+            title="Gateway decisions recorded with lower confidence."
           />
         </div>
       </GlassCard>
@@ -196,10 +180,10 @@ function SavingsSummary({ cost }: { cost: { selected: number; baseline: number; 
   if (comparison <= 0) {
     return (
       <>
-        <div className="card-title">Routing savings</div>
+        <div className="card-title">Gateway savings</div>
         <div className="savings-empty">
           <strong>No priced traffic yet</strong>
-          <span>Savings appear once routed models have pricing.</span>
+          <span>Savings appear once model deployments have pricing.</span>
         </div>
       </>
     );
@@ -207,7 +191,7 @@ function SavingsSummary({ cost }: { cost: { selected: number; baseline: number; 
   const rate = cost.baseline > 0 ? cost.savings / cost.baseline : 0;
   return (
     <>
-      <div className="card-title">Routing savings<span className="usage-scope-note">all time</span></div>
+      <div className="card-title">Gateway savings<span className="usage-scope-note">all time</span></div>
       <div className={`stat-value spend-value${cost.savings > 0 ? " accent-text" : ""}`}>{formatMoney(cost.savings)}</div>
       <div className="stat-sub">{formatPercent(Math.abs(rate))} {cost.savings < 0 ? "above" : "below"} baseline</div>
       <div className="savings-meter">

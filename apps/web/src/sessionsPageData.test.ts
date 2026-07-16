@@ -8,7 +8,7 @@ import {
   conversationTurns,
   dominantRequestStatus,
   sessionDurationMs,
-  sessionRoute,
+  sessionLogicalModel,
   sessionUserName,
   sessionWallMs,
   systemSpans,
@@ -39,7 +39,8 @@ function request(requestId: string, createdAt: string, latencyMs: number | null 
     requestId,
     createdAt,
     selectedModel: "gpt-5",
-    finalRoute: "balanced",
+    requestedLogicalModel: "coding-auto",
+    resolvedLogicalModelId: "logical-model-coding-auto",
     terminalStatus: "completed",
     latencyMs,
     selectedCost: 0,
@@ -279,15 +280,12 @@ describe("transcriptText", () => {
   });
 });
 
-describe("sessionRoute", () => {
-  it("prefers the explicit current route", () => {
-    const session = { currentRoute: "deep", routeMix: { fast: 5 } } as unknown as SessionSummary;
-    expect(sessionRoute(session)).toBe("deep");
-  });
-
-  it("falls back to the dominant route in the mix", () => {
-    const session = { currentRoute: null, routeMix: { fast: 1, balanced: 9 } } as unknown as SessionSummary;
-    expect(sessionRoute(session)).toBe("balanced");
+describe("sessionLogicalModel", () => {
+  it("returns the dominant logical model in the mix", () => {
+    const session = {
+      logicalModelMix: { "logical-model-economy-auto": 1, "logical-model-coding-auto": 9 }
+    } as unknown as SessionSummary;
+    expect(sessionLogicalModel(session)).toBe("logical-model-coding-auto");
   });
 });
 

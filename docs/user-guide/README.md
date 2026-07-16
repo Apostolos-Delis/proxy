@@ -2,72 +2,56 @@
 
 # Proxy User Guide
 
-This guide is the operator-facing path through Proxy: get it running, connect a coding agent, route traffic through provider credentials, and use the console to understand what happened.
-
-Use this alongside the root [README](../../README.md). The README is the project overview; this folder is the end-to-end product manual.
+This is the operator path for running the AI gateway, connecting applications and harnesses, controlling model access, and explaining what happened after a request.
 
 ## What Proxy Does
 
-Proxy sits between coding agents and model providers. Clients keep speaking OpenAI or Anthropic-compatible APIs, while Proxy handles:
+Applications continue using OpenAI- or Anthropic-compatible SDKs. Proxy adds:
 
-- API-key authentication and user/workspace attribution.
-- Routing to the right provider/model tier.
-- Provider credential selection, including BYOK and subscription credentials.
-- Sessions, request logs, prompt artifacts, provider attempts, usage, cost, and compression receipts.
-- Operator dashboards for monitoring, analytics, routing configs, settings, and provider health.
-
-## Console Screenshots
-
-The overview dashboard is the first stop for traffic, token volume, spend, and routing savings.
-
-![Proxy overview dashboard showing traffic, token volume, spend, and routing savings](../assets/proxy-overview.png)
-
-The logs view is where operators inspect a request, session, selected model, route, token usage, and cost.
-
-![Proxy logs page showing replayable agent sessions, models, routes, tokens, and cost](../assets/proxy-logs.png)
+- API-key authentication and organization/workspace attribution;
+- logical-model authorization through reusable access profiles;
+- direct or classifier-backed deployment selection;
+- provider connection and API-wire abstraction;
+- request, resolution, provider-attempt, usage, cost, session, and prompt evidence;
+- operational dashboards for traffic, cost, caching, logs, prompts, keys, users, and settings.
 
 ## Read This In Order
 
-1. [Quickstart](quickstart.md): run Proxy locally, log into the console, and send a test request.
-2. [API Keys And Harness Setup](api-keys.md): create Proxy API keys and connect Codex, Claude Code, opencode, Cursor, or SDK callers.
-3. [Provider Auth](provider-auth.md): connect provider API keys, BYOK credentials, and subscription credentials.
-4. [Monitoring](monitoring.md): use the overview, logs, metrics, and provider health signals.
-5. [Sessions And Request Replay](sessions.md): debug agent sessions and inspect prompt/request evidence.
-6. [Analytics And Spend](analytics.md): understand usage, cost, savings, pricing, and token attribution.
-7. [Prompt Caching](prompt-caching.md): understand current provider cache controls, measurements, and operator workflow.
-8. [Token Compression](token-compression.md): enable, preview, and monitor deterministic tool-result compression.
+1. [Quickstart](quickstart.md): start the stack and send a logical-model request.
+2. [API Keys And Harness Setup](api-keys.md): issue keys, assign access profiles, and configure SDKs or harnesses.
+3. [Provider Connections And Credentials](provider-auth.md): configure physical upstream endpoints and secrets.
+4. [Monitoring](monitoring.md): watch traffic and inspect request evidence.
+5. [Sessions And Request Replay](sessions.md): debug a session across logical models and deployments.
+6. [Analytics And Spend](analytics.md): explain usage and deployment-priced cost.
+7. [Prompt Caching](prompt-caching.md): measure provider cache behavior.
+8. [Token Compression](token-compression.md): preview and monitor deterministic tool-result compression.
 
 ## Mental Model
 
-Each request follows the same shape:
+```text
+API key -> access profile -> model grant -> logical model
+  -> eligible deployment -> provider connection + wire binding
+```
 
-1. A client sends traffic to Proxy with a Proxy API key.
-2. Proxy resolves the organization, workspace, user, and routing config.
-3. The request is classified or pinned to a model tier.
-4. The selected provider target resolves an upstream credential.
-5. Proxy forwards the request and records events, attempts, usage, cost, artifacts, and compression receipts.
-6. The console projects those records into dashboards, logs, sessions, and analytics.
+Each request is admitted through one API wire, authorized against one logical model, resolved to one physical deployment, and recorded before provider I/O. Applications never choose provider credentials or internal deployment IDs.
 
-## Common Operator Tasks
+## Common Tasks
 
 | Task | Start here |
 | --- | --- |
 | Run Proxy locally | [Quickstart](quickstart.md) |
-| Create a key for a teammate or harness | [API Keys And Harness Setup](api-keys.md) |
-| Add OpenAI or Anthropic credentials | [Provider Auth](provider-auth.md) |
-| Bind BYOK credentials to a key | [Provider Auth](provider-auth.md#bind-provider-credentials-to-api-keys) |
-| See whether traffic is healthy | [Monitoring](monitoring.md) |
-| Debug a single agent session | [Sessions And Request Replay](sessions.md) |
-| Explain spend or token volume | [Analytics And Spend](analytics.md) |
-| Investigate prompt-cache hits or misses | [Prompt Caching](prompt-caching.md) |
-| Reduce repeated tool-result token cost | [Token Compression](token-compression.md) |
+| Connect an application SDK | [API Keys And Harness Setup](api-keys.md#application-sdks) |
+| Give a harness cheaper model access | [API Keys And Harness Setup](api-keys.md#access-profiles) |
+| Add or rotate an upstream credential | [Provider Connections And Credentials](provider-auth.md) |
+| Add a logical model or deployment | [Gateway control-plane runbook](../runbooks/gateway-control-plane.md) |
+| Debug a request or session | [Monitoring](monitoring.md) and [Sessions](sessions.md) |
+| Explain spend | [Analytics And Spend](analytics.md) |
+| Investigate provider availability | [Provider health runbook](../runbooks/provider-health.md) |
 
-## Related Reference
+## Reference
 
+- [AI gateway architecture](../model-routing-proxy.md)
+- [Gateway control-plane runbook](../runbooks/gateway-control-plane.md)
+- [Gateway TOML V1](../scopes/ai-gateway-core-model-v1/TOML.md)
 - [Harness compatibility matrix](../harnesses/compatibility-matrix.md)
-- [opencode setup](../harnesses/opencode.md)
-- [Cursor BYOK setup](../harnesses/cursor-byok.md)
-- [Claude Code setup](../harnesses/claude-code.md)
-- [Routing configs runbook](../runbooks/routing-configs.md)
 - [Proxy metrics runbook](../runbooks/proxy-metrics.md)
-- [Subscription auth runbook](../runbooks/subscription-auth.md)

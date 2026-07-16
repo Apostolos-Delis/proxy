@@ -11,18 +11,15 @@ import {
   apiKeys,
   createPgliteDatabase,
   defaultWorkspaceId,
+  deploymentHealth,
   eventOutbox,
   events,
   hashApiKey,
   organizations,
-  providerAccountHealth,
-  providerAccounts,
+  providerConnectionHealth,
   providerAttempts,
-  providerModelHealth,
   requests,
   routeDecisions,
-  routingConfigs,
-  routingConfigVersions,
   usageLedger,
   workspaces
 } from "@proxy/db";
@@ -88,7 +85,7 @@ describe("postgres persistence", () => {
       eventType: "proxy.request_received",
       payload: {
         surface: "openai-responses",
-        requestedModel: "router-auto",
+        requestedModel: "coding-auto",
         inputHash: "sha256:input",
         inputChars: 1
       }
@@ -116,7 +113,7 @@ describe("postgres persistence", () => {
       eventType: "proxy.request_received",
       payload: {
         surface: "openai-responses",
-        requestedModel: "router-auto",
+        requestedModel: "coding-auto",
         inputHash: "sha256:input",
         inputChars: 400
       }
@@ -147,6 +144,9 @@ describe("postgres persistence", () => {
     }));
     const workspaceId = defaultWorkspaceId("org_cost");
     const deploymentId = `${workspaceId}:deployment:openai:gpt-5.5`;
+    const providerConnectionId = `${workspaceId}:connection:openai`;
+    const logicalModelId = `${workspaceId}:logical-model:coding-auto`;
+    const accessProfileId = `${workspaceId}:access-profile:opendoor-engineer`;
 
     await eventService.append({
       scopeType: "request",
@@ -157,9 +157,12 @@ describe("postgres persistence", () => {
       eventType: "proxy.request_received",
       payload: {
         surface: "openai-responses",
-        requestedModel: "router-auto",
+        requestedModel: "coding-auto",
         inputHash: "sha256:input",
-        inputChars: 400
+        inputChars: 400,
+        ingressWireId: "openai-responses",
+        operationId: "text.generate",
+        requestedLogicalModel: "coding-auto"
       }
     });
     await eventService.append({
@@ -171,20 +174,13 @@ describe("postgres persistence", () => {
       eventType: "routing.context_built",
       payload: {
         surface: "openai-responses",
-        requestedModel: "router-auto",
+        requestedModel: "coding-auto",
         inputHash: "sha256:input",
         inputChars: 400,
         estimatedInputTokens: 100,
         routingInputHash: "sha256:routing",
         routingInputChars: 200,
-        routingEstimatedInputTokens: 50,
-        routingConfig: {
-          configId: "routing_config_test",
-          configName: "Test routing config",
-          versionId: "routing_config_test:v3",
-          version: 3,
-          configHash: "sha256:routing-config-test"
-        }
+        routingEstimatedInputTokens: 50
       }
     });
     await eventService.append({
@@ -197,22 +193,25 @@ describe("postgres persistence", () => {
       payload: {
         outcome: "route",
         surface: "openai-responses",
-        requestedModel: "router-auto",
-        finalRoute: "hard",
+        requestedModel: "coding-auto",
         selectedModel: "gpt-5.5",
         provider: "openai",
         reasoningEffort: "high",
         verbosity: "medium",
         guardrailActions: [],
         reasonCodes: ["test"],
-        classifier: { confidence: 0.8 },
-        routingConfig: {
-          configId: "routing_config_test",
-          configName: "Test routing config",
-          versionId: "routing_config_test:v3",
-          version: 3,
-          configHash: "sha256:routing-config-test"
-        },
+        ingressWireId: "openai-responses",
+        operationId: "text.generate",
+        requestedLogicalModel: "coding-auto",
+        resolvedLogicalModelId: logicalModelId,
+        accessProfileId,
+        routerKind: "classifier",
+        deploymentId,
+        providerConnectionId,
+        egressWireId: "openai-responses",
+        wireAdapterVersion: "1",
+        routerDecisionId: "router_decision_cost",
+        routerDecision: { confidence: 0.8 },
         policyVersion: "test"
       }
     });
@@ -229,12 +228,9 @@ describe("postgres persistence", () => {
         model: "gpt-5.5",
         providerAttemptId: "attempt_cost",
         deploymentId,
-        providerConnectionId: `${workspaceId}:connection:openai`,
+        providerConnectionId,
         egressWireId: "openai-responses",
-        providerAdapterContractVersion: "1",
-        routeCandidateId: "candidate_0",
-        attemptIndex: 0,
-        fallbackIndex: 0
+        providerAdapterContractVersion: "1"
       }
     });
     await eventService.append({
@@ -265,157 +261,42 @@ describe("postgres persistence", () => {
     const eventRows = await fixture.db.select().from(events).where(eq(events.scopeId, "request_cost"));
 
     expect(requestRows[0]?.status).toBe("completed");
-    expect(requestRows[0]?.routingConfigId).toBe("routing_config_test");
-    expect(requestRows[0]?.routingConfigVersionId).toBe("routing_config_test:v3");
-    expect(requestRows[0]?.routingConfigVersion).toBe(3);
-    expect(requestRows[0]?.routingConfigHash).toBe("sha256:routing-config-test");
-    expect(decisionRows[0]?.finalRoute).toBe("hard");
-    expect(decisionRows[0]?.routingConfigId).toBe("routing_config_test");
-    expect(decisionRows[0]?.routingConfigVersionId).toBe("routing_config_test:v3");
-    expect(decisionRows[0]?.routingConfigVersion).toBe(3);
-    expect(decisionRows[0]?.routingConfigHash).toBe("sha256:routing-config-test");
+    expect(requestRows[0]).toMatchObject({
+      ingressWireId: "openai-responses",
+      operationId: "text.generate",
+      requestedLogicalModel: "coding-auto",
+      resolvedLogicalModelId: logicalModelId,
+      accessProfileId,
+      routerKind: "classifier",
+      deploymentId,
+      providerConnectionId,
+      egressWireId: "openai-responses",
+      wireAdapterVersion: "1"
+    });
+    expect(decisionRows[0]).toMatchObject({
+      requestedLogicalModel: "coding-auto",
+      resolvedLogicalModelId: logicalModelId,
+      deploymentId,
+      providerConnectionId,
+      routerDecisionId: "router_decision_cost",
+      routerDecision: { confidence: 0.8 }
+    });
     expect(attemptRows[0]?.terminalStatus).toBe("completed");
-    expect(attemptRows[0]?.routeCandidateId).toBe("candidate_0");
-    expect(attemptRows[0]?.attemptIndex).toBe(0);
-    expect(attemptRows[0]?.fallbackIndex).toBe(0);
-    expect(attemptRows[0]?.skipReason).toBeNull();
+    expect(attemptRows[0]).toMatchObject({
+      deploymentId,
+      providerConnectionId,
+      egressWireId: "openai-responses",
+      providerAdapterContractVersion: "1"
+    });
     expect(usageRows[0]?.totalTokens).toBe(120);
     expect(usageRows[0]?.totalCostMicros).toBe(325);
     expect(eventRows.map((row) => row.sequence)).toEqual([1, 2, 3, 4, 5]);
   });
 
-  it("projects route execution plan events into route decisions", async () => {
-    const fixture = await persistenceFixture("org_plan");
-    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_plan");
-    const plan = routeExecutionPlan({
-      requestId: "request_plan",
-      organizationId: "org_plan",
-      workspaceId: defaultWorkspaceId("org_plan")
-    });
-
-    await eventService.append({
-      scopeType: "request",
-      scopeId: "request_plan",
-      correlationId: "request_plan",
-      idempotencyKey: "idem_plan",
-      producer: "test",
-      eventType: "proxy.request_received",
-      payload: {
-        surface: "openai-responses",
-        requestedModel: "router-auto",
-        inputHash: "sha256:input",
-        inputChars: 400
-      }
-    });
-    await eventService.append({
-      scopeType: "request",
-      scopeId: "request_plan",
-      correlationId: "request_plan",
-      idempotencyKey: "idem_plan",
-      producer: "test",
-      eventType: "routing.decision_recorded",
-      payload: {
-        outcome: "route",
-        surface: "openai-responses",
-        requestedModel: "router-auto",
-        finalRoute: "balanced",
-        selectedModel: "gpt-5.4",
-        provider: "openai",
-        guardrailActions: ["existing_guardrail"],
-        reasonCodes: ["existing_reason"],
-        budgetChecks: [{ status: "allow", reason: "existing_budget" }],
-        classifier: { confidence: 0.5 },
-        policyVersion: "test"
-      }
-    });
-    await eventService.append({
-      scopeType: "request",
-      scopeId: "request_plan",
-      correlationId: "request_plan",
-      idempotencyKey: "idem_plan",
-      producer: "test",
-      eventType: "routing.plan_recorded",
-      payload: {
-        requestedModel: "router-auto",
-        routeExecutionPlan: plan,
-        policyVersion: "test"
-      }
-    });
-
-    const [decision] = await fixture.db
-      .select()
-      .from(routeDecisions)
-      .where(eq(routeDecisions.requestId, "request_plan"));
-
-    expect(decision?.routeExecutionPlan).toEqual(plan);
-    expect(decision?.selectedCandidateId).toBe("candidate_1");
-    expect(decision?.selectedProvider).toBe("anthropic");
-    expect(decision?.selectedModel).toBe("claude-sonnet-4-5");
-    expect(decision?.classifierRoute).toBe("hard");
-    expect(decision?.finalRoute).toBe("hard");
-    expect(decision?.routingConfigId).toBe("routing_config_1");
-    expect(decision?.routingConfigVersionId).toBe("routing_config_version_1");
-    expect(decision?.routingConfigVersion).toBe(1);
-    expect(decision?.routingConfigHash).toBe("sha256:route-plan");
-    expect(decision?.translated).toBe(true);
-    expect(decision?.translatorId).toBe("openai-responses_to_anthropic-messages");
-    expect(decision?.reasonCodes).toEqual(["existing_reason"]);
-    expect(decision?.guardrailActions).toEqual(["existing_guardrail"]);
-    expect(decision?.budgetChecks).toEqual([{ status: "allow", reason: "existing_budget" }]);
-    expect(decision?.classifier).toEqual({ confidence: 0.5 });
-  });
-
-  it("rejects invalid route execution plan events without partial projection", async () => {
-    const fixture = await persistenceFixture("org_invalid_plan");
-    const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_invalid_plan");
-
-    await eventService.append({
-      scopeType: "request",
-      scopeId: "request_invalid_plan",
-      correlationId: "request_invalid_plan",
-      idempotencyKey: "idem_invalid_plan",
-      producer: "test",
-      eventType: "proxy.request_received",
-      payload: {
-        surface: "openai-responses",
-        requestedModel: "router-auto",
-        inputHash: "sha256:input",
-        inputChars: 400
-      }
-    });
-
-    await expect(eventService.append({
-      scopeType: "request",
-      scopeId: "request_invalid_plan",
-      correlationId: "request_invalid_plan",
-      idempotencyKey: "idem_invalid_plan",
-      producer: "test",
-      eventType: "routing.plan_recorded",
-      payload: {
-        requestedModel: "router-auto",
-        routeExecutionPlan: {
-          schemaVersion: 2
-        },
-        policyVersion: "test"
-      }
-    })).rejects.toThrow("Invalid route execution plan payload.");
-
-    const decisionRows = await fixture.db
-      .select()
-      .from(routeDecisions)
-      .where(eq(routeDecisions.requestId, "request_invalid_plan"));
-    const eventRows = await fixture.db
-      .select()
-      .from(events)
-      .where(eq(events.scopeId, "request_invalid_plan"));
-
-    expect(decisionRows).toEqual([]);
-    expect(eventRows.map((event) => event.eventType)).toEqual(["proxy.request_received"]);
-  });
-
-  it("persists provider account ids on provider attempts", async () => {
+  it("persists provider connection and deployment ids on provider attempts", async () => {
     const fixture = await persistenceFixture("org_attempt_account_persisted");
     const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_attempt_account_persisted");
+    const gateway = await seedHealthGateway(fixture, "org_attempt_account_persisted");
 
     await eventService.append({
       scopeType: "request",
@@ -426,20 +307,10 @@ describe("postgres persistence", () => {
       eventType: "proxy.request_received",
       payload: {
         surface: "anthropic-messages",
-        requestedModel: "claude-router-auto",
+        requestedModel: "coding-auto",
         inputHash: "sha256:attempt-account",
         inputChars: 10
       }
-    });
-    await fixture.db.insert(providerAccounts).values({
-      id: "account_attempt_account_persisted",
-      organizationId: "org_attempt_account_persisted",
-      providerId: "00000000-0000-0000-0000-000000000002",
-      name: "Anthropic Attempt Account",
-      authType: "api_key",
-      secretCiphertext: "ciphertext",
-      secretHint: "hint",
-      status: "active"
     });
     await eventService.append({
       scopeType: "request",
@@ -453,23 +324,22 @@ describe("postgres persistence", () => {
         provider: "anthropic",
         model: "claude-sonnet-4-5",
         providerAttemptId: "attempt_account_persisted",
-        providerAccountId: "account_attempt_account_persisted"
+        ...gateway.attemptEvidence
       }
     });
 
     const attemptRows = await fixture.db.select().from(providerAttempts).where(eq(providerAttempts.id, "attempt_account_persisted"));
 
-    expect(attemptRows[0]?.providerAccountId).toBe("account_attempt_account_persisted");
+    expect(attemptRows[0]).toMatchObject(gateway.attemptEvidence);
   });
 
-  it("updates provider account health from terminal provider failures", async () => {
+  it("updates provider connection health from terminal provider failures", async () => {
     const fixture = await persistenceFixture("org_account_health_projection");
     const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_account_health_projection");
-    const providerAccountId = "account_health_projection";
+    const gateway = await seedHealthGateway(fixture, "org_account_health_projection");
 
     await appendHealthRequest(eventService, "request_account_health_projection", "idem_account_health_projection");
-    await insertHealthProviderAccount(fixture, "org_account_health_projection", providerAccountId);
-    await appendHealthStarted(eventService, "request_account_health_projection", "idem_account_health_projection", providerAccountId);
+    await appendHealthStarted(eventService, "request_account_health_projection", "idem_account_health_projection", gateway.attemptEvidence);
     await eventService.append({
       scopeType: "request",
       scopeId: "request_account_health_projection",
@@ -482,14 +352,27 @@ describe("postgres persistence", () => {
         provider: "anthropic",
         selectedModel: "claude-sonnet-4-5",
         providerAttemptId: "attempt_request_account_health_projection",
-        providerAccountId,
+        ...gateway.attemptEvidence,
         terminalStatus: "failed",
         upstreamStatus: 429,
-        error: "rate limited"
+        error: "rate limited",
+        healthClassification: {
+          errorType: "rate_limited",
+          source: "provider_status",
+          confidence: "exact",
+          retryable: true,
+          scope: "provider_connection",
+          cooldownUntil: "2026-06-18T12:05:00.000Z",
+          message: "rate limited",
+          metadata: {}
+        }
       }
     });
 
-    const rows = await fixture.db.select().from(providerAccountHealth).where(eq(providerAccountHealth.providerAccountId, providerAccountId));
+    const rows = await fixture.db
+      .select()
+      .from(providerConnectionHealth)
+      .where(eq(providerConnectionHealth.providerConnectionId, gateway.providerConnectionId));
 
     expect(rows[0]).toEqual(expect.objectContaining({
       status: "cooldown",
@@ -499,14 +382,13 @@ describe("postgres persistence", () => {
     expect(rows[0]?.cooldownUntil).toBeTruthy();
   });
 
-  it("updates provider model health from terminal provider model failures", async () => {
+  it("updates deployment health from terminal deployment failures", async () => {
     const fixture = await persistenceFixture("org_model_health_projection");
     const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_model_health_projection");
-    const providerAccountId = "account_model_health_projection";
+    const gateway = await seedHealthGateway(fixture, "org_model_health_projection");
 
     await appendHealthRequest(eventService, "request_model_health_projection", "idem_model_health_projection");
-    await insertHealthProviderAccount(fixture, "org_model_health_projection", providerAccountId);
-    await appendHealthStarted(eventService, "request_model_health_projection", "idem_model_health_projection", providerAccountId);
+    await appendHealthStarted(eventService, "request_model_health_projection", "idem_model_health_projection", gateway.attemptEvidence);
     await eventService.append({
       scopeType: "request",
       scopeId: "request_model_health_projection",
@@ -519,14 +401,27 @@ describe("postgres persistence", () => {
         provider: "anthropic",
         selectedModel: "claude-sonnet-4-5",
         providerAttemptId: "attempt_request_model_health_projection",
-        providerAccountId,
+        ...gateway.attemptEvidence,
         terminalStatus: "failed",
         upstreamStatus: 404,
-        error: "model claude-sonnet-4-5 not found"
+        error: "model claude-sonnet-4-5 not found",
+        healthClassification: {
+          errorType: "model_unavailable",
+          source: "response_body",
+          confidence: "heuristic",
+          retryable: true,
+          scope: "deployment",
+          cooldownUntil: "2026-06-18T12:10:00.000Z",
+          message: "model claude-sonnet-4-5 not found",
+          metadata: {}
+        }
       }
     });
 
-    const rows = await fixture.db.select().from(providerModelHealth).where(eq(providerModelHealth.providerAccountId, providerAccountId));
+    const rows = await fixture.db
+      .select()
+      .from(deploymentHealth)
+      .where(eq(deploymentHealth.deploymentId, gateway.deploymentId));
 
     expect(rows[0]).toEqual(expect.objectContaining({
       status: "locked_out",
@@ -539,11 +434,10 @@ describe("postgres persistence", () => {
   it("preserves adapter health classification metadata from terminal provider failures", async () => {
     const fixture = await persistenceFixture("org_bedrock_health_projection");
     const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_bedrock_health_projection");
-    const providerAccountId = "account_bedrock_health_projection";
+    const gateway = await seedHealthGateway(fixture, "org_bedrock_health_projection");
 
     await appendHealthRequest(eventService, "request_bedrock_health_projection", "idem_bedrock_health_projection");
-    await insertHealthProviderAccount(fixture, "org_bedrock_health_projection", providerAccountId);
-    await appendHealthStarted(eventService, "request_bedrock_health_projection", "idem_bedrock_health_projection", providerAccountId);
+    await appendHealthStarted(eventService, "request_bedrock_health_projection", "idem_bedrock_health_projection", gateway.attemptEvidence);
     await eventService.append({
       scopeType: "request",
       scopeId: "request_bedrock_health_projection",
@@ -554,9 +448,9 @@ describe("postgres persistence", () => {
       payload: {
         surface: "openai-responses",
         provider: "anthropic",
-        selectedModel: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        selectedModel: "claude-sonnet-4-5",
         providerAttemptId: "attempt_request_bedrock_health_projection",
-        providerAccountId,
+        ...gateway.attemptEvidence,
         terminalStatus: "failed",
         upstreamStatus: 403,
         error: "generic forbidden",
@@ -565,20 +459,23 @@ describe("postgres persistence", () => {
           source: "response_body",
           confidence: "exact",
           retryable: false,
-          scope: "provider_account_model",
+          scope: "deployment",
           cooldownUntil: null,
           message: "not authorized for response streaming",
           metadata: {
             bedrockErrorKind: "stream_permission_denied",
             bedrockOperation: "ConverseStream",
             region: "us-east-1",
-            model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+            model: "claude-sonnet-4-5"
           }
         }
       }
     });
 
-    const rows = await fixture.db.select().from(providerModelHealth).where(eq(providerModelHealth.providerAccountId, providerAccountId));
+    const rows = await fixture.db
+      .select()
+      .from(deploymentHealth)
+      .where(eq(deploymentHealth.deploymentId, gateway.deploymentId));
 
     expect(rows[0]).toEqual(expect.objectContaining({
       status: "terminal",
@@ -594,17 +491,16 @@ describe("postgres persistence", () => {
   it("preserves streaming permission health across non-streaming successes", async () => {
     const fixture = await persistenceFixture("org_stream_permission_health_projection");
     const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_stream_permission_health_projection");
-    const providerAccountId = "account_stream_permission_health_projection";
-    const model = "anthropic.claude-3-5-sonnet-20241022-v2:0";
+    const gateway = await seedHealthGateway(fixture, "org_stream_permission_health_projection");
+    const model = "claude-sonnet-4-5";
 
     await appendHealthRequest(eventService, "request_stream_permission_non_stream", "idem_stream_permission_non_stream");
-    await insertHealthProviderAccount(fixture, "org_stream_permission_health_projection", providerAccountId);
-    await fixture.db.insert(providerModelHealth).values({
+    await fixture.db.insert(deploymentHealth).values({
       id: "stream_permission_model_health",
       organizationId: "org_stream_permission_health_projection",
-      providerId: "00000000-0000-0000-0000-000000000002",
-      providerAccountId,
-      model,
+      workspaceId: defaultWorkspaceId("org_stream_permission_health_projection"),
+      deploymentId: gateway.deploymentId,
+      providerConnectionId: gateway.providerConnectionId,
       status: "terminal",
       lastErrorType: "model_access_denied",
       lastErrorAt: new Date("2026-06-18T11:59:00.000Z"),
@@ -615,7 +511,7 @@ describe("postgres persistence", () => {
         region: "us-east-1"
       }
     });
-    await appendHealthStarted(eventService, "request_stream_permission_non_stream", "idem_stream_permission_non_stream", providerAccountId);
+    await appendHealthStarted(eventService, "request_stream_permission_non_stream", "idem_stream_permission_non_stream", gateway.attemptEvidence);
     await eventService.append({
       scopeType: "request",
       scopeId: "request_stream_permission_non_stream",
@@ -628,7 +524,7 @@ describe("postgres persistence", () => {
         provider: "anthropic",
         selectedModel: model,
         providerAttemptId: "attempt_request_stream_permission_non_stream",
-        providerAccountId,
+        ...gateway.attemptEvidence,
         terminalStatus: "completed",
         upstreamStatus: 200,
         stream: false,
@@ -636,7 +532,10 @@ describe("postgres persistence", () => {
       }
     });
 
-    const preservedRows = await fixture.db.select().from(providerModelHealth).where(eq(providerModelHealth.providerAccountId, providerAccountId));
+    const preservedRows = await fixture.db
+      .select()
+      .from(deploymentHealth)
+      .where(eq(deploymentHealth.deploymentId, gateway.deploymentId));
     expect(preservedRows[0]).toEqual(expect.objectContaining({
       status: "terminal",
       lastErrorType: "model_access_denied",
@@ -644,7 +543,7 @@ describe("postgres persistence", () => {
     }));
 
     await appendHealthRequest(eventService, "request_stream_permission_stream", "idem_stream_permission_stream");
-    await appendHealthStarted(eventService, "request_stream_permission_stream", "idem_stream_permission_stream", providerAccountId);
+    await appendHealthStarted(eventService, "request_stream_permission_stream", "idem_stream_permission_stream", gateway.attemptEvidence);
     await eventService.append({
       scopeType: "request",
       scopeId: "request_stream_permission_stream",
@@ -657,7 +556,7 @@ describe("postgres persistence", () => {
         provider: "anthropic",
         selectedModel: model,
         providerAttemptId: "attempt_request_stream_permission_stream",
-        providerAccountId,
+        ...gateway.attemptEvidence,
         terminalStatus: "completed",
         upstreamStatus: 200,
         stream: true,
@@ -665,7 +564,10 @@ describe("postgres persistence", () => {
       }
     });
 
-    const clearedRows = await fixture.db.select().from(providerModelHealth).where(eq(providerModelHealth.providerAccountId, providerAccountId));
+    const clearedRows = await fixture.db
+      .select()
+      .from(deploymentHealth)
+      .where(eq(deploymentHealth.deploymentId, gateway.deploymentId));
     expect(clearedRows[0]).toEqual(expect.objectContaining({
       status: "healthy",
       lastErrorType: null,
@@ -676,15 +578,14 @@ describe("postgres persistence", () => {
   it("resets provider health state on successful provider attempts", async () => {
     const fixture = await persistenceFixture("org_health_success_projection");
     const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_health_success_projection");
-    const providerAccountId = "account_health_success_projection";
+    const gateway = await seedHealthGateway(fixture, "org_health_success_projection");
 
     await appendHealthRequest(eventService, "request_health_success_projection", "idem_health_success_projection");
-    await insertHealthProviderAccount(fixture, "org_health_success_projection", providerAccountId);
-    await fixture.db.insert(providerAccountHealth).values({
+    await fixture.db.insert(providerConnectionHealth).values({
       id: "account_health_success_projection_state",
       organizationId: "org_health_success_projection",
-      providerAccountId,
-      providerId: "00000000-0000-0000-0000-000000000002",
+      workspaceId: defaultWorkspaceId("org_health_success_projection"),
+      providerConnectionId: gateway.providerConnectionId,
       status: "cooldown",
       lastErrorType: "rate_limited",
       lastErrorMessage: "rate limited",
@@ -693,7 +594,7 @@ describe("postgres persistence", () => {
       consecutiveFailures: 2,
       metadata: {}
     });
-    await appendHealthStarted(eventService, "request_health_success_projection", "idem_health_success_projection", providerAccountId);
+    await appendHealthStarted(eventService, "request_health_success_projection", "idem_health_success_projection", gateway.attemptEvidence);
     await eventService.append({
       scopeType: "request",
       scopeId: "request_health_success_projection",
@@ -706,14 +607,17 @@ describe("postgres persistence", () => {
         provider: "anthropic",
         selectedModel: "claude-sonnet-4-5",
         providerAttemptId: "attempt_request_health_success_projection",
-        providerAccountId,
+        ...gateway.attemptEvidence,
         terminalStatus: "completed",
         upstreamStatus: 200,
         usage: null
       }
     });
 
-    const rows = await fixture.db.select().from(providerAccountHealth).where(eq(providerAccountHealth.providerAccountId, providerAccountId));
+    const rows = await fixture.db
+      .select()
+      .from(providerConnectionHealth)
+      .where(eq(providerConnectionHealth.providerConnectionId, gateway.providerConnectionId));
 
     expect(rows[0]).toEqual(expect.objectContaining({
       status: "healthy",
@@ -724,14 +628,13 @@ describe("postgres persistence", () => {
     }));
   });
 
-  it("does not update account health for request-only provider failures", async () => {
+  it("does not update durable health for request-only provider failures", async () => {
     const fixture = await persistenceFixture("org_health_request_only_projection");
     const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_health_request_only_projection");
-    const providerAccountId = "account_health_request_only_projection";
+    const gateway = await seedHealthGateway(fixture, "org_health_request_only_projection");
 
     await appendHealthRequest(eventService, "request_health_request_only_projection", "idem_health_request_only_projection");
-    await insertHealthProviderAccount(fixture, "org_health_request_only_projection", providerAccountId);
-    await appendHealthStarted(eventService, "request_health_request_only_projection", "idem_health_request_only_projection", providerAccountId);
+    await appendHealthStarted(eventService, "request_health_request_only_projection", "idem_health_request_only_projection", gateway.attemptEvidence);
     await eventService.append({
       scopeType: "request",
       scopeId: "request_health_request_only_projection",
@@ -744,16 +647,34 @@ describe("postgres persistence", () => {
         provider: "anthropic",
         selectedModel: "claude-sonnet-4-5",
         providerAttemptId: "attempt_request_health_request_only_projection",
-        providerAccountId,
+        ...gateway.attemptEvidence,
         terminalStatus: "failed",
         upstreamStatus: 400,
-        error: "context_length_exceeded"
+        error: "context_length_exceeded",
+        healthClassification: {
+          errorType: "context_overflow",
+          source: "response_body",
+          confidence: "heuristic",
+          retryable: false,
+          scope: "request_only",
+          cooldownUntil: null,
+          message: "context_length_exceeded",
+          metadata: {}
+        }
       }
     });
 
-    const rows = await fixture.db.select().from(providerAccountHealth).where(eq(providerAccountHealth.providerAccountId, providerAccountId));
+    const connectionRows = await fixture.db
+      .select()
+      .from(providerConnectionHealth)
+      .where(eq(providerConnectionHealth.providerConnectionId, gateway.providerConnectionId));
+    const deploymentRows = await fixture.db
+      .select()
+      .from(deploymentHealth)
+      .where(eq(deploymentHealth.deploymentId, gateway.deploymentId));
 
-    expect(rows).toHaveLength(0);
+    expect(connectionRows).toHaveLength(0);
+    expect(deploymentRows).toHaveLength(0);
   });
 
   it("persists cancelled provider terminal status from events", async () => {
@@ -769,7 +690,7 @@ describe("postgres persistence", () => {
       eventType: "proxy.request_received",
       payload: {
         surface: "openai-responses",
-        requestedModel: "router-auto",
+        requestedModel: "coding-auto",
         inputHash: "sha256:input",
         inputChars: 400
       }
@@ -784,7 +705,7 @@ describe("postgres persistence", () => {
       payload: {
         surface: "openai-responses",
         provider: "openai",
-        model: "gpt-routed-hard-test",
+        model: "gpt-5.4",
         providerAttemptId: "attempt_cancel"
       }
     });
@@ -798,7 +719,7 @@ describe("postgres persistence", () => {
       payload: {
         surface: "openai-responses",
         provider: "openai",
-        selectedModel: "gpt-routed-hard-test",
+        selectedModel: "gpt-5.4",
         providerAttemptId: "attempt_cancel",
         terminalStatus: "cancelled",
         upstreamStatus: 0,
@@ -830,20 +751,19 @@ describe("postgres persistence", () => {
       });
 
     await append("proxy.request_received", {
-      requestedModel: "router-auto",
+      requestedModel: "coding-auto",
       inputHash: "sha256:input",
       inputChars: 10
     });
     await append("routing.decision_recorded", {
       outcome: "route",
       surface: "openai-chat",
-      requestedModel: "router-auto",
-      finalRoute: "fast",
+      requestedModel: "coding-auto",
       selectedModel: "qwen3-coder-30b",
       provider: "acme-vllm",
       guardrailActions: [],
       reasonCodes: ["test"],
-      classifier: { confidence: 0.5 },
+      routerDecision: { confidence: 0.5 },
       policyVersion: "test"
     });
     await append("provider.request_started", {
@@ -892,7 +812,7 @@ describe("postgres persistence", () => {
       payload: {
         surface: "openai-chat",
         sessionId: "chat-session",
-        requestedModel: "router-auto",
+        requestedModel: "coding-auto",
         inputHash: "sha256:input",
         inputChars: 10
       }
@@ -922,7 +842,7 @@ describe("postgres persistence", () => {
 
     await append("proxy.request_received", {
       surface: "openai-responses",
-      requestedModel: "router-auto",
+      requestedModel: "coding-auto",
       inputHash: "sha256:input",
       inputChars: 10
     });
@@ -1061,45 +981,6 @@ describe("postgres persistence", () => {
     expect(expiredAfterRevoke).toBeUndefined();
   });
 
-  it("does not expose legacy routing config assignments through runtime identity", async () => {
-    const fixture = await persistenceFixture("org_assigned_api_key");
-    await fixture.db.insert(organizations).values({
-      id: "org_assigned_api_key",
-      slug: "org_assigned_api_key",
-      name: "org_assigned_api_key"
-    }).onConflictDoNothing();
-    await fixture.db.insert(workspaces).values({
-      id: defaultWorkspaceId("org_assigned_api_key"),
-      organizationId: "org_assigned_api_key",
-      slug: "default",
-      name: "Default"
-    }).onConflictDoNothing();
-    await fixture.db.insert(routingConfigs).values({
-      id: "routing_config_assigned",
-      organizationId: "org_assigned_api_key",
-      workspaceId: defaultWorkspaceId("org_assigned_api_key"),
-      name: "Assigned config",
-      slug: "assigned",
-      status: "active"
-    });
-    await fixture.db.insert(apiKeys).values({
-      id: "api_key_assigned",
-      organizationId: "org_assigned_api_key",
-      workspaceId: defaultWorkspaceId("org_assigned_api_key"),
-      keyHash: hashApiKey("assigned-token"),
-      name: "Assigned Proxy Key",
-      routingConfigId: "routing_config_assigned"
-    });
-
-    const identity = await fixture.persistence.apiKeys.resolve("assigned-token");
-
-    expect(identity).toEqual(expect.objectContaining({
-      apiKeyId: "api_key_assigned",
-      organizationId: "org_assigned_api_key"
-    }));
-    expect(identity).not.toHaveProperty("routingConfigId");
-  });
-
   it("resolves the seeded local proxy token through the API-key identity store", async () => {
     const fixture = await persistenceFixture("org_seed_identity");
     await seedDatabase(fixture.db, seedOptionsFromEnv({
@@ -1116,129 +997,6 @@ describe("postgres persistence", () => {
       userId: "seed_identity_user",
       accessProfileId: "org_seed_identity:workspace:default:access-profile:opendoor-engineer"
     }));
-  });
-
-  it("resolves routing configs by API key assignment before org defaults", async () => {
-    const fixture = await persistenceFixture("org_assigned_config");
-    await seedDatabase(fixture.db, seedOptionsFromEnv({
-      DEFAULT_ORGANIZATION_ID: "org_assigned_config",
-      SEED_USER_ID: "seed_config_user",
-      PROXY_TOKEN: "seeded-config-token"
-    }));
-    const defaultVersion = await activeVersion(fixture, "org_assigned_config:routing-config:default:v1");
-    const assignedConfigId = "org_assigned_config:routing-config:assigned";
-    const assignedVersionId = `${assignedConfigId}:v1`;
-    const assignedConfig = {
-      ...defaultVersion.config,
-      displayName: "Assigned coding router"
-    };
-
-    await fixture.db.insert(routingConfigs).values({
-      id: assignedConfigId,
-      organizationId: "org_assigned_config",
-      workspaceId: defaultWorkspaceId("org_assigned_config"),
-      name: "Assigned routing config",
-      slug: "assigned",
-      status: "active"
-    });
-    await fixture.db.insert(routingConfigVersions).values({
-      id: assignedVersionId,
-      organizationId: "org_assigned_config",
-      workspaceId: defaultWorkspaceId("org_assigned_config"),
-      routingConfigId: assignedConfigId,
-      version: 1,
-      configHash: "sha256:assigned-config",
-      config: assignedConfig,
-      status: "active",
-      createdByUserId: "seed_config_user",
-      activatedAt: new Date("2026-06-08T00:00:00.000Z")
-    });
-    await fixture.db
-      .update(routingConfigs)
-      .set({ activeVersionId: assignedVersionId })
-      .where(eq(routingConfigs.id, assignedConfigId));
-
-    const resolved = await fixture.persistence.routingConfigs.resolve({
-      organizationId: "org_assigned_config",
-      workspaceId: defaultWorkspaceId("org_assigned_config"),
-      routingConfigId: assignedConfigId
-    });
-
-    expect(resolved).toEqual(expect.objectContaining({
-      configId: assignedConfigId,
-      configName: "Assigned routing config",
-      versionId: assignedVersionId,
-      version: 1,
-      configHash: "sha256:assigned-config"
-    }));
-    expect(resolved.config.displayName).toBe("Assigned coding router");
-  });
-
-  it("falls back from org default to seeded routing config ids", async () => {
-    const fixture = await persistenceFixture("org_default_config");
-    await seedDatabase(fixture.db, seedOptionsFromEnv({
-      DEFAULT_ORGANIZATION_ID: "org_default_config",
-      SEED_USER_ID: "seed_default_config_user",
-      PROXY_TOKEN: "seeded-default-config-token"
-    }));
-
-    const orgDefault = await fixture.persistence.routingConfigs.resolve({
-      organizationId: "org_default_config",
-      workspaceId: defaultWorkspaceId("org_default_config"),
-      routingConfigId: null
-    });
-
-    await fixture.db
-      .update(workspaces)
-      .set({ defaultRoutingConfigId: null })
-      .where(eq(workspaces.id, defaultWorkspaceId("org_default_config")));
-    const seededDefault = await fixture.persistence.routingConfigs.resolve({
-      organizationId: "org_default_config",
-      workspaceId: defaultWorkspaceId("org_default_config"),
-      routingConfigId: null
-    });
-
-    expect(orgDefault.configId).toBe("org_default_config:routing-config:default");
-    expect(seededDefault.configId).toBe("org_default_config:routing-config:default");
-    expect(seededDefault.versionId).toBe("org_default_config:routing-config:default:v1");
-  });
-
-  it("fails closed when the active routing config version is missing", async () => {
-    const fixture = await persistenceFixture("org_missing_active_config");
-    await seedDatabase(fixture.db, seedOptionsFromEnv({
-      DEFAULT_ORGANIZATION_ID: "org_missing_active_config",
-      SEED_USER_ID: "seed_missing_active_user",
-      PROXY_TOKEN: "seeded-missing-active-token"
-    }));
-    await fixture.db
-      .update(routingConfigs)
-      .set({ activeVersionId: null })
-      .where(eq(routingConfigs.id, "org_missing_active_config:routing-config:default"));
-
-    await expect(fixture.persistence.routingConfigs.resolve({
-      organizationId: "org_missing_active_config",
-      workspaceId: defaultWorkspaceId("org_missing_active_config"),
-      routingConfigId: null
-    })).rejects.toThrow("routing_config_active_version_missing");
-  });
-
-  it("fails closed when active routing config JSON is invalid", async () => {
-    const fixture = await persistenceFixture("org_invalid_config");
-    await seedDatabase(fixture.db, seedOptionsFromEnv({
-      DEFAULT_ORGANIZATION_ID: "org_invalid_config",
-      SEED_USER_ID: "seed_invalid_config_user",
-      PROXY_TOKEN: "seeded-invalid-config-token"
-    }));
-    await fixture.db
-      .update(routingConfigVersions)
-      .set({ config: { schemaVersion: 1 } as never })
-      .where(eq(routingConfigVersions.id, "org_invalid_config:routing-config:default:v1"));
-
-    await expect(fixture.persistence.routingConfigs.resolve({
-      organizationId: "org_invalid_config",
-      workspaceId: defaultWorkspaceId("org_invalid_config"),
-      routingConfigId: null
-    })).rejects.toThrow(/routing_config_invalid/);
   });
 
   it("uses route context organization for request idempotency", async () => {
@@ -1335,7 +1093,7 @@ describe("postgres persistence", () => {
         eventType: "proxy.request_received",
         payload: {
           surface: "openai-responses",
-          requestedModel: "router-auto",
+          requestedModel: "coding-auto",
           inputHash: `sha256:${scopeId}`,
           inputChars: 12
         }
@@ -1435,7 +1193,7 @@ describe("postgres persistence", () => {
       eventType: "proxy.request_received",
       payload: {
         surface: "anthropic-messages",
-        requestedModel: "claude-router-auto",
+        requestedModel: "coding-auto",
         inputHash: "sha256:event-fallback",
         inputChars: 12
       }
@@ -1500,7 +1258,7 @@ describe("postgres persistence", () => {
       workspaceId: defaultWorkspaceId("org_admin_overview"),
       surface: "openai-responses" as const,
       idempotencyKey: `idem_page_${index}`,
-      requestedModel: "router-auto",
+      requestedModel: "coding-auto",
       inputHash: `sha256:page:${index}`,
       inputChars: 10,
       status: "completed" as const
@@ -1510,10 +1268,9 @@ describe("postgres persistence", () => {
       requestId: id,
       organizationId: "org_admin_overview",
       workspaceId: defaultWorkspaceId("org_admin_overview"),
-      requestedModel: "router-auto",
-      finalRoute: "hard" as const,
+      requestedModel: "coding-auto",
       selectedProvider: "openai" as const,
-      selectedModel: "gpt-routed-hard-test",
+      selectedModel: "gpt-5.4",
       policyVersion: "test"
     })));
     await fixture.db.insert(providerAttempts).values(ids.map((id, index) => ({
@@ -1523,7 +1280,7 @@ describe("postgres persistence", () => {
       workspaceId: defaultWorkspaceId("org_admin_overview"),
       surface: "openai-responses" as const,
       provider: "openai" as const,
-      model: "gpt-routed-hard-test",
+      model: "gpt-5.4",
       terminalStatus: "completed" as const,
       startedAt: new Date(2026, 0, 1, 0, 0, index),
       completedAt: new Date(2026, 0, 1, 0, 0, index, 1)
@@ -1535,8 +1292,7 @@ describe("postgres persistence", () => {
       requestId: id,
       providerAttemptId: `attempt_page_${index}`,
       provider: "openai" as const,
-      model: "gpt-routed-hard-test",
-      route: "hard" as const,
+      model: "gpt-5.4",
       inputTokens: 1,
       totalTokens: 1,
       inputCostMicros: 2,
@@ -1553,60 +1309,45 @@ describe("postgres persistence", () => {
 
   it("admin request summaries use one latest attempt per request", async () => {
     const fixture = await persistenceFixture("org_admin_retry");
-    await fixture.db.insert(organizations).values({
-      id: "org_admin_retry",
-      slug: "org_admin_retry",
-      name: "org_admin_retry"
-    }).onConflictDoNothing();
-    await fixture.db.insert(workspaces).values({
-      id: defaultWorkspaceId("org_admin_retry"),
-      organizationId: "org_admin_retry",
-      slug: "default",
-      name: "Default"
-    }).onConflictDoNothing();
-    await fixture.db.insert(routingConfigs).values({
-      id: "routing_config_retry",
-      organizationId: "org_admin_retry",
-      workspaceId: defaultWorkspaceId("org_admin_retry"),
-      name: "Retry routing config",
-      slug: "retry-routing-config"
-    });
+    const gateway = await seedHealthGateway(fixture, "org_admin_retry");
+    const workspaceId = defaultWorkspaceId("org_admin_retry");
+    const resolutionEvidence = {
+      ingressWireId: "openai-responses" as const,
+      operationId: "text.generate" as const,
+      requestedLogicalModel: "coding-auto",
+      resolvedLogicalModelId: `${workspaceId}:logical-model:coding-auto`,
+      accessProfileId: `${workspaceId}:access-profile:opendoor-engineer`,
+      routerKind: "classifier" as const,
+      deploymentId: gateway.deploymentId,
+      providerConnectionId: gateway.providerConnectionId,
+      egressWireId: "anthropic-messages" as const,
+      wireAdapterVersion: "1"
+    };
     await fixture.db.insert(requests).values({
       id: "request_retry",
       organizationId: "org_admin_retry",
-      workspaceId: defaultWorkspaceId("org_admin_retry"),
+      workspaceId,
       surface: "openai-responses",
       idempotencyKey: "idem_retry",
-      requestedModel: "router-auto",
+      requestedModel: "coding-auto",
       inputHash: "sha256:retry",
       inputChars: 10,
-      routingConfigId: "routing_config_retry",
-      routingConfigVersionId: "routing_config_retry:v2",
-      routingConfigVersion: 2,
-      routingConfigHash: "sha256:routing-config-retry",
+      ...resolutionEvidence,
       status: "completed"
     });
     await fixture.db.insert(routeDecisions).values({
       id: "decision_retry",
       requestId: "request_retry",
       organizationId: "org_admin_retry",
-      workspaceId: defaultWorkspaceId("org_admin_retry"),
-      requestedModel: "router-auto",
-      finalRoute: "hard",
+      workspaceId,
+      requestedModel: "coding-auto",
       selectedProvider: "anthropic",
       selectedModel: "claude-sonnet-4-5",
-      routeExecutionPlan: routeExecutionPlan({
-        requestId: "request_retry",
-        organizationId: "org_admin_retry",
-        workspaceId: defaultWorkspaceId("org_admin_retry")
-      }),
-      selectedCandidateId: "candidate_1",
+      ...resolutionEvidence,
+      routerDecisionId: "router_decision_retry",
+      routerDecision: { confidence: 0.88, reason: "coding_workload" },
       translated: true,
       translatorId: "openai-responses_to_anthropic-messages",
-      routingConfigId: "routing_config_retry",
-      routingConfigVersionId: "routing_config_retry:v2",
-      routingConfigVersion: 2,
-      routingConfigHash: "sha256:routing-config-retry",
       policyVersion: "test"
     });
     await fixture.db.insert(providerAttempts).values([
@@ -1614,15 +1355,12 @@ describe("postgres persistence", () => {
         id: "attempt_retry_old",
         requestId: "request_retry",
         organizationId: "org_admin_retry",
-        workspaceId: defaultWorkspaceId("org_admin_retry"),
+        workspaceId,
         surface: "openai-responses",
         provider: "anthropic",
         model: "claude-sonnet-4-5",
+        ...gateway.attemptEvidence,
         terminalStatus: "failed",
-        routeCandidateId: "candidate_1",
-        attemptIndex: 0,
-        fallbackIndex: 0,
-        skipReason: "target_skipped_rate_limit",
         startedAt: new Date(2026, 0, 1),
         completedAt: new Date(2026, 0, 1, 0, 0, 1)
       },
@@ -1630,14 +1368,12 @@ describe("postgres persistence", () => {
         id: "attempt_retry_new",
         requestId: "request_retry",
         organizationId: "org_admin_retry",
-        workspaceId: defaultWorkspaceId("org_admin_retry"),
+        workspaceId,
         surface: "openai-responses",
         provider: "anthropic",
         model: "claude-sonnet-4-5",
+        ...gateway.attemptEvidence,
         terminalStatus: "completed",
-        routeCandidateId: "candidate_1",
-        attemptIndex: 1,
-        fallbackIndex: 0,
         startedAt: new Date(2026, 0, 2),
         completedAt: new Date(2026, 0, 2, 0, 0, 1)
       }
@@ -1646,7 +1382,7 @@ describe("postgres persistence", () => {
       {
         id: "usage_retry_old",
         organizationId: "org_admin_retry",
-        workspaceId: defaultWorkspaceId("org_admin_retry"),
+        workspaceId,
         requestId: "request_retry",
         providerAttemptId: "attempt_retry_old",
         provider: "anthropic",
@@ -1657,7 +1393,7 @@ describe("postgres persistence", () => {
       {
         id: "usage_retry_new",
         organizationId: "org_admin_retry",
-        workspaceId: defaultWorkspaceId("org_admin_retry"),
+        workspaceId,
         requestId: "request_retry",
         providerAttemptId: "attempt_retry_new",
         provider: "anthropic",
@@ -1667,108 +1403,48 @@ describe("postgres persistence", () => {
       }
     ]);
 
-    const requestsPage = await fixture.persistence.adminQueries.forScope("org_admin_retry", defaultWorkspaceId("org_admin_retry")).requests();
-    const detail = await fixture.persistence.adminQueries.forScope("org_admin_retry", defaultWorkspaceId("org_admin_retry")).requestDetail("request_retry");
+    const requestsPage = await fixture.persistence.adminQueries.forScope("org_admin_retry", workspaceId).requests();
+    const detail = await fixture.persistence.adminQueries.forScope("org_admin_retry", workspaceId).requestDetail("request_retry");
 
     expect(requestsPage.data).toHaveLength(1);
-    expect(requestsPage.data[0]).not.toHaveProperty("routeExecutionPlan");
     expect(requestsPage.data[0]?.terminalStatus).toBe("completed");
     expect(requestsPage.data[0]?.usage.totalTokens).toBe(9);
-    expect(requestsPage.data[0]?.selectedCandidateId).toBe("candidate_1");
     expect(requestsPage.data[0]?.translated).toBe(true);
-    expect(requestsPage.data[0]?.routeSkipReasons).toEqual(["target_skipped_rate_limit"]);
-    expect(requestsPage.data[0]?.routingConfig).toEqual({
-      configId: "routing_config_retry",
-      configName: "Retry routing config",
-      versionId: "routing_config_retry:v2",
-      version: 2,
-      configHash: "sha256:routing-config-retry"
+    expect(requestsPage.data[0]).toMatchObject({
+      requestedLogicalModel: "coding-auto",
+      resolvedLogicalModelId: `${workspaceId}:logical-model:coding-auto`,
+      deploymentId: gateway.deploymentId,
+      providerConnectionId: gateway.providerConnectionId,
+      routerDecisionId: "router_decision_retry"
     });
     expect(detail.request?.terminalStatus).toBe("completed");
-    expect(detail.request?.routingConfig).toEqual({
-      configId: "routing_config_retry",
-      configName: "Retry routing config",
-      versionId: "routing_config_retry:v2",
-      version: 2,
-      configHash: "sha256:routing-config-retry"
-    });
     expect(detail.routeDecisions).toEqual([
       expect.objectContaining({
-        selectedCandidateId: "candidate_1",
+        requestedLogicalModel: "coding-auto",
+        deploymentId: gateway.deploymentId,
+        providerConnectionId: gateway.providerConnectionId,
+        routerDecisionId: "router_decision_retry",
+        routerDecision: { confidence: 0.88, reason: "coding_workload" },
         translated: true,
-        translatorId: "openai-responses_to_anthropic-messages",
-        routeExecutionPlan: expect.objectContaining({
-          selected: expect.objectContaining({
-            candidateId: "candidate_1"
-          })
-        })
+        translatorId: "openai-responses_to_anthropic-messages"
       })
     ]);
     expect(detail.providerAttempts.map((attempt) => ({
       id: attempt.id,
-      routeCandidateId: attempt.routeCandidateId,
-      attemptIndex: attempt.attemptIndex,
-      fallbackIndex: attempt.fallbackIndex
+      deploymentId: attempt.deploymentId,
+      providerConnectionId: attempt.providerConnectionId,
+      egressWireId: attempt.egressWireId,
+      providerAdapterContractVersion: attempt.providerAdapterContractVersion
     }))).toEqual([
       {
         id: "attempt_retry_old",
-        routeCandidateId: "candidate_1",
-        attemptIndex: 0,
-        fallbackIndex: 0
+        ...gateway.attemptEvidence
       },
       {
         id: "attempt_retry_new",
-        routeCandidateId: "candidate_1",
-        attemptIndex: 1,
-        fallbackIndex: 0
+        ...gateway.attemptEvidence
       }
     ]);
-  });
-
-  it("keeps identical external session ids separate by organization", async () => {
-    const fixture = await persistenceFixture("org_a");
-    const orgBConfig = loadConfig({
-      ...process.env,
-      DEFAULT_ORGANIZATION_ID: "org_b",
-      MODEL_COSTS_JSON: JSON.stringify({ "gpt-routed-hard-test": { inputCostPerMtok: 2, outputCostPerMtok: 10 } })
-    });
-    const orgBPersistence = createDatabasePersistence(fixture.db, orgBConfig, false);
-
-    await new EventService(undefined, undefined, fixture.persistence.eventSink, "org_a").append({
-      scopeType: "session",
-      scopeId: "session_scope_a",
-      sessionId: "shared-session",
-      producer: "test",
-      eventType: "session.route_memory_recorded",
-      payload: {
-        surface: "openai-responses",
-        sessionId: "shared-session",
-        currentRoute: "hard"
-      }
-    });
-    await new EventService(undefined, undefined, orgBPersistence.eventSink, "org_b").append({
-      scopeType: "session",
-      scopeId: "session_scope_b",
-      sessionId: "shared-session",
-      producer: "test",
-      eventType: "session.route_memory_recorded",
-      payload: {
-        surface: "openai-responses",
-        sessionId: "shared-session",
-        currentRoute: "fast"
-      }
-    });
-
-    const rows = await fixture.db.select().from(agentSessions);
-
-    expect(rows).toHaveLength(2);
-    expect(rows.map((row) => row.id).sort()).toEqual([
-      "org_a:workspace:default:openai-responses:shared-session",
-      "org_b:workspace:default:openai-responses:shared-session"
-    ]);
-    expect(rows.map((row) => row.metadata)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ sessionIdentity: "harness" })
-    ]));
   });
 
   async function persistenceFixture(organizationId: string) {
@@ -1781,9 +1457,7 @@ describe("postgres persistence", () => {
     const db = createPgliteDatabase(client);
     const config = loadConfig({
       ...process.env,
-      DEFAULT_ORGANIZATION_ID: organizationId,
-      OPENAI_HARD_MODEL: "gpt-routed-hard-test",
-      MODEL_COSTS_JSON: JSON.stringify({ "gpt-routed-hard-test": { inputCostPerMtok: 2, outputCostPerMtok: 10 } })
+      DEFAULT_ORGANIZATION_ID: organizationId
     });
     const persistence = createDatabasePersistence(db, config, false);
     return { db, config, persistence };
@@ -1799,7 +1473,7 @@ describe("postgres persistence", () => {
       eventType: "proxy.request_received",
       payload: {
         surface: "anthropic-messages",
-        requestedModel: "claude-router-auto",
+        requestedModel: "coding-auto",
         inputHash: `sha256:${requestId}`,
         inputChars: 10
       }
@@ -1810,7 +1484,7 @@ describe("postgres persistence", () => {
     eventService: EventService,
     requestId: string,
     idempotencyKey: string,
-    providerAccountId: string
+    attemptEvidence: Record<string, unknown>
   ) {
     await eventService.append({
       scopeType: "request",
@@ -1824,46 +1498,41 @@ describe("postgres persistence", () => {
         provider: "anthropic",
         model: "claude-sonnet-4-5",
         providerAttemptId: `attempt_${requestId}`,
-        providerAccountId
+        ...attemptEvidence
       }
     });
   }
 
-  async function insertHealthProviderAccount(
+  async function seedHealthGateway(
     fixture: Awaited<ReturnType<typeof persistenceFixture>>,
-    organizationId: string,
-    providerAccountId: string
+    organizationId: string
   ) {
-    await fixture.db.insert(providerAccounts).values({
-      id: providerAccountId,
-      organizationId,
-      providerId: "00000000-0000-0000-0000-000000000002",
-      name: providerAccountId,
-      authType: "api_key",
-      secretCiphertext: "ciphertext",
-      secretHint: "hint",
-      status: "active"
-    });
-  }
-
-  async function activeVersion(
-    fixture: Awaited<ReturnType<typeof persistenceFixture>>,
-    versionId: string
-  ) {
-    const [version] = await fixture.db
-      .select()
-      .from(routingConfigVersions)
-      .where(eq(routingConfigVersions.id, versionId))
-      .limit(1);
-    expect(version).toBeTruthy();
-    return version!;
+    await seedDatabase(fixture.db, seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: organizationId,
+      SEED_USER_ID: `${organizationId}:user`,
+      SEED_USER_NAME: "Persistence Test User",
+      PROXY_TOKEN: `${organizationId}:token`
+    }));
+    const workspaceId = defaultWorkspaceId(organizationId);
+    const deploymentId = `${workspaceId}:deployment:anthropic:claude-sonnet-4-5`;
+    const providerConnectionId = `${workspaceId}:connection:anthropic`;
+    return {
+      deploymentId,
+      providerConnectionId,
+      attemptEvidence: {
+        deploymentId,
+        providerConnectionId,
+        egressWireId: "anthropic-messages" as const,
+        providerAdapterContractVersion: "1" as const
+      }
+    };
   }
 });
 
 function routeContext(): RouteContext {
   return {
     surface: "openai-responses",
-    requestedModel: "router-auto",
+    requestedModel: "coding-auto",
     inputChars: 400,
     inputHash: "sha256:input",
     estimatedInputTokens: 100,
@@ -1878,69 +1547,5 @@ function routeContext(): RouteContext {
     hasImages: false,
     extractedHints: [],
     routingExtractedHints: []
-  };
-}
-
-function routeExecutionPlan(input: {
-  requestId: string;
-  organizationId: string;
-  workspaceId: string;
-}) {
-  return {
-    schemaVersion: 1,
-    requestId: input.requestId,
-    organizationId: input.organizationId,
-    workspaceId: input.workspaceId,
-    apiKeyId: "api_key_1",
-    surface: "openai-responses",
-    dialect: "openai-responses",
-    classifier: {
-      provider: "openai",
-      model: "gpt-5-nano-2025-08-07",
-      route: "hard",
-      confidence: 0.88,
-      attempts: 1,
-      dataMode: "metadata"
-    },
-    routingConfig: {
-      id: "routing_config_1",
-      versionId: "routing_config_version_1",
-      version: 1,
-      hash: "sha256:route-plan"
-    },
-    candidates: [
-      {
-        id: "candidate_1",
-        order: 0,
-        providerId: "anthropic",
-        providerAccountIds: ["provider_account_1"],
-        model: "claude-sonnet-4-5",
-        endpointDialect: "anthropic-messages",
-        translated: true,
-        translatorId: "openai-responses_to_anthropic-messages",
-        compatible: true,
-        eligible: true,
-        skipReasons: [],
-        factors: {
-          nativeDialect: false,
-          capabilityMatch: true,
-          contextWindowOk: null,
-          providerHealthy: null,
-          accountAvailable: true,
-          budgetAllowed: null,
-          rateLimitAllowed: null,
-          sessionAffinityMatch: null
-        }
-      }
-    ],
-    selected: {
-      candidateId: "candidate_1",
-      providerId: "anthropic",
-      providerAccountId: "provider_account_1",
-      model: "claude-sonnet-4-5",
-      dialect: "anthropic-messages",
-      translated: true
-    },
-    policyResults: []
   };
 }

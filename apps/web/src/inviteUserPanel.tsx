@@ -68,14 +68,14 @@ export function InviteUserPanel() {
   });
 
   return (
-    <GlassCard className="routing-config-create">
+    <GlassCard className="inline-create-card">
       <form onSubmit={(event) => {
         event.preventDefault();
         const nextError = validateEmail(form.email);
         setEmailError(nextError);
         if (!nextError) inviteMutation.mutate();
       }}>
-        <div className="card-head routing-create-head">
+        <div className="card-head inline-form-head">
           <div>
             <div className="card-title"><MailPlus />Invite user</div>
             <div className="faint">Send a styled invitation email with a secure accept link.</div>
@@ -84,7 +84,7 @@ export function InviteUserPanel() {
             {inviteMutation.isPending ? "Sending" : "Send invite"}
           </button>
         </div>
-        <div className="routing-create-grid">
+        <div className="inline-form-grid">
           <Field label="Email" error={emailError ?? undefined}>
             <input
               value={form.email}
@@ -101,7 +101,7 @@ export function InviteUserPanel() {
               autoComplete="off"
             />
           </Field>
-          <div className="routing-create-field">
+          <div className="inline-form-field">
             <span>Role</span>
             <MenuSelect
               value={form.role}

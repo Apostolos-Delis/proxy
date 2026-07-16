@@ -1,8 +1,10 @@
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import {
   canonicalModels,
   encryptSecret,
+  providerConnectionHealth,
   providerConnections,
   secretHint
 } from "@proxy/db";
@@ -93,6 +95,7 @@ export async function preflightProviderCommands(
       projectedConnections.set(command.id, next);
       continue;
     }
+    if (command.action === "resetHealth") continue;
     const current = projectedConnections.get(command.id)
       ?? connectionPreflightState(await queries.providerConnectionRecord(input, command.id));
     const next = { ...current, enabled: command.enabled };
@@ -251,6 +254,24 @@ export async function setProviderConnectionEnabled(
     id,
     slug: current.slug,
     status: enabled ? "active" : "disabled"
+  });
+  return { resource: "providerConnection" as const, id };
+}
+
+export async function resetProviderConnectionHealth(
+  context: GatewayConfigMutationContext,
+  id: string
+) {
+  const { tx, actor } = context;
+  const current = await lockScopedRow(tx, providerConnections, actor, id, "provider_connection_not_found");
+  await tx.delete(providerConnectionHealth).where(and(
+    eq(providerConnectionHealth.organizationId, actor.organizationId),
+    eq(providerConnectionHealth.workspaceId, actor.workspaceId),
+    eq(providerConnectionHealth.providerConnectionId, id)
+  ));
+  await context.appendEvent("provider_connection", id, "health_reset", {
+    id,
+    slug: current.slug
   });
   return { resource: "providerConnection" as const, id };
 }

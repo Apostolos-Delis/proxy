@@ -2,7 +2,7 @@ import { builder } from "../builder.js";
 import type { SearchHitModel, SearchResultModel } from "../models.js";
 
 export const SearchHitKind = builder.enumType("SearchHitKind", {
-  values: ["session", "log", "user", "routing_config", "api_key"] as const
+  values: ["session", "log", "user", "logical_model", "api_key"] as const
 });
 
 export const SearchHit = builder.objectRef<SearchHitModel>("SearchHit").implement({

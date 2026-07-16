@@ -4,11 +4,11 @@ import {
   agentSessions,
   apiKeys,
   defaultWorkspaceId,
+  logicalModels,
   organizations,
   promptArtifacts,
   requests,
   routeDecisions,
-  routingConfigs,
   users,
   workspaces
 } from "@proxy/db";
@@ -30,7 +30,7 @@ describe("admin global search", () => {
     activeFixture = undefined;
   });
 
-  it("searches org-scoped sessions, logs, users, routing configs, and api keys", async () => {
+  it("searches org-scoped sessions, logs, users, logical models, and API keys", async () => {
     const fixture = await setup("org_search_admin");
     const createdAt = new Date("2026-06-08T12:00:00.000Z");
 
@@ -56,8 +56,7 @@ describe("admin global search", () => {
         workspaceId: defaultWorkspaceId("org_search_admin"),
         userId: "user_zebra",
         surface: "openai-responses",
-        externalSessionId: "codex-zebra-001",
-        currentRoute: "balanced"
+        externalSessionId: "codex-zebra-001"
       },
       {
         id: "session_other_zebra",
@@ -73,7 +72,7 @@ describe("admin global search", () => {
       usageRequest("request_other", "org_search_other", "user_other", "session_other_zebra", "openai-responses", createdAt)
     ]);
     await fixture.db.insert(routeDecisions).values([
-      usageDecision("decision_zebra", "request_zebra", "org_search_admin", "fast", "openai", "gpt-zebra")
+      usageDecision("decision_zebra", "request_zebra", "org_search_admin", "openai-responses", "openai", "gpt-zebra")
     ]);
     await fixture.db.insert(promptArtifacts).values([
       sessionPrompt("artifact_zebra", "org_search_admin", "request_zebra", "Investigate the zebra checkout regression in staging", createdAt),
@@ -83,21 +82,23 @@ describe("admin global search", () => {
       },
       sessionPrompt("artifact_other", "org_search_other", "request_other", "zebra text in another org", createdAt)
     ]);
-    await fixture.db.insert(routingConfigs).values([
+    await fixture.db.insert(logicalModels).values([
       {
-        id: "config_zebra",
+        id: "logical_zebra",
         organizationId: "org_search_admin",
         workspaceId: defaultWorkspaceId("org_search_admin"),
         name: "Zebra Routing",
         slug: "zebra-routing",
-        description: "Routes zebra traffic"
+        description: "Routes zebra traffic",
+        resolutionKind: "direct"
       },
       {
-        id: "config_other",
+        id: "logical_other",
         organizationId: "org_search_other",
         workspaceId: defaultWorkspaceId("org_search_other"),
         name: "Zebra Routing Other",
-        slug: "zebra-routing-other"
+        slug: "zebra-routing-other",
+        resolutionKind: "direct"
       }
     ]);
     await fixture.db.insert(apiKeys).values([
@@ -107,7 +108,7 @@ describe("admin global search", () => {
         workspaceId: defaultWorkspaceId("org_search_admin"),
         keyHash: "hash_key_zebra",
         name: "zebra-ci-key",
-        routingConfigId: "config_zebra"
+        accessProfileId: `${defaultWorkspaceId("org_search_admin")}:access-profile:opendoor-engineer`
       },
       {
         id: "key_other",
@@ -124,26 +125,26 @@ describe("admin global search", () => {
     expect(search.query).toBe("zebra");
     expect(kinds.get("session:session_zebra")).toEqual(expect.objectContaining({
       title: "codex-zebra-001",
-      subtitle: "openai-responses · balanced",
+      subtitle: "openai-responses",
       status: "active"
     }));
     expect(kinds.get("log:artifact_zebra")).toEqual(expect.objectContaining({
       title: "Investigate the zebra checkout regression in staging",
-      subtitle: "gpt-zebra · fast",
+      subtitle: "coding-auto | gpt-zebra",
       snippet: expect.stringContaining("zebra checkout regression")
     }));
     expect(kinds.get("user:user_zebra")).toEqual(expect.objectContaining({
       title: "Marisol Zebra",
       subtitle: "marisol@example.com"
     }));
-    expect(kinds.get("routing_config:config_zebra")).toEqual(expect.objectContaining({
+    expect(kinds.get("logical_model:logical_zebra")).toEqual(expect.objectContaining({
       title: "Zebra Routing",
       subtitle: "Routes zebra traffic",
       status: "active"
     }));
     expect(kinds.get("api_key:key_zebra")).toEqual(expect.objectContaining({
       title: "zebra-ci-key",
-      subtitle: "Zebra Routing",
+      subtitle: "Opendoor Engineer",
       status: "active"
     }));
     expect(kinds.has("log:artifact_zebra_hidden")).toBe(false);
@@ -185,7 +186,7 @@ describe("admin global search", () => {
     expect(shortQuery.results).toEqual([]);
   });
 
-  it("rejects route decisions from a different workspace before log search", async () => {
+  it("rejects gateway decisions from a different workspace before log search", async () => {
     const fixture = await setup("org_search_route_scope");
     const createdAt = new Date("2026-06-08T12:00:00.000Z");
 
@@ -210,7 +211,7 @@ describe("admin global search", () => {
       sessionPrompt("artifact_search_route", "org_search_route_scope", "request_search_route", "Find the workspace leak", createdAt)
     );
     await expect(fixture.db.insert(routeDecisions).values({
-      ...usageDecision("decision_search_route_wrong_workspace", "request_search_route", "org_search_route_scope", "fast", "openai", "gpt-wrong-workspace"),
+      ...usageDecision("decision_search_route_wrong_workspace", "request_search_route", "org_search_route_scope", "openai-responses", "openai", "gpt-wrong-workspace"),
       workspaceId: "ws_search_route_other"
     })).rejects.toMatchObject({ cause: { constraint: "route_decisions_request_scope_fk" } });
 
@@ -219,7 +220,7 @@ describe("admin global search", () => {
       expect.objectContaining({
         kind: "log",
         id: "artifact_search_route",
-        subtitle: "router-auto"
+        subtitle: "coding-auto | coding-auto"
       })
     ]);
   });

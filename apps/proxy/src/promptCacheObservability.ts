@@ -24,7 +24,6 @@ export function observePromptCachePlan(input: {
   surface: Surface;
   provider: Provider;
   model: string;
-  route?: string | null;
   plan?: PromptCachePlan;
 }) {
   const plan = input.plan;
@@ -57,7 +56,6 @@ export function observePromptCachePlan(input: {
       payload: promptCachePlanEventPayload({
         surface: input.surface,
         model: input.model,
-        route: input.route,
         plan
       })
     });

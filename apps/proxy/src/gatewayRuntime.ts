@@ -103,6 +103,7 @@ export class GatewayRuntime {
       statefulResponses: input.context.statefulResponses,
       hasPreviousResponseId: input.context.hasPreviousResponseId,
       unsupportedFields: input.context.unsupportedFields,
+      isStreaming: input.context.isStreaming,
       classificationFeatures: {
         estimatedInputTokens: input.context.estimatedInputTokens,
         inputChars: input.context.inputChars,

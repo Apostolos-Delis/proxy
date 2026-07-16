@@ -13,6 +13,7 @@ import {
   canonicalModels,
   createPgliteDatabase,
   defaultWorkspaceId,
+  deploymentHealth,
   deploymentWireBindings,
   logicalModels,
   logicalModelTargets,
@@ -194,6 +195,37 @@ describe("logical model resolution", () => {
 
     await fixture.db.update(deploymentWireBindings).set({ enabled: false }).where(eq(deploymentWireBindings.id, bindingId));
     expectDenial(await fixture.resolver.resolve(resolveInput(fixture.organizationId)), "model_unavailable");
+  });
+
+  it("limits Bedrock stream-permission health to streaming requests", async () => {
+    const fixture = await setup("org_resolution_stream_health");
+    client = fixture.client;
+    const workspaceId = defaultWorkspaceId(fixture.organizationId);
+    const deploymentId = `${workspaceId}:deployment:anthropic:claude-fable-5`;
+    const providerConnectionId = `${workspaceId}:connection:anthropic`;
+    await fixture.db.insert(deploymentHealth).values({
+      id: "deployment_health_stream_permission",
+      organizationId: fixture.organizationId,
+      workspaceId,
+      deploymentId,
+      providerConnectionId,
+      status: "terminal",
+      lastErrorType: "model_access_denied",
+      metadata: { bedrockErrorKind: "stream_permission_denied" }
+    });
+
+    expect((await fixture.resolver.resolve(resolveInput(fixture.organizationId, {
+      isStreaming: false
+    }))).outcome).toBe("resolved");
+    expectDenial(await fixture.resolver.resolve(resolveInput(fixture.organizationId, {
+      isStreaming: true
+    })), "model_unavailable");
+
+    await fixture.db.update(deploymentHealth).set({ metadata: {} })
+      .where(eq(deploymentHealth.deploymentId, deploymentId));
+    expectDenial(await fixture.resolver.resolve(resolveInput(fixture.organizationId, {
+      isStreaming: false
+    })), "model_unavailable");
   });
 
   it("rejects incompatible wires and direct models with multiple eligible targets", async () => {

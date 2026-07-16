@@ -17,7 +17,6 @@ export type TokenTotalsModel = OverviewModel["totals"];
 export type CostTotalsModel = OverviewModel["cost"];
 
 export type RequestSummaryModel = Awaited<ReturnType<Q["requests"]>>["data"][number];
-export type RoutingConfigSnapshotModel = NonNullable<RequestSummaryModel["routingConfig"]>;
 export type RequestDetailModel = Awaited<ReturnType<Q["requestDetail"]>>;
 export type ProxyEventModel = RequestDetailModel["events"][number];
 export type CompressionReceiptModel = RequestDetailModel["compressionReceipts"][number];
@@ -58,32 +57,16 @@ export type RequestDetailShape = {
   providerAttempts: ProviderAttemptModel[];
   events: ProxyEventShape[];
   compressionReceipts: CompressionReceiptModel[];
-  healthSkips: unknown[];
 };
 
 export type ApiKeyModel = Awaited<ReturnType<Q["apiKeys"]>>["data"][number];
-export type ApiKeyRoutingConfigRefModel = NonNullable<ApiKeyModel["routingConfig"]>;
-export type ApiKeyProviderBindingModel = ApiKeyModel["providerCredentials"][number];
-
-export type ProviderAccountModel = Awaited<ReturnType<Q["providerAccounts"]>>["data"][number];
-export type ProviderRegistryEntryModel = Awaited<ReturnType<Q["providers"]>>["data"][number];
-export type ProviderEndpointModel = ProviderRegistryEntryModel["endpoints"][number];
-
-export type RoutingConfigSummaryModel = Awaited<ReturnType<Q["routingConfigs"]>>["data"][number];
-export type RoutingConfigVersionModel = NonNullable<RoutingConfigSummaryModel["activeVersion"]>;
-export type RoutingConfigRouteModel = RoutingConfigSummaryModel["routes"][number];
-export type RouteTargetModel = RoutingConfigRouteModel["targets"][number];
-export type RoutingConfigDetailModel = NonNullable<Awaited<ReturnType<Q["routingConfigDetail"]>>>;
-export type RoutingConfigVersionDetailModel = RoutingConfigDetailModel["versions"][number];
+export type ApiKeyAccessProfileRefModel = NonNullable<ApiKeyModel["accessProfile"]>;
 
 export type PromptPageModel = Awaited<ReturnType<Q["prompts"]>>;
 export type PromptSummaryModel = PromptPageModel["data"][number];
 export type PromptPaginationModel = PromptPageModel["pagination"];
 export type PromptDetailModel = NonNullable<Awaited<ReturnType<Q["promptDetail"]>>>;
 export type PromptArtifactDetailModel = PromptDetailModel["artifact"];
-
-export type ModelPricingEntryModel = Awaited<ReturnType<Q["modelPricing"]>>[number];
-export type ModelCatalogEntryModel = Awaited<ReturnType<Q["modelCatalog"]>>[number];
 
 export type CacheBustReportModel = Awaited<ReturnType<Q["cacheBusts"]>>;
 export type CacheBustModel = CacheBustReportModel["busts"][number];
@@ -104,10 +87,6 @@ export type IdleGapReportModel = Awaited<ReturnType<Q["idleGaps"]>>;
 export type IdleGapBucketModel = IdleGapReportModel["buckets"][number];
 
 export type ActiveSessionCountModel = Awaited<ReturnType<Q["activeSessionCount"]>>;
-
-export type RouteOutputReportModel = Awaited<ReturnType<Q["routeOutputReport"]>>;
-export type RouteOutputRowModel = RouteOutputReportModel["routes"][number];
-export type RouteOutputGroupRowModel = RouteOutputReportModel["models"][number];
 
 export type TokenAttributionReportModel = Awaited<ReturnType<Q["tokenAttribution"]>>;
 export type TokenAttributionBucketModel = TokenAttributionReportModel["buckets"][number];

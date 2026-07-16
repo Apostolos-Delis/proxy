@@ -2,13 +2,16 @@ import { and, asc, eq } from "drizzle-orm";
 
 import {
   canonicalModels,
+  deploymentHealth,
   deploymentWireBindings,
   modelDeployments,
+  providerConnectionHealth,
   providerConnections,
   type ProxyDbSession
 } from "@proxy/db";
 
 import type { LogicalModelClassifierDeployment } from "../classifier.js";
+import { pricingFromRow } from "./modelPricing.js";
 import { workspaceScope } from "./scope.js";
 
 export async function activeClassifierDeployment(
@@ -21,10 +24,15 @@ export async function activeClassifierDeployment(
     .select({
       deploymentId: modelDeployments.id,
       model: modelDeployments.upstreamModelId,
+      pricing: modelDeployments.pricing,
       provider: providerConnections.slug,
       connectionId: providerConnections.id,
       bindingId: deploymentWireBindings.id,
       endpointPath: deploymentWireBindings.endpointPath
+      ,connectionHealthStatus: providerConnectionHealth.status
+      ,connectionCooldownUntil: providerConnectionHealth.cooldownUntil
+      ,deploymentHealthStatus: deploymentHealth.status
+      ,deploymentLockoutUntil: deploymentHealth.lockoutUntil
     })
     .from(modelDeployments)
     .innerJoin(canonicalModels, and(
@@ -44,6 +52,16 @@ export async function activeClassifierDeployment(
       eq(deploymentWireBindings.providerConnectionId, providerConnections.id),
       eq(deploymentWireBindings.apiWireId, "openai-responses")
     ))
+    .leftJoin(providerConnectionHealth, and(
+      eq(providerConnectionHealth.organizationId, providerConnections.organizationId),
+      eq(providerConnectionHealth.workspaceId, providerConnections.workspaceId),
+      eq(providerConnectionHealth.providerConnectionId, providerConnections.id)
+    ))
+    .leftJoin(deploymentHealth, and(
+      eq(deploymentHealth.organizationId, modelDeployments.organizationId),
+      eq(deploymentHealth.workspaceId, modelDeployments.workspaceId),
+      eq(deploymentHealth.deploymentId, modelDeployments.id)
+    ))
     .where(and(
       workspaceScope(modelDeployments, organizationId, workspaceId),
       workspaceScope(canonicalModels, organizationId, workspaceId),
@@ -59,6 +77,9 @@ export async function activeClassifierDeployment(
     .orderBy(asc(deploymentWireBindings.id))
     .limit(1);
   if (!row?.endpointPath) return undefined;
+  const now = new Date();
+  if (healthUnavailable(row.connectionHealthStatus, row.connectionCooldownUntil, now)) return undefined;
+  if (healthUnavailable(row.deploymentHealthStatus, row.deploymentLockoutUntil, now)) return undefined;
   return {
     deploymentId: row.deploymentId,
     organizationId,
@@ -66,6 +87,12 @@ export async function activeClassifierDeployment(
     model: row.model,
     provider: row.provider,
     providerConnectionId: row.connectionId,
-    bindingId: row.bindingId
+    bindingId: row.bindingId,
+    pricing: pricingFromRow(row.pricing)
   };
+}
+
+function healthUnavailable(status: string | null, until: Date | null, now: Date) {
+  if (status === "terminal" || status === "locked_out") return !until || until > now;
+  return status === "cooldown" && (!until || until > now);
 }

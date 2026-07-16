@@ -111,7 +111,7 @@ describe("compressionPreview admin query", () => {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         messages: anthropicBody().messages
       })

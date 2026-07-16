@@ -4,7 +4,7 @@
     "profileId": "codex-responses-http",
     "surface": "openai-responses",
     "body": {
-      "model": "router-auto",
+      "model": "coding-auto",
       "input": "fix the parser",
       "prompt_cache_key": "codex-http-session"
     },
@@ -30,7 +30,7 @@
     "profileId": "codex-responses-websocket",
     "surface": "openai-responses",
     "body": {
-      "model": "router-auto",
+      "model": "coding-auto",
       "input": "continue the websocket turn"
     },
     "headers": {
@@ -57,7 +57,7 @@
     "profileId": "claude-code-messages",
     "surface": "anthropic-messages",
     "body": {
-      "model": "claude-router-auto",
+      "model": "coding-auto",
       "metadata": {
         "user_id": "user_abcd_account_1234_session_12345678-abcd"
       },
@@ -96,7 +96,7 @@
     "profileId": "openai-chat-sdk",
     "surface": "openai-chat",
     "body": {
-      "model": "router-auto",
+      "model": "coding-auto",
       "messages": [
         {
           "role": "user",
@@ -125,7 +125,7 @@
     "profileId": "opencode-chat",
     "surface": "openai-chat",
     "body": {
-      "model": "router-auto",
+      "model": "coding-auto",
       "prompt_cache_key": "opencode-body-session",
       "messages": [
         {
@@ -155,7 +155,7 @@
     "profileId": "opencode-chat",
     "surface": "openai-chat",
     "body": {
-      "model": "router-auto",
+      "model": "coding-auto",
       "messages": [
         {
           "role": "user",
@@ -186,7 +186,7 @@
     "profileId": "cursor-byok-chat",
     "surface": "openai-chat",
     "body": {
-      "model": "router-auto",
+      "model": "coding-auto",
       "messages": [
         {
           "role": "user",
@@ -217,7 +217,7 @@
     "profileId": "cursor-byok-chat",
     "surface": "openai-chat",
     "body": {
-      "model": "router-auto",
+      "model": "coding-auto",
       "metadata": {
         "conversation_id": "cursor-body-session"
       },
@@ -249,7 +249,7 @@
     "profileId": "generic-openai-responses",
     "surface": "openai-responses",
     "body": {
-      "model": "router-auto",
+      "model": "coding-auto",
       "input": "fix the parser"
     },
     "headers": {},
@@ -267,7 +267,7 @@
     "profileId": "generic-anthropic-messages",
     "surface": "anthropic-messages",
     "body": {
-      "model": "claude-router-auto",
+      "model": "coding-auto",
       "messages": [
         {
           "role": "user",
@@ -296,7 +296,7 @@
     "profileId": "openai-chat-sdk",
     "surface": "openai-chat",
     "body": {
-      "model": "router-auto",
+      "model": "coding-auto",
       "messages": [
         {
           "role": "user",

@@ -11,7 +11,7 @@ import {
   artifactText,
   conversationTurns,
   type ConversationTurn,
-  dominantRequestRoute,
+  dominantRequestLogicalModel,
   dominantRequestStatus,
   sessionUserName,
   sessionWallMs,
@@ -19,8 +19,7 @@ import {
   transcriptText
 } from "./sessionsPageData";
 import { SessionTimeline } from "./sessionTimeline";
-import { TierGauge } from "./routing/tierViz";
-import { Avatar, GlassCard, PageState, StatusIndicator } from "./ui";
+import { Avatar, GlassCard, PageState, RouteBadge, StatusIndicator } from "./ui";
 
 const MAX_SESSION_MINIBARS = 180;
 
@@ -48,7 +47,8 @@ const SessionDetailViewDocument = graphql(`
         requestId
         createdAt
         selectedModel
-        finalRoute
+        requestedLogicalModel
+        resolvedLogicalModelId
         terminalStatus
         latencyMs
         selectedCost
@@ -107,7 +107,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }) {
         <div className="row gap-12">
           <h2 className="session-title">{session.surface}</h2>
           <StatusIndicator status={dominantRequestStatus(detail.requests)} />
-          <TierGauge route={dominantRequestRoute(detail.requests)} />
+          <RouteBadge route={dominantRequestLogicalModel(detail.requests)} />
         </div>
         <div className="session-byline">
           <Avatar label={sessionUserName(detail)} size={20} />

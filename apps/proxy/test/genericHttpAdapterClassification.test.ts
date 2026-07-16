@@ -24,14 +24,14 @@ describe("generic HTTP adapter classification", () => {
       errorType: "auth_invalid",
       retryable: false,
       fatal: true,
-      scope: "provider_account"
+      scope: "provider_connection"
     }));
     expect(forbidden).toEqual(expect.objectContaining({
       category: "auth_denied",
       errorType: "auth_invalid",
       retryable: false,
       fatal: true,
-      scope: "provider_account"
+      scope: "provider_connection"
     }));
   });
 
@@ -59,7 +59,7 @@ describe("generic HTTP adapter classification", () => {
       errorType: "quota_exhausted",
       retryable: true,
       fatal: false,
-      scope: "provider_account"
+      scope: "provider_connection"
     }));
   });
 
@@ -75,7 +75,7 @@ describe("generic HTTP adapter classification", () => {
       errorType: "provider_unavailable",
       retryable: true,
       fatal: false,
-      scope: "provider"
+      scope: "provider_connection"
     }));
   });
 
@@ -121,7 +121,7 @@ describe("generic HTTP adapter classification", () => {
       errorType: "unknown_transient",
       retryable: true,
       fatal: false,
-      scope: "provider_account"
+      scope: "provider_connection"
     }));
     expect(malformed).toEqual(expect.objectContaining({
       category: "malformed_upstream_response",

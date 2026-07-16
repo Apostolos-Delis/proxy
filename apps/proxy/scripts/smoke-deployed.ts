@@ -9,7 +9,8 @@ type SmokeResult = {
   surface: "openai-responses" | "anthropic-messages";
   transport: "sse" | "websocket";
   sessionId: string;
-  route?: string;
+  logicalModel: string;
+  deployment?: string;
   model?: string;
 };
 
@@ -55,7 +56,7 @@ try {
     : await smokeAdmin([openai, websocket, anthropic], marker);
 
   for (const result of [openai, websocket, anthropic]) {
-    console.log(`${result.surface}_${result.transport}_route=${result.route ?? "admin-verified"} model=${result.model ?? "admin-verified"} session=${result.sessionId}`);
+    console.log(`${result.surface}_${result.transport}_logical_model=${result.logicalModel} deployment=${result.deployment ?? "admin-verified"} model=${result.model ?? "admin-verified"} session=${result.sessionId}`);
   }
   if (admin) {
     console.log(`admin_persistence=requests:${admin.requestCount} sessions:${admin.sessionCount} prompts:${admin.promptCount}`);
@@ -76,7 +77,7 @@ async function smokeModels() {
   const models = await fetchJson(`${baseUrl}/v1/models`);
   const data = recordArray(models, "data");
   const ids = data.map((item) => recordString(item, "id")).filter(Boolean);
-  for (const id of ["router-auto", "claude-router-auto"]) {
+  for (const id of ["coding-auto", "economy-auto", "fable"]) {
     if (!ids.includes(id)) throw new Error(`/v1/models is missing ${id}`);
   }
 }
@@ -93,8 +94,8 @@ async function smokeOpenAIResponses(parentMarker: string): Promise<SmokeResult> 
       traceparent: traceparent()
     },
     body: JSON.stringify({
-      model: "router-auto",
-      input: `${parentMarker} codex sse route smoke. Reply with OK only.`,
+      model: "coding-auto",
+      input: `${parentMarker} codex sse gateway smoke. Reply with OK only.`,
       stream: true,
       max_output_tokens: 16
     }),
@@ -106,7 +107,8 @@ async function smokeOpenAIResponses(parentMarker: string): Promise<SmokeResult> 
     surface: "openai-responses",
     transport: "sse",
     sessionId,
-    route: requiredHeader(response, "x-proxy-route", "OpenAI Responses SSE"),
+    logicalModel: "coding-auto",
+    deployment: requiredHeader(response, "x-proxy-deployment", "OpenAI Responses SSE"),
     model: requiredHeader(response, "x-proxy-model", "OpenAI Responses SSE")
   };
 }
@@ -136,8 +138,8 @@ async function smokeOpenAIWebSocket(parentMarker: string): Promise<SmokeResult> 
     socket.once("open", () => {
       socket.send(JSON.stringify({
         type: "response.create",
-        model: "router-auto",
-        input: `${parentMarker} codex websocket route smoke. Reply with OK only.`,
+        model: "coding-auto",
+        input: `${parentMarker} codex websocket gateway smoke. Reply with OK only.`,
         max_output_tokens: 64
       }));
     });
@@ -171,7 +173,8 @@ async function smokeOpenAIWebSocket(parentMarker: string): Promise<SmokeResult> 
   return {
     surface: "openai-responses",
     transport: "websocket",
-    sessionId
+    sessionId,
+    logicalModel: "coding-auto"
   };
 }
 
@@ -188,8 +191,8 @@ async function smokeAnthropicMessages(parentMarker: string): Promise<SmokeResult
       traceparent: traceparent()
     },
     body: JSON.stringify({
-      model: "claude-router-auto",
-      messages: [{ role: "user", content: `${parentMarker} claude route smoke. Reply with OK only.` }],
+      model: "economy-auto",
+      messages: [{ role: "user", content: `${parentMarker} claude gateway smoke. Reply with OK only.` }],
       stream: true,
       max_tokens: 16
     }),
@@ -201,7 +204,8 @@ async function smokeAnthropicMessages(parentMarker: string): Promise<SmokeResult
     surface: "anthropic-messages",
     transport: "sse",
     sessionId,
-    route: requiredHeader(response, "x-proxy-route", "Anthropic Messages SSE"),
+    logicalModel: "economy-auto",
+    deployment: requiredHeader(response, "x-proxy-deployment", "Anthropic Messages SSE"),
     model: requiredHeader(response, "x-proxy-model", "Anthropic Messages SSE")
   };
 }
@@ -221,7 +225,7 @@ async function smokeAdmin(results: SmokeResult[], parentMarker: string): Promise
   return poll(async () => {
     const overview = await gqlJson(
       `query AdminSmoke($limit: Int) {
-        requests { sessionId finalRoute selectedModel }
+        requests { sessionId requestedLogicalModel resolvedLogicalModelId deploymentId providerConnectionId ingressWireId egressWireId selectedModel }
         sessions { sessionId externalSessionId }
         prompts(limit: $limit) { data { preview } }
       }`,
@@ -235,7 +239,12 @@ async function smokeAdmin(results: SmokeResult[], parentMarker: string): Promise
     for (const result of results) {
       const request = requestRows.find((row) => matchesSessionId(recordString(row, "sessionId"), result.sessionId));
       if (!request) throw new Error(`admin requests missing session ${result.sessionId}`);
-      if (!recordString(request, "finalRoute")) throw new Error(`admin request missing finalRoute for ${result.sessionId}`);
+      if (recordString(request, "requestedLogicalModel") !== result.logicalModel) {
+        throw new Error(`admin request logical model mismatch for ${result.sessionId}`);
+      }
+      for (const field of ["resolvedLogicalModelId", "deploymentId", "providerConnectionId", "ingressWireId", "egressWireId"]) {
+        if (!recordString(request, field)) throw new Error(`admin request missing ${field} for ${result.sessionId}`);
+      }
       if (!recordString(request, "selectedModel")) throw new Error(`admin request missing selectedModel for ${result.sessionId}`);
       const session = sessionRows.find((row) =>
         matchesSessionId(recordString(row, "sessionId"), result.sessionId) ||

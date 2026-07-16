@@ -1,76 +1,66 @@
 # Sessions And Request Replay
 
-Sessions group related harness traffic so operators can inspect an agent conversation as a sequence instead of isolated requests.
+Sessions group related harness requests for replay and cache analysis. The current table remains named `agent_sessions`, but session evidence is derived from logical models and physical deployments rather than model tiers.
 
-## Where Sessions Come From
+## Session List
 
-Proxy identifies sessions from harness metadata when available, including:
+The Logs session view summarizes:
 
-- Claude Code session and agent headers.
-- OpenAI Responses session-ish identifiers.
-- Request metadata and persisted request/session state.
+- surface and external session identity;
+- request count and recent activity;
+- logical-model changes and logical-model mix;
+- deployment and upstream-model mix;
+- terminal status counts;
+- usage, cost, and cache-hit rate.
 
-When a session cannot be inferred, requests are still visible in **Logs** and **Prompts**.
+A logical-model change means caller intent changed. A deployment change means the same or another logical model resolved to different physical supply. Keep those signals separate during incident analysis.
 
-## Use The Sessions Page
+## Session Detail
 
-Open **Sessions** to inspect:
+The detail view joins:
 
-- Session start and most recent activity.
-- Surface and harness.
-- User and workspace attribution.
-- Request count.
-- Total tokens and cost.
-- Route/model decisions across the conversation.
+- request summaries;
+- prompt artifacts;
+- generic resolution-decision rows;
+- provider attempts;
+- usage ledger entries;
+- ordered events.
 
-Use it when a user says "the agent made a bad choice" or "this session got expensive."
+For one request, follow this sequence:
 
-## Use The Logs Page
+```text
+request received
+  -> gateway admission and authorization
+  -> logical-model resolution
+  -> provider request forwarded
+  -> provider terminal event
+  -> usage and request terminal state
+```
 
-Open **Logs** for request-level evidence:
+Classifier-backed logical models include router decision evidence. Direct models should have no classifier cost or router decision.
 
-![Proxy logs page showing replayable agent sessions, models, routes, tokens, and cost](../assets/proxy-logs.png)
+## Prompt Evidence
 
-For each request, inspect:
+Raw prompt text is available only when prompt capture permits it and only through `prompt_artifacts.raw_text`. Events contain hashes and bounded metadata, not full prompts. Prompt access is audited.
 
-- Prompt preview and artifact detail.
-- Route decision and classifier result.
-- Provider attempts.
-- Usage and cost.
-- Compression receipts.
-- Events timeline.
+Use the artifact list to compare source role/index, capture mode, selected model, logical model, deployment, token estimate, and cost. Respect retention and access controls when sharing incident evidence.
 
-## Prompt Artifacts
+## Debugging Patterns
 
-Prompt artifacts are the safe place for captured prompt text in this test project. Event payloads should not contain full prompt text.
-
-Prompt capture modes are configured in **Settings**:
-
-| Mode | Behavior |
+| Observation | Interpretation |
 | --- | --- |
-| `raw_text` | Stores raw prompt text for inspection |
-| `redacted` | Stores redacted text and metadata |
-| `hash_only` | Stores hashes and metadata without content |
-| `none` | Disables prompt artifact capture |
+| Requested model absent from caller catalog | Access-profile or grant issue |
+| Logical model resolved, no deployment | Broken/disabled graph or wire incompatibility |
+| Logical model stable, deployment changes | Classifier selection or physical health/capacity change |
+| Deployment stable, upstream model string changes | Deployment configuration changed; inspect audit history |
+| Provider attempt exists, no terminal state | Streaming disconnect or terminal persistence failure |
+| High classifier cost on direct model | Configuration defect; direct resolution must not classify |
+| Cache hit rate falls after deployment change | Provider prefix/cache affinity changed |
 
-Use lower-capture modes when raw prompt inspection is not acceptable.
+## Rejected Requests
 
-## Replay Workflow
+A rejected request can still belong to a session and appear in model/status summaries. It may have admission evidence without a provider attempt or usage row. Do not infer missing telemetry merely because physical execution never began.
 
-1. Start from **Sessions** when the issue spans multiple turns.
-2. Open the relevant request from the session timeline.
-3. Check the route decision and selected provider/model.
-4. Check provider attempts for failures, retries, or fallback.
-5. Check usage and cost against the expected model tier.
-6. Check compression receipts if tool output was large.
-7. Use event timestamps to understand where latency accumulated.
+## Cross-Scope Safety
 
-## Common Findings
-
-| Finding | Likely next step |
-| --- | --- |
-| Wrong tier selected | Inspect classifier output and routing config |
-| Correct tier, wrong model | Inspect active routing config version |
-| Provider attempt failed | Check provider health and upstream credential |
-| Tokens unexpectedly high | Inspect prompt artifacts and compression receipts |
-| Session cache busts | Check prompt stability, tool-result rewrites, and duplicated context |
+Session, request, artifact, decision, attempt, and usage queries are organization- and workspace-scoped. A session ID from another scope must not resolve. If expected records are missing, confirm the console workspace before changing persistence or replay logic.

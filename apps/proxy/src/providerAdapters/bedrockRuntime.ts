@@ -233,11 +233,11 @@ export class BedrockRuntimeProviderAdapter {
     if (credential?.token) {
       return resolvePlaintextBedrockCredentials({
         plaintext: credential.token,
-        accountSettings: credential.providerAccountSettings
+        accountSettings: credential.connectionSettings
       });
     }
     const resolved = await resolveBedrockCredentials({
-      accountSettings: credential?.providerAccountSettings,
+      accountSettings: credential?.connectionSettings,
       providerOrganizationId: provider.builtin ? null : provider.organizationId,
       config: bedrockCredentialResolverConfig(this.config)
     });
@@ -339,14 +339,14 @@ function bedrockRequestId(output: unknown) {
 }
 
 function bedrockRegion(provider: ProviderRegistryEntry, credential: UpstreamCredential | undefined) {
-  return stringValue(credential?.providerAccountSettings?.region) ??
+  return stringValue(credential?.connectionSettings?.region) ??
     stringValue(provider.adapterConfig.defaultRegion) ??
     "us-east-1";
 }
 
 function bedrockEndpoint(provider: ProviderRegistryEntry, credential: UpstreamCredential | undefined) {
   return credential?.baseUrl ??
-    stringValue(credential?.providerAccountSettings?.endpointOverride) ??
+    stringValue(credential?.connectionSettings?.endpointOverride) ??
     (!provider.builtin ? provider.baseUrl : undefined);
 }
 

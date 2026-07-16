@@ -95,7 +95,7 @@ describe("prompt cache plan observability", () => {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: [{ role: "user", content: [{ type: "input_text", text: rawPromptText }] }],
         prompt_cache_key: rawCacheKey,
         prompt_cache_retention: "24h"

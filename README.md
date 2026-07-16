@@ -2,30 +2,26 @@
 
 # Proxy
 
-Proxy is an OpenAI/Anthropic-compatible routing gateway for coding agents. Point Codex, Claude Code, opencode, Cursor BYOK, or SDK callers at one base URL; Proxy classifies each request, routes it to an appropriate model tier, and records the route decision, provider attempts, usage, cost, sessions, and prompt artifacts in an operations console.
-
-It is built for teams that want to run agent traffic through a controllable gateway instead of hard-coding one model/provider into every harness.
+Proxy is an OpenAI- and Anthropic-compatible AI gateway. Applications and coding harnesses point their existing SDKs at one base URL and request a stable logical model. Proxy authorizes the caller, resolves that logical model to an eligible deployment, translates between supported API wires when necessary, invokes the provider, and records durable request, resolution, usage, cost, and prompt evidence.
 
 ## Highlights
 
-- **Drop-in API compatibility** for OpenAI Responses (`/v1/responses`, HTTP and WebSocket), OpenAI Chat Completions (`/v1/chat/completions`), and Anthropic Messages (`/v1/messages`).
-- **LLM-routed model selection** across `fast`, `balanced`, `hard`, and `deep` tiers, with explicit tier pinning through model aliases such as `router-hard` and `claude-router-hard`.
-- **Versioned routing configs** with immutable versions, API-key/workspace assignment, budget limits, and active-version auditability.
-- **Operations console** for usage, savings, sessions, request logs, prompt capture, API keys, provider credentials, routing configs, users, and org settings.
-- **BYOK provider credentials** encrypted at rest and bindable per Proxy API key.
-- **Multi-tenant data model** scoped by organization and workspace, with events as the audit/projection backbone.
+- Drop-in OpenAI Responses, OpenAI Chat Completions, and Anthropic Messages endpoints.
+- Stable logical models decoupled from provider model IDs and deployments.
+- Reusable access profiles that control which logical models and operations an API key may use.
+- Direct models for deterministic selection and classifier-backed models for automatic selection.
+- Explicit provider connections, canonical models, deployments, and wire bindings.
+- Transactional GraphQL administration plus declarative TOML `plan` and `apply`.
+- Organization- and workspace-scoped persistence with hashed API keys and protected provider secrets.
+- An operations console for usage, cost, caching, sessions, request evidence, prompts, keys, users, and settings.
 
 ## Screenshots
 
-Demo data shown below was generated locally with the PGlite demo stack; it does not contain real traffic.
+Demo data shown below was generated locally with the PGlite demo stack and does not contain real traffic.
 
 ![Proxy overview dashboard showing traffic, token volume, spend, and routing savings](docs/assets/proxy-overview.png)
 
-![Proxy logs page showing replayable agent sessions, models, routes, tokens, and cost](docs/assets/proxy-logs.png)
-
-## User Guide
-
-For the end-to-end operator path, start with the [Proxy user guide](docs/user-guide/README.md). It walks through local setup, API keys, harness setup, provider auth, monitoring, sessions, analytics, and token compression.
+![Proxy logs page showing replayable sessions, models, tokens, and cost](docs/assets/proxy-logs.png)
 
 ## Quick Start
 
@@ -33,81 +29,86 @@ Prerequisites:
 
 - Node.js and `pnpm` 10.x
 - Docker or Colima for the default local Postgres path
-- OpenAI and Anthropic keys when you want to route real model traffic
+- OpenAI or Anthropic credentials when forwarding real traffic
 
 ```shell
 pnpm install
 pnpm dev:local
 ```
 
-`pnpm dev:local` boots a complete local workspace:
+`pnpm dev:local` starts the proxy at `http://127.0.0.1:8787`, the console at `http://127.0.0.1:5173`, and Postgres on port `55432`. It creates `.env` when needed, migrates the database, and seeds:
 
-| Component | URL / port |
-| --- | --- |
-| Proxy API | `http://127.0.0.1:8787` |
-| Web console | `http://127.0.0.1:5173` |
-| Postgres | `localhost:55432` |
+- provider connections and deployments for the configured upstreams;
+- `fable`, `coding-auto`, and `economy-auto` logical models;
+- `opendoor-engineer` and `external-economy` access profiles;
+- an owner user, default workspace, and hashed local API key.
 
-The script creates `.env` from `.env.example` if needed, starts or reuses Postgres, runs migrations, and seeds an organization, default workspace, owner user, provider placeholders, a default routing config, and a local API key.
-
-Log into the console with the development credentials from `.env`:
-
-```text
-ADMIN_DEV_LOGIN_EMAIL=local@example.com
-ADMIN_DEV_LOGIN_PASSWORD=dev-password
-```
-
-To forward real traffic, set provider keys in `.env`:
+Set real upstream credentials in `.env`:
 
 ```shell
 OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...
 ```
 
-The proxy and console can also run separately:
+The development console login defaults to `local@example.com` and `dev-password`. Run the services separately with `pnpm dev:proxy` and `pnpm dev:web`.
 
-```shell
-pnpm dev:proxy
-pnpm dev:web
+In Conductor workspaces, the Run script derives isolated ports from `CONDUCTOR_PORT`: web uses `CONDUCTOR_PORT`, proxy uses `CONDUCTOR_PORT + 1`, and Postgres uses `CONDUCTOR_PORT + 2`.
+
+## Connect Applications
+
+Existing OpenAI and Anthropic SDKs need only a base URL, a Proxy API key, and an allowed logical model.
+
+```ts
+import OpenAI from "openai";
+
+const client = new OpenAI({
+  apiKey: process.env.PROXY_TOKEN,
+  baseURL: "http://127.0.0.1:8787/v1"
+});
+
+const response = await client.responses.create({
+  model: "coding-auto",
+  input: "Summarize this incident."
+});
 ```
 
-For production (`NODE_ENV=production`), Proxy rejects the development defaults for `PROXY_TOKEN`, `OPENAI_API_KEY`, and `ANTHROPIC_API_KEY`.
+```ts
+import Anthropic from "@anthropic-ai/sdk";
 
-### Conductor Workspaces
+const client = new Anthropic({
+  apiKey: process.env.PROXY_TOKEN,
+  baseURL: "http://127.0.0.1:8787"
+});
 
-In Conductor workspaces, the checked-in Run script still uses `pnpm dev:local`, but derives isolated ports from `CONDUCTOR_PORT`: web on `CONDUCTOR_PORT`, proxy on `CONDUCTOR_PORT + 1`, and Postgres on `CONDUCTOR_PORT + 2`.
+const response = await client.messages.create({
+  model: "fable",
+  max_tokens: 1024,
+  messages: [{ role: "user", content: "Review this proposal." }]
+});
+```
 
-## Connect a Coding Agent
+`GET /v1/models` returns only the logical models granted to that key. A denied or disabled model fails before classifier or provider I/O.
 
-The proxy hosts an idempotent setup script. By default it configures Claude Code, Codex, and opencode, stores the shared key at `~/.proxy/token`, and updates only Proxy-owned marker blocks.
+## Connect Harnesses
+
+The hosted setup script configures Claude Code, Codex, and opencode without changing unrelated user settings:
 
 ```shell
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- <api-key>
 ```
 
-Use harness-specific installs when you want different Proxy API keys or routing configs per harness:
+Use separate keys when harnesses need different access profiles:
 
 ```shell
-curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness codex <codex-api-key>
-curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code <claude-api-key>
-curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness opencode <opencode-api-key>
+curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness codex <engineer-key>
+curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code <economy-key>
 ```
 
-Pass `--harness` more than once to configure a selected set with one shared key:
-
-```shell
-curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness claude-code --harness codex --harness opencode <api-key>
-```
-
-The console's API-key screen lets you choose one or more harnesses during key creation and shows copyable setup snippets after the key is created.
-
-### Claude Code Manual Setup
-
-In `~/.claude/settings.json`:
+Manual Claude Code settings:
 
 ```json
 {
-  "model": "claude-router-auto",
+  "model": "coding-auto",
   "env": {
     "ANTHROPIC_BASE_URL": "http://127.0.0.1:8787",
     "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"
@@ -116,97 +117,79 @@ In `~/.claude/settings.json`:
 }
 ```
 
-Claude Code strips `ANTHROPIC_BASE_URL` from project-scoped settings, so this must be user-level or managed settings. For a one-off session:
-
-```shell
-ANTHROPIC_BASE_URL=http://127.0.0.1:8787 \
-ANTHROPIC_API_KEY=$PROXY_TOKEN \
-CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1 \
-claude --model claude-router-auto
-```
-
-### Codex Manual Setup
-
-In `~/.codex/config.toml`:
+Manual Codex provider settings:
 
 ```toml
-# >>> proxy codex defaults >>>
-model = "router-auto"
+model = "coding-auto"
 model_provider = "proxy"
-# <<< proxy codex defaults <<<
 
-# >>> proxy codex provider proxy >>>
 [model_providers.proxy]
 name = "Proxy"
 base_url = "http://127.0.0.1:8787/v1"
 env_key = "PROXY_TOKEN"
 wire_api = "responses"
-supports_websockets = true
-# <<< proxy codex provider proxy <<<
+supports_websockets = false
 ```
 
-### opencode and Cursor
+See the [harness compatibility matrix](docs/harnesses/compatibility-matrix.md), [Claude Code guide](docs/harnesses/claude-code.md), [opencode guide](docs/harnesses/opencode.md), and [Cursor guide](docs/harnesses/cursor-byok.md).
 
-- [opencode setup](docs/harnesses/opencode.md) covers the OpenAI-compatible Chat path, OpenAI Responses path, and Anthropic Messages path.
-- [Cursor BYOK setup](docs/harnesses/cursor-byok.md) covers Cursor's OpenAI-compatible base-URL override and custom `router-*` model aliases.
-- [Harness compatibility matrix](docs/harnesses/compatibility-matrix.md) tracks currently supported harness surfaces.
+## Resolution Model
 
-### Model Aliases
+Every text request follows one control path:
 
-`router-auto` works on OpenAI Responses and Chat Completions surfaces. `claude-router-auto` works on Anthropic Messages. Both let the classifier pick the tier per request.
+1. Identify the ingress API wire and operation.
+2. Authenticate the API key and load its access profile.
+3. Resolve the requested logical model inside the key's workspace.
+4. Authorize the logical model and operation through a model grant.
+5. Filter targets to enabled deployments, connections, and compatible wire bindings.
+6. Select the single direct target or run the configured classifier over eligible targets only.
+7. Persist admission and resolution evidence before provider I/O.
+8. Translate when required, invoke the provider adapter, and persist attempts and usage.
 
-To pin a tier, use `router-fast`, `router-balanced`, `router-hard`, `router-deep`, or the matching `claude-router-*` alias.
+The database is the only runtime configuration source. There are no model aliases, process-global route policy documents, or fallback reads from declarative files.
 
-## How Routing Works
+## Configure The Gateway
 
-1. A request arrives at `/v1/responses`, `/v1/chat/completions`, or `/v1/messages` and is authenticated by Proxy API key.
-2. The API key resolves organization, workspace, user attribution, and routing config. Precedence is API-key assignment, then workspace default, then seeded default.
-3. An LLM classifier returns a structured tier decision unless the caller pinned a tier through the model alias.
-4. The active routing config maps the tier to ordered provider deployment pools. Native dialect endpoints are preferred; registered same-family translators can bridge OpenAI Responses and Chat when compatible. Provider 429/5xx/timeout failures can retry to ordered fallback deployments before response bytes are sent.
-5. The route decision, provider attempts, usage, routing config identity, and prompt artifacts are persisted for audit and console projections.
+The admin GraphQL API manages provider connections, canonical models, deployments, wire bindings, logical models, targets, access profiles, grants, and API-key assignments. Mutations write the audit event, outbox row, and current-state mutation in one transaction.
 
-Routing configs are edited in the console. Saving creates a new immutable version, which can be activated in the same step. Environment variables such as `OPENAI_FAST_MODEL` and `ANTHROPIC_HARD_MODEL` seed local defaults only; persisted runtime requests resolve from the database. Responses include `x-prompt-proxy-route`, `x-prompt-proxy-model`, and `x-prompt-proxy-deployment` for the final served deployment. See the [routing configs runbook](docs/runbooks/routing-configs.md) for assignment commands and troubleshooting.
+For declarative configuration:
 
-Optional traffic admission limits: `GATEWAY_*_CONCURRENCY_LIMIT`, `GATEWAY_*_RPM_LIMIT`, and `GATEWAY_*_TPM_LIMIT` cover global, organization, workspace, API-key, user, and provider/model scopes. The local limiter returns 429 before classifier/provider work when a request exceeds a configured limit; rate and token windows include `retry-after`.
+```shell
+pnpm --filter @proxy/proxy gateway-config plan ./gateway.toml
+pnpm --filter @proxy/proxy gateway-config apply ./gateway.toml --actor-user-id user_123
+```
 
-## Workspaces
-
-Provider HTTP forwarding retries upstream `429` responses before sending headers to the client. It honors `Retry-After`, provider reset headers, and then jittered exponential backoff. Tune with `PROVIDER_RATE_LIMIT_MAX_ATTEMPTS`, `PROVIDER_RATE_LIMIT_BASE_DELAY_MS`, and `PROVIDER_RATE_LIMIT_MAX_DELAY_MS`.
+`plan` is read-only. `apply` uses the same validation and transactional mutation service as GraphQL. Omitted resources are untouched, and a repeated unchanged apply is a no-op. The full document shape is in [Gateway Configuration TOML V1](docs/scopes/ai-gateway-core-model-v1/TOML.md); operational procedures are in the [gateway control-plane runbook](docs/runbooks/gateway-control-plane.md).
 
 ## Operations Console
 
-The web console at `:5173` is an org- and workspace-scoped operations surface with global search, workspace switching, and organization switching.
+The console is a dense, workspace-scoped operational surface:
 
 | Page | Purpose |
 | --- | --- |
-| Overview | Savings story, route quality watchlist, traffic at a glance |
-| Usage / Cost | Per-dimension usage analytics and cost dashboards |
-| Sessions / Logs | Harness sessions, replay timeline, request evidence |
-| Prompts | Captured prompt artifacts with syntax-highlighted JSON |
-| API keys | Key creation, revocation, routing config assignment, provider credential binding, setup snippets |
-| Model providers | Provider registry, BYOK keys, subscription credentials, account health |
-| Routing configs | Tier models, effort, limits, version history, activation |
-| Users | Invitations, roles, deactivation |
-| Settings | Runtime settings, prompt capture, org system prompt |
+| Overview | Traffic, tokens, cost, and low-confidence watchlist |
+| Usage / Cost | Usage and spend grouped by logical model, deployment, provider, key, user, or surface |
+| Caching | Prompt-cache behavior, cache busts, and compression savings |
+| Logs / Sessions | Request resolution evidence, attempts, usage, and replay timelines |
+| Prompts | Captured prompt artifacts and access audit |
+| API keys | Key issuance, access-profile assignment, revocation, and harness setup |
+| Users | Invitations, roles, activation, and deactivation |
+| Settings / Billing | Runtime optimization settings and deployment pricing |
 
-## Data and Security Model
+## Data And Security
 
-- Every durable table and event is scoped by `organization_id` or in-memory `tenantId`.
-- Traffic-scoped tables are additionally scoped by `workspace_id`.
-- API keys are stored as hashes, never raw tokens.
-- Provider keys are stored as encrypted secret material or secret references.
-- Raw prompt text is supported for this test project, but full prompt content is stored only through `prompt_artifacts.raw_text`; event payloads should not contain full prompts.
-- Debug endpoints are development tools and must not be exposed with default development credentials.
+- Durable rows and events are scoped by organization; traffic and gateway resources are also scoped by workspace.
+- API keys are stored only as hashes.
+- Provider credentials are stored as secret references or AES-256-GCM encrypted material, never plaintext rows.
+- Full prompt text is stored only in `prompt_artifacts.raw_text`, never in event payloads.
+- Resolution evidence records logical model, access profile, deployment, connection, ingress and egress wires, and adapter versions.
+- Development debug endpoints must not be exposed with development credentials.
 
-Customer BYOK secrets are encrypted at rest with AES-256-GCM using `PROVIDER_SECRET_ENCRYPTION_KEY` (base64, 32 bytes):
-
-```shell
-openssl rand -base64 32
-```
+Generate the optional encryption key with `openssl rand -base64 32` and set `PROVIDER_SECRET_ENCRYPTION_KEY`.
 
 ## API Surface
 
-Proxy routes use API-key auth:
+Traffic routes use Proxy API-key authentication:
 
 - `GET /healthz`
 - `GET /v1/models`
@@ -216,57 +199,28 @@ Proxy routes use API-key auth:
 - `POST /v1/messages/count_tokens`
 - `GET /setup.sh`
 
-Admin routes use session-cookie auth:
+Admin routes use session-cookie authentication:
 
 - `POST /admin/graphql`
 - `GET /admin/graphql` for GraphiQL in development
 - `GET /admin/events` for console live updates
 
-The GraphQL SDL lives at [apps/proxy/schema.graphql](apps/proxy/schema.graphql). Regenerate it with:
+The generated SDL is [apps/proxy/schema.graphql](apps/proxy/schema.graphql). Refresh it with `pnpm --filter @proxy/proxy schema:print`.
+
+Operational metrics are exposed at `GET /metrics` when `METRICS_ENABLED=true`, `METRICS_EXPORTER=prometheus`, and `METRICS_TOKEN` are configured. See the [metrics runbook](docs/runbooks/proxy-metrics.md).
+
+## Persistence And Cost
+
+`packages/db` owns the Drizzle/Postgres schema. When persistence is enabled, request evidence, events, outbox rows, attempts, usage, sessions, and prompt artifacts are written transactionally.
 
 ```shell
-pnpm --filter @proxy/proxy schema:print
+pnpm db:up
+pnpm db:migrate
+pnpm db:seed
+pnpm db:console
 ```
 
-Development debug routes include `/_debug/events`, `/_debug/provider-attempts`, `/_debug/outbox`, `/_debug/event-writer`, `/_debug/sessions`, `/_debug/projections`, and `/_debug/route-quality`. They are enabled automatically only when `DATABASE_URL` is unset; set `DEBUG_ENDPOINTS_ENABLED=true` to enable them with persistence.
-
-Operational metrics are disabled by default. `GET /metrics` emits OpenMetrics/Prometheus text when `METRICS_ENABLED=true`, `METRICS_EXPORTER=prometheus`, and `METRICS_TOKEN` are configured. See the [proxy metrics runbook](docs/runbooks/proxy-metrics.md).
-
-Proxy JSON request bodies are capped by `REQUEST_BODY_LIMIT_BYTES`. Local development defaults to 50 MiB; production defaults to 15 MiB unless the deployment config sets an explicit value.
-
-Async observability events are flushed through a bounded writer. Tune `EVENT_WRITER_MAX_ENTRIES`, `EVENT_WRITER_MAX_BYTES`, `EVENT_WRITER_BATCH_SIZE`, and `EVENT_WRITER_SHUTDOWN_TIMEOUT_MS`; `/_debug/event-writer` reports depth, dropped events, flush failures, flush latency, and oldest queued event age.
-
-Traffic limit counters are in-process. In a multi-task deployment, set each task's `GATEWAY_*` limit to the desired fleet limit divided by the number of proxy tasks, or add an external shared limiter before treating the value as fleet-global.
-
-## Persistence
-
-`packages/db` is the Drizzle/Postgres layer. When `DATABASE_URL` is set, proxy events and current-state rows for requests, route decisions, provider attempts, usage, sessions, prompt artifacts, events, and outbox items are written in the same transaction.
-
-Runtime Postgres pools are capped by `DB_POOL_MAX` (default `5`). For production sizing, start with `floor(db_max_connections * 0.7 / max_proxy_tasks)` so normal proxy traffic leaves connection headroom for migrations, operations tasks, and manual break-glass sessions.
-
-```shell
-pnpm db:up        # start Postgres via Docker Compose
-pnpm db:migrate   # apply migrations
-pnpm db:seed      # idempotent baseline seed
-pnpm db:console   # interactive Drizzle console with schema tables preloaded
-pnpm db:runner -- 'await db.select().from(organizations).limit(5)'
-```
-
-Editable runtime settings live as JSON at `.proxy/settings.json` or `PROXY_SETTINGS_PATH`. Environment variables take precedence, and classifier, budget, and route-quality changes apply after restart.
-
-When seeding multiple organizations into one database, use a distinct `PROXY_TOKEN` per org.
-
-## Spend Accounting
-
-Providers return token counts, not dollar amounts, so Proxy computes spend locally. Usage ledger rows price uncached input, cache reads, cache writes, and output at their own per-MTok rates. Routing savings compare the actual selected model cost against replaying the same tokens through the balanced route model.
-
-Pricing resolves in this order:
-
-1. Built-in defaults in [apps/proxy/src/pricing.ts](apps/proxy/src/pricing.ts)
-2. `MODEL_COSTS_JSON` at boot
-3. Per-organization overrides edited live on the console's Billing page
-
-Ledger rows keep the rates in effect when they were written; dashboards recompute baselines with current pricing.
+Pricing belongs to model deployments. Usage ledger rows keep the cost calculated from the selected deployment's pricing at request time. Dashboards group physical spend by deployment and caller-facing usage by logical model.
 
 ## Development
 
@@ -276,19 +230,16 @@ pnpm typecheck
 pnpm test
 pnpm smoke
 pnpm smoke:harnesses
-pnpm build:runtime && pnpm load:proxy -- --profile=smoke --json-out=.context/load-smoke.json
 pnpm build
 ```
 
-`pnpm smoke` spins up mock OpenAI and Anthropic upstreams, drives Codex-shaped and Claude Code-shaped requests through the proxy, and verifies routing-config resolution end to end. `pnpm smoke:harnesses` runs the real installed `codex` and `claude` CLIs against the same mock-backed proxy.
+`pnpm smoke` drives OpenAI- and Anthropic-shaped traffic through mock upstreams and verifies logical-model authorization and resolution. `pnpm smoke:harnesses` runs installed Codex and Claude CLIs against the mock-backed gateway.
 
-Architecture rules and conventions live in [AGENTS.md](AGENTS.md). The docs index is [docs/index.md](docs/index.md), starting with the [model routing proxy design](docs/model-routing-proxy.md).
-
-`pnpm load:proxy` runs the proxy load harness from `apps/proxy/scripts/load-proxy.ts`. With no `PROMPT_PROXY_LOAD_BASE_URL`, it starts a local proxy with mock OpenAI and Anthropic upstreams, so the smoke profile has no provider spend. Profiles cover `concurrency` (200/500/1000 SSE streams), `body-sizes` (100 KB/1 MB/5 MB bodies), `rps` (20/50/100 new requests/sec), `classifier-cache`, `provider-failures`, and `scale-readiness` (the passing scale profiles combined; provider failures run separately). Results include p50/p95/p99 TTFT, pre-forward latency when mock upstream timing is available, stream duration, error rate, memory, and machine-readable JSON. Thresholds are configurable with flags such as `--max-error-rate`, `--max-p95-ttft-ms`, `--max-p95-pre-forward-ms`, and `--max-p99-total-ms`.
+The [docs index](docs/index.md), [gateway architecture](docs/model-routing-proxy.md), and [core data model](docs/scopes/ai-gateway-core-model-v1/PLAN.md) contain the durable design.
 
 ## Deployment
 
-A prod-like AWS deployment is defined with CDK in `infra/cdk`:
+A prod-like AWS deployment is defined in `infra/cdk`:
 
 ```shell
 pnpm cdk:synth
@@ -298,22 +249,20 @@ pnpm ops:migrate:aws
 pnpm sync:web:aws
 ```
 
-See the [AWS deployment runbook](docs/runbooks/aws-deployment.md) and [deployment scope plan](docs/scopes/aws-prod-like-deployment-v1/PLAN.md).
+See the [AWS deployment runbook](docs/runbooks/aws-deployment.md).
 
 ## Repository Layout
 
 ```text
-apps/proxy/      Fastify proxy: routing, classifier, provider adapters, admin GraphQL
-apps/web/        TanStack Router/Query/Table operations console
-packages/db/     Drizzle schema, migrations, persistence services
-packages/schema/ Shared constants and cross-package types
+apps/proxy/      Fastify gateway, wire handling, resolution, adapters, GraphQL
+apps/web/        TanStack operations console
+packages/db/     Drizzle schema, migrations, seeds, and persistence helpers
+packages/schema/ Shared code-owned contracts and cross-package types
 infra/cdk/       AWS CDK stacks
-docs/            Architecture, scope plans, runbooks, future work
+docs/            Architecture, scopes, runbooks, and future work
 scripts/         Local bootstrap and operations helpers
 ```
 
 ## License
 
-Proxy is licensed under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (`FSL-1.1-ALv2`). Each release converts to Apache License 2.0 two years after it is made available.
-
-FSL is source-available and allows use, copying, modification, and redistribution for any purpose other than offering the software, or substantially similar functionality, as a competing commercial product or service. If you want an OSI-approved open-source license from day one, replace `LICENSE` and the `license` field in `package.json` before publishing the repository.
+Proxy is licensed under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE). Each release converts to Apache License 2.0 two years after it is made available.
