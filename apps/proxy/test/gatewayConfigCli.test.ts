@@ -45,6 +45,7 @@ organization_id = "org_cli_invalid"
 workspace_id = "workspace_cli_invalid"
 
 [[provider_connections]]
+provider = "openai"
 id = "connection_operator_owned"
 slug = "unsafe"
 name = "Unsafe"
@@ -80,6 +81,7 @@ version = 1
 organization_id = "org_cli_invalid"
 workspace_id = "workspace_cli_invalid"
 [[provider_connections]]
+provider = "openai"
 slug = "userinfo"
 name = "Userinfo"
 adapter_kind = "generic-http-json"
@@ -95,6 +97,7 @@ version = 1
 organization_id = "org_cli_invalid"
 workspace_id = "workspace_cli_invalid"
 [[provider_connections]]
+provider = "openai"
 slug = "unsafe-config"
 name = "Unsafe Config"
 adapter_kind = "generic-http-json"
@@ -122,6 +125,7 @@ organization_id = "${fixture.actor.organizationId}"
 workspace_id = "${fixture.actor.workspaceId}"
 
 [[provider_connections]]
+provider = "amazon-bedrock"
 slug = "private-bedrock"
 name = "Private Bedrock"
 adapter_kind = "aws-bedrock-converse"
@@ -554,6 +558,7 @@ organization_id = "${organizationId}"
 workspace_id = "${workspaceId}"
 
 [[provider_connections]]
+provider = "openai"
 slug = "acme-openai"
 name = "Acme OpenAI"
 adapter_kind = "generic-http-json"
@@ -657,6 +662,7 @@ organization_id = "${organizationId}"
 workspace_id = "${workspaceId}"
 
 [[provider_connections]]
+provider = "openai"
 slug = "rollback-provider"
 name = "Updated Name"
 adapter_kind = "generic-http-json"

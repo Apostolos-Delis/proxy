@@ -34,6 +34,7 @@ describe("gateway configuration admin", () => {
     fixture.eventService.subscribe((event) => observedEvents.push(event));
 
     const connectionId = await create(fixture, "providerConnection", {
+      provider: "openai",
       slug: "acme-openai",
       name: "Acme OpenAI",
       adapterKind: "generic-http-json",
@@ -168,6 +169,7 @@ describe("gateway configuration admin", () => {
     const fixture = await setup("org_gateway_admin_validation");
     client = fixture.client;
     await expect(create(fixture, "providerConnection", {
+      provider: "openai",
       slug: "bad-adapter",
       name: "Bad Adapter",
       adapterKind: "uninstalled-adapter",
@@ -257,6 +259,7 @@ describe("gateway configuration admin", () => {
     const fixture = await setup("org_gateway_admin_bedrock_credentials");
     client = fixture.client;
     const connection = {
+      provider: "amazon-bedrock",
       name: "Private Bedrock",
       adapterKind: "aws-bedrock-converse",
       authStyle: "aws-sdk",
@@ -292,6 +295,7 @@ describe("gateway configuration admin", () => {
       id: platformId,
       organizationId: fixture.actor.organizationId,
       workspaceId: fixture.actor.workspaceId,
+      provider: "amazon-bedrock",
       slug: "platform-bedrock",
       name: "Platform Bedrock",
       adapterKind: "aws-bedrock-converse",
@@ -310,6 +314,7 @@ describe("gateway configuration admin", () => {
     const fixture = await setup("org_gateway_admin_ordered_provider_updates");
     client = fixture.client;
     const connectionId = await create(fixture, "providerConnection", {
+      provider: "openai",
       slug: "ordered-provider",
       name: "Ordered Provider",
       adapterKind: "generic-http-json",
@@ -350,6 +355,7 @@ describe("gateway configuration admin", () => {
     });
 
     const staleConnectionId = await create(fixture, "providerConnection", {
+      provider: "openai",
       slug: "stale-provider",
       name: "Stale Provider",
       adapterKind: "generic-http-json",

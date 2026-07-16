@@ -130,6 +130,7 @@ function liveProvider(region: string): ProviderRegistryEntry {
   return {
     id: "provider_amazon_bedrock_live",
     organizationId: null,
+    provider: "amazon-bedrock",
     slug: "amazon-bedrock",
     baseUrl: `https://bedrock-runtime.${region}.amazonaws.com`,
     adapterKind: "aws-bedrock-converse",

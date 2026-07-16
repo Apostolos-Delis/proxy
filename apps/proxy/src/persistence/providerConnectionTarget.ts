@@ -57,7 +57,8 @@ export async function loadProviderConnectionTarget(
   signal?.throwIfAborted();
   const [row] = await db
     .select({
-      provider: providerConnections.slug,
+      provider: providerConnections.provider,
+      connectionSlug: providerConnections.slug,
       baseUrl: providerConnections.baseUrl,
       region: providerConnections.region,
       adapterKind: providerConnections.adapterKind,
@@ -66,6 +67,7 @@ export async function loadProviderConnectionTarget(
       secretRef: providerConnections.secretRef,
       secretCiphertext: providerConnections.secretCiphertext,
       defaultHeaders: providerConnections.defaultHeaders,
+      providerCapabilities: providerConnections.capabilities,
       platformOwned: providerConnections.platformOwned,
       forwardHarnessHeaders: providerConnections.forwardHarnessHeaders,
       deploymentConfig: modelDeployments.config,
@@ -162,21 +164,22 @@ export async function materializeProviderConnection(
     providerEntry: {
       id: input.providerConnectionId,
       organizationId: input.organizationId,
-      slug: row.provider,
+      provider: row.provider,
+      slug: row.connectionSlug,
       baseUrl,
       adapterKind: row.adapterKind,
       adapterConfig,
       authStyle: row.authStyle,
       endpoints: input.endpoints,
       defaultHeaders: row.defaultHeaders,
-      capabilities: providerCapabilitiesWithDefaults(row.provider),
+      capabilities: providerCapabilitiesWithDefaults(row.provider, row.providerCapabilities),
       forwardHarnessHeaders: row.forwardHarnessHeaders,
       enabled: true,
       builtin: row.platformOwned,
       pinnedAddress
     },
     credential: token || row.authStyle === "aws-sdk" ? {
-      provider: row.provider,
+      provider: row.connectionSlug,
       token: token ?? "",
       providerConnectionId: input.providerConnectionId,
       baseUrl,

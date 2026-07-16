@@ -262,11 +262,11 @@ async function seedPhysicalFixtures(client: PGlite) {
       ('workspace_logical_a_secondary', 'org_logical_a', 'secondary', 'Secondary'),
       ('workspace_logical_b', 'org_logical_b', 'default', 'Default');
     insert into provider_connections (
-      id, organization_id, workspace_id, slug, name, adapter_kind, auth_style, base_url
+      id, organization_id, workspace_id, provider, slug, name, adapter_kind, auth_style, base_url
     ) values
-      ('connection_a', 'org_logical_a', 'workspace_logical_a', 'openai', 'OpenAI', 'generic-http-json', 'bearer', 'https://api.openai.com/v1'),
-      ('connection_a_secondary', 'org_logical_a', 'workspace_logical_a_secondary', 'openai', 'OpenAI', 'generic-http-json', 'bearer', 'https://api.openai.com/v1'),
-      ('connection_b', 'org_logical_b', 'workspace_logical_b', 'openai', 'OpenAI', 'generic-http-json', 'bearer', 'https://api.openai.com/v1');
+      ('connection_a', 'org_logical_a', 'workspace_logical_a', 'openai', 'openai', 'OpenAI', 'generic-http-json', 'bearer', 'https://api.openai.com/v1'),
+      ('connection_a_secondary', 'org_logical_a', 'workspace_logical_a_secondary', 'openai', 'openai', 'OpenAI', 'generic-http-json', 'bearer', 'https://api.openai.com/v1'),
+      ('connection_b', 'org_logical_b', 'workspace_logical_b', 'openai', 'openai', 'OpenAI', 'generic-http-json', 'bearer', 'https://api.openai.com/v1');
     insert into canonical_models (
       id, organization_id, workspace_id, slug, name, vendor, family
     ) values

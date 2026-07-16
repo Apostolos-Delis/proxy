@@ -155,20 +155,26 @@ describe("AI gateway seed", () => {
     ]);
 
     const connections = await client.query<{
+      provider: string;
       slug: string;
+      capabilities: Record<string, unknown>;
       secret_ref: string | null;
       secret_ciphertext: string | null;
     }>(`
-      select slug, secret_ref, secret_ciphertext
+      select provider, slug, capabilities, secret_ref, secret_ciphertext
       from provider_connections
       where organization_id = '${options.organizationId}'
       order by slug
     `);
-    expect(connections.rows).toEqual([
-      { slug: "amazon-bedrock", secret_ref: null, secret_ciphertext: null },
-      { slug: "anthropic", secret_ref: "env:ANTHROPIC_API_KEY", secret_ciphertext: null },
-      { slug: "openai", secret_ref: "env:OPENAI_API_KEY", secret_ciphertext: null }
+    expect(connections.rows.map(({ capabilities: _capabilities, ...row }) => row)).toEqual([
+      { provider: "amazon-bedrock", slug: "amazon-bedrock", secret_ref: null, secret_ciphertext: null },
+      { provider: "anthropic", slug: "anthropic", secret_ref: "env:ANTHROPIC_API_KEY", secret_ciphertext: null },
+      { provider: "openai", slug: "openai", secret_ref: "env:OPENAI_API_KEY", secret_ciphertext: null }
     ]);
+    expect(connections.rows.find((row) => row.provider === "openai")?.capabilities).toMatchObject({
+      efforts: ["low", "medium", "high", "xhigh"],
+      promptCaching: { usageShape: "openai" }
+    });
 
     const [beforeCapabilities] = (await client.query<{ capabilities: Record<string, unknown> }>(`
       select cm.capabilities

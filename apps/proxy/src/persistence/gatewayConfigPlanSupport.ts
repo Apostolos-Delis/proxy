@@ -30,7 +30,7 @@ export type GatewayConfigCurrentState = {
 
 export type ProjectedProviderConnection = Pick<
   ProviderConnectionRow,
-  "id" | "slug" | "adapterKind" | "authStyle" | "baseUrl" | "status" | "credentialConfigured" | "platformOwned"
+  "id" | "provider" | "slug" | "adapterKind" | "authStyle" | "baseUrl" | "capabilities" | "status" | "credentialConfigured" | "platformOwned"
 >;
 export type ProjectedCanonicalModel = Pick<CanonicalModelRow, "id" | "slug" | "capabilities" | "status">;
 export type ProjectedModelDeployment = Pick<
@@ -194,9 +194,9 @@ export function assertImmutable(current: unknown, desired: unknown, path: string
 
 export function projectGatewayConfig(current: GatewayConfigCurrentState): ProjectedGatewayConfig {
   const connections = current.connections.map(({
-    id, slug, adapterKind, authStyle, baseUrl, status, credentialConfigured, platformOwned
+    id, provider, slug, adapterKind, authStyle, baseUrl, capabilities, status, credentialConfigured, platformOwned
   }) => ({
-    id, slug, adapterKind, authStyle, baseUrl, status, credentialConfigured, platformOwned
+    id, provider, slug, adapterKind, authStyle, baseUrl, capabilities, status, credentialConfigured, platformOwned
   }));
   const canonicalModels = current.canonicalModels.map(({ id, slug, capabilities, status }) => ({
     id, slug, capabilities, status

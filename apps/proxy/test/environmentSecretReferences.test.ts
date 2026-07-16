@@ -75,6 +75,7 @@ version = 1
 organization_id = "${fixture.actor.organizationId}"
 workspace_id = "${fixture.actor.workspaceId}"
 [[provider_connections]]
+provider = "openai"
 slug = "openai-production"
 name = "OpenAI Production"
 adapter_kind = "generic-http-json"

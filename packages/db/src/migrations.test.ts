@@ -96,9 +96,9 @@ describe("database migrations", () => {
       insert into workspaces (id, organization_id, slug, name)
       values ('workspace_a', 'org_a', 'default', 'Default');
       insert into provider_connections (
-        id, organization_id, workspace_id, slug, name, adapter_kind, auth_style, base_url
+        id, organization_id, workspace_id, provider, slug, name, adapter_kind, auth_style, base_url
       ) values (
-        'connection_a', 'org_a', 'workspace_a', 'openai', 'OpenAI',
+        'connection_a', 'org_a', 'workspace_a', 'openai', 'openai', 'OpenAI',
         'generic-http-json', 'bearer', 'https://api.openai.com/v1'
       );
       insert into canonical_models (

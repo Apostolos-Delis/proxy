@@ -18,6 +18,7 @@ const classifierTarget: ClassifierTarget = {
   provider: {
     id: "provider_openai",
     organizationId: null,
+    provider: "openai",
     slug: "openai",
     baseUrl: "https://openai.test/v1",
     authStyle: "bearer",

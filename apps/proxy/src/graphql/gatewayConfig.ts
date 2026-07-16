@@ -18,6 +18,7 @@ import {
 
 const CreateGatewayProviderConnectionInput = builder.inputType("CreateGatewayProviderConnectionInput", {
   fields: (t) => ({
+    provider: t.string({ required: true }),
     slug: t.string({ required: true }),
     name: t.string({ required: true }),
     adapterKind: t.string({ required: true }),
@@ -28,6 +29,7 @@ const CreateGatewayProviderConnectionInput = builder.inputType("CreateGatewayPro
     secret: t.string(),
     adapterConfig: t.field({ type: "JSON" }),
     defaultHeaders: t.field({ type: "JSON" }),
+    capabilities: t.field({ type: "JSON" }),
     enabled: t.boolean()
   })
 });
@@ -43,7 +45,8 @@ const UpdateGatewayProviderConnectionInput = builder.inputType("UpdateGatewayPro
     secret: t.string(),
     clearSecret: t.boolean(),
     adapterConfig: t.field({ type: "JSON" }),
-    defaultHeaders: t.field({ type: "JSON" })
+    defaultHeaders: t.field({ type: "JSON" }),
+    capabilities: t.field({ type: "JSON" })
   })
 });
 
@@ -289,6 +292,7 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: CreateGatewayProviderConnectionInput, required: true }) },
     resolve: async (_root, args, context) => {
       const body = defined({
+        provider: args.input.provider,
         slug: args.input.slug,
         name: args.input.name,
         adapterKind: args.input.adapterKind,
@@ -299,6 +303,7 @@ builder.mutationFields((t) => ({
         secret: args.input.secret ?? undefined,
         adapterConfig: args.input.adapterConfig ?? undefined,
         defaultHeaders: args.input.defaultHeaders ?? undefined,
+        capabilities: args.input.capabilities ?? undefined,
         enabled: args.input.enabled ?? undefined
       });
       const id = await applyGatewayCommand(context, { resource: "providerConnection", action: "create", body });
@@ -319,7 +324,8 @@ builder.mutationFields((t) => ({
         secret: args.input.secret ?? undefined,
         clearSecret: args.input.clearSecret ?? undefined,
         adapterConfig: args.input.adapterConfig ?? undefined,
-        defaultHeaders: args.input.defaultHeaders ?? undefined
+        defaultHeaders: args.input.defaultHeaders ?? undefined,
+        capabilities: args.input.capabilities ?? undefined
       });
       await applyGatewayCommand(context, { resource: "providerConnection", action: "update", id, body });
       return requiredResult(await gatewayAdmin(context).providerConnection(gatewayScope(context), id));

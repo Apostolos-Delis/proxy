@@ -130,7 +130,7 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
 
       const delayMs = rateLimitRetryDelayMs({
         headers: upstream.headers,
-        provider: provider.slug,
+        provider: provider.provider,
         maxDelayMs: this.config.providerRateLimitMaxDelayMs
       });
       if (delayMs === undefined) return upstream;

@@ -25,7 +25,7 @@ export async function activeClassifierDeployment(
       deploymentId: modelDeployments.id,
       model: modelDeployments.upstreamModelId,
       pricing: modelDeployments.pricing,
-      provider: providerConnections.slug,
+      provider: providerConnections.provider,
       connectionId: providerConnections.id,
       bindingId: deploymentWireBindings.id,
       endpointPath: deploymentWireBindings.endpointPath

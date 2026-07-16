@@ -225,6 +225,7 @@ SELECT DISTINCT ON (d.organization_id, d.workspace_id, d.provider, d.model)
   p.auth_style,
   p.endpoints,
   p.default_headers,
+  p.capabilities AS provider_capabilities,
   p.forward_harness_headers,
   choice.credential_kind,
   choice.requested_provider_account_id AS credential_provider_account_id,
@@ -407,6 +408,7 @@ INSERT INTO provider_connections (
   id,
   organization_id,
   workspace_id,
+  provider,
   slug,
   name,
   adapter_kind,
@@ -418,6 +420,7 @@ INSERT INTO provider_connections (
   secret_hint,
   adapter_config,
   default_headers,
+  capabilities,
   platform_owned,
   forward_harness_headers,
   legacy_provider_account_id,
@@ -427,6 +430,7 @@ SELECT DISTINCT ON (organization_id, workspace_id, provider)
   workspace_id || ':connection:' || provider,
   organization_id,
   workspace_id,
+  provider,
   provider,
   COALESCE(provider_account_name, provider_name),
   adapter_kind,
@@ -442,6 +446,7 @@ SELECT DISTINCT ON (organization_id, workspace_id, provider)
     ELSE adapter_config
   END,
   default_headers,
+  COALESCE(provider_capabilities, '{}'::jsonb),
   credential_kind = 'platform' AND legacy_provider_organization_id IS NULL,
   forward_harness_headers,
   legacy_provider_account_id,
@@ -460,6 +465,7 @@ BEGIN
      AND c.workspace_id = d.workspace_id
      AND c.id = d.workspace_id || ':connection:' || d.provider
     WHERE c.id IS NULL
+       OR c.provider <> d.provider
        OR c.slug <> d.provider
        OR c.name <> COALESCE(d.provider_account_name, d.provider_name)
        OR c.adapter_kind <> d.adapter_kind
@@ -472,6 +478,7 @@ BEGIN
          ELSE d.adapter_config
        END
        OR c.default_headers <> d.default_headers
+       OR c.capabilities <> COALESCE(d.provider_capabilities, '{}'::jsonb)
        OR c.platform_owned <> (
          d.credential_kind = 'platform' AND d.legacy_provider_organization_id IS NULL
        )

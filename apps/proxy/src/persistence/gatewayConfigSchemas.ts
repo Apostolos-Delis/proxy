@@ -12,7 +12,8 @@ import {
   jsonValueSchema,
   gatewayModelCapabilitiesSchema,
   gatewayOperationIdSchema,
-  gatewayParameterCapsSchema
+  gatewayParameterCapsSchema,
+  providerCapabilitiesSchema
 } from "@proxy/schema";
 
 import { GatewayConfigAdminError } from "./gatewayConfigTypes.js";
@@ -32,6 +33,11 @@ export const capabilitiesSchema = gatewayModelCapabilitiesSchema.superRefine((va
 });
 export const nonSecretJsonObjectSchema = jsonObjectSchema.superRefine(assertNonSecretSchema);
 export const nonSecretCapabilitiesSchema = capabilitiesSchema.superRefine(assertNonSecretSchema);
+export const providerCapabilitiesConfigSchema = providerCapabilitiesSchema.superRefine((value, context) => {
+  if (Object.keys(value).length > 64 || jsonByteLength(value) > 16_384) {
+    context.addIssue({ code: "custom", message: "Provider capabilities exceed the configured bound." });
+  }
+}).superRefine(assertNonSecretSchema);
 
 const defaultHeadersSchema = z.record(
   z.string().trim().min(1).max(256),
@@ -44,6 +50,7 @@ export const secretReferenceSchema = z.string().trim().max(2_048).refine(
 const hasDefinedField = (body: Record<string, unknown>) => Object.values(body).some((value) => value !== undefined);
 
 export const providerConnectionCreateSchema = z.strictObject({
+  provider: slugSchema,
   slug: slugSchema,
   name: nameSchema,
   adapterKind: z.enum(PROVIDER_ADAPTER_KINDS),
@@ -54,6 +61,7 @@ export const providerConnectionCreateSchema = z.strictObject({
   secret: z.string().min(1).max(65_536).optional(),
   adapterConfig: jsonObjectSchema.default({}),
   defaultHeaders: defaultHeadersSchema.default({}),
+  capabilities: providerCapabilitiesConfigSchema.default({}),
   enabled: z.boolean().default(false)
 }).superRefine(connectionCredentialIssues);
 
@@ -66,7 +74,8 @@ export const providerConnectionUpdateSchema = z.strictObject({
   secret: z.string().min(1).max(65_536).optional(),
   clearSecret: z.boolean().optional(),
   adapterConfig: jsonObjectSchema.optional(),
-  defaultHeaders: defaultHeadersSchema.optional()
+  defaultHeaders: defaultHeadersSchema.optional(),
+  capabilities: providerCapabilitiesConfigSchema.optional()
 }).refine(hasDefinedField, "At least one field is required.")
   .superRefine(connectionCredentialIssues);
 

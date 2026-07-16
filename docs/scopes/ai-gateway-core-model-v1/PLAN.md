@@ -117,9 +117,10 @@ One physical provider account and endpoint boundary.
 Required fields:
 
 - `id`, `organization_id`, `workspace_id`;
-- `name`, `adapter_kind`, `base_url`, optional `region`;
+- stable provider behavior ID, operator-facing connection slug and name;
+- `adapter_kind`, `base_url`, optional `region`;
 - `credential_ref` or encrypted credential material, never a raw key;
-- adapter configuration and non-secret default headers;
+- adapter configuration, provider capabilities, and non-secret default headers;
 - `status`.
 
 This replaces the overlapping runtime responsibilities of `providers`, `provider_accounts`, and `api_key_provider_accounts`. Credentials belong to the connection; API keys receive model access, not direct provider credentials.

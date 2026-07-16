@@ -51,7 +51,7 @@ export async function persistClassifierUsage(tx: ProxyTransaction, event: {
       eq(modelDeployments.workspaceId, request.workspaceId),
       eq(modelDeployments.id, deploymentId),
       eq(modelDeployments.upstreamModelId, model),
-      eq(providerConnections.slug, provider)
+      eq(providerConnections.provider, provider)
     ))
     .limit(1);
   if (!deployment) throw new Error("Classifier usage does not match a scoped deployment.");

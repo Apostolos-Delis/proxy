@@ -58,12 +58,14 @@ export async function preflightProviderCommands(
       const credential = transitionCredential(emptyCredential(), body, body.authStyle);
       assertCredentialMaterializable(credential, options.encryptionKey);
       const next = {
+        provider: body.provider,
         slug: body.slug,
         adapterKind: body.adapterKind,
         authStyle: body.authStyle,
         baseUrl,
         adapterConfig: body.adapterConfig,
         defaultHeaders: body.defaultHeaders,
+        capabilities: body.capabilities,
         enabled: body.enabled,
         platformOwned: false,
         ...credential
@@ -88,6 +90,7 @@ export async function preflightProviderCommands(
         baseUrl,
         adapterConfig: body.adapterConfig ?? current.adapterConfig,
         defaultHeaders: body.defaultHeaders ?? current.defaultHeaders,
+        capabilities: body.capabilities ?? current.capabilities,
         ...credential
       };
       validateConnectionState(next, options, Boolean(body.secretRef));
@@ -106,12 +109,14 @@ export async function preflightProviderCommands(
 }
 
 type ProviderConnectionPreflightState = {
+  provider: string;
   slug: string;
   adapterKind: string;
   authStyle: string;
   baseUrl: string;
   adapterConfig: Record<string, unknown>;
   defaultHeaders: Record<string, string>;
+  capabilities: Record<string, unknown>;
   enabled: boolean;
   platformOwned: boolean;
   secretRef: string | null;
@@ -122,12 +127,14 @@ type ProviderConnectionPreflightState = {
 
 function connectionPreflightState(row: typeof providerConnections.$inferSelect): ProviderConnectionPreflightState {
   return {
+    provider: row.provider,
     slug: row.slug,
     adapterKind: row.adapterKind,
     authStyle: row.authStyle,
     baseUrl: row.baseUrl,
     adapterConfig: row.adapterConfig,
     defaultHeaders: row.defaultHeaders,
+    capabilities: row.capabilities,
     enabled: row.status === "active",
     platformOwned: row.platformOwned,
     secretRef: row.secretRef,
@@ -154,6 +161,7 @@ export async function createProviderConnection(
     id,
     organizationId: actor.organizationId,
     workspaceId: actor.workspaceId,
+    provider: body.provider,
     slug: body.slug,
     name: body.name,
     adapterKind: body.adapterKind,
@@ -163,12 +171,14 @@ export async function createProviderConnection(
     ...credential,
     adapterConfig: body.adapterConfig,
     defaultHeaders: body.defaultHeaders,
+    capabilities: body.capabilities,
     status: body.enabled ? "active" : "disabled",
     createdAt: now,
     updatedAt: now
   });
   await context.appendEvent("provider_connection", id, "created", {
     id,
+    provider: body.provider,
     slug: body.slug,
     name: body.name,
     adapterKind: body.adapterKind,
@@ -178,6 +188,7 @@ export async function createProviderConnection(
     credential: credentialKind(credential),
     adapterConfig: body.adapterConfig,
     defaultHeaders: body.defaultHeaders,
+    capabilities: body.capabilities,
     status: body.enabled ? "active" : "disabled"
   }, now);
   return { resource: "providerConnection" as const, id };
@@ -202,6 +213,7 @@ export async function updateProviderConnection(
   const credentialState = transitionCredential(currentCredential, body, authStyle);
   const credential = materializeCredential(credentialState, options.encryptionKey);
   const next = {
+    provider: current.provider,
     slug: current.slug,
     name: body.name ?? current.name,
     adapterKind: current.adapterKind,
@@ -210,6 +222,7 @@ export async function updateProviderConnection(
     region: body.region === undefined ? current.region : body.region,
     adapterConfig: body.adapterConfig ?? current.adapterConfig,
     defaultHeaders: body.defaultHeaders ?? current.defaultHeaders,
+    capabilities: body.capabilities ?? current.capabilities,
     enabled: current.status === "active",
     platformOwned: current.platformOwned,
     ...credentialState
@@ -224,10 +237,12 @@ export async function updateProviderConnection(
     ...credential,
     adapterConfig: next.adapterConfig,
     defaultHeaders: next.defaultHeaders,
+    capabilities: next.capabilities,
     updatedAt: now
   }).where(scopedId(providerConnections, actor, id));
   await context.appendEvent("provider_connection", id, "updated", {
     id,
+    provider: current.provider,
     slug: current.slug,
     name: next.name,
     adapterKind: current.adapterKind,
@@ -237,6 +252,7 @@ export async function updateProviderConnection(
     credential: credentialKind(credential),
     adapterConfig: next.adapterConfig,
     defaultHeaders: next.defaultHeaders,
+    capabilities: next.capabilities,
     status: current.status
   }, now);
   return { resource: "providerConnection" as const, id };
@@ -420,12 +436,14 @@ function assertCredentialInputAllowed(
 
 function validateConnectionState(
   body: {
+    provider: string;
     slug: string;
     adapterKind: string;
     authStyle: string;
     baseUrl: string;
     adapterConfig: Record<string, unknown>;
     defaultHeaders: Record<string, string>;
+    capabilities: Record<string, unknown>;
     enabled: boolean;
     platformOwned: boolean;
     secretRef: string | null;
@@ -456,7 +474,7 @@ function validateConnectionState(
   }
   if (validateSecretReference && body.secretRef && !options.secretReferenceSupported?.({
     reference: body.secretRef,
-    provider: body.slug,
+    provider: body.provider,
     baseUrl: body.baseUrl
   })) {
     throw fieldError(

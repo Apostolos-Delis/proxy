@@ -36,6 +36,7 @@ organization_id = "org_acme"
 workspace_id = "workspace_production"
 
 [[provider_connections]]
+provider = "openai"
 slug = "openai-production"
 name = "OpenAI Production"
 adapter_kind = "generic-http-json"
@@ -44,6 +45,7 @@ base_url = "https://api.openai.com/v1"
 secret_ref = "env:OPENAI_API_KEY"
 adapter_config = {}
 default_headers = { x-owner = "ai-platform" }
+capabilities = { efforts = ["low", "medium", "high", "xhigh"] }
 enabled = true
 
 [[canonical_models]]

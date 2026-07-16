@@ -352,6 +352,7 @@ version = 1
 organization_id = "${fixture.actor.organizationId}"
 workspace_id = "${fixture.actor.workspaceId}"
 [[provider_connections]]
+provider = "emergency-provider"
 slug = "emergency-provider"
 name = "emergency-provider"
 adapter_kind = "generic-http-json"
@@ -426,6 +427,7 @@ enabled = false
 
 function providerInput(slug: string, body: Record<string, unknown> = {}) {
   return {
+    provider: slug,
     slug,
     name: slug,
     adapterKind: "generic-http-json",
