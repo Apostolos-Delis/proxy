@@ -426,7 +426,9 @@ function modelKey(provider: BuiltinProvider, model: string) {
 }
 
 function physicalModelSlug(provider: BuiltinProvider, model: string) {
-  return `${provider}-${slug(model)}-${sha256(modelKey(provider, model)).slice(0, 8)}`;
+  const suffix = sha256(modelKey(provider, model)).slice(0, 8);
+  const prefix = slug(`${provider}-${model}`).slice(0, 119).replace(/-+$/g, "") || "model";
+  return `${prefix}-${suffix}`;
 }
 
 function slug(value: string) {
