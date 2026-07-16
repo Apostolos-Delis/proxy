@@ -1,7 +1,7 @@
 {
   "outcome": "route",
   "surface": "openai-responses",
-  "provider": "cross-anthropic-responses",
+  "provider": "anthropic",
   "selectedModel": "claude-opus-4-8-responses-cross",
   "egressWireId": "anthropic-messages",
   "wireAdapterVersion": "1"

@@ -1,7 +1,7 @@
 {
   "outcome": "route",
   "surface": "openai-chat",
-  "provider": "cross-anthropic-chat",
+  "provider": "anthropic",
   "selectedModel": "claude-opus-4-8-cross-family",
   "egressWireId": "anthropic-messages",
   "wireAdapterVersion": "1"
