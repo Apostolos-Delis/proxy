@@ -194,6 +194,60 @@ describe("logical model resolution", () => {
     }))).outcome).toBe("resolved");
   });
 
+  it("applies the Anthropic token default before grant and deployment capacity checks", async () => {
+    const fixture = await setup("org_resolution_anthropic_default");
+    client = fixture.client;
+    const workspaceId = defaultWorkspaceId(fixture.organizationId);
+    const profileId = `${workspaceId}:access-profile:opendoor-engineer`;
+    const logicalModelId = `${workspaceId}:logical-model:fable`;
+    const deploymentId = `${workspaceId}:deployment:anthropic:claude-fable-5`;
+
+    await fixture.db
+      .update(accessProfileModelGrants)
+      .set({ parameterCaps: { max_tokens: 4095 } })
+      .where(and(
+        eq(accessProfileModelGrants.accessProfileId, profileId),
+        eq(accessProfileModelGrants.logicalModelId, logicalModelId)
+      ));
+    expectDenial(
+      await fixture.resolver.resolve(resolveInput(fixture.organizationId)),
+      "parameter_cap_exceeded"
+    );
+
+    await fixture.db
+      .update(accessProfileModelGrants)
+      .set({ parameterCaps: { max_tokens: 4096 } })
+      .where(and(
+        eq(accessProfileModelGrants.accessProfileId, profileId),
+        eq(accessProfileModelGrants.logicalModelId, logicalModelId)
+      ));
+    expect((await fixture.resolver.resolve(resolveInput(fixture.organizationId))).outcome)
+      .toBe("resolved");
+
+    await fixture.db
+      .update(accessProfileModelGrants)
+      .set({ parameterCaps: {} })
+      .where(and(
+        eq(accessProfileModelGrants.accessProfileId, profileId),
+        eq(accessProfileModelGrants.logicalModelId, logicalModelId)
+      ));
+    await fixture.db
+      .update(modelDeployments)
+      .set({ capabilities: { maxOutputTokens: 4095 } })
+      .where(eq(modelDeployments.id, deploymentId));
+    expectDenial(
+      await fixture.resolver.resolve(resolveInput(fixture.organizationId)),
+      "model_unavailable"
+    );
+
+    await fixture.db
+      .update(modelDeployments)
+      .set({ capabilities: { maxOutputTokens: 4096 } })
+      .where(eq(modelDeployments.id, deploymentId));
+    expect((await fixture.resolver.resolve(resolveInput(fixture.organizationId))).outcome)
+      .toBe("resolved");
+  });
+
   it("filters every disabled resource before returning a target", async () => {
     const fixture = await setup("org_resolution_disabled");
     client = fixture.client;

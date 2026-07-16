@@ -26,6 +26,7 @@ import type {
 } from "./types.js";
 import { isRecord } from "./util.js";
 import {
+  applyGatewayParameterDefaults,
   applyRequestConfig,
   bedrockDeploymentModelId,
   deploymentRequestConfig,
@@ -173,13 +174,7 @@ export function gatewayRequestBody(input: {
   } else {
     request.model = input.target.upstreamModelId;
   }
-  if (
-    input.operationId === "text.generate" &&
-    resolution.egressWireId === "anthropic-messages" &&
-    request.max_tokens === undefined
-  ) {
-    request.max_tokens = 4096;
-  }
+  applyGatewayParameterDefaults(request, input.operationId, resolution.egressWireId);
   if (resolution.egressWireId === "openai-responses" && request.store === undefined) {
     request.store = false;
   }
