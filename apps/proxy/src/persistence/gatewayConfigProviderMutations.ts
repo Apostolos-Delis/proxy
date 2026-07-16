@@ -146,7 +146,7 @@ export async function createProviderConnection(
   const baseUrl = trimProviderBaseUrl(body.baseUrl);
   const credentialState = transitionCredential(emptyCredential(), body, body.authStyle);
   const credential = materializeCredential(credentialState, options.encryptionKey);
-  validateConnectionState({ ...body, baseUrl, ...credentialState }, options);
+  validateConnectionState({ ...body, baseUrl, platformOwned: false, ...credentialState }, options);
   await assertSlugAvailable(tx, providerConnections, actor, body.slug, "provider_connection_slug_exists");
   const id = gatewayResourceId("providerConnection", preparedId);
   const now = new Date();
@@ -211,6 +211,7 @@ export async function updateProviderConnection(
     adapterConfig: body.adapterConfig ?? current.adapterConfig,
     defaultHeaders: body.defaultHeaders ?? current.defaultHeaders,
     enabled: current.status === "active",
+    platformOwned: current.platformOwned,
     ...credentialState
   };
   validateConnectionState(next, options, Boolean(body.secretRef));
@@ -426,6 +427,7 @@ function validateConnectionState(
     adapterConfig: Record<string, unknown>;
     defaultHeaders: Record<string, string>;
     enabled: boolean;
+    platformOwned: boolean;
     secretRef: string | null;
     secretCiphertext: string | null;
     pendingSecret?: string;
@@ -441,7 +443,8 @@ function validateConnectionState(
   }
   if (
     body.enabled &&
-    ["bearer", "x-api-key"].includes(body.authStyle) &&
+    body.authStyle !== "none" &&
+    !(body.authStyle === "aws-sdk" && body.platformOwned) &&
     !body.secretRef &&
     !body.secretCiphertext &&
     !body.pendingSecret

@@ -117,7 +117,11 @@ function validateProjectedGatewayConfig(projected: ProjectedGatewayConfig) {
 function validateConnections(projected: ProjectedGatewayConfig) {
   for (const connection of projected.connectionsById.values()) {
     if (!active(connection.status)) continue;
-    if (["bearer", "x-api-key"].includes(connection.authStyle) && !connection.credentialConfigured) {
+    if (
+      connection.authStyle !== "none" &&
+      !(connection.authStyle === "aws-sdk" && connection.platformOwned) &&
+      !connection.credentialConfigured
+    ) {
       invalidProjection(
         `provider_connections.${connection.slug}`,
         "An active authenticated provider connection requires a secret reference."

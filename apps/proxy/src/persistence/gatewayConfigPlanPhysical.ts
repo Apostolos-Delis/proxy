@@ -56,6 +56,7 @@ function planProviderConnections(
         authStyle: resource.auth_style,
         baseUrl,
         credentialConfigured: Boolean(resource.secret_ref),
+        platformOwned: false,
         status: projectedStatus(resource.enabled)
       };
       projected.connectionsById.set(id, created);
@@ -98,6 +99,7 @@ function planProviderConnections(
       authStyle: resource.auth_style,
       baseUrl,
       credentialConfigured,
+      platformOwned: row.platformOwned,
       status: projectedStatus(resource.enabled)
     };
     projected.connectionsById.set(row.id, next);

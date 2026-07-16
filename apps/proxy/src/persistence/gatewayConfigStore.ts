@@ -124,6 +124,7 @@ export class GatewayConfigQueryStore {
         secretCiphertext: providerConnections.secretCiphertext,
         adapterConfig: providerConnections.adapterConfig,
         defaultHeaders: providerConnections.defaultHeaders,
+        platformOwned: providerConnections.platformOwned,
         status: providerConnections.status,
         createdAt: providerConnections.createdAt,
         updatedAt: providerConnections.updatedAt
