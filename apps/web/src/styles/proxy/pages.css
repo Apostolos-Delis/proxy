@@ -634,6 +634,13 @@
   white-space: nowrap;
 }
 
+.usage-raw-key {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .usage-session-key {
   display: block;
   min-width: 0;
