@@ -226,6 +226,7 @@ function providerAttemptInput() {
     workspaceId: "workspace_lifecycle",
     apiKeyId: "key_lifecycle",
     accessProfileId: "profile_lifecycle",
+    accessProfileLimits: {},
     source: "api_key"
   };
   const context: RouteContext = {

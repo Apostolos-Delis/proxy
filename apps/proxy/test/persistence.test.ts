@@ -934,7 +934,8 @@ describe("postgres persistence", () => {
       organizationId: "org_api_key",
       workspaceId: defaultWorkspaceId("org_api_key"),
       userId: undefined,
-      accessProfileId: null
+      accessProfileId: null,
+      accessProfileLimits: {}
     });
     expect(rowsBeforeFlush[0]?.lastUsedAt).toBeNull();
     expect(rows[0]?.lastUsedAt?.toISOString()).toBe("2026-06-08T00:00:04.000Z");

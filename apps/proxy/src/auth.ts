@@ -1,4 +1,5 @@
 import { defaultWorkspaceId } from "@proxy/db";
+import type { GatewayAccessProfileLimits } from "@proxy/schema";
 
 import type { AppConfig } from "./config.js";
 import type { ApiKeyIdentityStore, ResolvedApiKeyIdentity } from "./persistence/identity.js";
@@ -11,6 +12,7 @@ export type RequestIdentity = {
   userId?: string;
   apiKeyId?: string;
   accessProfileId: string | null;
+  accessProfileLimits: GatewayAccessProfileLimits;
   source: "api_key" | "dev_proxy_token";
 };
 
@@ -38,6 +40,7 @@ export class ProxyAuthService {
         // available only as raw request context.
         userId: this.config.seedUserId,
         accessProfileId: null,
+        accessProfileLimits: {},
         source: "dev_proxy_token"
       };
     }
@@ -101,6 +104,7 @@ function apiKeyIdentity(identity: ResolvedApiKeyIdentity): RequestIdentity {
     userId: identity.userId,
     apiKeyId: identity.apiKeyId,
     accessProfileId: identity.accessProfileId,
+    accessProfileLimits: identity.accessProfileLimits,
     source: "api_key"
   };
 }

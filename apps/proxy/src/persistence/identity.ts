@@ -1,6 +1,7 @@
 import {
   DEFAULT_WORKSPACE_NAME,
   DEFAULT_WORKSPACE_SLUG,
+  accessProfiles,
   agentSessions,
   apiKeys,
   defaultWorkspaceId,
@@ -12,7 +13,8 @@ import {
   type ProxyDbSession,
   type ProxyTransaction
 } from "@proxy/db";
-import { eq } from "drizzle-orm";
+import type { GatewayAccessProfileLimits } from "@proxy/schema";
+import { and, eq } from "drizzle-orm";
 
 type ApiKeyIdentityStoreOptions = {
   cacheTtlMs?: number;
@@ -33,6 +35,7 @@ export type ResolvedApiKeyIdentity = {
   workspaceId: string;
   userId?: string;
   accessProfileId: string | null;
+  accessProfileLimits: GatewayAccessProfileLimits;
 };
 
 export class ApiKeyIdentityStore {
@@ -61,10 +64,17 @@ export class ApiKeyIdentityStore {
         workspaceId: apiKeys.workspaceId,
         userId: apiKeys.userId,
         accessProfileId: apiKeys.accessProfileId,
+        accessProfileStatus: accessProfiles.status,
+        accessProfileLimits: accessProfiles.limits,
         revokedAt: apiKeys.revokedAt,
         expiresAt: apiKeys.expiresAt
       })
       .from(apiKeys)
+      .leftJoin(accessProfiles, and(
+        eq(accessProfiles.organizationId, apiKeys.organizationId),
+        eq(accessProfiles.workspaceId, apiKeys.workspaceId),
+        eq(accessProfiles.id, apiKeys.accessProfileId)
+      ))
       .where(eq(apiKeys.keyHash, keyHash))
       .limit(1);
 
@@ -82,7 +92,10 @@ export class ApiKeyIdentityStore {
       organizationId: row.organizationId,
       workspaceId: row.workspaceId,
       userId: row.userId ?? undefined,
-      accessProfileId: row.accessProfileId ?? null
+      accessProfileId: row.accessProfileId ?? null,
+      accessProfileLimits: row.accessProfileStatus === "active"
+        ? row.accessProfileLimits ?? {}
+        : {}
     };
     this.cache.set(keyHash, { identity, expiresAtMs: nowMs + this.cacheTtlMs() });
     this.recordLastUsed(row.id, now);
@@ -145,7 +158,7 @@ export class ApiKeyIdentityStore {
 }
 
 function cloneIdentity(identity: ResolvedApiKeyIdentity): ResolvedApiKeyIdentity {
-  return { ...identity };
+  return { ...identity, accessProfileLimits: { ...identity.accessProfileLimits } };
 }
 
 export async function ensureOrganization(tx: ProxyTransaction, organizationId: string) {
