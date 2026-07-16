@@ -87,6 +87,15 @@ describe("AI gateway seed", () => {
       "claude-haiku-4-5"
     ]);
 
+    const [fableCapabilities] = (await client.query<{ capabilities: { contextWindow: number } }>(`
+      select cm.capabilities
+      from canonical_models cm
+      join model_deployments md on md.canonical_model_id = cm.id
+      where cm.workspace_id = '${defaultWorkspaceId(options.organizationId)}'
+        and md.upstream_model_id = 'claude-fable-5'
+    `)).rows;
+    expect(fableCapabilities?.capabilities.contextWindow).toBe(1_000_000);
+
     const routerConfigs = await client.query<{ slug: string; router_config: Record<string, unknown> }>(`
       select slug, router_config
       from logical_models

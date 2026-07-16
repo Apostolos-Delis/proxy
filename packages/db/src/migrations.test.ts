@@ -47,6 +47,40 @@ describe("database migrations", () => {
     ]);
   });
 
+  it("updates the seeded Fable context window while preserving catalog immutability", async () => {
+    const client = await migratedClient("0031_remove_coding_tier_model.sql");
+    await client.exec(`
+      insert into organizations (id, slug, name) values ('org_fable_window', 'org-fable-window', 'Org Fable Window');
+      insert into workspaces (id, organization_id, slug, name)
+      values ('workspace_fable_window', 'org_fable_window', 'default', 'Default');
+      insert into canonical_models (
+        id, organization_id, workspace_id, slug, name, vendor, family, capabilities
+      ) values (
+        'canonical_fable_window',
+        'org_fable_window',
+        'workspace_fable_window',
+        'anthropic-claude-fable-5',
+        'claude-fable-5',
+        'anthropic',
+        'claude-fable-5',
+        '{"contextWindow":200000,"maxOutputTokens":64000}'::jsonb
+      );
+    `);
+
+    await applyMigration(client, "0032_update_fable_context_window.sql");
+
+    const row = await client.query<{ capabilities: { contextWindow: number } }>(`
+      select capabilities from canonical_models where id = 'canonical_fable_window'
+    `);
+    expect(row.rows[0]?.capabilities.contextWindow).toBe(1_000_000);
+    await expect(client.exec(`
+      update canonical_models
+      set capabilities = '{"contextWindow":200000}'::jsonb
+      where id = 'canonical_fable_window'
+    `)).rejects.toThrow("canonical model capabilities are immutable");
+    await client.close();
+  });
+
   it("materializes only gateway request and decision evidence", async () => {
     const client = await migratedClient();
     const requestColumns = await columns(client, "requests");
