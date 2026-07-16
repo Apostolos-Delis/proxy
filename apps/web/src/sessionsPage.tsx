@@ -104,9 +104,8 @@ function SessionLogsState({ label }: { label: string }) {
 const sessionColumns: ConsoleTableColumn<SessionLogRow>[] = [
   { id: "session", header: "Session", size: 240, accessorFn: (row) => row.session.externalSessionId ?? row.session.sessionId, cell: ({ row }) => <SessionCell row={row.original} /> },
   { id: "user", header: "User", size: 170, accessorFn: (row) => row.userName, cell: ({ row }) => <UserCell name={row.original.userName} detail={row.original.userDetail} size={24} /> },
-  { id: "models", header: "Models", size: 190, accessorFn: (row) => sessionModels(row.session).join(" "), cell: ({ row }) => <ModelsCell session={row.original.session} /> },
-  { id: "logicalModel", header: "Logical model", size: 180, accessorFn: (row) => sessionLogicalModel(row.session), cell: ({ row }) => <RouteBadge route={sessionLogicalModel(row.original.session)} /> },
-  { id: "status", header: "Status", size: 120, accessorFn: (row) => sessionStatus(row.session), cell: ({ row }) => <SessionStatusCell session={row.original.session} /> },
+  { id: "route", header: "Route", size: 260, accessorFn: (row) => [...sessionModels(row.session), sessionLogicalModel(row.session)].join(" "), cell: ({ row }) => <RouteCell session={row.original.session} /> },
+  { id: "status", header: "Status", size: 132, minSize: 120, accessorFn: (row) => sessionStatus(row.session), cell: ({ row }) => <SessionStatusCell session={row.original.session} /> },
   { id: "requests", header: "Reqs", size: 60, minSize: 60, accessorFn: (row) => row.session.requestCount, cell: ({ row }) => <span className="mono muted">{formatCompact(row.original.session.requestCount)}</span> },
   { id: "tokens", header: "Tokens", size: 84, minSize: 84, accessorFn: (row) => row.session.usage.totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(row.original.session.usage.totalTokens)}</span> },
   { id: "cost", header: "Cost", size: 84, minSize: 84, accessorFn: (row) => row.session.cost.selected, cell: ({ row }) => <span className="mono">{formatMoney(row.original.session.cost.selected)}</span> },
@@ -136,17 +135,25 @@ function SessionCell({ row }: { row: SessionLogRow }) {
   );
 }
 
-function ModelsCell({ session }: { session: SessionSummary }) {
+function RouteCell({ session }: { session: SessionSummary }) {
   const models = sortedCounts(countRecord(session.modelMix));
-  if (models.length === 0) return <span className="faint">—</span>;
-  const shown = models.slice(0, 2);
-  const rest = models.length - shown.length;
+  const model = models[0]?.[0];
+  const rest = models.length - 1;
+  const remainingModels = models.slice(1).map(([name, count]) => `${name} (${count})`).join(", ");
   return (
-    <div className="models-cell">
-      {shown.map(([model]) => (
-        <span key={model} className="row gap-8"><span className="mono">{model}</span></span>
-      ))}
-      {rest > 0 ? <div className="mono faint">+{rest} more</div> : null}
+    <div className="session-route-cell">
+      <div className="session-route-model">
+        {model ? <span className="model-dot" /> : null}
+        <span className={`mono session-route-model-name${model ? "" : " faint"}`} title={model}>
+          {model ?? "No model"}
+        </span>
+        {rest > 0 ? (
+          <span className="mono faint session-route-model-count" title={remainingModels} aria-label={`${rest} more models: ${remainingModels}`}>
+            +{rest}
+          </span>
+        ) : null}
+      </div>
+      <RouteBadge route={sessionLogicalModel(session)} />
     </div>
   );
 }

@@ -121,16 +121,18 @@ export function InfoHint({ label, children, placement = "top" }: { label: string
 export function StatusIndicator({ status, tone, children }: { status?: string | null; tone?: StatusTone; children?: ReactNode }) {
   const value = status ?? "unknown";
   const resolvedTone = tone ?? statusTone(value);
+  const label = children ?? statusLabel(value);
   return (
     <span className={`status-indicator status-indicator-${resolvedTone}`}>
       <span className="status-indicator-dot" />
-      {children ?? statusLabel(value)}
+      <span className="status-indicator-label" title={typeof label === "string" ? label : undefined}>{label}</span>
     </span>
   );
 }
 
 export function RouteBadge({ route }: { route?: string | null }) {
-  return <Badge>{route ?? "unknown"}</Badge>;
+  const value = route ?? "unknown";
+  return <span className="badge route-badge" title={value}><span>{value}</span></span>;
 }
 
 export function Avatar({ label, color = "var(--accent)", size = 30 }: { label: string; color?: string; size?: number }) {
