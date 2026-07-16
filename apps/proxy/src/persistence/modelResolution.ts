@@ -150,6 +150,7 @@ type EligibleTarget = Omit<
   capabilities: GatewayModelCapabilities;
   deploymentConfig: Record<string, unknown>;
   requestConfig: Record<string, unknown>;
+  effectiveParameters: GatewayParameterCaps;
 };
 
 export type ModelResolutionOptions = {
@@ -243,13 +244,7 @@ export class ModelResolutionService {
     let parameterCapRejected = false;
     const targets = input.operationId === "text.generate"
       ? eligibleTargets.filter((target) => {
-          const parameters = gatewayParameterCapsSchema.safeParse(effectiveGatewayParameters({
-            parameters: input.parameters,
-            operationId: input.operationId,
-            egressWireId: target.egressWireId,
-            deploymentConfig: target.deploymentConfig,
-            requestConfig: target.requestConfig
-          }));
+          const parameters = gatewayParameterCapsSchema.safeParse(target.effectiveParameters);
           if (!parameters.success) return false;
           const exceeded = exceedsParameterCap(grant.parameterCaps, parameters.data);
           if (exceeded) parameterCapRejected = true;
@@ -502,15 +497,24 @@ export class ModelResolutionService {
       if (compatibility.outcome === "unsupported") continue;
       const binding = bindings.find((row) => row.egressWireId === compatibility.egressWireId);
       if (!binding) continue;
-      targets.set(targetId, {
+      const target = {
         ...binding,
         capabilities: {
           ...binding.canonicalCapabilities,
           ...binding.deploymentCapabilities
         },
         wireAdapterId: compatibility.wireAdapterId,
-        wireAdapterVersion: compatibility.wireAdapterVersion
-      });
+        wireAdapterVersion: compatibility.wireAdapterVersion,
+        effectiveParameters: effectiveGatewayParameters({
+          parameters: input.parameters,
+          operationId: input.operationId,
+          egressWireId: binding.egressWireId,
+          deploymentConfig: binding.deploymentConfig,
+          requestConfig: binding.requestConfig
+        })
+      };
+      if (!capabilitiesSatisfyRequest(target.capabilities, input, target.effectiveParameters)) continue;
+      targets.set(targetId, target);
     }
     return [...targets.values()].sort((left, right) => left.priority - right.priority);
   }
@@ -532,6 +536,46 @@ export class ModelResolutionService {
 
     return activeClassifierDeployment(this.db, organizationId, workspaceId, classifierDeploymentId);
   }
+}
+
+function capabilitiesSatisfyRequest(
+  capabilities: GatewayModelCapabilities,
+  input: ResolveModelInput,
+  parameters: GatewayParameterCaps
+) {
+  if (input.classificationFeatures?.hasTools && hasFalseCapability(capabilities, "tools", "toolCall")) {
+    return false;
+  }
+  if (input.classificationFeatures?.hasImages) {
+    if (hasFalseCapability(capabilities, "images", "image")) return false;
+    const modalities = capabilities.modalities;
+    if (Array.isArray(modalities) && !modalities.includes("image")) return false;
+  }
+  if (input.isStreaming && capabilities.streaming === false) return false;
+
+  const outputTokens = maximumParameterValue(parameters);
+  if (
+    outputTokens !== undefined &&
+    typeof capabilities.maxOutputTokens === "number" &&
+    outputTokens > capabilities.maxOutputTokens
+  ) return false;
+
+  const inputTokens = input.classificationFeatures?.estimatedInputTokens ?? 0;
+  if (
+    typeof capabilities.contextWindow === "number" &&
+    inputTokens + (outputTokens ?? 0) > capabilities.contextWindow
+  ) return false;
+
+  return true;
+}
+
+function hasFalseCapability(capabilities: GatewayModelCapabilities, ...keys: string[]) {
+  return keys.some((key) => capabilities[key] === false);
+}
+
+function maximumParameterValue(parameters: GatewayParameterCaps) {
+  const values = Object.values(parameters).filter((value): value is number => typeof value === "number");
+  return values.length > 0 ? Math.max(...values) : undefined;
 }
 
 function healthUnavailable(status: string | null, until: Date | null, now: Date) {
