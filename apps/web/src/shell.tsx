@@ -129,20 +129,38 @@ export function AppShell() {
 }
 
 function Brand({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  const toggle = (
+    <button
+      className="sidebar-toggle"
+      type="button"
+      aria-label={collapsed ? "Open sidebar" : "Close sidebar"}
+      aria-expanded={!collapsed}
+      title={collapsed ? "Open sidebar" : undefined}
+      onClick={onToggle}
+    >
+      {collapsed ? <PanelLeft /> : <PanelLeftClose />}
+    </button>
+  );
+
   return (
     <div className="brand">
-      {collapsed ? null : (
-        <div className="brand-lockup">
+      {collapsed ? (
+        <div className="collapsed-brand-control">
           <div className="brand-mark"><ProxyLogo size={20} /></div>
-          <div className="brand-text">
-            <div className="brand-name">proxy</div>
-            <div className="brand-sub">platform console</div>
-          </div>
+          {toggle}
         </div>
+      ) : (
+        <>
+          <div className="brand-lockup">
+            <div className="brand-mark"><ProxyLogo size={20} /></div>
+            <div className="brand-text">
+              <div className="brand-name">proxy</div>
+              <div className="brand-sub">platform console</div>
+            </div>
+          </div>
+          {toggle}
+        </>
       )}
-      <button className="sidebar-toggle" type="button" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} onClick={onToggle}>
-        {collapsed ? <PanelLeft /> : <PanelLeftClose />}
-      </button>
     </div>
   );
 }
