@@ -9,7 +9,6 @@ import {
   type EventAppender,
   jsonPayload
 } from "../events.js";
-import type { ProviderForwardInput } from "../adapters.js";
 import type {
   ProviderRegistryEndpoint,
   ProviderRegistryEntry
@@ -23,9 +22,11 @@ import {
   resolvePlaintextBedrockCredentials
 } from "./bedrockCredentials.js";
 import type { GenericHttpResponseTranslation } from "./genericHttp.js";
-import type { ProviderAdapterFailureClassification } from "./types.js";
+import type {
+  ProviderAdapterFailureClassification,
+  ProviderForwardInput
+} from "./types.js";
 import { classifyBedrockError, parseBedrockErrorBody } from "./bedrockErrors.js";
-import { resolveBedrockConverseModelId } from "./bedrockModelIds.js";
 import {
   bedrockConverseErrorToAnthropicMessages,
   bedrockConverseErrorToOpenAI,
@@ -76,22 +77,27 @@ export class BedrockRuntimeProviderAdapter {
     signal: AbortSignal;
   }) {
     assertBedrockEndpoint(input.endpoint);
-    const request = bedrockRequest(input.input.body, input.input.decision.selectedModel, input.input.decision.providerSettings);
+    const request = bedrockRequest(input.input.body);
     const streaming = input.input.responseStream === true || isRecord(input.input.body) && input.input.body.stream === true;
     const operation: BedrockRequestContext["operation"] = streaming ? "ConverseStream" : "Converse";
     assertOperationEndpoint(input.provider, operation);
-    const region = bedrockRegion(input.provider, input.input.credential);
+    const region = bedrockRegion(input.provider, input.input.target.credential);
     const context = {
       region,
-      model: typeof request.modelId === "string" ? request.modelId : input.input.decision.selectedModel,
+      model: typeof request.modelId === "string"
+        ? request.modelId
+        : input.input.target.upstreamModelId,
       operation
     };
 
     try {
-      const credential = await this.resolveCredential(input.provider, input.input.credential);
+      const credential = await this.resolveCredential(
+        input.provider,
+        input.input.target.credential
+      );
       const client = this.clientFactory({
         region,
-        endpoint: bedrockEndpoint(input.provider, input.input.credential),
+        endpoint: bedrockEndpoint(input.provider, input.input.target.credential),
         credential
       });
 
@@ -106,9 +112,9 @@ export class BedrockRuntimeProviderAdapter {
         eventType: "provider.request_forwarded",
         payload: {
           surface: input.input.surface,
-          provider: input.input.provider,
+          provider: input.input.target.provider,
           adapterKind: input.provider.adapterKind,
-          model: input.input.decision.selectedModel ?? "unknown",
+          model: input.input.target.upstreamModelId,
           providerAttemptId: input.providerAttemptId,
           upstreamAttempt: 1,
           operation,
@@ -273,16 +279,8 @@ function defaultBedrockRuntimeClientFactory(input: BedrockRuntimeClientFactoryIn
   return new BedrockRuntimeClient(clientConfig);
 }
 
-function bedrockRequest(body: unknown, selectedModel: string | undefined, providerSettings: ProviderForwardInput["decision"]["providerSettings"]) {
+function bedrockRequest(body: unknown) {
   const request = structuredClone(isRecord(body) ? body : {});
-  const settings = bedrockMetadataSettings(providerSettings);
-  if (selectedModel) {
-    request.modelId = resolveBedrockConverseModelId({
-      modelId: selectedModel,
-      inferenceProfile: stringValue(settings?.inferenceProfile) ?? stringValue(settings?.inferenceProfileId),
-      inferenceProfileGeography: stringValue(settings?.inferenceProfileGeography) ?? stringValue(settings?.profileGeography)
-    });
-  }
   delete request.stream;
   return request;
 }
@@ -386,14 +384,6 @@ function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function bedrockMetadataSettings(providerSettings: ProviderForwardInput["decision"]["providerSettings"]) {
-  if (!providerSettings) return undefined;
-  const metadata = "openai" in providerSettings ? providerSettings.openai.metadata : providerSettings.anthropic.metadata;
-  if (!isRecord(metadata)) return undefined;
-  const candidate = metadata.bedrockConverse ?? metadata.bedrock ?? metadata.bedrockSettings;
-  return isRecord(candidate) ? candidate : undefined;
 }
 
 function isObject(value: unknown): value is object {

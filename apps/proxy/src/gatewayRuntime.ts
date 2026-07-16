@@ -21,13 +21,13 @@ import { translators } from "./translators/index.js";
 import type {
   RouteContext,
   RouteDecision,
-  SelectedRouteSettings,
   Surface,
   UpstreamCredential
 } from "./types.js";
 import { isRecord } from "./util.js";
 import {
   applyRequestConfig,
+  bedrockDeploymentModelId,
   deploymentRequestConfig,
   gatewayParameters
 } from "./gatewayRequestConfig.js";
@@ -166,7 +166,10 @@ export function gatewayRequestBody(input: {
   restoreProtectedField(request, "stream", stream);
   restoreProtectedField(request, "type", eventType);
   if (resolution.egressWireId === "bedrock-converse") {
-    request.modelId = input.target.upstreamModelId;
+    request.modelId = bedrockDeploymentModelId(
+      input.target.upstreamModelId,
+      input.target.deploymentConfig
+    );
   } else {
     request.model = input.target.upstreamModelId;
   }
@@ -196,82 +199,11 @@ export function gatewayRouteDecision(surface: Surface, target: GatewayExecutionT
     requestedModel: target.resolution.logicalModelSlug,
     selectedModel: target.upstreamModelId,
     provider: target.provider,
-    deployment: gatewaySelectedDeployment(target),
-    providerSettings: gatewayProviderSettings(target),
     guardrailActions: [],
     reasonCodes: target.resolution.routerDecision?.reasonCodes ?? [],
     policyVersion: "gateway-v1",
     selectedAdapterKind: target.resolution.providerAdapterKind
   };
-}
-
-export function gatewayProviderSettings(target: GatewayExecutionTarget): SelectedRouteSettings {
-  const deployment = gatewaySelectedDeployment(target);
-  const base = {
-    provider: target.provider,
-    model: target.upstreamModelId,
-    dialect: target.resolution.egressWireId,
-    deployment
-  };
-  if (target.resolution.egressWireId === "anthropic-messages") {
-    return {
-      ...base,
-      anthropic: {
-        provider: target.provider,
-        model: target.upstreamModelId,
-        order: 0,
-        weight: 1,
-        timeoutMs: deployment.timeoutMs,
-        ...anthropicDeploymentSettings(target.deploymentConfig)
-      }
-    };
-  }
-  return {
-    ...base,
-    openai: {
-      provider: target.provider,
-      model: target.upstreamModelId,
-      order: 0,
-      weight: 1,
-      timeoutMs: deployment.timeoutMs,
-      ...openAIDeploymentSettings(target.deploymentConfig)
-    }
-  };
-}
-
-function gatewaySelectedDeployment(target: GatewayExecutionTarget) {
-  return {
-    key: target.deploymentId,
-    provider: target.provider,
-    model: target.upstreamModelId,
-    order: 0,
-    weight: 1,
-    timeoutMs: target.timeoutMs ?? 60_000
-  };
-}
-
-function openAIDeploymentSettings(config: Record<string, unknown>) {
-  const settings: Record<string, unknown> = {};
-  if (isRecord(config.reasoning)) settings.reasoning = config.reasoning;
-  if (isRecord(config.text)) settings.text = config.text;
-  const maxOutputTokens = positiveInteger(config.maxOutputTokens ?? config.max_output_tokens);
-  if (maxOutputTokens) settings.maxOutputTokens = maxOutputTokens;
-  if (isRecord(config.metadata)) settings.metadata = config.metadata;
-  return settings;
-}
-
-function anthropicDeploymentSettings(config: Record<string, unknown>) {
-  const settings: Record<string, unknown> = {};
-  if (isRecord(config.thinking)) settings.thinking = config.thinking;
-  if (isRecord(config.output_config)) settings.output_config = config.output_config;
-  const maxTokens = positiveInteger(config.maxTokens ?? config.max_tokens);
-  if (maxTokens) settings.maxTokens = maxTokens;
-  if (isRecord(config.metadata)) settings.metadata = config.metadata;
-  return settings;
-}
-
-function positiveInteger(value: unknown) {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
 function restoreProtectedField(request: Record<string, unknown>, key: string, value: unknown) {

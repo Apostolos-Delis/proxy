@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProviderForwardInput } from "../src/adapters.js";
 import { loadConfig } from "../src/config.js";
 import { EventService } from "../src/events.js";
 import type { ProviderRegistryEntry } from "../src/persistence/providers.js";
 import { GenericHttpProviderAdapter } from "../src/providerAdapters/genericHttp.js";
+import type { ProviderForwardInput } from "../src/providerAdapters/types.js";
 import { startOpenAIMock } from "./helpers.js";
 import { testEnv } from "./promptTestFixture.js";
 
@@ -60,19 +60,39 @@ describe("provider event scoping", () => {
         organizationId: "org_target",
         workspaceId: "workspace_target",
         surface: "openai-responses",
-        provider: "openai",
+        target: {
+          resolution: {
+            outcome: "resolved",
+            accessProfileId: "profile_target",
+            logicalModelId: "logical_model_target",
+            logicalModelSlug: "logical-test",
+            routerKind: null,
+            deploymentId: "deployment_target",
+            upstreamModelId: "gpt-test",
+            providerConnectionId: provider.id,
+            bindingId: "binding_target",
+            egressWireId: "openai-responses",
+            endpointPath: endpoint.path,
+            providerAdapterKind: provider.adapterKind,
+            providerAdapterContractVersion: "1",
+            wireAdapterId: null,
+            wireAdapterVersion: null,
+            routerDecisionId: null,
+            routerDecision: null,
+            parameterCaps: {}
+          },
+          provider: provider.slug,
+          upstreamModelId: "gpt-test",
+          deploymentId: "deployment_target",
+          providerConnectionId: provider.id,
+          requestConfig: {},
+          deploymentConfig: {},
+          capabilities: {},
+          providerEntry: provider,
+          endpoint
+        },
         body: { model: "gpt-test", input: "scope this request" },
         headers: {},
-        decision: {
-          outcome: "route",
-          surface: "openai-responses",
-          requestedModel: "logical-test",
-          selectedModel: "gpt-test",
-          provider: "openai",
-          guardrailActions: [],
-          reasonCodes: [],
-          policyVersion: "test"
-        },
         reply: {} as never
       };
 

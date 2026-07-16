@@ -7,7 +7,6 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { computePromptCachePlan, promptCachePlanEventPayload } from "../src/promptCachePlan.js";
-import type { RouteDecision } from "../src/types.js";
 import { sha256 } from "../src/util.js";
 
 const GEMINI_PROVIDER_CACHING_CAPABILITIES = {
@@ -18,47 +17,11 @@ const GEMINI_PROVIDER_CACHING_CAPABILITIES = {
   usageShape: "gemini"
 } satisfies ProviderCachingCapabilities;
 
-function decision(
+function target(
   provider: string,
-  dialect: "openai-responses" | "openai-chat" | "anthropic-messages",
-  model = modelForProvider(provider)
-): RouteDecision {
-  let providerSpecificSettings = {};
-  if (provider === "openai") {
-    providerSpecificSettings = { openai: { provider, model, order: 0, weight: 1, timeoutMs: 60000 } };
-  } else if (provider === "anthropic") {
-    providerSpecificSettings = { anthropic: { provider, model, order: 0, weight: 1, timeoutMs: 60000 } };
-  }
-
-  return {
-    outcome: "route",
-    surface: dialect,
-    requestedModel: "coding-auto",
-    selectedModel: model,
-    provider,
-    providerSettings: {
-      provider,
-      model,
-      dialect,
-      deployment: {
-        key: `test-${provider}`,
-        provider,
-        model,
-        order: 0,
-        weight: 1,
-        timeoutMs: 60000
-      },
-      ...providerSpecificSettings
-    } as RouteDecision["providerSettings"],
-    guardrailActions: [],
-    reasonCodes: []
-  };
-}
-
-function modelForProvider(provider: string) {
-  if (provider === "anthropic") return "claude-opus-4-8";
-  if (provider === "openai") return "gpt-5.5";
-  return "gemini-2.5-pro";
+  dialect: "openai-responses" | "openai-chat" | "anthropic-messages"
+) {
+  return { provider, dialect } as const;
 }
 
 describe("computePromptCachePlan", () => {
@@ -73,7 +36,7 @@ describe("computePromptCachePlan", () => {
     const plan = computePromptCachePlan({
       body,
       context: { surface: "openai-responses", estimatedInputTokens: 1200, sessionId: "session_abc" },
-      decision: decision("openai", "openai-responses"),
+      target: target("openai", "openai-responses"),
       capabilities: OPENAI_PROVIDER_CACHING_CAPABILITIES
     });
 
@@ -104,7 +67,7 @@ describe("computePromptCachePlan", () => {
         input: "hello"
       },
       context: { surface: "openai-responses", sessionId: "session_abc" },
-      decision: decision("openai", "openai-responses"),
+      target: target("openai", "openai-responses"),
       capabilities: OPENAI_PROVIDER_CACHING_CAPABILITIES
     });
 
@@ -123,10 +86,7 @@ describe("computePromptCachePlan", () => {
       body,
       sourceBody: body,
       context: { surface: "openai-responses" },
-      decision: {
-        ...decision("openai", "openai-chat"),
-        surface: "openai-responses"
-      },
+      target: target("openai", "openai-chat"),
       capabilities: OPENAI_PROVIDER_CACHING_CAPABILITIES
     });
 
@@ -150,10 +110,7 @@ describe("computePromptCachePlan", () => {
       body,
       sourceBody: body,
       context: { surface: "openai-chat" },
-      decision: {
-        ...decision("openai", "openai-responses"),
-        surface: "openai-chat"
-      },
+      target: target("openai", "openai-responses"),
       capabilities: OPENAI_PROVIDER_CACHING_CAPABILITIES
     });
 
@@ -177,10 +134,7 @@ describe("computePromptCachePlan", () => {
       body,
       sourceBody: body,
       context: { surface: "openai-responses" },
-      decision: {
-        ...decision("anthropic", "anthropic-messages"),
-        surface: "openai-responses"
-      },
+      target: target("anthropic", "anthropic-messages"),
       capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
       settings: { automaticCaching: false, cacheTtlUpgrade: false }
     });
@@ -204,10 +158,7 @@ describe("computePromptCachePlan", () => {
       body,
       sourceBody: body,
       context: { surface: "anthropic-messages" },
-      decision: {
-        ...decision("openai", "openai-chat"),
-        surface: "anthropic-messages"
-      },
+      target: target("openai", "openai-chat"),
       capabilities: OPENAI_PROVIDER_CACHING_CAPABILITIES
     });
 
@@ -229,7 +180,7 @@ describe("computePromptCachePlan", () => {
         ]
       },
       context: { surface: "anthropic-messages" },
-      decision: decision("anthropic", "anthropic-messages"),
+      target: target("anthropic", "anthropic-messages"),
       capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
       settings: { automaticCaching: true, cacheTtlUpgrade: false }
     });
@@ -252,10 +203,7 @@ describe("computePromptCachePlan", () => {
         prompt_cache_retention: "24h"
       },
       context: { surface: "openai-responses" },
-      decision: {
-        ...decision("anthropic", "anthropic-messages"),
-        surface: "openai-responses"
-      },
+      target: target("anthropic", "anthropic-messages"),
       capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
       settings: { automaticCaching: true, cacheTtlUpgrade: true }
     });
@@ -280,7 +228,7 @@ describe("computePromptCachePlan", () => {
         ]
       },
       context: { surface: "anthropic-messages" },
-      decision: decision("anthropic", "anthropic-messages"),
+      target: target("anthropic", "anthropic-messages"),
       capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
       settings: { automaticCaching: true, cacheTtlUpgrade: true }
     });
@@ -305,7 +253,7 @@ describe("computePromptCachePlan", () => {
         ]
       },
       context: { surface: "anthropic-messages" },
-      decision: decision("anthropic", "anthropic-messages"),
+      target: target("anthropic", "anthropic-messages"),
       capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
       settings: { automaticCaching: true, cacheTtlUpgrade: true }
     });
@@ -328,7 +276,7 @@ describe("computePromptCachePlan", () => {
         ]
       },
       context: { surface: "anthropic-messages" },
-      decision: decision("anthropic", "anthropic-messages"),
+      target: target("anthropic", "anthropic-messages"),
       capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
       settings: { automaticCaching: true, cacheTtlUpgrade: true }
     });
@@ -342,14 +290,7 @@ describe("computePromptCachePlan", () => {
     const plan = computePromptCachePlan({
       body: { model: "custom", messages: [{ role: "user", content: "hi" }] },
       context: { surface: "openai-chat" },
-      decision: {
-        ...decision("openai", "openai-chat"),
-        provider: "acme-vllm",
-        providerSettings: {
-          ...decision("openai", "openai-chat").providerSettings!,
-          provider: "acme-vllm"
-        }
-      },
+      target: target("acme-vllm", "openai-chat"),
       capabilities: CONSERVATIVE_PROVIDER_CACHING_CAPABILITIES
     });
 
@@ -371,7 +312,7 @@ describe("computePromptCachePlan", () => {
         prompt_cache_retention: "24h"
       },
       context: { surface: "openai-chat", sessionId: "session_gemini" },
-      decision: decision("google-gemini", "openai-chat"),
+      target: target("google-gemini", "openai-chat"),
       capabilities: GEMINI_PROVIDER_CACHING_CAPABILITIES
     });
 
@@ -416,7 +357,7 @@ describe("computePromptCachePlan", () => {
     computePromptCachePlan({
       body,
       context: { surface: "anthropic-messages" },
-      decision: decision("anthropic", "anthropic-messages"),
+      target: target("anthropic", "anthropic-messages"),
       capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
       settings: { automaticCaching: true, cacheTtlUpgrade: true }
     });

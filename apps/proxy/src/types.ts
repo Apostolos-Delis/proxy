@@ -5,7 +5,6 @@ import type {
   HarnessCompatibilityProfileId,
   Provider as SchemaProvider,
   ProviderAdapterKind as SchemaProviderAdapterKind,
-  ProviderCachingCapabilities,
   Surface as SchemaSurface,
   Verbosity as SchemaVerbosity
 } from "@proxy/schema";
@@ -74,60 +73,14 @@ export type RouteContext = {
   apiKeyId?: string;
 };
 
-export type SelectedDeployment = {
-  readonly key: string;
-  readonly provider: Provider;
-  readonly model: string;
-  readonly order: number;
-  readonly weight: number;
-  readonly timeoutMs: number;
-};
-
-type OpenAIRequestSettings = {
-  provider: Provider;
-  model: string;
-  order: number;
-  weight: number;
-  timeoutMs: number;
-  reasoning?: JsonObject;
-  text?: JsonObject;
-  maxOutputTokens?: number;
-  metadata?: JsonObject;
-};
-
-type AnthropicRequestSettings = {
-  provider: Provider;
-  model: string;
-  order: number;
-  weight: number;
-  timeoutMs: number;
-  thinking?: JsonObject;
-  output_config?: JsonObject;
-  maxTokens?: number;
-  metadata?: JsonObject;
-};
-
-type SelectedRouteSettingsBase = {
-  provider: Provider;
-  model: string;
-  dialect: Dialect;
-  deployment: SelectedDeployment;
-};
-
-export type SelectedRouteSettings =
-  | SelectedRouteSettingsBase & { openai: OpenAIRequestSettings }
-  | SelectedRouteSettingsBase & { anthropic: AnthropicRequestSettings };
-
 export type RouteDecision = {
   outcome: "route" | "reject";
   surface: Surface;
   requestedModel: string;
   selectedModel?: string;
   provider?: Provider;
-  deployment?: SelectedDeployment;
   reasoningEffort?: ProviderEffort;
   verbosity?: Verbosity;
-  providerSettings?: SelectedRouteSettings;
   guardrailActions: string[];
   reasonCodes: string[];
   compressionPolicy?: CompressionPolicy;
@@ -137,18 +90,6 @@ export type RouteDecision = {
   errorMessage?: string;
   errorDetails?: JsonObject;
   errorStatus?: number;
-};
-
-export type ProviderForwardTarget = {
-  readonly selectedModel: string;
-  readonly provider: Provider;
-  readonly adapterKind?: ProviderAdapterKind;
-  readonly deployment?: SelectedDeployment;
-  readonly reasoningEffort?: ProviderEffort;
-  readonly body: unknown;
-  readonly credential?: UpstreamCredential;
-  readonly providerSettings?: SelectedRouteSettings;
-  readonly providerCachingCapabilities?: ProviderCachingCapabilities;
 };
 
 export type ProviderAttempt = {

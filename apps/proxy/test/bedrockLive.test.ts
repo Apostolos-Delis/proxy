@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.js";
 import { BedrockRuntimeProviderAdapter } from "../src/providerAdapters/bedrockRuntime.js";
 import type { ProviderRegistryEntry } from "../src/persistence/providers.js";
-import type { ProviderForwardInput } from "../src/adapters.js";
+import type { ProviderForwardInput } from "../src/providerAdapters/types.js";
 
 const requiredEnv = ["AWS_REGION", "AWS_BEDROCK_TEST_MODEL"].filter((key) => !process.env[key]);
 const liveDescribe = requiredEnv.length === 0 ? describe : describe.skip;
@@ -154,52 +154,61 @@ function forwardInput(input: {
   body: unknown;
   responseStream?: boolean;
 }): ProviderForwardInput {
+  const provider = liveProvider(input.region);
+  const providerConnectionId = provider.id;
+  const deploymentId = `deployment_bedrock_${input.model}`;
+  const operation = input.responseStream ? "ConverseStream" as const : "Converse" as const;
+  const endpoint = { dialect: "bedrock-converse" as const, operation };
   return {
     requestId: "request_bedrock_live",
     idempotencyKey: "idem_bedrock_live",
     organizationId: "org_bedrock_live",
     workspaceId: "org_bedrock_live:workspace:default",
     surface: input.surface,
-    provider: "amazon-bedrock",
-    body: input.body,
+    target: {
+      resolution: {
+        outcome: "resolved",
+        accessProfileId: "profile_bedrock_live",
+        logicalModelId: "logical_model_bedrock_live",
+        logicalModelSlug: "coding-auto",
+        routerKind: null,
+        deploymentId,
+        upstreamModelId: input.model,
+        providerConnectionId,
+        bindingId: "binding_bedrock_live",
+        egressWireId: "bedrock-converse",
+        endpointPath: null,
+        providerAdapterKind: "aws-bedrock-converse",
+        providerAdapterContractVersion: "1",
+        wireAdapterId: null,
+        wireAdapterVersion: null,
+        routerDecisionId: null,
+        routerDecision: null,
+        parameterCaps: {}
+      },
+      provider: provider.slug,
+      upstreamModelId: input.model,
+      deploymentId,
+      providerConnectionId,
+      requestConfig: {},
+      deploymentConfig: {},
+      capabilities: {},
+      timeoutMs: 60_000,
+      providerEntry: provider,
+      endpoint,
+      credential: {
+        provider: provider.slug,
+        providerConnectionId,
+        token: "",
+        connectionSettings: {
+          credentialMode: "aws_default_chain",
+          region: input.region
+        }
+      }
+    },
+    body: { ...(input.body as Record<string, unknown>), modelId: input.model },
     responseStream: input.responseStream,
     headers: {},
-    decision: {
-      outcome: "route",
-      surface: input.surface,
-      requestedModel: "coding-auto",
-      selectedModel: input.model,
-      provider: "amazon-bedrock",
-      providerSettings: {
-        provider: "amazon-bedrock",
-        model: input.model,
-        dialect: "bedrock-converse",
-        deployment: {
-          key: `deployment_bedrock_${input.model}`,
-          provider: "amazon-bedrock",
-          model: input.model,
-          order: 0,
-          weight: 1,
-          timeoutMs: 60_000,
-          metadata: {
-            bedrock: { region: input.region }
-          }
-        },
-        openai: {
-          provider: "amazon-bedrock",
-          model: input.model,
-          order: 0,
-          weight: 1,
-          timeoutMs: 60_000,
-          metadata: {
-            bedrock: { region: input.region }
-          }
-        }
-      },
-      guardrailActions: [],
-      reasonCodes: [],
-      policyVersion: "test"
-    },
     reply: {} as ProviderForwardInput["reply"]
   };
 }

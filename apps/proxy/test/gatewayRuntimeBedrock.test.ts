@@ -152,6 +152,7 @@ describe("logical-model Bedrock runtime", () => {
           metadata: {
             owner: "gateway-runtime-test",
             bedrockConverse: {
+              inferenceProfile: "us",
               requestMetadata: { request: "bedrock-test", ignored: 42 },
               guardrailIdentifier: "guardrail-test",
               guardrailVersion: "1",
@@ -200,6 +201,7 @@ describe("logical-model Bedrock runtime", () => {
       target: runtimeTarget
     });
     expect(allowedBody).toMatchObject({
+      modelId: "us.amazon.nova-pro-v1:0",
       inferenceConfig: { maxTokens: 96 },
       requestMetadata: { request: "bedrock-test" },
       guardrailConfig: {
@@ -211,6 +213,21 @@ describe("logical-model Bedrock runtime", () => {
       additionalModelRequestFields: { top_k: 40 }
     });
     expect(allowedBody).not.toHaveProperty("metadata");
+
+    const profileArn = "arn:aws:bedrock:us-east-1:123456789012:inference-profile/app-profile";
+    expect(gatewayRequestBody({
+      body,
+      ingressWireId: "openai-responses",
+      operationId: "text.generate",
+      target: {
+        ...runtimeTarget,
+        deploymentConfig: {
+          metadata: {
+            bedrockConverse: { inferenceProfile: profileArn }
+          }
+        }
+      }
+    })).toMatchObject({ modelId: profileArn });
 
     await fixture.db
       .update(deploymentWireBindings)

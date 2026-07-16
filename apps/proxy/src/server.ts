@@ -9,7 +9,6 @@ import {
   anthropicMessagesSurface,
   openAIChatSurface,
   openAIResponsesSurface,
-  type ProviderForwardAttemptInput,
   type SurfaceAdapter
 } from "./adapters.js";
 import {
@@ -53,7 +52,8 @@ import type { RouteContext, Surface } from "./types.js";
 import { createId, headerValue, idempotencyFrom, isRecord, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
 import {
-  GatewayRuntime
+  GatewayRuntime,
+  type GatewayExecutionTarget
 } from "./gatewayRuntime.js";
 import type { GatewayOperationId } from "@proxy/schema";
 
@@ -497,14 +497,14 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         prepared,
         identity,
         context,
-        acquireProviderLimit: (providerAttempt) => acquireTrafficLimitOrReject({
+        acquireProviderLimit: (providerTarget) => acquireTrafficLimitOrReject({
           trafficLimits,
           requestStates,
           reply: input.reply,
           idempotencyKey,
           identity,
           context,
-          providerAttempt
+          providerTarget
         }),
         onAssistantText: input.operationId === "text.generate"
           ? assistantResponseCapture({
@@ -624,9 +624,9 @@ async function acquireTrafficLimitOrReject(input: {
   idempotencyKey: string;
   identity: RequestIdentity;
   context: RouteContext;
-  providerAttempt?: ProviderForwardAttemptInput;
+  providerTarget?: GatewayExecutionTarget;
 }): Promise<TrafficLimitLease | undefined> {
-  const stage = input.providerAttempt ? "provider_model" : "request";
+  const stage = input.providerTarget ? "provider_model" : "request";
   const result = input.trafficLimits.acquire({
     organizationId: input.identity.organizationId,
     workspaceId: input.identity.workspaceId,
@@ -634,8 +634,8 @@ async function acquireTrafficLimitOrReject(input: {
     userId: input.context.userId,
     accessProfileId: input.identity.accessProfileId ?? undefined,
     accessProfileLimits: input.identity.accessProfileLimits,
-    provider: input.providerAttempt?.provider,
-    model: input.providerAttempt?.selectedModel,
+    provider: input.providerTarget?.provider,
+    model: input.providerTarget?.upstreamModelId,
     estimatedTokens: input.context.estimatedInputTokens
   }, stage);
   if (result.allowed) return result.lease;

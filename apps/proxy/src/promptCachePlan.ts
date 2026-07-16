@@ -1,6 +1,6 @@
 import { builtinProviderCachingCapabilities, type ProviderCachingCapabilities, type ProviderCacheTtl } from "@proxy/schema";
 
-import type { Dialect, JsonObject, RouteContext, RouteDecision, Surface } from "./types.js";
+import type { Dialect, JsonObject, RouteContext, Surface } from "./types.js";
 import { translators } from "./translators/index.js";
 import { isRecord, roughTokenEstimate, sha256, stableJson } from "./util.js";
 
@@ -31,7 +31,6 @@ const knownPromptCacheControls = new Set([
 ]);
 
 const knownPromptCacheSkipReasons = new Set([
-  "missing_provider_settings",
   "not_eligible",
   "not_multi_turn_or_no_cacheable_target",
   "provider_capability_unavailable",
@@ -86,12 +85,12 @@ export function computePromptCachePlan(input: {
   bodyDialect?: Surface | Dialect;
   sourceBody?: unknown;
   context: Pick<RouteContext, "surface"> & Partial<Pick<RouteContext, "transport" | "harnessProfileId" | "estimatedInputTokens" | "sessionId">>;
-  decision: RouteDecision;
+  target: { provider: string; dialect: Dialect };
   capabilities?: ProviderCachingCapabilities;
   settings?: PromptCachePlanSettings;
 }): PromptCachePlan {
-  const provider = input.decision.provider ?? input.decision.providerSettings?.provider ?? "unknown";
-  const dialect = input.decision.providerSettings?.dialect ?? input.context.surface;
+  const provider = input.target.provider;
+  const dialect = input.target.dialect;
   const capabilities = input.capabilities ?? builtinProviderCachingCapabilities(provider);
   const targetBody = bodyForTargetDialect(input.body, input.bodyDialect ?? input.context.surface, dialect);
   const body = isRecord(targetBody) ? targetBody : {};
@@ -100,16 +99,6 @@ export function computePromptCachePlan(input: {
   const unsupportedCacheFieldSkips = cacheFieldSkipsForUnsupportedCapabilities(body, capabilities);
   const skippedControls: PromptCachePlan["skippedControls"] = [];
   const appliedControls: string[] = [];
-
-  if (!input.decision.providerSettings) {
-    return {
-      mode: "off",
-      provider,
-      dialect,
-      appliedControls,
-      skippedControls: [{ control: "prompt_cache", reason: "missing_provider_settings" }]
-    };
-  }
 
   if (capabilities.implicitPrefixCaching) {
     appliedControls.push("implicit_prefix_caching");
@@ -189,6 +178,53 @@ export function computePromptCachePlan(input: {
       ...unsupportedCacheFieldSkips
     ]
   };
+}
+
+export function applyPromptCachePlan(
+  request: unknown,
+  plan: PromptCachePlan | undefined,
+  allowAutomaticCaching: boolean
+) {
+  if (!isRecord(request) || !plan || plan.dialect !== "anthropic-messages") return;
+  if (allowAutomaticCaching && plan.appliedControls.includes("top_level_auto_breakpoint")) {
+    injectAutomaticCacheControl(request);
+  }
+  if (plan.appliedControls.includes("ttl_1h") && isAnthropicCacheTtlUpgradeEligible(request)) {
+    upgradeCacheControlTtl(request);
+  }
+}
+
+function upgradeCacheControlTtl(request: Record<string, unknown>) {
+  upgradeBlock(request);
+  upgradeInValue(request.tools);
+  upgradeInValue(request.system);
+  if (Array.isArray(request.messages)) {
+    for (const message of request.messages) {
+      if (isRecord(message)) upgradeInValue(message.content);
+    }
+  }
+}
+
+function injectAutomaticCacheControl(request: Record<string, unknown>) {
+  if (hasAnthropicCacheControl(request) || !isAnthropicMultiTurnRequest(request)) return;
+  request.cache_control = { type: "ephemeral" };
+}
+
+function upgradeInValue(value: unknown) {
+  if (Array.isArray(value)) {
+    for (const item of value) upgradeInValue(item);
+    return;
+  }
+  upgradeBlock(value);
+  if (isRecord(value) && Array.isArray(value.content)) upgradeInValue(value.content);
+}
+
+function upgradeBlock(block: unknown) {
+  if (!isRecord(block)) return;
+  const cacheControl = block.cache_control;
+  if (isRecord(cacheControl) && cacheControl.type === "ephemeral" && !cacheControl.ttl) {
+    block.cache_control = { type: "ephemeral", ttl: "1h" };
+  }
 }
 
 function bodyForTargetDialect(body: unknown, source: Surface | Dialect, target: string) {

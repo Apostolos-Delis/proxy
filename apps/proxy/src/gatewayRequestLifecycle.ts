@@ -4,7 +4,7 @@ import {
   type GatewayOperationId
 } from "@proxy/schema";
 
-import { applyPromptCachePlan, type SurfaceAdapter } from "./adapters.js";
+import type { SurfaceAdapter } from "./adapters.js";
 import {
   actorForIdentity,
   requestReceivedPayload,
@@ -46,7 +46,7 @@ import { type PromptArtifactStore } from "./persistence/promptArtifacts.js";
 import type { SessionSystemPromptStore } from "./persistence/sessionRoute.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { observePromptCachePlan } from "./promptCacheObservability.js";
-import { computePromptCachePlan } from "./promptCachePlan.js";
+import { applyPromptCachePlan, computePromptCachePlan } from "./promptCachePlan.js";
 import type { PromptCachePlan } from "./promptCachePlan.js";
 import { appendTokensAttributed } from "./tokenAttribution.js";
 import {
@@ -247,7 +247,7 @@ export class GatewayRequestLifecycle {
         ...gatewayResolvedEvidence(admissionEvidence, target)
       }
     });
-    const prepared = await this.prepareResolvedBody(input, target, decision, policy);
+    const prepared = await this.prepareResolvedBody(input, target, policy);
     await this.options.sessionPrompts?.pin({
       organizationId: input.identity.organizationId,
       workspaceId: input.identity.workspaceId,
@@ -458,7 +458,6 @@ export class GatewayRequestLifecycle {
   private async prepareResolvedBody(
     input: GatewayRequestInput,
     target: GatewayExecutionTarget,
-    decision: RouteDecision,
     policy: GatewayRequestPolicy
   ) {
     const cacheWindow = await this.resolveCompressionCacheWindow(input, target);
@@ -492,7 +491,10 @@ export class GatewayRequestLifecycle {
       bodyDialect: target.resolution.egressWireId,
       sourceBody: compression.body,
       context: input.context,
-      decision,
+      target: {
+        provider: target.provider,
+        dialect: target.resolution.egressWireId
+      },
       capabilities: target.providerEntry.capabilities.promptCaching,
       settings: {
         automaticCaching: input.operationId === "text.generate" && policy.automaticCaching,
