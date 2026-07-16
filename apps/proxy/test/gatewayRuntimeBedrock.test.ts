@@ -178,6 +178,7 @@ describe("logical-model Bedrock runtime", () => {
       userId: "local-user",
       apiKeyId: `${organizationId}:api-key:default`,
       accessProfileId: profile!.id,
+      accessProfileLimits: {},
       source: "api_key"
     };
     const body = { model: "fable", input: "Use Bedrock", max_output_tokens: 32 };

@@ -632,6 +632,8 @@ async function acquireTrafficLimitOrReject(input: {
     workspaceId: input.identity.workspaceId,
     apiKeyId: input.identity.apiKeyId,
     userId: input.context.userId,
+    accessProfileId: input.identity.accessProfileId ?? undefined,
+    accessProfileLimits: input.identity.accessProfileLimits,
     provider: input.providerAttempt?.provider,
     model: input.providerAttempt?.selectedModel,
     estimatedTokens: input.context.estimatedInputTokens

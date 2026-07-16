@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+
+import { accessProfiles, apiKeys, defaultWorkspaceId, hashApiKey } from "@proxy/db";
+import type { GatewayAccessProfileLimits } from "@proxy/schema";
 
 import { loadConfig } from "../src/config.js";
 import { buildServer } from "../src/server.js";
 import { listen, startAnthropicMock, startOpenAIMock, type MockServer } from "./helpers.js";
-import { captureFixture, testEnv } from "./promptTestFixture.js";
+import { captureFixture, testEnv, type PromptTestFixture } from "./promptTestFixture.js";
 
 describe("proxy traffic limits", () => {
   let openai: MockServer | undefined;
@@ -142,13 +146,89 @@ describe("proxy traffic limits", () => {
       scope: "provider_model"
     });
   });
+
+  it("applies access-profile concurrency across API keys", async () => {
+    const organizationId = "org_traffic_profile_concurrency";
+    const fixture = await captureFixture(organizationId, "hash_only", false, {
+      openAIOptions: { slowProvider: true }
+    });
+    await configureAccessProfileLimit(fixture, organizationId, { concurrent_requests: 1 });
+    await addApiKeyForSeededProfile(fixture, organizationId, "second-profile-token");
+    const firstController = new AbortController();
+
+    const first = await fetch(
+      `${fixture.proxyUrl}/v1/responses`,
+      requestInit(firstController.signal, "profile concurrency first")
+    );
+    const second = await fetch(
+      `${fixture.proxyUrl}/v1/responses`,
+      requestInit(undefined, "profile concurrency second", "second-profile-token")
+    );
+    const body = await second.json() as { error: string; scope: string };
+    firstController.abort();
+    await first.text().catch(() => "");
+    await fixture.close();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(429);
+    expect(body).toMatchObject({
+      error: "traffic_limit_exceeded:access_profile:concurrency",
+      scope: "access_profile"
+    });
+  });
+
+  it("applies access-profile RPM across API keys", async () => {
+    const organizationId = "org_traffic_profile_rpm";
+    const fixture = await captureFixture(organizationId, "hash_only");
+    await configureAccessProfileLimit(fixture, organizationId, { requests_per_minute: 1 });
+    await addApiKeyForSeededProfile(fixture, organizationId, "second-profile-token");
+
+    const first = await fetch(
+      `${fixture.proxyUrl}/v1/responses`,
+      requestInit(undefined, "profile rpm first")
+    );
+    await first.text();
+    const second = await fetch(
+      `${fixture.proxyUrl}/v1/responses`,
+      requestInit(undefined, "profile rpm second", "second-profile-token")
+    );
+    const body = await second.json() as { error: string; scope: string };
+    await fixture.close();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(429);
+    expect(second.headers.get("retry-after")).toBe("60");
+    expect(body).toMatchObject({
+      error: "traffic_limit_exceeded:access_profile:rpm",
+      scope: "access_profile"
+    });
+  });
+
+  it("applies access-profile TPM before routing", async () => {
+    const organizationId = "org_traffic_profile_tpm";
+    const fixture = await captureFixture(organizationId, "hash_only");
+    await configureAccessProfileLimit(fixture, organizationId, { tokens_per_minute: 1 });
+
+    const response = await fetch(
+      `${fixture.proxyUrl}/v1/responses`,
+      requestInit(undefined, "this request exceeds one estimated token")
+    );
+    const body = await response.json() as { error: string; scope: string };
+    await fixture.close();
+
+    expect(response.status).toBe(429);
+    expect(body).toMatchObject({
+      error: "traffic_limit_exceeded:access_profile:tpm",
+      scope: "access_profile"
+    });
+  });
 });
 
-function requestInit(signal?: AbortSignal, input = "debug this request") {
+function requestInit(signal?: AbortSignal, input = "debug this request", token = "proxy-token") {
   return {
     method: "POST",
     headers: {
-      authorization: "Bearer proxy-token",
+      authorization: `Bearer ${token}`,
       "content-type": "application/json"
     },
     body: JSON.stringify({
@@ -158,4 +238,34 @@ function requestInit(signal?: AbortSignal, input = "debug this request") {
     }),
     signal
   };
+}
+
+function seededProfileId(organizationId: string) {
+  return `${defaultWorkspaceId(organizationId)}:access-profile:opendoor-engineer`;
+}
+
+async function configureAccessProfileLimit(
+  fixture: PromptTestFixture,
+  organizationId: string,
+  limits: GatewayAccessProfileLimits
+) {
+  await fixture.db
+    .update(accessProfiles)
+    .set({ limits })
+    .where(eq(accessProfiles.id, seededProfileId(organizationId)));
+}
+
+async function addApiKeyForSeededProfile(
+  fixture: PromptTestFixture,
+  organizationId: string,
+  secret: string
+) {
+  await fixture.db.insert(apiKeys).values({
+    id: `${organizationId}:api-key:second-profile-key`,
+    organizationId,
+    workspaceId: defaultWorkspaceId(organizationId),
+    keyHash: hashApiKey(secret),
+    name: "Second profile key",
+    accessProfileId: seededProfileId(organizationId)
+  });
 }

@@ -7,6 +7,7 @@ const baseInput = {
   workspaceId: "workspace_limits",
   apiKeyId: "api_key_limits",
   userId: "user_limits",
+  accessProfileId: "profile_limits",
   provider: "openai" as const,
   model: "gpt-limits",
   estimatedTokens: 10
@@ -81,6 +82,61 @@ describe("TrafficLimitStore", () => {
     expect(store.acquire(baseInput, "provider_model")).toMatchObject({
       allowed: false,
       error: "traffic_limit_exceeded:provider_model:concurrency"
+    });
+  });
+
+  it("applies access-profile concurrency across API keys", () => {
+    const store = new TrafficLimitStore({ windowMs: 60_000 });
+    const first = store.acquire({
+      ...baseInput,
+      accessProfileLimits: { concurrent_requests: 1 }
+    });
+
+    expect(first.allowed).toBe(true);
+    expect(store.acquire({
+      ...baseInput,
+      apiKeyId: "api_key_limits_second",
+      accessProfileLimits: { concurrent_requests: 1 }
+    })).toMatchObject({
+      allowed: false,
+      error: "traffic_limit_exceeded:access_profile:concurrency",
+      scope: "access_profile"
+    });
+    if (first.allowed) first.lease.release();
+  });
+
+  it("applies access-profile request and token rates across API keys", () => {
+    const store = new TrafficLimitStore({ windowMs: 60_000 });
+    expect(store.acquire({
+      ...baseInput,
+      estimatedTokens: 6,
+      accessProfileLimits: { requests_per_minute: 2, tokens_per_minute: 10 }
+    }).allowed).toBe(true);
+
+    expect(store.acquire({
+      ...baseInput,
+      apiKeyId: "api_key_limits_second",
+      estimatedTokens: 5,
+      accessProfileLimits: { requests_per_minute: 2, tokens_per_minute: 10 }
+    })).toMatchObject({
+      allowed: false,
+      error: "traffic_limit_exceeded:access_profile:tpm",
+      scope: "access_profile",
+      current: 6
+    });
+  });
+
+  it("keeps static limits stricter than access-profile limits", () => {
+    const store = new TrafficLimitStore({ windowMs: 60_000, apiKeyRpm: 1 });
+    const input = {
+      ...baseInput,
+      accessProfileLimits: { requests_per_minute: 10 }
+    };
+
+    expect(store.acquire(input).allowed).toBe(true);
+    expect(store.acquire(input)).toMatchObject({
+      allowed: false,
+      error: "traffic_limit_exceeded:api_key:rpm"
     });
   });
 });

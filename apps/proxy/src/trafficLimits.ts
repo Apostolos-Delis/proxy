@@ -1,3 +1,5 @@
+import type { GatewayAccessProfileLimits } from "@proxy/schema";
+
 import type { Provider } from "./types.js";
 
 export type TrafficLimitConfig = {
@@ -27,6 +29,8 @@ export type TrafficLimitInput = {
   workspaceId: string;
   apiKeyId?: string;
   userId?: string;
+  accessProfileId?: string;
+  accessProfileLimits?: GatewayAccessProfileLimits;
   provider?: Provider;
   model?: string;
   estimatedTokens: number;
@@ -162,16 +166,19 @@ function limitChecks(config: TrafficLimitConfig, input: TrafficLimitInput, stage
     concurrencyCheck("workspace", scopeKeys.workspace, config.workspaceConcurrent),
     concurrencyCheck("api_key", scopeKeys.apiKey, config.apiKeyConcurrent),
     concurrencyCheck("user", scopeKeys.user, config.userConcurrent),
+    concurrencyCheck("access_profile", scopeKeys.accessProfile, input.accessProfileLimits?.concurrent_requests),
     rateCheck("rpm", "global", scopeKeys.global, config.globalRpm),
     rateCheck("rpm", "organization", scopeKeys.organization, config.organizationRpm),
     rateCheck("rpm", "workspace", scopeKeys.workspace, config.workspaceRpm),
     rateCheck("rpm", "api_key", scopeKeys.apiKey, config.apiKeyRpm),
     rateCheck("rpm", "user", scopeKeys.user, config.userRpm),
+    rateCheck("rpm", "access_profile", scopeKeys.accessProfile, input.accessProfileLimits?.requests_per_minute),
     rateCheck("tpm", "global", scopeKeys.global, config.globalTpm),
     rateCheck("tpm", "organization", scopeKeys.organization, config.organizationTpm),
     rateCheck("tpm", "workspace", scopeKeys.workspace, config.workspaceTpm),
     rateCheck("tpm", "api_key", scopeKeys.apiKey, config.apiKeyTpm),
-    rateCheck("tpm", "user", scopeKeys.user, config.userTpm)
+    rateCheck("tpm", "user", scopeKeys.user, config.userTpm),
+    rateCheck("tpm", "access_profile", scopeKeys.accessProfile, input.accessProfileLimits?.tokens_per_minute)
   ];
   const providerModelChecks = [
     concurrencyCheck("provider_model", scopeKeys.providerModel, config.providerModelConcurrent),
@@ -189,6 +196,9 @@ function scopedKeys(input: TrafficLimitInput) {
     workspace: `workspace:${input.organizationId}:${input.workspaceId}`,
     apiKey: input.apiKeyId ? `api_key:${input.organizationId}:${input.apiKeyId}` : undefined,
     user: input.userId ? `user:${input.organizationId}:${input.userId}` : undefined,
+    accessProfile: input.accessProfileId
+      ? `access_profile:${input.organizationId}:${input.workspaceId}:${input.accessProfileId}`
+      : undefined,
     providerModel: input.provider && input.model ? `provider_model:${input.provider}:${input.model}` : undefined
   };
 }
