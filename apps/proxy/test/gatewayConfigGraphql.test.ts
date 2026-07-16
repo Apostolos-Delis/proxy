@@ -230,7 +230,7 @@ enabled = true
       }`,
       { input: { id: deployment.id, pricing: { tokenValue: pricingSecret } } }
     );
-    expect(rejectedDeploymentPricing.errors?.[0]?.message).toBe("gateway_config_secret_forbidden");
+    expect(rejectedDeploymentPricing.errors?.[0]?.message).toBe("invalid_model_deployment");
     expect(rejectedDeploymentPricing.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
     expect(JSON.stringify(rejectedDeploymentPricing)).not.toContain(pricingSecret);
 
