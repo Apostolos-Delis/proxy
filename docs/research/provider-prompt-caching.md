@@ -1,12 +1,14 @@
 # Provider Prompt Caching Expansion
 
+> **Status: archived research.** This proposal predates the gateway core-model cutover and names runtime layers that no longer exist. It is retained for design history, not as an implementation plan. Use the [AI gateway core data model](../scopes/ai-gateway-core-model-v1/PLAN.md), [prompt-caching user guide](../user-guide/prompt-caching.md), and [prompt-caching runbook](../runbooks/prompt-caching.md) as current contracts.
+
 ## Summary
 
 Proxy already captures cache-read/cache-write usage, prices cached tokens separately, detects cache busts with evidence-backed operator causes, attributes token mass by request bucket, pins session routes, pins org system prompts, and has Anthropic-only request transforms for automatic caching and adaptive 1-hour TTL upgrades.
 
 What it does not yet have is a provider-agnostic prompt-caching layer like the Deep Agents approach: one policy surface that can choose the best available cache controls for each provider, preserve prompt-cache locality across translations and route changes, and report whether those controls actually saved money.
 
-This document scopes the path from today's Anthropic-specific behavior to a provider-capability-based caching system. It complements [Token Cost Reduction](token-cost-reduction.md), which covers the broader attribution, cache hygiene, compression, schema diet, and output-control program. The PR-sized implementation breakdown lives in [Provider Prompt Caching Expansion Tickets](provider-prompt-caching-tickets.md).
+This document scoped the path from Anthropic-specific behavior to a provider-capability-based caching system. It complements [Token Cost Reduction](../future/token-cost-reduction.md), which covers the broader attribution, cache hygiene, compression, schema diet, and output-control program. Its historical implementation breakdown is preserved in [Provider Prompt Caching Expansion Tickets](provider-prompt-caching-tickets.md).
 
 ## Current State
 

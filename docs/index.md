@@ -47,12 +47,13 @@ These documents preserve the analysis that led to the current gateway model. The
 - [Kong scoping review](research/kong-scope.md)
 - [OmniRoute scoping review](research/omniroute-scope.md)
 - [Router upstream implementation follow-up](research/router-upstream-implementation-follow-up.md)
+- [Archived provider prompt-caching expansion](research/provider-prompt-caching.md)
+- [Archived provider prompt-caching tickets](research/provider-prompt-caching-tickets.md)
 - [Prior implementation scopes](scopes/)
 
 ## Future Work
 
 - [GEPA-inspired prompt optimization](future/gepa-prompt-optimization.md)
 - [Token cost reduction](future/token-cost-reduction.md)
-- [Provider prompt caching expansion](future/provider-prompt-caching.md)
 - [Tool result compression walkthrough](future/tool-result-compression-walkthrough.md)
 - [Spike: tool search + defer_loading injection](future/tool-search-defer-loading-spike.md)
