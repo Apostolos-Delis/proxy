@@ -14,13 +14,11 @@ import { gatewayProviderAttemptEvidenceValue } from "../gatewayEvidence.js";
 import { usageCostMicros } from "../pricing.js";
 import { createId } from "../util.js";
 import { pricingFromRow } from "./modelPricing.js";
-import { routeForRequest } from "./routeDecision.js";
 import {
   normalizeUsage,
   numberValue,
   providerValue,
   recordValue,
-  routeSkipReasonValue,
   stringValue,
   surfaceValue
 } from "./values.js";
@@ -58,13 +56,8 @@ export async function persistProviderStarted(tx: ProxyTransaction, event: {
       model: stringValue(payload.model) ?? "unknown",
       adapterKind: providerAdapterKindValue(payload.adapterKind),
       adapterClassification: recordValue(payload.adapterClassification),
-      providerAccountId: stringValue(payload.providerAccountId),
       ...gatewayEvidence,
       terminalStatus: "pending",
-      routeCandidateId: stringValue(payload.routeCandidateId),
-      attemptIndex: numberValue(payload.attemptIndex),
-      fallbackIndex: numberValue(payload.fallbackIndex),
-      skipReason: routeSkipReasonValue(payload.skipReason),
       startedAt: new Date(event.createdAt)
     })
     .onConflictDoNothing();
@@ -175,8 +168,6 @@ export async function persistProviderTerminal(tx: ProxyTransaction, event: {
     attempt.deploymentId
   );
   const costs = usageCostMicros(modelPricing, normalized);
-  const route = await routeForRequest(tx, event.scopeId);
-
   await tx
     .insert(usageLedger)
     .values({
@@ -189,7 +180,6 @@ export async function persistProviderTerminal(tx: ProxyTransaction, event: {
       providerAttemptId,
       provider: attempt.provider,
       model: attempt.model,
-      route,
       inputTokens: normalized.inputTokens,
       cachedInputTokens: normalized.cachedInputTokens,
       cacheCreationInputTokens: normalized.cacheCreationInputTokens,

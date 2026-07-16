@@ -981,7 +981,6 @@ async function seedCompressionCacheEvidence(fixture: PromptTestFixture, input: {
     kind: "provider",
     provider: input.provider,
     model: input.model,
-    route: "hard",
     inputTokens: 5_000,
     cachedInputTokens: 3_072,
     cacheCreationInputTokens: 128,
@@ -1477,7 +1476,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         messages: [
           { role: "user", content: "list the open issues" },
@@ -1650,7 +1649,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         messages: [
           { role: "user", content: "list the open issues" },
@@ -1675,7 +1674,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         messages: [
           { role: "user", content: "list the open issues" },
@@ -1772,7 +1771,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       externalSessionId: "session_cache_hot_measure",
       requestId: "request_cache_hot_prior",
       provider: "anthropic",
-      model: "claude-sonnet-4-5"
+      model: "claude-fable-5"
     });
 
     await fetch(`${fixture.proxyUrl}/v1/messages`, {
@@ -1783,7 +1782,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
         "x-claude-code-session-id": "session_cache_hot_measure"
       },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         messages: [
           { role: "user", content: "cached prompt" },
@@ -1857,7 +1856,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         messages: [
           { role: "user", content: "run tests" },
@@ -1898,7 +1897,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         messages: [
           { role: "user", content: "list the open issues" },
@@ -1987,7 +1986,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         messages: [
           { role: "user", content: "list the open issues" },
@@ -2037,7 +2036,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
         method: "POST",
         headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
         body: JSON.stringify({
-          model: "claude-router-hard",
+          model: "fable",
           max_tokens: 256,
           messages: [
             { role: "user", content: "list the open issues" },
@@ -2071,7 +2070,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         messages: [
           { role: "user", content: "read the file twice" },
@@ -2103,7 +2102,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         messages: [
           { role: "user", content: "read the file twice" },
           { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: { file_path: "a.txt" } }] },
@@ -2140,7 +2139,7 @@ describe("toolResultCompression end to end (DB-backed)", () => {
 
     ws.send(JSON.stringify({
       type: "response.create",
-      model: "router-hard",
+      model: "coding-auto",
       input: [
         { type: "function_call", call_id: "c1", name: "mcp__linear__list_issues", arguments: "{}" },
         { type: "function_call_output", call_id: "c1", output: verbose }

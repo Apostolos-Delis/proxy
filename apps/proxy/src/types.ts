@@ -1,52 +1,22 @@
 import type {
+  CompressionPolicy,
   Dialect as SchemaDialect,
   Effort,
-  CompressionPolicy,
+  HarnessCompatibilityProfileId,
   Provider as SchemaProvider,
-  ProviderAccountAuthType,
   ProviderAdapterKind as SchemaProviderAdapterKind,
   ProviderCachingCapabilities,
-  RouteExecutionPlan,
-  RoutingConfig,
-  RoutingConfigRetryPolicy,
-  SelectedDeployment,
-  SessionPinnedSettings,
   Surface as SchemaSurface,
-  HarnessCompatibilityProfileId,
-  Verbosity as RoutingVerbosity
+  Verbosity as SchemaVerbosity
 } from "@proxy/schema";
 
 export type Surface = SchemaSurface;
-
 export type Dialect = SchemaDialect;
-
 export type Provider = SchemaProvider;
-
 export type ProviderAdapterKind = SchemaProviderAdapterKind;
-
-export type RouteName = "fast" | "balanced" | "hard" | "deep";
-
 export type ReasoningEffort = Effort;
 export type ProviderEffort = Effort;
-
-export type PinnedUpstreamAddress = {
-  readonly hostname: string;
-  readonly address: string;
-  readonly family: 4 | 6;
-};
-
-export type UpstreamCredential = {
-  readonly provider: Provider;
-  readonly token: string;
-  readonly providerAccountId: string;
-  readonly authType: ProviderAccountAuthType;
-  readonly chatgptAccountId?: string;
-  readonly baseUrl?: string;
-  readonly pinnedAddress?: PinnedUpstreamAddress;
-  readonly providerAccountSettings?: JsonObject;
-};
-
-export type Verbosity = RoutingVerbosity;
+export type Verbosity = SchemaVerbosity;
 
 export type JsonValue =
   | null
@@ -57,6 +27,21 @@ export type JsonValue =
   | { [key: string]: JsonValue };
 
 export type JsonObject = { [key: string]: JsonValue };
+
+export type PinnedUpstreamAddress = {
+  readonly hostname: string;
+  readonly address: string;
+  readonly family: 4 | 6;
+};
+
+export type UpstreamCredential = {
+  readonly provider: Provider;
+  readonly token: string;
+  readonly providerConnectionId: string;
+  readonly baseUrl?: string;
+  readonly pinnedAddress?: PinnedUpstreamAddress;
+  readonly connectionSettings?: JsonObject;
+};
 
 export type RouteContext = {
   organizationId?: string;
@@ -87,88 +72,65 @@ export type RouteContext = {
   userId?: string;
   teamId?: string;
   apiKeyId?: string;
-  explicitAlias?: RouteName;
 };
 
-export type BudgetCheck = {
-  readonly scope: "request" | "route";
-  readonly status: "ok" | "reject";
-  readonly reason: string;
-  readonly current: number | string;
-  readonly limit: number | string;
-};
-
-export type ProviderHealthSkip = {
-  readonly scope: "provider_account" | "provider_account_model";
+export type SelectedDeployment = {
+  readonly key: string;
   readonly provider: Provider;
-  readonly providerId: string;
-  readonly providerAccountId: string;
   readonly model: string;
-  readonly healthStatus: string;
-  readonly errorType?: string;
-  readonly expiresAt?: string;
-  readonly metadata?: JsonObject;
+  readonly order: number;
+  readonly weight: number;
+  readonly timeoutMs: number;
 };
 
-export type ClassifierOutput = {
-  complexity: "trivial" | "simple" | "normal" | "hard" | "deep";
-  risk: string[];
-  recommended_route: RouteName;
-  can_use_fast_model: boolean;
-  needs_deep_reasoning: boolean;
-  reason_codes: string[];
-  confidence: number;
+type OpenAIRequestSettings = {
+  provider: Provider;
+  model: string;
+  order: number;
+  weight: number;
+  timeoutMs: number;
+  reasoning?: JsonObject;
+  text?: JsonObject;
+  maxOutputTokens?: number;
+  metadata?: JsonObject;
 };
+
+type AnthropicRequestSettings = {
+  provider: Provider;
+  model: string;
+  order: number;
+  weight: number;
+  timeoutMs: number;
+  thinking?: JsonObject;
+  output_config?: JsonObject;
+  maxTokens?: number;
+  metadata?: JsonObject;
+};
+
+type SelectedRouteSettingsBase = {
+  provider: Provider;
+  model: string;
+  dialect: Dialect;
+  deployment: SelectedDeployment;
+};
+
+export type SelectedRouteSettings =
+  | SelectedRouteSettingsBase & { openai: OpenAIRequestSettings }
+  | SelectedRouteSettingsBase & { anthropic: AnthropicRequestSettings };
 
 export type RouteDecision = {
   outcome: "route" | "reject";
   surface: Surface;
   requestedModel: string;
-  classifierRoute?: RouteName;
-  finalRoute?: RouteName;
   selectedModel?: string;
   provider?: Provider;
   deployment?: SelectedDeployment;
-  providerAttempts?: RouteProviderAttempt[];
-  retryPolicy?: RoutingConfigRetryPolicy;
   reasoningEffort?: ProviderEffort;
   verbosity?: Verbosity;
   providerSettings?: SelectedRouteSettings;
   guardrailActions: string[];
   reasonCodes: string[];
-  budgetChecks?: BudgetCheck[];
-  healthSkips?: ProviderHealthSkip[];
-  session?: {
-    sessionKey: string;
-    sessionId: string;
-    userId?: string;
-    teamId?: string;
-    previousRoute?: RouteName;
-    currentRoute: RouteName;
-    pin?: {
-      settings: SelectedRouteSettings;
-      routingConfigVersionId?: string;
-    };
-    invalidatedPin?: {
-      provider: Provider;
-      routingConfigVersionId?: string;
-    };
-    softFloor: boolean;
-    action: "stored" | "upgraded" | "kept" | "capped" | "explicit_override";
-  };
-  classifier?: {
-    provider: Provider;
-    model: string;
-    attempts: number;
-    confidence: number;
-    recommendedRoute: RouteName;
-    routingConfigId?: string;
-    routingConfigVersionId?: string;
-    routingConfigHash?: string;
-  };
-  routingConfig?: RoutingConfigSnapshot;
   compressionPolicy?: CompressionPolicy;
-  routeExecutionPlan?: RouteExecutionPlan;
   selectedAdapterKind?: ProviderAdapterKind;
   policyVersion: string;
   error?: string;
@@ -177,33 +139,16 @@ export type RouteDecision = {
   errorStatus?: number;
 };
 
-export type SelectedRouteSettings = SessionPinnedSettings;
-
-export type RouteProviderAttempt = {
-  readonly route: RouteName;
-  readonly routeCandidateId?: string;
+export type ProviderForwardTarget = {
   readonly selectedModel: string;
   readonly provider: Provider;
   readonly adapterKind?: ProviderAdapterKind;
-  readonly deployment: SelectedDeployment;
+  readonly deployment?: SelectedDeployment;
   readonly reasoningEffort?: ProviderEffort;
-  readonly verbosity?: Verbosity;
-  readonly providerSettings: SelectedRouteSettings;
+  readonly body: unknown;
+  readonly credential?: UpstreamCredential;
+  readonly providerSettings?: SelectedRouteSettings;
   readonly providerCachingCapabilities?: ProviderCachingCapabilities;
-};
-
-export type RoutingConfigSnapshot = {
-  configId: string;
-  configName: string;
-  versionId: string;
-  version: number;
-  configHash: string;
-};
-
-export type RoutingConfigSelection = {
-  snapshot: RoutingConfigSnapshot;
-  config: RoutingConfig;
-  compressionPolicy: CompressionPolicy;
 };
 
 export type ProviderAttempt = {
@@ -214,7 +159,8 @@ export type ProviderAttempt = {
   model: string;
   adapterKind?: ProviderAdapterKind;
   adapterClassification?: JsonObject;
-  providerAccountId?: string;
+  providerConnectionId?: string;
+  deploymentId?: string;
   terminalStatus: "pending" | "completed" | "failed" | "cancelled";
   usage?: JsonValue;
   upstreamRequestId?: string;

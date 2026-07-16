@@ -7,10 +7,12 @@ import {
   accessProfiles,
   apiKeys,
   canonicalModels,
+  deploymentHealth,
   deploymentWireBindings,
   logicalModels,
   logicalModelTargets,
   modelDeployments,
+  providerConnectionHealth,
   providerConnections,
   type ProxyDbSession
 } from "@proxy/db";
@@ -38,6 +40,7 @@ import {
 import { effectiveGatewayParameters } from "../gatewayRequestConfig.js";
 import { resolveWireCompatibility } from "../wireCompatibility.js";
 import { activeClassifierDeployment } from "./classifierDeployment.js";
+import { isStreamPermissionHealth } from "./providerHealth.js";
 import { workspaceScope } from "./scope.js";
 
 export type ResolveModelInput = {
@@ -54,6 +57,7 @@ export type ResolveModelInput = {
   hasPreviousResponseId?: boolean;
   unsupportedFields?: readonly string[];
   bedrockSettingsOnNonBedrockTarget?: boolean;
+  isStreaming?: boolean;
   classificationFeatures?: LogicalModelClassificationFeatures;
 };
 
@@ -411,7 +415,13 @@ export class ModelResolutionService {
         egressWireId: deploymentWireBindings.apiWireId,
         endpointPath: deploymentWireBindings.endpointPath,
         providerAdapterContractVersion: deploymentWireBindings.adapterContractVersion,
-        requestConfig: deploymentWireBindings.requestConfig
+        requestConfig: deploymentWireBindings.requestConfig,
+        connectionHealthStatus: providerConnectionHealth.status,
+        connectionCooldownUntil: providerConnectionHealth.cooldownUntil,
+        deploymentHealthStatus: deploymentHealth.status,
+        deploymentLockoutUntil: deploymentHealth.lockoutUntil,
+        deploymentLastErrorType: deploymentHealth.lastErrorType,
+        deploymentHealthMetadata: deploymentHealth.metadata
       })
       .from(logicalModelTargets)
       .innerJoin(modelDeployments, and(
@@ -435,6 +445,16 @@ export class ModelResolutionService {
         eq(deploymentWireBindings.deploymentId, modelDeployments.id),
         eq(deploymentWireBindings.providerConnectionId, providerConnections.id)
       ))
+      .leftJoin(providerConnectionHealth, and(
+        eq(providerConnectionHealth.organizationId, providerConnections.organizationId),
+        eq(providerConnectionHealth.workspaceId, providerConnections.workspaceId),
+        eq(providerConnectionHealth.providerConnectionId, providerConnections.id)
+      ))
+      .leftJoin(deploymentHealth, and(
+        eq(deploymentHealth.organizationId, modelDeployments.organizationId),
+        eq(deploymentHealth.workspaceId, modelDeployments.workspaceId),
+        eq(deploymentHealth.deploymentId, modelDeployments.id)
+      ))
       .where(and(
         workspaceScope(logicalModelTargets, input.organizationId, input.workspaceId),
         workspaceScope(modelDeployments, input.organizationId, input.workspaceId),
@@ -453,8 +473,14 @@ export class ModelResolutionService {
         asc(deploymentWireBindings.apiWireId)
       );
 
+    const now = this.options.now?.() ?? new Date();
     const bindingsByTarget = new Map<string, typeof rows>();
     for (const row of rows) {
+      if (healthUnavailable(row.connectionHealthStatus, row.connectionCooldownUntil, now)) continue;
+      if (
+        healthUnavailable(row.deploymentHealthStatus, row.deploymentLockoutUntil, now) &&
+        (input.isStreaming || !isStreamPermissionHealth(row.deploymentLastErrorType, row.deploymentHealthMetadata))
+      ) continue;
       const bindings = bindingsByTarget.get(row.targetId) ?? [];
       bindings.push(row);
       bindingsByTarget.set(row.targetId, bindings);
@@ -506,6 +532,11 @@ export class ModelResolutionService {
 
     return activeClassifierDeployment(this.db, organizationId, workspaceId, classifierDeploymentId);
   }
+}
+
+function healthUnavailable(status: string | null, until: Date | null, now: Date) {
+  if (status === "terminal" || status === "locked_out") return !until || until > now;
+  return status === "cooldown" && (!until || until > now);
 }
 
 function resolvedTarget(

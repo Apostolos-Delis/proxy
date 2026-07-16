@@ -1,19 +1,12 @@
-import { PROVIDER_ACCOUNT_AUTH_TYPES } from "@proxy/schema";
-
 import { builder } from "../builder.js";
 import type {
   CostTotalsModel,
   ProxyEventShape,
-  RoutingConfigSnapshotModel,
   TokenTotalsModel
 } from "../models.js";
 
 export const MemberRole = builder.enumType("MemberRole", {
   values: ["owner", "admin", "member", "viewer"] as const
-});
-
-export const ProviderAccountAuthType = builder.enumType("ProviderAccountAuthType", {
-  values: PROVIDER_ACCOUNT_AUTH_TYPES
 });
 
 export const TokenTotals = builder.objectRef<TokenTotalsModel>("TokenTotals").implement({
@@ -35,18 +28,6 @@ export const CostTotals = builder.objectRef<CostTotalsModel>("CostTotals").imple
     classifier: t.exposeFloat("classifier")
   })
 });
-
-export const RoutingConfigSnapshot = builder
-  .objectRef<RoutingConfigSnapshotModel>("RoutingConfigSnapshot")
-  .implement({
-    fields: (t) => ({
-      configId: t.exposeString("configId"),
-      configName: t.exposeString("configName", { nullable: true }),
-      versionId: t.exposeString("versionId", { nullable: true }),
-      version: t.exposeInt("version", { nullable: true }),
-      configHash: t.exposeString("configHash", { nullable: true })
-    })
-  });
 
 export const ProxyEvent = builder.objectRef<ProxyEventShape>("ProxyEvent").implement({
   fields: (t) => ({

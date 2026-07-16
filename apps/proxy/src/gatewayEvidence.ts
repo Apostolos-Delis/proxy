@@ -20,7 +20,7 @@ const providerAttemptEvidenceKeys = gatewayProviderAttemptEvidenceSchema.keyof()
 export function validateGatewayEventEvidence(eventType: string, payload: Record<string, unknown>) {
   if (eventType === "proxy.request_received") {
     gatewayRequestEvidenceValue(payload);
-  } else if (eventType === "routing.decision_recorded" || eventType === "routing.plan_recorded") {
+  } else if (eventType === "routing.decision_recorded") {
     gatewayResolutionEvidenceValue(payload);
   } else if (
     eventType === "provider.request_started" ||

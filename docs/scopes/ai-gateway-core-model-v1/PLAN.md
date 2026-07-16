@@ -1,6 +1,6 @@
 # AI Gateway Core Data Model V1
 
-- **Status:** Proposed implementation starting point
+- **Status:** Implemented V1 architecture
 - **Scope:** Replace the coding-tier product model with the minimum general AI gateway model
 - **Research basis:** [Enterprise AI gateway strategy and target architecture](../../research/enterprise-ai-gateway-analysis.md)
 
@@ -34,9 +34,9 @@ Do not build these in this scope:
 - bidirectional TOML/database synchronization;
 - new modalities beyond the existing text-generation paths.
 
-## Current Model Problems
+## Legacy Model Problems Addressed
 
-The current schema has useful pieces, but their boundaries reflect a coding router rather than a general gateway:
+The replaced schema had useful pieces, but its boundaries reflected a coding router rather than a general gateway:
 
 - `routing_configs` and the shared schema require the global `fast`, `balanced`, `hard`, and `deep` tiers.
 - `providers` mixes an executable adapter definition with configurable endpoint data.
@@ -335,7 +335,7 @@ The dependency-ordered, PR-sized implementation breakdown lives in [TICKETS.md](
 
 ## Hard-cutover Mapping
 
-| Current concept | Target concept |
+| Removed concept | Gateway concept |
 | --- | --- |
 | `providers` adapter and endpoint row | code-owned adapter kind + `provider_connections` |
 | `provider_accounts` | `provider_connections` |
@@ -348,7 +348,7 @@ The dependency-ordered, PR-sized implementation breakdown lives in [TICKETS.md](
 | requested tier | requested logical model |
 | selected provider/model strings | selected deployment and connection IDs |
 
-Migration creates the new resources from the one current production configuration, switches all endpoints atomically, and then removes the old tables, columns, seeds, shared types, and runtime branches. There is no dual-read period.
+The migration creates the gateway resources, cuts every supported endpoint to logical-model resolution, and removes the old tables, columns, seeds, shared types, and runtime branches. There is no dual-read period.
 
 ## Deferred Decisions
 

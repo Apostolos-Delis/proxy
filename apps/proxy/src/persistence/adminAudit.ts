@@ -10,8 +10,8 @@ import { createId, sha256, stableJson } from "../util.js";
 
 export type AdminAuditEventInput = {
   organizationId: string;
-  // Set for workspace-scoped entities (api keys, routing configs); org-level
-  // entities (users, invitations, provider accounts) leave it null.
+  // Set for workspace-scoped gateway resources and API keys; organization-level
+  // entities such as users and invitations leave it null.
   workspaceId?: string | null;
   scopeType: string;
   scopeId: string;

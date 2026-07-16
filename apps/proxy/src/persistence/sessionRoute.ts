@@ -2,111 +2,16 @@ import { and, eq } from "drizzle-orm";
 
 import {
   agentSessions,
-  defaultWorkspaceId,
   promptArtifacts,
-  type ProxyDbSession,
-  type ProxyTransaction
+  type ProxyDbSession
 } from "@proxy/db";
-import { sessionPinnedSettingsSchema } from "@proxy/schema";
 
-import type { SessionPinLoader } from "../policy.js";
 import type { Surface } from "../types.js";
 import { createId, roughTokenEstimate, sha256 } from "../util.js";
-import { ensureSession, sessionRowId } from "./identity.js";
-import { recordValue, routeValue, stringValue, surfaceValue } from "./values.js";
+import { sessionRowId } from "./identity.js";
+import { recordValue } from "./values.js";
 
 export type PinnedSystemPrompt = { pinned: true; systemPrompt?: string };
-
-export async function persistSessionRoute(tx: ProxyTransaction, event: {
-  tenantId: string;
-  workspaceId?: string;
-  createdAt: string;
-  sessionId?: string;
-  payload: Record<string, unknown>;
-}) {
-  const payload = event.payload;
-  const sessionId = stringValue(payload.sessionId) ?? event.sessionId;
-  // No sentinel here: a session row keyed on an absent surface has no
-  // consumer (the pin loader looks up by the live request's surface), so
-  // ensureSession's absent-surface guard skips the write instead.
-  const surface = surfaceValue(payload.surface);
-  const userId = stringValue(payload.userId);
-  const route = routeValue(payload.currentRoute);
-  const dbSessionId = await ensureSession(tx, {
-    organizationId: event.tenantId,
-    workspaceId: event.workspaceId ?? defaultWorkspaceId(event.tenantId),
-    surface,
-    sessionId,
-    userId,
-    route
-  });
-  if (!dbSessionId) return;
-  const [existing] = await tx
-    .select({ metadata: agentSessions.metadata })
-    .from(agentSessions)
-    .where(eq(agentSessions.id, dbSessionId))
-    .limit(1);
-  const existingMetadata = recordValue(existing?.metadata);
-  const metadata: Record<string, unknown> = {
-    ...payload,
-    sessionIdentity: sessionId ? "harness" : "request_fallback"
-  };
-  if (existingMetadata && Object.prototype.hasOwnProperty.call(existingMetadata, "pinnedSystemPromptHash")) {
-    metadata.pinnedSystemPromptArtifactId = existingMetadata.pinnedSystemPromptArtifactId;
-    metadata.pinnedSystemPromptHash = existingMetadata.pinnedSystemPromptHash;
-  }
-  const pinRecord = recordValue(payload.pin);
-  const pinSettings = pinRecord ? sessionPinnedSettingsSchema.safeParse(pinRecord.settings) : undefined;
-  await tx
-    .update(agentSessions)
-    .set({
-      currentRoute: route,
-      metadata,
-      // Events without a valid pin (e.g. replays of pre-pin history) leave the
-      // stored pin untouched rather than clobbering it.
-      ...(pinRecord && pinSettings?.success
-        ? {
-            pinnedSettings: pinSettings.data,
-            routingConfigVersionId: stringValue(pinRecord.routingConfigVersionId) ?? null
-          }
-        : {}),
-      updatedAt: new Date(event.createdAt)
-    })
-    .where(eq(agentSessions.id, dbSessionId));
-}
-
-export function createSessionPinLoader(db: ProxyDbSession): SessionPinLoader {
-  return async ({ workspaceId, surface, sessionId }) => {
-    const [row] = await db
-      .select({
-        currentRoute: agentSessions.currentRoute,
-        pinnedSettings: agentSessions.pinnedSettings,
-        routingConfigVersionId: agentSessions.routingConfigVersionId,
-        requestCount: agentSessions.requestCount,
-        metadata: agentSessions.metadata
-      })
-      .from(agentSessions)
-      .where(eq(agentSessions.id, sessionRowId(workspaceId, surface, sessionId)))
-      .limit(1);
-    if (!row) return undefined;
-    const currentRoute = routeValue(row.currentRoute);
-    if (!currentRoute) return undefined;
-    const parsed = row.pinnedSettings
-      ? sessionPinnedSettingsSchema.safeParse(row.pinnedSettings)
-      : undefined;
-    return {
-      currentRoute,
-      requestCount: row.requestCount,
-      softFloor: recordValue(row.metadata)?.softFloor === true,
-      pin: parsed?.success
-        ? {
-            settings: parsed.data,
-            routingConfigVersionId: row.routingConfigVersionId ?? undefined
-          }
-        : undefined
-    };
-  };
-}
 
 export class SessionSystemPromptStore {
   constructor(private readonly db: ProxyDbSession) {}
@@ -130,12 +35,7 @@ export class SessionSystemPromptStore {
     const metadata = recordValue(row?.metadata);
     if (!metadata || !Object.prototype.hasOwnProperty.call(metadata, "pinnedSystemPromptHash")) return undefined;
     const artifactId = metadata.pinnedSystemPromptArtifactId;
-    if (typeof artifactId !== "string") {
-      return {
-        pinned: true,
-        systemPrompt: undefined
-      };
-    }
+    if (typeof artifactId !== "string") return { pinned: true };
     const [artifact] = await this.db
       .select({ rawText: promptArtifacts.rawText })
       .from(promptArtifacts)
@@ -145,10 +45,7 @@ export class SessionSystemPromptStore {
         eq(promptArtifacts.workspaceId, input.workspaceId)
       ))
       .limit(1);
-    return {
-      pinned: true,
-      systemPrompt: artifact?.rawText ?? undefined
-    };
+    return { pinned: true, systemPrompt: artifact?.rawText ?? undefined };
   }
 
   async pin(input: {

@@ -2,9 +2,6 @@ import { isListedPromptArtifact, promptArtifactRank } from "./artifactKinds";
 import { displayUser } from "./consoleData";
 import { formatCompact } from "./format";
 import type { RequestsPageQuery } from "./gql/graphql";
-import { routeSkipReasonLabel } from "./routeSkipReasons";
-
-export { routeSkipReasonLabel as skipReasonLabel } from "./routeSkipReasons";
 
 type PromptSummary = RequestsPageQuery["prompts"]["data"][number];
 type RequestSummary = RequestsPageQuery["requests"][number];
@@ -42,16 +39,16 @@ export function requestSearchValue(row: PromptLogRow) {
   return [
     prompt.preview,
     prompt.requestId,
-    prompt.routingConfig?.configName,
-    prompt.routingConfig?.configHash,
-    request?.routingConfig?.configName,
-    request?.routingConfig?.configHash,
     row.userName,
     prompt.userId,
+    selectedLogicalModel(row),
     selectedModel(row),
+    prompt.deploymentId,
+    request?.deploymentId,
+    prompt.providerConnectionId,
+    request?.providerConnectionId,
     terminalStatus(row),
     translationMode(row),
-    ...(request?.routeSkipReasons.map(routeSkipReasonLabel) ?? []),
     prompt.surface
   ].filter((value): value is string => Boolean(value));
 }
@@ -66,6 +63,11 @@ export function selectedCost(row: PromptLogRow) {
 
 export function selectedModel(row: PromptLogRow) {
   return row.prompt.selectedModel ?? row.request?.selectedModel ?? "unknown";
+}
+
+export function selectedLogicalModel(row: PromptLogRow) {
+  return row.prompt.requestedLogicalModel ?? row.request?.requestedLogicalModel ??
+    row.prompt.resolvedLogicalModelId ?? row.request?.resolvedLogicalModelId ?? "unknown";
 }
 
 export function terminalStatus(row: PromptLogRow) {

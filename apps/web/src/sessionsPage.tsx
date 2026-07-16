@@ -9,8 +9,8 @@ import { gqlFetch } from "./graphql";
 import {
   countRecord,
   sessionDurationMs,
+  sessionLogicalModel,
   sessionModels,
-  sessionRoute,
   sessionRows,
   sessionSearchValue,
   sessionStatus,
@@ -20,8 +20,7 @@ import {
   type SessionSummary
 } from "./sessionsPageData";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
-import { TierGauge } from "./routing/tierViz";
-import { GlassCard, StatusIndicator, UserCell } from "./ui";
+import { GlassCard, RouteBadge, StatusIndicator, UserCell } from "./ui";
 
 const SessionsPageDocument = graphql(`
   query SessionsPage {
@@ -30,13 +29,13 @@ const SessionsPageDocument = graphql(`
       externalSessionId
       userId
       surface
-      currentRoute
       requestCount
       startedAt
       endedAt
       recentActivity
       modelMix
-      routeMix
+      logicalModelMix
+      deploymentMix
       terminalStatusSummary
       usage {
         totalTokens
@@ -106,7 +105,7 @@ const sessionColumns: ConsoleTableColumn<SessionLogRow>[] = [
   { id: "session", header: "Session", size: 240, accessorFn: (row) => row.session.externalSessionId ?? row.session.sessionId, cell: ({ row }) => <SessionCell row={row.original} /> },
   { id: "user", header: "User", size: 170, accessorFn: (row) => row.userName, cell: ({ row }) => <UserCell name={row.original.userName} detail={row.original.userDetail} size={24} /> },
   { id: "models", header: "Models", size: 190, accessorFn: (row) => sessionModels(row.session).join(" "), cell: ({ row }) => <ModelsCell session={row.original.session} /> },
-  { id: "route", header: "Route", size: 116, accessorFn: (row) => sessionRoute(row.session), cell: ({ row }) => <TierGauge route={sessionRoute(row.original.session)} /> },
+  { id: "logicalModel", header: "Logical model", size: 180, accessorFn: (row) => sessionLogicalModel(row.session), cell: ({ row }) => <RouteBadge route={sessionLogicalModel(row.original.session)} /> },
   { id: "status", header: "Status", size: 120, accessorFn: (row) => sessionStatus(row.session), cell: ({ row }) => <SessionStatusCell session={row.original.session} /> },
   { id: "requests", header: "Reqs", size: 60, minSize: 60, accessorFn: (row) => row.session.requestCount, cell: ({ row }) => <span className="mono muted">{formatCompact(row.original.session.requestCount)}</span> },
   { id: "tokens", header: "Tokens", size: 84, minSize: 84, accessorFn: (row) => row.session.usage.totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(row.original.session.usage.totalTokens)}</span> },
@@ -119,7 +118,7 @@ const sessionAdvancedFields: ConsoleTableAdvancedField<SessionLogRow>[] = [
   { id: "sessionId", label: "Session ID", getValue: (row) => [row.session.sessionId, row.session.externalSessionId ?? ""] },
   { id: "user", label: "User", getValue: (row) => [row.userName, row.session.userId ?? ""] },
   { id: "surface", label: "Surface", getValue: (row) => row.session.surface },
-  { id: "route", label: "Route", getValue: (row) => Object.keys(countRecord(row.session.routeMix)) },
+  { id: "logicalModel", label: "Logical model", getValue: (row) => Object.keys(countRecord(row.session.logicalModelMix)) },
   { id: "model", label: "Model", getValue: (row) => sessionModels(row.session) },
   { id: "status", label: "Status", getValue: (row) => sessionStatuses(row.session) },
   { id: "requests", label: "Requests", getValue: (row) => row.session.requestCount }

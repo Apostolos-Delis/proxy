@@ -127,10 +127,10 @@ describe("usage analytics admin APIs", () => {
       usageRequest("usage_request_other", "org_usage_other", "user_other_usage", "session_other_usage", "openai-responses", inside)
     ]);
     await fixture.db.insert(routeDecisions).values([
-      usageDecision("usage_decision_fast", "usage_request_fast", "org_usage_admin", "fast", "openai", "gpt-fast"),
-      usageDecision("usage_decision_hard", "usage_request_hard", "org_usage_admin", "hard", "anthropic", "claude-hard"),
-      usageDecision("usage_decision_old", "usage_request_old", "org_usage_admin", "fast", "openai", "gpt-old"),
-      usageDecision("usage_decision_other", "usage_request_other", "org_usage_other", "fast", "openai", "gpt-other-org")
+      usageDecision("usage_decision_fast", "usage_request_fast", "org_usage_admin", "openai-responses", "openai", "gpt-fast"),
+      usageDecision("usage_decision_hard", "usage_request_hard", "org_usage_admin", "anthropic-messages", "anthropic", "claude-hard"),
+      usageDecision("usage_decision_old", "usage_request_old", "org_usage_admin", "openai-responses", "openai", "gpt-old"),
+      usageDecision("usage_decision_other", "usage_request_other", "org_usage_other", "openai-responses", "openai", "gpt-other-org")
     ]);
     await fixture.db.insert(providerAttempts).values([
       usageAttempt("usage_attempt_fast", "usage_request_fast", "org_usage_admin", "openai-responses", "openai", "gpt-fast", "completed", inside),
@@ -140,11 +140,11 @@ describe("usage analytics admin APIs", () => {
       usageAttempt("usage_attempt_other", "usage_request_other", "org_usage_other", "openai-responses", "openai", "gpt-other-org", "completed", inside)
     ]);
     await fixture.db.insert(usageLedger).values([
-      usageRow("usage_fast", "usage_request_fast", "usage_attempt_fast", "org_usage_admin", "openai", "gpt-fast", "fast", 100, 25, 1000),
-      usageRow("usage_hard_retry", "usage_request_hard", "usage_attempt_hard_old", "org_usage_admin", "anthropic", "claude-hard", "hard", 10, 5, 500),
-      usageRow("usage_hard", "usage_request_hard", "usage_attempt_hard_new", "org_usage_admin", "anthropic", "claude-hard", "hard", 200, 50, 3000),
-      usageRow("usage_old", "usage_request_old", "usage_attempt_old", "org_usage_admin", "openai", "gpt-old", "fast", 999, 999, 9999),
-      usageRow("usage_other", "usage_request_other", "usage_attempt_other", "org_usage_other", "openai", "gpt-other-org", "fast", 999, 999, 9999)
+      usageRow("usage_fast", "usage_request_fast", "usage_attempt_fast", "org_usage_admin", "openai", "gpt-fast", 100, 25, 1000),
+      usageRow("usage_hard_retry", "usage_request_hard", "usage_attempt_hard_old", "org_usage_admin", "anthropic", "claude-hard", 10, 5, 500),
+      usageRow("usage_hard", "usage_request_hard", "usage_attempt_hard_new", "org_usage_admin", "anthropic", "claude-hard", 200, 50, 3000),
+      usageRow("usage_old", "usage_request_old", "usage_attempt_old", "org_usage_admin", "openai", "gpt-old", 999, 999, 9999),
+      usageRow("usage_other", "usage_request_other", "usage_attempt_other", "org_usage_other", "openai", "gpt-other-org", 999, 999, 9999)
     ]);
 
     const modelUsage = (await adminGql(
@@ -163,7 +163,7 @@ describe("usage analytics admin APIs", () => {
       `query { overviewDashboard { modelUsage ${usageFields} } }`
     )).data?.overviewDashboard;
     const supportedGroups = await Promise.all(
-      ["user", "provider", "model", "route", "surface", "session"].map(async (groupBy) =>
+      ["user", "provider", "model", "logical_model", "deployment", "surface", "session"].map(async (groupBy) =>
         (await adminGql(
           fixture.proxyUrl,
           fixture.adminHeaders,
@@ -197,7 +197,8 @@ describe("usage analytics admin APIs", () => {
       "user",
       "provider",
       "model",
-      "route",
+      "logical_model",
+      "deployment",
       "surface",
       "session"
     ]);
@@ -253,10 +254,10 @@ describe("usage analytics admin APIs", () => {
       usageAttempt("key_attempt_anonymous", "key_request_anonymous", "org_usage_keys", "openai-responses", "openai", "gpt-fast", "completed", dayTwo)
     ]);
     await fixture.db.insert(usageLedger).values([
-      usageRow("key_usage_alpha_one", "key_request_alpha_one", "key_attempt_alpha_one", "org_usage_keys", "openai", "gpt-fast", "fast", 100, 25, 1000),
-      usageRow("key_usage_alpha_two", "key_request_alpha_two", "key_attempt_alpha_two", "org_usage_keys", "openai", "gpt-fast", "fast", 200, 50, 2000),
-      usageRow("key_usage_beta", "key_request_beta", "key_attempt_beta", "org_usage_keys", "openai", "gpt-fast", "fast", 400, 100, 4000),
-      usageRow("key_usage_anonymous", "key_request_anonymous", "key_attempt_anonymous", "org_usage_keys", "openai", "gpt-fast", "fast", 10, 5, 500)
+      usageRow("key_usage_alpha_one", "key_request_alpha_one", "key_attempt_alpha_one", "org_usage_keys", "openai", "gpt-fast", 100, 25, 1000),
+      usageRow("key_usage_alpha_two", "key_request_alpha_two", "key_attempt_alpha_two", "org_usage_keys", "openai", "gpt-fast", 200, 50, 2000),
+      usageRow("key_usage_beta", "key_request_beta", "key_attempt_beta", "org_usage_keys", "openai", "gpt-fast", 400, 100, 4000),
+      usageRow("key_usage_anonymous", "key_request_anonymous", "key_attempt_anonymous", "org_usage_keys", "openai", "gpt-fast", 10, 5, 500)
     ]);
 
     const keyUsage = (await adminGql(
@@ -344,10 +345,10 @@ describe("usage analytics admin APIs", () => {
       usageRequest("anthropic_cache_excluded", "org_openai_cache_analytics", "user_openai_cache", "session_anthropic_cache", "anthropic-messages", dayTwo)
     ]);
     await fixture.db.insert(routeDecisions).values([
-      usageDecision("decision_openai_cache_keyed", "openai_cache_keyed", "org_openai_cache_analytics", "hard", "openai", "gpt-5.5"),
-      usageDecision("decision_openai_cache_chat", "openai_cache_chat", "org_openai_cache_analytics", "fast", "openai", "gpt-5.4-mini"),
-      usageDecision("decision_openai_cache_uncached", "openai_cache_uncached", "org_openai_cache_analytics", "fast", "openai", "gpt-5.4-mini"),
-      usageDecision("decision_anthropic_cache_excluded", "anthropic_cache_excluded", "org_openai_cache_analytics", "hard", "anthropic", "claude-hard")
+      usageDecision("decision_openai_cache_keyed", "openai_cache_keyed", "org_openai_cache_analytics", "openai-responses", "openai", "gpt-5.5"),
+      usageDecision("decision_openai_cache_chat", "openai_cache_chat", "org_openai_cache_analytics", "openai-chat", "openai", "gpt-5.4-mini"),
+      usageDecision("decision_openai_cache_uncached", "openai_cache_uncached", "org_openai_cache_analytics", "openai-responses", "openai", "gpt-5.4-mini"),
+      usageDecision("decision_anthropic_cache_excluded", "anthropic_cache_excluded", "org_openai_cache_analytics", "anthropic-messages", "anthropic", "claude-hard")
     ]);
     await fixture.db.insert(providerAttempts).values([
       usageAttempt("attempt_openai_cache_keyed", "openai_cache_keyed", "org_openai_cache_analytics", "openai-responses", "openai", "gpt-5.5", "completed", dayOne),
@@ -357,16 +358,16 @@ describe("usage analytics admin APIs", () => {
     ]);
     await fixture.db.insert(usageLedger).values([
       {
-        ...usageRow("usage_openai_cache_keyed", "openai_cache_keyed", "attempt_openai_cache_keyed", "org_openai_cache_analytics", "openai", "gpt-5.5", "hard", 1000, 100, 2000),
+        ...usageRow("usage_openai_cache_keyed", "openai_cache_keyed", "attempt_openai_cache_keyed", "org_openai_cache_analytics", "openai", "gpt-5.5", 1000, 100, 2000),
         cachedInputTokens: 500
       },
       {
-        ...usageRow("usage_openai_cache_chat", "openai_cache_chat", "attempt_openai_cache_chat", "org_openai_cache_analytics", "openai", "gpt-5.4-mini", "fast", 400, 50, 700),
+        ...usageRow("usage_openai_cache_chat", "openai_cache_chat", "attempt_openai_cache_chat", "org_openai_cache_analytics", "openai", "gpt-5.4-mini", 400, 50, 700),
         cachedInputTokens: 100
       },
-      usageRow("usage_openai_cache_uncached", "openai_cache_uncached", "attempt_openai_cache_uncached", "org_openai_cache_analytics", "openai", "gpt-5.4-mini", "fast", 200, 40, 400),
+      usageRow("usage_openai_cache_uncached", "openai_cache_uncached", "attempt_openai_cache_uncached", "org_openai_cache_analytics", "openai", "gpt-5.4-mini", 200, 40, 400),
       {
-        ...usageRow("usage_anthropic_cache_excluded", "anthropic_cache_excluded", "attempt_anthropic_cache_excluded", "org_openai_cache_analytics", "anthropic", "claude-hard", "hard", 900, 90, 1500),
+        ...usageRow("usage_anthropic_cache_excluded", "anthropic_cache_excluded", "attempt_anthropic_cache_excluded", "org_openai_cache_analytics", "anthropic", "claude-hard", 900, 90, 1500),
         cachedInputTokens: 800
       }
     ]);
@@ -414,7 +415,7 @@ describe("usage analytics admin APIs", () => {
             surface
             provider
             model
-            route
+            logicalModel
             cacheGroupSource
             cacheGroupKey
             requestCount
@@ -429,10 +430,11 @@ describe("usage analytics admin APIs", () => {
       }`
     );
     const report = result.data?.openAICacheAnalytics;
+    expect(result.errors).toBeUndefined();
+    expect(report).toBeDefined();
     const keyedGroup = report.groups.find((group: any) => group.cacheGroupSource === "prompt_cache_key");
     const sessionGroups = report.groups.filter((group: any) => group.cacheGroupSource === "session");
 
-    expect(result.errors).toBeUndefined();
     expect(report.interval).toBe("day");
     expect(report.totals).toEqual(expect.objectContaining({
       requestCount: 3,
@@ -446,7 +448,7 @@ describe("usage analytics admin APIs", () => {
       surface: "openai-responses",
       provider: "openai",
       model: "gpt-5.5",
-      route: "hard",
+      logicalModel: "unknown",
       cacheGroupKey: keyHash,
       requestCount: 1,
       cachedRequests: 1,
@@ -469,7 +471,8 @@ describe("usage analytics admin APIs", () => {
       organizationId: "org_usage_key_capture",
       workspaceId: defaultWorkspaceId("org_usage_key_capture"),
       keyHash: hashApiKey("capture-secret"),
-      name: "Capture key"
+      name: "Capture key",
+      accessProfileId: `${defaultWorkspaceId("org_usage_key_capture")}:access-profile:opendoor-engineer`
     });
 
     const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
@@ -479,7 +482,7 @@ describe("usage analytics admin APIs", () => {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: "summarize this changelog",
         stream: true
       })
@@ -509,7 +512,7 @@ describe("usage analytics admin APIs", () => {
 
     await fixture.persistence.organizationSettings.setCostBaseline("org_usage_chat_surface", {
       anthropicMessagesModel: null,
-      openaiResponsesModel: "gpt-5.5-pro",
+      openaiResponsesModel: "gpt-5.5",
       openaiChatModel: "gpt-5.4-mini"
     });
     await fixture.db.insert(users).values([{ id: "user_chat_surface" }]);
@@ -534,16 +537,16 @@ describe("usage analytics admin APIs", () => {
       usageRequest("surface_chat_request", "org_usage_chat_surface", "user_chat_surface", "session_chat_surface", "openai-chat", createdAt)
     ]);
     await fixture.db.insert(routeDecisions).values([
-      usageDecision("surface_responses_decision", "surface_responses_request", "org_usage_chat_surface", "fast", "openai", "gpt-5.4-mini"),
-      usageDecision("surface_chat_decision", "surface_chat_request", "org_usage_chat_surface", "fast", "openai", "gpt-5.4-mini")
+      usageDecision("surface_responses_decision", "surface_responses_request", "org_usage_chat_surface", "openai-responses", "openai", "gpt-5.4-mini"),
+      usageDecision("surface_chat_decision", "surface_chat_request", "org_usage_chat_surface", "openai-chat", "openai", "gpt-5.4-mini")
     ]);
     await fixture.db.insert(providerAttempts).values([
       usageAttempt("surface_responses_attempt", "surface_responses_request", "org_usage_chat_surface", "openai-responses", "openai", "gpt-5.4-mini", "completed", createdAt),
       usageAttempt("surface_chat_attempt", "surface_chat_request", "org_usage_chat_surface", "openai-chat", "openai", "gpt-5.4-mini", "completed", createdAt)
     ]);
     await fixture.db.insert(usageLedger).values([
-      usageRow("surface_responses_usage", "surface_responses_request", "surface_responses_attempt", "org_usage_chat_surface", "openai", "gpt-5.4-mini", "fast", 1000, 100, 450),
-      usageRow("surface_chat_usage", "surface_chat_request", "surface_chat_attempt", "org_usage_chat_surface", "openai", "gpt-5.4-mini", "fast", 1000, 100, 450)
+      usageRow("surface_responses_usage", "surface_responses_request", "surface_responses_attempt", "org_usage_chat_surface", "openai", "gpt-5.4-mini", 1000, 100, 450),
+      usageRow("surface_chat_usage", "surface_chat_request", "surface_chat_attempt", "org_usage_chat_surface", "openai", "gpt-5.4-mini", 1000, 100, 450)
     ]);
 
     const usage = (await adminGql(
@@ -556,10 +559,10 @@ describe("usage analytics admin APIs", () => {
     expect([...bySurface.keys()].sort()).toEqual(["openai-chat", "openai-responses"]);
     expect(bySurface.get("openai-responses")?.requestCount).toBe(1);
     expect(bySurface.get("openai-chat")?.requestCount).toBe(1);
-    expect(bySurface.get("openai-responses")?.cost.baseline).toBeCloseTo(0.027);
+    expect(bySurface.get("openai-responses")?.cost.baseline).toBeCloseTo(0.00225);
     expect(bySurface.get("openai-chat")?.cost.baseline).toBeCloseTo(0.00045);
     expect(usage.totals.requestCount).toBe(2);
-    expect(usage.totals.cost.baseline).toBeCloseTo(0.02745);
+    expect(usage.totals.cost.baseline).toBeCloseTo(0.0027);
   });
 
   it("keeps concurrent root fields consistent when they share request scans", async () => {
@@ -580,7 +583,7 @@ describe("usage analytics admin APIs", () => {
     );
     await fixture.db.insert(routeDecisions).values(
       Array.from({ length: 4 }, (_, index) =>
-        usageDecision(`shared_decision_${index}`, `shared_request_${index}`, "org_usage_shared_scan", "fast", "openai", "gpt-fast"))
+        usageDecision(`shared_decision_${index}`, `shared_request_${index}`, "org_usage_shared_scan", "openai-responses", "openai", "gpt-fast"))
     );
     await fixture.db.insert(providerAttempts).values(
       Array.from({ length: 4 }, (_, index) =>
@@ -588,7 +591,7 @@ describe("usage analytics admin APIs", () => {
     );
     await fixture.db.insert(usageLedger).values(
       Array.from({ length: 4 }, (_, index) =>
-        usageRow(`shared_usage_${index}`, `shared_request_${index}`, `shared_attempt_${index}`, "org_usage_shared_scan", "openai", "gpt-fast", "fast", 100, 25, 1000))
+        usageRow(`shared_usage_${index}`, `shared_request_${index}`, `shared_attempt_${index}`, "org_usage_shared_scan", "openai", "gpt-fast", 100, 25, 1000))
     );
 
     // One document, four root fields: overview and usage read the full
@@ -600,12 +603,12 @@ describe("usage analytics admin APIs", () => {
       `query {
         overview { requestCount totals { totalTokens } }
         requests { requestId }
-        usage(groupBy: route) { totals { requestCount usage { totalTokens } } }
-        usageTimeseries(groupBy: route, interval: day) {
+        usage(groupBy: model) { totals { requestCount usage { totalTokens } } }
+        usageTimeseries(groupBy: model, interval: day) {
           groups { key requestCount }
           points { ts totals { requestCount } }
         }
-        usageDashboard(groupBy: route, interval: day) {
+        usageDashboard(groupBy: model, interval: day) {
           usage { totals { requestCount usage { totalTokens } } }
           timeseries {
             groups { key requestCount }
@@ -622,7 +625,7 @@ describe("usage analytics admin APIs", () => {
     expect(result.data?.usage.totals.usage.totalTokens).toBe(result.data?.overview.totals.totalTokens);
     expect(result.data?.usageDashboard.usage.totals).toEqual(result.data?.usage.totals);
     expect(result.data?.usageTimeseries.groups).toEqual([
-      expect.objectContaining({ key: "fast", requestCount: 4 })
+      expect.objectContaining({ key: "gpt-fast", requestCount: 4 })
     ]);
     expect(result.data?.usageDashboard.timeseries.groups).toEqual(result.data?.usageTimeseries.groups);
     const pointTotal = result.data?.usageTimeseries.points.reduce(
@@ -654,8 +657,8 @@ describe("usage analytics admin APIs", () => {
       usageRequest("dashboard_latency_request_slow", "org_usage_dashboard_latency", "user_dashboard_latency", "session_dashboard_latency", "openai-responses", createdAt)
     ]);
     await fixture.db.insert(routeDecisions).values([
-      usageDecision("dashboard_latency_decision_fast", "dashboard_latency_request_fast", "org_usage_dashboard_latency", "fast", "openai", "gpt-fast"),
-      usageDecision("dashboard_latency_decision_slow", "dashboard_latency_request_slow", "org_usage_dashboard_latency", "fast", "openai", "gpt-fast")
+      usageDecision("dashboard_latency_decision_fast", "dashboard_latency_request_fast", "org_usage_dashboard_latency", "openai-responses", "openai", "gpt-fast"),
+      usageDecision("dashboard_latency_decision_slow", "dashboard_latency_request_slow", "org_usage_dashboard_latency", "openai-responses", "openai", "gpt-fast")
     ]);
     await fixture.db.insert(providerAttempts).values([
       {
@@ -668,15 +671,15 @@ describe("usage analytics admin APIs", () => {
       }
     ]);
     await fixture.db.insert(usageLedger).values([
-      usageRow("dashboard_latency_usage_fast", "dashboard_latency_request_fast", "dashboard_latency_attempt_fast", "org_usage_dashboard_latency", "openai", "gpt-fast", "fast", 100, 25, 1000),
-      usageRow("dashboard_latency_usage_slow", "dashboard_latency_request_slow", "dashboard_latency_attempt_slow", "org_usage_dashboard_latency", "openai", "gpt-fast", "fast", 200, 50, 2000)
+      usageRow("dashboard_latency_usage_fast", "dashboard_latency_request_fast", "dashboard_latency_attempt_fast", "org_usage_dashboard_latency", "openai", "gpt-fast", 100, 25, 1000),
+      usageRow("dashboard_latency_usage_slow", "dashboard_latency_request_slow", "dashboard_latency_attempt_slow", "org_usage_dashboard_latency", "openai", "gpt-fast", 200, 50, 2000)
     ]);
 
     const latencyFree = await adminGql(
       fixture.proxyUrl,
       fixture.adminHeaders,
       `query {
-        usageDashboard(groupBy: route, interval: day) {
+        usageDashboard(groupBy: model, interval: day) {
           usage {
             data { key requestCount }
             totals { requestCount }
@@ -692,7 +695,7 @@ describe("usage analytics admin APIs", () => {
       fixture.proxyUrl,
       fixture.adminHeaders,
       `query {
-        usageDashboard(groupBy: route, interval: day) {
+        usageDashboard(groupBy: model, interval: day) {
           usage {
             data { key latency { averageMs p95Ms } }
             totals { latency { averageMs p95Ms } }
@@ -708,7 +711,7 @@ describe("usage analytics admin APIs", () => {
       fixture.proxyUrl,
       fixture.adminHeaders,
       `query {
-        usageDashboard(groupBy: route, interval: day) {
+        usageDashboard(groupBy: model, interval: day) {
           timeseries {
             groups { key latency { averageMs p95Ms } }
             points { totals { latency { averageMs p95Ms } } }
@@ -720,14 +723,14 @@ describe("usage analytics admin APIs", () => {
     expect(latencyFree.errors).toBeUndefined();
     expect(latencyFree.data?.usageDashboard.usage.totals.requestCount).toBe(2);
     const latencyFreePoint = latencyFree.data?.usageDashboard.timeseries.points.find(
-      (point: { groups: Record<string, { latency?: { averageMs: number | null; p95Ms: number | null } }> }) => point.groups.fast
+      (point: { groups: Record<string, { latency?: { averageMs: number | null; p95Ms: number | null } }> }) => point.groups["gpt-fast"]
     );
-    expect(latencyFreePoint?.groups.fast.latency).toEqual({ averageMs: null, p95Ms: null });
+    expect(latencyFreePoint?.groups["gpt-fast"].latency).toEqual({ averageMs: null, p95Ms: null });
     expect(reportOnly.errors).toBeUndefined();
     expect(reportOnly.data?.usageDashboard.usage.totals.latency).toEqual({ averageMs: 150, p95Ms: 200 });
     expect(reportOnly.data?.usageDashboard.usage.data[0].latency).toEqual({ averageMs: 150, p95Ms: 200 });
     expect(reportOnly.data?.usageDashboard.timeseries.groups).toEqual([
-      expect.objectContaining({ key: "fast", requestCount: 2 })
+      expect.objectContaining({ key: "gpt-fast", requestCount: 2 })
     ]);
     expect(withTimeseriesLatency.errors).toBeUndefined();
     expect(withTimeseriesLatency.data?.usageDashboard.timeseries.groups[0].latency).toEqual({ averageMs: 150, p95Ms: 200 });
@@ -753,16 +756,16 @@ describe("usage analytics admin APIs", () => {
       usageRequest("clf_request", "org_usage_classifier", "user_clf", "session_clf", "openai-responses", createdAt)
     ]);
     await fixture.db.insert(routeDecisions).values([
-      usageDecision("clf_decision", "clf_request", "org_usage_classifier", "fast", "openai", "gpt-fast")
+      usageDecision("clf_decision", "clf_request", "org_usage_classifier", "openai-responses", "openai", "gpt-fast")
     ]);
     await fixture.db.insert(providerAttempts).values([
       usageAttempt("clf_attempt", "clf_request", "org_usage_classifier", "openai-responses", "openai", "gpt-fast", "completed", createdAt)
     ]);
     await fixture.db.insert(usageLedger).values([
-      usageRow("clf_provider_usage", "clf_request", "clf_attempt", "org_usage_classifier", "openai", "gpt-fast", "fast", 100, 25, 1000),
+      usageRow("clf_provider_usage", "clf_request", "clf_attempt", "org_usage_classifier", "openai", "gpt-fast", 100, 25, 1000),
       // The classifier's own billed call: no provider attempt, kind = classifier.
       {
-        ...usageRow("clf_classifier_usage", "clf_request", "clf_attempt", "org_usage_classifier", "openai", "gpt-5-nano", "fast", 80, 4, 600),
+        ...usageRow("clf_classifier_usage", "clf_request", "clf_attempt", "org_usage_classifier", "openai", "gpt-5-nano", 80, 4, 600),
         providerAttemptId: null,
         kind: "classifier"
       }
@@ -785,7 +788,7 @@ describe("usage analytics admin APIs", () => {
     expect(usage.totals.cost.savings).toBeCloseTo(usage.totals.cost.baseline - 0.0016);
   });
 
-  it("prices baseline against the organization's configured baseline models", async () => {
+  it("prices baseline against the organization's configured per-wire models", async () => {
     const fixture = await setup("org_usage_baseline");
     const createdAt = new Date("2026-06-08T12:00:00.000Z");
 
@@ -801,13 +804,13 @@ describe("usage analytics admin APIs", () => {
       usageRequest("bl_request", "org_usage_baseline", "user_bl", "session_bl", "anthropic-messages", createdAt)
     ]);
     await fixture.db.insert(routeDecisions).values([
-      usageDecision("bl_decision", "bl_request", "org_usage_baseline", "hard", "anthropic", "claude-opus-4-8")
+      usageDecision("bl_decision", "bl_request", "org_usage_baseline", "anthropic-messages", "anthropic", "claude-opus-4-8")
     ]);
     await fixture.db.insert(providerAttempts).values([
       usageAttempt("bl_attempt", "bl_request", "org_usage_baseline", "anthropic-messages", "anthropic", "claude-opus-4-8", "completed", createdAt)
     ]);
     await fixture.db.insert(usageLedger).values([
-      usageRow("bl_usage", "bl_request", "bl_attempt", "org_usage_baseline", "anthropic", "claude-opus-4-8", "hard", 1000, 100, 7500)
+      usageRow("bl_usage", "bl_request", "bl_attempt", "org_usage_baseline", "anthropic", "claude-opus-4-8", 1000, 100, 7500)
     ]);
 
     const queryUsage = async () => (await adminGql(
@@ -834,41 +837,11 @@ describe("usage analytics admin APIs", () => {
     expect(after.totals.cost.baseline).toBeCloseTo(0.0015);
     expect(after.totals.cost.savings).toBeCloseTo(-0.006);
 
-    // A request that explicitly pinned a route tier stays its own
-    // counterfactual: the hard tier's model (claude-sonnet-4-5 in the test
-    // env, $3/$15), unaffected by the org baseline override.
-    await fixture.db.insert(requests).values([{
-      ...usageRequest("bl_alias_request", "org_usage_baseline", "user_bl", "session_bl", "anthropic-messages", createdAt),
-      requestedModel: "claude-router-hard"
-    }]);
-    await fixture.db.insert(providerAttempts).values([
-      usageAttempt("bl_alias_attempt", "bl_alias_request", "org_usage_baseline", "anthropic-messages", "anthropic", "claude-opus-4-8", "completed", createdAt)
-    ]);
-    await fixture.db.insert(routeDecisions).values([
-      {
-        ...usageDecision("bl_alias_decision", "bl_alias_request", "org_usage_baseline", "hard", "anthropic", "claude-sonnet-4-5"),
-        requestedModel: "claude-router-hard"
-      }
-    ]);
-    await fixture.db.insert(usageLedger).values([
-      usageRow("bl_alias_usage", "bl_alias_request", "bl_alias_attempt", "org_usage_baseline", "anthropic", "claude-opus-4-8", "hard", 1000, 100, 7500)
-    ]);
-
-    const summaries = (await adminGql(
-      fixture.proxyUrl,
-      fixture.adminHeaders,
-      `query { requests { requestId baselineCost } }`
-    )).data?.requests;
-    const byRequest = new Map(
-      summaries.map((row: { requestId: string; baselineCost: number }) => [row.requestId, row.baselineCost])
-    );
-    expect(byRequest.get("bl_alias_request")).toBeCloseTo(0.0045, 6);
-    expect(byRequest.get("bl_request")).toBeCloseTo(0.0015, 6);
   });
 
   it("captures the classifier's own billed call as a priced classifier ledger row", async () => {
     activeFixture = await captureFixture("org_clf_capture", "raw_text", false, {
-      envOverrides: { CLASSIFIER_MODEL: "gpt-5-nano" },
+      envOverrides: { GATEWAY_SEED_CLASSIFIER_MODEL: "gpt-5-nano" },
       openAIOptions: {
         classifierUsage: { input_tokens: 800, output_tokens: 40 }
       }
@@ -881,7 +854,7 @@ describe("usage analytics admin APIs", () => {
         authorization: "Bearer proxy-token",
         "content-type": "application/json"
       },
-      body: JSON.stringify({ model: "router-auto", input: "classify and route me", stream: true })
+      body: JSON.stringify({ model: "coding-auto", input: "classify and route me", stream: true })
     });
     await response.text();
     expect(response.status).toBe(200);
@@ -952,16 +925,16 @@ describe("usage analytics admin APIs", () => {
       usageRequest("eff_request_xhigh", "org_usage_effort", "user_effort", "session_effort", "openai-responses", createdAt)
     ]);
     await fixture.db.insert(routeDecisions).values([
-      { ...usageDecision("eff_decision_high", "eff_request_high", "org_usage_effort", "hard", "anthropic", "claude-fable-5"), reasoningEffort: "high" },
-      { ...usageDecision("eff_decision_xhigh", "eff_request_xhigh", "org_usage_effort", "hard", "anthropic", "claude-fable-5"), reasoningEffort: "xhigh" }
+      { ...usageDecision("eff_decision_high", "eff_request_high", "org_usage_effort", "openai-responses", "anthropic", "claude-fable-5"), reasoningEffort: "high" },
+      { ...usageDecision("eff_decision_xhigh", "eff_request_xhigh", "org_usage_effort", "openai-responses", "anthropic", "claude-fable-5"), reasoningEffort: "xhigh" }
     ]);
     await fixture.db.insert(providerAttempts).values([
       usageAttempt("eff_attempt_high", "eff_request_high", "org_usage_effort", "anthropic-messages", "anthropic", "claude-fable-5", "completed", createdAt),
       usageAttempt("eff_attempt_xhigh", "eff_request_xhigh", "org_usage_effort", "anthropic-messages", "anthropic", "claude-fable-5", "completed", createdAt)
     ]);
     await fixture.db.insert(usageLedger).values([
-      usageRow("eff_usage_high", "eff_request_high", "eff_attempt_high", "org_usage_effort", "anthropic", "claude-fable-5", "hard", 100, 25, 1000),
-      usageRow("eff_usage_xhigh", "eff_request_xhigh", "eff_attempt_xhigh", "org_usage_effort", "anthropic", "claude-fable-5", "hard", 400, 100, 4000)
+      usageRow("eff_usage_high", "eff_request_high", "eff_attempt_high", "org_usage_effort", "anthropic", "claude-fable-5", 100, 25, 1000),
+      usageRow("eff_usage_xhigh", "eff_request_xhigh", "eff_attempt_xhigh", "org_usage_effort", "anthropic", "claude-fable-5", 400, 100, 4000)
     ]);
 
     const usage = (await adminGql(

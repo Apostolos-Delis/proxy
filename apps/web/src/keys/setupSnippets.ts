@@ -149,7 +149,7 @@ function codexProviderStep(apiBase: string, harnesses: HarnessSetupSelection, mo
       `base_url = "${apiBase}/v1"`,
       `env_key = "${envKey}"`,
       `wire_api = "responses"`,
-      "supports_websockets = true",
+      "supports_websockets = false",
       `# <<< prompt codex provider ${provider} <<<`
     ].join("\n"),
     language: "toml"

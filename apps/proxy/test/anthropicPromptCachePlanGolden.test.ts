@@ -12,8 +12,8 @@ const largeText = "x".repeat(8192);
 
 function anthropicDecision(surface: Surface = "anthropic-messages"): RouteDecision {
   return {
-    outcome: "forward",
-    finalRoute: "hard",
+    outcome: "route",
+    requestedModel: "coding-auto",
     selectedModel: "claude-opus-4-8",
     surface,
     provider: "anthropic",
@@ -83,7 +83,7 @@ const goldenCases: GoldenCase[] = [
   {
     name: "client system breakpoint upgrades to ttl:1h",
     body: {
-      model: "claude-router-hard",
+      model: "fable",
       max_tokens: 256,
       system: [{ type: "text", text: largeText, cache_control: { type: "ephemeral" } }],
       messages: multiTurnMessages
@@ -113,7 +113,7 @@ const goldenCases: GoldenCase[] = [
   {
     name: "nested tool-result breakpoint upgrades without duplicate markers",
     body: {
-      model: "claude-router-hard",
+      model: "fable",
       max_tokens: 256,
       messages: [
         { role: "user", content: "first question" },
@@ -179,7 +179,7 @@ const goldenCases: GoldenCase[] = [
   {
     name: "tool-definition breakpoint preserves longer-TTL ordering",
     body: {
-      model: "claude-router-hard",
+      model: "fable",
       max_tokens: 256,
       tools: [
         { name: "get_weather", input_schema: { type: "object" } },
@@ -221,7 +221,7 @@ const goldenCases: GoldenCase[] = [
   {
     name: "disabled settings leave multi-turn requests unmodified",
     body: {
-      model: "claude-router-hard",
+      model: "fable",
       max_tokens: 256,
       messages: multiTurnMessages
     },
@@ -242,7 +242,7 @@ const goldenCases: GoldenCase[] = [
   {
     name: "small automatic request gets default top-level breakpoint only",
     body: {
-      model: "claude-router-hard",
+      model: "fable",
       max_tokens: 256,
       messages: multiTurnMessages
     },
@@ -265,7 +265,7 @@ const goldenCases: GoldenCase[] = [
   {
     name: "one-shot requests skip automatic caching and ttl upgrade",
     body: {
-      model: "claude-router-hard",
+      model: "fable",
       max_tokens: 256,
       messages: [{ role: "user", content: largeText }]
     },
@@ -289,7 +289,7 @@ const goldenCases: GoldenCase[] = [
   {
     name: "large automatic multi-turn request upgrades the injected breakpoint",
     body: {
-      model: "claude-router-hard",
+      model: "fable",
       max_tokens: 256,
       messages: largeMultiTurnMessages
     },
@@ -313,7 +313,7 @@ const goldenCases: GoldenCase[] = [
     name: "translated OpenAI cache fields are dropped and reported",
     surface: "openai-chat",
     body: {
-      model: "router-hard",
+      model: "coding-auto",
       max_completion_tokens: 256,
       prompt_cache_key: "raw-cache-key",
       prompt_cache_retention: "24h",

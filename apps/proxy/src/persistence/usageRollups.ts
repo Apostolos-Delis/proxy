@@ -19,7 +19,8 @@ export type UsageRollupGroupBy =
   | "provider"
   | "model"
   | "model_effort"
-  | "route"
+  | "logical_model"
+  | "deployment"
   | "surface"
   | "session";
 
@@ -78,7 +79,7 @@ export type OpenAICacheAnalyticsRow = {
   surface: string;
   provider: string;
   model: string;
-  route: string;
+  logicalModel: string;
   cacheGroupSource: string;
   cacheGroupKey: string;
   requestCount: number;
@@ -111,7 +112,8 @@ const GROUP_KEY_SQL: Record<UsageRollupGroupBy, string> = {
     "case when d.reasoning_effort is not null and d.reasoning_effort <> '' " +
     "then coalesce(d.selected_model, aa.last_model, 'unknown') || ' · ' || d.reasoning_effort " +
     "else coalesce(d.selected_model, aa.last_model, 'unknown') end",
-  route: "coalesce(d.final_route, 'unknown')",
+  logical_model: "coalesce(d.resolved_logical_model_id, r.resolved_logical_model_id, 'unknown')",
+  deployment: "coalesce(d.deployment_id, r.deployment_id, 'unknown')",
   surface: "coalesce(r.surface, 'unknown')",
   session: "coalesce(r.session_id, 'unknown')"
 };
@@ -144,7 +146,8 @@ function requestMetricsCtes(
   // Date serialization and postgres-js does not encode Date objects itself.
   return sql`
     with scoped_requests as (
-      select id, user_id, api_key_id, session_id, surface, requested_model, status, created_at
+      select id, user_id, api_key_id, session_id, surface, requested_model,
+        resolved_logical_model_id, deployment_id, status, created_at
       from requests
       where organization_id = ${organizationId}
         and workspace_id = ${workspaceId}
@@ -356,7 +359,7 @@ export async function openAICacheAnalyticsRows(
         surface: String(row.surface),
         provider: String(row.provider),
         model: String(row.model),
-        route: String(row.route),
+        logicalModel: String(row.logical_model),
         cacheGroupSource: String(row.cache_group_source),
         cacheGroupKey: String(row.cache_group_key),
         requestCount: toNumber(row.request_count),
@@ -381,7 +384,7 @@ function openAICacheAnalyticsSelect(scope: UsageRollupScope, bucketExpr: SQL): S
   const { organizationId, workspaceId, start, end } = scope;
   return sql`
     with scoped_requests as (
-      select id, session_id, surface, created_at
+      select id, session_id, surface, resolved_logical_model_id, created_at
       from requests
       where organization_id = ${organizationId}
         and workspace_id = ${workspaceId}
@@ -409,7 +412,7 @@ function openAICacheAnalyticsSelect(scope: UsageRollupScope, bucketExpr: SQL): S
         r.surface as surface,
         coalesce(ul.provider, 'openai') as provider,
         coalesce(ul.model, d.selected_model, 'unknown') as model,
-        coalesce(ul.route, d.final_route, 'unknown') as route,
+        coalesce(d.resolved_logical_model_id, r.resolved_logical_model_id, 'unknown') as logical_model,
         coalesce(pa.cache_group_source, case when r.session_id is not null then 'session' else 'unknown' end) as cache_group_source,
         coalesce(pa.cache_group_key, r.session_id, 'unknown') as cache_group_key,
         coalesce(sum(ul.input_tokens), 0)::double precision as input_tokens,
@@ -433,8 +436,8 @@ function openAICacheAnalyticsSelect(scope: UsageRollupScope, bucketExpr: SQL): S
         ul.provider,
         ul.model,
         d.selected_model,
-        ul.route,
-        d.final_route,
+        d.resolved_logical_model_id,
+        r.resolved_logical_model_id,
         pa.cache_group_source,
         pa.cache_group_key,
         r.session_id
@@ -454,7 +457,7 @@ function openAICacheAnalyticsSelect(scope: UsageRollupScope, bucketExpr: SQL): S
       surface,
       provider,
       model,
-      route,
+      logical_model,
       cache_group_source,
       cache_group_key,
       count(*)::int as request_count,
@@ -462,7 +465,7 @@ function openAICacheAnalyticsSelect(scope: UsageRollupScope, bucketExpr: SQL): S
       coalesce(sum(input_tokens), 0)::double precision as input_tokens,
       coalesce(sum(cached_input_tokens), 0)::double precision as cached_input_tokens
     from request_metrics
-    group by surface, provider, model, route, cache_group_source, cache_group_key
+    group by surface, provider, model, logical_model, cache_group_source, cache_group_key
     union all
     select
       'trend'::text as row_kind,
@@ -470,7 +473,7 @@ function openAICacheAnalyticsSelect(scope: UsageRollupScope, bucketExpr: SQL): S
       null::text as surface,
       null::text as provider,
       null::text as model,
-      null::text as route,
+      null::text as logical_model,
       null::text as cache_group_source,
       null::text as cache_group_key,
       count(*)::int as request_count,

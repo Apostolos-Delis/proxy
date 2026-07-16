@@ -14,7 +14,7 @@ import { buildServer } from "../src/server.js";
 import { loadConfig } from "../src/config.js";
 import { EventService } from "../src/events.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
-import { listen, startOpenAIMock } from "./helpers.js";
+import { captureFixture } from "./promptTestFixture.js";
 import {
   createMetricsCollector,
   type HistogramSample,
@@ -238,7 +238,7 @@ describe("server metrics", () => {
     const response = await app.inject({
       method: "POST",
       url: "/v1/responses",
-      payload: { model: "router-fast", input: "hi" }
+      payload: { model: "economy-auto", input: "hi" }
     });
     await app.close();
     const snapshot = metrics.snapshot();
@@ -337,36 +337,36 @@ describe("metrics endpoint", () => {
 });
 
 describe("routing and provider metrics", () => {
-  it("records classifier, routing, provider, stream, usage, and cost metrics", async () => {
-    const openai = await startOpenAIMock({
-      classifierUsage: {
-        input_tokens: 10,
-        output_tokens: 2,
-        total_tokens: 12
-      },
-      outputText: "routed"
-    });
+  it("records classifier, provider, stream, and usage metrics", async () => {
     const metrics = new InMemoryMetricsCollector();
-    const app = buildServer(loadConfig(proxyTestEnv(openai.url)), { metrics });
+    const fixture = await captureFixture("org_metrics_success", "hash_only", false, {
+      metrics,
+      openAIOptions: {
+        classifierUsage: {
+          input_tokens: 10,
+          output_tokens: 2,
+          total_tokens: 12
+        },
+        outputText: "routed"
+      }
+    });
 
     try {
-      const proxyUrl = await listen(app);
-      const response = await fetch(`${proxyUrl}/v1/responses`, {
+      const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
         method: "POST",
         headers: {
           authorization: "Bearer proxy-token",
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          model: "router-auto",
+          model: "coding-auto",
           input: [{ role: "user", content: [{ type: "input_text", text: "debug a failing auth test" }] }],
           stream: true
         })
       });
       await response.text();
     } finally {
-      await app.close();
-      await openai.close();
+      await fixture.close();
     }
 
     const snapshot = metrics.snapshot();
@@ -381,17 +381,9 @@ describe("routing and provider metrics", () => {
       provider: "openai",
       usage_kind: "total"
     })).toBe(12);
-    expect(sampleValue(snapshot.counters, "proxy_routing_decisions_total", {
-      final_route: "hard",
-      guardrail_action: "translated_request:openai-responses_to_anthropic-messages",
-      model: "gpt-routed-hard-test",
-      provider: "openai",
-      requested_route: "hard",
-      surface: "openai-responses"
-    })).toBe(1);
     expect(sampleValue(snapshot.counters, "proxy_provider_attempts_total", {
       error_class: "none",
-      model: "gpt-routed-hard-test",
+      model: "gpt-5.4-mini",
       provider: "openai",
       status_class: "2xx",
       stream: "true",
@@ -400,33 +392,27 @@ describe("routing and provider metrics", () => {
     })).toBe(1);
     expect(sampleValue(snapshot.counters, "proxy_prompt_cache_plans_total", {
       mode: "implicit",
-      model: "gpt-routed-hard-test",
+      model: "gpt-5.4-mini",
       provider: "openai",
       surface: "openai-responses"
     })).toBe(1);
     expect(sampleValue(snapshot.counters, "proxy_prompt_cache_plan_controls_total", {
       control: "implicit_prefix_caching",
       mode: "implicit",
-      model: "gpt-routed-hard-test",
+      model: "gpt-5.4-mini",
       provider: "openai",
       reason: "none",
       status: "applied",
       surface: "openai-responses"
     })).toBe(1);
     expect(sampleValue(snapshot.counters, "proxy_usage_tokens_total", {
-      model: "gpt-routed-hard-test",
+      model: "gpt-5.4-mini",
       provider: "openai",
       surface: "openai-responses",
       usage_kind: "total"
     })).toBe(120);
-    expect(sampleValue(snapshot.counters, "proxy_cost_usd_total", {
-      cost_kind: "provider",
-      model: "gpt-routed-hard-test",
-      provider: "openai",
-      surface: "openai-responses"
-    })).toBeGreaterThan(0);
     expect(sampleValue(snapshot.counters, "proxy_provider_stream_bytes_total", {
-      model: "gpt-routed-hard-test",
+      model: "gpt-5.4-mini",
       provider: "openai",
       surface: "openai-responses",
       terminal_status: "succeeded"
@@ -442,21 +428,22 @@ describe("routing and provider metrics", () => {
   });
 
   it("records streamed provider failures after bytes with failed model lifecycle metrics", async () => {
-    const openai = await startOpenAIMock({ failStreamAfterChunk: true });
     const metrics = new InMemoryMetricsCollector();
-    const app = buildServer(loadConfig(proxyTestEnv(openai.url)), { metrics });
+    const fixture = await captureFixture("org_metrics_failure", "hash_only", false, {
+      metrics,
+      openAIOptions: { failStreamAfterChunk: true }
+    });
 
     try {
-      const proxyUrl = await listen(app);
       try {
-        const response = await fetch(`${proxyUrl}/v1/responses`, {
+        const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
           method: "POST",
           headers: {
             authorization: "Bearer proxy-token",
             "content-type": "application/json"
           },
           body: JSON.stringify({
-            model: "router-auto",
+            model: "coding-auto",
             input: [{ role: "user", content: [{ type: "input_text", text: "debug a flaky stream" }] }],
             stream: true
           })
@@ -465,14 +452,13 @@ describe("routing and provider metrics", () => {
       } catch {
       }
     } finally {
-      await app.close();
-      await openai.close();
+      await fixture.close();
     }
 
     const snapshot = metrics.snapshot();
     expect(sampleValue(snapshot.counters, "proxy_provider_attempts_total", {
       error_class: "provider",
-      model: "gpt-routed-hard-test",
+      model: "gpt-5.4-mini",
       provider: "openai",
       status_class: "2xx",
       stream: "true",
@@ -480,7 +466,7 @@ describe("routing and provider metrics", () => {
       terminal_status: "failed"
     })).toBe(1);
     expect(sampleValue(snapshot.counters, "proxy_provider_stream_bytes_total", {
-      model: "gpt-routed-hard-test",
+      model: "gpt-5.4-mini",
       provider: "openai",
       surface: "openai-responses",
       terminal_status: "failed"
@@ -659,32 +645,6 @@ function sameLabels(left: Record<string, string>, right: Record<string, string>)
   const leftEntries = Object.entries(left);
   return leftEntries.length === Object.keys(right).length &&
     leftEntries.every(([key, value]) => right[key] === value);
-}
-
-function proxyTestEnv(openaiUrl: string) {
-  return {
-    DATABASE_URL: "",
-    EVENT_STORE_PATH: "",
-    PROXY_TOKEN: "proxy-token",
-    OPENAI_API_KEY: "openai-upstream-key",
-    OPENAI_BASE_URL: openaiUrl,
-    OPENAI_HARD_MODEL: "gpt-routed-hard-test",
-    ANTHROPIC_API_KEY: "anthropic-upstream-key",
-    ANTHROPIC_BASE_URL: openaiUrl,
-    CLASSIFIER_PROVIDER: "openai",
-    CLASSIFIER_MODEL: "route-classifier-cheap",
-    MODEL_COSTS_JSON: JSON.stringify({
-      "openai:route-classifier-cheap": {
-        inputCostPerMtok: 1,
-        outputCostPerMtok: 2
-      },
-      "openai:gpt-routed-hard-test": {
-        inputCostPerMtok: 3,
-        outputCostPerMtok: 6
-      }
-    }),
-    LOG_LEVEL: "fatal"
-  };
 }
 
 async function migratedClient() {

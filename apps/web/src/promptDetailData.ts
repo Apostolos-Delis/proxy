@@ -6,17 +6,6 @@ export type PromptArtifactDetail = PromptDetailResult["requestArtifacts"][number
 export type RequestSummary = NonNullable<PromptDetailResult["request"]>;
 export type ProxyEvent = PromptDetailResult["events"][number];
 export type CompressionReceipt = PromptDetailResult["compressionReceipts"][number];
-export type HealthSkipEvidence = {
-  scope: string | null;
-  provider: string | null;
-  providerId: string | null;
-  providerAccountId: string | null;
-  model: string | null;
-  healthStatus: string | null;
-  errorType: string | null;
-  expiresAt: string | null;
-  metadata: Record<string, string | number | boolean | null>;
-};
 
 const EVENT_TONES: [string, string][] = [
   ["proxy.", "event-proxy"],
@@ -48,6 +37,10 @@ export function compressionEventSummary(event: ProxyEvent) {
   ].filter(Boolean).join(" · ");
 }
 
+function stringOrNull(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
 // Tool names land in capture metadata as toolName (one call) or toolNames (merged calls).
 export function artifactToolNames(metadata: unknown): string[] {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return [];
@@ -76,46 +69,6 @@ export function formatDuration(value?: number | null) {
   return formatDurationMs(value);
 }
 
-export function healthSkipsFromEvents(events: ProxyEvent[]): HealthSkipEvidence[] {
-  const skips: HealthSkipEvidence[] = [];
-  for (const event of events) {
-    if (event.eventType !== "routing.decision_recorded") continue;
-    if (!event.payload || typeof event.payload !== "object" || Array.isArray(event.payload)) continue;
-    const healthSkips = (event.payload as Record<string, unknown>).healthSkips;
-    if (!Array.isArray(healthSkips)) continue;
-    for (const skip of healthSkips) {
-      if (!skip || typeof skip !== "object" || Array.isArray(skip)) continue;
-      const record = skip as Record<string, unknown>;
-      skips.push({
-        scope: stringOrNull(record.scope),
-        provider: stringOrNull(record.provider),
-        providerId: stringOrNull(record.providerId),
-        providerAccountId: stringOrNull(record.providerAccountId),
-        model: stringOrNull(record.model),
-        healthStatus: stringOrNull(record.healthStatus),
-        errorType: stringOrNull(record.errorType),
-        expiresAt: stringOrNull(record.expiresAt),
-        metadata: metadataRecord(record.metadata)
-      });
-    }
-  }
-  return skips;
-}
-
-function stringOrNull(value: unknown) {
-  return typeof value === "string" ? value : null;
-}
-
-function metadataRecord(value: unknown): Record<string, string | number | boolean | null> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const entries = Object.entries(value).filter((entry): entry is [string, string | number | boolean | null] => (
-    typeof entry[1] === "string" ||
-    typeof entry[1] === "number" ||
-    typeof entry[1] === "boolean" ||
-    entry[1] === null
-  ));
-  return Object.fromEntries(entries);
-}
 
 function compressionEventStatus(eventType: string, payload: Record<string, unknown>) {
   if (eventType === "compression.retrieved") return "retrieved";

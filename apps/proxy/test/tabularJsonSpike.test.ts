@@ -30,7 +30,7 @@ const slackMessages = Array.from({ length: 40 }, (_, index) => ({
 
 const analyticsRows = Array.from({ length: 40 }, (_, index) => ({
   bucket: `2026-06-${String((index % 28) + 1).padStart(2, "0")}`,
-  route: index % 2 === 0 ? "fast" : "hard",
+  route: index % 2 === 0 ? "economy-auto" : "coding-auto",
   requests: index + 1,
   failed: false
 }));

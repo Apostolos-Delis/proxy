@@ -10,23 +10,12 @@ const nullableNonnegativeIntSchema = z.preprocess((value) => value === null ? un
 
 export const proxySettingsSchema = z.strictObject({
   schemaVersion: z.literal(1).default(1),
-  classifier: z.strictObject({
-    model: z.string().trim().min(1).optional(),
-    timeoutMs: z.number().int().positive().max(30000).optional(),
-    maxAttempts: z.number().int().positive().max(5).optional(),
-    allowRedactedExcerpt: z.boolean().optional()
-  }).default({}),
-  routeQuality: z.strictObject({
-    lowConfidenceThreshold: z.number().min(0).max(1).optional()
-  }).default({}),
   promptCapture: z.strictObject({
     promptCaptureMode: promptCaptureModeSchema.optional(),
     retentionDays: nullableNonnegativeIntSchema
   }).default({})
 }).default({
   schemaVersion: 1,
-  classifier: {},
-  routeQuality: {},
   promptCapture: {}
 });
 
@@ -34,8 +23,6 @@ export type ProxySettings = z.infer<typeof proxySettingsSchema>;
 
 export const emptyProxySettings: ProxySettings = {
   schemaVersion: 1,
-  classifier: {},
-  routeQuality: {},
   promptCapture: {}
 };
 
@@ -70,33 +57,13 @@ export async function writeSettingsFile(path: string, input: unknown): Promise<P
   return settings;
 }
 
-export function settingsToEnv(settings: ProxySettings): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  if (settings.classifier.model !== undefined) env.CLASSIFIER_MODEL = settings.classifier.model;
-  if (settings.classifier.timeoutMs !== undefined) env.CLASSIFIER_TIMEOUT_MS = String(settings.classifier.timeoutMs);
-  if (settings.classifier.maxAttempts !== undefined) env.CLASSIFIER_MAX_ATTEMPTS = String(settings.classifier.maxAttempts);
-  if (settings.classifier.allowRedactedExcerpt !== undefined) {
-    env.CLASSIFIER_ALLOW_REDACTED_EXCERPT = String(settings.classifier.allowRedactedExcerpt);
-  }
-  if (settings.routeQuality.lowConfidenceThreshold !== undefined) {
-    env.ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD = String(settings.routeQuality.lowConfidenceThreshold);
-  }
-  return env;
+export function settingsToEnv(_settings: ProxySettings): NodeJS.ProcessEnv {
+  return {};
 }
 
 function parseSettings(raw: string) {
   try {
-    const value: unknown = JSON.parse(raw);
-    // Files saved before budget limits moved to routing configs carry a
-    // "budgets" key; the strict schema would reject it and fail boot.
-    if (value && typeof value === "object" && "budgets" in value) {
-      delete (value as Record<string, unknown>).budgets;
-      if (!warnedLegacyBudgets) {
-        warnedLegacyBudgets = true;
-        console.warn("Ignoring legacy \"budgets\" block in settings file; budget limits now live in routing configs.");
-      }
-    }
-    return proxySettingsSchema.parse(value);
+    return proxySettingsSchema.parse(JSON.parse(raw));
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error("settings_file_invalid_json");
@@ -104,8 +71,6 @@ function parseSettings(raw: string) {
     throw error;
   }
 }
-
-let warnedLegacyBudgets = false;
 
 function isNotFound(error: unknown) {
   return typeof error === "object" &&

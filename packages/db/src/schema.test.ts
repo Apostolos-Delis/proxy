@@ -7,48 +7,43 @@ import {
   accessProfiles,
   apiKeys,
   canonicalModels,
+  deploymentHealth,
   deploymentWireBindings,
   events,
   logicalModels,
   logicalModelTargets,
   modelDeployments,
-  providerAccountHealth,
-  providerModelHealth,
   promptAccessAudit,
   promptArtifacts,
   providerAttempts,
+  providerConnectionHealth,
   providerConnections,
-  providers,
   requests,
   routeDecisions,
-  routingConfigs,
-  routingConfigVersions,
   usageLedger,
   userSessions
 } from "./schema.js";
 
 describe("proxy database schema", () => {
-  it("exposes the core durable tables", () => {
+  it("exposes the durable AI gateway resources", () => {
     expect(accessProfileModelGrants).toBeTruthy();
     expect(accessProfiles).toBeTruthy();
     expect(apiKeys.accessProfileId).toBeTruthy();
-    expect(events).toBeTruthy();
     expect(canonicalModels).toBeTruthy();
+    expect(deploymentHealth.deploymentId).toBeTruthy();
     expect(deploymentWireBindings).toBeTruthy();
+    expect(events).toBeTruthy();
     expect(logicalModels).toBeTruthy();
     expect(logicalModelTargets).toBeTruthy();
-    expect(modelDeployments).toBeTruthy();
-    expect(providerAccountHealth).toBeTruthy();
-    expect(providerModelHealth).toBeTruthy();
+    expect(modelDeployments.pricing).toBeTruthy();
     expect(promptArtifacts).toBeTruthy();
-    expect(providers).toBeTruthy();
-    expect(providerAttempts.routeCandidateId).toBeTruthy();
+    expect(providerAttempts.deploymentId).toBeTruthy();
+    expect(providerAttempts.providerConnectionId).toBeTruthy();
+    expect(providerConnectionHealth.providerConnectionId).toBeTruthy();
     expect(providerConnections.secretRef).toBeTruthy();
     expect(promptAccessAudit).toBeTruthy();
-    expect(requests).toBeTruthy();
-    expect(routeDecisions.routeExecutionPlan).toBeTruthy();
-    expect(routingConfigs).toBeTruthy();
-    expect(routingConfigVersions).toBeTruthy();
+    expect(requests.requestedLogicalModel).toBeTruthy();
+    expect(routeDecisions.routerDecision).toBeTruthy();
     expect(usageLedger).toBeTruthy();
     expect(userSessions).toBeTruthy();
   });

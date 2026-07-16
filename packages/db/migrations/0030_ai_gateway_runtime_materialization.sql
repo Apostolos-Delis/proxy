@@ -1,6 +1,7 @@
 ALTER TABLE provider_connections
   ADD COLUMN IF NOT EXISTS platform_owned boolean NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS forward_harness_headers boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS forward_harness_headers boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS legacy_provider_account_id text;
 
 CREATE TEMP TABLE gateway_legacy_configs ON COMMIT DROP AS
 WITH used_configs AS (
@@ -419,6 +420,7 @@ INSERT INTO provider_connections (
   default_headers,
   platform_owned,
   forward_harness_headers,
+  legacy_provider_account_id,
   status
 )
 SELECT DISTINCT ON (organization_id, workspace_id, provider)
@@ -442,6 +444,7 @@ SELECT DISTINCT ON (organization_id, workspace_id, provider)
   default_headers,
   credential_kind = 'platform' AND legacy_provider_organization_id IS NULL,
   forward_harness_headers,
+  legacy_provider_account_id,
   'active'
 FROM gateway_legacy_deployments
 ORDER BY organization_id, workspace_id, provider
@@ -473,6 +476,7 @@ BEGIN
          d.credential_kind = 'platform' AND d.legacy_provider_organization_id IS NULL
        )
        OR c.forward_harness_headers <> d.forward_harness_headers
+       OR c.legacy_provider_account_id IS DISTINCT FROM d.legacy_provider_account_id
        OR c.secret_ref IS DISTINCT FROM d.secret_ref
        OR c.secret_ciphertext IS DISTINCT FROM d.secret_ciphertext
        OR c.secret_hint IS DISTINCT FROM d.secret_hint

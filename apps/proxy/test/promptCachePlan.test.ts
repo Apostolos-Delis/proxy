@@ -33,8 +33,7 @@ function decision(
   return {
     outcome: "route",
     surface: dialect,
-    requestedModel: "router-hard",
-    finalRoute: "hard",
+    requestedModel: "coding-auto",
     selectedModel: model,
     provider,
     providerSettings: {
@@ -65,7 +64,7 @@ function modelForProvider(provider: string) {
 describe("computePromptCachePlan", () => {
   it("reports OpenAI implicit prefix controls without exposing cache-key values", () => {
     const body = {
-      model: "router-hard",
+      model: "coding-auto",
       input: "hello",
       prompt_cache_key: "customer-session-123",
       prompt_cache_retention: "24h"
@@ -94,7 +93,6 @@ describe("computePromptCachePlan", () => {
     expect(JSON.stringify(promptCachePlanEventPayload({
       surface: "openai-responses",
       model: "gpt-5.5",
-      route: "hard",
       plan
     }))).not.toContain("customer-session-123");
   });
@@ -102,7 +100,7 @@ describe("computePromptCachePlan", () => {
   it("falls OpenAI implicit cache grouping back to the session identity", () => {
     const plan = computePromptCachePlan({
       body: {
-        model: "router-hard",
+        model: "coding-auto",
         input: "hello"
       },
       context: { surface: "openai-responses", sessionId: "session_abc" },
@@ -115,7 +113,7 @@ describe("computePromptCachePlan", () => {
 
   it("preserves OpenAI cache fields across Responses to Chat translation", () => {
     const body = {
-      model: "router-hard",
+      model: "coding-auto",
       input: "hello",
       prompt_cache_key: "responses-cache-key",
       prompt_cache_retention: "24h"
@@ -142,7 +140,7 @@ describe("computePromptCachePlan", () => {
 
   it("preserves OpenAI cache fields across Chat to Responses translation", () => {
     const body = {
-      model: "router-hard",
+      model: "coding-auto",
       messages: [{ role: "user", content: "hello" }],
       prompt_cache_key: "chat-cache-key",
       prompt_cache_retention: "24h"
@@ -169,7 +167,7 @@ describe("computePromptCachePlan", () => {
 
   it("reports dropped OpenAI cache fields on Responses to Anthropic translation", () => {
     const body = {
-      model: "router-hard",
+      model: "coding-auto",
       input: "hello",
       prompt_cache_key: "responses-cache-key",
       prompt_cache_retention: "24h"
@@ -197,7 +195,7 @@ describe("computePromptCachePlan", () => {
 
   it("reports dropped Anthropic cache controls on Anthropic to OpenAI translation", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       system: [{ type: "text", text: "stable", cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: "hello" }]
     };
@@ -223,7 +221,7 @@ describe("computePromptCachePlan", () => {
   it("plans Anthropic automatic caching for eligible multi-turn requests", () => {
     const plan = computePromptCachePlan({
       body: {
-        model: "claude-router-hard",
+        model: "fable",
         messages: [
           { role: "user", content: "first" },
           { role: "assistant", content: "answer" },
@@ -248,7 +246,7 @@ describe("computePromptCachePlan", () => {
   it("does not apply OpenAI cache fields to translated Anthropic targets", () => {
     const plan = computePromptCachePlan({
       body: {
-        model: "router-hard",
+        model: "coding-auto",
         input: "hello",
         prompt_cache_key: "customer-session-123",
         prompt_cache_retention: "24h"
@@ -273,7 +271,7 @@ describe("computePromptCachePlan", () => {
     const largeText = "x".repeat(12000);
     const plan = computePromptCachePlan({
       body: {
-        model: "claude-router-hard",
+        model: "fable",
         system: [{ type: "text", text: largeText, cache_control: { type: "ephemeral" } }],
         messages: [
           { role: "user", content: "first" },
@@ -298,7 +296,7 @@ describe("computePromptCachePlan", () => {
     const largeText = "x".repeat(12000);
     const plan = computePromptCachePlan({
       body: {
-        model: "claude-router-hard",
+        model: "fable",
         system: [{ type: "text", text: "short stable prefix", cache_control: { type: "ephemeral" } }],
         messages: [
           { role: "user", content: "first" },
@@ -321,7 +319,7 @@ describe("computePromptCachePlan", () => {
     const largeText = "x".repeat(12000);
     const plan = computePromptCachePlan({
       body: {
-        model: "claude-router-hard",
+        model: "fable",
         system: [{ type: "text", text: largeText, cache_control: { type: "ephemeral", ttl: "5m" } }],
         messages: [
           { role: "user", content: "first" },
@@ -392,7 +390,6 @@ describe("computePromptCachePlan", () => {
     expect(promptCachePlanEventPayload({
       surface: "openai-chat",
       model: "gemini-2.5-pro",
-      route: "hard",
       plan
     })).toMatchObject({
       provider: "google-gemini",
@@ -407,7 +404,7 @@ describe("computePromptCachePlan", () => {
 
   it("does not mutate the request body", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       messages: [
         { role: "user", content: "first" },
         { role: "assistant", content: "answer" },

@@ -1,4 +1,4 @@
-import type { ApiKeySummary } from "../routing/data";
+import type { ApiKeySummary } from "./data";
 
 export function apiKeyStatus(apiKey: ApiKeySummary) {
   if (apiKey.revokedAt) return "revoked";
@@ -6,19 +6,12 @@ export function apiKeyStatus(apiKey: ApiKeySummary) {
   return "active";
 }
 
-export function routingConfigFilterValue(apiKey: ApiKeySummary) {
-  return apiKey.routingConfigId ?? "default";
+export function accessProfileFilterValue(apiKey: ApiKeySummary) {
+  return apiKey.accessProfileId ?? "unassigned";
 }
 
-export function routingConfigLabel(apiKey: ApiKeySummary) {
-  return apiKey.routingConfig?.name ?? "Organization default";
-}
-
-export function providerBindingValue(apiKey: ApiKeySummary) {
-  if (apiKey.providerCredentials.length === 0) return "company default";
-  return apiKey.providerCredentials
-    .map((binding) => `${binding.provider} ${binding.name ?? ""}`.trim())
-    .join(" ");
+export function accessProfileLabel(apiKey: ApiKeySummary) {
+  return apiKey.accessProfile?.name ?? "Unassigned";
 }
 
 export function apiKeySearchValue(apiKey: ApiKeySummary) {
@@ -26,8 +19,7 @@ export function apiKeySearchValue(apiKey: ApiKeySummary) {
     apiKey.id,
     apiKey.name,
     apiKey.userId,
-    apiKey.routingConfig?.name,
-    apiKey.routingConfig?.status,
-    providerBindingValue(apiKey)
+    apiKey.accessProfile?.name,
+    apiKey.accessProfile?.status
   ].filter((value): value is string => Boolean(value));
 }

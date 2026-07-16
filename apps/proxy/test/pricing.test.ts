@@ -16,7 +16,7 @@ describe("model pricing table", () => {
     expect(table).toEqual({});
   });
 
-  it("lets MODEL_COSTS_JSON price no-database models", () => {
+  it("builds an explicit in-memory pricing table", () => {
     const table = buildModelPricingTable({
       "claude-haiku-4-5": { inputCostPerMtok: 2, outputCostPerMtok: 8 },
       "my-private-model": {

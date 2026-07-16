@@ -12,7 +12,6 @@ import {
 } from "../harness.js";
 import {
   assertSafeDefaultHeaders,
-  operatorTokenForProvider,
   type ProviderRegistryEntry,
   type ProviderRegistryEndpoint,
   type ProviderRegistryHttpEndpoint
@@ -120,7 +119,7 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
           credential: input.credential
         }),
         body: JSON.stringify(body),
-        redirect: providerRequestRedirect({ provider, credential: input.credential }),
+        redirect: providerRequestRedirect(),
         signal
       }, providerRequestPinnedAddress({ provider, config: this.config, credential: input.credential }));
 
@@ -209,22 +208,22 @@ export function classifyGenericHttpResponse(input: {
   const cooldownMs = retryAfterDelayMs(input.headers);
 
   if (authExpired(input.status, lower)) {
-    return adapterClassification("auth_denied", "auth_expired", "response_body", true, false, "provider_account", message, cooldownMs);
+    return adapterClassification("auth_denied", "auth_expired", "response_body", true, false, "provider_connection", message, cooldownMs);
   }
   if (input.status === 401) {
-    return adapterClassification("auth_denied", "auth_invalid", "provider_status", false, true, "provider_account", message);
+    return adapterClassification("auth_denied", "auth_invalid", "provider_status", false, true, "provider_connection", message);
   }
   if (modelAccessDenied(lower)) {
-    return adapterClassification("auth_denied", "model_access_denied", "response_body", false, true, "provider_account_model", message);
+    return adapterClassification("auth_denied", "model_access_denied", "response_body", false, true, "deployment", message);
   }
   if (input.status === 403) {
-    return adapterClassification("auth_denied", "auth_invalid", "provider_status", false, true, "provider_account", message);
+    return adapterClassification("auth_denied", "auth_invalid", "provider_status", false, true, "provider_connection", message);
   }
   if (quotaExhausted(lower)) {
-    return adapterClassification("quota_exceeded", "quota_exhausted", "response_body", true, false, "provider_account", message, cooldownMs ?? 60 * minuteMs);
+    return adapterClassification("quota_exceeded", "quota_exhausted", "response_body", true, false, "provider_connection", message, cooldownMs ?? 60 * minuteMs);
   }
   if (input.status === 429) {
-    return adapterClassification("rate_limited", "rate_limited", "provider_status", true, false, "provider_account", message, cooldownMs ?? minuteMs);
+    return adapterClassification("rate_limited", "rate_limited", "provider_status", true, false, "provider_connection", message, cooldownMs ?? minuteMs);
   }
   if (modelUnavailable(input.status, lower)) {
     return adapterClassification(
@@ -233,7 +232,7 @@ export function classifyGenericHttpResponse(input: {
       lower ? "response_body" : "provider_status",
       true,
       false,
-      "provider_account_model",
+      "deployment",
       message,
       10 * minuteMs
     );
@@ -245,10 +244,10 @@ export function classifyGenericHttpResponse(input: {
     return adapterClassification("unsupported_request_shape", "request_incompatible", "response_body", false, true, "request_only", message);
   }
   if (providerUnavailable(input.status)) {
-    return adapterClassification("upstream_unavailable", "provider_unavailable", "provider_status", true, false, "provider", message, 30_000);
+    return adapterClassification("upstream_unavailable", "provider_unavailable", "provider_status", true, false, "provider_connection", message, 30_000);
   }
   if (unknownTransient(input.status)) {
-    return adapterClassification("network_error", "unknown_transient", "proxy_policy", true, false, "provider_account", message, 30_000);
+    return adapterClassification("network_error", "unknown_transient", "proxy_policy", true, false, "provider_connection", message, 30_000);
   }
   return adapterClassification("unknown", "unknown_terminal", "proxy_policy", false, true, "request_only", message);
 }
@@ -259,8 +258,8 @@ export function classifyGenericHttpFetchError(input: {
 }): ProviderAdapterFailureClassification {
   const message = input.error instanceof Error ? input.error.message : "Provider request failed.";
   return input.timedOut
-    ? adapterClassification("upstream_timeout", "unknown_transient", "proxy_policy", true, false, "provider_account", message, 30_000)
-    : adapterClassification("network_error", "unknown_transient", "proxy_policy", true, false, "provider_account", message, 30_000);
+    ? adapterClassification("upstream_timeout", "unknown_transient", "proxy_policy", true, false, "provider_connection", message, 30_000)
+    : adapterClassification("network_error", "unknown_transient", "proxy_policy", true, false, "provider_connection", message, 30_000);
 }
 
 function assertHttpEndpoint(endpoint: ProviderRegistryEndpoint): asserts endpoint is ProviderRegistryHttpEndpoint {
@@ -386,23 +385,7 @@ export function providerRequestBody(input: {
   body: unknown;
   credential?: UpstreamCredential;
 }) {
-  const credentialForProvider = input.credential && input.credential.provider === input.provider.slug
-    ? input.credential
-    : undefined;
-  if (!isOpenAIChatGPTCredential(input.provider, credentialForProvider)) return input.body;
-  if (!isRecord(input.body)) return input.body;
-  const body = { ...input.body };
-  if (body.prompt_cache_retention !== undefined) delete body.prompt_cache_retention;
-  if (body.max_output_tokens !== undefined) delete body.max_output_tokens;
-  return body;
-}
-
-const ANTHROPIC_OAUTH_BETA = "oauth-2025-04-20";
-
-function mergeBetaTokens(existing: string | undefined, value: string) {
-  const tokens = (existing ?? "").split(",").map((token) => token.trim()).filter(Boolean);
-  if (!tokens.includes(value)) tokens.push(value);
-  return tokens.join(",");
+  return input.body;
 }
 
 export function providerRequestHeaders(input: {
@@ -423,28 +406,10 @@ export function providerRequestHeaders(input: {
   const credentialForProvider = input.credential && input.credential.provider === input.provider.slug
     ? input.credential
     : undefined;
-  const operatorToken = input.provider.builtin ? operatorTokenForProvider(input.provider.slug, input.config) : undefined;
-  const chatgptCredential = isOpenAIChatGPTCredential(input.provider, credentialForProvider)
-    ? credentialForProvider
-    : undefined;
-  const token = chatgptCredential?.token ??
-    (credentialForProvider?.authType === "api_key" ? credentialForProvider.token : operatorToken);
-  let usesAnthropicOAuthBearer = false;
-
-  if (
-    input.provider.slug === "anthropic" &&
-    credentialForProvider?.authType === "oauth" &&
-    input.config.subscriptionOAuthEnabled
-  ) {
+  if (input.provider.authStyle === "bearer" && credentialForProvider?.token) {
     headers.authorization = `Bearer ${credentialForProvider.token}`;
-    usesAnthropicOAuthBearer = true;
-  } else if (input.provider.authStyle === "bearer" && token) {
-    headers.authorization = `Bearer ${token}`;
-    if (chatgptCredential?.chatgptAccountId) {
-      headers["ChatGPT-Account-Id"] = chatgptCredential.chatgptAccountId;
-    }
-  } else if (input.provider.authStyle === "x-api-key" && token) {
-    headers["x-api-key"] = token;
+  } else if (input.provider.authStyle === "x-api-key" && credentialForProvider?.token) {
+    headers["x-api-key"] = credentialForProvider.token;
   }
 
   const profile = input.harnessProfileId
@@ -455,9 +420,6 @@ export function providerRequestHeaders(input: {
   if (input.endpoint.dialect === "anthropic-messages") {
     headers["anthropic-version"] = headers["anthropic-version"] ?? "2023-06-01";
   }
-  if (usesAnthropicOAuthBearer) {
-    headers["anthropic-beta"] = mergeBetaTokens(headers["anthropic-beta"], ANTHROPIC_OAUTH_BETA);
-  }
   if (input.provider.builtin || input.provider.forwardHarnessHeaders) {
     copySelectedHeaders(input.incoming, headers, identityHeadersFor(profile));
   }
@@ -466,18 +428,8 @@ export function providerRequestHeaders(input: {
 }
 
 export function canAuthenticateOrgProvider(provider: ProviderRegistryEntry, credential?: UpstreamCredential) {
-  if (provider.builtin || provider.authStyle === "none") return true;
+  if (provider.authStyle === "none") return true;
   return credential?.provider === provider.slug;
-}
-
-function isOpenAIChatGPTCredential(
-  provider: ProviderRegistryEntry,
-  credential: UpstreamCredential | undefined
-) {
-  return provider.slug === "openai" &&
-    credential?.provider === provider.slug &&
-    credential.authType === "oauth" &&
-    Boolean(credential.chatgptAccountId);
 }
 
 function rateLimitRetryDelayMs(input: {

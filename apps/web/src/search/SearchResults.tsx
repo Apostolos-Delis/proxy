@@ -46,7 +46,7 @@ export function PaletteResults({ groups, query, activeIndex, showSkeleton, empty
       {emptyLabel ? (
         <div className="palette-empty">
           <strong>No matches for &ldquo;{emptyLabel}&rdquo;</strong>
-          <span>Try a session id, prompt text, user, routing config, or API key name.</span>
+          <span>Try a session id, prompt text, user, logical model, or API key name.</span>
         </div>
       ) : null}
     </>

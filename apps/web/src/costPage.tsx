@@ -191,7 +191,7 @@ function Summary({ label, value, detail, tone, hint }: { label: string; value: s
 }
 
 const baselineExplanation =
-  "Baseline is the counterfactual cost of serving every request on the organization's baseline models (Settings -> Cost Baseline) with no routing — the same tokens priced at those models' rates. Requests that pinned an explicit route tier are baselined against that tier's model. Selected spend is what routing actually cost, including the classifier's own call, so savings reflect routing net of its overhead.";
+  "Baseline is the counterfactual cost of serving each request on the configured baseline model for its inbound wire and selected provider. Selected spend is the resolved deployment cost plus the classifier call, so savings include routing overhead.";
 
 function savingsDetailLabel(classifierCost: number, baseline: number, savingsRate: number) {
   if (classifierCost > 0) return `after ${formatMoney(classifierCost)} routing overhead`;
@@ -209,7 +209,7 @@ function UnpricedTrafficWarning({ models }: { models: UnpricedModel[] }) {
         {models.length === 1 ? "A model with" : `${models.length} models with`} live traffic{" "}
         {models.length === 1 ? "has" : "have"} no price, so {models.length === 1 ? "its" : "their"} cost books as $0:{" "}
         {models.map((model, index) => (
-          <span key={`${model.provider ?? "?"}:${model.model}`}>
+          <span key={model.deploymentId} title={model.providerConnectionId ?? undefined}>
             {index > 0 ? ", " : ""}
             <span className="mono">{model.model === "unknown" ? "unknown (model not recorded)" : model.model}</span>
           </span>

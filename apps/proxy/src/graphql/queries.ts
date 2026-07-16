@@ -11,7 +11,6 @@ import { emptyCacheBustCauseCounts } from "../persistence/cacheBusts.js";
 import { aggregateIdleGaps } from "../persistence/idleGaps.js";
 import { aggregateTokenAttribution } from "../persistence/tokenAttributionReport.js";
 import { harnessCompatibilityReport } from "../harnessCompatibilityReport.js";
-import { compareModelPricingEntries, staticPricingEntries } from "../pricing.js";
 import { readSettingsFile } from "../settings.js";
 import { availableCompressionRules } from "../toolResultCompression.js";
 import type { Surface } from "../types.js";
@@ -31,7 +30,6 @@ import {
   OverviewDashboard,
   PromptCachePlanReport,
   PromptCachePrewarmReport,
-  RouteOutputReport,
   TokenAttributionReport,
   UsageDashboard,
   UsageGroupBy,
@@ -40,18 +38,10 @@ import {
   UsageTimeseries
 } from "./types/analytics.js";
 import { CompressionPreviewInput, CompressionPreviewType } from "./types/compression.js";
-import { ModelCatalogEntry, ModelPricingEntry } from "./types/pricing.js";
 import { Invitation, PublicInvitation } from "./types/invitations.js";
 import { PromptAccessAuditEntry, PromptDetail, PromptPage } from "./types/prompts.js";
 import { RequestDetail, RequestSummary } from "./types/requests.js";
-import {
-  ApiKey,
-  ProviderAccount,
-  ProviderCredentialOAuthStatus,
-  ProviderRegistryEntry,
-  RoutingConfigDetail,
-  RoutingConfigSummary
-} from "./types/routing.js";
+import { ApiKey } from "./types/routing.js";
 import { SearchResult } from "./types/search.js";
 import { SessionDetail, SessionSummary } from "./types/sessions.js";
 import { CompressionRuleCatalog, Settings } from "./types/settings.js";
@@ -88,7 +78,7 @@ async function compressionPreviewPolicy(
 
 function emptyUsageReport(): UsageReportModel {
   return {
-    groupBy: "route",
+    groupBy: "model",
     data: [],
     totals: {
       key: "total",
@@ -285,9 +275,7 @@ builder.queryFields((t) => ({
         totals: usage.totals,
         cost: usage.cost,
         routeQuality: {
-          lowConfidenceCount: routeQuality.lowConfidence.length,
-          cheaperLikelyWouldWorkCount: routeQuality.cheaperLikelyWouldWork.length,
-          cheapCausedRetriesOrRepairsCount: routeQuality.cheapCausedRetriesOrRepairs.length
+          lowConfidenceCount: routeQuality.lowConfidence.length
         }
       };
     }
@@ -311,9 +299,7 @@ builder.queryFields((t) => ({
           totals: usage.totals,
           cost: usage.cost,
           routeQuality: {
-            lowConfidenceCount: routeQuality.lowConfidence.length,
-            cheaperLikelyWouldWorkCount: routeQuality.cheaperLikelyWouldWork.length,
-            cheapCausedRetriesOrRepairsCount: routeQuality.cheapCausedRetriesOrRepairs.length
+            lowConfidenceCount: routeQuality.lowConfidence.length
           }
         },
         requests: [...usage.requests].reverse(),
@@ -360,8 +346,7 @@ builder.queryFields((t) => ({
         events: allEvents.filter(
           (event) => event.scopeId === requestId || event.correlationId === requestId
         ),
-        compressionReceipts: [],
-        healthSkips: []
+        compressionReceipts: []
       };
     }
   }),
@@ -406,7 +391,7 @@ builder.queryFields((t) => ({
       }
       const now = new Date().toISOString();
       const empty: UsageTimeseriesModel = {
-        groupBy: args.groupBy ?? "route",
+        groupBy: args.groupBy ?? "model",
         interval: args.interval ?? "day",
         start: args.start ?? now,
         end: args.end ?? now,
@@ -440,7 +425,7 @@ builder.queryFields((t) => ({
       return {
         usage: emptyUsageReport(),
         timeseries: {
-          groupBy: args.groupBy ?? "route",
+          groupBy: args.groupBy ?? "model",
           interval: args.interval ?? "day",
           start: args.start ?? new Date().toISOString(),
           end: args.end ?? new Date().toISOString(),
@@ -451,23 +436,6 @@ builder.queryFields((t) => ({
     }
   }),
 
-  routeOutputReport: t.field({
-    type: RouteOutputReport,
-    args: {
-      start: t.arg.string(),
-      end: t.arg.string()
-    },
-    resolve: async (_root, args, context) => {
-      const queries = scopedQueries(context);
-      if (queries) {
-        return queries.routeOutputReport({
-          start: args.start ?? undefined,
-          end: args.end ?? undefined
-        });
-      }
-      return { routes: [], models: [], users: [], apiKeys: [], workspaces: [] };
-    }
-  }),
 
   activeSessionCount: t.field({
     type: ActiveSessionCount,
@@ -714,7 +682,7 @@ builder.queryFields((t) => ({
       offset: t.arg.int(),
       userId: t.arg.string(),
       surface: t.arg.string(),
-      route: t.arg.string(),
+      logicalModel: t.arg.string(),
       model: t.arg.string(),
       start: t.arg.string(),
       end: t.arg.string()
@@ -728,7 +696,7 @@ builder.queryFields((t) => ({
         offset: args.offset ?? undefined,
         userId: args.userId ?? undefined,
         surface: args.surface ?? undefined,
-        route: args.route ?? undefined,
+        logicalModel: args.logicalModel ?? undefined,
         model: args.model ?? undefined,
         start: args.start ?? undefined,
         end: args.end ?? undefined
@@ -753,7 +721,6 @@ builder.queryFields((t) => ({
         requestId: detail.artifact.requestId,
         userId: identity.userId,
         adminSessionId: identity.sessionId,
-        route: detail.request?.finalRoute,
         accessPath: PROMPT_GRAPHQL_ACCESS_PATH
       });
       return detail;
@@ -854,68 +821,6 @@ builder.queryFields((t) => ({
     }
   }),
 
-  providerAccounts: t.field({
-    type: [ProviderAccount],
-    resolve: async (_root, _args, context) => {
-      requireAdminRole(context);
-      const queries = scopedQueries(context);
-      return queries ? (await queries.providerAccounts()).data : [];
-    }
-  }),
-
-  providerCredentialOAuthStatus: t.field({
-    type: ProviderCredentialOAuthStatus,
-    nullable: true,
-    args: { loginId: t.arg.id({ required: true }) },
-    resolve: async (_root, args, context) => {
-      const identity = requireAdminRole(context);
-      return context.persistence?.providerCredentialOAuth.status(String(args.loginId), {
-        organizationId: identity.organizationId,
-        actorUserId: identity.userId
-      }) ?? null;
-    }
-  }),
-
-  providers: t.field({
-    type: [ProviderRegistryEntry],
-    resolve: async (_root, _args, context) => {
-      const queries = scopedQueries(context);
-      return queries ? (await queries.providers()).data : [];
-    }
-  }),
-
-  routingConfigs: t.field({
-    type: [RoutingConfigSummary],
-    resolve: async (_root, _args, context) => {
-      const identity = requireAdminRole(context);
-      const queries = scopedQueries(context);
-      if (!queries) return [];
-      // Backfill the default config for workspaces created before
-      // provisioning-on-creation. Best-effort: a provisioning failure must not
-      // break the Routing page, which would otherwise render as it does today.
-      try {
-        await context.persistence?.routingConfigAdmin.ensureWorkspaceDefaultConfig({
-          organizationId: identity.organizationId,
-          workspaceId: identity.workspaceId,
-          actorUserId: identity.userId
-        });
-      } catch {
-        // ignore — fall through to listing whatever configs exist
-      }
-      return (await queries.routingConfigs()).data;
-    }
-  }),
-
-  routingConfig: t.field({
-    type: RoutingConfigDetail,
-    nullable: true,
-    args: { configId: t.arg.id({ required: true }) },
-    resolve: async (_root, args, context) => {
-      requireAdminRole(context);
-      const queries = scopedQueries(context);
-      return queries ? queries.routingConfigDetail(String(args.configId)) : null;
-    }
-  }),
 
   invitations: t.field({
     type: [Invitation],
@@ -937,26 +842,6 @@ builder.queryFields((t) => ({
     }
   }),
 
-  modelPricing: t.field({
-    type: [ModelPricingEntry],
-    resolve: async (_root, _args, context) => {
-      const queries = scopedQueries(context);
-      if (queries) return queries.modelPricing();
-      return staticPricingEntries(
-        context.config.modelCosts,
-        context.config.modelCostsFromEnv
-      ).sort(compareModelPricingEntries);
-    }
-  }),
-
-  modelCatalog: t.field({
-    type: [ModelCatalogEntry],
-    resolve: async (_root, _args, context) => {
-      const queries = scopedQueries(context);
-      if (!queries) return [];
-      return queries.modelCatalog();
-    }
-  }),
 
   settings: t.field({
     type: Settings,

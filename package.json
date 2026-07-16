@@ -29,8 +29,6 @@
     "smoke": "pnpm --filter @proxy/proxy smoke",
     "smoke:deployed": "pnpm --filter @proxy/proxy smoke:deployed",
     "smoke:harnesses": "pnpm --filter @proxy/proxy smoke:harnesses",
-    "smoke:local-openai": "pnpm --filter @proxy/proxy smoke:local-openai",
-    "smoke:bedrock": "pnpm --filter @proxy/proxy smoke:bedrock",
     "load:proxy": "pnpm --filter @proxy/proxy load",
     "test": "pnpm build:runtime && pnpm --filter @proxy/schema test && pnpm --filter @proxy/db test && pnpm --filter @proxy/proxy test && pnpm --filter @proxy/web test && pnpm --filter @proxy/infra-cdk test",
     "lint": "oxlint --deny-warnings",

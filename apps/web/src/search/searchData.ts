@@ -1,16 +1,15 @@
 import {
   BarChart3,
+  Box,
   CircleDollarSign,
   CreditCard,
   FileText,
   Gauge,
-  GitBranch,
   KeyRound,
   Layers,
   Logs,
   MessagesSquare,
   ScrollText,
-  ServerCog,
   Settings,
   Users
 } from "lucide-react";
@@ -19,7 +18,7 @@ import type { LucideIcon } from "lucide-react";
 import { canAccessPath } from "../access";
 import { formatDateTime } from "../format";
 
-export type SearchHitKind = "session" | "log" | "user" | "routing_config" | "api_key";
+export type SearchHitKind = "session" | "log" | "user" | "logical_model" | "api_key";
 
 export type SearchHit = {
   kind: SearchHitKind;
@@ -38,9 +37,7 @@ export type PalettePagePath =
   | "/caching"
   | "/logs"
   | "/prompts"
-  | "/routing"
   | "/api-keys"
-  | "/providers"
   | "/users"
   | "/billing"
   | "/settings";
@@ -86,15 +83,13 @@ export type MatchSegment = {
 export const MIN_SEARCH_LENGTH = 2;
 
 export const palettePages: PalettePage[] = [
-  { path: "/", title: "Overview", subtitle: "Spend, savings & route quality", keywords: ["dashboard", "home", "metrics", "savings"], icon: Gauge },
+  { path: "/", title: "Overview", subtitle: "Spend, savings & gateway quality", keywords: ["dashboard", "home", "metrics", "savings"], icon: Gauge },
   { path: "/usage", title: "Usage", subtitle: "Token metering & spend", keywords: ["tokens", "cost", "spend", "metering", "analytics"], icon: BarChart3 },
   { path: "/cost", title: "Cost", subtitle: "Spend, savings & attribution", keywords: ["spend", "savings", "attribution", "models"], icon: CircleDollarSign },
   { path: "/caching", title: "Caching", subtitle: "Prompt-cache performance", keywords: ["cache", "hit rate", "savings", "prefix", "ttl", "tokens"], icon: Layers },
   { path: "/logs", title: "Logs", subtitle: "Sessions & request stream", keywords: ["sessions", "replay", "conversations", "agents", "turns", "requests", "traffic", "prompts", "stream"], icon: Logs },
   { path: "/prompts", title: "Prompts", subtitle: "Captured prompt artifacts", keywords: ["artifacts", "raw text", "capture"], icon: ScrollText },
-  { path: "/routing", title: "Routing", subtitle: "Config versions", keywords: ["routes", "configs", "classifier", "models", "versions"], icon: GitBranch },
   { path: "/api-keys", title: "API keys", subtitle: "Manage secrets", keywords: ["secrets", "tokens", "credentials", "keys"], icon: KeyRound },
-  { path: "/providers", title: "Model providers", subtitle: "Registry and credentials", keywords: ["provider", "providers", "models", "credentials", "byok"], icon: ServerCog },
   { path: "/users", title: "Users", subtitle: "Team & access", keywords: ["team", "members", "access", "roles"], icon: Users },
   { path: "/billing", title: "Billing", subtitle: "Spend & invoices", keywords: ["invoices", "payment", "plan"], icon: CreditCard },
   { path: "/settings", title: "Settings", subtitle: "Runtime configuration", keywords: ["configuration", "capture", "retention"], icon: Settings }
@@ -105,7 +100,7 @@ const kindIcons: Record<PaletteActionKind, LucideIcon> = {
   session: MessagesSquare,
   log: Logs,
   user: Users,
-  routing_config: GitBranch,
+  logical_model: Box,
   api_key: KeyRound
 };
 
@@ -113,7 +108,6 @@ const hitGroups: { kind: SearchHitKind; label: string }[] = [
   { kind: "log", label: "Logs" },
   { kind: "session", label: "Sessions" },
   { kind: "user", label: "Users" },
-  { kind: "routing_config", label: "Routing configs" },
   { kind: "api_key", label: "API keys" }
 ];
 

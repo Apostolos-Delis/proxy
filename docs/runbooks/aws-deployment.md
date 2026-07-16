@@ -178,7 +178,7 @@ This verifies `/healthz`, `/v1/models`, OpenAI Responses SSE, OpenAI Responses W
 Use the CloudFront domain as the OpenAI-compatible base URL.
 
 ```toml
-model = "gpt-5.5"
+model = "coding-auto"
 model_provider = "proxy_aws"
 model_reasoning_effort = "high"
 
@@ -190,7 +190,7 @@ wire_api = "responses"
 supports_websockets = false
 ```
 
-Then run a small command from Codex and check the admin console or `pnpm smoke:deployed` output for the selected route/model.
+Then run a small command from Codex and check the admin console or `pnpm smoke:deployed` output for the resolved logical model and deployment.
 
 ## Claude Code Config
 
@@ -198,7 +198,7 @@ Add to `~/.claude/settings.json` (user-level or managed settings only; Claude Co
 
 ```json
 {
-  "model": "claude-router-auto",
+  "model": "coding-auto",
   "env": {
     "ANTHROPIC_BASE_URL": "https://REPLACE_WITH_CLOUDFRONT_DOMAIN",
     "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"
@@ -213,7 +213,7 @@ Then run `claude` with no extra flags. For a one-off session without touching se
 export ANTHROPIC_BASE_URL="https://REPLACE_WITH_CLOUDFRONT_DOMAIN"
 export ANTHROPIC_API_KEY="$PROXY_DEPLOYED_API_KEY"
 export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
-claude --model claude-router-auto
+claude --model coding-auto
 ```
 
 ## Logs

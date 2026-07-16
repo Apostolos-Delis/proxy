@@ -7,7 +7,7 @@ const hit = (overrides: Partial<SearchHit>): SearchHit => ({
   kind: "log",
   id: "artifact_1",
   title: "Fix the checkout flow",
-  subtitle: "gpt-5 · fast",
+  subtitle: "gpt-5 · coding-auto",
   status: null,
   snippet: null,
   occurredAt: "2026-06-08T12:00:00.000Z",
@@ -22,7 +22,7 @@ describe("buildPaletteGroups", () => {
       recents: [{ kind: "session", id: "session_1", title: "codex-1", subtitle: "openai-responses" }]
     });
     expect(groups.map((group) => group.label)).toEqual(["Recent", "Pages"]);
-    expect(groups[1].actions.map((action) => action.title)).toContain("Routing");
+    expect(groups[1].actions.map((action) => action.title)).toContain("API keys");
   });
 
   it("filters pages by title and keywords and groups hits by kind", () => {

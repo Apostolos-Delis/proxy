@@ -9,7 +9,6 @@ import {
 import { createId } from "../util.js";
 import { AdminMutationError } from "./adminErrors.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
-import { ensureWorkspaceDefaultRoutingConfig } from "./routingConfigProvisioning.js";
 
 const createWorkspaceBodySchema = z.object({
   name: z.string().trim().min(1),
@@ -20,10 +19,7 @@ const createWorkspaceBodySchema = z.object({
 export class WorkspaceAdminError extends AdminMutationError {}
 
 export class WorkspaceAdminService {
-  constructor(
-    private readonly db: ProxyTransactionalDatabase,
-    private readonly onRoutingConfigsChanged: () => void = () => {}
-  ) {}
+  constructor(private readonly db: ProxyTransactionalDatabase) {}
 
   async createWorkspace(input: {
     organizationId: string;
@@ -72,15 +68,8 @@ export class WorkspaceAdminService {
         },
         createdAt: now
       });
-      await ensureWorkspaceDefaultRoutingConfig(tx, {
-        organizationId: input.organizationId,
-        workspaceId,
-        actorUserId: input.actorUserId
-      });
-
       return { workspaceId, slug, name: body.data.name };
     });
-    this.onRoutingConfigsChanged();
     return result;
   }
 }

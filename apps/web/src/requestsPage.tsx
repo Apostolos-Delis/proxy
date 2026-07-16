@@ -23,16 +23,13 @@ const RequestsPageDocument = graphql(`
         kind
         preview
         tokenEstimate
+        requestedLogicalModel
+        resolvedLogicalModelId
+        deploymentId
+        providerConnectionId
         selectedModel
-        finalRoute
         provider
         createdAt
-        routingConfig {
-          configId
-          configName
-          version
-          configHash
-        }
         cost {
           selected
         }
@@ -40,25 +37,25 @@ const RequestsPageDocument = graphql(`
     }
     requests(start: $start, end: $end, limit: $limit) {
       requestId
+      requestedModel
+      requestedLogicalModel
+      resolvedLogicalModelId
+      accessProfileId
+      routerKind
+      deploymentId
+      providerConnectionId
+      ingressWireId
+      egressWireId
       selectedModel
       terminalStatus
       latencyMs
-      finalRoute
       provider
-      selectedCandidateId
       translated
-      routeSkipReasons
       apiKeyId
       sessionId
       selectedCost
       usage {
         totalTokens
-      }
-      routingConfig {
-        configId
-        configName
-        version
-        configHash
       }
     }
     users {

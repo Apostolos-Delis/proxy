@@ -57,7 +57,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .routing-create-grid {
+  .inline-form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -98,16 +98,6 @@
   .inspector-row:nth-child(2n + 1) {
     padding-left: 0;
     border-left: 0;
-  }
-}
-
-@media (max-width: 1360px) {
-  .tier-table-row {
-    grid-template-columns: 1fr;
-  }
-
-  .tier-table-header {
-    display: none;
   }
 }
 
@@ -167,22 +157,13 @@
   .overview-kpis,
   .request-detail-grid,
   .detail-grid,
-  .snapshot-grid,
-    .settings-layout,
-    .routing-create-grid,
-    .credential-source-grid,
-    .wizard-provider-grid,
-    .config-facts,
-    .config-card-grid,
-    .request-budget-controls,
-    .tier-table-row,
-    .route-target,
-    .route-target-fields,
-    .billing-kpis,
-    .usage-kpi-grid,
-    .usage-side-rail,
-    .route-plan-facts,
-    .caching-anatomy {
+  .settings-layout,
+  .inline-form-grid,
+  .request-budget-controls,
+  .billing-kpis,
+  .usage-kpi-grid,
+  .usage-side-rail,
+  .caching-anatomy {
     grid-template-columns: 1fr;
   }
 
@@ -228,23 +209,6 @@
 
   .settings-row-control.toggle {
     justify-content: flex-start;
-  }
-
-  .tier-table-header {
-    display: none;
-  }
-
-  .route-target-actions {
-    justify-content: flex-start;
-  }
-
-  .route-target-notes {
-    grid-column: 1;
-  }
-
-  .config-facts .routing-metric + .routing-metric {
-    border-left: 0;
-    padding-left: 0;
   }
 
   .usage-toolbar {

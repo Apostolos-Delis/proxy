@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   agentSessions,
@@ -14,16 +14,13 @@ import {
   rewriteSurfaceRequestWithPromptCachePlan,
   rewriteTokenCountRequestWithPromptCachePlan
 } from "../src/adapters.js";
-import { buildServer } from "../src/server.js";
-import { loadConfig } from "../src/config.js";
 import { captureFixture, usageRequest, type PromptTestFixture } from "./promptTestFixture.js";
-import { listen, startAnthropicMock, startOpenAIMock, type MockServer } from "./helpers.js";
 
 // A minimal RouteDecision shape that satisfies rewriteSurfaceRequest
 function anthropicDecision(model = "claude-opus-4-8") {
   return {
-    outcome: "forward" as const,
-    finalRoute: "hard" as const,
+    outcome: "route" as const,
+    requestedModel: "coding-auto",
     selectedModel: model,
     surface: "anthropic-messages" as const,
     provider: "anthropic" as const,
@@ -54,7 +51,10 @@ function anthropicDecision(model = "claude-opus-4-8") {
         weight: 1,
         timeoutMs: 60000
       }
-    }
+    },
+    guardrailActions: [],
+    reasonCodes: [],
+    policyVersion: "test"
   };
 }
 
@@ -84,7 +84,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("upgrades ephemeral breakpoints in system array to 1h TTL", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       system: [
         { type: "text", text: largeText, cache_control: { type: "ephemeral" } },
         { type: "text", text: "More instructions." }
@@ -100,7 +100,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("upgrades breakpoints in every message's content (byte-stable across turns)", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       messages: [
         { role: "user", content: [{ type: "text", text: "first", cache_control: { type: "ephemeral" } }] },
         { role: "assistant", content: largeText },
@@ -123,7 +123,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("upgrades breakpoints nested inside tool_result content", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       messages: [
         { role: "user", content: "first" },
         { role: "assistant", content: largeText },
@@ -146,7 +146,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("does not touch blocks that already have a TTL", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       system: [{ type: "text", text: "stable", cache_control: { type: "ephemeral", ttl: "1h" } }],
       messages: [{ role: "user", content: "hi" }]
     };
@@ -157,7 +157,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("is a no-op when upgradeCacheTtl is false", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       system: [{ type: "text", text: "stable", cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: "hi" }]
     };
@@ -168,7 +168,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("also applies to rewriteTokenCountRequest", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       system: [{ type: "text", text: largeText, cache_control: { type: "ephemeral" } }],
       messages: largeMultiTurnMessages
     };
@@ -179,7 +179,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("upgrades a client-sent top-level cache_control (automatic caching field)", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       cache_control: { type: "ephemeral" },
       messages: largeMultiTurnMessages
     };
@@ -190,7 +190,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("leaves an explicit top-level TTL untouched", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       cache_control: { type: "ephemeral", ttl: "5m" },
       messages: [{ role: "user", content: "hi" }]
     };
@@ -203,7 +203,7 @@ describe("upgradeCacheControlTtl transform", () => {
     // Tools sit first in the cached prefix, so leaving them at 5m while later
     // breakpoints read 1h would violate the longer-TTL-first ordering rule.
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       tools: [
         { name: "get_weather", input_schema: { type: "object" } },
         { name: "get_time", input_schema: { type: "object" }, cache_control: { type: "ephemeral" } }
@@ -220,7 +220,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("upgrades a top-level cache_control in rewriteTokenCountRequest", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       cache_control: { type: "ephemeral" },
       messages: largeMultiTurnMessages
     };
@@ -231,7 +231,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("skips one-shot requests so true one-offs do not pay the 1h write premium", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       system: [{ type: "text", text: largeText, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: "hi" }]
     };
@@ -242,7 +242,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("skips small multi-turn requests below the cacheable-prefix threshold", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       cache_control: { type: "ephemeral" },
       messages: [
         { role: "user", content: "first question" },
@@ -257,7 +257,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("skips large requests when the marked cache prefix is small", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       system: [{ type: "text", text: "short stable prefix", cache_control: { type: "ephemeral" } }],
       messages: [
         { role: "user", content: "first question" },
@@ -272,7 +272,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("does not count unmarked later tools toward an earlier tool breakpoint", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       tools: [
         { name: "small_marked_tool", input_schema: { type: "object" }, cache_control: { type: "ephemeral" } },
         {
@@ -290,7 +290,7 @@ describe("upgradeCacheControlTtl transform", () => {
 
   it("does not count unmarked later nested content toward an earlier nested breakpoint", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       messages: [
         { role: "user", content: "first question" },
         { role: "assistant", content: "first answer" },
@@ -315,50 +315,24 @@ describe("upgradeCacheControlTtl transform", () => {
   });
 });
 
-describe("cacheTtlUpgrade in proxy request flow (no-persistence path)", () => {
-  let openai: MockServer;
-  let anthropic: MockServer;
-
-  beforeEach(async () => {
-    openai = await startOpenAIMock();
-    anthropic = await startAnthropicMock();
-  });
-
-  afterEach(async () => {
-    await openai.close();
-    await anthropic.close();
-  });
-
+describe("cacheTtlUpgrade in the gateway request flow", () => {
   it("does not mutate cache_control when cacheTtlUpgrade is not set (default off)", async () => {
-    const app = buildServer(
-      loadConfig({
-        ...process.env,
-        DATABASE_URL: "",
-        EVENT_STORE_PATH: "",
-        PROXY_TOKEN: "proxy-token",
-        ANTHROPIC_API_KEY: "anthropic-upstream-key",
-        ANTHROPIC_BASE_URL: anthropic.url,
-        OPENAI_API_KEY: "openai-key",
-        OPENAI_BASE_URL: openai.url,
-        LOG_LEVEL: "fatal"
-      })
-    );
-    const proxyUrl = await listen(app);
+    const fixture = await captureFixture("org_cache_ttl_default_off");
 
-    await fetch(`${proxyUrl}/v1/messages`, {
+    await fetch(`${fixture.proxyUrl}/v1/messages`, {
       method: "POST",
       headers: { "x-api-key": "proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         system: [{ type: "text", text: "You are helpful.", cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: "hi" }]
       })
     });
-    await app.close();
 
-    const providerCall = anthropic.records.find((rec) => rec.path === "/messages");
+    const providerCall = fixture.anthropic.records.find((rec) => rec.path === "/messages");
     expect(providerCall?.body.system[0].cache_control).toEqual({ type: "ephemeral" });
+    await fixture.close();
   });
 });
 
@@ -370,7 +344,7 @@ describe("cacheTtlUpgrade end to end (DB-backed)", () => {
     fixture = undefined;
   });
 
-  it("keeps large multi-turn Anthropic bodies on the default TTL until org reuse data supports 1h", async () => {
+  it("upgrades eligible large multi-turn Anthropic bodies when enabled", async () => {
     fixture = await captureFixture("org_cache_ttl_no_reuse");
     await fixture.persistence.organizationSettings.setCacheTtlUpgrade("org_cache_ttl_no_reuse", true);
 
@@ -378,7 +352,7 @@ describe("cacheTtlUpgrade end to end (DB-backed)", () => {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         system: [{ type: "text", text: "x".repeat(8192), cache_control: { type: "ephemeral" } }],
         messages: [
@@ -390,7 +364,7 @@ describe("cacheTtlUpgrade end to end (DB-backed)", () => {
     });
 
     const providerCall = fixture.anthropic.records.find((rec) => rec.path === "/messages");
-    expect(providerCall?.body.system[0].cache_control).toEqual({ type: "ephemeral" });
+    expect(providerCall?.body.system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
   it("rewrites large multi-turn outbound Anthropic bodies to ttl:1h when observed org reuse supports it", async () => {
@@ -418,7 +392,7 @@ describe("cacheTtlUpgrade end to end (DB-backed)", () => {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         system: [{ type: "text", text: "x".repeat(8192), cache_control: { type: "ephemeral" } }],
         messages: [
@@ -441,7 +415,7 @@ describe("cacheTtlUpgrade end to end (DB-backed)", () => {
       method: "POST",
       headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         system: [{ type: "text", text: "x".repeat(8192), cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: "hello" }]

@@ -392,7 +392,8 @@ export class WebSocketRoutingProxy {
         providerAttemptId: activeRequest.providerAttemptId,
         upstreamAttempt: 1,
         preparedRequestHash: requestBodyHash(body),
-        forwardedRequestHash: requestBodyHash(body)
+        forwardedRequestHash: requestBodyHash(body),
+        ...activeRequest.compressionTelemetry
       }
     });
   }

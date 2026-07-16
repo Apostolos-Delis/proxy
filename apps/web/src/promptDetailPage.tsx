@@ -9,7 +9,6 @@ import { useCopyFeedback } from "./jsonView";
 import { ExchangeCard } from "./promptExchangeCard";
 import { CompressionReceiptsCard, EventTimeline, RawJsonCard } from "./promptEventTimeline";
 import { FactsRail } from "./promptFactsRail";
-import { RoutePlanCard } from "./routePlanCard";
 import { PageState, PageTitle } from "./ui";
 
 const PromptDetailViewDocument = graphql(`
@@ -31,19 +30,16 @@ const PromptDetailViewDocument = graphql(`
         rawText
         redactedText
         expiresAt
-        finalRoute
+        requestedLogicalModel
+        resolvedLogicalModelId
+        accessProfileId
+        deploymentId
+        providerConnectionId
         provider
         selectedModel
-        classifier
+        routerDecision
         metadata
         createdAt
-        routingConfig {
-          configId
-          configName
-          versionId
-          version
-          configHash
-        }
         cost {
           selected
         }
@@ -64,78 +60,85 @@ const PromptDetailViewDocument = graphql(`
         rawText
         redactedText
         expiresAt
-        finalRoute
+        requestedLogicalModel
+        resolvedLogicalModelId
+        accessProfileId
+        deploymentId
+        providerConnectionId
         provider
         selectedModel
-        classifier
+        routerDecision
         metadata
         createdAt
-        routingConfig {
-          configId
-          configName
-          versionId
-          version
-          configHash
-        }
         cost {
           selected
         }
       }
       routeDecisions {
+        id
+        requestId
+        requestedModel
+        requestedLogicalModel
+        resolvedLogicalModelId
+        accessProfileId
+        routerKind
+        deploymentId
+        providerConnectionId
+        ingressWireId
+        egressWireId
+        wireAdapterVersion
         selectedProvider
         selectedModel
-        classifierRoute
-        finalRoute
         confidence
-        routeExecutionPlan
-        selectedCandidateId
+        reasonCodes
+        guardrailActions
+        routerDecisionId
+        routerDecision
         translated
         translatorId
-        routingConfig {
-          configId
-          configName
-          versionId
-          version
-          configHash
-        }
+        policyVersion
+        createdAt
       }
       providerAttempts {
         id
         requestId
         provider
         model
+        deploymentId
+        providerConnectionId
+        egressWireId
+        providerAdapterContractVersion
         terminalStatus
         statusCode
         error
-        routeCandidateId
-        attemptIndex
-        fallbackIndex
-        skipReason
       }
       request {
         requestId
         terminalStatus
-        finalRoute
         requestedModel
+        ingressWireId
+        requestedLogicalModel
+        resolvedLogicalModelId
+        accessProfileId
+        routerKind
+        deploymentId
+        providerConnectionId
+        egressWireId
+        wireAdapterVersion
         selectedModel
         provider
         latencyMs
         timeToFirstByteMs
         selectedCost
-        classifier
+        confidence
+        routerDecisionId
+        routerDecision
         usage {
           inputTokens
           cachedInputTokens
           outputTokens
           reasoningTokens
           totalTokens
-        }
-        routingConfig {
-          configId
-          configName
-          versionId
-          version
-          configHash
         }
       }
       compressionReceipts {
@@ -192,7 +195,7 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
   if (queryError) return <PageState title="Prompt" label={queryError.message} />;
   if (!queryData) return <PageState title="Prompt" label="No prompt data" />;
 
-  const { artifact, request, events, compressionReceipts, routeDecisions, providerAttempts } = queryData;
+  const { artifact, request, events, compressionReceipts } = queryData;
   const artifacts = queryData.requestArtifacts ?? [artifact];
   return (
     <div className="page page-enter">
@@ -218,7 +221,6 @@ export function PromptDetailPage({ artifactId }: { artifactId: string }) {
         <div className="detail-main">
           <ExchangeCard artifacts={artifacts} request={request} focusedArtifactId={artifact.artifactId} />
           <CompressionReceiptsCard receipts={compressionReceipts} />
-          <RoutePlanCard routeDecisions={routeDecisions} providerAttempts={providerAttempts} />
           <EventTimeline events={events} />
           <RawJsonCard artifact={artifact} request={request} />
         </div>

@@ -13,9 +13,6 @@ import type {
   OpenAICacheGroupModel,
   OpenAICacheTrendModel,
   OverviewDashboardShape,
-  RouteOutputGroupRowModel,
-  RouteOutputReportModel,
-  RouteOutputRowModel,
   OverviewModel,
   PromptCachePlanControlRowModel,
   PromptCachePlanReportModel,
@@ -37,7 +34,17 @@ import { CostTotals, TokenTotals } from "./core.js";
 import { RequestSummary } from "./requests.js";
 
 export const UsageGroupBy = builder.enumType("UsageGroupBy", {
-  values: ["user", "api_key", "provider", "model", "model_effort", "route", "surface", "session"] as const
+  values: [
+    "user",
+    "api_key",
+    "provider",
+    "model",
+    "logical_model",
+    "deployment",
+    "model_effort",
+    "surface",
+    "session"
+  ] as const
 });
 
 export const UsageInterval = builder.enumType("UsageInterval", {
@@ -53,9 +60,7 @@ export const LatencySummary = builder.objectRef<LatencySummaryModel>("LatencySum
 
 export const RouteQuality = builder.objectRef<RouteQualityModel>("RouteQuality").implement({
   fields: (t) => ({
-    lowConfidenceCount: t.exposeInt("lowConfidenceCount"),
-    cheaperLikelyWouldWorkCount: t.exposeInt("cheaperLikelyWouldWorkCount"),
-    cheapCausedRetriesOrRepairsCount: t.exposeInt("cheapCausedRetriesOrRepairsCount")
+    lowConfidenceCount: t.exposeInt("lowConfidenceCount")
   })
 });
 
@@ -225,42 +230,6 @@ export const ActiveSessionCount = builder
     })
   });
 
-export const RouteOutputRow = builder.objectRef<RouteOutputRowModel>("RouteOutputRow").implement({
-  fields: (t) => ({
-    route: t.exposeString("route"),
-    requests: t.exposeFloat("requests"),
-    outputTokens: t.exposeFloat("outputTokens"),
-    reasoningTokens: t.exposeFloat("reasoningTokens"),
-    avgOutputTokens: t.exposeFloat("avgOutputTokens"),
-    reasoningShare: t.exposeFloat("reasoningShare"),
-    outputCost: t.exposeFloat("outputCost")
-  })
-});
-
-export const RouteOutputGroupRow = builder
-  .objectRef<RouteOutputGroupRowModel>("RouteOutputGroupRow")
-  .implement({
-    fields: (t) => ({
-      key: t.exposeString("key"),
-      requests: t.exposeFloat("requests"),
-      outputTokens: t.exposeFloat("outputTokens"),
-      reasoningTokens: t.exposeFloat("reasoningTokens"),
-      avgOutputTokens: t.exposeFloat("avgOutputTokens"),
-      reasoningShare: t.exposeFloat("reasoningShare"),
-      outputCost: t.exposeFloat("outputCost")
-    })
-  });
-
-export const RouteOutputReport = builder.objectRef<RouteOutputReportModel>("RouteOutputReport").implement({
-  fields: (t) => ({
-    routes: t.expose("routes", { type: [RouteOutputRow] }),
-    models: t.expose("models", { type: [RouteOutputGroupRow] }),
-    users: t.expose("users", { type: [RouteOutputGroupRow] }),
-    apiKeys: t.expose("apiKeys", { type: [RouteOutputGroupRow] }),
-    workspaces: t.expose("workspaces", { type: [RouteOutputGroupRow] })
-  })
-});
-
 export const IdleGapBucket = builder.objectRef<IdleGapBucketModel>("IdleGapBucket").implement({
   fields: (t) => ({
     key: t.exposeString("key"),
@@ -396,7 +365,7 @@ export const OpenAICacheGroup = builder
       surface: t.exposeString("surface"),
       provider: t.exposeString("provider"),
       model: t.exposeString("model"),
-      route: t.exposeString("route"),
+      logicalModel: t.exposeString("logicalModel"),
       cacheGroupSource: t.exposeString("cacheGroupSource"),
       cacheGroupKey: t.exposeString("cacheGroupKey"),
       requestCount: t.exposeFloat("requestCount"),

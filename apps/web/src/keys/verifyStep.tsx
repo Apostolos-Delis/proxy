@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { fetchApiKeyVerification } from "../routing/data";
+import { fetchApiKeyVerification } from "./data";
 import { GlassCard, StatusIndicator } from "../ui";
 import { formatDateTime } from "../format";
 import { HarnessSetupGuide } from "../harnessSetupCard";

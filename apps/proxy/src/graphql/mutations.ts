@@ -1,5 +1,3 @@
-import { undatedModel } from "../pricing.js";
-import { probeProviderCredential, ProviderHealthProbeError } from "../providerHealthProbe.js";
 import { writeSettingsFile } from "../settings.js";
 import { requireAdminRole } from "./authz.js";
 import { builder } from "./builder.js";
@@ -7,7 +5,7 @@ import { scopedQueries, viewerPayload } from "./context.js";
 import { adminGraphQLError, mapAdminError, notFoundError } from "./errors.js";
 import { inviteUrl, sendInvitationEmail } from "./invitationDelivery.js";
 import { promptCaptureSettings, settingsResponse } from "./settingsPayload.js";
-import { MemberRole, ProviderAccountAuthType } from "./types/core.js";
+import { MemberRole } from "./types/core.js";
 import {
   AcceptedInvitation,
   Invitation,
@@ -15,127 +13,14 @@ import {
   UpdateUserRoleResult,
   UserStatusResult
 } from "./types/invitations.js";
-import { BedrockModelDiscoveryResult, ModelCatalogEntry, ModelPricingEntry } from "./types/pricing.js";
-import { ApiKey, CreateApiKeyResult, ProviderAccount, ProviderCredentialOAuthStart, ProviderCredentialOAuthStatus, ProviderHealthProbeResultType, ProviderRegistryEntry, RoutingConfigDetail } from "./types/routing.js";
+import { ApiKey, CreateApiKeyResult } from "./types/routing.js";
 import { PromptCaptureConfig, Settings, SettingsInput } from "./types/settings.js";
 import { Viewer, WorkspaceSummary } from "./types/viewer.js";
-
-const CreateRoutingConfigInput = builder.inputType("CreateRoutingConfigInput", {
-  fields: (t) => ({
-    name: t.string({ required: true }),
-    description: t.string(),
-    config: t.field({ type: "JSON", required: true })
-  })
-});
 
 const CreateApiKeyInput = builder.inputType("CreateApiKeyInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
     accessProfileId: t.id({ required: true })
-  })
-});
-
-const CreateProviderCredentialInput = builder.inputType("CreateProviderCredentialInput", {
-  fields: (t) => ({
-    provider: t.string({ required: true }),
-    name: t.string({ required: true }),
-    authType: t.field({ type: ProviderAccountAuthType }),
-    baseUrl: t.string(),
-    // Carries the API key, subscription token, or Bedrock bearer token depending on auth mode.
-    apiKey: t.string(),
-    credentialMode: t.string(),
-    region: t.string(),
-    endpointOverride: t.string(),
-    discoveryRegions: t.stringList(),
-    accessKeyId: t.string(),
-    secretAccessKey: t.string(),
-    sessionToken: t.string(),
-    chatgptAccountId: t.string()
-  })
-});
-
-const UpdateProviderCredentialInput = builder.inputType("UpdateProviderCredentialInput", {
-  fields: (t) => ({
-    providerAccountId: t.id({ required: true }),
-    name: t.string(),
-    baseUrl: t.string(),
-    apiKey: t.string(),
-    credentialMode: t.string(),
-    region: t.string(),
-    endpointOverride: t.string(),
-    discoveryRegions: t.stringList(),
-    accessKeyId: t.string(),
-    secretAccessKey: t.string(),
-    sessionToken: t.string()
-  })
-});
-
-const CreateProviderCredentialFromLocalAuthInput = builder.inputType("CreateProviderCredentialFromLocalAuthInput", {
-  fields: (t) => ({
-    provider: t.string({ required: true }),
-    name: t.string({ required: true }),
-    baseUrl: t.string()
-  })
-});
-
-const StartProviderCredentialOAuthInput = builder.inputType("StartProviderCredentialOAuthInput", {
-  fields: (t) => ({
-    provider: t.string({ required: true }),
-    name: t.string({ required: true })
-  })
-});
-
-const ProbeProviderCredentialInput = builder.inputType("ProbeProviderCredentialInput", {
-  fields: (t) => ({
-    providerAccountId: t.id({ required: true }),
-    model: t.string({ required: true }),
-    operation: t.string()
-  })
-});
-
-const RefreshBedrockModelCatalogInput = builder.inputType("RefreshBedrockModelCatalogInput", {
-  fields: (t) => ({
-    providerAccountId: t.id({ required: true })
-  })
-});
-
-const ProviderEndpointInput = builder.inputType("ProviderEndpointInput", {
-  fields: (t) => ({
-    dialect: t.string({ required: true }),
-    path: t.string(),
-    operation: t.string()
-  })
-});
-
-const CreateProviderInput = builder.inputType("CreateProviderInput", {
-  fields: (t) => ({
-    slug: t.string({ required: true }),
-    displayName: t.string({ required: true }),
-    baseUrl: t.string({ required: true }),
-    adapterKind: t.string(),
-    adapterConfig: t.field({ type: "JSON" }),
-    authStyle: t.string({ required: true }),
-    endpoints: t.field({ type: [ProviderEndpointInput], required: true }),
-    defaultHeaders: t.field({ type: "JSON" }),
-    capabilities: t.field({ type: "JSON" }),
-    forwardHarnessHeaders: t.boolean(),
-    enabled: t.boolean()
-  })
-});
-
-const UpdateProviderInput = builder.inputType("UpdateProviderInput", {
-  fields: (t) => ({
-    providerId: t.id({ required: true }),
-    displayName: t.string({ required: true }),
-    baseUrl: t.string({ required: true }),
-    adapterKind: t.string(),
-    adapterConfig: t.field({ type: "JSON" }),
-    authStyle: t.string({ required: true }),
-    endpoints: t.field({ type: [ProviderEndpointInput], required: true }),
-    defaultHeaders: t.field({ type: "JSON" }),
-    capabilities: t.field({ type: "JSON" }),
-    forwardHarnessHeaders: t.boolean(),
-    enabled: t.boolean()
   })
 });
 
@@ -155,68 +40,6 @@ const CreateInvitationInput = builder.inputType("CreateInvitationInput", {
   })
 });
 
-const SetModelPricingInput = builder.inputType("SetModelPricingInput", {
-  fields: (t) => ({
-    provider: t.string({ required: true }),
-    model: t.string({ required: true }),
-    inputCostPerMtok: t.float({ required: true }),
-    outputCostPerMtok: t.float({ required: true }),
-    cacheReadCostPerMtok: t.float(),
-    cacheWriteCostPerMtok: t.float()
-  })
-});
-
-const ModelCatalogPricingInput = builder.inputType("ModelCatalogPricingInput", {
-  fields: (t) => ({
-    inputCostPerMtok: t.float(),
-    outputCostPerMtok: t.float(),
-    cacheReadCostPerMtok: t.float(),
-    cacheWriteCostPerMtok: t.float()
-  })
-});
-
-const UpsertModelCatalogInput = builder.inputType("UpsertModelCatalogInput", {
-  fields: (t) => ({
-    provider: t.string({ required: true }),
-    model: t.string({ required: true }),
-    displayName: t.string(),
-    dialects: t.stringList(),
-    contextWindow: t.int(),
-    maxOutputTokens: t.int(),
-    supportsStreaming: t.boolean(),
-    supportsTools: t.boolean(),
-    supportsImages: t.boolean(),
-    supportsReasoning: t.boolean(),
-    pricing: t.field({ type: ModelCatalogPricingInput })
-  })
-});
-
-// An unpriced baseline model would book baseline $0 and silently flip
-// savings to -spent, and the ledger-driven unpriced-traffic warning never
-// covers it (baseline models do not appear in the ledger). Reject it here,
-// against effective pricing (defaults, env, and org overrides; dated names
-// resolve through their undated entry). Empty values clear to the
-// always-priced defaults.
-async function assertBaselineModelsPriced(
-  context: Parameters<typeof scopedQueries>[0],
-  costBaseline: { anthropicMessagesModel: string; openaiResponsesModel: string; openaiChatModel: string }
-) {
-  const queries = scopedQueries(context);
-  if (!queries) return;
-  const entries = await queries.modelPricing();
-  const priced = new Set(
-    entries.filter((entry) => entry.source !== "unpriced").map((entry) => entry.model)
-  );
-  for (const model of [
-    costBaseline.anthropicMessagesModel.trim(),
-    costBaseline.openaiResponsesModel.trim(),
-    costBaseline.openaiChatModel.trim()
-  ]) {
-    if (!model || priced.has(model) || priced.has(undatedModel(model))) continue;
-    throw adminGraphQLError(`baseline_model_unpriced: ${model}`, 400);
-  }
-}
-
 function mapSettingsError(error: unknown): never {
   if (error instanceof Error && error.message === "settings_file_invalid_json") {
     throw adminGraphQLError("settings_file_invalid_json", 400);
@@ -225,19 +48,6 @@ function mapSettingsError(error: unknown): never {
     throw adminGraphQLError("invalid_settings", 400, (error as { issues: unknown }).issues);
   }
   throw error;
-}
-
-function providerEndpointInput(endpoint: {
-  dialect: string;
-  path?: string | null;
-  operation?: string | null;
-}) {
-  const normalized: { dialect: string; path?: string; operation?: string } = {
-    dialect: endpoint.dialect
-  };
-  if (endpoint.path != null) normalized.path = endpoint.path;
-  if (endpoint.operation != null) normalized.operation = endpoint.operation;
-  return normalized;
 }
 
 builder.mutationFields((t) => ({
@@ -249,13 +59,8 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_root, args, context) => {
       try {
-        const session = await context.adminAuth.login({
-          email: args.email,
-          password: args.password
-        });
-        context.setSessionCookie(
-          context.adminAuth.sessionCookie(session.token, session.expiresAt)
-        );
+        const session = await context.adminAuth.login({ email: args.email, password: args.password });
+        context.setSessionCookie(context.adminAuth.sessionCookie(session.token, session.expiresAt));
         return await viewerPayload(session.identity, context.persistence);
       } catch (error) {
         mapAdminError(error);
@@ -279,9 +84,7 @@ builder.mutationFields((t) => ({
         const session = await context.adminAuth.switchOrganization(context.requestHeaders, {
           organizationId: String(args.organizationId)
         });
-        context.setSessionCookie(
-          context.adminAuth.sessionCookie(session.token, session.expiresAt)
-        );
+        context.setSessionCookie(context.adminAuth.sessionCookie(session.token, session.expiresAt));
         return await viewerPayload(session.identity, context.persistence);
       } catch (error) {
         mapAdminError(error);
@@ -320,11 +123,7 @@ builder.mutationFields((t) => ({
             description: args.input.description ?? undefined
           }
         });
-        return {
-          id: created.workspaceId,
-          slug: created.slug,
-          name: created.name
-        };
+        return { id: created.workspaceId, slug: created.slug, name: created.name };
       } catch (error) {
         mapAdminError(error);
       }
@@ -333,10 +132,7 @@ builder.mutationFields((t) => ({
 
   acceptInvitation: t.field({
     type: AcceptedInvitation,
-    args: {
-      token: t.arg.string({ required: true }),
-      name: t.arg.string()
-    },
+    args: { token: t.arg.string({ required: true }), name: t.arg.string() },
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("invitation_not_found");
       try {
@@ -365,9 +161,6 @@ builder.mutationFields((t) => ({
           costBaseline,
           ...fileInput
         } = args.input;
-        if (context.persistence && costBaseline) {
-          await assertBaselineModelsPriced(context, costBaseline);
-        }
         const settings = await writeSettingsFile(context.config.settingsPath, fileInput);
         if (
           context.persistence &&
@@ -386,35 +179,26 @@ builder.mutationFields((t) => ({
             systemPrompt?.trim() ? systemPrompt.trim() : null
           );
         }
-        if (context.persistence && cacheTtlUpgrade !== undefined && cacheTtlUpgrade !== null) {
-          await context.persistence.organizationSettings.setCacheTtlUpgrade(
-            identity.organizationId,
-            cacheTtlUpgrade
-          );
+        if (context.persistence && cacheTtlUpgrade != null) {
+          await context.persistence.organizationSettings.setCacheTtlUpgrade(identity.organizationId, cacheTtlUpgrade);
         }
-        if (context.persistence && automaticCaching !== undefined && automaticCaching !== null) {
-          await context.persistence.organizationSettings.setAutomaticCaching(
-            identity.organizationId,
-            automaticCaching
-          );
+        if (context.persistence && automaticCaching != null) {
+          await context.persistence.organizationSettings.setAutomaticCaching(identity.organizationId, automaticCaching);
         }
-        if (context.persistence && toolResultCompressionPolicy !== undefined && toolResultCompressionPolicy !== null) {
+        if (context.persistence && toolResultCompressionPolicy != null) {
           await context.persistence.organizationSettings.setToolResultCompressionPolicy(
             identity.organizationId,
             toolResultCompressionPolicy
           );
         }
-        if (context.persistence && duplicateToolResultReferences !== undefined && duplicateToolResultReferences !== null) {
+        if (context.persistence && duplicateToolResultReferences != null) {
           await context.persistence.organizationSettings.setDuplicateToolResultReferences(
             identity.organizationId,
             duplicateToolResultReferences
           );
         }
         if (context.persistence && costBaseline) {
-          await context.persistence.organizationSettings.setCostBaseline(
-            identity.organizationId,
-            costBaseline
-          );
+          await context.persistence.organizationSettings.setCostBaseline(identity.organizationId, costBaseline);
         }
         return await settingsResponse(
           context.config,
@@ -451,221 +235,6 @@ builder.mutationFields((t) => ({
     }
   }),
 
-  setModelPricing: t.field({
-    type: [ModelPricingEntry],
-    args: { input: t.arg({ type: SetModelPricingInput, required: true }) },
-    resolve: async (_root, args, context) => {
-      const identity = requireAdminRole(context);
-      const queries = scopedQueries(context);
-      if (!context.persistence || !queries) throw notFoundError("model_pricing_unavailable");
-      try {
-        await context.persistence.modelPricingAdmin.setPricing({
-          organizationId: identity.organizationId,
-          actorUserId: identity.userId,
-          body: {
-            provider: args.input.provider,
-            model: args.input.model,
-            inputCostPerMtok: args.input.inputCostPerMtok,
-            outputCostPerMtok: args.input.outputCostPerMtok,
-            ...(args.input.cacheReadCostPerMtok == null ? {} : { cacheReadCostPerMtok: args.input.cacheReadCostPerMtok }),
-            ...(args.input.cacheWriteCostPerMtok == null ? {} : { cacheWriteCostPerMtok: args.input.cacheWriteCostPerMtok })
-          }
-        });
-        queries.invalidateModelPricing();
-        return await queries.modelPricing();
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  upsertModelCatalogEntry: t.field({
-    type: ModelCatalogEntry,
-    nullable: true,
-    args: { input: t.arg({ type: UpsertModelCatalogInput, required: true }) },
-    resolve: async (_root, args, context) => {
-      const identity = requireAdminRole(context);
-      const queries = scopedQueries(context);
-      if (!context.persistence || !queries) throw notFoundError("model_catalog_unavailable");
-      try {
-        const result = await context.persistence.modelCatalogAdmin.upsertManualModel({
-          organizationId: identity.organizationId,
-          actorUserId: identity.userId,
-          body: {
-            provider: args.input.provider,
-            model: args.input.model,
-            displayName: args.input.displayName ?? undefined,
-            dialects: args.input.dialects?.filter((value): value is string => value != null) ?? undefined,
-            contextWindow: args.input.contextWindow ?? undefined,
-            maxOutputTokens: args.input.maxOutputTokens ?? undefined,
-            supportsStreaming: args.input.supportsStreaming ?? undefined,
-            supportsTools: args.input.supportsTools ?? undefined,
-            supportsImages: args.input.supportsImages ?? undefined,
-            supportsReasoning: args.input.supportsReasoning ?? undefined,
-            pricing: args.input.pricing ? {
-              ...(args.input.pricing.inputCostPerMtok == null ? {} : { inputCostPerMtok: args.input.pricing.inputCostPerMtok }),
-              ...(args.input.pricing.outputCostPerMtok == null ? {} : { outputCostPerMtok: args.input.pricing.outputCostPerMtok }),
-              ...(args.input.pricing.cacheReadCostPerMtok == null ? {} : { cacheReadCostPerMtok: args.input.pricing.cacheReadCostPerMtok }),
-              ...(args.input.pricing.cacheWriteCostPerMtok == null ? {} : { cacheWriteCostPerMtok: args.input.pricing.cacheWriteCostPerMtok })
-            } : undefined
-          }
-        });
-        queries.invalidateModelPricing();
-        const entries = await queries.modelCatalog();
-        return entries.find((entry) => entry.provider === result.provider && entry.model === result.model) ?? null;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  refreshBedrockModelCatalog: t.field({
-    type: BedrockModelDiscoveryResult,
-    args: { input: t.arg({ type: RefreshBedrockModelCatalogInput, required: true }) },
-    resolve: async (_root, args, context) => {
-      const identity = requireAdminRole(context);
-      const queries = scopedQueries(context);
-      if (!context.persistence || !queries) throw notFoundError("model_catalog_unavailable");
-      const result = await context.persistence.bedrockModelDiscovery.refreshProviderAccount({
-        organizationId: identity.organizationId,
-        actorUserId: identity.userId,
-        providerAccountId: String(args.input.providerAccountId)
-      });
-      queries.invalidateModelPricing();
-      return result;
-    }
-  }),
-
-  clearModelPricing: t.field({
-    type: [ModelPricingEntry],
-    args: {
-      provider: t.arg.string({ required: true }),
-      model: t.arg.string({ required: true })
-    },
-    resolve: async (_root, args, context) => {
-      const identity = requireAdminRole(context);
-      const queries = scopedQueries(context);
-      if (!context.persistence || !queries) throw notFoundError("model_pricing_unavailable");
-      try {
-        await context.persistence.modelPricingAdmin.clearPricing({
-          organizationId: identity.organizationId,
-          actorUserId: identity.userId,
-          body: {
-            provider: args.provider,
-            model: args.model
-          }
-        });
-        queries.invalidateModelPricing();
-        return await queries.modelPricing();
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  createRoutingConfig: t.field({
-    type: RoutingConfigDetail,
-    args: { input: t.arg({ type: CreateRoutingConfigInput, required: true }) },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("routing_configs_not_found");
-      const identity = requireAdminRole(context);
-      try {
-        const created = await context.persistence.routingConfigAdmin.createConfig({
-          organizationId: identity.organizationId,
-          workspaceId: identity.workspaceId,
-          actorUserId: identity.userId,
-          body: {
-            name: args.input.name,
-            description: args.input.description ?? null,
-            config: args.input.config
-          }
-        });
-        const detail = await scopedQueries(context)?.routingConfigDetail(created.configId);
-        if (!detail) throw notFoundError("routing_config_not_found");
-        return detail;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  createRoutingConfigVersion: t.field({
-    type: RoutingConfigDetail,
-    args: {
-      configId: t.arg.id({ required: true }),
-      config: t.arg({ type: "JSON", required: true })
-    },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("routing_config_not_found");
-      const configId = String(args.configId);
-      const identity = requireAdminRole(context);
-      try {
-        await context.persistence.routingConfigAdmin.createVersion({
-          organizationId: identity.organizationId,
-          workspaceId: identity.workspaceId,
-          actorUserId: identity.userId,
-          configId,
-          body: { config: args.config }
-        });
-        const detail = await scopedQueries(context)?.routingConfigDetail(configId);
-        if (!detail) throw notFoundError("routing_config_not_found");
-        return detail;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  activateRoutingConfigVersion: t.field({
-    type: RoutingConfigDetail,
-    args: {
-      configId: t.arg.id({ required: true }),
-      versionId: t.arg.id({ required: true })
-    },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("routing_config_version_not_found");
-      const configId = String(args.configId);
-      const identity = requireAdminRole(context);
-      try {
-        await context.persistence.routingConfigAdmin.activateVersion({
-          organizationId: identity.organizationId,
-          workspaceId: identity.workspaceId,
-          actorUserId: identity.userId,
-          configId,
-          versionId: String(args.versionId)
-        });
-        const detail = await scopedQueries(context)?.routingConfigDetail(configId);
-        if (!detail) throw notFoundError("routing_config_not_found");
-        return detail;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  archiveRoutingConfig: t.field({
-    type: RoutingConfigDetail,
-    args: { configId: t.arg.id({ required: true }) },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("routing_config_not_found");
-      const configId = String(args.configId);
-      const identity = requireAdminRole(context);
-      try {
-        await context.persistence.routingConfigAdmin.archiveConfig({
-          organizationId: identity.organizationId,
-          workspaceId: identity.workspaceId,
-          actorUserId: identity.userId,
-          configId
-        });
-        const detail = await scopedQueries(context)?.routingConfigDetail(configId);
-        if (!detail) throw notFoundError("routing_config_not_found");
-        return detail;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
   createApiKey: t.field({
     type: CreateApiKeyResult,
     args: { input: t.arg({ type: CreateApiKeyInput, required: true }) },
@@ -677,16 +246,10 @@ builder.mutationFields((t) => ({
           organizationId: identity.organizationId,
           workspaceId: identity.workspaceId,
           actorUserId: identity.userId,
-          body: {
-            name: args.input.name,
-            accessProfileId: String(args.input.accessProfileId)
-          }
+          body: { name: args.input.name, accessProfileId: String(args.input.accessProfileId) }
         });
         const detail = await scopedQueries(context)?.apiKeyDetail(created.apiKeyId);
-        return {
-          apiKey: detail?.apiKey ?? null,
-          secret: created.secret
-        };
+        return { apiKey: detail?.apiKey ?? null, secret: created.secret };
       } catch (error) {
         mapAdminError(error);
       }
@@ -716,343 +279,6 @@ builder.mutationFields((t) => ({
     }
   }),
 
-  assignApiKeyRoutingConfig: t.field({
-    type: ApiKey,
-    args: {
-      apiKeyId: t.arg.id({ required: true }),
-      routingConfigId: t.arg.id()
-    },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("api_key_not_found");
-      const apiKeyId = String(args.apiKeyId);
-      const identity = requireAdminRole(context);
-      try {
-        await context.persistence.routingConfigAdmin.assignApiKeyRoutingConfig({
-          organizationId: identity.organizationId,
-          workspaceId: identity.workspaceId,
-          actorUserId: identity.userId,
-          apiKeyId,
-          body: { routingConfigId: args.routingConfigId ? String(args.routingConfigId) : null }
-        });
-        const detail = await scopedQueries(context)?.apiKeyDetail(apiKeyId);
-        if (!detail) throw notFoundError("api_key_not_found");
-        return detail.apiKey;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  createProviderCredential: t.field({
-    type: ProviderAccount,
-    nullable: true,
-    args: { input: t.arg({ type: CreateProviderCredentialInput, required: true }) },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("provider_accounts_not_found");
-      const identity = requireAdminRole(context);
-      try {
-        const created = await context.persistence.providerCredentialAdmin.createCredential({
-          organizationId: identity.organizationId,
-          actorUserId: identity.userId,
-          body: {
-            provider: args.input.provider,
-            name: args.input.name,
-            authType: args.input.authType ?? undefined,
-            baseUrl: args.input.baseUrl ?? undefined,
-            apiKey: args.input.apiKey ?? undefined,
-            credentialMode: args.input.credentialMode ?? undefined,
-            region: args.input.region ?? undefined,
-            endpointOverride: args.input.endpointOverride ?? undefined,
-            discoveryRegions: args.input.discoveryRegions ?? undefined,
-            accessKeyId: args.input.accessKeyId ?? undefined,
-            secretAccessKey: args.input.secretAccessKey ?? undefined,
-            sessionToken: args.input.sessionToken ?? undefined,
-            chatgptAccountId: args.input.chatgptAccountId ?? undefined
-          }
-        });
-        const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
-        return accounts.find((account) => account.id === created.providerAccountId) ?? null;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  createProviderCredentialFromLocalAuth: t.field({
-    type: ProviderAccount,
-    nullable: true,
-    args: { input: t.arg({ type: CreateProviderCredentialFromLocalAuthInput, required: true }) },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("provider_accounts_not_found");
-      const identity = requireAdminRole(context);
-      try {
-        const created = await context.persistence.providerCredentialAdmin.createCredentialFromLocalAuth({
-          organizationId: identity.organizationId,
-          actorUserId: identity.userId,
-          body: {
-            provider: args.input.provider,
-            name: args.input.name,
-            baseUrl: args.input.baseUrl ?? undefined
-          }
-        });
-        const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
-        return accounts.find((account) => account.id === created.providerAccountId) ?? null;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  updateProviderCredential: t.field({
-    type: ProviderAccount,
-    nullable: true,
-    args: { input: t.arg({ type: UpdateProviderCredentialInput, required: true }) },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("provider_accounts_not_found");
-      const identity = requireAdminRole(context);
-      const providerAccountId = String(args.input.providerAccountId);
-      try {
-        const updated = await context.persistence.providerCredentialAdmin.updateCredential({
-          organizationId: identity.organizationId,
-          actorUserId: identity.userId,
-          providerAccountId,
-          body: {
-            name: args.input.name ?? undefined,
-            baseUrl: args.input.baseUrl === null ? null : args.input.baseUrl ?? undefined,
-            apiKey: args.input.apiKey ?? undefined,
-            credentialMode: args.input.credentialMode ?? undefined,
-            region: args.input.region ?? undefined,
-            endpointOverride: args.input.endpointOverride === null ? null : args.input.endpointOverride ?? undefined,
-            discoveryRegions: args.input.discoveryRegions ?? undefined,
-            accessKeyId: args.input.accessKeyId ?? undefined,
-            secretAccessKey: args.input.secretAccessKey ?? undefined,
-            sessionToken: args.input.sessionToken ?? undefined
-          }
-        });
-        const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
-        return accounts.find((account) => account.id === updated.providerAccountId) ?? null;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  probeProviderCredential: t.field({
-    type: ProviderHealthProbeResultType,
-    args: { input: t.arg({ type: ProbeProviderCredentialInput, required: true }) },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("provider_accounts_not_found");
-      const identity = requireAdminRole(context);
-      try {
-        return await probeProviderCredential({
-          config: context.config,
-          events: context.events,
-          providerCredentials: context.persistence.providerCredentials,
-          providerRegistry: context.persistence.providerRegistry
-        }, {
-          organizationId: identity.organizationId,
-          workspaceId: identity.workspaceId,
-          actorUserId: identity.userId,
-          providerAccountId: String(args.input.providerAccountId),
-          model: args.input.model,
-          operation: args.input.operation ?? undefined
-        });
-      } catch (error) {
-        if (error instanceof ProviderHealthProbeError) {
-          throw adminGraphQLError(error.message, error.statusCode);
-        }
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  startProviderCredentialOAuth: t.field({
-    type: ProviderCredentialOAuthStart,
-    args: { input: t.arg({ type: StartProviderCredentialOAuthInput, required: true }) },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("provider_accounts_not_found");
-      const identity = requireAdminRole(context);
-      if (args.input.provider === "anthropic" && !context.config.subscriptionOAuthEnabled) {
-        throw adminGraphQLError("subscription_oauth_disabled", 400);
-      }
-      if (args.input.provider !== "openai" && args.input.provider !== "anthropic") {
-        throw adminGraphQLError("provider_oauth_unsupported_provider", 400);
-      }
-      try {
-        if (args.input.provider === "anthropic") {
-          return await context.persistence.providerCredentialOAuth.startAnthropicClaudeCodeAuth({
-            organizationId: identity.organizationId,
-            actorUserId: identity.userId,
-            name: args.input.name
-          });
-        }
-        return await context.persistence.providerCredentialOAuth.startOpenAICodexDeviceAuth({
-          organizationId: identity.organizationId,
-          actorUserId: identity.userId,
-          name: args.input.name
-        });
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  cancelProviderCredentialOAuth: t.field({
-    type: ProviderCredentialOAuthStatus,
-    nullable: true,
-    args: { loginId: t.arg.id({ required: true }) },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("provider_accounts_not_found");
-      const identity = requireAdminRole(context);
-      return context.persistence.providerCredentialOAuth.cancel(String(args.loginId), {
-        organizationId: identity.organizationId,
-        actorUserId: identity.userId
-      });
-    }
-  }),
-
-  createProvider: t.field({
-    type: ProviderRegistryEntry,
-    nullable: true,
-    args: { input: t.arg({ type: CreateProviderInput, required: true }) },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("providers_not_found");
-      const identity = requireAdminRole(context);
-      try {
-        const created = await context.persistence.providerRegistryAdmin.createProvider({
-          organizationId: identity.organizationId,
-          actorUserId: identity.userId,
-          body: {
-            slug: args.input.slug,
-            displayName: args.input.displayName,
-            baseUrl: args.input.baseUrl,
-            adapterKind: args.input.adapterKind ?? undefined,
-            adapterConfig: args.input.adapterConfig ?? undefined,
-            authStyle: args.input.authStyle,
-            endpoints: args.input.endpoints.map(providerEndpointInput),
-            defaultHeaders: args.input.defaultHeaders ?? undefined,
-            capabilities: args.input.capabilities ?? undefined,
-            forwardHarnessHeaders: args.input.forwardHarnessHeaders ?? undefined,
-            enabled: args.input.enabled ?? undefined
-          }
-        });
-        const providers = (await scopedQueries(context)?.providers())?.data ?? [];
-        return providers.find((provider) => provider.id === created.providerId) ?? null;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  updateProvider: t.field({
-    type: ProviderRegistryEntry,
-    nullable: true,
-    args: { input: t.arg({ type: UpdateProviderInput, required: true }) },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("provider_not_found");
-      const identity = requireAdminRole(context);
-      const providerId = String(args.input.providerId);
-      try {
-        await context.persistence.providerRegistryAdmin.updateProvider({
-          organizationId: identity.organizationId,
-          actorUserId: identity.userId,
-          providerId,
-          body: {
-            displayName: args.input.displayName,
-            baseUrl: args.input.baseUrl,
-            adapterKind: args.input.adapterKind ?? undefined,
-            adapterConfig: args.input.adapterConfig ?? undefined,
-            authStyle: args.input.authStyle,
-            endpoints: args.input.endpoints.map(providerEndpointInput),
-            defaultHeaders: args.input.defaultHeaders ?? undefined,
-            capabilities: args.input.capabilities ?? undefined,
-            forwardHarnessHeaders: args.input.forwardHarnessHeaders ?? undefined,
-            enabled: args.input.enabled ?? undefined
-          }
-        });
-        const providers = (await scopedQueries(context)?.providers())?.data ?? [];
-        return providers.find((provider) => provider.id === providerId) ?? null;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  disableProvider: t.field({
-    type: ProviderRegistryEntry,
-    nullable: true,
-    args: { providerId: t.arg.id({ required: true }) },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("provider_not_found");
-      const identity = requireAdminRole(context);
-      const providerId = String(args.providerId);
-      try {
-        await context.persistence.providerRegistryAdmin.disableProvider({
-          organizationId: identity.organizationId,
-          actorUserId: identity.userId,
-          providerId
-        });
-        const providers = (await scopedQueries(context)?.providers())?.data ?? [];
-        return providers.find((provider) => provider.id === providerId) ?? null;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  revokeProviderCredential: t.field({
-    type: ProviderAccount,
-    nullable: true,
-    args: { providerAccountId: t.arg.id({ required: true }) },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("provider_credential_not_found");
-      const providerAccountId = String(args.providerAccountId);
-      const identity = requireAdminRole(context);
-      try {
-        await context.persistence.providerCredentialAdmin.revokeCredential({
-          organizationId: identity.organizationId,
-          actorUserId: identity.userId,
-          providerAccountId
-        });
-        const accounts = (await scopedQueries(context)?.providerAccounts())?.data ?? [];
-        return accounts.find((account) => account.id === providerAccountId) ?? null;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
-  assignApiKeyProviderAccount: t.field({
-    type: ApiKey,
-    args: {
-      apiKeyId: t.arg.id({ required: true }),
-      provider: t.arg.string({ required: true }),
-      providerAccountId: t.arg.id()
-    },
-    resolve: async (_root, args, context) => {
-      if (!context.persistence) throw notFoundError("api_key_not_found");
-      const apiKeyId = String(args.apiKeyId);
-      const identity = requireAdminRole(context);
-      try {
-        await context.persistence.providerCredentialAdmin.bindApiKeyCredential({
-          organizationId: identity.organizationId,
-          workspaceId: identity.workspaceId,
-          actorUserId: identity.userId,
-          apiKeyId,
-          body: {
-            provider: args.provider,
-            providerAccountId: args.providerAccountId ? String(args.providerAccountId) : null
-          }
-        });
-        const detail = await scopedQueries(context)?.apiKeyDetail(apiKeyId);
-        if (!detail) throw notFoundError("api_key_not_found");
-        return detail.apiKey;
-      } catch (error) {
-        mapAdminError(error);
-      }
-    }
-  }),
-
   createInvitation: t.field({
     type: InvitationActionResult,
     args: { input: t.arg({ type: CreateInvitationInput, required: true }) },
@@ -1064,11 +290,7 @@ builder.mutationFields((t) => ({
         const created = await context.persistence.userAdmin.createInvitation({
           organizationId: identity.organizationId,
           actorUserId: identity.userId,
-          body: {
-            email: args.input.email,
-            name: args.input.name ?? undefined,
-            role: args.input.role
-          }
+          body: { email: args.input.email, name: args.input.name ?? undefined, role: args.input.role }
         });
         const invitation = (await queries.invitationDetail(created.invitationId))?.invitation ?? null;
         const emailDelivery = await sendInvitationEmail(queries, context.config, context.emailService, {
@@ -1076,11 +298,7 @@ builder.mutationFields((t) => ({
           token: created.token,
           inviterName: identity.name ?? identity.email
         });
-        return {
-          invitation,
-          inviteUrl: inviteUrl(context.config, created.token),
-          emailDelivery
-        };
+        return { invitation, inviteUrl: inviteUrl(context.config, created.token), emailDelivery };
       } catch (error) {
         mapAdminError(error);
       }
@@ -1107,11 +325,7 @@ builder.mutationFields((t) => ({
           token: resent.token,
           inviterName: identity.name ?? identity.email
         });
-        return {
-          invitation,
-          inviteUrl: inviteUrl(context.config, resent.token),
-          emailDelivery
-        };
+        return { invitation, inviteUrl: inviteUrl(context.config, resent.token), emailDelivery };
       } catch (error) {
         mapAdminError(error);
       }
@@ -1132,8 +346,7 @@ builder.mutationFields((t) => ({
           actorUserId: identity.userId,
           invitationId
         });
-        const detail = await scopedQueries(context)?.invitationDetail(invitationId);
-        return detail?.invitation ?? null;
+        return (await scopedQueries(context)?.invitationDetail(invitationId))?.invitation ?? null;
       } catch (error) {
         mapAdminError(error);
       }
@@ -1142,10 +355,7 @@ builder.mutationFields((t) => ({
 
   updateUserRole: t.field({
     type: UpdateUserRoleResult,
-    args: {
-      userId: t.arg.id({ required: true }),
-      role: t.arg({ type: MemberRole, required: true })
-    },
+    args: { userId: t.arg.id({ required: true }), role: t.arg({ type: MemberRole, required: true }) },
     resolve: async (_root, args, context) => {
       if (!context.persistence) throw notFoundError("member_not_found");
       const identity = requireAdminRole(context);

@@ -71,10 +71,6 @@ export function SearchPalette({ isAdmin, onClose }: { isAdmin: boolean; onClose:
       void navigate({ to: "/logs/$artifactId", params: { artifactId: action.id } });
       return;
     }
-    if (action.kind === "routing_config") {
-      void navigate({ to: "/routing/$configId", params: { configId: action.id } });
-      return;
-    }
     if (action.kind === "user") {
       void navigate({ to: "/users" });
       return;

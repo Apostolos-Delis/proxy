@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, Download, Layers, Route } from "lucide-react";
+import { Boxes, Cpu, Download, Layers } from "lucide-react";
 
 import { isListedPromptArtifact } from "./artifactKinds";
 import { downloadJson } from "./dashboard";
@@ -8,7 +8,6 @@ import { compactId, formatDateTime, formatMoney } from "./format";
 import { graphql } from "./gql";
 import type { PromptsListQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
-import { RoutingConfigMicro } from "./routingSnapshot";
 import { ConsoleTable, optionItems, type ConsoleTableAdvancedField, type ConsoleTableColumn, type ConsoleTableFilter } from "./table";
 import { CodePill, PageState, PageTitle, RouteBadge } from "./ui";
 
@@ -22,15 +21,12 @@ const PromptsListDocument = graphql(`
         surface
         kind
         preview
-        finalRoute
+        requestedLogicalModel
+        resolvedLogicalModelId
+        deploymentId
+        providerConnectionId
         selectedModel
         createdAt
-        routingConfig {
-          configId
-          configName
-          version
-          configHash
-        }
         cost {
           selected
         }
@@ -85,18 +81,13 @@ const promptColumns: ConsoleTableColumn<PromptSummary>[] = [
   { id: "user", header: "User", size: 160, accessorFn: (prompt) => prompt.userId ?? "unknown", cell: ({ row }) => <CodePill value={compactId(row.original.userId ?? "unknown", 8)} /> },
   { id: "session", header: "Session", size: 160, accessorFn: (prompt) => prompt.sessionId ?? "unknown", cell: ({ row }) => <CodePill value={compactId(row.original.sessionId ?? "unknown", 8)} /> },
   { id: "surface", header: "Surface", size: 120, accessorFn: (prompt) => prompt.surface },
-  { id: "route", header: "Route", size: 120, accessorFn: promptRoute, cell: ({ row }) => <RouteBadge route={row.original.finalRoute} /> },
+  { id: "logicalModel", header: "Logical model", size: 180, accessorFn: promptLogicalModel, cell: ({ row }) => <RouteBadge route={promptLogicalModel(row.original)} /> },
   {
     id: "model",
     header: "Model",
     size: 220,
     accessorFn: promptModel,
-    cell: ({ row }) => (
-      <>
-        <span className="mono">{promptModel(row.original)}</span>
-        <RoutingConfigMicro snapshot={row.original.routingConfig} />
-      </>
-    )
+    cell: ({ row }) => <span className="mono">{promptModel(row.original)}</span>
   },
   { id: "cost", header: "Cost", size: 96, accessorFn: (prompt) => prompt.cost.selected, cell: ({ row }) => <span className="mono">{formatMoney(row.original.cost.selected)}</span> },
   { id: "created", header: "Created", size: 170, accessorFn: (prompt) => prompt.createdAt, cell: ({ row }) => formatDateTime(row.original.createdAt) }
@@ -107,16 +98,17 @@ const promptAdvancedFields: ConsoleTableAdvancedField<PromptSummary>[] = [
   { id: "user", label: "User", getValue: (prompt) => prompt.userId },
   { id: "session", label: "Session", getValue: (prompt) => prompt.sessionId },
   { id: "surface", label: "Surface", getValue: (prompt) => prompt.surface },
-  { id: "route", label: "Route", getValue: promptRoute },
+  { id: "logicalModel", label: "Logical model", getValue: promptLogicalModel },
   { id: "model", label: "Model", getValue: promptModel },
-  { id: "routingConfig", label: "Routing config", getValue: (prompt) => prompt.routingConfig?.configName }
+  { id: "deployment", label: "Deployment", getValue: (prompt) => prompt.deploymentId },
+  { id: "providerConnection", label: "Provider connection", getValue: (prompt) => prompt.providerConnectionId }
 ];
 
 function promptFilters(prompts: PromptSummary[]): ConsoleTableFilter<PromptSummary>[] {
   return [
     { id: "surface", label: "Surface", allLabel: "All surfaces", icon: <Layers />, options: optionItems(prompts.map((prompt) => prompt.surface)), getValue: (prompt) => prompt.surface },
-    { id: "route", label: "Route", allLabel: "All routes", icon: <Route />, options: optionItems(prompts.map(promptRoute)), getValue: promptRoute },
-    { id: "model", label: "Model", allLabel: "All models", icon: <Boxes />, options: optionItems(prompts.map(promptModel)), getValue: promptModel }
+    { id: "logicalModel", label: "Logical model", allLabel: "All logical models", icon: <Boxes />, options: optionItems(prompts.map(promptLogicalModel)), getValue: promptLogicalModel },
+    { id: "model", label: "Model", allLabel: "All models", icon: <Cpu />, options: optionItems(prompts.map(promptModel)), getValue: promptModel }
   ];
 }
 
@@ -126,15 +118,15 @@ function promptSearchValue(prompt: PromptSummary) {
     prompt.userId,
     prompt.sessionId,
     prompt.surface,
-    promptRoute(prompt),
+    promptLogicalModel(prompt),
     promptModel(prompt),
-    prompt.routingConfig?.configName,
-    prompt.routingConfig?.configHash
+    prompt.deploymentId,
+    prompt.providerConnectionId
   ].filter((value): value is string => Boolean(value));
 }
 
-function promptRoute(prompt: PromptSummary) {
-  return prompt.finalRoute ?? "unknown";
+function promptLogicalModel(prompt: PromptSummary) {
+  return prompt.requestedLogicalModel ?? prompt.resolvedLogicalModelId ?? "unknown";
 }
 
 function promptModel(prompt: PromptSummary) {

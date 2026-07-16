@@ -11,7 +11,6 @@ graphql(`
   fragment SettingsViewFields on Settings {
     organizationId
     databaseEnabled
-    subscriptionOAuthEnabled
     restartRequiredFor
     storage {
       path
@@ -35,15 +34,6 @@ graphql(`
         anthropicMessagesModel
         openaiResponsesModel
         openaiChatModel
-      }
-      classifier {
-        model
-        timeoutMs
-        maxAttempts
-        allowRedactedExcerpt
-      }
-      routeQuality {
-        lowConfidenceThreshold
       }
       promptCapture {
         promptCaptureMode

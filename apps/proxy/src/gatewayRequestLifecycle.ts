@@ -241,6 +241,8 @@ export class GatewayRequestLifecycle {
         reasonCodes: target.resolution.routerDecision?.reasonCodes ?? [],
         routerDecisionId: target.resolution.routerDecisionId,
         routerDecision: target.resolution.routerDecision,
+        translated: target.resolution.wireAdapterId !== null,
+        translatorId: target.resolution.wireAdapterId,
         compressionPolicy: policy.compressionPolicy as unknown as JsonObject,
         ...gatewayResolvedEvidence(admissionEvidence, target)
       }
@@ -270,7 +272,9 @@ export class GatewayRequestLifecycle {
       surface: input.surface,
       provider: target.provider,
       model: target.upstreamModelId,
-      adapterKind: target.resolution.providerAdapterKind
+      adapterKind: target.resolution.providerAdapterKind,
+      providerConnectionId: target.providerConnectionId,
+      deploymentId: target.deploymentId
     });
     if (!attempt || duplicate) {
       throw new GatewayRequestLifecycleError(409, "duplicate_gateway_provider_attempt");

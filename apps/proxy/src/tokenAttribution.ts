@@ -83,11 +83,11 @@ function attributionParts(surface: Surface, request: Record<string, unknown>) {
 function fallbackModelForSurface(surface: Surface) {
   switch (surface) {
     case "openai-responses":
-      return "router-auto";
+      return "coding-auto";
     case "openai-chat":
-      return "router-auto";
+      return "coding-auto";
     case "anthropic-messages":
-      return "claude-router-auto";
+      return "coding-auto";
     default:
       return unreachable(surface);
   }

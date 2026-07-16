@@ -141,7 +141,7 @@ describe("CompressionCacheWindowResolver", () => {
       requestId: "request_cache_event_prior",
       surface: "anthropic-messages",
       provider: "anthropic",
-      model: "claude-sonnet-4-5",
+      model: "claude-fable-5",
       inputTokens: 5000,
       cachedInputTokens: 3072,
       cacheCreationInputTokens: 128,
@@ -157,7 +157,7 @@ describe("CompressionCacheWindowResolver", () => {
         "x-claude-code-session-id": "session_cache_event"
       },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 128,
         messages: [
           { role: "user", content: "cached secret prompt" },
@@ -173,7 +173,7 @@ describe("CompressionCacheWindowResolver", () => {
     expect(event?.payload).toMatchObject({
       surface: "anthropic-messages",
       provider: "anthropic",
-      model: "claude-sonnet-4-5",
+      model: "claude-fable-5",
       source: "provider_usage",
       frozenPrefixItems: 2,
       cachedInputTokens: 3072,
@@ -240,7 +240,6 @@ async function seedCacheEvidence(fixture: PromptTestFixture, input: {
     kind: "provider",
     provider: input.provider,
     model: input.model,
-    route: "hard",
     inputTokens: input.inputTokens,
     cachedInputTokens: input.cachedInputTokens,
     cacheCreationInputTokens: input.cacheCreationInputTokens,

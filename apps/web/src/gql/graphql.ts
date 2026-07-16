@@ -4,13 +4,6 @@ type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
 /** Internal type. DO NOT USE DIRECTLY. */
 export type Incremental<T> = T | { [P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never };
 import { DocumentTypeDecoration } from '@graphql-typed-document-node/core';
-export type ClassifierSettingsInput = {
-  allowRedactedExcerpt?: boolean | null | undefined;
-  maxAttempts?: number | null | undefined;
-  model?: string | null | undefined;
-  timeoutMs?: number | null | undefined;
-};
-
 export type CompressionPreviewInput = {
   body?: unknown;
   policy?: ToolResultCompressionPolicyInput | null | undefined;
@@ -35,48 +28,6 @@ export type CreateInvitationInput = {
   role: MemberRole;
 };
 
-export type CreateProviderCredentialFromLocalAuthInput = {
-  baseUrl?: string | null | undefined;
-  name: string;
-  provider: string;
-};
-
-export type CreateProviderCredentialInput = {
-  accessKeyId?: string | null | undefined;
-  apiKey?: string | null | undefined;
-  authType?: ProviderAccountAuthType | null | undefined;
-  baseUrl?: string | null | undefined;
-  chatgptAccountId?: string | null | undefined;
-  credentialMode?: string | null | undefined;
-  discoveryRegions?: Array<string> | null | undefined;
-  endpointOverride?: string | null | undefined;
-  name: string;
-  provider: string;
-  region?: string | null | undefined;
-  secretAccessKey?: string | null | undefined;
-  sessionToken?: string | null | undefined;
-};
-
-export type CreateProviderInput = {
-  adapterConfig?: unknown;
-  adapterKind?: string | null | undefined;
-  authStyle: string;
-  baseUrl: string;
-  capabilities?: unknown;
-  defaultHeaders?: unknown;
-  displayName: string;
-  enabled?: boolean | null | undefined;
-  endpoints: Array<ProviderEndpointInput>;
-  forwardHarnessHeaders?: boolean | null | undefined;
-  slug: string;
-};
-
-export type CreateRoutingConfigInput = {
-  config: unknown;
-  description?: string | null | undefined;
-  name: string;
-};
-
 export type CreateWorkspaceInput = {
   description?: string | null | undefined;
   name: string;
@@ -89,73 +40,27 @@ export type MemberRole =
   | 'owner'
   | 'viewer';
 
-export type ModelPricingSource =
-  | 'custom'
-  | 'default'
-  | 'env'
-  | 'unpriced';
-
-export type ProbeProviderCredentialInput = {
-  model: string;
-  operation?: string | null | undefined;
-  providerAccountId: string | number;
-};
-
 export type PromptCaptureSettingsInput = {
   promptCaptureMode?: string | null | undefined;
   retentionDays?: number | null | undefined;
 };
 
-export type ProviderAccountAuthType =
-  | 'api_key'
-  | 'oauth';
-
-export type ProviderEndpointInput = {
-  dialect: string;
-  operation?: string | null | undefined;
-  path?: string | null | undefined;
-};
-
-export type RefreshBedrockModelCatalogInput = {
-  providerAccountId: string | number;
-};
-
-export type RouteQualitySettingsInput = {
-  lowConfidenceThreshold?: number | null | undefined;
-};
-
 export type SearchHitKind =
   | 'api_key'
   | 'log'
-  | 'routing_config'
+  | 'logical_model'
   | 'session'
   | 'user';
-
-export type SetModelPricingInput = {
-  cacheReadCostPerMtok?: number | null | undefined;
-  cacheWriteCostPerMtok?: number | null | undefined;
-  inputCostPerMtok: number;
-  model: string;
-  outputCostPerMtok: number;
-  provider: string;
-};
 
 export type SettingsInput = {
   automaticCaching?: boolean | null | undefined;
   cacheTtlUpgrade?: boolean | null | undefined;
-  classifier?: ClassifierSettingsInput | null | undefined;
   costBaseline?: CostBaselineSettingsInput | null | undefined;
   duplicateToolResultReferences?: boolean | null | undefined;
   promptCapture?: PromptCaptureSettingsInput | null | undefined;
-  routeQuality?: RouteQualitySettingsInput | null | undefined;
   schemaVersion?: number | null | undefined;
   systemPrompt?: string | null | undefined;
   toolResultCompressionPolicy?: ToolResultCompressionPolicyInput | null | undefined;
-};
-
-export type StartProviderCredentialOAuthInput = {
-  name: string;
-  provider: string;
 };
 
 export type ToolResultCompressionPolicyInput = {
@@ -167,40 +72,13 @@ export type ToolResultCompressionPolicyInput = {
   storeOriginalArtifact?: boolean | null | undefined;
 };
 
-export type UpdateProviderCredentialInput = {
-  accessKeyId?: string | null | undefined;
-  apiKey?: string | null | undefined;
-  baseUrl?: string | null | undefined;
-  credentialMode?: string | null | undefined;
-  discoveryRegions?: Array<string> | null | undefined;
-  endpointOverride?: string | null | undefined;
-  name?: string | null | undefined;
-  providerAccountId: string | number;
-  region?: string | null | undefined;
-  secretAccessKey?: string | null | undefined;
-  sessionToken?: string | null | undefined;
-};
-
-export type UpdateProviderInput = {
-  adapterConfig?: unknown;
-  adapterKind?: string | null | undefined;
-  authStyle: string;
-  baseUrl: string;
-  capabilities?: unknown;
-  defaultHeaders?: unknown;
-  displayName: string;
-  enabled?: boolean | null | undefined;
-  endpoints: Array<ProviderEndpointInput>;
-  forwardHarnessHeaders?: boolean | null | undefined;
-  providerId: string | number;
-};
-
 export type UsageGroupBy =
   | 'api_key'
+  | 'deployment'
+  | 'logical_model'
   | 'model'
   | 'model_effort'
   | 'provider'
-  | 'route'
   | 'session'
   | 'surface'
   | 'user';
@@ -269,12 +147,12 @@ export type OpenAiCacheAnalyticsViewQueryVariables = Exact<{
 }>;
 
 
-export type OpenAiCacheAnalyticsViewQuery = { openAICacheAnalytics: { interval: UsageInterval, totals: { requestCount: number, cachedRequests: number, inputTokens: number, cachedInputTokens: number, cacheHitRate: number, requestHitRate: number }, groups: Array<{ surface: string, provider: string, model: string, route: string, cacheGroupSource: string, cacheGroupKey: string, requestCount: number, cachedRequests: number, inputTokens: number, cachedInputTokens: number, cacheHitRate: number, requestHitRate: number }>, trends: Array<{ ts: string, requestCount: number, cachedRequests: number, inputTokens: number, cachedInputTokens: number, cacheHitRate: number, requestHitRate: number }> } };
+export type OpenAiCacheAnalyticsViewQuery = { openAICacheAnalytics: { interval: UsageInterval, totals: { requestCount: number, cachedRequests: number, inputTokens: number, cachedInputTokens: number, cacheHitRate: number, requestHitRate: number }, groups: Array<{ surface: string, provider: string, model: string, logicalModel: string, cacheGroupSource: string, cacheGroupKey: string, requestCount: number, cachedRequests: number, inputTokens: number, cachedInputTokens: number, cacheHitRate: number, requestHitRate: number }>, trends: Array<{ ts: string, requestCount: number, cachedRequests: number, inputTokens: number, cachedInputTokens: number, cacheHitRate: number, requestHitRate: number }> } };
 
-export type CachePricingRatesQueryVariables = Exact<{ [key: string]: never; }>;
+export type CacheDeploymentPricingQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type CachePricingRatesQuery = { modelPricing: Array<{ model: string, inputCostPerMtok: number | null, cacheReadCostPerMtok: number | null, cacheWriteCostPerMtok: number | null }> };
+export type CacheDeploymentPricingQuery = { gatewayModelDeployments: Array<{ upstreamModelId: string, pricing: unknown, enabled: boolean }> };
 
 export type CompressionPreviewPanelQueryVariables = Exact<{
   input: CompressionPreviewInput;
@@ -282,6 +160,11 @@ export type CompressionPreviewPanelQueryVariables = Exact<{
 
 
 export type CompressionPreviewPanelQuery = { compressionPreview: { contentAvailable: boolean, contentRedactionReason: string | null, blocks: number, savedBytes: number, savedTokens: number, previewBlocks: Array<{ blockPath: string, toolName: string, ruleId: string, status: string, skipReason: string | null, retrievalId: string | null, retrievalAvailable: boolean, retrievalMarker: string | null, originalBytes: number, compressedBytes: number, savedTokens: number, diffSegments: Array<{ side: string, text: string }> }> } };
+
+export type DeploymentPricingCardQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type DeploymentPricingCardQuery = { gatewayModelDeployments: Array<{ id: string, name: string, upstreamModelId: string, providerConnectionId: string, pricing: unknown, enabled: boolean }> };
 
 export type InvitationsListQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -333,185 +216,10 @@ export type KeyTrafficRequestsQueryVariables = Exact<{
 
 export type KeyTrafficRequestsQuery = { requests: Array<{ requestId: string, createdAt: string | null, provider: string | null, apiKeyId: string | null, selectedModel: string | null, terminalStatus: string, selectedCost: number, baselineCost: number, usage: { totalTokens: number } }> };
 
-export type ModelPricingCardQueryVariables = Exact<{ [key: string]: never; }>;
+export type GatewayApiKeysQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type ModelPricingCardQuery = { modelPricing: Array<{ model: string, provider: string | null, source: ModelPricingSource, seenInTraffic: boolean, inputCostPerMtok: number | null, outputCostPerMtok: number | null, cacheReadCostPerMtok: number | null, cacheWriteCostPerMtok: number | null, updatedAt: string | null }> };
-
-export type SetModelPricingMutationVariables = Exact<{
-  input: SetModelPricingInput;
-}>;
-
-
-export type SetModelPricingMutation = { setModelPricing: Array<{ model: string, provider: string | null, source: ModelPricingSource, seenInTraffic: boolean, inputCostPerMtok: number | null, outputCostPerMtok: number | null, cacheReadCostPerMtok: number | null, cacheWriteCostPerMtok: number | null, updatedAt: string | null }> };
-
-export type ClearModelPricingMutationVariables = Exact<{
-  provider: string;
-  model: string;
-}>;
-
-
-export type ClearModelPricingMutation = { clearModelPricing: Array<{ model: string, provider: string | null, source: ModelPricingSource, seenInTraffic: boolean, inputCostPerMtok: number | null, outputCostPerMtok: number | null, cacheReadCostPerMtok: number | null, cacheWriteCostPerMtok: number | null, updatedAt: string | null }> };
-
-export type OverviewPageQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type OverviewPageQuery = { overviewDashboard: { overview: { requestCount: number, totals: { totalTokens: number }, cost: { selected: number, baseline: number, savings: number }, routeQuality: { lowConfidenceCount: number, cheaperLikelyWouldWorkCount: number, cheapCausedRetriesOrRepairsCount: number } }, requests: Array<{ createdAt: string | null, selectedCost: number, baselineCost: number, usage: { totalTokens: number } }>, modelUsage: { data: Array<{ key: string, usage: { totalTokens: number }, cost: { selected: number } }> } } };
-
-export type PromptDetailViewQueryVariables = Exact<{
-  artifactId: string | number;
-}>;
-
-
-export type PromptDetailViewQuery = { prompt: { artifact: { artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }, requestArtifacts: Array<{ artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, finalRoute: string | null, provider: string | null, selectedModel: string | null, classifier: unknown, metadata: unknown, createdAt: string, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }>, routeDecisions: Array<{ selectedProvider: string | null, selectedModel: string | null, classifierRoute: string | null, finalRoute: string | null, confidence: number | null, routeExecutionPlan: unknown, selectedCandidateId: string | null, translated: boolean, translatorId: string | null, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null }>, providerAttempts: Array<{ id: string, requestId: string, provider: string, model: string, terminalStatus: string, statusCode: number | null, error: string | null, routeCandidateId: string | null, attemptIndex: number | null, fallbackIndex: number | null, skipReason: string | null }>, request: { requestId: string, terminalStatus: string, finalRoute: string | null, requestedModel: string | null, selectedModel: string | null, provider: string | null, latencyMs: number | null, timeToFirstByteMs: number | null, selectedCost: number, classifier: unknown, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, routingConfig: { configId: string, configName: string | null, versionId: string | null, version: number | null, configHash: string | null } | null } | null, compressionReceipts: Array<{ id: string, mode: string, surface: string, blockPath: string, toolName: string, command: string | null, commandClass: string | null, ruleId: string, ruleVersion: number, status: string, skipReason: string | null, retrievalId: string | null, retrievalAvailable: boolean, retrievalMarker: string | null, originalBytes: number, compressedBytes: number, savedBytes: number, originalTokenEstimate: number, compressedTokenEstimate: number, savedTokens: number, estimateSource: string, originalSha256: string, compressedSha256: string, originalArtifactId: string | null, compressedArtifactId: string | null, originalArtifactExpiresAt: string | null, compressedArtifactExpiresAt: string | null }>, events: Array<{ eventId: string, eventType: string, producer: string, payload: unknown, createdAt: string }> } | null };
-
-export type PromptsListQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type PromptsListQuery = { prompts: { data: Array<{ artifactId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, preview: string | null, finalRoute: string | null, selectedModel: string | null, createdAt: string, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }> } };
-
-export type SubscriptionAuthSettingQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type SubscriptionAuthSettingQuery = { settings: { subscriptionOAuthEnabled: boolean } };
-
-export type ProviderAccountsQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type ProviderAccountsQuery = { providerAccounts: Array<{ id: string, organizationId: string, provider: string, name: string, authType: ProviderAccountAuthType, status: string, baseUrl: string | null, secretHint: string | null, credentialMode: string | null, credentialSourceCategory: string | null, region: string | null, endpointOverride: string | null, discoveryRegions: Array<string>, ownerUserId: string | null, boundKeyCount: number, createdAt: string, lastUsedAt: string | null, health: { status: string | null, cooldownUntil: string | null, lastErrorType: string | null, lastErrorAt: string | null, lastSuccessAt: string | null, lastCheckedAt: string | null, consecutiveFailures: number, metadata: unknown, modelHealth: Array<{ providerId: string, providerAccountId: string, model: string, status: string, lastErrorType: string | null, lastErrorAt: string | null, lockoutUntil: string | null, consecutiveFailures: number, lastSuccessAt: string | null, metadata: unknown }> } | null }> };
-
-export type ProviderRegistryQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type ProviderRegistryQuery = { providers: Array<{ id: string, organizationId: string | null, slug: string, displayName: string, baseUrl: string, adapterKind: string, authStyle: string, defaultHeaders: unknown, capabilities: unknown, forwardHarnessHeaders: boolean, enabled: boolean, builtin: boolean, endpoints: Array<{ dialect: string, path: string | null, operation: string | null }> }> };
-
-export type CreateProviderCredentialMutationVariables = Exact<{
-  input: CreateProviderCredentialInput;
-}>;
-
-
-export type CreateProviderCredentialMutation = { createProviderCredential: { id: string, name: string } | null };
-
-export type UpdateProviderCredentialMutationVariables = Exact<{
-  input: UpdateProviderCredentialInput;
-}>;
-
-
-export type UpdateProviderCredentialMutation = { updateProviderCredential: { id: string, name: string, credentialMode: string | null, credentialSourceCategory: string | null, region: string | null, endpointOverride: string | null, discoveryRegions: Array<string> } | null };
-
-export type CreateProviderCredentialFromLocalAuthMutationVariables = Exact<{
-  input: CreateProviderCredentialFromLocalAuthInput;
-}>;
-
-
-export type CreateProviderCredentialFromLocalAuthMutation = { createProviderCredentialFromLocalAuth: { id: string, name: string } | null };
-
-export type StartProviderCredentialOAuthMutationVariables = Exact<{
-  input: StartProviderCredentialOAuthInput;
-}>;
-
-
-export type StartProviderCredentialOAuthMutation = { startProviderCredentialOAuth: { loginId: string, verificationUrl: string, userCode: string | null } };
-
-export type CancelProviderCredentialOAuthMutationVariables = Exact<{
-  loginId: string | number;
-}>;
-
-
-export type CancelProviderCredentialOAuthMutation = { cancelProviderCredentialOAuth: { loginId: string, status: string, providerAccountId: string | null, error: string | null } | null };
-
-export type ProviderCredentialOAuthStatusQueryVariables = Exact<{
-  loginId: string | number;
-}>;
-
-
-export type ProviderCredentialOAuthStatusQuery = { providerCredentialOAuthStatus: { loginId: string, status: string, providerAccountId: string | null, error: string | null } | null };
-
-export type CreateProviderMutationVariables = Exact<{
-  input: CreateProviderInput;
-}>;
-
-
-export type CreateProviderMutation = { createProvider: { id: string, slug: string, displayName: string, baseUrl: string, authStyle: string, enabled: boolean, builtin: boolean } | null };
-
-export type UpdateProviderMutationVariables = Exact<{
-  input: UpdateProviderInput;
-}>;
-
-
-export type UpdateProviderMutation = { updateProvider: { id: string, slug: string, displayName: string, baseUrl: string, authStyle: string, enabled: boolean, builtin: boolean } | null };
-
-export type DisableProviderMutationVariables = Exact<{
-  providerId: string | number;
-}>;
-
-
-export type DisableProviderMutation = { disableProvider: { id: string, enabled: boolean } | null };
-
-export type RevokeProviderCredentialMutationVariables = Exact<{
-  providerAccountId: string | number;
-}>;
-
-
-export type RevokeProviderCredentialMutation = { revokeProviderCredential: { id: string, status: string } | null };
-
-export type ProbeProviderCredentialMutationVariables = Exact<{
-  input: ProbeProviderCredentialInput;
-}>;
-
-
-export type ProbeProviderCredentialMutation = { probeProviderCredential: { probeId: string, providerAccountId: string, provider: string, model: string, status: string, healthStatus: string, errorType: string | null, message: string | null, statusCode: number | null, latencyMs: number, checkedAt: string, stateUpdated: boolean, dimensions: unknown } };
-
-export type RefreshBedrockModelCatalogMutationVariables = Exact<{
-  input: RefreshBedrockModelCatalogInput;
-}>;
-
-
-export type RefreshBedrockModelCatalogMutation = { refreshBedrockModelCatalog: { providerAccountId: string, regions: Array<string>, status: string, error: string | null, modelsSeen: number, modelsApplied: number, inserted: number, updated: number, skipped: number, errors: Array<{ region: string, error: string }> } };
-
-export type AssignApiKeyProviderAccountMutationVariables = Exact<{
-  apiKeyId: string | number;
-  provider: string;
-  providerAccountId?: string | number | null | undefined;
-}>;
-
-
-export type AssignApiKeyProviderAccountMutation = { assignApiKeyProviderAccount: { id: string, providerCredentials: Array<{ provider: string, providerAccountId: string, name: string | null, status: string | null }> } };
-
-export type RequestsPageQueryVariables = Exact<{
-  start?: string | null | undefined;
-  end?: string | null | undefined;
-  limit?: number | null | undefined;
-}>;
-
-
-export type RequestsPageQuery = { prompts: { data: Array<{ artifactId: string, requestId: string, sessionId: string | null, userId: string | null, surface: string, kind: string, preview: string | null, tokenEstimate: number | null, selectedModel: string | null, finalRoute: string | null, provider: string | null, createdAt: string, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null, cost: { selected: number } }> }, requests: Array<{ requestId: string, selectedModel: string | null, terminalStatus: string, latencyMs: number | null, finalRoute: string | null, provider: string | null, selectedCandidateId: string | null, translated: boolean | null, routeSkipReasons: Array<string>, apiKeyId: string | null, sessionId: string | null, selectedCost: number, usage: { totalTokens: number }, routingConfig: { configId: string, configName: string | null, version: number | null, configHash: string | null } | null }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
-
-export type RoutingConfigSummaryFieldsFragment = { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> };
-
-export type RoutingConfigDetailFieldsFragment = { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> };
-
-export type RoutingConfigsListQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type RoutingConfigsListQuery = { routingConfigs: Array<{ trafficShare: number, id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }> };
-
-export type RoutingConfigDetailViewQueryVariables = Exact<{
-  configId: string | number;
-}>;
-
-
-export type RoutingConfigDetailViewQuery = { routingConfig: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } | null };
-
-export type RoutingApiKeysQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type RoutingApiKeysQuery = { apiKeys: Array<{ id: string, name: string, userId: string | null, routingConfigId: string | null, createdAt: string, expiresAt: string | null, revokedAt: string | null, lastUsedAt: string | null, routingConfig: { id: string, name: string | null, status: string | null } | null, providerCredentials: Array<{ provider: string, providerAccountId: string, name: string | null, status: string | null }> }> };
-
-export type RoutingModelCatalogQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type RoutingModelCatalogQuery = { providers: Array<{ slug: string, displayName: string, authStyle: string, adapterKind: string, enabled: boolean, builtin: boolean, capabilities: unknown, endpoints: Array<{ dialect: string, path: string | null, operation: string | null }> }>, modelCatalog: Array<{ provider: string, model: string, displayName: string | null, catalogSource: string, providerAccountId: string | null, region: string | null, bedrockModelSource: string | null, bedrockInferenceProfileArn: string | null, bedrockInferenceProfileId: string | null, bedrockInferenceProfileSource: string | null, bedrockInferenceProfileGeography: string | null, bedrockBaseModelId: string | null, bedrockFoundationModelId: string | null, dialects: Array<string>, contextWindow: number | null, maxOutputTokens: number | null, supportsStreaming: boolean | null, supportsTools: boolean | null, supportsImages: boolean | null, supportsReasoning: boolean | null, warnings: Array<string>, pricingKnown: boolean, inputCostPerMtok: number | null, outputCostPerMtok: number | null }>, providerAccounts: Array<{ id: string, providerId: string, provider: string, name: string, status: string, credentialMode: string | null, credentialSourceCategory: string | null, region: string | null, endpointOverride: string | null, discoveryRegions: Array<string>, health: { status: string | null, lastErrorType: string | null, cooldownUntil: string | null, metadata: unknown, modelHealth: Array<{ model: string, status: string, lastErrorType: string | null, lockoutUntil: string | null, metadata: unknown }> } | null }> };
+export type GatewayApiKeysQuery = { apiKeys: Array<{ id: string, name: string, userId: string | null, accessProfileId: string | null, createdAt: string, expiresAt: string | null, revokedAt: string | null, lastUsedAt: string | null, accessProfile: { id: string, name: string | null, status: string | null } | null }> };
 
 export type CreateApiKeyMutationVariables = Exact<{
   input: CreateApiKeyInput;
@@ -524,6 +232,14 @@ export type GatewayAccessProfilesQueryVariables = Exact<{ [key: string]: never; 
 
 
 export type GatewayAccessProfilesQuery = { gatewayAccessProfiles: Array<{ id: string, slug: string, name: string, description: string | null, enabled: boolean }>, gatewayModelGrants: Array<{ accessProfileId: string, logicalModelId: string, allowedOperations: Array<string>, enabled: boolean }>, gatewayLogicalModels: Array<{ id: string, slug: string, enabled: boolean }> };
+
+export type AssignApiKeyAccessProfileMutationVariables = Exact<{
+  apiKeyId: string | number;
+  accessProfileId: string | number;
+}>;
+
+
+export type AssignApiKeyAccessProfileMutation = { assignGatewayApiKeyAccessProfile: { apiKeyId: string, accessProfileId: string } };
 
 export type RevokeApiKeyMutationVariables = Exact<{
   apiKeyId: string | number;
@@ -539,43 +255,31 @@ export type ApiKeyVerificationQueryVariables = Exact<{
 
 export type ApiKeyVerificationQuery = { apiKey: { id: string, lastUsedAt: string | null } | null };
 
-export type CreateRoutingConfigMutationVariables = Exact<{
-  input: CreateRoutingConfigInput;
+export type OverviewPageQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type OverviewPageQuery = { overviewDashboard: { overview: { requestCount: number, totals: { totalTokens: number }, cost: { selected: number, baseline: number, savings: number }, routeQuality: { lowConfidenceCount: number } }, requests: Array<{ createdAt: string | null, selectedCost: number, baselineCost: number, usage: { totalTokens: number } }>, modelUsage: { data: Array<{ key: string, usage: { totalTokens: number }, cost: { selected: number } }> } } };
+
+export type PromptDetailViewQueryVariables = Exact<{
+  artifactId: string | number;
 }>;
 
 
-export type CreateRoutingConfigMutation = { createRoutingConfig: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } };
+export type PromptDetailViewQuery = { prompt: { artifact: { artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, requestedLogicalModel: string | null, resolvedLogicalModelId: string | null, accessProfileId: string | null, deploymentId: string | null, providerConnectionId: string | null, provider: string | null, selectedModel: string | null, routerDecision: unknown, metadata: unknown, createdAt: string, cost: { selected: number } }, requestArtifacts: Array<{ artifactId: string, requestId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, sourceIndex: number | null, storageMode: string, contentHash: string, chars: number | null, tokenEstimate: number | null, preview: string | null, rawText: string | null, redactedText: string | null, expiresAt: string | null, requestedLogicalModel: string | null, resolvedLogicalModelId: string | null, accessProfileId: string | null, deploymentId: string | null, providerConnectionId: string | null, provider: string | null, selectedModel: string | null, routerDecision: unknown, metadata: unknown, createdAt: string, cost: { selected: number } }>, routeDecisions: Array<{ id: string, requestId: string, requestedModel: string, requestedLogicalModel: string | null, resolvedLogicalModelId: string | null, accessProfileId: string | null, routerKind: string | null, deploymentId: string | null, providerConnectionId: string | null, ingressWireId: string | null, egressWireId: string | null, wireAdapterVersion: string | null, selectedProvider: string | null, selectedModel: string | null, confidence: number | null, reasonCodes: Array<string>, guardrailActions: Array<string>, routerDecisionId: string | null, routerDecision: unknown, translated: boolean, translatorId: string | null, policyVersion: string, createdAt: string }>, providerAttempts: Array<{ id: string, requestId: string, provider: string, model: string, deploymentId: string | null, providerConnectionId: string | null, egressWireId: string | null, providerAdapterContractVersion: string | null, terminalStatus: string, statusCode: number | null, error: string | null }>, request: { requestId: string, terminalStatus: string, requestedModel: string | null, ingressWireId: string | null, requestedLogicalModel: string | null, resolvedLogicalModelId: string | null, accessProfileId: string | null, routerKind: string | null, deploymentId: string | null, providerConnectionId: string | null, egressWireId: string | null, wireAdapterVersion: string | null, selectedModel: string | null, provider: string | null, latencyMs: number | null, timeToFirstByteMs: number | null, selectedCost: number, confidence: number | null, routerDecisionId: string | null, routerDecision: unknown, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number } } | null, compressionReceipts: Array<{ id: string, mode: string, surface: string, blockPath: string, toolName: string, command: string | null, commandClass: string | null, ruleId: string, ruleVersion: number, status: string, skipReason: string | null, retrievalId: string | null, retrievalAvailable: boolean, retrievalMarker: string | null, originalBytes: number, compressedBytes: number, savedBytes: number, originalTokenEstimate: number, compressedTokenEstimate: number, savedTokens: number, estimateSource: string, originalSha256: string, compressedSha256: string, originalArtifactId: string | null, compressedArtifactId: string | null, originalArtifactExpiresAt: string | null, compressedArtifactExpiresAt: string | null }>, events: Array<{ eventId: string, eventType: string, producer: string, payload: unknown, createdAt: string }> } | null };
 
-export type CreateRoutingConfigVersionMutationVariables = Exact<{
-  configId: string | number;
-  config: unknown;
+export type PromptsListQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type PromptsListQuery = { prompts: { data: Array<{ artifactId: string, userId: string | null, sessionId: string | null, surface: string, kind: string, preview: string | null, requestedLogicalModel: string | null, resolvedLogicalModelId: string | null, deploymentId: string | null, providerConnectionId: string | null, selectedModel: string | null, createdAt: string, cost: { selected: number } }> } };
+
+export type RequestsPageQueryVariables = Exact<{
+  start?: string | null | undefined;
+  end?: string | null | undefined;
+  limit?: number | null | undefined;
 }>;
 
 
-export type CreateRoutingConfigVersionMutation = { createRoutingConfigVersion: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } };
-
-export type ActivateRoutingConfigVersionMutationVariables = Exact<{
-  configId: string | number;
-  versionId: string | number;
-}>;
-
-
-export type ActivateRoutingConfigVersionMutation = { activateRoutingConfigVersion: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } };
-
-export type ArchiveRoutingConfigMutationVariables = Exact<{
-  configId: string | number;
-}>;
-
-
-export type ArchiveRoutingConfigMutation = { archiveRoutingConfig: { config: { id: string, name: string, slug: string, description: string | null, status: string, activeVersionId: string | null, assignedApiKeyCount: number, updatedAt: string, activeVersion: { id: string, version: number, configHash: string } | null, routes: Array<{ route: string, description: string | null, targets: Array<{ providerId: string, model: string, effort: string | null, effectiveEffort: string | null }> }> }, versions: Array<{ id: string, version: number, configHash: string, status: string, active: boolean, createdAt: string, activatedAt: string | null, config: unknown }> } };
-
-export type AssignRoutingConfigKeyMutationVariables = Exact<{
-  apiKeyId: string | number;
-  routingConfigId?: string | number | null | undefined;
-}>;
-
-
-export type AssignRoutingConfigKeyMutation = { assignApiKeyRoutingConfig: { id: string, routingConfigId: string | null } };
+export type RequestsPageQuery = { prompts: { data: Array<{ artifactId: string, requestId: string, sessionId: string | null, userId: string | null, surface: string, kind: string, preview: string | null, tokenEstimate: number | null, requestedLogicalModel: string | null, resolvedLogicalModelId: string | null, deploymentId: string | null, providerConnectionId: string | null, selectedModel: string | null, provider: string | null, createdAt: string, cost: { selected: number } }> }, requests: Array<{ requestId: string, requestedModel: string | null, requestedLogicalModel: string | null, resolvedLogicalModelId: string | null, accessProfileId: string | null, routerKind: string | null, deploymentId: string | null, providerConnectionId: string | null, ingressWireId: string | null, egressWireId: string | null, selectedModel: string | null, terminalStatus: string, latencyMs: number | null, provider: string | null, translated: boolean | null, apiKeyId: string | null, sessionId: string | null, selectedCost: number, usage: { totalTokens: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
 export type GlobalSearchQueryVariables = Exact<{
   query: string;
@@ -630,26 +334,26 @@ export type SessionDetailViewQueryVariables = Exact<{
 }>;
 
 
-export type SessionDetailViewQuery = { session: { user: unknown, session: { sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, sessionIdentity: string | null, requestCount: number, startedAt: string, usage: { inputTokens: number, outputTokens: number }, cost: { selected: number } }, requests: Array<{ requestId: string, createdAt: string | null, selectedModel: string | null, finalRoute: string | null, terminalStatus: string, latencyMs: number | null, selectedCost: number, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, totalTokens: number } }>, promptArtifacts: Array<{ artifactId: string, requestId: string, kind: string, sourceIndex: number | null, contentHash: string, chars: number | null, createdAt: string, preview: string | null, tokenEstimate: number | null, metadata: unknown }> } | null };
+export type SessionDetailViewQuery = { session: { user: unknown, session: { sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, sessionIdentity: string | null, requestCount: number, startedAt: string, usage: { inputTokens: number, outputTokens: number }, cost: { selected: number } }, requests: Array<{ requestId: string, createdAt: string | null, selectedModel: string | null, requestedLogicalModel: string | null, resolvedLogicalModelId: string | null, terminalStatus: string, latencyMs: number | null, selectedCost: number, usage: { inputTokens: number, cachedInputTokens: number, outputTokens: number, totalTokens: number } }>, promptArtifacts: Array<{ artifactId: string, requestId: string, kind: string, sourceIndex: number | null, contentHash: string, chars: number | null, createdAt: string, preview: string | null, tokenEstimate: number | null, metadata: unknown }> } | null };
 
 export type SessionsPageQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, currentRoute: string | null, requestCount: number, startedAt: string, endedAt: string | null, recentActivity: string | null, modelMix: unknown, routeMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
+export type SessionsPageQuery = { sessions: Array<{ sessionId: string, externalSessionId: string | null, userId: string | null, surface: string, requestCount: number, startedAt: string, endedAt: string | null, recentActivity: string | null, modelMix: unknown, logicalModelMix: unknown, deploymentMix: unknown, terminalStatusSummary: unknown, usage: { totalTokens: number }, cost: { selected: number } }>, users: Array<{ userId: string, name: string | null, email: string | null }> };
 
-export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, duplicateToolResultReferences: boolean, toolResultCompressionPolicy: { mode: string, minOriginalBytes: number | null, minSavingsTokens: number | null, enabledRules: Array<string>, storeOriginalArtifact: boolean | null, storeCompressedArtifact: boolean | null }, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
+export type SettingsViewFieldsFragment = { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, duplicateToolResultReferences: boolean, toolResultCompressionPolicy: { mode: string, minOriginalBytes: number | null, minSavingsTokens: number | null, enabledRules: Array<string>, storeOriginalArtifact: boolean | null, storeCompressedArtifact: boolean | null }, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, promptCapture: { promptCaptureMode: string, retentionDays: number } } };
 
 export type SettingsViewQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, duplicateToolResultReferences: boolean, toolResultCompressionPolicy: { mode: string, minOriginalBytes: number | null, minSavingsTokens: number | null, enabledRules: Array<string>, storeOriginalArtifact: boolean | null, storeCompressedArtifact: boolean | null }, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type SettingsViewQuery = { settings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, duplicateToolResultReferences: boolean, toolResultCompressionPolicy: { mode: string, minOriginalBytes: number | null, minSavingsTokens: number | null, enabledRules: Array<string>, storeOriginalArtifact: boolean | null, storeCompressedArtifact: boolean | null }, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type UpdateSettingsMutationVariables = Exact<{
   input: SettingsInput;
 }>;
 
 
-export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, subscriptionOAuthEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, duplicateToolResultReferences: boolean, toolResultCompressionPolicy: { mode: string, minOriginalBytes: number | null, minSavingsTokens: number | null, enabledRules: Array<string>, storeOriginalArtifact: boolean | null, storeCompressedArtifact: boolean | null }, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, classifier: { model: string, timeoutMs: number, maxAttempts: number, allowRedactedExcerpt: boolean }, routeQuality: { lowConfidenceThreshold: number }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
+export type UpdateSettingsMutation = { updateSettings: { organizationId: string, databaseEnabled: boolean, restartRequiredFor: Array<string>, storage: { path: string, reason: string }, settings: { schemaVersion: number, systemPrompt: string | null, cacheTtlUpgrade: boolean, automaticCaching: boolean, duplicateToolResultReferences: boolean, toolResultCompressionPolicy: { mode: string, minOriginalBytes: number | null, minSavingsTokens: number | null, enabledRules: Array<string>, storeOriginalArtifact: boolean | null, storeCompressedArtifact: boolean | null }, costBaseline: { anthropicMessagesModel: string, openaiResponsesModel: string, openaiChatModel: string }, promptCapture: { promptCaptureMode: string, retentionDays: number } } } };
 
 export type UsageGroupFieldsFragment = { key: string, requestCount: number, failedRequests: number, retriedRequests: number, failureRate: number, retryRate: number, latency: { averageMs: number | null, p95Ms: number | null }, usage: { inputTokens: number, cachedInputTokens: number, cacheCreationInputTokens: number, outputTokens: number, reasoningTokens: number, totalTokens: number }, cost: { selected: number, baseline: number, savings: number, classifier: number } };
 
@@ -706,18 +410,10 @@ export type UsageLookupsQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type UsageLookupsQuery = { members: Array<{ userId: string, name: string | null, email: string | null }>, apiKeys: Array<{ id: string, name: string, revokedAt: string | null }> };
 
-export type RouteOutputViewQueryVariables = Exact<{
-  start?: string | null | undefined;
-  end?: string | null | undefined;
-}>;
+export type UnpricedDeploymentsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type RouteOutputViewQuery = { routeOutputReport: { routes: Array<{ route: string, requests: number, outputTokens: number, reasoningTokens: number, avgOutputTokens: number, reasoningShare: number, outputCost: number }>, models: Array<{ key: string, requests: number, outputTokens: number, reasoningTokens: number, avgOutputTokens: number, reasoningShare: number, outputCost: number }>, users: Array<{ key: string, requests: number, outputTokens: number, reasoningTokens: number, avgOutputTokens: number, reasoningShare: number, outputCost: number }>, apiKeys: Array<{ key: string, requests: number, outputTokens: number, reasoningTokens: number, avgOutputTokens: number, reasoningShare: number, outputCost: number }>, workspaces: Array<{ key: string, requests: number, outputTokens: number, reasoningTokens: number, avgOutputTokens: number, reasoningShare: number, outputCost: number }> } };
-
-export type UnpricedModelsQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type UnpricedModelsQuery = { modelPricing: Array<{ model: string, provider: string | null, source: ModelPricingSource, seenInTraffic: boolean }> };
+export type UnpricedDeploymentsQuery = { usage: { data: Array<{ key: string, requestCount: number }> }, gatewayModelDeployments: Array<{ id: string, upstreamModelId: string, providerConnectionId: string, pricing: unknown }> };
 
 export type UserDirectoryQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -769,74 +465,6 @@ export class TypedDocumentString<TResult, TVariables>
     return this.value;
   }
 }
-export const RoutingConfigSummaryFieldsFragmentDoc = new TypedDocumentString(`
-    fragment RoutingConfigSummaryFields on RoutingConfigSummary {
-  id
-  name
-  slug
-  description
-  status
-  activeVersionId
-  assignedApiKeyCount
-  updatedAt
-  activeVersion {
-    id
-    version
-    configHash
-  }
-  routes {
-    route
-    description
-    targets {
-      providerId
-      model
-      effort
-      effectiveEffort
-    }
-  }
-}
-    `, {"fragmentName":"RoutingConfigSummaryFields"}) as unknown as TypedDocumentString<RoutingConfigSummaryFieldsFragment, unknown>;
-export const RoutingConfigDetailFieldsFragmentDoc = new TypedDocumentString(`
-    fragment RoutingConfigDetailFields on RoutingConfigDetail {
-  config {
-    ...RoutingConfigSummaryFields
-  }
-  versions {
-    id
-    version
-    configHash
-    status
-    active
-    createdAt
-    activatedAt
-    config
-  }
-}
-    fragment RoutingConfigSummaryFields on RoutingConfigSummary {
-  id
-  name
-  slug
-  description
-  status
-  activeVersionId
-  assignedApiKeyCount
-  updatedAt
-  activeVersion {
-    id
-    version
-    configHash
-  }
-  routes {
-    route
-    description
-    targets {
-      providerId
-      model
-      effort
-      effectiveEffort
-    }
-  }
-}`, {"fragmentName":"RoutingConfigDetailFields"}) as unknown as TypedDocumentString<RoutingConfigDetailFieldsFragment, unknown>;
 export const ViewerFieldsFragmentDoc = new TypedDocumentString(`
     fragment ViewerFields on Viewer {
   user {
@@ -867,7 +495,6 @@ export const SettingsViewFieldsFragmentDoc = new TypedDocumentString(`
     fragment SettingsViewFields on Settings {
   organizationId
   databaseEnabled
-  subscriptionOAuthEnabled
   restartRequiredFor
   storage {
     path
@@ -891,15 +518,6 @@ export const SettingsViewFieldsFragmentDoc = new TypedDocumentString(`
       anthropicMessagesModel
       openaiResponsesModel
       openaiChatModel
-    }
-    classifier {
-      model
-      timeoutMs
-      maxAttempts
-      allowRedactedExcerpt
-    }
-    routeQuality {
-      lowConfidenceThreshold
     }
     promptCapture {
       promptCaptureMode
@@ -1156,7 +774,7 @@ export const OpenAiCacheAnalyticsViewDocument = new TypedDocumentString(`
       surface
       provider
       model
-      route
+      logicalModel
       cacheGroupSource
       cacheGroupKey
       requestCount
@@ -1178,16 +796,15 @@ export const OpenAiCacheAnalyticsViewDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<OpenAiCacheAnalyticsViewQuery, OpenAiCacheAnalyticsViewQueryVariables>;
-export const CachePricingRatesDocument = new TypedDocumentString(`
-    query CachePricingRates {
-  modelPricing {
-    model
-    inputCostPerMtok
-    cacheReadCostPerMtok
-    cacheWriteCostPerMtok
+export const CacheDeploymentPricingDocument = new TypedDocumentString(`
+    query CacheDeploymentPricing {
+  gatewayModelDeployments {
+    upstreamModelId
+    pricing
+    enabled
   }
 }
-    `) as unknown as TypedDocumentString<CachePricingRatesQuery, CachePricingRatesQueryVariables>;
+    `) as unknown as TypedDocumentString<CacheDeploymentPricingQuery, CacheDeploymentPricingQueryVariables>;
 export const CompressionPreviewPanelDocument = new TypedDocumentString(`
     query CompressionPreviewPanel($input: CompressionPreviewInput!) {
   compressionPreview(input: $input) {
@@ -1216,6 +833,18 @@ export const CompressionPreviewPanelDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CompressionPreviewPanelQuery, CompressionPreviewPanelQueryVariables>;
+export const DeploymentPricingCardDocument = new TypedDocumentString(`
+    query DeploymentPricingCard {
+  gatewayModelDeployments {
+    id
+    name
+    upstreamModelId
+    providerConnectionId
+    pricing
+    enabled
+  }
+}
+    `) as unknown as TypedDocumentString<DeploymentPricingCardQuery, DeploymentPricingCardQueryVariables>;
 export const InvitationsListDocument = new TypedDocumentString(`
     query InvitationsList {
   invitations {
@@ -1307,51 +936,85 @@ export const KeyTrafficRequestsDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<KeyTrafficRequestsQuery, KeyTrafficRequestsQueryVariables>;
-export const ModelPricingCardDocument = new TypedDocumentString(`
-    query ModelPricingCard {
-  modelPricing {
-    model
-    provider
-    source
-    seenInTraffic
-    inputCostPerMtok
-    outputCostPerMtok
-    cacheReadCostPerMtok
-    cacheWriteCostPerMtok
-    updatedAt
+export const GatewayApiKeysDocument = new TypedDocumentString(`
+    query GatewayApiKeys {
+  apiKeys {
+    id
+    name
+    userId
+    accessProfileId
+    createdAt
+    expiresAt
+    revokedAt
+    lastUsedAt
+    accessProfile {
+      id
+      name
+      status
+    }
   }
 }
-    `) as unknown as TypedDocumentString<ModelPricingCardQuery, ModelPricingCardQueryVariables>;
-export const SetModelPricingDocument = new TypedDocumentString(`
-    mutation SetModelPricing($input: SetModelPricingInput!) {
-  setModelPricing(input: $input) {
-    model
-    provider
-    source
-    seenInTraffic
-    inputCostPerMtok
-    outputCostPerMtok
-    cacheReadCostPerMtok
-    cacheWriteCostPerMtok
-    updatedAt
+    `) as unknown as TypedDocumentString<GatewayApiKeysQuery, GatewayApiKeysQueryVariables>;
+export const CreateApiKeyDocument = new TypedDocumentString(`
+    mutation CreateApiKey($input: CreateApiKeyInput!) {
+  createApiKey(input: $input) {
+    apiKey {
+      id
+      name
+    }
+    secret
   }
 }
-    `) as unknown as TypedDocumentString<SetModelPricingMutation, SetModelPricingMutationVariables>;
-export const ClearModelPricingDocument = new TypedDocumentString(`
-    mutation ClearModelPricing($provider: String!, $model: String!) {
-  clearModelPricing(provider: $provider, model: $model) {
-    model
-    provider
-    source
-    seenInTraffic
-    inputCostPerMtok
-    outputCostPerMtok
-    cacheReadCostPerMtok
-    cacheWriteCostPerMtok
-    updatedAt
+    `) as unknown as TypedDocumentString<CreateApiKeyMutation, CreateApiKeyMutationVariables>;
+export const GatewayAccessProfilesDocument = new TypedDocumentString(`
+    query GatewayAccessProfiles {
+  gatewayAccessProfiles {
+    id
+    slug
+    name
+    description
+    enabled
+  }
+  gatewayModelGrants {
+    accessProfileId
+    logicalModelId
+    allowedOperations
+    enabled
+  }
+  gatewayLogicalModels {
+    id
+    slug
+    enabled
   }
 }
-    `) as unknown as TypedDocumentString<ClearModelPricingMutation, ClearModelPricingMutationVariables>;
+    `) as unknown as TypedDocumentString<GatewayAccessProfilesQuery, GatewayAccessProfilesQueryVariables>;
+export const AssignApiKeyAccessProfileDocument = new TypedDocumentString(`
+    mutation AssignApiKeyAccessProfile($apiKeyId: ID!, $accessProfileId: ID!) {
+  assignGatewayApiKeyAccessProfile(
+    apiKeyId: $apiKeyId
+    accessProfileId: $accessProfileId
+  ) {
+    apiKeyId
+    accessProfileId
+  }
+}
+    `) as unknown as TypedDocumentString<AssignApiKeyAccessProfileMutation, AssignApiKeyAccessProfileMutationVariables>;
+export const RevokeApiKeyDocument = new TypedDocumentString(`
+    mutation RevokeApiKey($apiKeyId: ID!) {
+  revokeApiKey(apiKeyId: $apiKeyId) {
+    id
+    revokedAt
+  }
+}
+    `) as unknown as TypedDocumentString<RevokeApiKeyMutation, RevokeApiKeyMutationVariables>;
+export const ApiKeyVerificationDocument = new TypedDocumentString(`
+    query ApiKeyVerification($apiKeyId: ID!) {
+  apiKey(apiKeyId: $apiKeyId) {
+    id
+    lastUsedAt
+  }
+}
+    `) as unknown as TypedDocumentString<ApiKeyVerificationQuery, ApiKeyVerificationQueryVariables>;
 export const OverviewPageDocument = new TypedDocumentString(`
     query OverviewPage {
   overviewDashboard {
@@ -1367,8 +1030,6 @@ export const OverviewPageDocument = new TypedDocumentString(`
       }
       routeQuality {
         lowConfidenceCount
-        cheaperLikelyWouldWorkCount
-        cheapCausedRetriesOrRepairsCount
       }
     }
     requests {
@@ -1412,19 +1073,16 @@ export const PromptDetailViewDocument = new TypedDocumentString(`
       rawText
       redactedText
       expiresAt
-      finalRoute
+      requestedLogicalModel
+      resolvedLogicalModelId
+      accessProfileId
+      deploymentId
+      providerConnectionId
       provider
       selectedModel
-      classifier
+      routerDecision
       metadata
       createdAt
-      routingConfig {
-        configId
-        configName
-        versionId
-        version
-        configHash
-      }
       cost {
         selected
       }
@@ -1445,78 +1103,85 @@ export const PromptDetailViewDocument = new TypedDocumentString(`
       rawText
       redactedText
       expiresAt
-      finalRoute
+      requestedLogicalModel
+      resolvedLogicalModelId
+      accessProfileId
+      deploymentId
+      providerConnectionId
       provider
       selectedModel
-      classifier
+      routerDecision
       metadata
       createdAt
-      routingConfig {
-        configId
-        configName
-        versionId
-        version
-        configHash
-      }
       cost {
         selected
       }
     }
     routeDecisions {
+      id
+      requestId
+      requestedModel
+      requestedLogicalModel
+      resolvedLogicalModelId
+      accessProfileId
+      routerKind
+      deploymentId
+      providerConnectionId
+      ingressWireId
+      egressWireId
+      wireAdapterVersion
       selectedProvider
       selectedModel
-      classifierRoute
-      finalRoute
       confidence
-      routeExecutionPlan
-      selectedCandidateId
+      reasonCodes
+      guardrailActions
+      routerDecisionId
+      routerDecision
       translated
       translatorId
-      routingConfig {
-        configId
-        configName
-        versionId
-        version
-        configHash
-      }
+      policyVersion
+      createdAt
     }
     providerAttempts {
       id
       requestId
       provider
       model
+      deploymentId
+      providerConnectionId
+      egressWireId
+      providerAdapterContractVersion
       terminalStatus
       statusCode
       error
-      routeCandidateId
-      attemptIndex
-      fallbackIndex
-      skipReason
     }
     request {
       requestId
       terminalStatus
-      finalRoute
       requestedModel
+      ingressWireId
+      requestedLogicalModel
+      resolvedLogicalModelId
+      accessProfileId
+      routerKind
+      deploymentId
+      providerConnectionId
+      egressWireId
+      wireAdapterVersion
       selectedModel
       provider
       latencyMs
       timeToFirstByteMs
       selectedCost
-      classifier
+      confidence
+      routerDecisionId
+      routerDecision
       usage {
         inputTokens
         cachedInputTokens
         outputTokens
         reasoningTokens
         totalTokens
-      }
-      routingConfig {
-        configId
-        configName
-        versionId
-        version
-        configHash
       }
     }
     compressionReceipts {
@@ -1568,15 +1233,12 @@ export const PromptsListDocument = new TypedDocumentString(`
       surface
       kind
       preview
-      finalRoute
+      requestedLogicalModel
+      resolvedLogicalModelId
+      deploymentId
+      providerConnectionId
       selectedModel
       createdAt
-      routingConfig {
-        configId
-        configName
-        version
-        configHash
-      }
       cost {
         selected
       }
@@ -1584,236 +1246,6 @@ export const PromptsListDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<PromptsListQuery, PromptsListQueryVariables>;
-export const SubscriptionAuthSettingDocument = new TypedDocumentString(`
-    query SubscriptionAuthSetting {
-  settings {
-    subscriptionOAuthEnabled
-  }
-}
-    `) as unknown as TypedDocumentString<SubscriptionAuthSettingQuery, SubscriptionAuthSettingQueryVariables>;
-export const ProviderAccountsDocument = new TypedDocumentString(`
-    query ProviderAccounts {
-  providerAccounts {
-    id
-    organizationId
-    provider
-    name
-    authType
-    status
-    baseUrl
-    secretHint
-    credentialMode
-    credentialSourceCategory
-    region
-    endpointOverride
-    discoveryRegions
-    ownerUserId
-    boundKeyCount
-    health {
-      status
-      cooldownUntil
-      lastErrorType
-      lastErrorAt
-      lastSuccessAt
-      lastCheckedAt
-      consecutiveFailures
-      metadata
-      modelHealth {
-        providerId
-        providerAccountId
-        model
-        status
-        lastErrorType
-        lastErrorAt
-        lockoutUntil
-        consecutiveFailures
-        lastSuccessAt
-        metadata
-      }
-    }
-    createdAt
-    lastUsedAt
-  }
-}
-    `) as unknown as TypedDocumentString<ProviderAccountsQuery, ProviderAccountsQueryVariables>;
-export const ProviderRegistryDocument = new TypedDocumentString(`
-    query ProviderRegistry {
-  providers {
-    id
-    organizationId
-    slug
-    displayName
-    baseUrl
-    adapterKind
-    authStyle
-    endpoints {
-      dialect
-      path
-      operation
-    }
-    defaultHeaders
-    capabilities
-    forwardHarnessHeaders
-    enabled
-    builtin
-  }
-}
-    `) as unknown as TypedDocumentString<ProviderRegistryQuery, ProviderRegistryQueryVariables>;
-export const CreateProviderCredentialDocument = new TypedDocumentString(`
-    mutation CreateProviderCredential($input: CreateProviderCredentialInput!) {
-  createProviderCredential(input: $input) {
-    id
-    name
-  }
-}
-    `) as unknown as TypedDocumentString<CreateProviderCredentialMutation, CreateProviderCredentialMutationVariables>;
-export const UpdateProviderCredentialDocument = new TypedDocumentString(`
-    mutation UpdateProviderCredential($input: UpdateProviderCredentialInput!) {
-  updateProviderCredential(input: $input) {
-    id
-    name
-    credentialMode
-    credentialSourceCategory
-    region
-    endpointOverride
-    discoveryRegions
-  }
-}
-    `) as unknown as TypedDocumentString<UpdateProviderCredentialMutation, UpdateProviderCredentialMutationVariables>;
-export const CreateProviderCredentialFromLocalAuthDocument = new TypedDocumentString(`
-    mutation CreateProviderCredentialFromLocalAuth($input: CreateProviderCredentialFromLocalAuthInput!) {
-  createProviderCredentialFromLocalAuth(input: $input) {
-    id
-    name
-  }
-}
-    `) as unknown as TypedDocumentString<CreateProviderCredentialFromLocalAuthMutation, CreateProviderCredentialFromLocalAuthMutationVariables>;
-export const StartProviderCredentialOAuthDocument = new TypedDocumentString(`
-    mutation StartProviderCredentialOAuth($input: StartProviderCredentialOAuthInput!) {
-  startProviderCredentialOAuth(input: $input) {
-    loginId
-    verificationUrl
-    userCode
-  }
-}
-    `) as unknown as TypedDocumentString<StartProviderCredentialOAuthMutation, StartProviderCredentialOAuthMutationVariables>;
-export const CancelProviderCredentialOAuthDocument = new TypedDocumentString(`
-    mutation CancelProviderCredentialOAuth($loginId: ID!) {
-  cancelProviderCredentialOAuth(loginId: $loginId) {
-    loginId
-    status
-    providerAccountId
-    error
-  }
-}
-    `) as unknown as TypedDocumentString<CancelProviderCredentialOAuthMutation, CancelProviderCredentialOAuthMutationVariables>;
-export const ProviderCredentialOAuthStatusDocument = new TypedDocumentString(`
-    query ProviderCredentialOAuthStatus($loginId: ID!) {
-  providerCredentialOAuthStatus(loginId: $loginId) {
-    loginId
-    status
-    providerAccountId
-    error
-  }
-}
-    `) as unknown as TypedDocumentString<ProviderCredentialOAuthStatusQuery, ProviderCredentialOAuthStatusQueryVariables>;
-export const CreateProviderDocument = new TypedDocumentString(`
-    mutation CreateProvider($input: CreateProviderInput!) {
-  createProvider(input: $input) {
-    id
-    slug
-    displayName
-    baseUrl
-    authStyle
-    enabled
-    builtin
-  }
-}
-    `) as unknown as TypedDocumentString<CreateProviderMutation, CreateProviderMutationVariables>;
-export const UpdateProviderDocument = new TypedDocumentString(`
-    mutation UpdateProvider($input: UpdateProviderInput!) {
-  updateProvider(input: $input) {
-    id
-    slug
-    displayName
-    baseUrl
-    authStyle
-    enabled
-    builtin
-  }
-}
-    `) as unknown as TypedDocumentString<UpdateProviderMutation, UpdateProviderMutationVariables>;
-export const DisableProviderDocument = new TypedDocumentString(`
-    mutation DisableProvider($providerId: ID!) {
-  disableProvider(providerId: $providerId) {
-    id
-    enabled
-  }
-}
-    `) as unknown as TypedDocumentString<DisableProviderMutation, DisableProviderMutationVariables>;
-export const RevokeProviderCredentialDocument = new TypedDocumentString(`
-    mutation RevokeProviderCredential($providerAccountId: ID!) {
-  revokeProviderCredential(providerAccountId: $providerAccountId) {
-    id
-    status
-  }
-}
-    `) as unknown as TypedDocumentString<RevokeProviderCredentialMutation, RevokeProviderCredentialMutationVariables>;
-export const ProbeProviderCredentialDocument = new TypedDocumentString(`
-    mutation ProbeProviderCredential($input: ProbeProviderCredentialInput!) {
-  probeProviderCredential(input: $input) {
-    probeId
-    providerAccountId
-    provider
-    model
-    status
-    healthStatus
-    errorType
-    message
-    statusCode
-    latencyMs
-    checkedAt
-    stateUpdated
-    dimensions
-  }
-}
-    `) as unknown as TypedDocumentString<ProbeProviderCredentialMutation, ProbeProviderCredentialMutationVariables>;
-export const RefreshBedrockModelCatalogDocument = new TypedDocumentString(`
-    mutation RefreshBedrockModelCatalog($input: RefreshBedrockModelCatalogInput!) {
-  refreshBedrockModelCatalog(input: $input) {
-    providerAccountId
-    regions
-    status
-    error
-    modelsSeen
-    modelsApplied
-    inserted
-    updated
-    skipped
-    errors {
-      region
-      error
-    }
-  }
-}
-    `) as unknown as TypedDocumentString<RefreshBedrockModelCatalogMutation, RefreshBedrockModelCatalogMutationVariables>;
-export const AssignApiKeyProviderAccountDocument = new TypedDocumentString(`
-    mutation AssignApiKeyProviderAccount($apiKeyId: ID!, $provider: String!, $providerAccountId: ID) {
-  assignApiKeyProviderAccount(
-    apiKeyId: $apiKeyId
-    provider: $provider
-    providerAccountId: $providerAccountId
-  ) {
-    id
-    providerCredentials {
-      provider
-      providerAccountId
-      name
-      status
-    }
-  }
-}
-    `) as unknown as TypedDocumentString<AssignApiKeyProviderAccountMutation, AssignApiKeyProviderAccountMutationVariables>;
 export const RequestsPageDocument = new TypedDocumentString(`
     query RequestsPage($start: String, $end: String, $limit: Int) {
   prompts(start: $start, end: $end, limit: $limit) {
@@ -1826,16 +1258,13 @@ export const RequestsPageDocument = new TypedDocumentString(`
       kind
       preview
       tokenEstimate
+      requestedLogicalModel
+      resolvedLogicalModelId
+      deploymentId
+      providerConnectionId
       selectedModel
-      finalRoute
       provider
       createdAt
-      routingConfig {
-        configId
-        configName
-        version
-        configHash
-      }
       cost {
         selected
       }
@@ -1843,25 +1272,25 @@ export const RequestsPageDocument = new TypedDocumentString(`
   }
   requests(start: $start, end: $end, limit: $limit) {
     requestId
+    requestedModel
+    requestedLogicalModel
+    resolvedLogicalModelId
+    accessProfileId
+    routerKind
+    deploymentId
+    providerConnectionId
+    ingressWireId
+    egressWireId
     selectedModel
     terminalStatus
     latencyMs
-    finalRoute
     provider
-    selectedCandidateId
     translated
-    routeSkipReasons
     apiKeyId
     sessionId
     selectedCost
     usage {
       totalTokens
-    }
-    routingConfig {
-      configId
-      configName
-      version
-      configHash
     }
   }
   users {
@@ -1871,422 +1300,6 @@ export const RequestsPageDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<RequestsPageQuery, RequestsPageQueryVariables>;
-export const RoutingConfigsListDocument = new TypedDocumentString(`
-    query RoutingConfigsList {
-  routingConfigs {
-    ...RoutingConfigSummaryFields
-    trafficShare
-  }
-}
-    fragment RoutingConfigSummaryFields on RoutingConfigSummary {
-  id
-  name
-  slug
-  description
-  status
-  activeVersionId
-  assignedApiKeyCount
-  updatedAt
-  activeVersion {
-    id
-    version
-    configHash
-  }
-  routes {
-    route
-    description
-    targets {
-      providerId
-      model
-      effort
-      effectiveEffort
-    }
-  }
-}`) as unknown as TypedDocumentString<RoutingConfigsListQuery, RoutingConfigsListQueryVariables>;
-export const RoutingConfigDetailViewDocument = new TypedDocumentString(`
-    query RoutingConfigDetailView($configId: ID!) {
-  routingConfig(configId: $configId) {
-    ...RoutingConfigDetailFields
-  }
-}
-    fragment RoutingConfigSummaryFields on RoutingConfigSummary {
-  id
-  name
-  slug
-  description
-  status
-  activeVersionId
-  assignedApiKeyCount
-  updatedAt
-  activeVersion {
-    id
-    version
-    configHash
-  }
-  routes {
-    route
-    description
-    targets {
-      providerId
-      model
-      effort
-      effectiveEffort
-    }
-  }
-}
-fragment RoutingConfigDetailFields on RoutingConfigDetail {
-  config {
-    ...RoutingConfigSummaryFields
-  }
-  versions {
-    id
-    version
-    configHash
-    status
-    active
-    createdAt
-    activatedAt
-    config
-  }
-}`) as unknown as TypedDocumentString<RoutingConfigDetailViewQuery, RoutingConfigDetailViewQueryVariables>;
-export const RoutingApiKeysDocument = new TypedDocumentString(`
-    query RoutingApiKeys {
-  apiKeys {
-    id
-    name
-    userId
-    routingConfigId
-    createdAt
-    expiresAt
-    revokedAt
-    lastUsedAt
-    routingConfig {
-      id
-      name
-      status
-    }
-    providerCredentials {
-      provider
-      providerAccountId
-      name
-      status
-    }
-  }
-}
-    `) as unknown as TypedDocumentString<RoutingApiKeysQuery, RoutingApiKeysQueryVariables>;
-export const RoutingModelCatalogDocument = new TypedDocumentString(`
-    query RoutingModelCatalog {
-  providers {
-    slug
-    displayName
-    authStyle
-    adapterKind
-    enabled
-    builtin
-    endpoints {
-      dialect
-      path
-      operation
-    }
-    capabilities
-  }
-  modelCatalog {
-    provider
-    model
-    displayName
-    catalogSource
-    providerAccountId
-    region
-    bedrockModelSource
-    bedrockInferenceProfileArn
-    bedrockInferenceProfileId
-    bedrockInferenceProfileSource
-    bedrockInferenceProfileGeography
-    bedrockBaseModelId
-    bedrockFoundationModelId
-    dialects
-    contextWindow
-    maxOutputTokens
-    supportsStreaming
-    supportsTools
-    supportsImages
-    supportsReasoning
-    warnings
-    pricingKnown
-    inputCostPerMtok
-    outputCostPerMtok
-  }
-  providerAccounts {
-    id
-    providerId
-    provider
-    name
-    status
-    credentialMode
-    credentialSourceCategory
-    region
-    endpointOverride
-    discoveryRegions
-    health {
-      status
-      lastErrorType
-      cooldownUntil
-      metadata
-      modelHealth {
-        model
-        status
-        lastErrorType
-        lockoutUntil
-        metadata
-      }
-    }
-  }
-}
-    `) as unknown as TypedDocumentString<RoutingModelCatalogQuery, RoutingModelCatalogQueryVariables>;
-export const CreateApiKeyDocument = new TypedDocumentString(`
-    mutation CreateApiKey($input: CreateApiKeyInput!) {
-  createApiKey(input: $input) {
-    apiKey {
-      id
-      name
-    }
-    secret
-  }
-}
-    `) as unknown as TypedDocumentString<CreateApiKeyMutation, CreateApiKeyMutationVariables>;
-export const GatewayAccessProfilesDocument = new TypedDocumentString(`
-    query GatewayAccessProfiles {
-  gatewayAccessProfiles {
-    id
-    slug
-    name
-    description
-    enabled
-  }
-  gatewayModelGrants {
-    accessProfileId
-    logicalModelId
-    allowedOperations
-    enabled
-  }
-  gatewayLogicalModels {
-    id
-    slug
-    enabled
-  }
-}
-    `) as unknown as TypedDocumentString<GatewayAccessProfilesQuery, GatewayAccessProfilesQueryVariables>;
-export const RevokeApiKeyDocument = new TypedDocumentString(`
-    mutation RevokeApiKey($apiKeyId: ID!) {
-  revokeApiKey(apiKeyId: $apiKeyId) {
-    id
-    revokedAt
-  }
-}
-    `) as unknown as TypedDocumentString<RevokeApiKeyMutation, RevokeApiKeyMutationVariables>;
-export const ApiKeyVerificationDocument = new TypedDocumentString(`
-    query ApiKeyVerification($apiKeyId: ID!) {
-  apiKey(apiKeyId: $apiKeyId) {
-    id
-    lastUsedAt
-  }
-}
-    `) as unknown as TypedDocumentString<ApiKeyVerificationQuery, ApiKeyVerificationQueryVariables>;
-export const CreateRoutingConfigDocument = new TypedDocumentString(`
-    mutation CreateRoutingConfig($input: CreateRoutingConfigInput!) {
-  createRoutingConfig(input: $input) {
-    ...RoutingConfigDetailFields
-  }
-}
-    fragment RoutingConfigSummaryFields on RoutingConfigSummary {
-  id
-  name
-  slug
-  description
-  status
-  activeVersionId
-  assignedApiKeyCount
-  updatedAt
-  activeVersion {
-    id
-    version
-    configHash
-  }
-  routes {
-    route
-    description
-    targets {
-      providerId
-      model
-      effort
-      effectiveEffort
-    }
-  }
-}
-fragment RoutingConfigDetailFields on RoutingConfigDetail {
-  config {
-    ...RoutingConfigSummaryFields
-  }
-  versions {
-    id
-    version
-    configHash
-    status
-    active
-    createdAt
-    activatedAt
-    config
-  }
-}`) as unknown as TypedDocumentString<CreateRoutingConfigMutation, CreateRoutingConfigMutationVariables>;
-export const CreateRoutingConfigVersionDocument = new TypedDocumentString(`
-    mutation CreateRoutingConfigVersion($configId: ID!, $config: JSON!) {
-  createRoutingConfigVersion(configId: $configId, config: $config) {
-    ...RoutingConfigDetailFields
-  }
-}
-    fragment RoutingConfigSummaryFields on RoutingConfigSummary {
-  id
-  name
-  slug
-  description
-  status
-  activeVersionId
-  assignedApiKeyCount
-  updatedAt
-  activeVersion {
-    id
-    version
-    configHash
-  }
-  routes {
-    route
-    description
-    targets {
-      providerId
-      model
-      effort
-      effectiveEffort
-    }
-  }
-}
-fragment RoutingConfigDetailFields on RoutingConfigDetail {
-  config {
-    ...RoutingConfigSummaryFields
-  }
-  versions {
-    id
-    version
-    configHash
-    status
-    active
-    createdAt
-    activatedAt
-    config
-  }
-}`) as unknown as TypedDocumentString<CreateRoutingConfigVersionMutation, CreateRoutingConfigVersionMutationVariables>;
-export const ActivateRoutingConfigVersionDocument = new TypedDocumentString(`
-    mutation ActivateRoutingConfigVersion($configId: ID!, $versionId: ID!) {
-  activateRoutingConfigVersion(configId: $configId, versionId: $versionId) {
-    ...RoutingConfigDetailFields
-  }
-}
-    fragment RoutingConfigSummaryFields on RoutingConfigSummary {
-  id
-  name
-  slug
-  description
-  status
-  activeVersionId
-  assignedApiKeyCount
-  updatedAt
-  activeVersion {
-    id
-    version
-    configHash
-  }
-  routes {
-    route
-    description
-    targets {
-      providerId
-      model
-      effort
-      effectiveEffort
-    }
-  }
-}
-fragment RoutingConfigDetailFields on RoutingConfigDetail {
-  config {
-    ...RoutingConfigSummaryFields
-  }
-  versions {
-    id
-    version
-    configHash
-    status
-    active
-    createdAt
-    activatedAt
-    config
-  }
-}`) as unknown as TypedDocumentString<ActivateRoutingConfigVersionMutation, ActivateRoutingConfigVersionMutationVariables>;
-export const ArchiveRoutingConfigDocument = new TypedDocumentString(`
-    mutation ArchiveRoutingConfig($configId: ID!) {
-  archiveRoutingConfig(configId: $configId) {
-    ...RoutingConfigDetailFields
-  }
-}
-    fragment RoutingConfigSummaryFields on RoutingConfigSummary {
-  id
-  name
-  slug
-  description
-  status
-  activeVersionId
-  assignedApiKeyCount
-  updatedAt
-  activeVersion {
-    id
-    version
-    configHash
-  }
-  routes {
-    route
-    description
-    targets {
-      providerId
-      model
-      effort
-      effectiveEffort
-    }
-  }
-}
-fragment RoutingConfigDetailFields on RoutingConfigDetail {
-  config {
-    ...RoutingConfigSummaryFields
-  }
-  versions {
-    id
-    version
-    configHash
-    status
-    active
-    createdAt
-    activatedAt
-    config
-  }
-}`) as unknown as TypedDocumentString<ArchiveRoutingConfigMutation, ArchiveRoutingConfigMutationVariables>;
-export const AssignRoutingConfigKeyDocument = new TypedDocumentString(`
-    mutation AssignRoutingConfigKey($apiKeyId: ID!, $routingConfigId: ID) {
-  assignApiKeyRoutingConfig(
-    apiKeyId: $apiKeyId
-    routingConfigId: $routingConfigId
-  ) {
-    id
-    routingConfigId
-  }
-}
-    `) as unknown as TypedDocumentString<AssignRoutingConfigKeyMutation, AssignRoutingConfigKeyMutationVariables>;
 export const GlobalSearchDocument = new TypedDocumentString(`
     query GlobalSearch($query: String!) {
   search(query: $query) {
@@ -2460,7 +1473,8 @@ export const SessionDetailViewDocument = new TypedDocumentString(`
       requestId
       createdAt
       selectedModel
-      finalRoute
+      requestedLogicalModel
+      resolvedLogicalModelId
       terminalStatus
       latencyMs
       selectedCost
@@ -2493,13 +1507,13 @@ export const SessionsPageDocument = new TypedDocumentString(`
     externalSessionId
     userId
     surface
-    currentRoute
     requestCount
     startedAt
     endedAt
     recentActivity
     modelMix
-    routeMix
+    logicalModelMix
+    deploymentMix
     terminalStatusSummary
     usage {
       totalTokens
@@ -2524,7 +1538,6 @@ export const SettingsViewDocument = new TypedDocumentString(`
     fragment SettingsViewFields on Settings {
   organizationId
   databaseEnabled
-  subscriptionOAuthEnabled
   restartRequiredFor
   storage {
     path
@@ -2548,15 +1561,6 @@ export const SettingsViewDocument = new TypedDocumentString(`
       anthropicMessagesModel
       openaiResponsesModel
       openaiChatModel
-    }
-    classifier {
-      model
-      timeoutMs
-      maxAttempts
-      allowRedactedExcerpt
-    }
-    routeQuality {
-      lowConfidenceThreshold
     }
     promptCapture {
       promptCaptureMode
@@ -2573,7 +1577,6 @@ export const UpdateSettingsDocument = new TypedDocumentString(`
     fragment SettingsViewFields on Settings {
   organizationId
   databaseEnabled
-  subscriptionOAuthEnabled
   restartRequiredFor
   storage {
     path
@@ -2597,15 +1600,6 @@ export const UpdateSettingsDocument = new TypedDocumentString(`
       anthropicMessagesModel
       openaiResponsesModel
       openaiChatModel
-    }
-    classifier {
-      model
-      timeoutMs
-      maxAttempts
-      allowRedactedExcerpt
-    }
-    routeQuality {
-      lowConfidenceThreshold
     }
     promptCapture {
       promptCaptureMode
@@ -2845,67 +1839,22 @@ export const UsageLookupsDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<UsageLookupsQuery, UsageLookupsQueryVariables>;
-export const RouteOutputViewDocument = new TypedDocumentString(`
-    query RouteOutputView($start: String, $end: String) {
-  routeOutputReport(start: $start, end: $end) {
-    routes {
-      route
-      requests
-      outputTokens
-      reasoningTokens
-      avgOutputTokens
-      reasoningShare
-      outputCost
-    }
-    models {
+export const UnpricedDeploymentsDocument = new TypedDocumentString(`
+    query UnpricedDeployments {
+  usage(groupBy: deployment) {
+    data {
       key
-      requests
-      outputTokens
-      reasoningTokens
-      avgOutputTokens
-      reasoningShare
-      outputCost
-    }
-    users {
-      key
-      requests
-      outputTokens
-      reasoningTokens
-      avgOutputTokens
-      reasoningShare
-      outputCost
-    }
-    apiKeys {
-      key
-      requests
-      outputTokens
-      reasoningTokens
-      avgOutputTokens
-      reasoningShare
-      outputCost
-    }
-    workspaces {
-      key
-      requests
-      outputTokens
-      reasoningTokens
-      avgOutputTokens
-      reasoningShare
-      outputCost
+      requestCount
     }
   }
-}
-    `) as unknown as TypedDocumentString<RouteOutputViewQuery, RouteOutputViewQueryVariables>;
-export const UnpricedModelsDocument = new TypedDocumentString(`
-    query UnpricedModels {
-  modelPricing {
-    model
-    provider
-    source
-    seenInTraffic
+  gatewayModelDeployments {
+    id
+    upstreamModelId
+    providerConnectionId
+    pricing
   }
 }
-    `) as unknown as TypedDocumentString<UnpricedModelsQuery, UnpricedModelsQueryVariables>;
+    `) as unknown as TypedDocumentString<UnpricedDeploymentsQuery, UnpricedDeploymentsQueryVariables>;
 export const UserDirectoryDocument = new TypedDocumentString(`
     query UserDirectory {
   users {

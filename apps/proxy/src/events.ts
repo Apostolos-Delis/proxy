@@ -592,7 +592,8 @@ export class ProviderAttemptStore {
     provider: ProviderAttempt["provider"];
     model: string;
     adapterKind?: ProviderAttempt["adapterKind"];
-    providerAccountId?: string;
+    providerConnectionId?: string;
+    deploymentId?: string;
   }) {
     const existingId = this.idempotency.get(input.idempotencyKey);
     if (existingId) {
@@ -609,7 +610,8 @@ export class ProviderAttemptStore {
       provider: input.provider,
       model: input.model,
       adapterKind: input.adapterKind,
-      providerAccountId: input.providerAccountId,
+      providerConnectionId: input.providerConnectionId,
+      deploymentId: input.deploymentId,
       terminalStatus: "pending"
     };
     this.attempts.set(attempt.id, attempt);

@@ -325,6 +325,15 @@ builder.mutationFields((t) => ({
       return requiredResult(await gatewayAdmin(context).providerConnection(gatewayScope(context), id));
     }
   }),
+  resetGatewayProviderConnectionHealth: t.field({
+    type: GatewayProviderConnection,
+    args: { id: t.arg.id({ required: true }) },
+    resolve: async (_root, args, context) => {
+      const id = String(args.id);
+      await applyGatewayCommand(context, { resource: "providerConnection", action: "resetHealth", id });
+      return requiredResult(await gatewayAdmin(context).providerConnection(gatewayScope(context), id));
+    }
+  }),
   createGatewayCanonicalModel: t.field({
     type: GatewayCanonicalModel,
     args: { input: t.arg({ type: CreateGatewayCanonicalModelInput, required: true }) },
@@ -390,6 +399,15 @@ builder.mutationFields((t) => ({
         pricing: args.input.pricing ?? undefined
       });
       await applyGatewayCommand(context, { resource: "modelDeployment", action: "update", id, body });
+      return requiredResult(await gatewayAdmin(context).modelDeployment(gatewayScope(context), id));
+    }
+  }),
+  resetGatewayModelDeploymentHealth: t.field({
+    type: GatewayModelDeployment,
+    args: { id: t.arg.id({ required: true }) },
+    resolve: async (_root, args, context) => {
+      const id = String(args.id);
+      await applyGatewayCommand(context, { resource: "modelDeployment", action: "resetHealth", id });
       return requiredResult(await gatewayAdmin(context).modelDeployment(gatewayScope(context), id));
     }
   }),

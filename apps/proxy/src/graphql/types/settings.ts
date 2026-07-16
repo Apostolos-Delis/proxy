@@ -7,27 +7,11 @@ export type PromptCaptureConfigModel = Awaited<
   ReturnType<AppPersistence["promptArtifacts"]["configure"]>
 >;
 
-type ClassifierRuntimeModel = SettingsPayload["classifier"];
 type PromptCaptureStateModel = SettingsPayload["promptCapture"];
 type StorageInfoModel = SettingsPayload["storage"];
 type EditableSettingsModel = SettingsPayload["settings"];
-type EditableClassifierModel = EditableSettingsModel["classifier"];
 type CostBaselineSettingsModel = EditableSettingsModel["costBaseline"];
-type RouteQualitySettingsModel = EditableSettingsModel["routeQuality"];
 type ToolResultCompressionPolicySettingsModel = EditableSettingsModel["toolResultCompressionPolicy"];
-type RuntimeSettingsModel = SettingsPayload["runtime"];
-
-export const ClassifierRuntime = builder
-  .objectRef<ClassifierRuntimeModel>("ClassifierRuntime")
-  .implement({
-    fields: (t) => ({
-      provider: t.exposeString("provider"),
-      model: t.exposeString("model"),
-      timeoutMs: t.exposeInt("timeoutMs"),
-      maxAttempts: t.exposeInt("maxAttempts"),
-      contentMode: t.exposeString("contentMode")
-    })
-  });
 
 export const PromptCaptureState = builder
   .objectRef<PromptCaptureStateModel>("PromptCaptureState")
@@ -55,25 +39,6 @@ export const StorageInfo = builder.objectRef<StorageInfoModel>("StorageInfo").im
     reason: t.exposeString("reason")
   })
 });
-
-export const EditableClassifier = builder
-  .objectRef<EditableClassifierModel>("EditableClassifier")
-  .implement({
-    fields: (t) => ({
-      model: t.exposeString("model"),
-      timeoutMs: t.exposeInt("timeoutMs"),
-      maxAttempts: t.exposeInt("maxAttempts"),
-      allowRedactedExcerpt: t.exposeBoolean("allowRedactedExcerpt")
-    })
-  });
-
-export const RouteQualitySettings = builder
-  .objectRef<RouteQualitySettingsModel>("RouteQualitySettings")
-  .implement({
-    fields: (t) => ({
-      lowConfidenceThreshold: t.exposeFloat("lowConfidenceThreshold")
-    })
-  });
 
 export const CostBaselineSettings = builder
   .objectRef<CostBaselineSettingsModel>("CostBaselineSettings")
@@ -128,17 +93,7 @@ export const EditableSettings = builder
       toolResultCompressionPolicy: t.expose("toolResultCompressionPolicy", { type: ToolResultCompressionPolicySettings }),
       duplicateToolResultReferences: t.exposeBoolean("duplicateToolResultReferences"),
       costBaseline: t.expose("costBaseline", { type: CostBaselineSettings }),
-      classifier: t.expose("classifier", { type: EditableClassifier }),
-      routeQuality: t.expose("routeQuality", { type: RouteQualitySettings }),
       promptCapture: t.expose("promptCapture", { type: PromptCaptureState })
-    })
-  });
-
-export const RuntimeSettings = builder
-  .objectRef<RuntimeSettingsModel>("RuntimeSettings")
-  .implement({
-    fields: (t) => ({
-      classifier: t.expose("classifier", { type: ClassifierRuntime })
     })
   });
 
@@ -146,13 +101,10 @@ export const Settings = builder.objectRef<SettingsPayload>("Settings").implement
   fields: (t) => ({
     organizationId: t.exposeString("organizationId"),
     databaseEnabled: t.exposeBoolean("databaseEnabled"),
-    subscriptionOAuthEnabled: t.exposeBoolean("subscriptionOAuthEnabled"),
-    classifier: t.expose("classifier", { type: ClassifierRuntime }),
     promptCapture: t.expose("promptCapture", { type: PromptCaptureState }),
     storage: t.expose("storage", { type: StorageInfo }),
     restartRequiredFor: t.exposeStringList("restartRequiredFor"),
     settings: t.expose("settings", { type: EditableSettings }),
-    runtime: t.expose("runtime", { type: RuntimeSettings }),
     file: t.field({ type: "JSON", resolve: (payload) => payload.file }),
     defaults: t.field({ type: "JSON", resolve: (payload) => payload.defaults })
   })
@@ -162,21 +114,6 @@ export const Settings = builder.objectRef<SettingsPayload>("Settings").implement
 // in src/settings.ts remains the validator of record, so any subset that REST
 // previously accepted still reaches it (invalid values come back as
 // BAD_USER_INPUT with zod issues, exactly like the old PATCH endpoint).
-export const ClassifierSettingsInput = builder.inputType("ClassifierSettingsInput", {
-  fields: (t) => ({
-    model: t.string(),
-    timeoutMs: t.int(),
-    maxAttempts: t.int(),
-    allowRedactedExcerpt: t.boolean()
-  })
-});
-
-export const RouteQualitySettingsInput = builder.inputType("RouteQualitySettingsInput", {
-  fields: (t) => ({
-    lowConfidenceThreshold: t.float()
-  })
-});
-
 export const PromptCaptureSettingsInput = builder.inputType("PromptCaptureSettingsInput", {
   fields: (t) => ({
     promptCaptureMode: t.string(),
@@ -214,8 +151,6 @@ export const SettingsInput = builder.inputType("SettingsInput", {
     toolResultCompressionPolicy: t.field({ type: ToolResultCompressionPolicyInput }),
     duplicateToolResultReferences: t.boolean(),
     costBaseline: t.field({ type: CostBaselineSettingsInput }),
-    classifier: t.field({ type: ClassifierSettingsInput }),
-    routeQuality: t.field({ type: RouteQualitySettingsInput }),
     promptCapture: t.field({ type: PromptCaptureSettingsInput })
   })
 });

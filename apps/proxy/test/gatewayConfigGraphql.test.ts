@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 
-import { defaultWorkspaceId, organizationMembers, users } from "@proxy/db";
+import {
+  defaultWorkspaceId,
+  deploymentHealth,
+  organizationMembers,
+  providerConnectionHealth,
+  users
+} from "@proxy/db";
 
 import type { ProxyEvent } from "../src/events.js";
 import { parseGatewayConfigDocument } from "../src/persistence/gatewayConfigDocument.js";
@@ -164,6 +171,39 @@ enabled = true
       credentialConfigured: true
     });
 
+    await fixture.db.insert(providerConnectionHealth).values({
+      id: "connection_health_graphql",
+      organizationId: fixture.config.defaultOrganizationId,
+      workspaceId: scope.workspaceId,
+      providerConnectionId: connection.id,
+      status: "terminal",
+      lastErrorType: "auth_invalid"
+    });
+    await fixture.db.insert(deploymentHealth).values({
+      id: "deployment_health_graphql",
+      organizationId: fixture.config.defaultOrganizationId,
+      workspaceId: scope.workspaceId,
+      deploymentId: deployment.id,
+      providerConnectionId: connection.id,
+      status: "terminal",
+      lastErrorType: "model_access_denied"
+    });
+    const resetEventOffset = fixture.persistence.eventService.listEvents().length;
+    await mutation(fixture, `mutation Reset($id: ID!) {
+      value: resetGatewayProviderConnectionHealth(id: $id) { id }
+    }`, { id: connection.id });
+    await mutation(fixture, `mutation Reset($id: ID!) {
+      value: resetGatewayModelDeploymentHealth(id: $id) { id }
+    }`, { id: deployment.id });
+    expect(await fixture.db.select().from(providerConnectionHealth)
+      .where(eq(providerConnectionHealth.providerConnectionId, connection.id))).toEqual([]);
+    expect(await fixture.db.select().from(deploymentHealth)
+      .where(eq(deploymentHealth.deploymentId, deployment.id))).toEqual([]);
+    expect(fixture.persistence.eventService.listEvents().slice(resetEventOffset).map((event) => event.eventType)).toEqual([
+      "gateway_config.provider_connection.health_reset",
+      "gateway_config.model_deployment.health_reset"
+    ]);
+
     const deploymentSecret = "sk-graphql-deployment-leak";
     const rejectedDeploymentConfig = await adminGql(
       fixture.proxyUrl,
@@ -271,6 +311,10 @@ enabled = true
       ]));
     }
     expect(fields).toContain("assignGatewayApiKeyAccessProfile");
+    expect(fields).toEqual(expect.arrayContaining([
+      "resetGatewayProviderConnectionHealth",
+      "resetGatewayModelDeploymentHealth"
+    ]));
   });
 });
 

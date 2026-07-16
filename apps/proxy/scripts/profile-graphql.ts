@@ -120,8 +120,7 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
   const sessionCount = 40;
   const requestCount = 600;
   const surfaces = ["openai-responses", "anthropic-messages"] as const;
-  const routes = ["fast", "balanced", "hard", "deep"] as const;
-  const models = ["gpt-5.4-mini", "gpt-5.4", "gpt-5.5", "claude-sonnet-4-6", "claude-haiku-4-5"];
+  const logicalModels = ["economy-auto", "coding-auto", "coding-auto", "coding-auto"] as const;
 
   await db.insert(users).values(
     Array.from({ length: userCount }, (_, index) => ({
@@ -143,7 +142,8 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
       organizationId: ORG,
       workspaceId: WS,
       keyHash: hashApiKey(`profile-key-${index}`),
-      name: `Profile key ${index}`
+      name: `Profile key ${index}`,
+      accessProfileId: `${WS}:access-profile:opendoor-engineer`
     }))
   );
   await db.insert(agentSessions).values(
@@ -154,7 +154,6 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
       userId: `user_${index % userCount}`,
       surface: surfaces[index % 2],
       externalSessionId: `external-${index}`,
-      currentRoute: routes[index % 4],
       startedAt: new Date(SEED_EPOCH - (index % 30) * DAY_MS),
       updatedAt: new Date(SEED_EPOCH - (index % 7) * DAY_MS)
     }))
@@ -175,45 +174,76 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
 
   for (let batch = 0; batch < requestCount; batch += 100) {
     const ids = Array.from({ length: Math.min(100, requestCount - batch) }, (_, i) => batch + i);
-    await db.insert(requests).values(ids.map((index) => ({
-      id: `request_${index}`,
-      organizationId: ORG,
-      workspaceId: WS,
-      userId: `user_${index % userCount}`,
-      sessionId: `session_${index % sessionCount}`,
-      apiKeyId: index % 3 === 0 ? null : `key_${index % 12}`,
-      surface: surfaces[index % 2],
-      idempotencyKey: `idem_${index}`,
-      requestedModel: "router-auto",
-      inputHash: `sha256:${index}`,
-      inputChars: 100 + index,
-      status: index % 17 === 0 ? ("failed" as const) : ("completed" as const),
-      createdAt: new Date(SEED_EPOCH - (index % 30) * DAY_MS - (index % 24) * 3_600_000),
-      completedAt: new Date(SEED_EPOCH - (index % 30) * DAY_MS)
-    })));
-    await db.insert(routeDecisions).values(ids.map((index) => ({
-      id: `decision_${index}`,
-      requestId: `request_${index}`,
-      organizationId: ORG,
-      workspaceId: WS,
-      requestedModel: "router-auto",
-      classifierRoute: routes[index % 4],
-      finalRoute: routes[index % 4],
-      selectedProvider: index % 2 === 0 ? ("openai" as const) : ("anthropic" as const),
-      selectedModel: models[index % models.length],
-      confidence: 3000 + (index % 7000),
-      classifier: { provider: "openai", model: "route-classifier-cheap", confidence: 0.8 },
-      policyVersion: "profile"
-    })));
+    await db.insert(requests).values(ids.map((index) => {
+      const target = profileTarget(index, logicalModels[index % logicalModels.length]);
+      return {
+        id: `request_${index}`,
+        organizationId: ORG,
+        workspaceId: WS,
+        userId: `user_${index % userCount}`,
+        sessionId: `session_${index % sessionCount}`,
+        apiKeyId: index % 3 === 0 ? null : `key_${index % 12}`,
+        surface: target.wireId,
+        idempotencyKey: `idem_${index}`,
+        requestedModel: target.logicalModel,
+        inputHash: `sha256:${index}`,
+        inputChars: 100 + index,
+        ingressWireId: target.wireId,
+        operationId: "text.generate" as const,
+        requestedLogicalModel: target.logicalModel,
+        resolvedLogicalModelId: target.logicalModelId,
+        accessProfileId: `${WS}:access-profile:opendoor-engineer`,
+        routerKind: "classifier" as const,
+        deploymentId: target.deploymentId,
+        providerConnectionId: target.providerConnectionId,
+        egressWireId: target.wireId,
+        wireAdapterVersion: "1" as const,
+        status: index % 17 === 0 ? ("failed" as const) : ("completed" as const),
+        createdAt: new Date(SEED_EPOCH - (index % 30) * DAY_MS - (index % 24) * 3_600_000),
+        completedAt: new Date(SEED_EPOCH - (index % 30) * DAY_MS)
+      };
+    }));
+    await db.insert(routeDecisions).values(ids.map((index) => {
+      const target = profileTarget(index, logicalModels[index % logicalModels.length]);
+      return {
+        id: `decision_${index}`,
+        requestId: `request_${index}`,
+        organizationId: ORG,
+        workspaceId: WS,
+        requestedModel: target.logicalModel,
+        selectedProvider: target.provider,
+        selectedModel: target.model,
+        ingressWireId: target.wireId,
+        operationId: "text.generate" as const,
+        requestedLogicalModel: target.logicalModel,
+        resolvedLogicalModelId: target.logicalModelId,
+        accessProfileId: `${WS}:access-profile:opendoor-engineer`,
+        routerKind: "classifier" as const,
+        deploymentId: target.deploymentId,
+        providerConnectionId: target.providerConnectionId,
+        egressWireId: target.wireId,
+        wireAdapterVersion: "1" as const,
+        confidence: 3000 + (index % 7000),
+        routerDecisionId: `profile-router-decision-${index}`,
+        routerDecision: { selectedDeploymentId: target.deploymentId },
+        policyVersion: "profile"
+      };
+    }));
     await db.insert(providerAttempts).values(ids.flatMap((index) => {
+      const target = profileTarget(index, logicalModels[index % logicalModels.length]);
       const attempt = (suffix: string, status: "completed" | "failed", offsetMs: number) => ({
         id: `attempt_${index}${suffix}`,
         requestId: `request_${index}`,
         organizationId: ORG,
         workspaceId: WS,
-        surface: surfaces[index % 2],
-        provider: index % 2 === 0 ? ("openai" as const) : ("anthropic" as const),
-        model: models[index % models.length],
+        surface: target.wireId,
+        provider: target.provider,
+        model: target.model,
+        adapterKind: "generic-http-json" as const,
+        deploymentId: target.deploymentId,
+        providerConnectionId: target.providerConnectionId,
+        egressWireId: target.wireId,
+        providerAdapterContractVersion: "1" as const,
         terminalStatus: status,
         startedAt: new Date(SEED_EPOCH - (index % 30) * DAY_MS),
         firstByteAt: new Date(SEED_EPOCH - (index % 30) * DAY_MS + 120),
@@ -223,26 +253,28 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
         ? [attempt("_retry", "failed", 400), attempt("", "completed", 900)]
         : [attempt("", index % 17 === 0 ? "failed" : "completed", 700)];
     }));
-    await db.insert(usageLedger).values(ids.map((index) => ({
-      id: `usage_${index}`,
-      organizationId: ORG,
-      workspaceId: WS,
-      requestId: `request_${index}`,
-      providerAttemptId: `attempt_${index}`,
-      userId: `user_${index % userCount}`,
-      sessionId: `session_${index % sessionCount}`,
-      provider: index % 2 === 0 ? ("openai" as const) : ("anthropic" as const),
-      model: models[index % models.length],
-      route: routes[index % 4],
-      inputTokens: 500 + index,
-      cachedInputTokens: index % 5 === 0 ? 200 : 0,
-      outputTokens: 150 + (index % 90),
-      reasoningTokens: index % 4 === 0 ? 64 : 0,
-      totalTokens: 650 + index + (index % 90),
-      inputCostMicros: 1200,
-      outputCostMicros: 900,
-      totalCostMicros: 2100
-    })));
+    await db.insert(usageLedger).values(ids.map((index) => {
+      const target = profileTarget(index, logicalModels[index % logicalModels.length]);
+      return {
+        id: `usage_${index}`,
+        organizationId: ORG,
+        workspaceId: WS,
+        requestId: `request_${index}`,
+        providerAttemptId: `attempt_${index}`,
+        userId: `user_${index % userCount}`,
+        sessionId: `session_${index % sessionCount}`,
+        provider: target.provider,
+        model: target.model,
+        inputTokens: 500 + index,
+        cachedInputTokens: index % 5 === 0 ? 200 : 0,
+        outputTokens: 150 + (index % 90),
+        reasoningTokens: index % 4 === 0 ? 64 : 0,
+        totalTokens: 650 + index + (index % 90),
+        inputCostMicros: 1200,
+        outputCostMicros: 900,
+        totalCostMicros: 2100
+      };
+    }));
     await db.insert(events).values(ids.map((index) => ({
       id: `event_${index}`,
       sequence: 1,
@@ -259,7 +291,10 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
       payloadHash: `sha256:${index}`,
       sensitivity: "internal",
       redactionState: "redacted",
-      payload: { surface: surfaces[index % 2], requestedModel: "router-auto" },
+      payload: {
+        surface: profileTarget(index, logicalModels[index % logicalModels.length]).wireId,
+        requestedLogicalModel: logicalModels[index % logicalModels.length]
+      },
       metadata: {},
       createdAt: new Date(SEED_EPOCH - (index % 30) * DAY_MS)
     })));
@@ -279,6 +314,27 @@ async function seedVolume(db: ReturnType<typeof createPgliteDatabase>) {
     metadata: { chars: 70 },
     createdAt: new Date(SEED_EPOCH - (index % 30) * DAY_MS)
   })));
+}
+
+function profileTarget(index: number, logicalModel: "coding-auto" | "economy-auto") {
+  const economyTargets = [
+    { provider: "openai", model: "gpt-5.4-mini", wireId: "openai-responses" },
+    { provider: "anthropic", model: "claude-haiku-4-5", wireId: "anthropic-messages" }
+  ] as const;
+  const codingTargets = [
+    { provider: "openai", model: "gpt-5.4", wireId: "openai-responses" },
+    { provider: "openai", model: "gpt-5.5", wireId: "openai-responses" },
+    { provider: "anthropic", model: "claude-sonnet-4-5", wireId: "anthropic-messages" }
+  ] as const;
+  const targets = logicalModel === "economy-auto" ? economyTargets : codingTargets;
+  const target = targets[index % targets.length];
+  return {
+    ...target,
+    logicalModel,
+    logicalModelId: `${WS}:logical-model:${logicalModel}`,
+    deploymentId: `${WS}:deployment:${target.provider}:${target.model}`,
+    providerConnectionId: `${WS}:connection:${target.provider}`
+  };
 }
 
 type Operation = {
@@ -318,46 +374,43 @@ const usageChartGroupSelection = `{
 
 const operations: Operation[] = [
   { name: "viewer", query: "query { viewer { organizationId user { userId role } organizations { id name role } } }" },
-  { name: "overview", query: "query { overview { organizationId eventCount requestCount totals { totalTokens } cost { selected baseline savings } routeQuality { lowConfidenceCount cheaperLikelyWouldWorkCount cheapCausedRetriesOrRepairsCount } } }" },
-  { name: "requests", query: "query { requests { requestId sessionId finalRoute selectedModel terminalStatus latencyMs selectedCost usage { totalTokens } routingConfig { configId configName version configHash } } }" },
+  { name: "overview", query: "query { overview { organizationId eventCount requestCount totals { totalTokens } cost { selected baseline savings } routeQuality { lowConfidenceCount } } }" },
+  { name: "requests", query: "query { requests { requestId sessionId requestedLogicalModel resolvedLogicalModelId deploymentId providerConnectionId selectedModel terminalStatus latencyMs selectedCost usage { totalTokens } } }" },
   { name: "request", query: "query { request(requestId: \"request_10\") { request { requestId terminalStatus } events { eventId eventType payload } } }" },
-  { name: "prompts", query: "query { prompts { data { artifactId requestId userId preview kind finalRoute selectedModel cost { selected } routingConfig { configId configName } } pagination { limit offset count } } }" },
+  { name: "prompts", query: "query { prompts { data { artifactId requestId userId preview kind requestedLogicalModel resolvedLogicalModelId deploymentId selectedModel cost { selected } } pagination { limit offset count } } }" },
   { name: "proxy", query: "query { prompt(artifactId: \"artifact_10\") { artifact { artifactId rawText } request { requestId } requestArtifacts { artifactId kind } events { eventId eventType } } }" },
   { name: "promptAccessAudit", query: "query { promptAccessAudit { id artifactId accessPath createdAt } }" },
-  { name: "usage(route)", query: `query { usage(groupBy: route, start: "${RANGE.start}", end: "${RANGE.end}") { groupBy data ${usageGroupSelection} totals ${usageGroupSelection} } }` },
+  { name: "usage(logical_model)", query: `query { usage(groupBy: logical_model, start: "${RANGE.start}", end: "${RANGE.end}") { groupBy data ${usageGroupSelection} totals ${usageGroupSelection} } }` },
   { name: "usageTimeseries(model)", query: `query { usageTimeseries(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { groupBy interval start end groups ${usageGroupSelection} points { ts totals ${usageGroupSelection} groups } } }` },
   { name: "usageDashboard (UsageDashboardView)", query: `query { usageDashboard(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { usage { data ${usageDashboardGroupSelection} totals ${usageDashboardGroupSelection} } timeseries { groups ${usageChartGroupSelection} points { ts totals ${usageChartGroupSelection} groups } } } }` },
   { name: "usageDashboard (UsagePage shape)", query: `query { usageDashboard(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { usage { data ${usageGroupSelection} totals ${usageGroupSelection} } timeseries { groups ${usageGroupSelection} points { ts totals ${usageGroupSelection} groups } } } members { userId name email } apiKeys { id name revokedAt } }` },
-  { name: "overviewDashboard (OverviewPage shape)", query: `query { overviewDashboard { overview { requestCount totals { totalTokens } cost { selected baseline savings } routeQuality { lowConfidenceCount cheaperLikelyWouldWorkCount cheapCausedRetriesOrRepairsCount } } requests { createdAt selectedCost baselineCost usage { totalTokens } } modelUsage { data { key usage { totalTokens } cost { selected } } } } }` },
-  { name: "costPage shape", query: `query { usageDashboard(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { usage { data ${usageGroupSelection} totals ${usageGroupSelection} } timeseries { groups ${usageGroupSelection} points { ts totals ${usageGroupSelection} groups } } } spendTab: usage(groupBy: user, start: "${RANGE.start}", end: "${RANGE.end}") { data ${usageGroupSelection} totals ${usageGroupSelection} } members { userId name email } apiKeys { id name revokedAt } modelPricing { model provider source seenInTraffic } }` },
-  { name: "cachingPage shape", query: `query { usageDashboard(groupBy: provider, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { usage { data ${usageGroupSelection} totals ${usageGroupSelection} } timeseries { groups ${usageGroupSelection} points { ts totals ${usageGroupSelection} groups } } } previous: usage(groupBy: provider, start: "${PREVIOUS_RANGE.start}", end: "${PREVIOUS_RANGE.end}") { totals ${usageGroupSelection} } keyUsage: usage(groupBy: api_key, start: "${RANGE.start}", end: "${RANGE.end}") { data ${usageGroupSelection} } modelUsage: usage(groupBy: model, start: "${RANGE.start}", end: "${RANGE.end}") { data ${usageGroupSelection} } modelPricing { model inputCostPerMtok cacheReadCostPerMtok cacheWriteCostPerMtok } members { userId name email } apiKeys { id name revokedAt } cacheBusts(start: "${RANGE.start}", end: "${RANGE.end}") { sessionsScanned sampled countsByCause busts { sessionId requestId at cause droppedCacheReadTokens rebuiltTokens model gapMs } } compressionSavings(start: "${RANGE.start}", end: "${RANGE.end}") { eventCount sampled blocks savedChars savedEstimatedTokens rows { rule ruleVersion tool blocks savedChars savedEstimatedTokens } } tokenAttribution(start: "${RANGE.start}", end: "${RANGE.end}") { requestCount sampled buckets { key chars estimatedTokens } toolSchemas { name chars estimatedTokens blocks } toolResults { name chars estimatedTokens blocks } schemaChurn { name estimatedTokens requests sessions schemaHashes churningSessions status } } idleGaps(start: "${RANGE.start}", end: "${RANGE.end}") { buckets { key label count } totalGaps overTtl recoverableByOneHourTtl estimatedRecoverableCacheReadTokens recommendationThresholdTokens recommendedTtlUpgrade sessionsScanned sampledRequests sampleWindowStart sampleWindowEnd sampled } }` },
-  { name: "providersPage shape", query: "query { providerAccounts { id organizationId provider name authType status baseUrl secretHint ownerUserId boundKeyCount createdAt lastUsedAt } providers { id organizationId slug displayName baseUrl authStyle endpoints { dialect path } defaultHeaders capabilities forwardHarnessHeaders enabled builtin } users { userId name email } apiKeys { id name userId routingConfigId createdAt expiresAt revokedAt lastUsedAt providerCredentials { provider providerAccountId name status } routingConfig { id name status } } }" },
+  { name: "overviewDashboard (OverviewPage shape)", query: `query { overviewDashboard { overview { requestCount totals { totalTokens } cost { selected baseline savings } routeQuality { lowConfidenceCount } } requests { createdAt selectedCost baselineCost usage { totalTokens } } modelUsage { data { key usage { totalTokens } cost { selected } } } } }` },
+  { name: "costPage shape", query: `query { usageDashboard(groupBy: model, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { usage { data ${usageGroupSelection} totals ${usageGroupSelection} } timeseries { groups ${usageGroupSelection} points { ts totals ${usageGroupSelection} groups } } } spendTab: usage(groupBy: user, start: "${RANGE.start}", end: "${RANGE.end}") { data ${usageGroupSelection} totals ${usageGroupSelection} } members { userId name email } apiKeys { id name revokedAt } gatewayModelDeployments { id upstreamModelId providerConnectionId pricing } }` },
+  { name: "cachingPage shape", query: `query { usageDashboard(groupBy: provider, interval: day, start: "${RANGE.start}", end: "${RANGE.end}") { usage { data ${usageGroupSelection} totals ${usageGroupSelection} } timeseries { groups ${usageGroupSelection} points { ts totals ${usageGroupSelection} groups } } } previous: usage(groupBy: provider, start: "${PREVIOUS_RANGE.start}", end: "${PREVIOUS_RANGE.end}") { totals ${usageGroupSelection} } keyUsage: usage(groupBy: api_key, start: "${RANGE.start}", end: "${RANGE.end}") { data ${usageGroupSelection} } modelUsage: usage(groupBy: model, start: "${RANGE.start}", end: "${RANGE.end}") { data ${usageGroupSelection} } gatewayModelDeployments { id upstreamModelId providerConnectionId pricing } members { userId name email } apiKeys { id name revokedAt } cacheBusts(start: "${RANGE.start}", end: "${RANGE.end}") { sessionsScanned sampled countsByCause busts { sessionId requestId at cause droppedCacheReadTokens rebuiltTokens model gapMs } } compressionSavings(start: "${RANGE.start}", end: "${RANGE.end}") { eventCount sampled blocks savedChars savedEstimatedTokens rows { rule ruleVersion tool blocks savedChars savedEstimatedTokens } } tokenAttribution(start: "${RANGE.start}", end: "${RANGE.end}") { requestCount sampled buckets { key chars estimatedTokens } toolSchemas { name chars estimatedTokens blocks } toolResults { name chars estimatedTokens blocks } schemaChurn { name estimatedTokens requests sessions schemaHashes churningSessions status } } idleGaps(start: "${RANGE.start}", end: "${RANGE.end}") { buckets { key label count } totalGaps overTtl recoverableByOneHourTtl estimatedRecoverableCacheReadTokens recommendationThresholdTokens recommendedTtlUpgrade sessionsScanned sampledRequests sampleWindowStart sampleWindowEnd sampled } }` },
+  { name: "gateway control plane", query: "query { gatewayProviderConnections { id slug name adapterKind authStyle baseUrl status credentialConfigured } gatewayCanonicalModels { id slug name vendor family capabilities status } gatewayModelDeployments { id slug name canonicalModelId providerConnectionId upstreamModelId pricing status } gatewayWireBindings { id deploymentId providerConnectionId apiWireId endpointPath adapterContractVersion enabled } gatewayLogicalModels { id slug name resolutionKind routerKind routerConfig status } gatewayLogicalModelTargets { id logicalModelId deploymentId priority enabled } gatewayAccessProfiles { id slug name description limits status } gatewayModelGrants { id accessProfileId logicalModelId allowedOperations parameterCaps enabled } }" },
   { name: "billingPage shape", query: "query { overview { requestCount cost { selected baseline savings } } }" },
-  { name: "users", query: "query { users { userId email name membership { role status } requestCount sessionCount usage { totalTokens } cost { selected } recentActivity createdAt } }" },
-  { name: "user", query: "query { user(userId: \"user_3\") { user { userId requestCount } sessions { sessionId } requests { requestId } } }" },
-  { name: "sessions", query: "query { sessions { sessionId userId surface currentRoute requestCount routeChanges modelMix routeMix terminalStatusSummary usage { totalTokens } cost { selected } } }" },
-  { name: "session", query: "query { session(sessionId: \"session_5\") { session { sessionId requestCount } requests { requestId } promptArtifacts { artifactId kind rawText } routeDecisions { id finalRoute } providerAttempts { id terminalStatus } usageLedger { id totalCostMicros } events { eventId eventType } } }" },
+  { name: "members", query: "query { members { userId email name status } }" },
+  { name: "sessions", query: "query { sessions { sessionId userId surface requestCount logicalModelChanges logicalModelMix deploymentMix modelMix terminalStatusSummary usage { totalTokens } cost { selected } } }" },
+  { name: "session", query: "query { session(sessionId: \"session_5\") { session { sessionId requestCount } requests { requestId } promptArtifacts { artifactId kind rawText } routeDecisions { id requestedLogicalModel resolvedLogicalModelId deploymentId } providerAttempts { id terminalStatus } usageLedger { id totalCostMicros } events { eventId eventType } } }" },
   { name: "invitations", query: "query { invitations { id email role status invitedBy { userId name } expiresAt } }" },
-  { name: "settings", query: "query { settings { organizationId databaseEnabled settings { schemaVersion cacheTtlUpgrade automaticCaching toolResultCompressionPolicy { mode minOriginalBytes minSavingsTokens enabledRules storeOriginalArtifact storeCompressedArtifact } duplicateToolResultReferences costBaseline { anthropicMessagesModel openaiResponsesModel openaiChatModel } classifier { model } routeQuality { lowConfidenceThreshold } promptCapture { promptCaptureMode retentionDays } } } }" },
-  { name: "routingConfigs", query: "query { routingConfigs { id name slug status assignedApiKeyCount activeVersion { id version configHash } routes { route targets { providerId model effort effectiveEffort } } trafficShare } }" },
-  { name: "routingConfig", query: `query { routingConfig(configId: "${ORG}:routing-config:default") { config { id name assignedApiKeyCount } versions { id version active config } } }` },
-  { name: "apiKeys", query: "query { apiKeys { id name userId routingConfigId routingConfig { id name status } createdAt lastUsedAt } }" },
+  { name: "settings", query: "query { settings { organizationId databaseEnabled settings { schemaVersion cacheTtlUpgrade automaticCaching toolResultCompressionPolicy { mode minOriginalBytes minSavingsTokens enabledRules storeOriginalArtifact storeCompressedArtifact } duplicateToolResultReferences costBaseline { anthropicMessagesModel openaiResponsesModel openaiChatModel } promptCapture { promptCaptureMode retentionDays } } } }" },
+  { name: "apiKeys", query: "query { apiKeys { id name userId accessProfileId accessProfile { id name status } createdAt lastUsedAt } }" },
   { name: "apiKey", query: "query { apiKey(apiKeyId: \"key_3\") { id name } }" },
   { name: "search", query: "query { search(query: \"profile\") { query results { kind id title subtitle status snippet occurredAt } } }" },
   { name: "publicInvitation", query: "query { publicInvitation(token: \"missing\") { email } }" },
-  { name: "keysPage shape", query: "query { apiKeys { id name userId routingConfigId routingConfig { id name status } createdAt expiresAt revokedAt lastUsedAt } routingConfigs { id name status assignedApiKeyCount activeVersion { id version } } }" }
+  { name: "keysPage shape", query: "query { apiKeys { id name userId accessProfileId accessProfile { id name status } createdAt expiresAt revokedAt lastUsedAt } gatewayAccessProfiles { id slug name description enabled } gatewayModelGrants { accessProfileId logicalModelId allowedOperations enabled } gatewayLogicalModels { id slug enabled } }" }
 ];
 
 const mutations: Operation[] = [
-  { name: "mut updateSettings", query: "mutation { updateSettings(input: { schemaVersion: 1, automaticCaching: false, cacheTtlUpgrade: false, toolResultCompressionPolicy: { mode: \"disabled\", minOriginalBytes: 512, minSavingsTokens: 0, enabledRules: [\"mcp-json-whitespace\", \"json-whitespace\", \"bash-output-noise\"], storeOriginalArtifact: false, storeCompressedArtifact: false }, duplicateToolResultReferences: false, costBaseline: { anthropicMessagesModel: \"claude-sonnet-4-6\", openaiResponsesModel: \"gpt-5.4\", openaiChatModel: \"gpt-5.4\" }, classifier: { model: \"route-classifier-cheap\", timeoutMs: 1500, maxAttempts: 2, allowRedactedExcerpt: false }, routeQuality: { lowConfidenceThreshold: 0.5 }, promptCapture: { promptCaptureMode: \"raw_text\", retentionDays: 30 } }) { organizationId } }" },
+  { name: "mut updateSettings", query: "mutation { updateSettings(input: { schemaVersion: 1, automaticCaching: false, cacheTtlUpgrade: false, toolResultCompressionPolicy: { mode: \"disabled\", minOriginalBytes: 512, minSavingsTokens: 0, enabledRules: [\"mcp-json-whitespace\", \"json-whitespace\", \"bash-output-noise\"], storeOriginalArtifact: false, storeCompressedArtifact: false }, duplicateToolResultReferences: false, costBaseline: { anthropicMessagesModel: \"claude-sonnet-4-5\", openaiResponsesModel: \"gpt-5.4\", openaiChatModel: \"gpt-5.4\" }, promptCapture: { promptCaptureMode: \"raw_text\", retentionDays: 30 } }) { organizationId } }" },
   { name: "mut configurePromptCapture", query: "mutation { configurePromptCapture(promptCaptureMode: \"raw_text\", retentionDays: 30) { organizationId retentionDays } }" },
   { name: "mut createInvitation", query: "mutation { createInvitation(input: { email: \"profilee@example.com\", role: member }) { invitation { id status } inviteUrl emailDelivery { transport delivered } } }" },
   { name: "mut updateUserRole", query: "mutation { updateUserRole(userId: \"user_3\", role: admin) { userId role previousRole } }" },
   { name: "mut deactivateUser", query: "mutation { deactivateUser(userId: \"user_5\") { userId status } }" },
   { name: "mut reactivateUser", query: "mutation { reactivateUser(userId: \"user_5\") { userId status } }" },
-  { name: "mut createApiKey", query: "mutation { createApiKey(input: { name: \"Profiled key\" }) { apiKey { id name } secret } }" },
-  { name: "mut assignApiKeyRoutingConfig", query: `mutation { assignApiKeyRoutingConfig(apiKeyId: "key_2", routingConfigId: "${ORG}:routing-config:default") { id routingConfigId } }` },
-  { name: "mut createRoutingConfigVersion", query: `mutation CreateVersion($configId: ID!, $config: JSON!) { createRoutingConfigVersion(configId: $configId, config: $config) { config { id } versions { id version } } }` }
+  { name: "mut createApiKey", query: `mutation { createApiKey(input: { name: "Profiled key", accessProfileId: "${WS}:access-profile:opendoor-engineer" }) { apiKey { id name } secret } }` },
+  { name: "mut assignApiKeyAccessProfile", query: `mutation { assignGatewayApiKeyAccessProfile(apiKeyId: "key_2", accessProfileId: "${WS}:access-profile:opendoor-engineer") { apiKeyId accessProfileId } }` },
+  { name: "mut updateGatewayAccessProfile", query: `mutation { updateGatewayAccessProfile(input: { id: "${WS}:access-profile:opendoor-engineer", description: "Profiled gateway access" }) { id description } }` }
 ];
 
 async function gql(proxyUrl: string, cookie: string, op: Operation) {
@@ -414,29 +467,10 @@ try {
 
   if (!operationFilter) {
     // Mutations mutate state; run each once (no warmup) with its own count.
-    const defaultDetail = await fetch(`${fixture.proxyUrl}/admin/graphql`, {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({
-        query: `query { routingConfig(configId: "${ORG}:routing-config:default") { versions { active config } } }`
-      })
-    }).then((item) => item.json()) as { data: { routingConfig: { versions: { active: boolean; config: unknown }[] } } };
-    const activeConfig = defaultDetail.data.routingConfig.versions.find((version) => version.active)?.config;
-    if (!activeConfig) throw new Error("no active routing config version found in seed");
-
     for (const op of mutations) {
-      const prepared = op.name === "mut createRoutingConfigVersion"
-        ? {
-            ...op,
-            variables: {
-              configId: `${ORG}:routing-config:default`,
-              config: { ...(activeConfig as Record<string, unknown>), displayName: "Profiled version" }
-            }
-          }
-        : op;
       const before = sqlCounter.count;
       const startedAt = performance.now();
-      await gql(fixture.proxyUrl, cookie, prepared);
+      await gql(fixture.proxyUrl, cookie, op);
       rows.push({ name: op.name, median: performance.now() - startedAt, sqlCount: sqlCounter.count - before });
     }
   }

@@ -23,11 +23,10 @@ const candidate: PromptCachePrewarmCandidate = {
   provider: "google-gemini-openai",
   model: "gemini-2.5-pro",
   capabilities: { prewarm: true },
-  triggerSource: "route_config_publish",
+  triggerSource: "workspace_bootstrap",
   prefixDigest: "sha256:prefix",
   estimatedInputTokens: 12000,
   estimatedCostMicros: 25000,
-  routingConfigVersionId: "version_1",
   now: new Date("2026-06-27T12:00:00.000Z")
 };
 

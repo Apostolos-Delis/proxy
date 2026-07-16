@@ -12,7 +12,7 @@ const validClassification = {
   source: "provider_header",
   confidence: "exact",
   retryable: true,
-  scope: "provider_account",
+  scope: "provider_connection",
   cooldownUntil: "2026-06-18T12:00:00.000Z",
   message: "Provider returned a retry-after window.",
   metadata: {

@@ -167,7 +167,7 @@ function forwardInput(input: {
     decision: {
       outcome: "route",
       surface: input.surface,
-      requestedModel: "router-hard",
+      requestedModel: "coding-auto",
       selectedModel: input.model,
       provider: "amazon-bedrock",
       providerSettings: {
@@ -175,7 +175,7 @@ function forwardInput(input: {
         model: input.model,
         dialect: "bedrock-converse",
         deployment: {
-          key: "hard:0",
+          key: `deployment_bedrock_${input.model}`,
           provider: "amazon-bedrock",
           model: input.model,
           order: 0,

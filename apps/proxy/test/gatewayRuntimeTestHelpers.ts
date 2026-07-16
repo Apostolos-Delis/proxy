@@ -90,14 +90,3 @@ export function nextMessage(socket: WebSocket, predicate: (message: string) => b
     socket.once("error", onError);
   });
 }
-
-export function dropLegacyRuntimeTables(fixture: PromptTestFixture) {
-  return fixture.client.exec(`
-    drop table if exists api_key_provider_accounts cascade;
-    drop table if exists model_catalog cascade;
-    drop table if exists provider_accounts cascade;
-    drop table if exists providers cascade;
-    drop table if exists routing_config_versions cascade;
-    drop table if exists routing_configs cascade;
-  `);
-}

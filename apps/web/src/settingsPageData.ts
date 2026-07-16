@@ -90,7 +90,7 @@ export const settingsSections: SettingsSectionDef[] = [
   {
     id: "system",
     title: "System prompt",
-    description: "Prepended ahead of harness prompts for new sessions and sessionless requests, across all routing configs.",
+    description: "Prepended ahead of harness prompts for new sessions and sessionless requests.",
     requiresDatabase: true,
     rows: [
       {
@@ -107,7 +107,7 @@ export const settingsSections: SettingsSectionDef[] = [
   {
     id: "optimization",
     title: "Token optimization",
-    description: "Request transforms that cut token spend on proxied traffic. Applied org-wide across all routing configs. OpenAI API prompt caching is provider-managed; explicit prompt_cache_retention values are forwarded to public OpenAI upstreams when clients send them.",
+    description: "Request transforms that cut token spend on proxied traffic. Applied organization-wide. OpenAI API prompt caching is provider-managed; explicit prompt_cache_retention values are forwarded to public OpenAI upstreams when clients send them.",
     requiresDatabase: true,
     rows: [
       {
@@ -147,7 +147,7 @@ export const settingsSections: SettingsSectionDef[] = [
   {
     id: "baseline",
     title: "Cost baseline",
-    description: "The no-routing counterfactual behind baseline cost and savings: what each request would have cost if it had gone straight to this model. Requests that pin an explicit route tier are baselined against that tier's model instead.",
+    description: "The counterfactual behind baseline cost and savings: what each request would have cost if it had gone directly to this upstream model.",
     requiresDatabase: true,
     rows: [
       {
@@ -155,7 +155,7 @@ export const settingsSections: SettingsSectionDef[] = [
         type: "text",
         mono: true,
         label: "Anthropic Messages baseline model",
-        desc: "Anthropic Messages traffic is re-priced against this model to compute baseline cost. Use the model your engineers would run without the proxy; it must have pricing configured on the Models page.",
+        desc: "Anthropic Messages traffic is re-priced against this upstream model to compute baseline cost. Its deployment must have pricing configured.",
         get: (settings) => settings.costBaseline.anthropicMessagesModel,
         set: (settings, value) => ({ ...settings, costBaseline: { ...settings.costBaseline, anthropicMessagesModel: value } })
       },
@@ -164,7 +164,7 @@ export const settingsSections: SettingsSectionDef[] = [
         type: "text",
         mono: true,
         label: "OpenAI Responses baseline model",
-        desc: "OpenAI Responses traffic is re-priced against this model to compute baseline cost. Use the model your engineers would run without the proxy; it must have pricing configured on the Models page.",
+        desc: "OpenAI Responses traffic is re-priced against this upstream model to compute baseline cost. Its deployment must have pricing configured.",
         get: (settings) => settings.costBaseline.openaiResponsesModel,
         set: (settings, value) => ({ ...settings, costBaseline: { ...settings.costBaseline, openaiResponsesModel: value } })
       },
@@ -173,56 +173,9 @@ export const settingsSections: SettingsSectionDef[] = [
         type: "text",
         mono: true,
         label: "OpenAI Chat baseline model",
-        desc: "OpenAI Chat Completions traffic is re-priced against this model to compute baseline cost. Use the model your engineers would run without the proxy; it must have pricing configured on the Models page.",
+        desc: "OpenAI Chat Completions traffic is re-priced against this upstream model to compute baseline cost. Its deployment must have pricing configured.",
         get: (settings) => settings.costBaseline.openaiChatModel,
         set: (settings, value) => ({ ...settings, costBaseline: { ...settings.costBaseline, openaiChatModel: value } })
-      }
-    ]
-  },
-  {
-    id: "classifier",
-    title: "Classifier",
-    description: "The LLM call that picks a route for each request.",
-    restartKey: "classifier",
-    rows: [
-      {
-        id: "classifierModel",
-        type: "text",
-        mono: true,
-        label: "Model",
-        desc: "Classifies each request to choose a route, called with structured output through the OpenAI Responses API. Small, fast models work best — it runs on every request.",
-        get: (settings) => settings.classifier.model,
-        set: (settings, value) => ({ ...settings, classifier: { ...settings.classifier, model: value } })
-      },
-      {
-        id: "classifierTimeoutMs",
-        type: "number",
-        label: "Timeout",
-        desc: "Time limit for each classification attempt. Attempts that exceed it are aborted and retried.",
-        unit: "ms",
-        min: 1,
-        max: 30000,
-        get: (settings) => settings.classifier.timeoutMs,
-        set: (settings, value) => ({ ...settings, classifier: { ...settings.classifier, timeoutMs: value ?? 10000 } })
-      },
-      {
-        id: "classifierMaxAttempts",
-        type: "number",
-        label: "Max attempts",
-        desc: "Classification attempts before the request falls back to the balanced route.",
-        unit: "tries",
-        min: 1,
-        max: 5,
-        get: (settings) => settings.classifier.maxAttempts,
-        set: (settings, value) => ({ ...settings, classifier: { ...settings.classifier, maxAttempts: value ?? 1 } })
-      },
-      {
-        id: "classifierAllowRedactedExcerpt",
-        type: "toggle",
-        label: "Allow redacted excerpt",
-        desc: "Sends a ~1,000-character excerpt of the prompt (emails and API keys masked, harness boilerplate stripped) so the classifier can judge complexity from actual content. When off it sees metadata only — more private, but routes less accurately.",
-        get: (settings) => settings.classifier.allowRedactedExcerpt,
-        set: (settings, value) => ({ ...settings, classifier: { ...settings.classifier, allowRedactedExcerpt: value } })
       }
     ]
   },
@@ -249,26 +202,6 @@ export const settingsSections: SettingsSectionDef[] = [
         min: 0,
         get: (settings) => settings.promptCapture.retentionDays,
         set: (settings, value) => ({ ...settings, promptCapture: { ...settings.promptCapture, retentionDays: value ?? 0 } })
-      }
-    ]
-  },
-  {
-    id: "quality",
-    title: "Route quality",
-    description: "Thresholds used by operations reporting.",
-    restartKey: "routeQuality",
-    rows: [
-      {
-        id: "lowConfidenceThreshold",
-        type: "number",
-        label: "Low confidence threshold",
-        desc: "Classifier decisions below this confidence are counted as low-confidence in route quality reporting. Reporting only — routing is unaffected.",
-        unit: "0–1",
-        min: 0,
-        max: 1,
-        step: 0.01,
-        get: (settings) => settings.routeQuality.lowConfidenceThreshold,
-        set: (settings, value) => ({ ...settings, routeQuality: { lowConfidenceThreshold: value ?? 0 } })
       }
     ]
   }
@@ -331,15 +264,6 @@ export function settingsInput(settings: EditableSettings) {
       openaiResponsesModel: settings.costBaseline.openaiResponsesModel,
       openaiChatModel: settings.costBaseline.openaiChatModel
     },
-    classifier: {
-      model: settings.classifier.model,
-      timeoutMs: settings.classifier.timeoutMs,
-      maxAttempts: settings.classifier.maxAttempts,
-      allowRedactedExcerpt: settings.classifier.allowRedactedExcerpt
-    },
-    routeQuality: {
-      lowConfidenceThreshold: settings.routeQuality.lowConfidenceThreshold
-    },
     promptCapture: {
       promptCaptureMode: settings.promptCapture.promptCaptureMode,
       retentionDays: settings.promptCapture.retentionDays
@@ -352,10 +276,6 @@ export function validate(settings: EditableSettings) {
   if (!settings.costBaseline.anthropicMessagesModel.trim()) errors.push("Anthropic Messages baseline model is required.");
   if (!settings.costBaseline.openaiResponsesModel.trim()) errors.push("OpenAI Responses baseline model is required.");
   if (!settings.costBaseline.openaiChatModel.trim()) errors.push("OpenAI Chat baseline model is required.");
-  if (!settings.classifier.model.trim()) errors.push("Classifier model is required.");
-  if (settings.classifier.timeoutMs < 1 || settings.classifier.timeoutMs > 30000) errors.push("Classifier timeout must be between 1 and 30000 ms.");
-  if (settings.classifier.maxAttempts < 1 || settings.classifier.maxAttempts > 5) errors.push("Classifier attempts must be between 1 and 5.");
-  if (settings.routeQuality.lowConfidenceThreshold < 0 || settings.routeQuality.lowConfidenceThreshold > 1) errors.push("Low confidence threshold must be between 0 and 1.");
   if (settings.promptCapture.retentionDays < 0) errors.push("Prompt retention must be zero or more days.");
   return errors;
 }

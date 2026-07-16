@@ -1,5 +1,3 @@
-import { Link } from "@tanstack/react-router";
-
 import { Drawer } from "../drawer";
 import { compactId, formatDateTime } from "../format";
 import {
@@ -9,7 +7,7 @@ import {
   REQUEST_LIMIT,
   useKeyTraffic
 } from "../keyTraffic";
-import type { ApiKeySummary } from "../routing/data";
+import type { ApiKeySummary } from "./data";
 import { StatusIndicator } from "../ui";
 import { apiKeyStatus } from "./apiKeyTableData";
 
@@ -37,13 +35,7 @@ export function ApiKeyDetailPanel({ apiKey, onClose }: {
         <div className="fact-grid key-panel-facts">
           <Fact label="Key ID"><span className="mono" title={apiKey.id}>{compactId(apiKey.id, 8)}</span></Fact>
           <Fact label="Owner">{apiKey.userId ? <span className="mono">{apiKey.userId}</span> : "organization"}</Fact>
-          <Fact label="Routing config">
-            {apiKey.routingConfig ? (
-              <Link to="/routing/$configId" params={{ configId: apiKey.routingConfig.id }} className="session-link">
-                {apiKey.routingConfig.name}
-              </Link>
-            ) : "Organization default"}
-          </Fact>
+          <Fact label="Access profile">{apiKey.accessProfile?.name ?? "Unassigned"}</Fact>
           <Fact label="Created">{formatDateTime(apiKey.createdAt)}</Fact>
           <Fact label="Last used">{apiKey.lastUsedAt ? formatDateTime(apiKey.lastUsedAt) : "never"}</Fact>
           <Fact label="Expires">{apiKey.expiresAt ? formatDateTime(apiKey.expiresAt) : "never"}</Fact>
@@ -60,7 +52,6 @@ export function ApiKeyDetailPanel({ apiKey, onClose }: {
               onMetricChange={setMetric}
               caption="Traffic attributed to this API key."
             />
-            <ProviderKeysSection apiKey={apiKey} />
             <RecentKeyRequestsSection
               requests={keyRequests}
               logsSearch={{ adv: [["apiKey", "equals", apiKey.id, "and"]] }}
@@ -69,32 +60,5 @@ export function ApiKeyDetailPanel({ apiKey, onClose }: {
         )}
       </div>
     </Drawer>
-  );
-}
-
-function ProviderKeysSection({ apiKey }: { apiKey: ApiKeySummary }) {
-  return (
-    <section>
-      <div className="card-title">Provider credentials</div>
-      {apiKey.providerCredentials.length === 0 ? (
-        <div className="empty">No provider credential bound — traffic uses the organization's default credentials.</div>
-      ) : (
-        <div className="key-bound-list">
-          {apiKey.providerCredentials.map((binding) => (
-            <Link
-              key={`${binding.provider}:${binding.providerAccountId}`}
-              to="/providers"
-              search={{ key: binding.providerAccountId }}
-              className="key-bound-row"
-            >
-              <span className="code-pill">{binding.provider}</span>
-              <strong>{binding.name ?? compactId(binding.providerAccountId, 8)}</strong>
-              {binding.status && binding.status !== "active" ? <StatusIndicator status={binding.status} /> : null}
-              <span className="mono faint" title={binding.providerAccountId}>{compactId(binding.providerAccountId, 8)}</span>
-            </Link>
-          ))}
-        </div>
-      )}
-    </section>
   );
 }

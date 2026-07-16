@@ -23,19 +23,13 @@ export function providerRequestPinnedAddress(input: {
   config: AppConfig;
   credential?: UpstreamCredential;
 }) {
-  if (isOpenAIChatGPTCredential(input.provider, input.credential)) return undefined;
   const credential = credentialForProvider(input.provider, input.credential);
   if (credential?.baseUrl) return credential.pinnedAddress;
   return input.provider.pinnedAddress;
 }
 
-export function providerRequestRedirect(input: {
-  provider: ProviderRegistryEntry;
-  credential?: UpstreamCredential;
-}) {
-  const credential = credentialForProvider(input.provider, input.credential);
-  if (!input.provider.builtin || credential?.baseUrl) return "manual";
-  return "follow";
+export function providerRequestRedirect(): RequestRedirect {
+  return "manual";
 }
 
 export async function fetchWithPinnedAddress(
@@ -66,9 +60,6 @@ function providerRequestBaseUrl(input: {
   config: AppConfig;
   credential?: UpstreamCredential;
 }) {
-  if (isOpenAIChatGPTCredential(input.provider, input.credential)) {
-    return input.config.openaiChatgptBaseUrl;
-  }
   const credential = credentialForProvider(input.provider, input.credential);
   return credential?.baseUrl ?? input.provider.baseUrl;
 }
@@ -78,16 +69,6 @@ function credentialForProvider(
   credential: UpstreamCredential | undefined
 ) {
   return credential?.provider === provider.slug ? credential : undefined;
-}
-
-function isOpenAIChatGPTCredential(
-  provider: ProviderRegistryEntry,
-  credential: UpstreamCredential | undefined
-) {
-  return provider.slug === "openai" &&
-    credential?.provider === provider.slug &&
-    credential.authType === "oauth" &&
-    Boolean(credential.chatgptAccountId);
 }
 
 function providerEndpointPath(endpoint: ProviderRegistryEndpoint) {

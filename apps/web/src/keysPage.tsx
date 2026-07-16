@@ -4,26 +4,24 @@ import { BarChart3, Plus, TerminalSquare } from "lucide-react";
 import { useState } from "react";
 
 import {
-  assignApiKeyRoutingConfig,
+  assignApiKeyAccessProfile,
   fetchApiKeys,
-  fetchRoutingConfigs,
-  isAssignableConfig,
+  fetchAccessProfiles,
   revokeApiKey,
   type ApiKeySummary
-} from "./routing/data";
-import { fetchProviderAccounts } from "./providers/data";
+} from "./keys/data";
 import { Drawer } from "./drawer";
 import { HarnessSetupGuide } from "./harnessSetupCard";
 import { apiKeyColumns } from "./keys/apiKeyColumns";
 import { ApiKeyDetailPanel } from "./keys/detailPanel";
-import { apiKeySearchValue, apiKeyStatus, routingConfigFilterValue, routingConfigLabel } from "./keys/apiKeyTableData";
+import { accessProfileFilterValue, accessProfileLabel, apiKeySearchValue, apiKeyStatus } from "./keys/apiKeyTableData";
 import { ConsoleTable, optionItems, uniqueOptionItems, type ConsoleTableAdvancedField, type ConsoleTableFilter } from "./table";
 import { PageState, PageTitle } from "./ui";
 import { fetchUserDirectory, ownerLabel, type UserDirectory } from "./userDirectory";
 
 type AssignmentVariables = {
   apiKeyId: string;
-  routingConfigId: string | null;
+  accessProfileId: string;
 };
 
 export function KeysPage() {
@@ -36,45 +34,41 @@ export function KeysPage() {
   const setInspectKeyId = (apiKeyId: string | null) =>
     void navigate({ to: ".", search: (current) => ({ ...current, key: apiKeyId ?? undefined }), replace: true });
   const queryClient = useQueryClient();
-  const [keysQuery, configsQuery, providerAccountsQuery, usersQuery] = useQueries({
+  const [keysQuery, profilesQuery, usersQuery] = useQueries({
     queries: [
       { queryKey: ["api-keys"], queryFn: fetchApiKeys },
-      { queryKey: ["routing-configs"], queryFn: fetchRoutingConfigs },
-      { queryKey: ["provider-accounts"], queryFn: fetchProviderAccounts },
+      { queryKey: ["gateway-access-profiles"], queryFn: fetchAccessProfiles },
       { queryKey: ["user-directory"], queryFn: fetchUserDirectory }
     ]
   });
   const assignmentMutation = useMutation({
-    mutationFn: (input: AssignmentVariables) => assignApiKeyRoutingConfig(input.apiKeyId, input.routingConfigId),
+    mutationFn: (input: AssignmentVariables) => assignApiKeyAccessProfile(input.apiKeyId, input.accessProfileId),
     onSuccess: () => {
       setOpenKeyId(null);
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
-      queryClient.invalidateQueries({ queryKey: ["routing-configs"] });
     }
   });
   const revokeMutation = useMutation({
     mutationFn: (apiKeyId: string) => revokeApiKey(apiKeyId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
-      queryClient.invalidateQueries({ queryKey: ["routing-configs"] });
     }
   });
-  const loading = keysQuery.isLoading || configsQuery.isLoading || providerAccountsQuery.isLoading || usersQuery.isLoading;
-  const error = keysQuery.error ?? configsQuery.error ?? providerAccountsQuery.error ?? usersQuery.error;
+  const loading = keysQuery.isLoading || profilesQuery.isLoading || usersQuery.isLoading;
+  const error = keysQuery.error ?? profilesQuery.error ?? usersQuery.error;
 
   if (loading) return <PageState title="API keys" label="Loading API keys" />;
   if (error) return <PageState title="API keys" label={error.message} />;
 
   const keys = keysQuery.data ?? [];
-  const configs = (configsQuery.data ?? []).filter(isAssignableConfig);
-  const providerAccounts = providerAccountsQuery.data ?? [];
+  const profiles = profilesQuery.data ?? [];
   const users: UserDirectory = usersQuery.data ?? new Map();
   const inspectKey = keys.find((apiKey) => apiKey.id === inspectKeyId);
   return (
     <div className="page page-enter">
       <PageTitle
         title="API keys"
-        subtitle="Attach each hashed key to a routing config, or let it use the organization default."
+        subtitle="Assign each hashed key to an access profile that controls its available logical models."
         actions={(
           <>
             <button className="btn" type="button" onClick={() => setShowSetup(true)}>
@@ -93,26 +87,25 @@ export function KeysPage() {
       ) : null}
       {inspectKey ? <ApiKeyDetailPanel apiKey={inspectKey} onClose={() => setInspectKeyId(null)} /> : null}
       <ConsoleTable
-        className="routing-configs-card"
+        className="api-keys-card"
         urlState
         data={keys}
         columns={apiKeyColumns({
-          configs,
-          providerAccounts,
+          profiles,
           users,
           openKeyId,
           pendingKeyId: assignmentMutation.isPending ? assignmentMutation.variables?.apiKeyId : undefined,
           errorKeyId: assignmentMutation.variables?.apiKeyId,
           errorMessage: assignmentMutation.error?.message,
           onOpenChange: (apiKeyId, open) => setOpenKeyId(open ? apiKeyId : null),
-          onAssign: (apiKeyId, routingConfigId) => assignmentMutation.mutate({ apiKeyId, routingConfigId }),
+          onAssign: (apiKeyId, accessProfileId) => assignmentMutation.mutate({ apiKeyId, accessProfileId }),
           onInspect: (apiKeyId) => setInspectKeyId(apiKeyId),
           revokePendingKeyId: revokeMutation.isPending ? revokeMutation.variables : undefined,
           revokeErrorKeyId: revokeMutation.error ? revokeMutation.variables : undefined,
           revokeErrorMessage: revokeMutation.error?.message,
           onRevoke: (apiKeyId) => revokeMutation.mutate(apiKeyId)
         })}
-        search={{ placeholder: "Search keys, owners, routing...", getValue: (apiKey) => [...apiKeySearchValue(apiKey), ownerLabel(users, apiKey.userId)] }}
+        search={{ placeholder: "Search keys, owners, access...", getValue: (apiKey) => [...apiKeySearchValue(apiKey), ownerLabel(users, apiKey.userId)] }}
         filters={apiKeyFilters(keys)}
         advancedFields={apiKeyAdvancedFields(users)}
         emptyLabel="No API keys found."
@@ -126,13 +119,13 @@ function apiKeyAdvancedFields(users: UserDirectory): ConsoleTableAdvancedField<A
     { id: "name", label: "Name", getValue: (apiKey) => apiKey.name },
     { id: "keyId", label: "Key ID", getValue: (apiKey) => apiKey.id },
     { id: "status", label: "Status", getValue: apiKeyStatus },
-    { id: "routingConfig", label: "Routing", getValue: routingConfigLabel },
+    { id: "accessProfile", label: "Access profile", getValue: accessProfileLabel },
     { id: "owner", label: "Owner", getValue: (apiKey) => ownerLabel(users, apiKey.userId) }
   ];
 }
 
 function apiKeyFilters(keys: ApiKeySummary[]): ConsoleTableFilter<ApiKeySummary>[] {
-  const routingValues = keys.map((apiKey) => ({ value: routingConfigFilterValue(apiKey), label: routingConfigLabel(apiKey) }));
+  const profileValues = keys.map((apiKey) => ({ value: accessProfileFilterValue(apiKey), label: accessProfileLabel(apiKey) }));
   return [
     {
       id: "status",
@@ -143,11 +136,11 @@ function apiKeyFilters(keys: ApiKeySummary[]): ConsoleTableFilter<ApiKeySummary>
       defaultValue: "active"
     },
     {
-      id: "routingConfig",
-      label: "Routing",
-      allLabel: "All configs",
-      options: uniqueOptionItems(routingValues),
-      getValue: routingConfigFilterValue
+      id: "accessProfile",
+      label: "Access profile",
+      allLabel: "All profiles",
+      options: uniqueOptionItems(profileValues),
+      getValue: accessProfileFilterValue
     }
   ];
 }

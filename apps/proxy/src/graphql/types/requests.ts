@@ -1,7 +1,7 @@
 import { builder } from "../builder.js";
 import type { CompressionReceiptModel, RequestDetailShape, RequestSummaryShape } from "../models.js";
 import { hasAdminRole } from "../authz.js";
-import { ProxyEvent, RoutingConfigSnapshot, TokenTotals } from "./core.js";
+import { ProxyEvent, TokenTotals } from "./core.js";
 import { ProviderAttempt, RouteDecision } from "./routingEvidence.js";
 
 export const RequestSummary = builder.objectRef<RequestSummaryShape>("RequestSummary").implement({
@@ -12,29 +12,27 @@ export const RequestSummary = builder.objectRef<RequestSummaryShape>("RequestSum
     apiKeyId: t.exposeString("apiKeyId", { nullable: true }),
     surface: t.exposeString("surface", { nullable: true }),
     requestedModel: t.exposeString("requestedModel", { nullable: true }),
-    finalRoute: t.exposeString("finalRoute", { nullable: true }),
+    ingressWireId: t.exposeString("ingressWireId", { nullable: true }),
+    operationId: t.exposeString("operationId", { nullable: true }),
+    requestedLogicalModel: t.exposeString("requestedLogicalModel", { nullable: true }),
+    resolvedLogicalModelId: t.exposeString("resolvedLogicalModelId", { nullable: true }),
+    accessProfileId: t.exposeString("accessProfileId", { nullable: true }),
+    routerKind: t.exposeString("routerKind", { nullable: true }),
+    deploymentId: t.exposeString("deploymentId", { nullable: true }),
+    providerConnectionId: t.exposeString("providerConnectionId", { nullable: true }),
+    egressWireId: t.exposeString("egressWireId", { nullable: true }),
+    wireAdapterVersion: t.exposeString("wireAdapterVersion", { nullable: true }),
     provider: t.exposeString("provider", { nullable: true }),
     selectedModel: t.exposeString("selectedModel", { nullable: true }),
-    selectedCandidateId: t.string({
-      nullable: true,
-      resolve: (request, _args, context) => hasAdminRole(context) ? request.selectedCandidateId ?? null : null
-    }),
     translated: t.boolean({
       nullable: true,
       resolve: (request, _args, context) => hasAdminRole(context) ? request.translated ?? false : null
     }),
-    routeSkipReasons: t.stringList({
-      resolve: (request, _args, context) => hasAdminRole(context) ? request.routeSkipReasons ?? [] : []
-    }),
-    routingConfig: t.field({
-      type: RoutingConfigSnapshot,
-      nullable: true,
-      resolve: (request, _args, context) => hasAdminRole(context) ? request.routingConfig ?? null : null
-    }),
-    classifier: t.field({
+    confidence: t.exposeFloat("confidence", { nullable: true }),
+    routerDecisionId: t.exposeString("routerDecisionId", { nullable: true }),
+    routerDecision: t.field({
       type: "JSON",
-      nullable: true,
-      resolve: (request, _args, context) => hasAdminRole(context) ? request.classifier ?? null : null
+      resolve: (request, _args, context) => hasAdminRole(context) ? request.routerDecision ?? {} : {}
     }),
     terminalStatus: t.exposeString("terminalStatus"),
     inputChars: t.exposeFloat("inputChars", { nullable: true }),
@@ -43,6 +41,8 @@ export const RequestSummary = builder.objectRef<RequestSummaryShape>("RequestSum
     timeToFirstByteMs: t.exposeFloat("timeToFirstByteMs", { nullable: true }),
     attemptCount: t.exposeInt("attemptCount", { nullable: true }),
     selectedCost: t.exposeFloat("selectedCost"),
+    providerCost: t.exposeFloat("providerCost", { nullable: true }),
+    classifierCost: t.exposeFloat("classifierCost", { nullable: true }),
     baselineCost: t.exposeFloat("baselineCost"),
     savings: t.exposeFloat("savings"),
     createdAt: t.exposeString("createdAt", { nullable: true }),
@@ -116,10 +116,6 @@ export const RequestDetail = builder.objectRef<RequestDetailShape>("RequestDetai
     providerAttempts: t.field({
       type: [ProviderAttempt],
       resolve: (detail, _args, context) => hasAdminRole(context) ? detail.providerAttempts : []
-    }),
-    healthSkips: t.field({
-      type: "JSON",
-      resolve: (detail, _args, context) => hasAdminRole(context) ? detail.healthSkips : []
     })
   })
 });

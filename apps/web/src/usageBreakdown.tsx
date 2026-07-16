@@ -162,7 +162,7 @@ function UsageKeyCell({ dimension, group, lookups, canOpenDetails }: {
   canOpenDetails: boolean;
 }) {
   if (group.key === OTHER_GROUP_KEY) return <span className="faint">Other</span>;
-  if (dimension === "route") return <RouteBadge route={group.key} />;
+  if (dimension === "logical_model") return <RouteBadge route={group.key} />;
   if (dimension === "model" || dimension === "model_effort") return <span className="row gap-8"><span className="model-dot" /><span className="mono">{group.key}</span></span>;
   if (dimension === "user") return <UserKeyCell userId={group.key} usersById={lookups.usersById} />;
   if (dimension === "api_key") return <ApiKeyCell apiKeyId={group.key} apiKeysById={lookups.apiKeysById} />;
@@ -261,7 +261,14 @@ function failuresLogsSearch(dimension: UsageDimension, key: string, range: Usage
   const rangeParam = { range };
   if (dimension === "model") return { ...rangeParam, status: "failed", model: key };
   if (dimension === "user") return { ...rangeParam, status: "failed", user: key };
-  const advFields: Partial<Record<UsageDimension, string>> = { route: "route", provider: "provider", surface: "surface", session: "session", api_key: "apiKey" };
+  const advFields: Partial<Record<UsageDimension, string>> = {
+    logical_model: "logicalModel",
+    deployment: "deployment",
+    provider: "provider",
+    surface: "surface",
+    session: "session",
+    api_key: "apiKey"
+  };
   const advField = advFields[dimension];
   if (!advField) return null;
   return { ...rangeParam, status: "failed", adv: [[advField, "equals", key, "and"]] };
@@ -288,6 +295,6 @@ function splitSessionKey(key: string) {
 function keyColumnSize(dimension: UsageDimension) {
   if (dimension === "session") return 280;
   if (dimension === "model_effort") return 260;
-  if (dimension === "model" || dimension === "user" || dimension === "api_key") return 230;
+  if (dimension === "logical_model" || dimension === "deployment" || dimension === "model" || dimension === "user" || dimension === "api_key") return 230;
   return 170;
 }

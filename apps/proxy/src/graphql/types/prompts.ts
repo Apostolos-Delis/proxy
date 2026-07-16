@@ -7,7 +7,7 @@ import type {
   PromptPaginationModel,
   PromptSummaryModel
 } from "../models.js";
-import { ProxyEvent, RoutingConfigSnapshot } from "./core.js";
+import { ProxyEvent } from "./core.js";
 import { CompressionReceipt, RequestSummary } from "./requests.js";
 import { ProviderAttempt, RouteDecision } from "./routingEvidence.js";
 
@@ -35,18 +35,17 @@ const PromptArtifactBase = builder.interfaceRef<PromptSummaryModel>("PromptArtif
     chars: t.exposeFloat("chars", { nullable: true }),
     tokenEstimate: t.exposeFloat("tokenEstimate", { nullable: true }),
     preview: t.exposeString("preview", { nullable: true }),
-    finalRoute: t.exposeString("finalRoute", { nullable: true }),
+    requestedLogicalModel: t.exposeString("requestedLogicalModel", { nullable: true }),
+    resolvedLogicalModelId: t.exposeString("resolvedLogicalModelId", { nullable: true }),
+    accessProfileId: t.exposeString("accessProfileId", { nullable: true }),
+    deploymentId: t.exposeString("deploymentId", { nullable: true }),
+    providerConnectionId: t.exposeString("providerConnectionId", { nullable: true }),
     provider: t.exposeString("provider", { nullable: true }),
     selectedModel: t.exposeString("selectedModel", { nullable: true }),
-    routingConfig: t.field({
-      type: RoutingConfigSnapshot,
-      nullable: true,
-      resolve: (prompt) => prompt.routingConfig
-    }),
-    classifier: t.field({
+    routerDecision: t.field({
       type: "JSON",
       nullable: true,
-      resolve: (prompt) => prompt.classifier ?? null
+      resolve: (prompt) => prompt.routerDecision ?? null
     }),
     cost: t.expose("cost", { type: PromptCost }),
     createdAt: t.exposeString("createdAt")
@@ -113,7 +112,6 @@ export const PromptAccessAuditEntry = builder
       requestId: t.exposeString("requestId"),
       userId: t.exposeString("userId", { nullable: true }),
       adminSessionId: t.exposeString("adminSessionId", { nullable: true }),
-      route: t.exposeString("route", { nullable: true }),
       accessPath: t.exposeString("accessPath"),
       createdAt: t.exposeString("createdAt")
     })

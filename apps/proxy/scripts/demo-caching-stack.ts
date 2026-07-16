@@ -46,8 +46,6 @@ const now = Date.now();
 
 type Turn = {
   at: number;
-  /** Routed via the classifier mock: tagged turns take the fast tier. */
-  fast?: boolean;
   usage: { input: number; output: number; read?: number; write?: number };
   toolResults?: boolean;
 };
@@ -79,7 +77,7 @@ function agentSession(key: string, surface: "claude" | "codex", sessionId: strin
 }
 
 const plans: SessionPlan[] = [
-  // claude-web s1: warm prefix, then a fast-tier turn busts it (model switch).
+  // claude-web s1: warm prefix, then a changed prefix causes a cache bust.
   {
     key: "claude-web",
     surface: "claude",
@@ -88,8 +86,8 @@ const plans: SessionPlan[] = [
       { at: now - 9 * DAY, usage: { input: 700, output: 380, write: 7200 } },
       { at: now - 9 * DAY + 3 * MINUTE, usage: { input: 250, output: 410, read: 7900, write: 150 }, toolResults: true },
       { at: now - 9 * DAY + 5 * MINUTE, usage: { input: 300, output: 350, read: 8200 }, toolResults: true },
-      { at: now - 9 * DAY + 6 * MINUTE, fast: true, usage: { input: 600, output: 300, write: 8400 } },
-      { at: now - 9 * DAY + 8 * MINUTE, fast: true, usage: { input: 200, output: 320, read: 8600, write: 100 }, toolResults: true }
+      { at: now - 9 * DAY + 6 * MINUTE, usage: { input: 600, output: 300, write: 8400 } },
+      { at: now - 9 * DAY + 8 * MINUTE, usage: { input: 200, output: 320, read: 8600, write: 100 }, toolResults: true }
     ]
   },
   // claude-web s2: TTL EXPIRY bust (9+ minute idle gap).
@@ -131,7 +129,7 @@ const plans: SessionPlan[] = [
 ];
 
 // Daily background: long codex agent sessions (high hit rate) plus rotating
-// batch/eval fast-tier singles that never reuse a prefix.
+// batch/eval singles that never reuse a prefix.
 for (let day = 29; day >= 0; day -= 1) {
   const wobble = 1 + 0.35 * Math.sin(day * 1.7) + 0.2 * Math.sin(day * 0.6);
   plans.push(agentSession("codex-prod", "codex", `codex-daily-${day}`, day * DAY + 5 * 3_600_000, {
@@ -155,7 +153,6 @@ for (let day = 29; day >= 0; day -= 1) {
       sessionId: `batch-${day}`,
       turns: [0, 1, 2].map((index) => ({
         at: now - day * DAY + 11 * 3_600_000 + index * 4 * MINUTE,
-        fast: true,
         usage: { input: 3000 + index * 120, output: 250, read: 620 }
       }))
     });
@@ -167,7 +164,6 @@ for (let day = 29; day >= 0; day -= 1) {
       sessionId: `eval-${day}`,
       turns: [{
         at: now - day * DAY + 13 * 3_600_000,
-        fast: true,
         usage: { input: 1400, output: 200, read: day % 8 === 0 ? 60 : 0 }
       }]
     });
@@ -187,12 +183,8 @@ const demoEnv = {
   ANTHROPIC_API_KEY: "anthropic-upstream-key",
   OPENAI_BASE_URL: openai.url,
   ANTHROPIC_BASE_URL: anthropic.url,
-  ANTHROPIC_HARD_MODEL: "claude-opus-4-8",
-  ANTHROPIC_FAST_MODEL: "claude-haiku-4-5",
-  OPENAI_HARD_MODEL: "gpt-5.5",
-  OPENAI_FAST_MODEL: "gpt-5.4-mini",
-  CLASSIFIER_PROVIDER: "openai",
-  CLASSIFIER_MODEL: "route-classifier-cheap",
+  GATEWAY_SEED_CLASSIFIER_MODEL: "route-classifier-cheap",
+  ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.1/32",
   ADMIN_DEV_LOGIN_ENABLED: "true",
   ADMIN_CORS_ORIGIN: "http://127.0.0.1:5273,http://localhost:5273",
   LOG_LEVEL: "error"
@@ -214,13 +206,14 @@ console.log(`[demo] proxy + admin API on ${proxyUrl}`);
 
 const organizationId = config.defaultOrganizationId;
 const workspaceId = defaultWorkspaceId(organizationId);
+const accessProfileId = `${workspaceId}:access-profile:opendoor-engineer`;
 const keySecrets = new Map<string, string>();
 for (const name of ["codex-prod", "claude-web", "agent-concierge", "batch-pipeline", "eval-harness"]) {
   const created = await persistence.apiKeyAdmin.createApiKey({
     organizationId,
     workspaceId,
     actorUserId: config.seedUserId,
-    body: { name }
+    body: { name, accessProfileId }
   });
   keySecrets.set(name, created.secret);
 }
@@ -262,10 +255,9 @@ await backdate();
 console.log("[demo] backdated timestamps; stack is ready — Ctrl-C to stop");
 await new Promise(() => undefined);
 
-function turnPrompt(sessionId: string, index: number, fast: boolean | undefined) {
+function turnPrompt(sessionId: string, index: number) {
   const nonce = randomBytes(6).toString("hex");
-  // The [fast] tag steers the classifier mock; the nonce defeats idempotent replay.
-  return `${fast ? "[fast] " : ""}Turn ${index} of ${sessionId} (${nonce}): the retry test is flaky on CI again, dig into the backoff jitter and fix the root cause.`;
+  return `Turn ${index} of ${sessionId} (${nonce}): the retry test is flaky on CI again, dig into the backoff jitter and fix the root cause.`;
 }
 
 function claudeRequest(secret: string, sessionId: string, turn: Turn, index: number) {
@@ -300,7 +292,7 @@ function claudeRequest(secret: string, sessionId: string, turn: Turn, index: num
       "x-claude-code-session-id": sessionId
     },
     body: JSON.stringify({
-      model: "claude-router-auto",
+      model: "fable",
       system: `You are a careful coding agent for the payments platform. ${"Follow the workspace conventions, run the linter before committing, never push directly to main, and keep diffs minimal. ".repeat(30)}`,
       tools: [
         { name: "bash", description: "Run shell commands", input_schema: { type: "object", properties: { command: { type: "string" }, timeout: { type: "number" } } } },
@@ -312,7 +304,7 @@ function claudeRequest(secret: string, sessionId: string, turn: Turn, index: num
       messages: [
         ...history,
         ...toolResults,
-        { role: "user", content: turnPrompt(sessionId, index, turn.fast) }
+        { role: "user", content: turnPrompt(sessionId, index) }
       ],
       stream: true,
       max_tokens: 2048
@@ -341,11 +333,11 @@ function codexRequest(secret: string, sessionId: string, turn: Turn, index: numb
       "x-codex-session-id": sessionId
     },
     body: JSON.stringify({
-      model: "router-auto",
+      model: "coding-auto",
       instructions: `You are the production web agent. ${"Prefer surgical diffs, keep telemetry intact, and annotate every schema change. ".repeat(24)}`,
       input: [
         ...history,
-        { type: "message", role: "user", content: [{ type: "input_text", text: turnPrompt(sessionId, index, turn.fast) }] }
+        { type: "message", role: "user", content: [{ type: "input_text", text: turnPrompt(sessionId, index) }] }
       ],
       tools: [
         { type: "function", name: "shell", parameters: { type: "object", properties: { command: { type: "string" } } } },
@@ -395,15 +387,11 @@ async function mockOpenAI() {
   const server = createServer(async (request, response) => {
     const body = await readJson(request);
     if (body.model === "route-classifier-cheap") {
-      const fast = JSON.stringify(body).includes("[fast]");
+      const targetId = firstClassifierTarget(body);
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({
         output_text: JSON.stringify({
-          complexity: fast ? "simple" : "hard",
-          risk: [],
-          recommended_route: fast ? "fast" : "hard",
-          can_use_fast_model: fast,
-          needs_deep_reasoning: !fast,
+          target_id: targetId,
           reason_codes: ["demo"],
           confidence: 0.92
         })
@@ -461,4 +449,16 @@ function readJson(request: IncomingMessage) {
     });
     request.on("end", () => resolve(body ? JSON.parse(body) : {}));
   });
+}
+
+function firstClassifierTarget(body: Record<string, unknown>) {
+  const input = typeof body.input === "string" ? JSON.parse(body.input) as Record<string, unknown> : {};
+  const targets = Array.isArray(input.targets) ? input.targets : [];
+  const targetId = targets[0] && typeof targets[0] === "object"
+    ? (targets[0] as Record<string, unknown>).id
+    : undefined;
+  if (typeof targetId !== "string") {
+    throw new Error(`classifier request has no candidates: ${JSON.stringify(body)}`);
+  }
+  return targetId;
 }

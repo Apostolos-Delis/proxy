@@ -277,7 +277,7 @@ function requestRow(id: string, organizationId: string, createdAt: Date) {
     workspaceId: defaultWorkspaceId(organizationId),
     surface: "anthropic-messages",
     idempotencyKey: `idem_${id}`,
-    requestedModel: "router-auto",
+    requestedModel: "coding-auto",
     inputHash: `sha256:${id}`,
     inputChars: 10_000,
     status: "completed" as const,

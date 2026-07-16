@@ -10,7 +10,6 @@ import {
 
 import { usageCostMicros } from "../pricing.js";
 import { pricingFromRow } from "./modelPricing.js";
-import { routeForRequest } from "./routeDecision.js";
 import { normalizeUsage, providerValue, recordValue, stringValue } from "./values.js";
 
 // The routing classifier makes its own billed LLM call on every uncached
@@ -58,8 +57,6 @@ export async function persistClassifierUsage(tx: ProxyTransaction, event: {
   if (!deployment) throw new Error("Classifier usage does not match a scoped deployment.");
   const modelPricing = pricingFromRow(deployment.pricing);
   const costs = usageCostMicros(modelPricing, normalized);
-  const route = await routeForRequest(tx, event.scopeId);
-
   await tx
     .insert(usageLedger)
     .values({
@@ -74,7 +71,6 @@ export async function persistClassifierUsage(tx: ProxyTransaction, event: {
       kind: "classifier",
       provider,
       model,
-      route,
       inputTokens: normalized.inputTokens,
       cachedInputTokens: normalized.cachedInputTokens,
       cacheCreationInputTokens: normalized.cacheCreationInputTokens,
@@ -91,7 +87,6 @@ export async function persistClassifierUsage(tx: ProxyTransaction, event: {
       set: {
         provider,
         model,
-        route,
         inputTokens: normalized.inputTokens,
         cachedInputTokens: normalized.cachedInputTokens,
         cacheCreationInputTokens: normalized.cacheCreationInputTokens,

@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import { buildModelPricingTable } from "./pricing.js";
 import {
   readSettingsFileSync,
   settingsPathFromEnv,
@@ -23,7 +22,6 @@ function normalizeBooleanEnv(value: unknown) {
 }
 
 const booleanEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().default(false));
-const subscriptionOAuthEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().default(true));
 const optionalBooleanEnvSchema = z.preprocess(normalizeBooleanEnv, z.boolean().optional());
 const metricsExporterSchema = z.enum(["none", "prometheus"]).default("prometheus");
 const metricsAuthModeSchema = z.enum(["token", "none"]).default("token");
@@ -57,17 +55,6 @@ const defaultEventWriterMaxBytes = 1024 * 1024 * 8;
 const defaultEventWriterBatchSize = 25;
 const defaultEventWriterShutdownTimeoutMs = 5_000;
 
-const modelCostsSchema = z.preprocess((value) => {
-  if (value === undefined || value === "") return {};
-  if (typeof value !== "string") return value;
-  return JSON.parse(value);
-}, z.record(z.string(), z.object({
-  inputCostPerMtok: z.coerce.number().nonnegative().default(0),
-  outputCostPerMtok: z.coerce.number().nonnegative().default(0),
-  cacheReadCostPerMtok: z.coerce.number().nonnegative().optional(),
-  cacheWriteCostPerMtok: z.coerce.number().nonnegative().optional()
-})).default({}));
-
 const configSchema = z.object({
   NODE_ENV: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(8787),
@@ -75,31 +62,14 @@ const configSchema = z.object({
   PROXY_SETTINGS_PATH: z.string().optional(),
   OPENAI_API_KEY: z.string().min(1).default(DEFAULT_OPENAI_API_KEY),
   OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
-  OPENAI_CHATGPT_BASE_URL: z.string().url().default("https://chatgpt.com/backend-api/codex"),
-  OPENAI_FAST_MODEL: z.string().min(1).default("gpt-5.4-mini"),
-  OPENAI_BALANCED_MODEL: z.string().min(1).default("gpt-5.4"),
-  OPENAI_HARD_MODEL: z.string().min(1).default("gpt-5.5"),
-  OPENAI_DEEP_MODEL: z.string().min(1).default("gpt-5.5-pro"),
   ANTHROPIC_API_KEY: z.string().min(1).default(DEFAULT_ANTHROPIC_API_KEY),
   ANTHROPIC_BASE_URL: z.string().url().default("https://api.anthropic.com/v1"),
-  ANTHROPIC_FAST_MODEL: z.string().min(1).default("claude-haiku-4-5"),
-  ANTHROPIC_BALANCED_MODEL: z.string().min(1).default("claude-sonnet-4-5"),
-  ANTHROPIC_HARD_MODEL: z.string().min(1).default("claude-sonnet-4-5"),
-  ANTHROPIC_DEEP_MODEL: z.string().min(1).default("claude-opus-4-5"),
-  CLASSIFIER_PROVIDER: z.string().trim().min(1).default("openai"),
-  // A real, catalog-priced model: the classifier makes a billed call per request.
-  CLASSIFIER_MODEL: z.string().min(1).default("gpt-5-nano-2025-08-07"),
-  CLASSIFIER_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
-  CLASSIFIER_MAX_ATTEMPTS: z.coerce.number().int().positive().default(2),
   PROVIDER_RATE_LIMIT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(4),
   PROVIDER_RATE_LIMIT_BASE_DELAY_MS: z.coerce.number().int().nonnegative().default(500),
   PROVIDER_RATE_LIMIT_MAX_DELAY_MS: z.coerce.number().int().nonnegative().default(60000),
   BEDROCK_OPERATOR_DEFAULT_CHAIN_ENABLED: booleanEnvSchema,
   BEDROCK_LOCAL_CREDENTIALS_ENABLED: booleanEnvSchema,
   BEDROCK_AWS_PROFILE: optionalNonEmptyStringSchema,
-  CLASSIFIER_ALLOW_REDACTED_EXCERPT: booleanEnvSchema,
-  MODEL_COSTS_JSON: modelCostsSchema,
-  ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.55),
   EVENT_STORE_PATH: z.string().optional(),
   REQUEST_BODY_LIMIT_BYTES: optionalPositiveIntSchema,
   GATEWAY_LIMIT_WINDOW_MS: positiveIntEnvSchema.default(60_000),
@@ -138,10 +108,6 @@ const configSchema = z.object({
       )
   ),
   DEFAULT_ORGANIZATION_ID: z.string().min(1).default("local"),
-  // Operator-level kill switch for subscription-token auth. Env-only by
-  // design (never settings-file editable) and internal-only — must not be
-  // surfaced to external customers. See docs/scopes/subscription-auth-v1/PLAN.md.
-  SUBSCRIPTION_OAUTH_ENABLED: subscriptionOAuthEnvSchema,
   ALLOWED_PRIVATE_UPSTREAM_CIDRS: z.string().default(""),
   ALLOW_DEV_PROXY_TOKEN_FALLBACK: booleanEnvSchema,
   DEBUG_ENDPOINTS_ENABLED: booleanEnvSchema,
@@ -205,31 +171,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     settingsPath,
     openaiApiKey: parsed.OPENAI_API_KEY,
     openaiBaseUrl: trimTrailingSlash(parsed.OPENAI_BASE_URL),
-    openaiChatgptBaseUrl: trimTrailingSlash(parsed.OPENAI_CHATGPT_BASE_URL),
-    openaiFastModel: parsed.OPENAI_FAST_MODEL,
-    openaiBalancedModel: parsed.OPENAI_BALANCED_MODEL,
-    openaiHardModel: parsed.OPENAI_HARD_MODEL,
-    openaiDeepModel: parsed.OPENAI_DEEP_MODEL,
     anthropicApiKey: parsed.ANTHROPIC_API_KEY,
     anthropicBaseUrl: trimTrailingSlash(parsed.ANTHROPIC_BASE_URL),
-    anthropicFastModel: parsed.ANTHROPIC_FAST_MODEL,
-    anthropicBalancedModel: parsed.ANTHROPIC_BALANCED_MODEL,
-    anthropicHardModel: parsed.ANTHROPIC_HARD_MODEL,
-    anthropicDeepModel: parsed.ANTHROPIC_DEEP_MODEL,
-    classifierProvider: parsed.CLASSIFIER_PROVIDER,
-    classifierModel: parsed.CLASSIFIER_MODEL,
-    classifierTimeoutMs: parsed.CLASSIFIER_TIMEOUT_MS,
-    classifierMaxAttempts: parsed.CLASSIFIER_MAX_ATTEMPTS,
     providerRateLimitMaxAttempts: parsed.PROVIDER_RATE_LIMIT_MAX_ATTEMPTS,
     providerRateLimitBaseDelayMs: parsed.PROVIDER_RATE_LIMIT_BASE_DELAY_MS,
     providerRateLimitMaxDelayMs: parsed.PROVIDER_RATE_LIMIT_MAX_DELAY_MS,
     bedrockOperatorDefaultChainEnabled: parsed.BEDROCK_OPERATOR_DEFAULT_CHAIN_ENABLED,
     bedrockLocalCredentialsEnabled: parsed.BEDROCK_LOCAL_CREDENTIALS_ENABLED,
     bedrockAwsProfile: parsed.BEDROCK_AWS_PROFILE,
-    classifierAllowRedactedExcerpt: parsed.CLASSIFIER_ALLOW_REDACTED_EXCERPT,
-    modelCosts: buildModelPricingTable(parsed.MODEL_COSTS_JSON),
-    modelCostsFromEnv: Object.keys(parsed.MODEL_COSTS_JSON),
-    routeQualityLowConfidenceThreshold: parsed.ROUTE_QUALITY_LOW_CONFIDENCE_THRESHOLD,
     eventStorePath: parsed.EVENT_STORE_PATH,
     requestBodyLimitBytes: parsed.REQUEST_BODY_LIMIT_BYTES ?? (parsed.NODE_ENV === "production" ? productionRequestBodyLimitBytes : localRequestBodyLimitBytes),
     trafficLimits: {
@@ -261,7 +210,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     dbPoolMax: parsed.DB_POOL_MAX,
     providerSecretEncryptionKey: parsed.PROVIDER_SECRET_ENCRYPTION_KEY,
     defaultOrganizationId: parsed.DEFAULT_ORGANIZATION_ID,
-    subscriptionOAuthEnabled: parsed.SUBSCRIPTION_OAUTH_ENABLED,
     allowedPrivateUpstreamCidrs: parsed.ALLOWED_PRIVATE_UPSTREAM_CIDRS.split(",").map((cidr) => cidr.trim()).filter(Boolean),
     allowDevProxyTokenFallback: parsed.ALLOW_DEV_PROXY_TOKEN_FALLBACK || (!production && !parsed.DATABASE_URL),
     debugEndpointsEnabled,

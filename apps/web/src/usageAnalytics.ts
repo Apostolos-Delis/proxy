@@ -10,10 +10,11 @@ export const usageRangeOptions = [
   { value: "90", label: "90d" }
 ] as const;
 
-export type UsageDimension = "route" | "provider" | "model" | "model_effort" | "user" | "api_key" | "surface" | "session";
+export type UsageDimension = "logical_model" | "deployment" | "provider" | "model" | "model_effort" | "user" | "api_key" | "surface" | "session";
 
 export const usageDimensions: { value: UsageDimension; label: string }[] = [
-  { value: "route", label: "Routes" },
+  { value: "logical_model", label: "Logical models" },
+  { value: "deployment", label: "Deployments" },
   { value: "provider", label: "Providers" },
   { value: "model", label: "Models" },
   { value: "model_effort", label: "Model + effort" },

@@ -398,14 +398,14 @@ function bodyForScenario(scenario: Scenario, variant: string) {
   const payload = payloadText(scenario.bodyBytes, variant);
   if (scenario.surface === "openai") {
     return JSON.stringify({
-      model: "router-auto",
+      model: "coding-auto",
       input: payload,
       stream: true,
       max_output_tokens: 16
     });
   }
   return JSON.stringify({
-    model: "claude-router-auto",
+    model: "coding-auto",
     messages: [{ role: "user", content: payload }],
     stream: true,
     max_tokens: 16
@@ -439,22 +439,14 @@ async function createRuntime(activeScenarios: Scenario[]): Promise<Runtime> {
       ...process.env,
       DATABASE_URL: "",
       EVENT_STORE_PATH: "",
+      PROXY_TOKEN: apiKey,
       PROMPT_PROXY_TOKEN: apiKey,
       OPENAI_API_KEY: "openai-upstream-key",
       OPENAI_BASE_URL: openai.url,
-      OPENAI_FAST_MODEL: "gpt-5.4-mini",
-      OPENAI_BALANCED_MODEL: "gpt-5.4",
-      OPENAI_HARD_MODEL: "gpt-5.5",
-      OPENAI_DEEP_MODEL: "gpt-5.5-pro",
       ANTHROPIC_API_KEY: "anthropic-upstream-key",
       ANTHROPIC_BASE_URL: anthropic.url,
-      ANTHROPIC_FAST_MODEL: "claude-haiku-4-5",
-      ANTHROPIC_BALANCED_MODEL: "claude-sonnet-4-5",
-      ANTHROPIC_HARD_MODEL: "claude-sonnet-4-5",
-      ANTHROPIC_DEEP_MODEL: "claude-opus-4-5",
-      CLASSIFIER_PROVIDER: "openai",
-      CLASSIFIER_MODEL: "route-classifier-cheap",
-      MODEL_COSTS_JSON: "",
+      GATEWAY_SEED_CLASSIFIER_MODEL: "route-classifier-cheap",
+      ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.1/32",
       ADMIN_DEV_LOGIN_ENABLED: "true",
       ADMIN_DEV_LOGIN_EMAIL: "local@example.com",
       ADMIN_DEV_LOGIN_PASSWORD: "dev-password",
@@ -517,14 +509,11 @@ async function mockProvider(provider: "openai" | "anthropic", state: MockState) 
     });
 
     if (provider === "openai" && model === "route-classifier-cheap") {
+      const targetId = firstClassifierTarget(body);
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({
         output_text: JSON.stringify({
-          complexity: "hard",
-          risk: ["load"],
-          recommended_route: "hard",
-          can_use_fast_model: false,
-          needs_deep_reasoning: false,
+          target_id: targetId,
           reason_codes: ["load_test"],
           confidence: 0.9
         })
@@ -601,6 +590,17 @@ function parseRecord(value: string) {
   } catch {
     return {};
   }
+}
+
+function firstClassifierTarget(body: Record<string, unknown>) {
+  const input = parseRecord(stringValue(body.input) ?? "");
+  const targets = Array.isArray(input.targets) ? input.targets : [];
+  const first = targets[0];
+  const targetId = first && typeof first === "object" && !Array.isArray(first)
+    ? stringValue((first as Record<string, unknown>).id)
+    : undefined;
+  if (!targetId) throw new Error(`classifier request has no candidates: ${JSON.stringify(body)}`);
+  return targetId;
 }
 
 function thresholdFailures(result: ScenarioResult, activeThresholds: Thresholds) {

@@ -1,4 +1,4 @@
-import { BarChart3, Check, CircleDollarSign, FileJson, GitBranch, Logs, RotateCw, Save, Search, Shield, Zap } from "lucide-react";
+import { Check, CircleDollarSign, FileJson, Logs, RotateCw, Save, Search, Shield, Zap } from "lucide-react";
 import type { ComponentType } from "react";
 import { useMemo, useState } from "react";
 
@@ -11,9 +11,7 @@ const sectionIcons: Record<string, ComponentType> = {
   system: Shield,
   optimization: Zap,
   baseline: CircleDollarSign,
-  classifier: GitBranch,
-  capture: Logs,
-  quality: BarChart3
+  capture: Logs
 };
 
 export function SettingsForm({
@@ -42,7 +40,7 @@ export function SettingsForm({
   const sections = useMemo(() => sectionsFor(databaseEnabled), [databaseEnabled]);
   const [settings, setSettings] = useState(initial);
   const [search, setSearch] = useState("");
-  const [activeSection, setActiveSection] = useState(sections[0]?.id ?? "classifier");
+  const [activeSection, setActiveSection] = useState(sections[0]?.id ?? "capture");
 
   const visible = useMemo(() => filterSections(sections, search), [sections, search]);
   const dirtyCount = changedRowIds(sections, settings, initial).length;

@@ -247,7 +247,7 @@ describe("GET /admin/events", () => {
           authorization: "Bearer proxy-token",
           "content-type": "application/json"
         },
-        body: JSON.stringify({ model: "router-auto", input: "Hello there.", stream: true })
+        body: JSON.stringify({ model: "coding-auto", input: "Hello there.", stream: true })
       });
       await proxied.text();
 

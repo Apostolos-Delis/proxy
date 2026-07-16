@@ -1,23 +1,10 @@
-import { explicitAlias, routeOrder } from "./catalog.js";
-import type { AppConfig } from "./config.js";
 import type { ProxyEvent } from "./events.js";
 import { knownSurfaceValue, normalizeUsage, type NormalizedUsage } from "./persistence/values.js";
-import {
-  defaultCostBaseline,
-  pricingForModel,
-  usageCostMicros,
-  type ModelPricingTable
-} from "./pricing.js";
-import type { JsonObject, JsonValue, RouteName, Surface } from "./types.js";
+import type { JsonObject, JsonValue } from "./types.js";
 import { isRecord } from "./util.js";
 
 export class ProjectionService {
-  constructor(
-    private readonly config: AppConfig
-  ) {}
-
   usage(events: ProxyEvent[]) {
-    const contexts = new Map<string, JsonObject>();
     const decisions = new Map<string, JsonObject>();
     const starts = new Map<string, string>();
     const streamStarts = new Map<string, string>();
@@ -27,7 +14,6 @@ export class ProjectionService {
     let baselineCost = 0;
 
     for (const event of events) {
-      if (event.eventType === "routing.context_built") contexts.set(event.scopeId, event.payload as JsonObject);
       if (event.eventType === "routing.decision_recorded") decisions.set(event.scopeId, event.payload as JsonObject);
       if (event.eventType === "provider.request_started") starts.set(event.scopeId, event.createdAt);
       if (event.eventType === "provider.stream_started") streamStarts.set(event.scopeId, event.createdAt);
@@ -35,33 +21,26 @@ export class ProjectionService {
 
     for (const event of events) {
       if (!isTerminalProviderEvent(event.eventType)) continue;
-
+      const payload = event.payload as JsonObject;
       const decision = decisions.get(event.scopeId);
-      const context = contexts.get(event.scopeId);
-      const usage = normalizeEventUsage((event.payload as JsonObject).usage);
+      const usage = normalizeEventUsage(payload.usage);
       addUsage(totals, usage);
-
-      const selectedModel = stringValue((event.payload as JsonObject).selectedModel);
+      const selectedModel = stringValue(payload.selectedModel) ?? stringValue(decision?.selectedModel);
       const surface = knownSurfaceValue(decision?.surface);
-      const requestedModel = stringValue(decision?.requestedModel);
-      const finalRoute = stringValue(decision?.finalRoute) as RouteName | undefined;
-      const selected = estimateCost(selectedModel, usage, this.config.modelCosts);
-      const baseline = estimateCost(
-        baselineModel(surface, requestedModel, selectedModel),
-        usage,
-        this.config.modelCosts
-      );
+      const selected = 0;
+      const baseline = 0;
       selectedCost += selected;
       baselineCost += baseline;
-
       requests.push({
         requestId: event.scopeId,
         surface,
-        requestedModel,
-        finalRoute,
+        requestedModel: stringValue(decision?.requestedModel),
+        requestedLogicalModel: stringValue(decision?.requestedLogicalModel),
+        resolvedLogicalModelId: stringValue(decision?.resolvedLogicalModelId),
+        deploymentId: stringValue(decision?.deploymentId),
+        providerConnectionId: stringValue(decision?.providerConnectionId),
         selectedModel,
         terminalStatus: terminalStatus(event),
-        inputChars: numberValue(context?.inputChars),
         usage,
         latencyMs: elapsedMs(starts.get(event.scopeId), event.createdAt),
         timeToFirstByteMs: elapsedMs(starts.get(event.scopeId), streamStarts.get(event.scopeId)),
@@ -86,99 +65,31 @@ export class ProjectionService {
   }
 
   routeQuality(events: ProxyEvent[]) {
-    const contexts = new Map<string, JsonObject>();
-    const terminals = new Map<string, string>();
-    const cheaperLikelyWouldWork = [];
-    const cheapCausedRetriesOrRepairs = [];
-    const lowConfidence = [];
-
-    for (const event of events) {
-      if (event.eventType === "routing.context_built") contexts.set(event.scopeId, event.payload as JsonObject);
-      if (event.eventType === "provider.response_failed") terminals.set(event.scopeId, "failed");
-      if (event.eventType === "provider.response_cancelled") terminals.set(event.scopeId, "cancelled");
-    }
-
-    for (const event of events) {
-      if (event.eventType === "routing.decision_recorded") {
-        const payload = event.payload as JsonObject;
-        const finalRoute = stringValue(payload.finalRoute) as RouteName | undefined;
-        const classifier = isRecord(payload.classifier) ? payload.classifier : undefined;
-        const confidence = numberValue(classifier?.confidence);
-        const context = contexts.get(event.scopeId);
-        const toolCount = numberValue(context?.toolCount);
-        const estimatedTokens = numberValue(context?.estimatedInputTokens);
-
-        if (confidence !== undefined && confidence < this.config.routeQualityLowConfidenceThreshold) {
-          lowConfidence.push({
-            requestId: event.scopeId,
-            confidence,
-            finalRoute,
-            requestedModel: payload.requestedModel
-          });
-        }
-
-        if (
-          finalRoute &&
-          routeIndex(finalRoute) > routeIndex("fast") &&
-          confidence !== undefined &&
-          confidence >= 0.8 &&
-          toolCount === 0 &&
-          estimatedTokens !== undefined &&
-          estimatedTokens < 1000
-        ) {
-          cheaperLikelyWouldWork.push({
-            requestId: event.scopeId,
-            finalRoute,
-            confidence,
-            estimatedTokens
-          });
-        }
-
-        if (
-          finalRoute &&
-          routeIndex(finalRoute) <= routeIndex("balanced") &&
-          terminals.get(event.scopeId) === "failed"
-        ) {
-          cheapCausedRetriesOrRepairs.push({
-            requestId: event.scopeId,
-            finalRoute,
-            reason: "cheap_route_failed"
-          });
-        }
-      }
-
-      if (event.eventType === "session.route_memory_recorded") {
-        const payload = event.payload as JsonObject;
-        if (
-          payload.action === "upgraded" &&
-          stringValue(payload.previousRoute) &&
-          routeIndex(stringValue(payload.previousRoute) as RouteName) <= routeIndex("balanced")
-        ) {
-          cheapCausedRetriesOrRepairs.push({
-            sessionId: payload.sessionId,
-            previousRoute: payload.previousRoute,
-            currentRoute: payload.currentRoute,
-            reason: "session_upgraded_after_cheaper_route"
-          });
-        }
-      }
-    }
-
+    const lowConfidence = events.flatMap((event) => {
+      if (event.eventType !== "routing.decision_recorded") return [];
+      const payload = event.payload as JsonObject;
+      const routerDecision = isRecord(payload.routerDecision) ? payload.routerDecision : undefined;
+      const confidence = numberValue(routerDecision?.confidence);
+      if (confidence === undefined || confidence >= 0.55) return [];
+      return [{
+        requestId: event.scopeId,
+        confidence,
+        requestedLogicalModel: payload.requestedLogicalModel,
+        resolvedLogicalModelId: payload.resolvedLogicalModelId,
+        deploymentId: payload.deploymentId
+      }];
+    });
     return {
       cursor: events.length,
-      cheaperLikelyWouldWork,
-      cheapCausedRetriesOrRepairs,
       lowConfidence
     };
   }
 }
 
 function isTerminalProviderEvent(eventType: string) {
-  return (
-    eventType === "provider.response_completed" ||
+  return eventType === "provider.response_completed" ||
     eventType === "provider.response_failed" ||
-    eventType === "provider.response_cancelled"
-  );
+    eventType === "provider.response_cancelled";
 }
 
 function terminalStatus(event: ProxyEvent) {
@@ -215,39 +126,12 @@ function addUsage(target: NormalizedUsage, source: NormalizedUsage) {
   target.totalTokens += source.totalTokens;
 }
 
-function estimateCost(model: string | undefined, usage: NormalizedUsage, pricing: ModelPricingTable) {
-  if (!model) return 0;
-  return usageCostMicros(pricingForModel(pricing, model), usage).totalCostMicros / 1_000_000;
-}
-
-// No-database mode has no organization settings, so the baseline is always
-// the default counterfactual.
-function baselineModel(
-  surface: Surface | undefined,
-  requestedModel: string | undefined,
-  selectedModel: string | undefined
-) {
-  if (!surface) return undefined;
-  const route = requestedModel ? explicitAlias(surface, requestedModel) : undefined;
-  if (route) return selectedModel;
-  switch (surface) {
-    case "openai-responses":
-      return defaultCostBaseline["openai-responses"];
-    case "openai-chat":
-      return defaultCostBaseline["openai-chat"];
-    case "anthropic-messages":
-      return defaultCostBaseline["anthropic-messages"];
-  }
-}
-
 function missingUsage(events: ProxyEvent[]) {
-  return events
-    .filter((event) => {
-      if (event.eventType !== "provider.response_completed") return false;
-      const usage = (event.payload as JsonObject).usage;
-      return usage === null || usage === undefined;
-    })
-    .map((event) => event.scopeId);
+  return events.filter((event) => {
+    if (event.eventType !== "provider.response_completed") return false;
+    const usage = (event.payload as JsonObject).usage;
+    return usage === null || usage === undefined;
+  }).map((event) => event.scopeId);
 }
 
 function elapsedMs(start: string | undefined, end: string | undefined) {
@@ -261,8 +145,4 @@ function numberValue(value: unknown) {
 
 function stringValue(value: unknown) {
   return typeof value === "string" ? value : undefined;
-}
-
-function routeIndex(route: RouteName) {
-  return routeOrder.indexOf(route);
 }

@@ -5,7 +5,6 @@ import { useState, type ReactNode } from "react";
 import type { ArtifactRole } from "./artifactKinds";
 import { formatCompact, formatDurationMs, formatMoney, formatTimeOfDay } from "./format";
 import { CopyButton } from "./jsonView";
-import { TierGauge } from "./routing/tierViz";
 import {
   artifactRole,
   artifactHasStoredText,
@@ -15,7 +14,7 @@ import {
   type ConversationTurn,
   type SessionArtifact
 } from "./sessionsPageData";
-import { GlassCard, StatusIndicator } from "./ui";
+import { GlassCard, RouteBadge, StatusIndicator } from "./ui";
 
 function RequestBlock({ turn, spans }: { turn: ConversationTurn; spans: Map<string, number> }) {
   const { request, index, gapMs, artifacts, priorMessages, priorTokens } = turn;
@@ -36,7 +35,7 @@ function RequestBlock({ turn, spans }: { turn: ConversationTurn; spans: Map<stri
           {logArtifactId ? (
             <Link to="/logs/$artifactId" params={{ artifactId: logArtifactId }} className="req-log-link">Open log</Link>
           ) : null}
-          <TierGauge route={request.finalRoute ?? "unknown"} />
+          <RouteBadge route={request.requestedLogicalModel ?? request.resolvedLogicalModelId} />
           <StatusIndicator status={request.terminalStatus} />
         </span>
       </div>

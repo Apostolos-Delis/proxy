@@ -2,9 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   agentSessions,
-  apiKeys,
   defaultWorkspaceId,
-  hashApiKey,
   providerAttempts,
   requests,
   routeDecisions,
@@ -149,7 +147,7 @@ describe("detectCacheBusts", () => {
     ["tool_schema_churn", { toolSchemaHash: "sha256:tools_v1" }, { toolSchemaHash: "sha256:tools_v2" }],
     ["translator_change", { translatorId: null }, { translatorId: "openai-chat_to_anthropic-messages" }],
     ["compression_policy_change", { compressionPolicyHash: "sha256:policy_v1" }, { compressionPolicyHash: "sha256:policy_v2" }],
-    ["route_config_change", { routingConfigHash: "sha256:route_v1" }, { routingConfigHash: "sha256:route_v2" }]
+    ["logical_model_change", { logicalModelId: "logical_v1" }, { logicalModelId: "logical_v2" }]
   ] satisfies Array<[CacheBustCause, Partial<CacheBustLedgerRow>, Partial<CacheBustLedgerRow>]>)(
     "classifies %s ahead of TTL when both rows carry evidence",
     (cause, previousEvidence, currentEvidence) => {
@@ -188,7 +186,7 @@ describe("detectCacheBusts", () => {
         toolSchemaHash: "sha256:tools_v2",
         translatorId: "openai-chat_to_anthropic-messages",
         compressionPolicyHash: "sha256:policy_v2",
-        routingConfigHash: "sha256:route_v2",
+        logicalModelId: "logical_v2",
         createdAt: new Date("2026-06-08T12:01:00Z")
       })
     ]);
@@ -276,13 +274,13 @@ describe("cacheBusts admin query", () => {
     ]);
     await fixture.db.insert(usageLedger).values([
       {
-        ...usageRow("bust_usage_1", "bust_request_1", "bust_attempt_1", "org_cache_busts", "anthropic", "claude-hard", "hard", 100, 50, 1000),
+        ...usageRow("bust_usage_1", "bust_request_1", "bust_attempt_1", "org_cache_busts", "anthropic", "claude-hard", 100, 50, 1000),
         sessionId: "session_bust",
         cachedInputTokens: 60_000,
         createdAt: first
       },
       {
-        ...usageRow("bust_usage_2", "bust_request_2", "bust_attempt_2", "org_cache_busts", "anthropic", "claude-hard", "hard", 200, 50, 1000),
+        ...usageRow("bust_usage_2", "bust_request_2", "bust_attempt_2", "org_cache_busts", "anthropic", "claude-hard", 200, 50, 1000),
         sessionId: "session_bust",
         cachedInputTokens: 0,
         cacheCreationInputTokens: 55_000,
@@ -342,9 +340,11 @@ describe("cacheBusts admin query", () => {
     expect(gapCounts["5m_15m"]).toBe(1);
   });
 
-  it("attributes route config changes from route decision evidence", async () => {
-    activeFixture = await captureFixture("org_route_config_busts");
+  it("attributes logical model changes from gateway decision evidence", async () => {
+    activeFixture = await captureFixture("org_logical_model_busts");
     const fixture = activeFixture;
+    const organizationId = "org_logical_model_busts";
+    const workspaceId = defaultWorkspaceId(organizationId);
     const first = new Date("2026-06-08T12:00:00.000Z");
     const second = new Date("2026-06-08T12:01:00.000Z");
 
@@ -352,8 +352,8 @@ describe("cacheBusts admin query", () => {
     await fixture.db.insert(agentSessions).values([
       {
         id: "session_route_bust",
-        organizationId: "org_route_config_busts",
-        workspaceId: defaultWorkspaceId("org_route_config_busts"),
+        organizationId,
+        workspaceId,
         userId: "user_route_bust",
         surface: "anthropic-messages",
         externalSessionId: "claude-route-bust",
@@ -362,34 +362,46 @@ describe("cacheBusts admin query", () => {
       }
     ]);
     await fixture.db.insert(requests).values([
-      usageRequest("route_bust_request_1", "org_route_config_busts", "user_route_bust", "session_route_bust", "anthropic-messages", first),
-      usageRequest("route_bust_request_2", "org_route_config_busts", "user_route_bust", "session_route_bust", "anthropic-messages", second)
+      usageRequest("route_bust_request_1", organizationId, "user_route_bust", "session_route_bust", "anthropic-messages", first),
+      usageRequest("route_bust_request_2", organizationId, "user_route_bust", "session_route_bust", "anthropic-messages", second)
     ]);
     await fixture.db.insert(routeDecisions).values([
       {
-        ...usageDecision("route_bust_decision_1", "route_bust_request_1", "org_route_config_busts", "hard", "anthropic", "claude-hard"),
-        routingConfigHash: "sha256:route_v1",
-        routingConfigVersionId: "routing_config:v1"
+        ...usageDecision("route_bust_decision_1", "route_bust_request_1", organizationId, "anthropic-messages", "anthropic", "claude-haiku-4-5"),
+        requestedModel: "economy-auto",
+        requestedLogicalModel: "economy-auto",
+        resolvedLogicalModelId: `${workspaceId}:logical-model:economy-auto`,
+        accessProfileId: `${workspaceId}:access-profile:opendoor-engineer`,
+        routerKind: "classifier",
+        deploymentId: `${workspaceId}:deployment:anthropic:claude-haiku-4-5`,
+        providerConnectionId: `${workspaceId}:connection:anthropic`,
+        egressWireId: "anthropic-messages",
+        wireAdapterVersion: "1"
       },
       {
-        ...usageDecision("route_bust_decision_2", "route_bust_request_2", "org_route_config_busts", "hard", "anthropic", "claude-hard"),
-        routingConfigHash: "sha256:route_v2",
-        routingConfigVersionId: "routing_config:v2"
+        ...usageDecision("route_bust_decision_2", "route_bust_request_2", organizationId, "anthropic-messages", "anthropic", "claude-haiku-4-5"),
+        resolvedLogicalModelId: `${workspaceId}:logical-model:coding-auto`,
+        accessProfileId: `${workspaceId}:access-profile:opendoor-engineer`,
+        routerKind: "classifier",
+        deploymentId: `${workspaceId}:deployment:anthropic:claude-haiku-4-5`,
+        providerConnectionId: `${workspaceId}:connection:anthropic`,
+        egressWireId: "anthropic-messages",
+        wireAdapterVersion: "1"
       }
     ]);
     await fixture.db.insert(providerAttempts).values([
-      usageAttempt("route_bust_attempt_1", "route_bust_request_1", "org_route_config_busts", "anthropic-messages", "anthropic", "claude-hard", "completed", first),
-      usageAttempt("route_bust_attempt_2", "route_bust_request_2", "org_route_config_busts", "anthropic-messages", "anthropic", "claude-hard", "completed", second)
+      usageAttempt("route_bust_attempt_1", "route_bust_request_1", organizationId, "anthropic-messages", "anthropic", "claude-haiku-4-5", "completed", first),
+      usageAttempt("route_bust_attempt_2", "route_bust_request_2", organizationId, "anthropic-messages", "anthropic", "claude-haiku-4-5", "completed", second)
     ]);
     await fixture.db.insert(usageLedger).values([
       {
-        ...usageRow("route_bust_usage_1", "route_bust_request_1", "route_bust_attempt_1", "org_route_config_busts", "anthropic", "claude-hard", "hard", 100, 50, 1000),
+        ...usageRow("route_bust_usage_1", "route_bust_request_1", "route_bust_attempt_1", organizationId, "anthropic", "claude-haiku-4-5", 100, 50, 1000),
         sessionId: "session_route_bust",
         cachedInputTokens: 60_000,
         createdAt: first
       },
       {
-        ...usageRow("route_bust_usage_2", "route_bust_request_2", "route_bust_attempt_2", "org_route_config_busts", "anthropic", "claude-hard", "hard", 200, 50, 1000),
+        ...usageRow("route_bust_usage_2", "route_bust_request_2", "route_bust_attempt_2", organizationId, "anthropic", "claude-haiku-4-5", 200, 50, 1000),
         sessionId: "session_route_bust",
         cachedInputTokens: 0,
         cacheCreationInputTokens: 55_000,
@@ -409,10 +421,10 @@ describe("cacheBusts admin query", () => {
     expect(report.busts).toHaveLength(1);
     expect(report.busts[0]).toMatchObject({
       requestId: "route_bust_request_2",
-      cause: "route_config_change",
+      cause: "logical_model_change",
       gapMs: 60_000
     });
-    expect(report.countsByCause.route_config_change).toBe(1);
+    expect(report.countsByCause.logical_model_change).toBe(1);
     expect(report.countsByCause.ttl_expiry).toBe(0);
   });
 
@@ -495,14 +507,14 @@ describe("cacheBusts admin query", () => {
     ]);
     await fixture.db.insert(usageLedger).values([
       {
-        ...usageRow("use_30m_1", "req_30m_1", "att_30m_1", "org_active_1h", "anthropic", "claude-hard", "hard", 60_000, 100, 1000),
+        ...usageRow("use_30m_1", "req_30m_1", "att_30m_1", "org_active_1h", "anthropic", "claude-hard", 60_000, 100, 1000),
         userId: "user_1h",
         sessionId: "session_30m",
         cachedInputTokens: 55_000,
         createdAt: earlier
       },
       {
-        ...usageRow("use_30m_2", "req_30m_2", "att_30m_2", "org_active_1h", "anthropic", "claude-hard", "hard", 60_000, 100, 1000),
+        ...usageRow("use_30m_2", "req_30m_2", "att_30m_2", "org_active_1h", "anthropic", "claude-hard", 60_000, 100, 1000),
         userId: "user_1h",
         sessionId: "session_30m",
         cachedInputTokens: 0,
@@ -521,87 +533,4 @@ describe("cacheBusts admin query", () => {
     expect(result.windowMs).toBe(60 * 60 * 1000);
   });
 
-  it("reports output tokens and reasoning share per route", async () => {
-    activeFixture = await captureFixture("org_route_output");
-    const fixture = activeFixture;
-    const at = new Date("2026-06-08T12:00:00.000Z");
-
-    await fixture.db.insert(users).values([{ id: "user_ro", email: "ro@example.com", name: "RO" }]);
-    await fixture.db.insert(apiKeys).values({
-      id: "ro_key",
-      organizationId: "org_route_output",
-      workspaceId: defaultWorkspaceId("org_route_output"),
-      keyHash: hashApiKey("ro-secret"),
-      name: "Route output key"
-    });
-    await fixture.db.insert(agentSessions).values([
-      { id: "ro_session", organizationId: "org_route_output", workspaceId: defaultWorkspaceId("org_route_output"), userId: "user_ro", surface: "anthropic-messages", externalSessionId: "ro", startedAt: at, updatedAt: at }
-    ]);
-    await fixture.db.insert(requests).values([
-      usageRequest("ro_req_fast", "org_route_output", "user_ro", "ro_session", "anthropic-messages", at, "ro_key"),
-      usageRequest("ro_req_deep", "org_route_output", "user_ro", "ro_session", "anthropic-messages", at, "ro_key"),
-      usageRequest("ro_req_unrouted", "org_route_output", "user_ro", "ro_session", "anthropic-messages", at, "ro_key")
-    ]);
-    await fixture.db.insert(providerAttempts).values([
-      usageAttempt("ro_att_fast", "ro_req_fast", "org_route_output", "anthropic-messages", "anthropic", "claude-fast", "completed", at),
-      usageAttempt("ro_att_deep", "ro_req_deep", "org_route_output", "anthropic-messages", "anthropic", "claude-deep", "completed", at),
-      usageAttempt("ro_att_unrouted", "ro_req_unrouted", "org_route_output", "anthropic-messages", "anthropic", "claude-unpriced", "completed", at)
-    ]);
-    await fixture.db.insert(usageLedger).values([
-      {
-        ...usageRow("ro_use_fast", "ro_req_fast", "ro_att_fast", "org_route_output", "anthropic", "claude-fast", "fast", 100, 200, 1000),
-        userId: "user_ro",
-        sessionId: "ro_session",
-        reasoningTokens: 0
-      },
-      {
-        ...usageRow("ro_use_deep", "ro_req_deep", "ro_att_deep", "org_route_output", "anthropic", "claude-deep", "hard", 100, 1000, 5000),
-        userId: "user_ro",
-        sessionId: "ro_session",
-        route: "deep",
-        reasoningTokens: 400
-      },
-      {
-        ...usageRow("ro_use_unrouted", "ro_req_unrouted", "ro_att_unrouted", "org_route_output", "anthropic", "claude-unpriced", "fast", 100, 300, 0),
-        userId: "user_ro",
-        sessionId: "ro_session",
-        route: null
-      }
-    ]);
-
-    const report = (await adminGql(
-      fixture.proxyUrl,
-      fixture.adminHeaders,
-      `query {
-        routeOutputReport {
-          routes { route requests outputTokens avgOutputTokens reasoningShare outputCost }
-          models { key requests outputTokens avgOutputTokens outputCost }
-          users { key outputTokens }
-          apiKeys { key outputTokens }
-          workspaces { key outputTokens }
-        }
-      }`
-    )).data?.routeOutputReport;
-
-    const byRoute = Object.fromEntries(report.routes.map((row: any) => [row.route, row]));
-    const byModel = Object.fromEntries(report.models.map((row: any) => [row.key, row]));
-    const byUser = Object.fromEntries(report.users.map((row: any) => [row.key, row]));
-    const byApiKey = Object.fromEntries(report.apiKeys.map((row: any) => [row.key, row]));
-    const byWorkspace = Object.fromEntries(report.workspaces.map((row: any) => [row.key, row]));
-    expect(byRoute.fast.avgOutputTokens).toBe(200);
-    expect(byRoute.fast.reasoningShare).toBe(0);
-    expect(byRoute.deep.avgOutputTokens).toBe(1000);
-    expect(byRoute.deep.reasoningShare).toBeCloseTo(0.4, 5);
-    expect(byRoute.deep.outputCost).toBe(0);
-    expect(byRoute.unknown).toBeUndefined();
-    expect(byModel["claude-deep"].outputTokens).toBe(1000);
-    expect(byModel["claude-deep"].avgOutputTokens).toBe(1000);
-    expect(byModel["claude-unpriced"].outputTokens).toBe(300);
-    expect(byModel["claude-unpriced"].outputCost).toBe(0);
-    expect(byUser.user_ro.outputTokens).toBe(1500);
-    expect(byApiKey.ro_key.outputTokens).toBe(1500);
-    expect(byWorkspace[defaultWorkspaceId("org_route_output")].outputTokens).toBe(1500);
-    // Sorted fast < deep by route rank.
-    expect(report.routes[0].route).toBe("fast");
-  });
 });

@@ -341,7 +341,6 @@ async function setup(organizationId: string) {
     ...process.env,
     ALLOW_DEV_PROXY_TOKEN_FALLBACK: "false",
     DEFAULT_ORGANIZATION_ID: organizationId,
-    OPENAI_FAST_MODEL: "gpt-5.4-mini",
     PROXY_TOKEN: `token_${organizationId}`,
     SEED_EXTERNAL_ECONOMY_TOKEN: undefined,
     SEED_USER_ID: `user_${organizationId}`,

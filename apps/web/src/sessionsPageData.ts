@@ -41,8 +41,8 @@ export function sessionStatuses(session: SessionSummary) {
   return Object.keys(countRecord(session.terminalStatusSummary));
 }
 
-export function sessionRoute(session: SessionSummary) {
-  return session.currentRoute ?? dominantKey(countRecord(session.routeMix));
+export function sessionLogicalModel(session: SessionSummary) {
+  return dominantKey(countRecord(session.logicalModelMix));
 }
 
 export function sessionStatus(session: SessionSummary) {
@@ -74,7 +74,7 @@ export function sessionSearchValue(row: SessionLogRow) {
     row.userName,
     session.userId,
     session.surface,
-    sessionRoute(session),
+    sessionLogicalModel(session),
     ...sessionModels(session),
     ...sessionStatuses(session)
   ].filter((value): value is string => Boolean(value));
@@ -154,8 +154,8 @@ export function dominantRequestStatus(requests: SessionRequest[]) {
   return dominantKey(countBy(requests, (request) => request.terminalStatus));
 }
 
-export function dominantRequestRoute(requests: SessionRequest[]) {
-  return dominantKey(countBy(requests, (request) => request.finalRoute ?? "unknown"));
+export function dominantRequestLogicalModel(requests: SessionRequest[]) {
+  return dominantKey(countBy(requests, (request) => request.requestedLogicalModel ?? request.resolvedLogicalModelId ?? "unknown"));
 }
 
 function countBy(requests: SessionRequest[], pick: (request: SessionRequest) => string) {

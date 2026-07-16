@@ -50,7 +50,7 @@ describe("OpenAI Responses to Chat translator", () => {
 
   it("maps request fields to chat names", () => {
     const request = translator?.request({
-      model: "router-hard",
+      model: "coding-auto",
       instructions: "Use tools carefully.",
       input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "list files" }] }],
       tools: [{ type: "function", name: "shell", description: "Run shell", parameters: { type: "object" } }],
@@ -122,7 +122,7 @@ describe("OpenAI Chat to Responses translator", () => {
 
   it("maps request fields to responses names", () => {
     const request = translator?.request({
-      model: "router-hard",
+      model: "coding-auto",
       messages: [
         { role: "system", content: "Use tools carefully." },
         { role: "user", content: "list files" },
@@ -201,7 +201,7 @@ describe("Anthropic Messages to OpenAI translators", () => {
   it("maps Messages request history to Chat messages and preserves tool IDs", () => {
     const translator = translators.get("anthropic-messages", "openai-chat");
     const request = translator?.request({
-      model: "claude-router-hard",
+      model: "fable",
       system: "Use tools carefully.",
       cache_control: { type: "ephemeral" },
       messages: [
@@ -363,7 +363,7 @@ describe("OpenAI to Anthropic Messages translators", () => {
   it("maps Responses request items to Messages and preserves function IDs", () => {
     const translator = translators.get("openai-responses", "anthropic-messages");
     const request = translator?.request({
-      model: "router-hard",
+      model: "coding-auto",
       instructions: "Use tools carefully.",
       input: [
         { type: "message", role: "user", content: [{ type: "input_text", text: "list files" }] },

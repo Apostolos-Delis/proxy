@@ -2,72 +2,43 @@ import { performance } from "node:perf_hooks";
 
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import {
-  providerCapabilitiesWithDefaults,
-  type ProviderAccountAuthType,
-  type ProviderAdapterKind,
-  type ProviderAuthStyle,
-  type ProviderRegistryEndpoint
-} from "@proxy/schema";
-
-import {
+  accessProfiles,
   agentSessions,
-  apiKeyProviderAccounts,
   apiKeys,
   compressionReceipts,
   events,
   invitations,
-  modelCatalog,
+  modelDeployments,
   organizationMembers,
   organizations,
   promptArtifacts,
-  providers,
-  providerAccounts,
-  providerAccountHealth,
   providerAttempts,
-  providerModelHealth,
+  providerConnections,
   requests,
   routeDecisions,
-  routingConfigs,
-  routingConfigVersions,
   users as usersTable,
   usageLedger,
   type ProxyDbSession
 } from "@proxy/db";
 
-import { explicitAlias } from "../catalog.js";
-import { jsonPayload } from "../events.js";
 import {
-  catalogWarnings,
-  effectiveCatalogSource,
-  mergeCatalogCapabilities,
-  mergeCatalogPricing,
-  type CatalogMergeRow
-} from "../modelDiscovery.js";
-import {
-  applyPricingToEntry,
   baselineModelForDialect,
-  compareModelPricingEntries,
-  emptyPricingEntry,
   pricingForProviderModel,
   providerForDialect,
   providerModelPricingKey,
-  undatedModel,
   usageCostMicros,
   type CostBaseline,
   type ModelPricing,
-  type ModelPricingEntry,
   type ModelPricingTable
 } from "../pricing.js";
-import type { JsonObject, RouteName } from "../types.js";
+import type { JsonObject } from "../types.js";
 import { searchAdminEntities } from "./adminSearch.js";
 import { workspaceScope } from "./scope.js";
 import {
   eventSummary,
   invitationSummary,
   providerAttemptSummary,
-  routingConfigRoutesSummary,
   routeDecisionSummary,
-  routingConfigSummary,
   usageLedgerSummary
 } from "./adminSerializers.js";
 import { CACHE_TTL_DEFAULT_MS } from "../cacheWindows.js";
@@ -84,7 +55,6 @@ import {
   attemptCounts,
   classifierCostByRequestId,
   latestAttemptsByRequest,
-  providerSkipReasonsByRequest,
   usageAggregateForRow,
   type UsageAggregate
 } from "./adminRequestUsage.js";
@@ -103,7 +73,7 @@ import {
   type UsageRollupRow,
   type UsageRollupScope
 } from "./usageRollups.js";
-import { knownSurfaceValue, routeValue } from "./values.js";
+import { knownSurfaceValue } from "./values.js";
 import {
   type MetricsCollector,
   NoopMetricsCollector
@@ -126,22 +96,12 @@ const PROMPT_CACHE_PREWARM_EVENTS = [
   "prompt_cache.prewarm_expired_unused"
 ];
 
-function routingConfigEvidence(requestRowId: string | null, value: string | null) {
-  return requestRowId === null ? undefined : value;
-}
-
-export type AdminQueryConfig = {
-  routeQualityLowConfidenceThreshold: number;
-  classifierModel: string;
-  classifierProvider: string;
-};
-
 export type PromptListFilters = {
   limit?: number;
   offset?: number;
   userId?: string;
   surface?: string;
-  route?: string;
+  logicalModel?: string;
   model?: string;
   start?: string;
   end?: string;
@@ -201,7 +161,6 @@ export class AdminQueryService {
     private readonly db: ProxyDbSession,
     private readonly organizationId: string,
     private readonly workspaceId: string,
-    private readonly config: AdminQueryConfig,
     private readonly metrics: MetricsCollector = new NoopMetricsCollector()
   ) {}
 
@@ -270,15 +229,7 @@ export class AdminQueryService {
         return acc;
       }, { selected: 0, baseline: 0, savings: 0, classifier: 0 }),
       routeQuality: {
-        lowConfidenceCount,
-        cheaperLikelyWouldWorkCount: requestSummaries.filter((request) =>
-          routeIndex(routeValue(request.finalRoute)) > routeIndex("fast") &&
-          request.usage.totalTokens < 1000
-        ).length,
-        cheapCausedRetriesOrRepairsCount: requestSummaries.filter((request) =>
-          (request.finalRoute === "fast" || request.finalRoute === "balanced") &&
-          request.terminalStatus === "failed"
-        ).length
+        lowConfidenceCount
       }
     };
   }
@@ -295,276 +246,15 @@ export class AdminQueryService {
 
   async apiKeys() {
     const rows = await this.apiKeyRows();
-    const bindings = await this.apiKeyProviderBindings(rows.map((row) => row.id));
     return {
-      data: rows.map((row) => apiKeySummary(row, bindings.get(row.id) ?? []))
+      data: rows.map(apiKeySummary)
     };
   }
 
   async apiKeyDetail(apiKeyId: string) {
     const [row] = await this.apiKeyRows(apiKeyId);
     if (!row) return null;
-    const bindings = await this.apiKeyProviderBindings([apiKeyId]);
-    return { apiKey: apiKeySummary(row, bindings.get(apiKeyId) ?? []) };
-  }
-
-  async providerAccounts() {
-    const rows = await this.db
-      .select({
-        id: providerAccounts.id,
-        organizationId: providerAccounts.organizationId,
-        providerId: providerAccounts.providerId,
-        provider: providers.slug,
-        providerAdapterKind: providers.adapterKind,
-        name: providerAccounts.name,
-        baseUrl: providerAccounts.baseUrl,
-        authType: providerAccounts.authType,
-        status: providerAccounts.status,
-        secretHint: providerAccounts.secretHint,
-        settings: providerAccounts.settings,
-        createdByUserId: providerAccounts.createdByUserId,
-        createdAt: providerAccounts.createdAt,
-        lastUsedAt: providerAccounts.lastUsedAt
-      })
-      .from(providerAccounts)
-      .innerJoin(providers, eq(providers.id, providerAccounts.providerId))
-      .where(and(
-        eq(providerAccounts.organizationId, this.organizationId),
-        or(
-          isNotNull(providerAccounts.secretCiphertext),
-          eq(providers.adapterKind, "aws-bedrock-converse")
-        )
-      ))
-      .orderBy(desc(providerAccounts.createdAt));
-
-    const providerAccountIds = rows.map((row) => row.id);
-    const boundCounts = await this.providerAccountBoundKeyCounts(providerAccountIds);
-    const accountHealth = await this.providerAccountHealthRows(providerAccountIds);
-    const modelHealth = await this.providerModelHealthRows(providerAccountIds);
-    return {
-      data: rows.map((row) => providerAccountSummary(
-        row,
-        boundCounts.get(row.id) ?? 0,
-        accountHealth.get(row.id) ?? null,
-        modelHealth.get(row.id) ?? []
-      ))
-    };
-  }
-
-  async providers() {
-    const rows = await this.db
-      .select({
-        id: providers.id,
-        organizationId: providers.organizationId,
-        slug: providers.slug,
-        displayName: providers.displayName,
-        baseUrl: providers.baseUrl,
-        adapterKind: providers.adapterKind,
-        adapterConfig: providers.adapterConfig,
-        authStyle: providers.authStyle,
-        endpoints: providers.endpoints,
-        defaultHeaders: providers.defaultHeaders,
-        capabilities: providers.capabilities,
-        forwardHarnessHeaders: providers.forwardHarnessHeaders,
-        enabled: providers.enabled
-      })
-      .from(providers)
-      .where(or(
-        isNull(providers.organizationId),
-        eq(providers.organizationId, this.organizationId)
-      ))
-      .orderBy(asc(providers.slug), asc(providers.organizationId));
-
-    const bySlug = new Map<string, ReturnType<typeof providerRegistrySummary>>();
-    for (const row of rows) {
-      const summary = providerRegistrySummary(row);
-      const existing = bySlug.get(row.slug);
-      if (!existing || row.organizationId === this.organizationId) bySlug.set(row.slug, summary);
-    }
-    return {
-      data: [...bySlug.values()].sort((left, right) => left.slug.localeCompare(right.slug))
-    };
-  }
-
-  private async apiKeyProviderBindings(apiKeyIds: string[]) {
-    const bindings = new Map<string, ProviderBindingSummary[]>();
-    if (apiKeyIds.length === 0) return bindings;
-    const rows = await this.db
-      .select({
-        apiKeyId: apiKeyProviderAccounts.apiKeyId,
-        provider: providers.slug,
-        providerId: apiKeyProviderAccounts.providerId,
-        providerAccountId: apiKeyProviderAccounts.providerAccountId,
-        providerAccountName: providerAccounts.name,
-        providerAccountStatus: providerAccounts.status
-      })
-      .from(apiKeyProviderAccounts)
-      .innerJoin(providers, eq(providers.id, apiKeyProviderAccounts.providerId))
-      .leftJoin(providerAccounts, and(
-        eq(providerAccounts.organizationId, apiKeyProviderAccounts.organizationId),
-        eq(providerAccounts.id, apiKeyProviderAccounts.providerAccountId)
-      ))
-      .where(and(
-        this.scopedTo(apiKeyProviderAccounts),
-        inArray(apiKeyProviderAccounts.apiKeyId, apiKeyIds)
-      ));
-    for (const row of rows) {
-      const list = bindings.get(row.apiKeyId) ?? [];
-      list.push({
-        provider: row.provider,
-        providerId: row.providerId,
-        providerAccountId: row.providerAccountId,
-        name: row.providerAccountName ?? null,
-        status: row.providerAccountStatus ?? null
-      });
-      bindings.set(row.apiKeyId, list);
-    }
-    return bindings;
-  }
-
-  private async providerAccountBoundKeyCounts(providerAccountIds: string[]) {
-    const counts = new Map<string, number>();
-    if (providerAccountIds.length === 0) return counts;
-    // Deliberately org-wide (no workspaceScope): provider accounts are an
-    // org-level screen, so the bound-key count covers every workspace.
-    const rows = await this.db
-      .select({
-        providerAccountId: apiKeyProviderAccounts.providerAccountId,
-        count: sql<number>`count(*)`
-      })
-      .from(apiKeyProviderAccounts)
-      .where(and(
-        eq(apiKeyProviderAccounts.organizationId, this.organizationId),
-        inArray(apiKeyProviderAccounts.providerAccountId, providerAccountIds)
-      ))
-      .groupBy(apiKeyProviderAccounts.providerAccountId);
-    for (const row of rows) counts.set(row.providerAccountId, Number(row.count));
-    return counts;
-  }
-
-  private async providerAccountHealthRows(providerAccountIds: string[]) {
-    const rowsByAccount = new Map<string, ProviderAccountHealthRow>();
-    if (providerAccountIds.length === 0) return rowsByAccount;
-    const rows = await this.db
-      .select({
-        providerAccountId: providerAccountHealth.providerAccountId,
-        status: providerAccountHealth.status,
-        lastErrorType: providerAccountHealth.lastErrorType,
-        lastErrorAt: providerAccountHealth.lastErrorAt,
-        cooldownUntil: providerAccountHealth.cooldownUntil,
-        consecutiveFailures: providerAccountHealth.consecutiveFailures,
-        lastSuccessAt: providerAccountHealth.lastSuccessAt,
-        lastCheckedAt: providerAccountHealth.lastCheckedAt,
-        metadata: providerAccountHealth.metadata
-      })
-      .from(providerAccountHealth)
-      .where(and(
-        eq(providerAccountHealth.organizationId, this.organizationId),
-        inArray(providerAccountHealth.providerAccountId, providerAccountIds)
-      ));
-    for (const row of rows) rowsByAccount.set(row.providerAccountId, row);
-    return rowsByAccount;
-  }
-
-  private async providerModelHealthRows(providerAccountIds: string[]) {
-    const rowsByAccount = new Map<string, ProviderModelHealthRow[]>();
-    if (providerAccountIds.length === 0) return rowsByAccount;
-    const rows = await this.db
-      .select({
-        providerId: providerModelHealth.providerId,
-        providerAccountId: providerModelHealth.providerAccountId,
-        model: providerModelHealth.model,
-        status: providerModelHealth.status,
-        lastErrorType: providerModelHealth.lastErrorType,
-        lastErrorAt: providerModelHealth.lastErrorAt,
-        lockoutUntil: providerModelHealth.lockoutUntil,
-        consecutiveFailures: providerModelHealth.consecutiveFailures,
-        lastSuccessAt: providerModelHealth.lastSuccessAt,
-        metadata: providerModelHealth.metadata
-      })
-      .from(providerModelHealth)
-      .where(and(
-        eq(providerModelHealth.organizationId, this.organizationId),
-        inArray(providerModelHealth.providerAccountId, providerAccountIds)
-      ))
-      .orderBy(asc(providerModelHealth.model));
-    for (const row of rows) {
-      const list = rowsByAccount.get(row.providerAccountId) ?? [];
-      list.push(row);
-      rowsByAccount.set(row.providerAccountId, list);
-    }
-    return rowsByAccount;
-  }
-
-  private async providerSummariesBySlug() {
-    const { data } = await this.providers();
-    return new Map(data.map((provider) => [
-      provider.slug,
-      {
-        capabilities: provider.capabilities,
-        endpoints: provider.endpoints
-      }
-    ]));
-  }
-
-  async routingConfigs() {
-    const configRows = await this.db
-      .select()
-      .from(routingConfigs)
-      .where(this.scopedTo(routingConfigs))
-      .orderBy(desc(routingConfigs.updatedAt));
-    const activeVersions = await this.activeRoutingConfigVersions(configRows);
-    const assignedKeyCounts = await this.routingConfigApiKeyCounts(configRows.map((row) => row.id));
-    const trafficShares = await this.routingConfigTrafficShares();
-    const providersBySlug = await this.providerSummariesBySlug();
-
-    return {
-      data: configRows.map((row) =>
-        routingConfigListSummary(
-          row,
-          activeVersions.get(row.activeVersionId ?? ""),
-          assignedKeyCounts.get(row.id) ?? 0,
-          trafficShares.get(row.id) ?? 0,
-          providersBySlug
-        )
-      )
-    };
-  }
-
-  async routingConfigDetail(configId: string) {
-    const [config] = await this.db
-      .select()
-      .from(routingConfigs)
-      .where(and(
-        this.scopedTo(routingConfigs),
-        eq(routingConfigs.id, configId)
-      ))
-      .limit(1);
-    if (!config) return null;
-
-    const versions = await this.db
-      .select()
-      .from(routingConfigVersions)
-      .where(and(
-        this.scopedTo(routingConfigVersions),
-        eq(routingConfigVersions.routingConfigId, config.id)
-      ))
-      .orderBy(desc(routingConfigVersions.version));
-    const activeVersion = versions.find((version) => version.id === config.activeVersionId);
-    const assignedKeyCounts = await this.routingConfigApiKeyCounts([config.id]);
-    const trafficShares = await this.routingConfigTrafficShares();
-    const providersBySlug = await this.providerSummariesBySlug();
-
-    return {
-      config: routingConfigListSummary(
-        config,
-        activeVersion,
-        assignedKeyCounts.get(config.id) ?? 0,
-        trafficShares.get(config.id) ?? 0,
-        providersBySlug
-      ),
-      versions: versions.map((version) => routingConfigVersionDetail(version, version.id === config.activeVersionId))
-    };
+    return { apiKey: apiKeySummary(row) };
   }
 
   async requestDetail(requestId: string) {
@@ -580,7 +270,6 @@ export class AdminQueryService {
     const routeDecisionSummaries = requestRow
       ? (await this.routeDecisionRowsForRequest(requestId)).map(routeDecisionSummary)
       : [];
-    await this.addRoutingConfigNames(routeDecisionSummaries);
     const requestEvents = requestRow ? await this.eventsForRequest(requestId) : [];
     return {
       request: request ?? null,
@@ -591,8 +280,7 @@ export class AdminQueryService {
       // Only fetch the timeline once the request passed the workspace check,
       // so foreign request ids cannot expose another workspace's events.
       events: requestEvents,
-      compressionReceipts: requestRow ? await this.compressionReceiptsForRequest(requestId) : [],
-      healthSkips: healthSkipsFromEvents(requestEvents)
+      compressionReceipts: requestRow ? await this.compressionReceiptsForRequest(requestId) : []
     };
   }
 
@@ -600,7 +288,7 @@ export class AdminQueryService {
     const rows = await this.promptRows(filters);
     const requestRows = [...new Map(rows.map((row) => [row.request.id, row.request])).values()];
     const requestSummaries = new Map((await this.summarizeRequests(requestRows)).map((request) => [request.requestId, request]));
-    const data = await this.addRoutingConfigNames(rows.map((row) => promptSummary(row, requestSummaries.get(row.request.id))));
+    const data = rows.map((row) => promptSummary(row, requestSummaries.get(row.request.id)));
     return {
       data,
       pagination: {
@@ -895,7 +583,7 @@ export class AdminQueryService {
     group.usage.reasoningTokens += row.reasoningTokens;
     group.usage.totalTokens += row.totalTokens;
     const baseline = includeBaselineCost
-      ? baselineCostFor(pricing, costBaseline, row.surface, row.requestedModel, row.selectedProvider, row.selectedModel, {
+      ? baselineCostFor(pricing, costBaseline, row.surface, row.selectedProvider, {
           inputTokens: row.uncachedInputTokens + row.cachedInputTokens + row.cacheCreationInputTokens,
           cachedInputTokens: row.cachedInputTokens,
           cacheCreationInputTokens: row.cacheCreationInputTokens,
@@ -1017,7 +705,6 @@ export class AdminQueryService {
     const detailRows = await this.sessionDetailRows(sessionId, requestIds, detailOptions);
     const promptArtifactSummaries = detailRows.prompts.map((row) => promptDetail(row, requestSummariesById.get(row.request.id)));
     const routeDecisionSummaries = detailRows.routeDecisions.map(routeDecisionSummary);
-    await this.addRoutingConfigNames([...promptArtifactSummaries, ...routeDecisionSummaries]);
     return {
       session: sessionSummary(session, requestSummaries),
       user: session.userId ? userRows.get(session.userId) ?? null : null,
@@ -1058,9 +745,8 @@ export class AdminQueryService {
     const [request] = await this.summarizeRequests([row.request]);
     const requestEvents = await this.eventsForRequest(row.request.id);
     const compressionReceipts = await this.compressionReceiptsForRequest(row.request.id);
-    const [artifact] = await this.addRoutingConfigNames([promptDetail(row, request)]);
+    const artifact = promptDetail(row, request);
     const routeDecisionSummaries = (await this.routeDecisionRowsForRequest(row.request.id)).map(routeDecisionSummary);
-    await this.addRoutingConfigNames(routeDecisionSummaries);
     const siblingRows = await this.db
       .select()
       .from(promptArtifacts)
@@ -1094,19 +780,19 @@ export class AdminQueryService {
         organizationId: apiKeys.organizationId,
         userId: apiKeys.userId,
         name: apiKeys.name,
-        routingConfigId: apiKeys.routingConfigId,
+        accessProfileId: apiKeys.accessProfileId,
+        accessProfileName: accessProfiles.name,
+        accessProfileStatus: accessProfiles.status,
         createdAt: apiKeys.createdAt,
         expiresAt: apiKeys.expiresAt,
         revokedAt: apiKeys.revokedAt,
-        lastUsedAt: apiKeys.lastUsedAt,
-        routingConfigName: routingConfigs.name,
-        routingConfigStatus: routingConfigs.status
+        lastUsedAt: apiKeys.lastUsedAt
       })
       .from(apiKeys)
-      .leftJoin(routingConfigs, and(
-        eq(routingConfigs.organizationId, apiKeys.organizationId),
-        eq(routingConfigs.workspaceId, apiKeys.workspaceId),
-        eq(routingConfigs.id, apiKeys.routingConfigId)
+      .leftJoin(accessProfiles, and(
+        eq(accessProfiles.organizationId, apiKeys.organizationId),
+        eq(accessProfiles.workspaceId, apiKeys.workspaceId),
+        eq(accessProfiles.id, apiKeys.accessProfileId)
       ))
       .where(and(...conditions))
       .orderBy(desc(apiKeys.createdAt));
@@ -1306,26 +992,24 @@ export class AdminQueryService {
     return this.cached("model-pricing", async () => {
       const rows = await this.db
         .select({
-          organizationId: modelCatalog.organizationId,
-          providerAccountId: modelCatalog.providerAccountId,
-          region: modelCatalog.region,
-          provider: providers.slug,
-          model: modelCatalog.model,
-          catalogSource: modelCatalog.catalogSource,
-          capabilities: modelCatalog.capabilities,
-          pricing: modelCatalog.pricing
+          provider: providerConnections.slug,
+          model: modelDeployments.upstreamModelId,
+          pricing: modelDeployments.pricing
         })
-        .from(modelCatalog)
-        .innerJoin(providers, eq(providers.id, modelCatalog.providerId))
-        .where(or(
-          isNull(modelCatalog.organizationId),
-          eq(modelCatalog.organizationId, this.organizationId)
-        ));
+        .from(modelDeployments)
+        .innerJoin(providerConnections, and(
+          eq(providerConnections.organizationId, modelDeployments.organizationId),
+          eq(providerConnections.workspaceId, modelDeployments.workspaceId),
+          eq(providerConnections.id, modelDeployments.providerConnectionId)
+        ))
+        .where(this.scopedTo(modelDeployments))
+        .orderBy(desc(modelDeployments.updatedAt));
       const table: Record<string, ModelPricing> = {};
-      for (const group of groupedCatalogRows(rows).values()) {
-        const row = group[0]!;
-        const pricing = pricingFromRow(mergeCatalogPricing(group, this.organizationId));
-        if (pricing) table[providerModelPricingKey(row.provider, row.model)] = pricing;
+      for (const row of rows) {
+        const key = providerModelPricingKey(row.provider, row.model);
+        if (table[key]) continue;
+        const pricing = pricingFromRow(row.pricing);
+        if (pricing) table[key] = pricing;
       }
       return Object.freeze(table);
     });
@@ -1335,147 +1019,6 @@ export class AdminQueryService {
   // organization settings, defaulting to the harness frontier defaults.
   private effectiveCostBaseline(): Promise<CostBaseline> {
     return this.cached("cost-baseline", () => orgCostBaseline(this.db, this.organizationId));
-  }
-
-  // Pricing mutations re-read through the same request-scoped service; drop
-  // the memoized override rows so the re-read reflects the write.
-  invalidateModelPricing() {
-    this.requestScopedCache.delete("model-pricing");
-  }
-
-  async modelPricing() {
-    const pricing = await this.effectivePricing();
-    // Deliberately org-wide (no workspaceScope): pricing is an org-level
-    // resource, so unpriced traffic in any workspace is actionable here.
-    const ledgerModels = await this.db
-      .selectDistinct({
-        provider: usageLedger.provider,
-        model: usageLedger.model
-      })
-      .from(usageLedger)
-      .where(eq(usageLedger.organizationId, this.organizationId));
-    const catalogModels = await this.db
-      .select({
-        organizationId: modelCatalog.organizationId,
-        providerAccountId: modelCatalog.providerAccountId,
-        region: modelCatalog.region,
-        provider: providers.slug,
-        model: modelCatalog.model,
-        catalogSource: modelCatalog.catalogSource,
-        capabilities: modelCatalog.capabilities,
-        pricing: modelCatalog.pricing,
-        updatedAt: modelCatalog.updatedAt
-      })
-      .from(modelCatalog)
-      .innerJoin(providers, eq(providers.id, modelCatalog.providerId))
-      .where(or(
-        isNull(modelCatalog.organizationId),
-        eq(modelCatalog.organizationId, this.organizationId)
-      ));
-
-    const entries = new Map<string, ModelPricingEntry>();
-    const upsert = (model: string, provider: string | null) => {
-      const key = providerModelPricingKey(provider ?? "unknown", model);
-      const existing = entries.get(key);
-      if (existing) {
-        existing.provider ??= provider;
-        return existing;
-      }
-      const entry = emptyPricingEntry(model, provider);
-      entries.set(key, entry);
-      return entry;
-    };
-
-    for (const group of groupedCatalogRows(catalogModels).values()) {
-      const catalogEntry = group[0]!;
-      const row = upsert(catalogEntry.model, catalogEntry.provider);
-      const rowPricing = pricingFromRow(mergeCatalogPricing(group, this.organizationId));
-      const hasOrgRow = group.some((entry) => entry.organizationId === this.organizationId);
-      if (rowPricing) applyPricingToEntry(row, rowPricing, hasOrgRow ? "custom" : "default");
-      if (hasOrgRow) row.updatedAt = maxUpdatedAt(group).toISOString();
-    }
-    // The routing classifier bills its own model on every request, so list it
-    // even before traffic — operators must be able to confirm it is priced.
-    this.seedClassifierPricingRow(upsert, pricing);
-    for (const ledgerModel of ledgerModels) {
-      const row = upsert(ledgerModel.model, ledgerModel.provider);
-      row.seenInTraffic = true;
-      if (row.source !== "unpriced") continue;
-      // Dated identifiers (claude-sonnet-4-5-20250929) price through their
-      // undated entry — including org overrides; reflect that in the listing.
-      const undated = undatedModel(ledgerModel.model);
-      const exactRow = entries.get(providerModelPricingKey(ledgerModel.provider, ledgerModel.model));
-      const undatedRow = entries.get(providerModelPricingKey(ledgerModel.provider, undated));
-      const pricedRow = exactRow && exactRow.source !== "unpriced" ? exactRow : undatedRow;
-      if (pricedRow && pricedRow.source !== "unpriced") {
-        const modelPricing = pricingForProviderModel(pricing, ledgerModel.provider, ledgerModel.model);
-        if (modelPricing) {
-          applyPricingToEntry(row, modelPricing, pricedRow.source);
-          row.updatedAt = pricedRow.updatedAt;
-        }
-      }
-    }
-
-    return [...entries.values()].sort(compareModelPricingEntries);
-  }
-
-  async modelCatalog() {
-    const rows = await this.db
-      .select({
-        organizationId: modelCatalog.organizationId,
-        providerAccountId: modelCatalog.providerAccountId,
-        region: modelCatalog.region,
-        provider: providers.slug,
-        model: modelCatalog.model,
-        catalogSource: modelCatalog.catalogSource,
-        capabilities: modelCatalog.capabilities,
-        pricing: modelCatalog.pricing,
-        updatedAt: modelCatalog.updatedAt
-      })
-      .from(modelCatalog)
-      .innerJoin(providers, eq(providers.id, modelCatalog.providerId))
-      .where(or(
-        isNull(modelCatalog.organizationId),
-        eq(modelCatalog.organizationId, this.organizationId)
-      ))
-      .orderBy(asc(providers.slug), asc(modelCatalog.model), asc(modelCatalog.organizationId));
-
-    const entries: ReturnType<typeof modelCatalogSummary>[] = [];
-    for (const group of groupedModelCatalogRows(rows, this.organizationId)) {
-      const row = group.rows[0]!;
-      entries.push(modelCatalogSummary({
-        provider: row.provider,
-        model: row.model,
-        providerAccountId: group.providerAccountId,
-        region: group.region,
-        catalogSource: effectiveCatalogSource(group.rows, this.organizationId),
-        capabilities: mergeCatalogCapabilities(group.rows, this.organizationId),
-        pricing: mergeCatalogPricing(group.rows, this.organizationId),
-        updatedAt: maxUpdatedAt(group.rows)
-      }));
-    }
-    return entries.sort((left, right) =>
-      (left.provider ?? "").localeCompare(right.provider ?? "") ||
-      left.model.localeCompare(right.model) ||
-      (left.providerAccountId ?? "").localeCompare(right.providerAccountId ?? "") ||
-      (left.region ?? "").localeCompare(right.region ?? "")
-    );
-  }
-
-  // Adds the configured classifier model to the pricing listing if traffic has
-  // not surfaced it yet, resolving its rate through the static table (including
-  // the undated fallback) so it shows as priced rather than missing.
-  private seedClassifierPricingRow(
-    upsert: (model: string, provider: string | null) => ModelPricingEntry,
-    pricing: ModelPricingTable
-  ) {
-    const model = this.config.classifierModel;
-    if (!model) return;
-    const provider = this.config.classifierProvider;
-    const row = upsert(model, provider);
-    if (row.source !== "unpriced") return;
-    const modelPricing = pricingForProviderModel(pricing, provider, model);
-    if (modelPricing) applyPricingToEntry(row, modelPricing, "default");
   }
 
   private async summarizeRequests(
@@ -1492,7 +1035,6 @@ export class AdminQueryService {
     const decisionsByRequest = new Map(decisions.map((decision) => [decision.requestId, decision]));
     const attemptsByRequest = latestAttemptsByRequest(attempts);
     const attemptCountsByRequest = attemptCounts(attempts);
-    const skipReasonsByRequest = providerSkipReasonsByRequest(attempts);
     const classifierCostByRequest = classifierCostByRequestId(classifierUsageRows);
     const usageByRequest = options.aggregateUsageByRequest
       ? aggregateUsageByRequest(usageRows)
@@ -1513,11 +1055,10 @@ export class AdminQueryService {
         attempt,
         usage,
         classifierCost: classifierCostByRequest.get(request.id) ?? 0,
-        attemptCount: attemptCountsByRequest.get(request.id) ?? 0,
-        routeSkipReasons: skipReasonsByRequest.get(request.id) ?? []
+        attemptCount: attemptCountsByRequest.get(request.id) ?? 0
       }, pricing, costBaseline);
     });
-    return this.addRoutingConfigNames(summaries);
+    return summaries;
   }
 
   // Cached on the row array's identity: memoized row fetches return the same
@@ -1573,30 +1114,6 @@ export class AdminQueryService {
     return pending;
   }
 
-  private async addRoutingConfigNames<T extends { routingConfig: ReturnType<typeof routingConfigSummary> }>(summaries: T[]) {
-    if (!summaries.some((summary) => summary.routingConfig)) return summaries;
-
-    // Organizations hold a handful of configs, so one org-wide name map
-    // serves every lookup in the request regardless of which subset of
-    // config ids each caller references.
-    const names = await this.cached("config-names", async () => {
-      const rows = await this.db
-        .select({
-          id: routingConfigs.id,
-          name: routingConfigs.name
-        })
-        .from(routingConfigs)
-        .where(this.scopedTo(routingConfigs));
-      return new Map(rows.map((row) => [row.id, row.name]));
-    });
-    for (const summary of summaries) {
-      if (summary.routingConfig) {
-        summary.routingConfig.configName = names.get(summary.routingConfig.configId) ?? null;
-      }
-    }
-    return summaries;
-  }
-
   private routeDecisionRowsForRequest(requestId: string) {
     return this.db
       .select()
@@ -1619,101 +1136,6 @@ export class AdminQueryService {
       .orderBy(asc(providerAttempts.startedAt));
   }
 
-  // Output tokens per route — the lever for effort/verbosity tuning. Output is
-  // 5x input price, so a route with high average output is the first place to
-  // dial effort down. Reasoning share flags routes spending output on thinking.
-  async routeOutputReport(filters: DateRangeFilters = {}) {
-    const start = dateValue(filters.start);
-    const end = dateValue(filters.end);
-    const conditions = [this.scopedTo(usageLedger), eq(usageLedger.kind, "provider")];
-    if (start) conditions.push(gte(usageLedger.createdAt, start));
-    if (end) conditions.push(lte(usageLedger.createdAt, end));
-    const [routeRows, modelRows, userRows, apiKeyRows, workspaceRows] = await Promise.all([
-      this.db
-        .select({
-          route: usageLedger.route,
-          requests: sql<number>`count(*)`,
-          outputTokens: sql<number>`coalesce(sum(${usageLedger.outputTokens}), 0)`,
-          reasoningTokens: sql<number>`coalesce(sum(${usageLedger.reasoningTokens}), 0)`,
-          outputCostMicros: sql<number>`coalesce(sum(${usageLedger.outputCostMicros}), 0)`
-        })
-        .from(usageLedger)
-        .where(and(...conditions, isNotNull(usageLedger.route)))
-        .groupBy(usageLedger.route),
-      this.db
-        .select({
-          key: usageLedger.model,
-          requests: sql<number>`count(*)`,
-          outputTokens: sql<number>`coalesce(sum(${usageLedger.outputTokens}), 0)`,
-          reasoningTokens: sql<number>`coalesce(sum(${usageLedger.reasoningTokens}), 0)`,
-          outputCostMicros: sql<number>`coalesce(sum(${usageLedger.outputCostMicros}), 0)`
-        })
-        .from(usageLedger)
-        .where(and(...conditions))
-        .groupBy(usageLedger.model),
-      this.db
-        .select({
-          key: usageLedger.userId,
-          requests: sql<number>`count(*)`,
-          outputTokens: sql<number>`coalesce(sum(${usageLedger.outputTokens}), 0)`,
-          reasoningTokens: sql<number>`coalesce(sum(${usageLedger.reasoningTokens}), 0)`,
-          outputCostMicros: sql<number>`coalesce(sum(${usageLedger.outputCostMicros}), 0)`
-        })
-        .from(usageLedger)
-        .where(and(...conditions, isNotNull(usageLedger.userId)))
-        .groupBy(usageLedger.userId),
-      this.db
-        .select({
-          key: requests.apiKeyId,
-          requests: sql<number>`count(*)`,
-          outputTokens: sql<number>`coalesce(sum(${usageLedger.outputTokens}), 0)`,
-          reasoningTokens: sql<number>`coalesce(sum(${usageLedger.reasoningTokens}), 0)`,
-          outputCostMicros: sql<number>`coalesce(sum(${usageLedger.outputCostMicros}), 0)`
-        })
-        .from(usageLedger)
-        .innerJoin(requests, and(
-          eq(requests.organizationId, usageLedger.organizationId),
-          eq(requests.workspaceId, usageLedger.workspaceId),
-          eq(requests.id, usageLedger.requestId)
-        ))
-        .where(and(...conditions, isNotNull(requests.apiKeyId)))
-        .groupBy(requests.apiKeyId),
-      this.db
-        .select({
-          key: usageLedger.workspaceId,
-          requests: sql<number>`count(*)`,
-          outputTokens: sql<number>`coalesce(sum(${usageLedger.outputTokens}), 0)`,
-          reasoningTokens: sql<number>`coalesce(sum(${usageLedger.reasoningTokens}), 0)`,
-          outputCostMicros: sql<number>`coalesce(sum(${usageLedger.outputCostMicros}), 0)`
-        })
-        .from(usageLedger)
-        .where(and(...conditions))
-        .groupBy(usageLedger.workspaceId)
-    ]);
-
-    const routes = routeRows.map((row) => {
-      const requests = Number(row.requests);
-      const outputTokens = Number(row.outputTokens);
-      const reasoningTokens = Number(row.reasoningTokens);
-      return {
-        route: row.route ?? "unknown",
-        requests,
-        outputTokens,
-        reasoningTokens,
-        avgOutputTokens: requests > 0 ? outputTokens / requests : 0,
-        reasoningShare: outputTokens > 0 ? reasoningTokens / outputTokens : 0,
-        outputCost: Number(row.outputCostMicros) / 1_000_000
-      };
-    });
-    routes.sort((left, right) => routeIndex(routeValue(left.route)) - routeIndex(routeValue(right.route)));
-    return {
-      routes,
-      models: outputGroups(modelRows),
-      users: outputGroups(userRows),
-      apiKeys: outputGroups(apiKeyRows),
-      workspaces: outputGroups(workspaceRows)
-    };
-  }
 
   // Sessions with a request inside the cache-warm window. Admin surfaces use
   // this to size warm traffic without reimplementing provider TTL policy.
@@ -1784,13 +1206,11 @@ export class AdminQueryService {
         cachedInputTokens: usageLedger.cachedInputTokens,
         cacheCreationInputTokens: usageLedger.cacheCreationInputTokens,
         createdAt: usageLedger.createdAt,
-        requestRowId: requests.id,
-        decisionRequestId: routeDecisions.requestId,
         translatorId: routeDecisions.translatorId,
-        decisionRoutingConfigHash: routeDecisions.routingConfigHash,
-        decisionRoutingConfigVersionId: routeDecisions.routingConfigVersionId,
-        requestRoutingConfigHash: requests.routingConfigHash,
-        requestRoutingConfigVersionId: requests.routingConfigVersionId
+        decisionLogicalModelId: routeDecisions.resolvedLogicalModelId,
+        requestLogicalModelId: requests.resolvedLogicalModelId,
+        decisionDeploymentId: routeDecisions.deploymentId,
+        requestDeploymentId: requests.deploymentId
       })
       .from(usageLedger)
       .leftJoin(requests, and(
@@ -1815,13 +1235,9 @@ export class AdminQueryService {
       cachedInputTokens: row.cachedInputTokens,
       cacheCreationInputTokens: row.cacheCreationInputTokens,
       createdAt: row.createdAt,
-      translatorId: row.decisionRequestId === null ? undefined : row.translatorId,
-      routingConfigHash: row.decisionRequestId === null
-        ? routingConfigEvidence(row.requestRowId, row.requestRoutingConfigHash)
-        : row.decisionRoutingConfigHash ?? row.requestRoutingConfigHash,
-      routingConfigVersionId: row.decisionRequestId === null
-        ? routingConfigEvidence(row.requestRowId, row.requestRoutingConfigVersionId)
-        : row.decisionRoutingConfigVersionId ?? row.requestRoutingConfigVersionId
+      translatorId: row.translatorId ?? undefined,
+      logicalModelId: row.decisionLogicalModelId ?? row.requestLogicalModelId,
+      deploymentId: row.decisionDeploymentId ?? row.requestDeploymentId
     })));
     return { ...report, sampled: rows.length === CACHE_BUST_SAMPLE_CAP };
   }
@@ -1932,7 +1348,7 @@ export class AdminQueryService {
 
   private lowConfidenceDecisionCount() {
     return this.cached("low-confidence-count", async () => {
-      const threshold = Math.round(this.config.routeQualityLowConfidenceThreshold * 10_000);
+    const threshold = 5_500;
       const [row] = await this.db
         .select({
           count: sql<number>`count(*)`
@@ -1947,63 +1363,6 @@ export class AdminQueryService {
     });
   }
 
-  private async activeRoutingConfigVersions(configRows: RoutingConfigRow[]) {
-    const versionIds = configRows.flatMap((row) => row.activeVersionId ? [row.activeVersionId] : []);
-    if (versionIds.length === 0) return new Map<string, RoutingConfigVersionRow>();
-
-    const rows = await this.db
-      .select()
-      .from(routingConfigVersions)
-      .where(and(
-        this.scopedTo(routingConfigVersions),
-        inArray(routingConfigVersions.id, versionIds)
-      ));
-    return new Map(rows.map((row) => [row.id, row]));
-  }
-
-  private async routingConfigApiKeyCounts(configIds: string[]) {
-    if (configIds.length === 0) return new Map<string, number>();
-
-    const rows = await this.db
-      .select({ routingConfigId: apiKeys.routingConfigId })
-      .from(apiKeys)
-      .where(and(
-        this.scopedTo(apiKeys),
-        inArray(apiKeys.routingConfigId, configIds)
-      ));
-    return rows.reduce((counts, row) => {
-      if (!row.routingConfigId) return counts;
-      counts.set(row.routingConfigId, (counts.get(row.routingConfigId) ?? 0) + 1);
-      return counts;
-    }, new Map<string, number>());
-  }
-
-  // Share of routed requests per config over the trailing seven days. The
-  // window keeps the number current without scanning full request history.
-  private async routingConfigTrafficShares() {
-    return this.cached("routing-config-traffic-shares", async () => {
-      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const rows = await this.db
-        .select({
-          routingConfigId: requests.routingConfigId,
-          count: sql<number>`count(*)`
-        })
-        .from(requests)
-        .where(and(
-          this.scopedTo(requests),
-          isNotNull(requests.routingConfigId),
-          gte(requests.createdAt, since)
-        ))
-        .groupBy(requests.routingConfigId);
-      const total = rows.reduce((sum, row) => sum + Number(row.count), 0);
-      const shares = new Map<string, number>();
-      if (total === 0) return shares;
-      for (const row of rows) {
-        if (row.routingConfigId) shares.set(row.routingConfigId, Number(row.count) / total);
-      }
-      return shares;
-    });
-  }
 
   private async promptRows(filters: PromptListFilters) {
     const conditions = promptConditions(this.organizationId, this.workspaceId, filters);
@@ -2122,138 +1481,19 @@ type ProviderAttemptRow = typeof providerAttempts.$inferSelect;
 type SessionRow = typeof agentSessions.$inferSelect;
 type UserRow = typeof usersTable.$inferSelect;
 type MemberRow = typeof organizationMembers.$inferSelect;
-type RoutingConfigRow = typeof routingConfigs.$inferSelect;
-type RoutingConfigVersionRow = typeof routingConfigVersions.$inferSelect;
 type ApiKeySummaryRow = {
   id: string;
   organizationId: string;
   userId: string | null;
   name: string;
-  routingConfigId: string | null;
+  accessProfileId: string | null;
+  accessProfileName: string | null;
+  accessProfileStatus: string | null;
   createdAt: Date;
   expiresAt: Date | null;
   revokedAt: Date | null;
   lastUsedAt: Date | null;
-  routingConfigName: string | null;
-  routingConfigStatus: string | null;
 };
-
-type ProviderBindingSummary = {
-  provider: string;
-  providerId: string;
-  providerAccountId: string;
-  name: string | null;
-  status: string | null;
-};
-
-type ProviderAccountSummaryRow = {
-  id: string;
-  organizationId: string;
-  providerId: string;
-  provider: string;
-  providerAdapterKind: ProviderAdapterKind;
-  name: string;
-  baseUrl: string | null;
-  authType: ProviderAccountAuthType;
-  status: string;
-  secretHint: string | null;
-  settings: Record<string, unknown>;
-  createdByUserId: string | null;
-  createdAt: Date;
-  lastUsedAt: Date | null;
-};
-
-type ProviderAccountHealthRow = {
-  providerAccountId: string;
-  status: string;
-  lastErrorType: string | null;
-  lastErrorAt: Date | null;
-  cooldownUntil: Date | null;
-  consecutiveFailures: number;
-  lastSuccessAt: Date | null;
-  lastCheckedAt: Date | null;
-  metadata: Record<string, unknown>;
-};
-
-type ProviderModelHealthRow = {
-  providerId: string;
-  providerAccountId: string;
-  model: string;
-  status: string;
-  lastErrorType: string | null;
-  lastErrorAt: Date | null;
-  lockoutUntil: Date | null;
-  consecutiveFailures: number;
-  lastSuccessAt: Date | null;
-  metadata: Record<string, unknown>;
-};
-
-type ProviderRegistryRow = {
-  id: string;
-  organizationId: string | null;
-  slug: string;
-  displayName: string;
-  baseUrl: string;
-  adapterKind: ProviderAdapterKind;
-  adapterConfig: Record<string, unknown>;
-  authStyle: ProviderAuthStyle;
-  endpoints: ProviderRegistryEndpoint[];
-  defaultHeaders: Record<string, string>;
-  capabilities: Record<string, unknown>;
-  forwardHarnessHeaders: boolean;
-  enabled: boolean;
-};
-type RoutingConfigProviderSummary = {
-  capabilities: Record<string, unknown>;
-  endpoints: { dialect: string }[];
-};
-
-function routingConfigListSummary(
-  row: RoutingConfigRow,
-  activeVersion: RoutingConfigVersionRow | undefined,
-  assignedApiKeyCount: number,
-  trafficShare: number,
-  providersBySlug: Map<string, RoutingConfigProviderSummary>
-) {
-  return {
-    id: row.id,
-    organizationId: row.organizationId,
-    name: row.name,
-    slug: row.slug,
-    description: row.description ?? null,
-    status: row.status,
-    activeVersionId: row.activeVersionId ?? null,
-    activeVersion: activeVersion ? routingConfigVersionSummary(activeVersion, true) : null,
-    routes: activeVersion ? routingConfigRoutesSummary(activeVersion.config, providersBySlug) : [],
-    assignedApiKeyCount,
-    trafficShare,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString()
-  };
-}
-
-function routingConfigVersionSummary(row: RoutingConfigVersionRow, active: boolean) {
-  return {
-    id: row.id,
-    organizationId: row.organizationId,
-    routingConfigId: row.routingConfigId,
-    version: row.version,
-    configHash: row.configHash,
-    status: row.status,
-    active,
-    createdByUserId: row.createdByUserId ?? null,
-    createdAt: row.createdAt.toISOString(),
-    activatedAt: row.activatedAt?.toISOString() ?? null,
-    archivedAt: row.archivedAt?.toISOString() ?? null
-  };
-}
-
-function routingConfigVersionDetail(row: RoutingConfigVersionRow, active: boolean) {
-  return {
-    ...routingConfigVersionSummary(row, active),
-    config: row.config
-  };
-}
 
 function compressionReceiptSummary(
   row: typeof compressionReceipts.$inferSelect,
@@ -2316,8 +1556,9 @@ function promptConditions(organizationId: string, workspaceId: string, filters: 
   if (filters.userId) conditions.push(eq(requests.userId, filters.userId));
   const surface = knownSurfaceValue(filters.surface);
   if (surface) conditions.push(eq(requests.surface, surface));
-  const route = routeValue(filters.route);
-  if (route) conditions.push(eq(routeDecisions.finalRoute, route));
+  if (filters.logicalModel) {
+    conditions.push(eq(routeDecisions.resolvedLogicalModelId, filters.logicalModel));
+  }
   if (filters.model) conditions.push(eq(routeDecisions.selectedModel, filters.model));
   const start = dateValue(filters.start);
   if (start) conditions.push(gte(promptArtifacts.createdAt, start));
@@ -2326,21 +1567,20 @@ function promptConditions(organizationId: string, workspaceId: string, filters: 
   return conditions;
 }
 
-function apiKeySummary(row: ApiKeySummaryRow, providerBindings: ProviderBindingSummary[] = []) {
+function apiKeySummary(row: ApiKeySummaryRow) {
   return {
     id: row.id,
     organizationId: row.organizationId,
     userId: row.userId ?? null,
     name: row.name,
-    routingConfigId: row.routingConfigId ?? null,
-    routingConfig: row.routingConfigId
+    accessProfileId: row.accessProfileId ?? null,
+    accessProfile: row.accessProfileId
       ? {
-          id: row.routingConfigId,
-          name: row.routingConfigName ?? null,
-          status: row.routingConfigStatus ?? null
+          id: row.accessProfileId,
+          name: row.accessProfileName ?? null,
+          status: row.accessProfileStatus ?? null
         }
       : null,
-    providerCredentials: providerBindings,
     createdAt: row.createdAt.toISOString(),
     expiresAt: row.expiresAt?.toISOString() ?? null,
     revokedAt: row.revokedAt?.toISOString() ?? null,
@@ -2348,259 +1588,7 @@ function apiKeySummary(row: ApiKeySummaryRow, providerBindings: ProviderBindingS
   };
 }
 
-function providerAccountSummary(
-  row: ProviderAccountSummaryRow,
-  boundKeyCount: number,
-  health: ProviderAccountHealthRow | null,
-  modelHealth: ProviderModelHealthRow[]
-) {
-  return {
-    id: row.id,
-    organizationId: row.organizationId,
-    providerId: row.providerId,
-    provider: row.provider,
-    name: row.name,
-    baseUrl: row.baseUrl,
-    authType: row.authType,
-    status: row.status,
-    secretHint: row.secretHint ?? null,
-    credentialMode: bedrockSettingsString(row, "credentialMode"),
-    credentialSourceCategory: bedrockCredentialSourceCategory(row),
-    region: bedrockSettingsString(row, "region"),
-    endpointOverride: bedrockSettingsString(row, "endpointOverride"),
-    discoveryRegions: bedrockDiscoveryRegions(row),
-    ownerUserId: row.createdByUserId ?? null,
-    boundKeyCount,
-    health: providerAccountHealthSummary(health, modelHealth),
-    createdAt: row.createdAt.toISOString(),
-    lastUsedAt: row.lastUsedAt?.toISOString() ?? null
-  };
-}
 
-function bedrockSettingsString(row: ProviderAccountSummaryRow, key: string) {
-  if (row.providerAdapterKind !== "aws-bedrock-converse") return null;
-  const value = row.settings[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function bedrockCredentialSourceCategory(row: ProviderAccountSummaryRow) {
-  const mode = bedrockSettingsString(row, "credentialMode");
-  if (mode === "aws_bedrock_bearer_token") return "encrypted_bearer_token";
-  if (mode === "aws_static_keys") return "encrypted_static_keys";
-  if (mode === "aws_default_chain") return "deployment_default_chain";
-  if (mode === "aws_profile") return "local_profile";
-  return null;
-}
-
-function bedrockDiscoveryRegions(row: ProviderAccountSummaryRow) {
-  if (row.providerAdapterKind !== "aws-bedrock-converse") return [];
-  const value = row.settings.discoveryRegions;
-  if (!Array.isArray(value)) return [];
-  return value.filter((region): region is string => typeof region === "string" && region.trim().length > 0);
-}
-
-function providerAccountHealthSummary(
-  health: ProviderAccountHealthRow | null,
-  modelHealth: ProviderModelHealthRow[]
-) {
-  if (!health && modelHealth.length === 0) return null;
-  return {
-    status: health?.status ?? null,
-    lastErrorType: health?.lastErrorType ?? null,
-    lastErrorAt: health?.lastErrorAt?.toISOString() ?? null,
-    cooldownUntil: health?.cooldownUntil?.toISOString() ?? null,
-    consecutiveFailures: health?.consecutiveFailures ?? 0,
-    lastSuccessAt: health?.lastSuccessAt?.toISOString() ?? null,
-    lastCheckedAt: health?.lastCheckedAt?.toISOString() ?? null,
-    metadata: health?.metadata ?? {},
-    modelHealth: modelHealth.map((row) => ({
-      providerId: row.providerId,
-      providerAccountId: row.providerAccountId,
-      model: row.model,
-      status: row.status,
-      lastErrorType: row.lastErrorType ?? null,
-      lastErrorAt: row.lastErrorAt?.toISOString() ?? null,
-      lockoutUntil: row.lockoutUntil?.toISOString() ?? null,
-      consecutiveFailures: row.consecutiveFailures,
-      lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null,
-      metadata: row.metadata
-    }))
-  };
-}
-
-function healthSkipsFromEvents(events: { eventType: string; payload: unknown }[]) {
-  const skips: JsonObject[] = [];
-  for (const event of events) {
-    if (event.eventType !== "routing.decision_recorded") continue;
-    if (!event.payload || typeof event.payload !== "object" || Array.isArray(event.payload)) continue;
-    const healthSkips = (event.payload as Record<string, unknown>).healthSkips;
-    if (!Array.isArray(healthSkips)) continue;
-    for (const skip of healthSkips) {
-      if (!skip || typeof skip !== "object" || Array.isArray(skip)) continue;
-      const record = skip as Record<string, unknown>;
-      const metadata = healthMetadata(record.metadata);
-      skips.push({
-        scope: stringOrNull(record.scope),
-        provider: stringOrNull(record.provider),
-        providerId: stringOrNull(record.providerId),
-        providerAccountId: stringOrNull(record.providerAccountId),
-        model: stringOrNull(record.model),
-        healthStatus: stringOrNull(record.healthStatus),
-        errorType: stringOrNull(record.errorType),
-        expiresAt: stringOrNull(record.expiresAt),
-        ...(Object.keys(metadata).length > 0 ? { metadata } : {})
-      });
-    }
-  }
-  return skips;
-}
-
-function healthMetadata(value: unknown): JsonObject {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return jsonPayload(value) as JsonObject;
-}
-
-function stringOrNull(value: unknown) {
-  return typeof value === "string" ? value : null;
-}
-
-function modelCatalogSummary(row: {
-  provider: string;
-  model: string;
-  providerAccountId: string | null;
-  region: string | null;
-  catalogSource: string;
-  capabilities: Record<string, unknown>;
-  pricing: Record<string, unknown>;
-  updatedAt: Date;
-}) {
-  const inputCostPerMtok = numberOrNull(row.pricing.inputCostPerMtok);
-  const outputCostPerMtok = numberOrNull(row.pricing.outputCostPerMtok);
-  return {
-    provider: row.provider,
-    model: row.model,
-    displayName: stringOrNull(row.capabilities.displayName) ?? stringOrNull(row.capabilities.name),
-    catalogSource: row.catalogSource,
-    providerAccountId: row.providerAccountId,
-    region: row.region,
-    bedrockModelSource: stringOrNull(row.capabilities.bedrockModelSource),
-    bedrockInferenceProfileArn: stringOrNull(row.capabilities.bedrockInferenceProfileArn),
-    bedrockInferenceProfileId: stringOrNull(row.capabilities.bedrockInferenceProfileId),
-    bedrockInferenceProfileSource: stringOrNull(row.capabilities.bedrockInferenceProfileSource),
-    bedrockInferenceProfileGeography: stringOrNull(row.capabilities.bedrockInferenceProfileGeography),
-    bedrockBaseModelId: stringOrNull(row.capabilities.bedrockBaseModelId),
-    bedrockFoundationModelId: stringOrNull(row.capabilities.bedrockFoundationModelId),
-    dialects: stringArray(row.capabilities.dialects),
-    contextWindow: numberOrNull(row.capabilities.contextWindow),
-    maxOutputTokens: numberOrNull(row.capabilities.maxOutputTokens),
-    supportsStreaming: booleanOrNull(row.capabilities.streaming),
-    supportsTools: booleanOrNull(row.capabilities.toolCall),
-    supportsImages: booleanOrNull(row.capabilities.image) ?? imageSupportFromModalities(row.capabilities.modalities),
-    supportsReasoning: booleanOrNull(row.capabilities.reasoning),
-    pricingKnown: inputCostPerMtok !== null && outputCostPerMtok !== null,
-    inputCostPerMtok,
-    outputCostPerMtok,
-    cacheReadCostPerMtok: numberOrNull(row.pricing.cacheReadCostPerMtok),
-    cacheWriteCostPerMtok: numberOrNull(row.pricing.cacheWriteCostPerMtok),
-    warnings: catalogWarnings(row.capabilities, row.pricing),
-    updatedAt: row.updatedAt.toISOString()
-  };
-}
-
-function groupedCatalogRows<Row extends CatalogMergeRow & { provider: string; model: string }>(rows: Row[]) {
-  const groups = new Map<string, Row[]>();
-  for (const row of rows) {
-    const key = providerModelPricingKey(row.provider, row.model);
-    groups.set(key, [...(groups.get(key) ?? []), row]);
-  }
-  return groups;
-}
-
-function groupedModelCatalogRows<Row extends CatalogMergeRow & { provider: string; model: string }>(
-  rows: Row[],
-  organizationId: string
-) {
-  const groups: Array<{
-    provider: string;
-    model: string;
-    providerAccountId: string | null;
-    region: string | null;
-    rows: Row[];
-  }> = [];
-  for (const providerModelRows of groupedCatalogRows(rows).values()) {
-    const genericRows = providerModelRows.filter((row) => row.providerAccountId === null && row.region === null);
-    const scopeKeys = new Map<string, { providerAccountId: string | null; region: string | null }>();
-    for (const row of providerModelRows) {
-      const providerAccountId = row.providerAccountId ?? null;
-      const region = row.region ?? null;
-      scopeKeys.set(`${providerAccountId ?? ""}:${region ?? ""}`, { providerAccountId, region });
-    }
-    for (const scope of scopeKeys.values()) {
-      const scopedRows = providerModelRows.filter((row) =>
-        (row.providerAccountId ?? null) === scope.providerAccountId &&
-        (row.region ?? null) === scope.region
-      );
-      const row = scopedRows[0]!;
-      const mergeRows = scope.providerAccountId === null && scope.region === null
-        ? scopedRows
-        : [...genericRows, ...scopedRows];
-      groups.push({
-        provider: row.provider,
-        model: row.model,
-        providerAccountId: scope.providerAccountId,
-        region: scope.region,
-        rows: mergeRows.filter((row) =>
-          row.organizationId === null ||
-          row.organizationId === organizationId
-        )
-      });
-    }
-  }
-  return groups.filter((group) => group.rows.length > 0);
-}
-
-function maxUpdatedAt<Row extends { updatedAt?: Date }>(rows: Row[]) {
-  return rows.reduce((latest, row) => {
-    if (!row.updatedAt || row.updatedAt <= latest) return latest;
-    return row.updatedAt;
-  }, rows[0]?.updatedAt ?? new Date(0));
-}
-
-function stringArray(value: unknown) {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
-
-function numberOrNull(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function booleanOrNull(value: unknown) {
-  return typeof value === "boolean" ? value : null;
-}
-
-function imageSupportFromModalities(value: unknown) {
-  const modalities = stringArray(value);
-  return modalities.length > 0 ? modalities.includes("image") : null;
-}
-
-function providerRegistrySummary(row: ProviderRegistryRow) {
-  return {
-    id: row.id,
-    organizationId: row.organizationId,
-    slug: row.slug,
-    displayName: row.displayName,
-    baseUrl: row.baseUrl,
-    adapterKind: row.adapterKind,
-    adapterConfig: row.adapterConfig,
-    authStyle: row.authStyle,
-    endpoints: row.endpoints,
-    defaultHeaders: row.defaultHeaders,
-    capabilities: providerCapabilitiesWithDefaults(row.slug, row.capabilities),
-    forwardHarnessHeaders: row.forwardHarnessHeaders,
-    enabled: row.enabled,
-    builtin: row.organizationId === null
-  };
-}
 
 function promptSummary(row: PromptRow, request?: RequestSummary | null) {
   return {
@@ -2618,11 +1606,14 @@ function promptSummary(row: PromptRow, request?: RequestSummary | null) {
     chars: numberFromMetadata(row.artifact.metadata, "chars"),
     tokenEstimate: row.artifact.tokenEstimate ?? undefined,
     preview: promptPreview(row.artifact.rawText ?? row.artifact.redactedText),
-    finalRoute: row.decision?.finalRoute ?? undefined,
+    requestedLogicalModel: row.decision?.requestedLogicalModel ?? row.request.requestedLogicalModel ?? undefined,
+    resolvedLogicalModelId: row.decision?.resolvedLogicalModelId ?? row.request.resolvedLogicalModelId ?? undefined,
+    accessProfileId: row.decision?.accessProfileId ?? row.request.accessProfileId ?? undefined,
+    deploymentId: row.decision?.deploymentId ?? row.request.deploymentId ?? undefined,
+    providerConnectionId: row.decision?.providerConnectionId ?? row.request.providerConnectionId ?? undefined,
     provider: row.decision?.selectedProvider ?? request?.provider ?? undefined,
     selectedModel: row.decision?.selectedModel ?? request?.selectedModel ?? undefined,
-    routingConfig: routingConfigSummary(row.decision ?? row.request),
-    classifier: row.decision?.classifier ?? undefined,
+    routerDecision: row.decision?.routerDecision ?? undefined,
     cost: {
       selected: request?.selectedCost ?? 0
     },
@@ -2705,33 +1696,45 @@ function numberFromMetadata(metadata: unknown, key: string) {
 
 const requestSummaryDecisionColumns = {
   requestId: routeDecisions.requestId,
-  finalRoute: routeDecisions.finalRoute,
   selectedProvider: routeDecisions.selectedProvider,
   selectedModel: routeDecisions.selectedModel,
-  selectedCandidateId: routeDecisions.selectedCandidateId,
   translated: routeDecisions.translated,
   reasoningEffort: routeDecisions.reasoningEffort,
-  routingConfigId: routeDecisions.routingConfigId,
-  routingConfigVersionId: routeDecisions.routingConfigVersionId,
-  routingConfigVersion: routeDecisions.routingConfigVersion,
-  routingConfigHash: routeDecisions.routingConfigHash,
-  classifier: routeDecisions.classifier
+  ingressWireId: routeDecisions.ingressWireId,
+  operationId: routeDecisions.operationId,
+  requestedLogicalModel: routeDecisions.requestedLogicalModel,
+  resolvedLogicalModelId: routeDecisions.resolvedLogicalModelId,
+  accessProfileId: routeDecisions.accessProfileId,
+  routerKind: routeDecisions.routerKind,
+  deploymentId: routeDecisions.deploymentId,
+  providerConnectionId: routeDecisions.providerConnectionId,
+  egressWireId: routeDecisions.egressWireId,
+  wireAdapterVersion: routeDecisions.wireAdapterVersion,
+  confidence: routeDecisions.confidence,
+  routerDecisionId: routeDecisions.routerDecisionId,
+  routerDecision: routeDecisions.routerDecision
 };
 
 type RequestSummaryDecisionRow = Pick<
   typeof routeDecisions.$inferSelect,
   | "requestId"
-  | "finalRoute"
   | "selectedProvider"
   | "selectedModel"
-  | "selectedCandidateId"
   | "translated"
   | "reasoningEffort"
-  | "routingConfigId"
-  | "routingConfigVersionId"
-  | "routingConfigVersion"
-  | "routingConfigHash"
-  | "classifier"
+  | "ingressWireId"
+  | "operationId"
+  | "requestedLogicalModel"
+  | "resolvedLogicalModelId"
+  | "accessProfileId"
+  | "routerKind"
+  | "deploymentId"
+  | "providerConnectionId"
+  | "egressWireId"
+  | "wireAdapterVersion"
+  | "confidence"
+  | "routerDecisionId"
+  | "routerDecision"
 >;
 
 function requestSummary(row: {
@@ -2741,7 +1744,6 @@ function requestSummary(row: {
   usage: UsageAggregate | null;
   classifierCost: number;
   attemptCount: number;
-  routeSkipReasons: string[];
 }, pricing: ModelPricingTable, costBaseline: CostBaseline) {
   const usage = row.usage
     ? {
@@ -2770,9 +1772,7 @@ function requestSummary(row: {
     pricing,
     costBaseline,
     row.request.surface,
-    row.request.requestedModel,
     selectedProvider,
-    selectedModel,
     usage
   );
   return {
@@ -2782,16 +1782,24 @@ function requestSummary(row: {
     apiKeyId: row.request.apiKeyId ?? undefined,
     surface: row.request.surface,
     requestedModel: row.request.requestedModel,
-    finalRoute: row.decision?.finalRoute ?? undefined,
+    ingressWireId: row.decision?.ingressWireId ?? row.request.ingressWireId ?? undefined,
+    operationId: row.decision?.operationId ?? row.request.operationId ?? undefined,
+    requestedLogicalModel: row.decision?.requestedLogicalModel ?? row.request.requestedLogicalModel ?? undefined,
+    resolvedLogicalModelId: row.decision?.resolvedLogicalModelId ?? row.request.resolvedLogicalModelId ?? undefined,
+    accessProfileId: row.decision?.accessProfileId ?? row.request.accessProfileId ?? undefined,
+    routerKind: row.decision?.routerKind ?? row.request.routerKind ?? undefined,
+    deploymentId: row.decision?.deploymentId ?? row.request.deploymentId ?? undefined,
+    providerConnectionId: row.decision?.providerConnectionId ?? row.request.providerConnectionId ?? undefined,
+    egressWireId: row.decision?.egressWireId ?? row.request.egressWireId ?? undefined,
+    wireAdapterVersion: row.decision?.wireAdapterVersion ?? row.request.wireAdapterVersion ?? undefined,
     reasoningEffort: row.decision?.reasoningEffort ?? undefined,
     provider: row.decision?.selectedProvider ?? row.attempt?.provider ?? undefined,
     selectedModel,
-    selectedCandidateId: row.decision?.selectedCandidateId ?? undefined,
     translated: row.decision?.translated ?? false,
-    routeSkipReasons: row.routeSkipReasons,
     rejected,
-    routingConfig: routingConfigSummary(row.decision ?? row.request),
-    classifier: row.decision?.classifier ?? undefined,
+    confidence: row.decision?.confidence ?? null,
+    routerDecisionId: row.decision?.routerDecisionId ?? undefined,
+    routerDecision: row.decision?.routerDecision ?? {},
     terminalStatus: row.attempt?.terminalStatus ?? row.request.status,
     inputChars: row.request.inputChars,
     usage,
@@ -2815,7 +1823,16 @@ type SummaryInputs = {
   usageRows: (typeof usageLedger.$inferSelect)[];
   classifierUsageRows: (typeof usageLedger.$inferSelect)[];
 };
-type UsageGroupBy = "user" | "api_key" | "provider" | "model" | "model_effort" | "route" | "surface" | "session";
+type UsageGroupBy =
+  | "user"
+  | "api_key"
+  | "provider"
+  | "model"
+  | "model_effort"
+  | "logical_model"
+  | "deployment"
+  | "surface"
+  | "session";
 type UsageInterval = "hour" | "day";
 type UsageGroup = {
   key: string;
@@ -2886,12 +1903,12 @@ function sessionSummary(session: SessionRow, allRequests: RequestSummary[]) {
     userId: session.userId ?? undefined,
     surface: session.surface,
     externalSessionId: session.externalSessionId ?? undefined,
-    currentRoute: session.currentRoute ?? undefined,
     sessionIdentity: stringFromMetadata(session.metadata, "sessionIdentity"),
     requestCount: requests.length,
-    routeChanges: routeChangeCount(requests),
+    logicalModelChanges: logicalModelChangeCount(requests),
     modelMix: countBy(requests, (request) => request.selectedModel ?? (request.rejected ? "rejected" : "unknown")),
-    routeMix: countBy(requests, (request) => request.finalRoute ?? "unknown"),
+    logicalModelMix: countBy(requests, (request) => request.resolvedLogicalModelId ?? "unknown"),
+    deploymentMix: countBy(requests, (request) => request.deploymentId ?? "unknown"),
     terminalStatusSummary: countBy(requests, (request) => request.terminalStatus),
     usage: usageTotals(requests),
     cacheHitRate: cacheHitRate(requests),
@@ -2959,15 +1976,15 @@ function timestampFromIso(value: string | null) {
   return value ? new Date(value).getTime() : 0;
 }
 
-function routeChangeCount(requests: RequestSummary[]) {
-  let previousRoute: string | undefined;
+function logicalModelChangeCount(requests: RequestSummary[]) {
+  let previousModel: string | undefined;
   let changes = 0;
   for (const request of [...requests].sort((left, right) =>
     timestampFromIso(left.createdAt) - timestampFromIso(right.createdAt)
   )) {
-    if (!request.finalRoute) continue;
-    if (previousRoute && previousRoute !== request.finalRoute) changes += 1;
-    previousRoute = request.finalRoute;
+    if (!request.resolvedLogicalModelId) continue;
+    if (previousModel && previousModel !== request.resolvedLogicalModelId) changes += 1;
+    previousModel = request.resolvedLogicalModelId;
   }
   return changes;
 }
@@ -2993,13 +2010,14 @@ function usageGroupBy(value: string | undefined): UsageGroupBy {
     value === "provider" ||
     value === "model" ||
     value === "model_effort" ||
-    value === "route" ||
+    value === "logical_model" ||
+    value === "deployment" ||
     value === "surface" ||
     value === "session"
   ) {
     return value;
   }
-  return "route";
+  return "model";
 }
 
 function emptyUsageGroup(key: string): UsageGroup {
@@ -3061,7 +2079,7 @@ function finalizeOpenAICacheGroup(row: OpenAICacheAnalyticsRow) {
     surface: row.surface,
     provider: row.provider,
     model: row.model,
-    route: row.route,
+    logicalModel: row.logicalModel,
     cacheGroupSource: row.cacheGroupSource,
     cacheGroupKey: row.cacheGroupKey,
     ...finalizeOpenAICacheAggregate(row)
@@ -3091,7 +2109,7 @@ function compareOpenAICacheGroups(
     (right.requestCount - left.requestCount) ||
     left.provider.localeCompare(right.provider) ||
     left.model.localeCompare(right.model) ||
-    left.route.localeCompare(right.route) ||
+    left.logicalModel.localeCompare(right.logicalModel) ||
     left.cacheGroupSource.localeCompare(right.cacheGroupSource) ||
     left.cacheGroupKey.localeCompare(right.cacheGroupKey);
 }
@@ -3158,33 +2176,6 @@ function latencySummaryFromRow(row: UsageLatencyRow | undefined) {
 
 function usageScopeKey(scope: UsageRollupScope) {
   return `${scope.start?.toISOString() ?? ""}:${scope.end?.toISOString() ?? ""}`;
-}
-
-type OutputGroupAggregateRow = {
-  key: string | null;
-  requests: number;
-  outputTokens: number;
-  reasoningTokens: number;
-  outputCostMicros: number;
-};
-
-function outputGroups(rows: OutputGroupAggregateRow[]) {
-  return rows
-    .map((row) => {
-      const requests = Number(row.requests);
-      const outputTokens = Number(row.outputTokens);
-      const reasoningTokens = Number(row.reasoningTokens);
-      return {
-        key: row.key ?? "unknown",
-        requests,
-        outputTokens,
-        reasoningTokens,
-        avgOutputTokens: requests > 0 ? outputTokens / requests : 0,
-        reasoningShare: outputTokens > 0 ? reasoningTokens / outputTokens : 0,
-        outputCost: Number(row.outputCostMicros) / 1_000_000
-      };
-    })
-    .sort((left, right) => right.outputTokens - left.outputTokens || left.key.localeCompare(right.key));
 }
 
 type PromptCachePlanAggregateRow = {
@@ -3450,18 +2441,13 @@ function baselineCostFor(
   pricing: ModelPricingTable,
   costBaseline: CostBaseline,
   surface: string,
-  requestedModel: string,
   selectedProvider: string | undefined,
-  selectedModel: string | undefined,
   usage: ReturnType<typeof emptyUsage>
 ) {
   const compatibleSurface = knownSurfaceValue(surface);
   if (!compatibleSurface) return 0;
-  const route = explicitAlias(compatibleSurface, requestedModel);
-  const provider = route
-    ? selectedProvider
-    : providerForDialect(compatibleSurface);
-  const model = route ? selectedModel : baselineModelForDialect(costBaseline, compatibleSurface);
+  const provider = selectedProvider ?? providerForDialect(compatibleSurface);
+  const model = baselineModelForDialect(costBaseline, compatibleSurface);
   if (!provider) return 0;
   if (!model) return 0;
   return usageCostMicros(pricingForProviderModel(pricing, provider, model), usage).totalCostMicros / 1_000_000;
@@ -3481,12 +2467,4 @@ function emptyUsage() {
     reasoningTokens: 0,
     totalTokens: 0
   };
-}
-
-function routeIndex(route: RouteName | undefined) {
-  if (route === "fast") return 0;
-  if (route === "balanced") return 1;
-  if (route === "hard") return 2;
-  if (route === "deep") return 3;
-  return -1;
 }

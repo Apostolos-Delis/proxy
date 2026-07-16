@@ -34,7 +34,7 @@ describe("prompt retention admin APIs", () => {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        model: "router-auto",
+        model: "coding-auto",
         input: "Expire this raw prompt.",
         stream: true
       })
@@ -67,7 +67,7 @@ describe("prompt retention admin APIs", () => {
     const usage = (await adminGql(
       fixture.proxyUrl,
       fixture.adminHeaders,
-      "query { usage(groupBy: route) { totals { requestCount } } }"
+      "query { usage(groupBy: logical_model) { totals { requestCount } } }"
     )).data?.usage;
 
     expect(settings).toEqual({

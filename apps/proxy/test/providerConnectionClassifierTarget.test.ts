@@ -165,7 +165,7 @@ describe("provider connection classifier target", () => {
     expect(target.credential).toEqual(expect.objectContaining({
       provider: "openai",
       token: "classifier-token",
-      providerAccountId: fixture.connectionId,
+      providerConnectionId: fixture.connectionId,
       baseUrl: "http://10.1.2.3:8000/v1",
       pinnedAddress: target.provider.pinnedAddress
     }));

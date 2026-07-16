@@ -6,7 +6,7 @@ function openAIChatDecision(model = "gpt-5.5", settings: Record<string, unknown>
   const { effort, maxOutputTokens, ...rest } = settings;
   return {
     outcome: "route" as const,
-    finalRoute: "hard" as const,
+    requestedModel: "coding-auto",
     selectedModel: model,
     surface: "openai-chat" as const,
     provider: "openai" as const,
@@ -40,7 +40,10 @@ function openAIChatDecision(model = "gpt-5.5", settings: Record<string, unknown>
         reasoning: typeof effort === "string" ? { effort } : undefined,
         maxOutputTokens: typeof maxOutputTokens === "number" ? maxOutputTokens : undefined
       }
-    }
+    },
+    guardrailActions: [],
+    reasonCodes: [],
+    policyVersion: "test"
   };
 }
 
@@ -52,7 +55,7 @@ function anthropicDecision(
   const { thinking, ...rest } = settings;
   return {
     outcome: "route" as const,
-    finalRoute: "fast" as const,
+    requestedModel: "economy-auto",
     selectedModel: model,
     surface,
     provider: "anthropic" as const,
@@ -85,14 +88,17 @@ function anthropicDecision(
         timeoutMs: 60000,
         thinking
       }
-    }
+    },
+    guardrailActions: [],
+    reasonCodes: [],
+    policyVersion: "test"
   };
 }
 
 describe("openai-chat rewrite", () => {
   it("injects include_usage for streaming chat requests when absent", () => {
     const body = {
-      model: "anthropic-router-hard",
+      model: "fable",
       stream: true,
       messages: [{ role: "user", content: "hi" }]
     };
@@ -105,7 +111,7 @@ describe("openai-chat rewrite", () => {
 
   it("preserves explicit include_usage and other stream options", () => {
     const body = {
-      model: "anthropic-router-hard",
+      model: "fable",
       stream: true,
       stream_options: {
         include_usage: false,
@@ -121,7 +127,7 @@ describe("openai-chat rewrite", () => {
 
   it("does not add stream_options to non-streaming chat requests", () => {
     const body = {
-      model: "anthropic-router-hard",
+      model: "fable",
       messages: [{ role: "user", content: "hi" }]
     };
 
@@ -132,7 +138,7 @@ describe("openai-chat rewrite", () => {
 
   it("preserves prompt_cache_retention", () => {
     const body = {
-      model: "anthropic-router-hard",
+      model: "fable",
       prompt_cache_retention: "24h",
       messages: [{ role: "user", content: "hi" }]
     };
@@ -144,7 +150,7 @@ describe("openai-chat rewrite", () => {
 
   it("prepends the proxy system prompt", () => {
     const body = {
-      model: "anthropic-router-hard",
+      model: "fable",
       messages: [{ role: "user", content: "hi" }]
     };
 
@@ -158,7 +164,7 @@ describe("openai-chat rewrite", () => {
 
   it("applies selected effort and max tokens with chat field names", () => {
     const body = {
-      model: "anthropic-router-hard",
+      model: "fable",
       reasoning_effort: "low",
       messages: [{ role: "user", content: "hi" }]
     };
@@ -176,7 +182,7 @@ describe("openai-chat rewrite", () => {
 describe("anthropic-messages rewrite", () => {
   it("fills required max tokens when translating Responses without an output limit", () => {
     const body = {
-      model: "router-fast",
+      model: "economy-auto",
       input: "hi"
     };
 
@@ -188,7 +194,7 @@ describe("anthropic-messages rewrite", () => {
 
   it("removes clear-thinking context management when thinking is not forwarded", () => {
     const body = {
-      model: "claude-router-fast",
+      model: "fable",
       messages: [{ role: "user", content: "hi" }],
       thinking: { type: "adaptive" },
       context_management: {
@@ -211,7 +217,7 @@ describe("anthropic-messages rewrite", () => {
 
   it("keeps clear-thinking context management when adaptive thinking is forwarded", () => {
     const body = {
-      model: "claude-router-hard",
+      model: "fable",
       messages: [{ role: "user", content: "hi" }],
       context_management: {
         edits: [{ type: "clear_thinking_20251015", keep: "all" }]

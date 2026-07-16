@@ -16,12 +16,12 @@ export const SessionSummary = builder.objectRef<SessionSummaryModel>("SessionSum
     userId: t.exposeString("userId", { nullable: true }),
     surface: t.exposeString("surface"),
     externalSessionId: t.exposeString("externalSessionId", { nullable: true }),
-    currentRoute: t.exposeString("currentRoute", { nullable: true }),
     sessionIdentity: t.exposeString("sessionIdentity", { nullable: true }),
     requestCount: t.exposeFloat("requestCount"),
-    routeChanges: t.exposeFloat("routeChanges"),
+    logicalModelChanges: t.exposeFloat("logicalModelChanges"),
     modelMix: t.field({ type: "JSON", resolve: (session) => session.modelMix }),
-    routeMix: t.field({ type: "JSON", resolve: (session) => session.routeMix }),
+    logicalModelMix: t.field({ type: "JSON", resolve: (session) => session.logicalModelMix }),
+    deploymentMix: t.field({ type: "JSON", resolve: (session) => session.deploymentMix }),
     terminalStatusSummary: t.field({
       type: "JSON",
       resolve: (session) => session.terminalStatusSummary
@@ -46,7 +46,6 @@ export const UsageLedgerRow = builder.objectRef<UsageLedgerRowModel>("UsageLedge
     sessionId: t.exposeString("sessionId", { nullable: true }),
     provider: t.exposeString("provider"),
     model: t.exposeString("model"),
-    route: t.exposeString("route", { nullable: true }),
     inputTokens: t.exposeFloat("inputTokens"),
     cachedInputTokens: t.exposeFloat("cachedInputTokens"),
     cacheCreationInputTokens: t.exposeFloat("cacheCreationInputTokens"),

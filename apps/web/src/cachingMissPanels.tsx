@@ -161,11 +161,11 @@ export function OpenAICacheEffectiveness({ report }: { report: OpenAICacheAnalyt
         <>
           <div className="barlist caching-key-list">
             {rows.map((group) => (
-              <div key={`${group.surface}:${group.model}:${group.route}:${group.cacheGroupSource}:${group.cacheGroupKey}`} className="barlist-row">
+              <div key={`${group.surface}:${group.model}:${group.logicalModel}:${group.cacheGroupSource}:${group.cacheGroupKey}`} className="barlist-row">
                 <div className="barlist-label">
                   <span className="mono">{openAICacheGroupLabel(group)}</span>
                   <span className="caching-key-hint">
-                    {group.provider} · {group.model} · {group.route} · {formatCompact(group.cachedInputTokens)} / {formatCompact(group.inputTokens)} tok
+                    {group.provider} · {group.model} · {group.logicalModel} · {formatCompact(group.cachedInputTokens)} / {formatCompact(group.inputTokens)} tok
                   </span>
                 </div>
                 <div className="barlist-val" style={{ color: keyRateColor(group.cacheHitRate) }}>

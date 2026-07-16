@@ -1,13 +1,6 @@
-import {
-  routeExecutionPlanSchema,
-  routeSkipReasonSchema,
-  SURFACE_NAMES,
-  type RouteExecutionPlan,
-  type RouteSkipReason
-} from "@proxy/schema";
+import { SURFACE_NAMES } from "@proxy/schema";
 
-import type { JsonObject, RoutingConfigSnapshot } from "../types.js";
-import type { Surface } from "../types.js";
+import type { JsonObject, Surface } from "../types.js";
 import { isRecord } from "../util.js";
 
 export type NormalizedUsage = {
@@ -116,20 +109,6 @@ export function basisPoints(value: unknown) {
   return number === undefined ? undefined : Math.round(number * 10_000);
 }
 
-export function routeValue(value: unknown) {
-  if (value === "fast" || value === "balanced" || value === "hard" || value === "deep") return value;
-  return undefined;
-}
-
-export function routeSkipReasonValue(value: unknown): RouteSkipReason | undefined {
-  if (value === undefined) return undefined;
-  const result = routeSkipReasonSchema.safeParse(value);
-  if (!result.success) {
-    throw new Error("Invalid route skip reason payload.");
-  }
-  return result.data;
-}
-
 // Storage paths must record surfaces/providers verbatim — an unrecognized
 // value (a third provider, a new surface) is stored as-is rather than
 // misattributed to a known one. Absent values are handled at call sites
@@ -145,30 +124,4 @@ export function providerValue(value: unknown) {
 
 export function knownSurfaceValue(value: unknown): Surface | undefined {
   return SURFACE_NAMES.find((surface) => surface === value);
-}
-
-export function routingConfigSnapshotValue(value: unknown): RoutingConfigSnapshot | undefined {
-  const record = recordValue(value);
-  const configId = stringValue(record?.configId);
-  const configName = stringValue(record?.configName);
-  const versionId = stringValue(record?.versionId);
-  const version = numberValue(record?.version);
-  const configHash = stringValue(record?.configHash);
-  if (!configId || !configName || !versionId || version === undefined || !configHash) return undefined;
-  return {
-    configId,
-    configName,
-    versionId,
-    version,
-    configHash
-  };
-}
-
-export function routeExecutionPlanValue(value: unknown): RouteExecutionPlan | undefined {
-  if (value === undefined) return undefined;
-  const result = routeExecutionPlanSchema.safeParse(value);
-  if (!result.success) {
-    throw new Error("Invalid route execution plan payload.");
-  }
-  return result.data;
 }

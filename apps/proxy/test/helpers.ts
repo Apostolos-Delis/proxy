@@ -89,15 +89,7 @@ export async function startOpenAIMock(
       const outputText = options.invalidClassifier
         ? JSON.stringify({ nope: true })
         : JSON.stringify(
-            classifierOutput ?? {
-              complexity: "hard",
-              risk: ["auth", "failing_test"],
-              recommended_route: "hard",
-              can_use_fast_model: false,
-              needs_deep_reasoning: false,
-              reason_codes: ["auth_risk", "failing_test", "tools_present"],
-              confidence: 0.82
-            }
+            classifierOutput ?? defaultClassifierOutput(body)
           );
       if (options.classifierResponsesShape) {
         sendJson(response, {
@@ -399,8 +391,25 @@ function isClassifierRequest(body: Record<string, unknown>) {
       properties &&
       typeof properties === "object" &&
       !Array.isArray(properties) &&
-      "recommended_route" in properties
+      "target_id" in properties
     );
+}
+
+function defaultClassifierOutput(body: Record<string, unknown>) {
+  const input = typeof body.input === "string" ? JSON.parse(body.input) as unknown : undefined;
+  const targets = input && typeof input === "object" && !Array.isArray(input) && "targets" in input
+    ? (input as { targets?: unknown }).targets
+    : undefined;
+  const first = Array.isArray(targets) ? targets[0] : undefined;
+  const targetId = first && typeof first === "object" && !Array.isArray(first) && "id" in first
+    ? (first as { id?: unknown }).id
+    : undefined;
+  if (typeof targetId !== "string") throw new Error("Classifier request has no eligible target.");
+  return {
+    target_id: targetId,
+    reason_codes: ["test_first_eligible"],
+    confidence: 0.82
+  };
 }
 
 export async function startAnthropicMock(options: {

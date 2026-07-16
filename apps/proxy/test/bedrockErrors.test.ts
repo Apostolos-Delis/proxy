@@ -11,7 +11,7 @@ describe("Bedrock error classification", () => {
       "auth_denied",
       "auth_invalid",
       "auth_missing",
-      "provider_account"
+      "provider_connection"
     ],
     [
       "auth denied",
@@ -19,7 +19,7 @@ describe("Bedrock error classification", () => {
       "auth_denied",
       "auth_invalid",
       "auth_denied",
-      "provider_account"
+      "provider_connection"
     ],
     [
       "model access denied",
@@ -27,7 +27,7 @@ describe("Bedrock error classification", () => {
       "auth_denied",
       "model_access_denied",
       "model_access_denied",
-      "provider_account_model"
+      "deployment"
     ],
     [
       "stream permission denied",
@@ -39,7 +39,7 @@ describe("Bedrock error classification", () => {
       "auth_denied",
       "model_access_denied",
       "stream_permission_denied",
-      "provider_account_model"
+      "deployment"
     ],
     [
       "rate limited",
@@ -47,7 +47,7 @@ describe("Bedrock error classification", () => {
       "rate_limited",
       "rate_limited",
       "rate_limited",
-      "provider_account"
+      "provider_connection"
     ],
     [
       "quota exceeded",
@@ -55,7 +55,7 @@ describe("Bedrock error classification", () => {
       "quota_exceeded",
       "quota_exhausted",
       "quota_exceeded",
-      "provider_account"
+      "provider_connection"
     ],
     [
       "context too large",
@@ -79,7 +79,7 @@ describe("Bedrock error classification", () => {
       "upstream_unavailable",
       "provider_unavailable",
       "region_unavailable",
-      "provider_account"
+      "provider_connection"
     ],
     [
       "model unavailable",
@@ -87,7 +87,7 @@ describe("Bedrock error classification", () => {
       "upstream_unavailable",
       "model_unavailable",
       "model_unavailable",
-      "provider_account_model"
+      "deployment"
     ],
     [
       "guardrail intervention",
@@ -103,7 +103,7 @@ describe("Bedrock error classification", () => {
       "upstream_timeout",
       "unknown_transient",
       "upstream_timeout",
-      "provider_account"
+      "provider_connection"
     ]
   ])("classifies %s", (_name, input, category, errorType, bedrockErrorKind, scope) => {
     const result = classifyBedrockError({

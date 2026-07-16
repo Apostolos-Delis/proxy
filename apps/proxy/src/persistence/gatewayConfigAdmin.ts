@@ -18,6 +18,7 @@ import {
 import {
   createModelDeployment,
   createWireBinding,
+  resetModelDeploymentHealth,
   setModelDeploymentEnabled,
   setWireBindingEnabled,
   updateModelDeployment,
@@ -36,6 +37,7 @@ import {
   createCanonicalModel,
   createProviderConnection,
   preflightProviderCommands,
+  resetProviderConnectionHealth,
   setCanonicalModelEnabled,
   setProviderConnectionEnabled,
   updateCanonicalModel,
@@ -220,6 +222,11 @@ export class GatewayConfigAdminService {
   ): Promise<GatewayConfigCommandResult> {
     if (command.resource === "apiKey") {
       return assignApiKeyAccessProfile(context, command.id, command.accessProfileId);
+    }
+    if (command.action === "resetHealth") {
+      return command.resource === "providerConnection"
+        ? resetProviderConnectionHealth(context, command.id)
+        : resetModelDeploymentHealth(context, command.id);
     }
     if (command.action === "create") return this.createResource(context, command.resource, command.body, command.id);
     if (command.action === "update") return this.updateResource(context, command.resource, command.id, command.body);

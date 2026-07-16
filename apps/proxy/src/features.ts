@@ -1,13 +1,12 @@
-import { ROUTING_HINT_NAMES, type RoutingHintName } from "@proxy/schema";
+import { CLASSIFICATION_HINT_NAMES, type ClassificationHintName } from "@proxy/schema";
 
 import type { RouteContext } from "./types.js";
-import { explicitAlias } from "./catalog.js";
 import { detectHarnessSurfaceProfile, harnessProfileByName, promptBlockTagsForSurface } from "./harness.js";
 import { isRecord, roughTokenEstimate, sha256, stableJson } from "./util.js";
 
-const hintPatterns: Record<RoutingHintName, RegExp> = {
+const hintPatterns: Record<ClassificationHintName, RegExp> = {
   quick: /\b(quick|simple|typo|format|rename|one-line)\b/i,
-  deep: /\b(think hard|deep review|root cause|prove|exhaustive)\b/i,
+  architecture: /\b(think carefully|architecture review|root cause|prove|exhaustive)\b/i,
   security: /\b(security|auth|oauth|permission|secret|crypto)\b/i,
   migration: /\b(migration|refactor|architecture|schema)\b/i,
   concurrency: /\b(concurrency|race condition|deadlock|lock)\b/i,
@@ -60,8 +59,7 @@ export function buildOpenAIContext(
     routingExtractedHints: extractHints(routingInput.text),
     sessionId: profile.sessionId(request, headers),
     userId: headers["x-proxy-user-id"] ?? headers["x-user-id"],
-    teamId: headers["x-proxy-team-id"] ?? headers["x-team-id"],
-    explicitAlias: explicitAlias(surface, requestedModel)
+    teamId: headers["x-proxy-team-id"] ?? headers["x-team-id"]
   };
 }
 
@@ -109,8 +107,7 @@ export function buildOpenAIChatContext(
     routingExtractedHints: extractHints(routingInput.text),
     sessionId: profile.sessionId(request, headers),
     userId: headers["x-proxy-user-id"] ?? headers["x-user-id"],
-    teamId: headers["x-proxy-team-id"] ?? headers["x-team-id"],
-    explicitAlias: explicitAlias(surface, requestedModel)
+    teamId: headers["x-proxy-team-id"] ?? headers["x-team-id"]
   };
 }
 
@@ -159,8 +156,7 @@ export function buildAnthropicContext(
     routingExtractedHints: extractHints(routingInput.text),
     sessionId: profile.sessionId(request, headers),
     userId: headers["x-proxy-user-id"] ?? headers["x-user-id"],
-    teamId: headers["x-proxy-team-id"] ?? headers["x-team-id"],
-    explicitAlias: explicitAlias(surface, requestedModel)
+    teamId: headers["x-proxy-team-id"] ?? headers["x-team-id"]
   };
 }
 
@@ -182,9 +178,7 @@ export function classifierView(context: RouteContext, allowExcerpt: boolean, sou
     tool_count: context.toolCount,
     has_previous_response_id: context.hasPreviousResponseId,
     has_images: context.hasImages,
-    extracted_hints: context.routingExtractedHints,
-    session_route: null,
-    explicit_alias: context.explicitAlias ?? null
+    extracted_hints: context.routingExtractedHints
   };
 }
 
@@ -318,7 +312,7 @@ function stringifyText(value: unknown): string {
 }
 
 function extractHints(text: string) {
-  return ROUTING_HINT_NAMES.filter((name) => hintPatterns[name].test(text));
+  return CLASSIFICATION_HINT_NAMES.filter((name) => hintPatterns[name].test(text));
 }
 
 function hasImageInput(value: unknown): boolean {

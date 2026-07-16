@@ -1,6 +1,5 @@
 import { performance } from "node:perf_hooks";
 
-import type { AppConfig } from "./config.js";
 import type { ProviderAttemptStore } from "./events.js";
 import {
   metricErrorClassForStatus,
@@ -9,7 +8,6 @@ import {
   metricTerminalStatusFor
 } from "./metrics.js";
 import { normalizeUsage } from "./persistence/values.js";
-import { pricingForProviderModel, usageCostMicros } from "./pricing.js";
 import { promptCacheControlLabel, type PromptCachePlan, promptCacheSkipReasonLabel } from "./promptCachePlan.js";
 import type { JsonObject, Provider, RouteDecision, Surface } from "./types.js";
 import { isRecord } from "./util.js";
@@ -25,7 +23,6 @@ export class ProviderMetrics {
   private readonly providerAttemptStream = new Map<string, string>();
 
   constructor(
-    private readonly config: AppConfig,
     private readonly attempts: ProviderAttemptStore,
     private readonly metrics: MetricsCollector
   ) {}
@@ -175,11 +172,6 @@ export class ProviderMetrics {
     this.metrics.incrementCounter("proxy_usage_tokens_total", { ...usageLabels, usage_kind: "output" }, normalized.outputTokens);
     this.metrics.incrementCounter("proxy_usage_tokens_total", { ...usageLabels, usage_kind: "reasoning" }, normalized.reasoningTokens);
     this.metrics.incrementCounter("proxy_usage_tokens_total", { ...usageLabels, usage_kind: "total" }, normalized.totalTokens);
-    const cost = usageCostMicros(pricingForProviderModel(this.config.modelCosts, input.provider, model), normalized);
-    this.metrics.incrementCounter("proxy_cost_usd_total", {
-      ...usageLabels,
-      cost_kind: "provider"
-    }, cost.totalCostMicros / 1_000_000);
   }
 
   private recordTerminalPendingAttempts(surface: Surface, provider: Provider, excludeAttemptId?: string) {

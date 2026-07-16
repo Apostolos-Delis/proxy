@@ -196,7 +196,7 @@ describe("compression retrieval resolver", () => {
       userId: "local-user",
       keyHash: hashApiKey("other-token"),
       name: "Other key",
-      routingConfigId: `${organizationId}:routing-config:default`
+      accessProfileId: `${defaultWorkspaceId(organizationId)}:access-profile:opendoor-engineer`
     });
     const otherKey = await retrieve(setup.fixture.proxyUrl, "other-token", {
       retrievalId: setup.input.retrievalId
@@ -310,7 +310,7 @@ async function setupCompressionReceipt(organizationId: string) {
     method: "POST",
     headers: { authorization: "Bearer proxy-token", "content-type": "application/json" },
     body: JSON.stringify({
-      model: "claude-router-hard",
+      model: "fable",
       max_tokens: 256,
       messages: [
         { role: "user", content: "list the open issues" },

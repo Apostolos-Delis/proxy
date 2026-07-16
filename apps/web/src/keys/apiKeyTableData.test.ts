@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import type { ApiKeySummary } from "../routing/data";
-import { apiKeyStatus, providerBindingValue, routingConfigFilterValue, routingConfigLabel } from "./apiKeyTableData";
+import { accessProfileFilterValue, accessProfileLabel, apiKeyStatus } from "./apiKeyTableData";
+import type { ApiKeySummary } from "./data";
 
 function apiKey(overrides: Partial<ApiKeySummary> = {}): ApiKeySummary {
   return {
     id: "key_1",
     name: "Test key",
     userId: null,
-    routingConfigId: null,
-    routingConfig: null,
-    providerCredentials: [],
+    accessProfileId: null,
+    accessProfile: null,
     createdAt: "2026-06-01T00:00:00Z",
     lastUsedAt: null,
     expiresAt: null,
@@ -33,31 +32,18 @@ describe("apiKeyStatus", () => {
   });
 });
 
-describe("routingConfig helpers", () => {
-  it("falls back to the organization default label and filter value", () => {
-    expect(routingConfigLabel(apiKey())).toBe("Organization default");
-    expect(routingConfigFilterValue(apiKey())).toBe("default");
+describe("access profile helpers", () => {
+  it("labels an unassigned key", () => {
+    expect(accessProfileLabel(apiKey())).toBe("Unassigned");
+    expect(accessProfileFilterValue(apiKey())).toBe("unassigned");
   });
 
-  it("uses the assigned config id and name when present", () => {
-    const key = apiKey({ routingConfigId: "rc_9", routingConfig: { name: "Latency" } as ApiKeySummary["routingConfig"] });
-    expect(routingConfigLabel(key)).toBe("Latency");
-    expect(routingConfigFilterValue(key)).toBe("rc_9");
-  });
-});
-
-describe("providerBindingValue", () => {
-  it("reports the company default when no credentials are bound", () => {
-    expect(providerBindingValue(apiKey())).toBe("company default");
-  });
-
-  it("joins bound provider credentials", () => {
+  it("uses the assigned profile id and name", () => {
     const key = apiKey({
-      providerCredentials: [
-        { provider: "openai", name: "prod" },
-        { provider: "anthropic", name: null }
-      ] as ApiKeySummary["providerCredentials"]
+      accessProfileId: "profile_9",
+      accessProfile: { id: "profile_9", name: "Internal engineering", status: "active" }
     });
-    expect(providerBindingValue(key)).toBe("openai prod anthropic");
+    expect(accessProfileLabel(key)).toBe("Internal engineering");
+    expect(accessProfileFilterValue(key)).toBe("profile_9");
   });
 });

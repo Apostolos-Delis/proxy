@@ -2,7 +2,6 @@ import type { CSSProperties, ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, Box, Copy, Info } from "lucide-react";
 
 import { compactId } from "./format";
-import { TierGauge } from "./routing/tierViz";
 
 export function ProxyLogo({ size = 24, className }: { size?: number; className?: string }) {
   return (
@@ -131,7 +130,7 @@ export function StatusIndicator({ status, tone, children }: { status?: string | 
 }
 
 export function RouteBadge({ route }: { route?: string | null }) {
-  return <TierGauge route={route ?? "unknown"} />;
+  return <Badge>{route ?? "unknown"}</Badge>;
 }
 
 export function Avatar({ label, color = "var(--accent)", size = 30 }: { label: string; color?: string; size?: number }) {
@@ -228,7 +227,7 @@ export function CompactId({ value }: { value: string }) {
 
 export function FormField({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
   return (
-    <label className="routing-create-field">
+    <label className="inline-form-field">
       <span>{label}</span>
       {children}
       {error ? <small>{error}</small> : null}

@@ -1,13 +1,15 @@
 import type { FastifyReply } from "fastify";
 import type {
   HarnessCompatibilityProfileId,
-  ProviderCachingCapabilities,
-  RoutingConfigRetryPolicy,
-  SelectedDeployment
+  ProviderCachingCapabilities
+} from "@proxy/schema";
+import {
+  anthropicEffortForModel,
+  effortSchema,
+  supportsAnthropicAdaptiveThinking
 } from "@proxy/schema";
 
 import { buildAnthropicContext, buildOpenAIChatContext, buildOpenAIContext } from "./features.js";
-import { anthropicEffortForModel, supportsAnthropicAdaptiveThinking } from "./catalog.js";
 import { resolveBedrockConverseModelId } from "./providerAdapters/bedrockModelIds.js";
 import type { RequestTiming } from "./requestTiming.js";
 import {
@@ -27,7 +29,7 @@ import type {
   ProviderEffort,
   RouteContext,
   RouteDecision,
-  RouteName,
+  SelectedDeployment,
   Surface,
   SelectedRouteSettings,
   UpstreamCredential
@@ -58,8 +60,6 @@ export type ProviderForwardInput = {
   reply: FastifyReply;
   path?: string;
   credential?: UpstreamCredential;
-  attempts?: ProviderForwardAttemptInput[];
-  retryPolicy?: RoutingConfigRetryPolicy;
   acquireProviderLimit?: (attempt: ProviderForwardAttemptInput) => Promise<ProviderForwardLease | undefined>;
   onAssistantText?: (text: string, truncated: boolean) => Promise<void>;
   compressionTelemetry?: JsonObject;
@@ -74,8 +74,6 @@ export type ProviderForwardLease = {
 export type ProviderForwardResult = "forwarded" | "rejected";
 
 export type ProviderForwardAttemptInput = {
-  route?: RouteName;
-  routeCandidateId?: string;
   selectedModel: string;
   provider: Provider;
   adapterKind?: ProviderAdapterKind;
@@ -403,8 +401,9 @@ function rewriteAnthropicMessagesRequest(
     delete request.thinking;
   }
   if (!isAnthropicThinkingEnabled(request.thinking)) removeClearThinkingContextManagement(request);
-  const effort = settings.anthropic.output_config?.effort
-    ? anthropicEffortForModel(settings.model, settings.anthropic.output_config.effort)
+  const configuredEffort = effortSchema.safeParse(settings.anthropic.output_config?.effort);
+  const effort = configuredEffort.success
+    ? anthropicEffortForModel(settings.model, configuredEffort.data)
     : undefined;
   if (effort) {
     request.output_config = {

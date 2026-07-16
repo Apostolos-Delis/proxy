@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+
+import { events as eventTable } from "@proxy/db";
 
 import { attributeTokens } from "../src/tokenAttribution.js";
-import { buildServer } from "../src/server.js";
-import { loadConfig } from "../src/config.js";
-import { listen, startAnthropicMock, startOpenAIMock, type MockServer } from "./helpers.js";
+import { captureFixture } from "./promptTestFixture.js";
 
 describe("attributeTokens", () => {
   it("decomposes an Anthropic agentic-loop request into buckets", () => {
@@ -11,7 +11,7 @@ describe("attributeTokens", () => {
     const toolResultOutput = "x".repeat(5000);
     const latestUserText = "also check the lint output";
     const body = {
-      model: "claude-router-auto",
+      model: "coding-auto",
       system,
       tools: [
         { name: "Bash", description: "run commands", input_schema: { type: "object" } },
@@ -39,7 +39,7 @@ describe("attributeTokens", () => {
 
     const attribution = attributeTokens("anthropic-messages", body, "org prompt");
 
-    expect(attribution.requestedModel).toBe("claude-router-auto");
+    expect(attribution.requestedModel).toBe("coding-auto");
     expect(attribution.systemPrompt.chars).toBe(system.length);
     expect(attribution.orgSystemPrompt.chars).toBe("org prompt".length);
     expect(attribution.history.messages).toBe(2);
@@ -77,7 +77,7 @@ describe("attributeTokens", () => {
   it("attributes the trailing function_call_output run on the OpenAI surface", () => {
     const output = "y".repeat(2000);
     const body = {
-      model: "router-auto",
+      model: "coding-auto",
       instructions: "be terse",
       tools: [{ type: "function", name: "shell" }],
       input: [
@@ -102,7 +102,7 @@ describe("attributeTokens", () => {
 
   it("attributes interleaved parallel call/output pairs in the tail", () => {
     const body = {
-      model: "router-auto",
+      model: "coding-auto",
       input: [
         { type: "message", role: "assistant", content: [{ type: "output_text", text: "On it." }] },
         { type: "function_call", call_id: "a", name: "shell", arguments: "{}" },
@@ -121,7 +121,7 @@ describe("attributeTokens", () => {
   });
 
   it("treats a plain string input as the latest user message", () => {
-    const attribution = attributeTokens("openai-responses", { model: "router-auto", input: "hello" });
+    const attribution = attributeTokens("openai-responses", { model: "coding-auto", input: "hello" });
     expect(attribution.latestUser.chars).toBe(5);
     expect(attribution.history.messages).toBe(0);
     expect(attribution.newToolResults.blocks).toBe(0);
@@ -130,7 +130,7 @@ describe("attributeTokens", () => {
   it("attributes Cursor-style flat chat tool calls", () => {
     const output = "z".repeat(1200);
     const body = {
-      model: "router-auto",
+      model: "coding-auto",
       tools: [{ name: "run_terminal_cmd", parameters: { type: "object" } }],
       messages: [
         { role: "user", content: "run the command" },
@@ -163,43 +163,17 @@ describe("attributeTokens", () => {
 });
 
 describe("tokens.attributed event", () => {
-  let openai: MockServer;
-  let anthropic: MockServer;
-
-  beforeEach(async () => {
-    openai = await startOpenAIMock();
-    anthropic = await startAnthropicMock();
-  });
-
-  afterEach(async () => {
-    await openai.close();
-    await anthropic.close();
-  });
-
   it("is appended for Anthropic Messages requests", async () => {
-    const app = buildServer(
-      loadConfig({
-        ...process.env,
-        DATABASE_URL: "",
-        EVENT_STORE_PATH: "",
-        PROXY_TOKEN: "proxy-token",
-        OPENAI_API_KEY: "openai-upstream-key",
-        ANTHROPIC_API_KEY: "anthropic-upstream-key",
-        OPENAI_BASE_URL: openai.url,
-        ANTHROPIC_BASE_URL: anthropic.url,
-        LOG_LEVEL: "fatal"
-      })
-    );
-    const proxyUrl = await listen(app);
+    const fixture = await captureFixture("org_token_attribution_anthropic", "hash_only");
 
-    const response = await fetch(`${proxyUrl}/v1/messages`, {
+    const response = await fetch(`${fixture.proxyUrl}/v1/messages`, {
       method: "POST",
       headers: {
         "x-api-key": "proxy-token",
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        model: "claude-router-hard",
+        model: "fable",
         max_tokens: 256,
         system: "You are a coding agent.",
         tools: [{ name: "Bash", input_schema: { type: "object" } }],
@@ -209,10 +183,8 @@ describe("tokens.attributed event", () => {
     expect(response.status).toBe(200);
     await response.text();
 
-    const events = await fetch(`${proxyUrl}/_debug/events`, {
-      headers: { authorization: "Bearer proxy-token" }
-    }).then((item) => item.json());
-    await app.close();
+    const events = await fixture.db.select().from(eventTable);
+    await fixture.close();
 
     const attributed = events.find((event: any) => event.eventType === "tokens.attributed");
     expect(attributed).toBeTruthy();
@@ -223,29 +195,16 @@ describe("tokens.attributed event", () => {
   });
 
   it("is appended for OpenAI Responses requests with tool outputs", async () => {
-    const app = buildServer(
-      loadConfig({
-        ...process.env,
-        DATABASE_URL: "",
-        EVENT_STORE_PATH: "",
-        PROXY_TOKEN: "proxy-token",
-        OPENAI_API_KEY: "openai-upstream-key",
-        ANTHROPIC_API_KEY: "anthropic-upstream-key",
-        OPENAI_BASE_URL: openai.url,
-        ANTHROPIC_BASE_URL: anthropic.url,
-        LOG_LEVEL: "fatal"
-      })
-    );
-    const proxyUrl = await listen(app);
+    const fixture = await captureFixture("org_token_attribution_openai", "hash_only");
 
-    const response = await fetch(`${proxyUrl}/v1/responses`, {
+    const response = await fetch(`${fixture.proxyUrl}/v1/responses`, {
       method: "POST",
       headers: {
         authorization: "Bearer proxy-token",
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        model: "router-hard",
+        model: "coding-auto",
         tools: [{ type: "function", name: "shell" }],
         input: [
           { type: "message", role: "user", content: "run the tests" },
@@ -259,10 +218,8 @@ describe("tokens.attributed event", () => {
     expect(response.status).toBe(200);
     await response.text();
 
-    const events = await fetch(`${proxyUrl}/_debug/events`, {
-      headers: { authorization: "Bearer proxy-token" }
-    }).then((item) => item.json());
-    await app.close();
+    const events = await fixture.db.select().from(eventTable);
+    await fixture.close();
 
     const attributed = events.find((event: any) => event.eventType === "tokens.attributed");
     expect(attributed).toBeTruthy();

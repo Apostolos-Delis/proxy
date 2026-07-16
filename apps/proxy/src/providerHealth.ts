@@ -107,7 +107,7 @@ function healthMatch(input: ProviderTerminalHealthInput, lower: string): HealthM
       errorType: "auth_expired",
       source: "response_body",
       retryable: true,
-      scope: "provider_account",
+      scope: "provider_connection",
       cooldownMs: minuteMs
     };
   }
@@ -116,7 +116,7 @@ function healthMatch(input: ProviderTerminalHealthInput, lower: string): HealthM
       errorType: "auth_invalid",
       source: "provider_status",
       retryable: false,
-      scope: "provider_account"
+      scope: "provider_connection"
     };
   }
   if (modelAccessDenied(lower)) {
@@ -124,7 +124,7 @@ function healthMatch(input: ProviderTerminalHealthInput, lower: string): HealthM
       errorType: "model_access_denied",
       source: "response_body",
       retryable: false,
-      scope: "provider_account_model"
+      scope: "deployment"
     };
   }
   if (quotaExhausted(lower)) {
@@ -132,7 +132,7 @@ function healthMatch(input: ProviderTerminalHealthInput, lower: string): HealthM
       errorType: "quota_exhausted",
       source: "response_body",
       retryable: true,
-      scope: "provider_account",
+      scope: "provider_connection",
       cooldownMs: 60 * minuteMs
     };
   }
@@ -141,7 +141,7 @@ function healthMatch(input: ProviderTerminalHealthInput, lower: string): HealthM
       errorType: "rate_limited",
       source: "provider_status",
       retryable: true,
-      scope: "provider_account",
+      scope: "provider_connection",
       cooldownMs: minuteMs
     };
   }
@@ -150,7 +150,7 @@ function healthMatch(input: ProviderTerminalHealthInput, lower: string): HealthM
       errorType: "model_unavailable",
       source: lower ? "response_body" : "provider_status",
       retryable: true,
-      scope: "provider_account_model",
+      scope: "deployment",
       cooldownMs: 10 * minuteMs
     };
   }
@@ -165,7 +165,7 @@ function healthMatch(input: ProviderTerminalHealthInput, lower: string): HealthM
       errorType: "provider_unavailable",
       source: "provider_status",
       retryable: true,
-      scope: "provider",
+      scope: "provider_connection",
       cooldownMs: 30_000
     };
   }
@@ -174,7 +174,7 @@ function healthMatch(input: ProviderTerminalHealthInput, lower: string): HealthM
       errorType: "unknown_transient",
       source: "proxy_policy",
       retryable: true,
-      scope: "provider_account",
+      scope: "provider_connection",
       cooldownMs: 30_000
     };
   }

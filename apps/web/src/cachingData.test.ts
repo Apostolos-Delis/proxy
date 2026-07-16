@@ -54,7 +54,7 @@ describe("bust causes", () => {
       tool_schema_churn: "Tool schema churn",
       translator_change: "Translator change",
       compression_policy_change: "Compression policy change",
-      route_config_change: "Route config change"
+      logical_model_change: "Logical model change"
     });
     expect(bustCauses.map((cause) => cause.key)).toEqual([
       "ttl_expiry",
@@ -64,7 +64,7 @@ describe("bust causes", () => {
       "tool_schema_churn",
       "translator_change",
       "compression_policy_change",
-      "route_config_change",
+      "logical_model_change",
       "unknown"
     ]);
   });
