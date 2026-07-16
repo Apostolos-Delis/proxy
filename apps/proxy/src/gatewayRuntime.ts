@@ -63,6 +63,7 @@ export function gatewayDenialStatus(code: ModelResolutionDenialCode) {
     code === "invalid_parameters" ||
     code === "parameter_cap_exceeded" ||
     code === "classification_context_invalid" ||
+    code === "context_overflow" ||
     code === "model_unavailable"
   ) return 400;
   if (code === "classifier_failed" || code === "classifier_unavailable") return 502;

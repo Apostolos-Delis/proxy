@@ -86,6 +86,7 @@ describe("logical model resolution", () => {
     const cases: Array<{
       capabilities: GatewayModelCapabilities;
       input: Partial<Parameters<ModelResolutionService["resolve"]>[0]>;
+      denial?: ModelResolutionDenialCode;
     }> = [
       {
         capabilities: { tools: false },
@@ -101,7 +102,8 @@ describe("logical model resolution", () => {
       },
       {
         capabilities: { contextWindow: 100 },
-        input: { classificationFeatures: { estimatedInputTokens: 101 } }
+        input: { classificationFeatures: { estimatedInputTokens: 101 } },
+        denial: "context_overflow"
       },
       {
         capabilities: { maxOutputTokens: 100 },
@@ -120,7 +122,7 @@ describe("logical model resolution", () => {
         .where(eq(modelDeployments.id, deploymentId));
       expectDenial(
         await fixture.resolver.resolve(resolveInput(fixture.organizationId, testCase.input)),
-        "model_unavailable"
+        testCase.denial ?? "model_unavailable"
       );
     }
 
