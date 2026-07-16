@@ -18,8 +18,10 @@ import {
 } from "../persistence/providers.js";
 import { requestBodyHash } from "../toolResultCompression.js";
 import { translators } from "../translators/index.js";
-import type { ProviderForwardInput } from "../adapters.js";
-import type { ProviderAdapterFailureClassification } from "./types.js";
+import type {
+  ProviderAdapterFailureClassification,
+  ProviderForwardInput
+} from "./types.js";
 import type { Provider, Surface, UpstreamCredential } from "../types.js";
 import {
   fetchWithPinnedAddress,
@@ -79,7 +81,7 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
       const body = providerRequestBody({
         provider,
         body: input.body,
-        credential: input.credential
+        credential: input.target.credential
       });
       await this.events.append({
         tenantId: input.organizationId,
@@ -92,9 +94,9 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
         eventType: "provider.request_forwarded",
         payload: {
           surface: input.surface,
-          provider: input.provider,
+          provider: input.target.provider,
           adapterKind: provider.adapterKind,
-          model: input.decision.selectedModel ?? "unknown",
+          model: input.target.upstreamModelId,
           providerAttemptId,
           upstreamAttempt,
           preparedRequestHash: requestBodyHash(input.body),
@@ -107,7 +109,7 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
         endpoint,
         path: input.path,
         config: this.config,
-        credential: input.credential
+        credential: input.target.credential
       }), {
         method: "POST",
         headers: providerRequestHeaders({
@@ -118,12 +120,16 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
           harnessProfileId: input.harnessProfileId,
           body,
           incoming: input.headers,
-          credential: input.credential
+          credential: input.target.credential
         }),
         body: JSON.stringify(body),
         redirect: providerRequestRedirect(),
         signal
-      }, providerRequestPinnedAddress({ provider, config: this.config, credential: input.credential }));
+      }, providerRequestPinnedAddress({
+        provider,
+        config: this.config,
+        credential: input.target.credential
+      }));
 
       if (upstream.status !== 429 || upstreamAttempt === maxAttempts) {
         return upstream;
@@ -148,8 +154,8 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
         eventType: "provider.rate_limit_retry_scheduled",
         payload: {
           surface: input.surface,
-          provider: input.provider,
-          model: input.decision.selectedModel ?? "unknown",
+          provider: input.target.provider,
+          model: input.target.upstreamModelId,
           providerAttemptId,
           upstreamAttempt,
           maxAttempts,

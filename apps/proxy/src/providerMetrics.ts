@@ -9,7 +9,7 @@ import {
 } from "./metrics.js";
 import { normalizeUsage } from "./persistence/values.js";
 import { promptCacheControlLabel, type PromptCachePlan, promptCacheSkipReasonLabel } from "./promptCachePlan.js";
-import type { JsonObject, Provider, RouteDecision, Surface } from "./types.js";
+import type { JsonObject, Provider, Surface } from "./types.js";
 import { isRecord } from "./util.js";
 
 export type ProviderMetricLabels = {
@@ -93,14 +93,14 @@ export class ProviderMetrics {
   recordTerminal(input: {
     surface: Surface;
     provider: Provider;
-    decision: RouteDecision;
+    model: string;
     providerAttemptId: string;
     status: "completed" | "failed" | "cancelled";
     usage: unknown;
     upstreamStatus: number;
     metadata: JsonObject;
   }) {
-    const model = input.decision.selectedModel ?? "unknown";
+    const model = input.model;
     const terminalStatus = metricTerminalStatusFor(input.status);
     const errorClass = providerTerminalErrorClass(input.status, input.upstreamStatus);
     const startedAtMs = this.providerAttemptStartedAtMs.get(input.providerAttemptId);

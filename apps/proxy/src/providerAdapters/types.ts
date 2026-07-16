@@ -1,10 +1,48 @@
 import type {
+  HarnessCompatibilityProfileId,
   ProviderHealthClassificationSource,
   ProviderHealthConfidence,
   ProviderHealthErrorType,
   ProviderHealthMetadata,
   ProviderHealthScope
 } from "@proxy/schema";
+import type { FastifyReply } from "fastify";
+
+import type { GatewayExecutionTarget } from "../gatewayRuntime.js";
+import type { RequestTiming } from "../requestTiming.js";
+import type { JsonObject, Surface } from "../types.js";
+
+export type ProviderForwardLease = {
+  release: () => void;
+};
+
+export type ProviderForwardResult = "forwarded" | "rejected";
+
+export type ProviderForwardInput = {
+  requestId: string;
+  idempotencyKey: string;
+  organizationId: string;
+  workspaceId: string;
+  sessionId?: string;
+  surface: Surface;
+  harnessProfileId?: HarnessCompatibilityProfileId;
+  target: GatewayExecutionTarget;
+  body: unknown;
+  responseStream?: boolean;
+  headers: Record<string, string | undefined>;
+  reply: FastifyReply;
+  path?: string;
+  acquireProviderLimit?: (
+    target: GatewayExecutionTarget
+  ) => Promise<ProviderForwardLease | undefined>;
+  onAssistantText?: (text: string, truncated: boolean) => Promise<void>;
+  compressionTelemetry?: JsonObject;
+  onTerminal?: (terminal: {
+    status: "completed" | "failed" | "cancelled";
+    errorClass: string;
+  }) => void;
+  timing?: RequestTiming;
+};
 
 export const PROVIDER_ADAPTER_FAILURE_CATEGORIES = [
   "auth_denied",

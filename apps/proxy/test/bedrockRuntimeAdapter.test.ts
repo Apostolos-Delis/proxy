@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { loadConfig } from "../src/config.js";
-import { rewriteSurfaceRequest, type ProviderForwardInput } from "../src/adapters.js";
 import { BedrockRuntimeProviderAdapter, type BedrockRuntimeClientFactory } from "../src/providerAdapters/bedrockRuntime.js";
+import type { ProviderForwardInput } from "../src/providerAdapters/types.js";
 import type { ProviderRegistryEntry } from "../src/persistence/providers.js";
 
 const bedrockProvider: ProviderRegistryEntry = {
@@ -191,6 +191,7 @@ describe("Bedrock runtime adapter", () => {
         surface: "openai-chat",
         selectedModel: "amazon.nova-lite-v1:0",
         body: {
+          modelId: "amazon.nova-lite-v1:0",
           messages: [{ role: "user", content: [{ text: "first" }] }]
         }
       }),
@@ -204,6 +205,7 @@ describe("Bedrock runtime adapter", () => {
         surface: "openai-chat",
         selectedModel: "amazon.nova-pro-v1:0",
         body: {
+          modelId: "amazon.nova-pro-v1:0",
           messages: [{ role: "user", content: [{ text: "second" }] }]
         }
       }),
@@ -235,143 +237,6 @@ describe("Bedrock runtime adapter", () => {
     });
   });
 
-  it("rewrites selected Bedrock model, system prompt, and allowlisted metadata", () => {
-    const body = rewriteSurfaceRequest(
-      {
-        model: "coding-auto",
-        messages: [{ role: "user", content: "hello" }],
-        stream: true
-      },
-      {
-        outcome: "route",
-        surface: "openai-chat",
-        requestedModel: "coding-auto",
-        selectedModel: "amazon.nova-pro-v1:0",
-        provider: "amazon-bedrock",
-        providerSettings: {
-          provider: "amazon-bedrock",
-          model: "amazon.nova-pro-v1:0",
-          dialect: "bedrock-converse",
-          deployment: {
-            key: "deployment_bedrock_nova_pro",
-            provider: "amazon-bedrock",
-            model: "amazon.nova-pro-v1:0",
-            order: 0,
-            weight: 1,
-            timeoutMs: 10000
-          },
-          openai: {
-            provider: "amazon-bedrock",
-            model: "amazon.nova-pro-v1:0",
-            order: 0,
-            weight: 1,
-            timeoutMs: 10000,
-            maxOutputTokens: 512,
-            metadata: {
-              bedrock: {
-                requestMetadata: { workload: "coding" },
-                guardrailIdentifier: "guardrail-1",
-                guardrailVersion: "1",
-                serviceTier: "optimized",
-                additionalModelRequestFields: { top_k: 10 }
-              }
-            }
-          }
-        },
-        guardrailActions: [],
-        reasonCodes: [],
-        policyVersion: "test"
-      },
-      "System prompt"
-    );
-
-    expect(body).toMatchObject({
-      modelId: "amazon.nova-pro-v1:0",
-      system: [{ text: "System prompt" }],
-      inferenceConfig: { maxTokens: 512 },
-      requestMetadata: { workload: "coding" },
-      guardrailConfig: {
-        guardrailIdentifier: "guardrail-1",
-        guardrailVersion: "1"
-      },
-      performanceConfig: { latency: "optimized" },
-      additionalModelRequestFields: { top_k: 10 }
-    });
-    expect((body as Record<string, unknown>).stream).toBeUndefined();
-  });
-
-  it("resolves Bedrock inference profile metadata without double-prefixing", async () => {
-    const commands: unknown[] = [];
-    const adapter = adapterWithClient(async (command) => {
-      commands.push(command);
-      return {
-        output: {
-          message: {
-            role: "assistant",
-            content: [{ text: "ok" }]
-          }
-        },
-        stopReason: "end_turn",
-        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
-      };
-    });
-    const metadata = {
-      bedrock: {
-        inferenceProfile: "us"
-      }
-    };
-    const body = rewriteSurfaceRequest(
-      {
-        model: "coding-auto",
-        messages: [{ role: "user", content: "hello" }]
-      },
-      bedrockRouteDecision({
-        selectedModel: "anthropic.claude-sonnet-4-6",
-        metadata
-      })
-    );
-
-    expect(body).toMatchObject({
-      modelId: "us.anthropic.claude-sonnet-4-6"
-    });
-
-    await adapter.fetchWithRateLimitRetries({
-      input: forwardInput({
-        surface: "openai-chat",
-        selectedModel: "anthropic.claude-sonnet-4-6",
-        body,
-        metadata
-      }),
-      providerAttemptId: "attempt_profile",
-      provider: bedrockProvider,
-      endpoint: { dialect: "bedrock-converse", operation: "Converse" },
-      signal: new AbortController().signal
-    });
-
-    expect((commands[0] as any).input).toMatchObject({
-      modelId: "us.anthropic.claude-sonnet-4-6"
-    });
-  });
-
-  it("preserves explicit Bedrock profile ARNs", () => {
-    const arn = "arn:aws:bedrock:us-east-1:123456789012:inference-profile/app-profile";
-    const body = rewriteSurfaceRequest(
-      {
-        model: "coding-auto",
-        messages: [{ role: "user", content: "hello" }]
-      },
-      bedrockRouteDecision({
-        selectedModel: "anthropic.claude-sonnet-4-6",
-        metadata: {
-          bedrockConverse: {
-            inferenceProfile: arn
-          }
-        }
-      })
-    );
-
-    expect(body).toMatchObject({ modelId: arn });
-  });
 });
 
 function adapterWithClient(send: (command: unknown) => Promise<unknown>) {
@@ -385,97 +250,62 @@ function forwardInput(input: {
   body: unknown;
   responseStream?: boolean;
   selectedModel?: string;
-  metadata?: Record<string, unknown>;
 }): ProviderForwardInput {
   const selectedModel = input.selectedModel ?? "amazon.nova-pro-v1:0";
+  const deploymentId = `deployment_bedrock_${selectedModel}`;
+  const providerConnectionId = "bedrock_connection";
+  const endpoint = { dialect: "bedrock-converse" as const, operation: "Converse" as const };
   return {
     requestId: "request_bedrock",
     idempotencyKey: "idem_bedrock",
     organizationId: "org_bedrock",
     workspaceId: "workspace_default",
     surface: input.surface,
-    provider: "amazon-bedrock",
+    target: {
+      resolution: {
+        outcome: "resolved",
+        accessProfileId: "profile_bedrock",
+        logicalModelId: "logical_model_bedrock",
+        logicalModelSlug: "coding-auto",
+        routerKind: null,
+        deploymentId,
+        upstreamModelId: selectedModel,
+        providerConnectionId,
+        bindingId: "binding_bedrock",
+        egressWireId: "bedrock-converse",
+        endpointPath: null,
+        providerAdapterKind: "aws-bedrock-converse",
+        providerAdapterContractVersion: "1",
+        wireAdapterId: null,
+        wireAdapterVersion: null,
+        routerDecisionId: null,
+        routerDecision: null,
+        parameterCaps: {}
+      },
+      provider: "amazon-bedrock",
+      upstreamModelId: selectedModel,
+      deploymentId,
+      providerConnectionId,
+      requestConfig: {},
+      deploymentConfig: {},
+      capabilities: {},
+      timeoutMs: 10_000,
+      providerEntry: bedrockProvider,
+      endpoint,
+      credential: {
+        provider: "amazon-bedrock",
+        providerConnectionId,
+        token: "bedrock-bearer",
+        connectionSettings: {
+          credentialMode: "aws_bedrock_bearer_token",
+          region: "us-east-1"
+        }
+      }
+    },
     body: input.body,
     responseStream: input.responseStream,
     headers: {},
-    decision: {
-      outcome: "route",
-      surface: input.surface,
-      requestedModel: "coding-auto",
-      selectedModel,
-      provider: "amazon-bedrock",
-      providerSettings: {
-        provider: "amazon-bedrock",
-        model: selectedModel,
-        dialect: "bedrock-converse",
-        deployment: {
-          key: `deployment_bedrock_${selectedModel}`,
-          provider: "amazon-bedrock",
-          model: selectedModel,
-          order: 0,
-          weight: 1,
-          timeoutMs: 10000
-        },
-        openai: {
-          provider: "amazon-bedrock",
-          model: selectedModel,
-          order: 0,
-          weight: 1,
-          timeoutMs: 10000,
-          metadata: input.metadata ?? {}
-        }
-      },
-      guardrailActions: [],
-      reasonCodes: [],
-      policyVersion: "test"
-    },
-    reply: {} as ProviderForwardInput["reply"],
-    credential: {
-      provider: "amazon-bedrock",
-      providerConnectionId: "bedrock_connection",
-      token: "bedrock-bearer",
-      connectionSettings: {
-        credentialMode: "aws_bedrock_bearer_token",
-        region: "us-east-1"
-      }
-    }
-  };
-}
-
-function bedrockRouteDecision(input: {
-  selectedModel: string;
-  metadata?: Record<string, unknown>;
-}) {
-  return {
-    outcome: "route" as const,
-    surface: "openai-chat" as const,
-    requestedModel: "coding-auto",
-    selectedModel: input.selectedModel,
-    provider: "amazon-bedrock" as const,
-    providerSettings: {
-      provider: "amazon-bedrock" as const,
-      model: input.selectedModel,
-      dialect: "bedrock-converse" as const,
-      deployment: {
-        key: `deployment_bedrock_${input.selectedModel}`,
-        provider: "amazon-bedrock" as const,
-        model: input.selectedModel,
-        order: 0,
-        weight: 1,
-        timeoutMs: 10000
-      },
-      openai: {
-        provider: "amazon-bedrock" as const,
-        model: input.selectedModel,
-        order: 0,
-        weight: 1,
-        timeoutMs: 10000,
-        metadata: input.metadata ?? {}
-      }
-    },
-    guardrailActions: [],
-    reasonCodes: [],
-    policyVersion: "test"
+    reply: {} as ProviderForwardInput["reply"]
   };
 }
 

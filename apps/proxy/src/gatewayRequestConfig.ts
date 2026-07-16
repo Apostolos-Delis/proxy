@@ -1,5 +1,6 @@
 import type { Dialect, GatewayOperationId, GatewayParameterCaps } from "@proxy/schema";
 
+import { resolveBedrockConverseModelId } from "./providerAdapters/bedrockModelIds.js";
 import { isRecord } from "./util.js";
 
 export function gatewayParameters(body: unknown): GatewayParameterCaps {
@@ -57,6 +58,20 @@ export function deploymentRequestConfig(
     applyBedrockMetadataConfig(request, bedrockMetadataSettings(config.metadata));
   }
   return request;
+}
+
+export function bedrockDeploymentModelId(
+  modelId: string,
+  config: Record<string, unknown>
+) {
+  const settings = bedrockMetadataSettings(config.metadata);
+  return resolveBedrockConverseModelId({
+    modelId,
+    inferenceProfile: stringValue(settings?.inferenceProfile) ??
+      stringValue(settings?.inferenceProfileId),
+    inferenceProfileGeography: stringValue(settings?.inferenceProfileGeography) ??
+      stringValue(settings?.profileGeography)
+  });
 }
 
 export function applyGatewaySystemPrompt(

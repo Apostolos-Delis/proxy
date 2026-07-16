@@ -1,10 +1,8 @@
 import type { FastifyReply } from "fastify";
 import { performance } from "node:perf_hooks";
 
-import type { ProviderForwardAttemptInput, ProviderForwardInput, ProviderForwardResult } from "./adapters.js";
 import { bufferedStreamResponse, collectStreamResponse } from "./bufferedStreamResponse.js";
 import type { AppConfig } from "./config.js";
-import type { GatewayExecutionTarget } from "./gatewayRuntime.js";
 import { gatewayProviderAttemptEvidence } from "./gatewayEvidence.js";
 import {
   GatewayRequestLifecycle,
@@ -27,13 +25,17 @@ import {
 } from "./metrics.js";
 import { canAuthenticateOrgProvider, GenericHttpProviderAdapter } from "./providerAdapters/genericHttp.js";
 import { BedrockRuntimeProviderAdapter } from "./providerAdapters/bedrockRuntime.js";
-import type { ProviderAdapterFailureClassification } from "./providerAdapters/types.js";
+import type {
+  ProviderAdapterFailureClassification,
+  ProviderForwardInput,
+  ProviderForwardResult
+} from "./providerAdapters/types.js";
 import { ProviderMetrics } from "./providerMetrics.js";
 import { classifyProviderTerminalHealth } from "./providerHealth.js";
 import { sseObserverForDialect, streamObservationEventMetadata, type StreamObservation } from "./sseObserver.js";
 import { providerCompressionTerminalTelemetry } from "./toolResultCompression.js";
 import type { RequestIdentity } from "./auth.js";
-import type { JsonObject, Provider, ProviderAttempt, RouteContext, RouteDecision, Surface, UpstreamCredential } from "./types.js";
+import type { JsonObject, ProviderAttempt, RouteContext, Surface } from "./types.js";
 import { isRecord } from "./util.js";
 
 type TerminalAdapterMetadata = {
@@ -45,19 +47,15 @@ type RuntimeProviderAdapter = GenericHttpProviderAdapter | BedrockRuntimeProvide
 
 type GatewayProviderForwardInput = Omit<
   ProviderForwardInput,
-  "attempts" | "retryPolicy" | "provider" | "body" | "decision" | "credential"
+  "target" | "body"
 > & {
   prepared: PreparedGatewayRequest;
   identity: RequestIdentity;
   context: RouteContext;
 };
 
-type GatewayProviderAttemptForwardInput = GatewayProviderForwardInput & Pick<
-  ProviderForwardInput,
-  "provider" | "body" | "decision" | "credential"
-> & {
-  executionTarget: GatewayExecutionTarget;
-};
+type GatewayProviderAttemptForwardInput = GatewayProviderForwardInput &
+  Pick<ProviderForwardInput, "target" | "body">;
 
 export class ProviderProxy {
   private readonly providerMetrics: ProviderMetrics;
@@ -79,8 +77,7 @@ export class ProviderProxy {
   }
 
   async forward(input: GatewayProviderForwardInput): Promise<ProviderForwardResult> {
-    const selected = providerForwardAttempt(input);
-    const providerLimitLease = await input.acquireProviderLimit?.(selected);
+    const providerLimitLease = await input.acquireProviderLimit?.(input.prepared.target);
     if (input.acquireProviderLimit && !providerLimitLease) return "rejected";
     try {
       let attempt: ProviderAttempt;
@@ -99,7 +96,7 @@ export class ProviderProxy {
         input.reply.code(error.statusCode).send({ error: error.message });
         return "rejected";
       }
-      await this.forwardProviderAttempt(input, selected, attempt);
+      await this.forwardProviderAttempt(input, attempt);
       return "forwarded";
     } finally {
       providerLimitLease?.release();
@@ -108,31 +105,15 @@ export class ProviderProxy {
 
   private async forwardProviderAttempt(
     baseInput: GatewayProviderForwardInput,
-    selected: ProviderForwardAttemptInput,
     attempt: ProviderAttempt
   ): Promise<void> {
     const prepared = baseInput.prepared;
-    const providerSettings = selected.providerSettings ?? prepared.decision.providerSettings;
-    if (!providerSettings) {
-      baseInput.reply.code(500).send({ error: "Missing selected provider settings." });
-      return;
-    }
-    const selectedModel = selected.selectedModel;
+    const selectedModel = prepared.target.upstreamModelId;
     const input: GatewayProviderAttemptForwardInput = {
       ...baseInput,
-      executionTarget: prepared.target,
-      provider: selected.provider,
-      body: selected.body,
+      target: prepared.target,
+      body: prepared.body,
       compressionTelemetry: prepared.compressionTelemetry,
-      credential: prepared.target.credential,
-      decision: {
-        ...prepared.decision,
-        selectedModel,
-        provider: selected.provider,
-        deployment: selected.deployment ?? prepared.decision.deployment,
-        reasoningEffort: selected.reasoningEffort ?? prepared.decision.reasoningEffort,
-        providerSettings
-      }
     };
     const providerStream = isRecord(input.body) && input.body.stream === true;
     const responseStream = input.responseStream ?? providerStream;
@@ -140,7 +121,7 @@ export class ProviderProxy {
     this.providerMetrics.startAttempt({
       providerAttemptId: attempt.id,
       surface: input.surface,
-      provider: input.provider,
+      provider: input.target.provider,
       stream: responseStream
     });
     const abortController = new AbortController();
@@ -157,15 +138,17 @@ export class ProviderProxy {
       (input.reply.raw as { closed?: boolean }).closed === true;
     input.reply.raw.once("close", abortUpstream);
 
-    const resolvedProvider = input.executionTarget.providerEntry;
-    const endpoint = input.executionTarget.endpoint;
+    const resolvedProvider = input.target.providerEntry;
+    const endpoint = input.target.endpoint;
     if (!resolvedProvider || !resolvedProvider.enabled || !endpoint) {
       const error = !resolvedProvider || !resolvedProvider.enabled
         ? "provider_not_found"
         : "provider_endpoint_not_found";
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
-      await this.failBeforeFetch(input, attempt.id, error, { adapterKind: resolvedProvider?.adapterKind ?? selected.adapterKind });
+      await this.failBeforeFetch(input, attempt.id, error, {
+        adapterKind: resolvedProvider?.adapterKind ?? input.target.resolution.providerAdapterKind
+      });
       return;
     }
     const providerAdapter = this.providerAdapterFor(resolvedProvider);
@@ -184,7 +167,7 @@ export class ProviderProxy {
     }
     if (
       resolvedProvider.adapterKind !== "aws-bedrock-converse" &&
-      !canAuthenticateOrgProvider(resolvedProvider, input.credential)
+      !canAuthenticateOrgProvider(resolvedProvider, input.target.credential)
     ) {
       const error = "provider_credential_unresolved";
       streamCompleted = true;
@@ -195,12 +178,10 @@ export class ProviderProxy {
 
     let upstream: Response;
     let providerTimedOut = false;
-    const timeout = selected.deployment?.timeoutMs
-      ? setTimeout(() => {
-          providerTimedOut = true;
-          abortController.abort();
-        }, selected.deployment.timeoutMs)
-      : undefined;
+    const timeout = setTimeout(() => {
+      providerTimedOut = true;
+      abortController.abort();
+    }, input.target.timeoutMs ?? 60_000);
     const fetchStartedAtMs = performance.now();
     try {
       input.timing?.markProviderFetchStart();
@@ -212,7 +193,7 @@ export class ProviderProxy {
         signal: abortController.signal
       });
     } catch (error) {
-      if (timeout) clearTimeout(timeout);
+      clearTimeout(timeout);
       input.reply.raw.off("close", abortUpstream);
       const aborted = !providerTimedOut && clientGone();
       if (aborted) {
@@ -244,11 +225,11 @@ export class ProviderProxy {
       });
       throw error;
     }
-    if (timeout) clearTimeout(timeout);
+    clearTimeout(timeout);
     input.timing?.markFirstByte();
     this.providerMetrics.recordTimeToFirstByte({
       surface: input.surface,
-      provider: input.provider,
+      provider: input.target.provider,
       model: selectedModel,
       stream: responseStream,
       seconds: (performance.now() - fetchStartedAtMs) / 1000
@@ -265,18 +246,13 @@ export class ProviderProxy {
     copyResponseHeaders(upstream, input.reply);
     input.reply.code(upstream.status);
     input.reply.header("x-proxy-model", selectedModel);
-    if (selected.deployment) {
-      input.reply.header("x-proxy-deployment", selected.deployment.key);
-    }
-    if (input.decision.reasoningEffort) {
-      input.reply.header("x-proxy-reasoning-effort", input.decision.reasoningEffort);
-    }
+    input.reply.header("x-proxy-deployment", input.target.deploymentId);
 
     if (!isSse || !upstream.body) {
       if (providerStream) {
         this.providerMetrics.recordProtocolMismatch({
           surface: input.surface,
-          provider: input.provider,
+          provider: input.target.provider,
           model: selectedModel,
           stream: responseStream
         });
@@ -334,7 +310,7 @@ export class ProviderProxy {
       producer: "proxy.provider",
       eventType: "provider.stream_started",
       payload: {
-        provider: input.provider,
+        provider: input.target.provider,
         surface: input.surface,
         providerAttemptId: attempt.id
       }
@@ -449,12 +425,7 @@ export class ProviderProxy {
     input.reply.raw.statusCode = upstream.status;
     input.reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
     input.reply.raw.setHeader("x-proxy-model", selectedModel);
-    if (selected.deployment) {
-      input.reply.raw.setHeader("x-proxy-deployment", selected.deployment.key);
-    }
-    if (input.decision.reasoningEffort) {
-      input.reply.raw.setHeader("x-proxy-reasoning-effort", input.decision.reasoningEffort);
-    }
+    input.reply.raw.setHeader("x-proxy-deployment", input.target.deploymentId);
     try {
       let observation: StreamObservation;
       let status: "completed" | "failed";
@@ -482,7 +453,7 @@ export class ProviderProxy {
         input.timing?.markStreamCompletion();
         this.providerMetrics.recordStreamBytes({
           surface: input.surface,
-          provider: input.provider,
+          provider: input.target.provider,
           model: selectedModel,
           status,
           bytes: forwardedBytes
@@ -529,7 +500,7 @@ export class ProviderProxy {
       }
       this.providerMetrics.recordStreamBytes({
         surface: input.surface,
-        provider: input.provider,
+        provider: input.target.provider,
         model: selectedModel,
         status,
         bytes: forwardedBytes
@@ -588,13 +559,10 @@ export class ProviderProxy {
       organizationId: string;
       workspaceId: string;
       surface: Surface;
-      provider: Provider;
+      target: GatewayProviderAttemptForwardInput["target"];
       body: unknown;
-      decision: RouteDecision;
       compressionTelemetry?: JsonObject;
       onTerminal?: ProviderForwardInput["onTerminal"];
-      credential?: UpstreamCredential;
-      executionTarget: GatewayExecutionTarget;
     },
     providerAttemptId: string,
     status: "completed" | "failed" | "cancelled",
@@ -605,9 +573,9 @@ export class ProviderProxy {
   ) {
     const metadataPayload = jsonPayload(metadata) as JsonObject;
     const payload: JsonObject = {
-      provider: input.provider,
+      provider: input.target.provider,
       surface: input.surface,
-      selectedModel: input.decision.selectedModel ?? "unknown",
+      selectedModel: input.target.upstreamModelId,
       providerAttemptId,
       terminalStatus: status,
       upstreamStatus,
@@ -619,12 +587,12 @@ export class ProviderProxy {
       payload.adapterClassification = jsonPayload(adapterMetadata.adapterClassification);
     }
     Object.assign(payload, providerCompressionTerminalTelemetry(input.compressionTelemetry, upstreamStatus > 0));
-    Object.assign(payload, gatewayProviderAttemptEvidence(input.executionTarget));
+    Object.assign(payload, gatewayProviderAttemptEvidence(input.target));
     const error = terminalError(metadataPayload);
     if (error) payload.error = error;
     const healthClassification = classifyProviderTerminalHealth({
-      provider: input.provider,
-      model: input.decision.selectedModel ?? "unknown",
+      provider: input.target.provider,
+      model: input.target.upstreamModelId,
       terminalStatus: status,
       statusCode: upstreamStatus,
       error,
@@ -665,8 +633,8 @@ export class ProviderProxy {
 
       const errorClass = this.providerMetrics.recordTerminal({
         surface: input.surface,
-        provider: input.provider,
-        decision: input.decision,
+        provider: input.target.provider,
+        model: input.target.upstreamModelId,
         providerAttemptId,
         status,
         usage,
@@ -741,20 +709,6 @@ const blockedResponseHeaders = new Set([
   "transfer-encoding",
   "upgrade"
 ]);
-
-function providerForwardAttempt(input: GatewayProviderForwardInput): ProviderForwardAttemptInput {
-  const prepared = input.prepared;
-  return {
-    selectedModel: prepared.target.upstreamModelId,
-    provider: prepared.target.provider,
-    adapterKind: prepared.target.resolution.providerAdapterKind,
-    deployment: prepared.decision.deployment,
-    body: prepared.body,
-    credential: prepared.target.credential,
-    providerSettings: prepared.decision.providerSettings,
-    promptCachePlan: prepared.promptCachePlan
-  };
-}
 
 function streamAdapterClassification(
   adapter: RuntimeProviderAdapter,

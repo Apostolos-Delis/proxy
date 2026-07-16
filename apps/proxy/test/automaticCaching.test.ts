@@ -4,98 +4,23 @@ import { afterEach, describe, expect, it } from "vitest";
 import { organizationSettings } from "@proxy/db";
 import { ANTHROPIC_PROVIDER_CACHING_CAPABILITIES } from "@proxy/schema";
 
-import { rewriteSurfaceRequest, rewriteSurfaceRequestWithPromptCachePlan } from "../src/adapters.js";
+import {
+  applyPromptCachePlan,
+  computePromptCachePlan
+} from "../src/promptCachePlan.js";
 import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
-// A minimal RouteDecision shape that satisfies rewriteSurfaceRequest
-function anthropicDecision(model = "claude-opus-4-8") {
-  return {
-    outcome: "route" as const,
-    requestedModel: "fable",
-    selectedModel: model,
-    surface: "anthropic-messages" as const,
-    provider: "anthropic" as const,
-    deployment: {
-      key: "test-anthropic",
-      provider: "anthropic" as const,
-      model,
-      order: 0,
-      weight: 1,
-      timeoutMs: 60000
-    },
-    providerSettings: {
-      provider: "anthropic" as const,
-      model,
-      dialect: "anthropic-messages" as const,
-      deployment: {
-        key: "test-anthropic",
-        provider: "anthropic" as const,
-        model,
-        order: 0,
-        weight: 1,
-        timeoutMs: 60000
-      },
-      anthropic: {
-        provider: "anthropic" as const,
-        model,
-        order: 0,
-        weight: 1,
-        timeoutMs: 60000
-      }
-    },
-    guardrailActions: [],
-    reasonCodes: [],
-    policyVersion: "test"
-  };
-}
-
-function openaiDecision(model = "gpt-5.5") {
-  return {
-    outcome: "route" as const,
-    requestedModel: "coding-auto",
-    selectedModel: model,
-    surface: "openai-responses" as const,
-    provider: "openai" as const,
-    deployment: {
-      key: "test-openai",
-      provider: "openai" as const,
-      model,
-      order: 0,
-      weight: 1,
-      timeoutMs: 60000
-    },
-    providerSettings: {
-      provider: "openai" as const,
-      model,
-      dialect: "openai-responses" as const,
-      deployment: {
-        key: "test-openai",
-        provider: "openai" as const,
-        model,
-        order: 0,
-        weight: 1,
-        timeoutMs: 60000
-      },
-      openai: {
-        provider: "openai" as const,
-        model,
-        order: 0,
-        weight: 1,
-        timeoutMs: 60000
-      }
-    },
-    guardrailActions: [],
-    reasonCodes: [],
-    policyVersion: "test"
-  };
-}
-
 function rewriteAnthropicWithPlan(body: unknown, settings: { automaticCaching?: boolean; cacheTtlUpgrade?: boolean }) {
-  return rewriteSurfaceRequestWithPromptCachePlan(body, anthropicDecision(), undefined, {
+  const request = structuredClone(body);
+  const plan = computePromptCachePlan({
+    body: request,
     context: { surface: "anthropic-messages" },
+    target: { provider: "anthropic", dialect: "anthropic-messages" },
     capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
     settings
-  }).body as any;
+  });
+  applyPromptCachePlan(request, plan, true);
+  return request as any;
 }
 
 describe("injectAutomaticCacheControl transform", () => {
@@ -220,22 +145,6 @@ describe("injectAutomaticCacheControl transform", () => {
 
     const result = rewriteAnthropicWithPlan(body, {});
     expect(result.cache_control).toBeUndefined();
-  });
-});
-
-describe("prompt_cache_retention on OpenAI rewrites", () => {
-  it("does not add prompt_cache_retention", () => {
-    const body = { model: "coding-auto", input: "hi" };
-
-    const result = rewriteSurfaceRequest(body, openaiDecision(), undefined, {}) as any;
-    expect(result.prompt_cache_retention).toBeUndefined();
-  });
-
-  it("preserves a client-set prompt_cache_retention", () => {
-    const body = { model: "coding-auto", input: "hi", prompt_cache_retention: "in_memory" };
-
-    const result = rewriteSurfaceRequest(body, openaiDecision(), undefined, {}) as any;
-    expect(result.prompt_cache_retention).toBe("in_memory");
   });
 });
 

@@ -11,67 +11,34 @@ import {
 import { ANTHROPIC_PROVIDER_CACHING_CAPABILITIES } from "@proxy/schema";
 
 import {
-  rewriteSurfaceRequestWithPromptCachePlan,
-  rewriteTokenCountRequestWithPromptCachePlan
-} from "../src/adapters.js";
+  applyPromptCachePlan,
+  computePromptCachePlan
+} from "../src/promptCachePlan.js";
 import { captureFixture, usageRequest, type PromptTestFixture } from "./promptTestFixture.js";
 
-// A minimal RouteDecision shape that satisfies rewriteSurfaceRequest
-function anthropicDecision(model = "claude-opus-4-8") {
-  return {
-    outcome: "route" as const,
-    requestedModel: "coding-auto",
-    selectedModel: model,
-    surface: "anthropic-messages" as const,
-    provider: "anthropic" as const,
-    deployment: {
-      key: "test-anthropic",
-      provider: "anthropic" as const,
-      model,
-      order: 0,
-      weight: 1,
-      timeoutMs: 60000
-    },
-    providerSettings: {
-      provider: "anthropic" as const,
-      model,
-      dialect: "anthropic-messages" as const,
-      deployment: {
-        key: "test-anthropic",
-        provider: "anthropic" as const,
-        model,
-        order: 0,
-        weight: 1,
-        timeoutMs: 60000
-      },
-      anthropic: {
-        provider: "anthropic" as const,
-        model,
-        order: 0,
-        weight: 1,
-        timeoutMs: 60000
-      }
-    },
-    guardrailActions: [],
-    reasonCodes: [],
-    policyVersion: "test"
-  };
-}
-
 function rewriteAnthropicWithPlan(body: unknown, settings: { automaticCaching?: boolean; cacheTtlUpgrade?: boolean }) {
-  return rewriteSurfaceRequestWithPromptCachePlan(body, anthropicDecision(), undefined, {
-    context: { surface: "anthropic-messages" },
-    capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
-    settings
-  }).body as any;
+  return applyAnthropicPlan(body, settings, true);
 }
 
 function rewriteAnthropicTokenCountWithPlan(body: unknown, settings: { automaticCaching?: boolean; cacheTtlUpgrade?: boolean }) {
-  return rewriteTokenCountRequestWithPromptCachePlan(body, anthropicDecision(), undefined, {
+  return applyAnthropicPlan(body, { ...settings, automaticCaching: false }, false);
+}
+
+function applyAnthropicPlan(
+  body: unknown,
+  settings: { automaticCaching?: boolean; cacheTtlUpgrade?: boolean },
+  allowAutomaticCaching: boolean
+) {
+  const request = structuredClone(body);
+  const plan = computePromptCachePlan({
+    body: request,
     context: { surface: "anthropic-messages" },
+    target: { provider: "anthropic", dialect: "anthropic-messages" },
     capabilities: ANTHROPIC_PROVIDER_CACHING_CAPABILITIES,
     settings
-  }).body as any;
+  });
+  applyPromptCachePlan(request, plan, allowAutomaticCaching);
+  return request as any;
 }
 
 describe("upgradeCacheControlTtl transform", () => {
@@ -166,7 +133,7 @@ describe("upgradeCacheControlTtl transform", () => {
     expect(result.system[0].cache_control).toEqual({ type: "ephemeral" });
   });
 
-  it("also applies to rewriteTokenCountRequest", () => {
+  it("also applies to token-count requests", () => {
     const body = {
       model: "fable",
       system: [{ type: "text", text: largeText, cache_control: { type: "ephemeral" } }],
@@ -218,7 +185,7 @@ describe("upgradeCacheControlTtl transform", () => {
     expect(result.system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
-  it("upgrades a top-level cache_control in rewriteTokenCountRequest", () => {
+  it("upgrades a top-level cache_control in token-count requests", () => {
     const body = {
       model: "fable",
       cache_control: { type: "ephemeral" },
