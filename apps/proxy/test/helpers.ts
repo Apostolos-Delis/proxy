@@ -62,6 +62,8 @@ export async function startOpenAIMock(
     responsesStreamError?: { message: string; responseId?: string };
     omitResponsesUsage?: boolean;
     wsTerminalEvent?: "response.completed" | "response.incomplete" | "response.failed";
+    wsFailureEventFields?: Record<string, unknown>;
+    wsFailureErrorFields?: Record<string, unknown>;
     wsResponseDelayMs?: number;
     wsUpgradeHeaders?: Record<string, string>;
     outputText?: string;
@@ -375,7 +377,14 @@ export async function startOpenAIMock(
             model: body.model,
             status: terminalStatus,
             ...(terminalType === "response.failed"
-              ? { error: { code: "model_not_found", message: "model unavailable" } }
+              ? {
+                  error: {
+                    code: "model_not_found",
+                    message: "model unavailable",
+                    ...options.wsFailureErrorFields
+                  },
+                  ...options.wsFailureEventFields
+                }
               : {
                   usage: {
                     input_tokens: 100,
@@ -429,6 +438,7 @@ function defaultClassifierOutput(body: Record<string, unknown>) {
 export async function startAnthropicMock(options: {
   outputText?: string;
   toolUse?: AnthropicStreamToolUse;
+  slowProvider?: boolean;
   rateLimitProviderOnce?: RateLimitMock;
   failProviderModels?: Record<string, number>;
   malformedJsonProvider?: boolean;
@@ -478,6 +488,7 @@ export async function startAnthropicMock(options: {
         message: { id: "msg_mock", usage: { input_tokens: 120, output_tokens: 0 } }
       })}\n\n`
     );
+    if (options.slowProvider) return;
     if (options.outputText) {
       response.write(
         `data: ${JSON.stringify({

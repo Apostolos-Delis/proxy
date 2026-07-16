@@ -59,7 +59,11 @@ describe("proxy transport boundaries", () => {
 
     expect(response.status).toBe(413);
     await expect(response.json()).resolves.toEqual({
-      error: "Request body exceeds proxy limit.",
+      error: {
+        code: "request_body_too_large",
+        message: "Request body exceeds gateway limit.",
+        type: "invalid_request_error"
+      },
       limitBytes: 256
     });
     await app.close();

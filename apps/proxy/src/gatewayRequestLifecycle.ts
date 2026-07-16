@@ -61,6 +61,7 @@ import {
   type CompressionForwardResult
 } from "./toolResultCompression.js";
 import type { JsonObject, ProviderAttempt, RouteContext, RouteDecision, Surface } from "./types.js";
+import { roughTokenEstimate } from "./util.js";
 
 export type PreparedGatewayRequest = {
   outcome: "resolved";
@@ -205,7 +206,7 @@ export class GatewayRequestLifecycle {
 
     const resolution = await this.gateway.resolve({
       identity: input.identity,
-      context: input.context,
+      context: contextForModelResolution(input.context, policy.systemPrompt),
       ingressWireId: input.surface.dialect,
       operationId: input.operationId,
       body: input.body,
@@ -378,12 +379,13 @@ export class GatewayRequestLifecycle {
       payload.adapterClassification = jsonPayload(input.adapterClassification);
     }
     if (error) payload.error = error;
+    const healthError = terminalHealthError(metadata, error);
     const healthClassification = classifyProviderTerminalHealth({
       provider: input.target.provider,
       model: input.target.upstreamModelId,
       terminalStatus: input.status,
       statusCode: input.upstreamStatus,
-      error,
+      error: healthError,
       adapterClassification: input.adapterClassification,
       now: new Date()
     });
@@ -727,4 +729,19 @@ function terminalError(metadata: JsonObject) {
   if (typeof error === "string") return error;
   if (error === undefined || error === null) return undefined;
   return JSON.stringify(error);
+}
+
+function terminalHealthError(metadata: JsonObject, error: string | undefined) {
+  const code = metadata.providerErrorCode;
+  if (typeof code !== "string" || !code) return error;
+  return error ? `${code}: ${error}` : code;
+}
+
+function contextForModelResolution(context: RouteContext, systemPrompt: string | undefined): RouteContext {
+  if (!systemPrompt) return context;
+  return {
+    ...context,
+    inputChars: context.inputChars + systemPrompt.length,
+    estimatedInputTokens: context.estimatedInputTokens + roughTokenEstimate(systemPrompt.length)
+  };
 }

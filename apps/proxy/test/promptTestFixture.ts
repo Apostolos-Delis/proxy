@@ -92,7 +92,7 @@ export async function captureFixture(
     config,
     false,
     undefined,
-    new LlmClassifier(config, metrics, classifierTargets)
+    new LlmClassifier(metrics, classifierTargets)
   );
   if (failCapture) {
     persistence.promptArtifacts.capture = async () => {
