@@ -25,14 +25,17 @@ import {
   type GatewayParameterCaps,
   type HarnessCompatibilityProfileId,
   type LogicalModelClassificationFeatures,
+  type LogicalModelRouterKind,
   type ProviderAdapterContractVersion,
   type ProviderAdapterKind
 } from "@proxy/schema";
 
-import type {
-  LogicalModelClassifier,
-  LogicalModelClassifierDeployment
+import {
+  ClassifierError,
+  type LogicalModelClassifier,
+  type LogicalModelClassifierDeployment
 } from "../classifier.js";
+import { effectiveGatewayParameters } from "../gatewayRequestConfig.js";
 import { resolveWireCompatibility } from "../wireCompatibility.js";
 import { activeClassifierDeployment } from "./classifierDeployment.js";
 import { workspaceScope } from "./scope.js";
@@ -63,11 +66,22 @@ export type ClassifierDecisionEvidence = {
   confidence: number;
 };
 
+export type ClassifierCallEvidence = {
+  provider: string;
+  model: string;
+  deploymentId: string;
+  attempts: number;
+  outcome: "succeeded" | "failed";
+  usage?: Record<string, unknown>;
+  error?: string;
+};
+
 export type ResolvedModelTarget = {
   outcome: "resolved";
   accessProfileId: string;
   logicalModelId: string;
   logicalModelSlug: string;
+  routerKind: LogicalModelRouterKind | null;
   deploymentId: string;
   upstreamModelId: string;
   providerConnectionId: string;
@@ -80,6 +94,15 @@ export type ResolvedModelTarget = {
   wireAdapterVersion: string | null;
   routerDecisionId: string | null;
   routerDecision: ClassifierDecisionEvidence | null;
+  classifierCall?: ClassifierCallEvidence;
+  parameterCaps: GatewayParameterCaps;
+};
+
+export type GrantedLogicalModel = {
+  id: string;
+  slug: string;
+  name: string;
+  createdAt: Date;
 };
 
 export const MODEL_RESOLUTION_DENIAL_CODES = [
@@ -109,17 +132,20 @@ export type ModelResolutionDenial = {
   code: ModelResolutionDenialCode;
   requestedModel: string;
   operationId: GatewayOperationId;
+  classifierCall?: ClassifierCallEvidence;
 };
 
 export type ModelResolutionResult = ResolvedModelTarget | ModelResolutionDenial;
 
 type EligibleTarget = Omit<
   ResolvedModelTarget,
-  "outcome" | "accessProfileId" | "logicalModelId" | "logicalModelSlug" | "routerDecisionId" | "routerDecision"
+  "outcome" | "accessProfileId" | "logicalModelId" | "logicalModelSlug" | "routerKind" | "routerDecisionId" | "routerDecision" | "parameterCaps"
 > & {
   targetId: string;
   priority: number;
   capabilities: GatewayModelCapabilities;
+  deploymentConfig: Record<string, unknown>;
+  requestConfig: Record<string, unknown>;
 };
 
 export type ModelResolutionOptions = {
@@ -209,11 +235,30 @@ export class ModelResolutionService {
         return denial(input, "parameter_cap_exceeded");
       }
     }
-    const targets = await this.eligibleTargets(input, logicalModel.id);
+    const eligibleTargets = await this.eligibleTargets(input, logicalModel.id);
+    let parameterCapRejected = false;
+    const targets = input.operationId === "text.generate"
+      ? eligibleTargets.filter((target) => {
+          const parameters = gatewayParameterCapsSchema.safeParse(effectiveGatewayParameters({
+            parameters: input.parameters,
+            operationId: input.operationId,
+            egressWireId: target.egressWireId,
+            deploymentConfig: target.deploymentConfig,
+            requestConfig: target.requestConfig
+          }));
+          if (!parameters.success) return false;
+          const exceeded = exceedsParameterCap(grant.parameterCaps, parameters.data);
+          if (exceeded) parameterCapRejected = true;
+          return !exceeded;
+        })
+      : eligibleTargets;
+    if (targets.length === 0 && parameterCapRejected) {
+      return denial(input, "parameter_cap_exceeded");
+    }
     if (targets.length === 0) return denial(input, "model_unavailable");
     if (logicalModel.resolutionKind === "direct") {
       if (targets.length !== 1) return denial(input, "direct_target_count_invalid");
-      return resolvedTarget(profile.id, logicalModel, targets[0]!, null, null);
+      return resolvedTarget(profile.id, logicalModel, targets[0]!, grant.parameterCaps, null, null);
     }
     if (logicalModel.routerKind !== "classifier") return denial(input, "router_config_invalid");
 
@@ -247,8 +292,16 @@ export class ModelResolutionService {
         classifierModel: classifierTarget.model,
         request: classificationRequest.data
       }, classifierTarget);
-    } catch {
-      return denial(input, "classifier_failed");
+    } catch (error) {
+      return denial(input, "classifier_failed", {
+        provider: classifierTarget.provider,
+        model: classifierTarget.model,
+        deploymentId: config.data.classifierDeploymentId,
+        attempts: error instanceof ClassifierError ? error.attempts : 0,
+        outcome: "failed",
+        usage: error instanceof ClassifierError ? error.usage : undefined,
+        error: error instanceof Error ? error.message : "Classifier failed."
+      });
     }
 
     const selected = targets.find((target) => target.targetId === decision.targetId);
@@ -265,9 +318,81 @@ export class ModelResolutionService {
       profile.id,
       logicalModel,
       selected,
+      grant.parameterCaps,
       this.options.decisionId?.() ?? randomUUID(),
-      evidence
+      evidence,
+      {
+        provider: classifierTarget.provider,
+        model: classifierTarget.model,
+        deploymentId: config.data.classifierDeploymentId,
+        attempts: decision.attempts,
+        outcome: "succeeded",
+        usage: decision.usage
+      }
     );
+  }
+
+  async listGrantedModels(input: {
+    organizationId: string;
+    workspaceId: string;
+    apiKeyId: string;
+  }): Promise<GrantedLogicalModel[]> {
+    const [apiKey] = await this.db
+      .select({
+        accessProfileId: apiKeys.accessProfileId,
+        expiresAt: apiKeys.expiresAt,
+        revokedAt: apiKeys.revokedAt
+      })
+      .from(apiKeys)
+      .where(and(
+        workspaceScope(apiKeys, input.organizationId, input.workspaceId),
+        eq(apiKeys.id, input.apiKeyId)
+      ))
+      .limit(1);
+    const now = this.options.now?.() ?? new Date();
+    if (
+      !apiKey?.accessProfileId ||
+      apiKey.revokedAt ||
+      (apiKey.expiresAt && apiKey.expiresAt <= now)
+    ) return [];
+
+    const rows = await this.db
+      .select({
+        id: logicalModels.id,
+        slug: logicalModels.slug,
+        name: logicalModels.name,
+        createdAt: logicalModels.createdAt,
+        profileStatus: accessProfiles.status,
+        enabled: accessProfileModelGrants.enabled,
+        allowedOperations: accessProfileModelGrants.allowedOperations
+      })
+      .from(accessProfileModelGrants)
+      .innerJoin(accessProfiles, and(
+        eq(accessProfiles.organizationId, accessProfileModelGrants.organizationId),
+        eq(accessProfiles.workspaceId, accessProfileModelGrants.workspaceId),
+        eq(accessProfiles.id, accessProfileModelGrants.accessProfileId)
+      ))
+      .innerJoin(logicalModels, and(
+        eq(logicalModels.organizationId, accessProfileModelGrants.organizationId),
+        eq(logicalModels.workspaceId, accessProfileModelGrants.workspaceId),
+        eq(logicalModels.id, accessProfileModelGrants.logicalModelId)
+      ))
+      .where(and(
+        workspaceScope(accessProfileModelGrants, input.organizationId, input.workspaceId),
+        workspaceScope(accessProfiles, input.organizationId, input.workspaceId),
+        workspaceScope(logicalModels, input.organizationId, input.workspaceId),
+        eq(accessProfiles.id, apiKey.accessProfileId),
+        eq(logicalModels.status, "active")
+      ))
+      .orderBy(asc(logicalModels.slug));
+
+    return rows
+      .filter((row) => (
+        row.profileStatus === "active" &&
+        row.enabled &&
+        row.allowedOperations.includes("model.list")
+      ))
+      .map(({ id, slug, name, createdAt }) => ({ id, slug, name, createdAt }));
   }
 
   private async eligibleTargets(input: ResolveModelInput, logicalModelId: string) {
@@ -281,10 +406,12 @@ export class ModelResolutionService {
         providerAdapterKind: providerConnections.adapterKind,
         canonicalCapabilities: canonicalModels.capabilities,
         deploymentCapabilities: modelDeployments.capabilities,
+        deploymentConfig: modelDeployments.config,
         bindingId: deploymentWireBindings.id,
         egressWireId: deploymentWireBindings.apiWireId,
         endpointPath: deploymentWireBindings.endpointPath,
-        providerAdapterContractVersion: deploymentWireBindings.adapterContractVersion
+        providerAdapterContractVersion: deploymentWireBindings.adapterContractVersion,
+        requestConfig: deploymentWireBindings.requestConfig
       })
       .from(logicalModelTargets)
       .innerJoin(modelDeployments, and(
@@ -383,16 +510,19 @@ export class ModelResolutionService {
 
 function resolvedTarget(
   accessProfileId: string,
-  logicalModel: { id: string; slug: string },
+  logicalModel: { id: string; slug: string; routerKind: LogicalModelRouterKind | null },
   target: EligibleTarget,
+  parameterCaps: GatewayParameterCaps,
   routerDecisionId: string | null,
-  routerDecision: ClassifierDecisionEvidence | null
+  routerDecision: ClassifierDecisionEvidence | null,
+  classifierCall?: ClassifierCallEvidence
 ): ResolvedModelTarget {
   return {
     outcome: "resolved",
     accessProfileId,
     logicalModelId: logicalModel.id,
     logicalModelSlug: logicalModel.slug,
+    routerKind: logicalModel.routerKind,
     deploymentId: target.deploymentId,
     upstreamModelId: target.upstreamModelId,
     providerConnectionId: target.providerConnectionId,
@@ -404,11 +534,13 @@ function resolvedTarget(
     wireAdapterId: target.wireAdapterId,
     wireAdapterVersion: target.wireAdapterVersion,
     routerDecisionId,
-    routerDecision
+    routerDecision,
+    classifierCall,
+    parameterCaps
   };
 }
 
-function exceedsParameterCap(caps: GatewayParameterCaps, parameters: GatewayParameterCaps | undefined) {
+export function exceedsParameterCap(caps: GatewayParameterCaps, parameters: GatewayParameterCaps | undefined) {
   const configuredCaps = Object.values(caps).filter((value): value is number => value !== undefined);
   const requestedValues = Object.values(parameters ?? {}).filter((value): value is number => value !== undefined);
   if (configuredCaps.length === 0) return false;
@@ -416,11 +548,16 @@ function exceedsParameterCap(caps: GatewayParameterCaps, parameters: GatewayPara
   return Math.max(...requestedValues) > Math.min(...configuredCaps);
 }
 
-function denial(input: ResolveModelInput, code: ModelResolutionDenialCode): ModelResolutionDenial {
+function denial(
+  input: ResolveModelInput,
+  code: ModelResolutionDenialCode,
+  classifierCall?: ClassifierCallEvidence
+): ModelResolutionDenial {
   return {
     outcome: "denied",
     code,
     requestedModel: input.requestedModel,
-    operationId: input.operationId
+    operationId: input.operationId,
+    classifierCall
   };
 }

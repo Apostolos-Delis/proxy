@@ -4,12 +4,9 @@ import {
   canVisitStep,
   initialDraft,
   nextStepId,
-  orgDefaultConfigLabel,
   prevStepId,
   stepBlockerMessage,
   stepRailState,
-  withCreatedProviderKey,
-  withProviderKeyMode,
   type CreateKeyDraft
 } from "./wizard";
 
@@ -18,58 +15,11 @@ function draftAt(stepId: CreateKeyDraft["stepId"], overrides: Partial<CreateKeyD
 }
 
 describe("initialDraft", () => {
-  it("starts on configure with the default harnesses and no bindings", () => {
+  it("starts on configure with the default harnesses and no access profile", () => {
     const draft = initialDraft();
     expect(draft.stepId).toBe("configure");
     expect(draft.harnesses).toEqual(["claude-code", "codex"]);
-    expect(draft.routingConfigId).toBeNull();
-    expect(draft.linkProviderKeys).toBe(false);
-    expect(Object.values(draft.providerBindings)).toEqual([null, null]);
-  });
-});
-
-describe("withProviderKeyMode", () => {
-  it("clears bindings when switching back to the company default", () => {
-    const draft = { ...initialDraft(), linkProviderKeys: true };
-    draft.providerBindings.anthropic = "acct_1";
-    const next = withProviderKeyMode(draft, false);
-    expect(next.linkProviderKeys).toBe(false);
-    expect(Object.values(next.providerBindings)).toEqual([null, null]);
-  });
-
-  it("preserves bindings when switching to own keys", () => {
-    const draft = { ...initialDraft(), linkProviderKeys: true };
-    draft.providerBindings.anthropic = "acct_1";
-    const next = withProviderKeyMode(draft, true);
-    expect(next.linkProviderKeys).toBe(true);
-    expect(next.providerBindings.anthropic).toBe("acct_1");
-  });
-});
-
-describe("withCreatedProviderKey", () => {
-  it("flips to own keys and binds the new account", () => {
-    const next = withCreatedProviderKey(initialDraft(), "anthropic", "acct_new");
-    expect(next.linkProviderKeys).toBe(true);
-    expect(next.providerBindings.anthropic).toBe("acct_new");
-  });
-
-  it("preserves the other provider's existing binding", () => {
-    const draft = { ...initialDraft(), linkProviderKeys: true };
-    draft.providerBindings.openai = "acct_openai";
-    const next = withCreatedProviderKey(draft, "anthropic", "acct_new");
-    expect(next.providerBindings.anthropic).toBe("acct_new");
-    expect(next.providerBindings.openai).toBe("acct_openai");
-  });
-});
-
-describe("orgDefaultConfigLabel", () => {
-  it("shows the default config's real name", () => {
-    expect(orgDefaultConfigLabel({ name: "Default routing config" }))
-      .toBe("Default routing config (organization default)");
-  });
-
-  it("falls back when no default config exists", () => {
-    expect(orgDefaultConfigLabel(null)).toBe("Organization default");
+    expect(draft.accessProfileId).toBe("");
   });
 });
 
@@ -83,9 +33,10 @@ describe("stepBlockerMessage", () => {
     expect(stepBlockerMessage(draftAt("configure", { harnesses: [] }))).toBe("Pick at least one harness.");
   });
 
-  it("passes a valid configure step and never blocks later steps", () => {
+  it("requires an access profile on the access step", () => {
     expect(stepBlockerMessage(draftAt("configure"))).toBeNull();
-    expect(stepBlockerMessage(draftAt("routing", { name: "" }))).toBeNull();
+    expect(stepBlockerMessage(draftAt("routing"))).toBe("Pick an access profile.");
+    expect(stepBlockerMessage(draftAt("routing", { accessProfileId: "profile_1" }))).toBeNull();
     expect(stepBlockerMessage(draftAt("create"))).toBeNull();
   });
 });

@@ -1,4 +1,7 @@
+import { GATEWAY_SETUP_MODEL_PREFERENCE } from "@proxy/schema";
+
 const heredocDelimiter = "PP_CODEX_EOF";
+const setupModelPreference = JSON.stringify(GATEWAY_SETUP_MODEL_PREFERENCE);
 
 function escapeDoubleQuoted(value: string) {
   return value.replace(/[\\"$`]/g, (char) => `\\${char}`);
@@ -113,6 +116,45 @@ if [ -z "$PP_TOKEN" ]; then
   echo "No API key provided. Re-run as: curl -fsSL $PP_BASE_URL/setup.sh | bash -s --$PP_HARNESS_FLAGS <api-key>" >&2
   exit 1
 fi
+
+if ! PP_MODELS_JSON="$(curl -fsS -H "Authorization: Bearer $PP_TOKEN" "$PP_BASE_URL/v1/models")"; then
+  echo "Could not load the models granted to this API key from $PP_BASE_URL/v1/models." >&2
+  exit 1
+fi
+PP_MODEL=""
+if command -v node >/dev/null 2>&1; then
+  PP_MODEL="$(printf '%s' "$PP_MODELS_JSON" | node -e '
+const fs = require("fs");
+try {
+  const response = JSON.parse(fs.readFileSync(0, "utf8"));
+  const ids = Array.isArray(response.data)
+    ? response.data.map((entry) => entry && entry.id).filter((id) => typeof id === "string" && id.length > 0)
+    : [];
+  const preferred = ${setupModelPreference}.find((id) => ids.includes(id));
+  if (preferred || ids[0]) process.stdout.write(preferred || ids[0]);
+} catch {}
+' 2>/dev/null || true)"
+elif command -v python3 >/dev/null 2>&1; then
+  PP_MODEL="$(printf '%s' "$PP_MODELS_JSON" | python3 -c '
+import json, sys
+try:
+    response = json.load(sys.stdin)
+    ids = [entry.get("id") for entry in response.get("data", []) if isinstance(entry, dict) and isinstance(entry.get("id"), str) and entry.get("id")]
+    preferred = next((model for model in ${setupModelPreference} if model in ids), None)
+    if preferred or ids:
+        sys.stdout.write(preferred or ids[0])
+except Exception:
+    pass
+' 2>/dev/null || true)"
+else
+  echo "Model discovery requires node or python3." >&2
+  exit 1
+fi
+if [ -z "$PP_MODEL" ]; then
+  echo "This API key has no enabled models." >&2
+  exit 1
+fi
+echo "model: $PP_MODEL"
 
 if [ "$PP_HARNESS_COUNT" -gt 1 ]; then
   PP_TOKEN_PATH="$HOME/.proxy/token"
@@ -305,7 +347,7 @@ function setEnv(key, value) {
     conflicts.push(path);
   }
 }
-setTopLevel("model", "claude-router-auto");
+setTopLevel("model", process.argv[4]);
 if (!isObject(settings.env)) {
   if (settings.env === undefined || managed.has("env")) {
     settings.env = {};
@@ -338,7 +380,7 @@ if (nextManaged.length > 0) {
   fs.chmodSync(markerFile, 0o600);
 }
 fs.writeFileSync(file, JSON.stringify(settings, null, 2) + "\\n");
-' "$PP_BASE_URL" "$PP_TOKEN_PATH_DISPLAY" "$PP_CLAUDE_MARKER_FILE"
+' "$PP_BASE_URL" "$PP_TOKEN_PATH_DISPLAY" "$PP_CLAUDE_MARKER_FILE" "$PP_MODEL"
     echo "claude: configured ~/.claude/settings.json"
   else
     echo "claude: node not found - set model/env/apiKeyHelper in ~/.claude/settings.json by hand" >&2
@@ -379,7 +421,7 @@ if [ "$PP_SETUP_CODEX" -eq 1 ]; then
   PP_CODEX_PROVIDER_END="# <<< proxy codex provider $PP_CODEX_PROVIDER <<<"
   tmp_codex_defaults="$(mktemp)"
   cat > "$tmp_codex_defaults" <<${heredocDelimiter}
-model = "gpt-5.5"
+model = "$PP_MODEL"
 model_provider = "$PP_CODEX_PROVIDER"
 ${heredocDelimiter}
   tmp_codex_provider="$(mktemp)"
@@ -447,6 +489,7 @@ const baseUrl = process.argv[3];
 const tokenFile = process.argv[4];
 const configMarkerFile = process.argv[5];
 const authMarkerFile = process.argv[6];
+const model = process.argv[7];
 const providerId = "prompt-chat";
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return {}; }
@@ -475,12 +518,8 @@ if (isObject(config.provider)) {
     name: "Proxy Chat",
         options: Object.assign({}, isObject(existingProvider?.options) ? existingProvider.options : {}, { baseURL: baseUrl + "/v1" }),
         models: Object.assign({}, isObject(existingProvider?.models) ? existingProvider.models : {}, {
-      "router-auto": { name: "Router Auto" },
-      "router-fast": { name: "Router Fast" },
-      "router-balanced": { name: "Router Balanced" },
-      "router-hard": { name: "Router Hard" },
-      "router-deep": { name: "Router Deep" }
-    })
+          [model]: { name: model }
+        })
   })
     });
     nextManagedConfig.push("provider." + providerId);
@@ -491,11 +530,11 @@ if (isObject(config.provider)) {
   conflicts.push("provider");
 }
 if (config.model === undefined || managedConfig.has("model")) {
-  config.model = "prompt-chat/router-auto";
+  config.model = providerId + "/" + model;
   nextManagedConfig.push("model");
 }
 if (config.small_model === undefined || managedConfig.has("small_model")) {
-  config.small_model = "prompt-chat/router-fast";
+  config.small_model = providerId + "/" + model;
   nextManagedConfig.push("small_model");
 }
 if (nextManagedConfig.length > 0) {
@@ -516,7 +555,7 @@ if (conflicts.length > 0) {
 }
 fs.writeFileSync(authFile, JSON.stringify(auth, null, 2) + "\\n", { mode: 0o600 });
 fs.chmodSync(authFile, 0o600);
-' "$PP_OPENCODE_CONFIG_FILE" "$PP_OPENCODE_AUTH_FILE" "$PP_BASE_URL" "$PP_TOKEN_PATH" "$PP_OPENCODE_CONFIG_MARKER_FILE" "$PP_OPENCODE_AUTH_MARKER_FILE"
+' "$PP_OPENCODE_CONFIG_FILE" "$PP_OPENCODE_AUTH_FILE" "$PP_BASE_URL" "$PP_TOKEN_PATH" "$PP_OPENCODE_CONFIG_MARKER_FILE" "$PP_OPENCODE_AUTH_MARKER_FILE" "$PP_MODEL"
     echo "opencode: configured ~/.config/opencode/opencode.json"
     echo "opencode: stored credential in ~/.local/share/opencode/auth.json"
   else
@@ -529,7 +568,7 @@ if [ "$PP_HARNESS_COUNT" -eq 1 ] && [ "$PP_SETUP_CODEX" -eq 1 ]; then
 elif [ "$PP_HARNESS_COUNT" -eq 1 ] && [ "$PP_SETUP_CLAUDE" -eq 1 ]; then
   echo "Done. Open a new terminal and run: claude"
 elif [ "$PP_HARNESS_COUNT" -eq 1 ] && [ "$PP_SETUP_OPENCODE" -eq 1 ]; then
-  echo "Done. Open opencode and select prompt-chat/router-auto from /models"
+  echo "Done. Open opencode and select prompt-chat/$PP_MODEL from /models"
 else
   PP_LAUNCH=""
   [ "$PP_SETUP_CLAUDE" -eq 1 ] && PP_LAUNCH="claude"
@@ -547,7 +586,7 @@ else
     esac
   fi
   if [ "$PP_SETUP_OPENCODE" -eq 1 ]; then
-    echo "Open opencode and select prompt-chat/router-auto from /models"
+    echo "Open opencode and select prompt-chat/$PP_MODEL from /models"
   fi
 fi
 `;

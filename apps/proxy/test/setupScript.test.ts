@@ -1,13 +1,34 @@
 import { spawnSync } from "node:child_process";
-import { lstatSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { loadConfig } from "../src/config.js";
 import { buildServer } from "../src/server.js";
 import { buildSetupScript } from "../src/setupScript.js";
+
+const originalPath = process.env.PATH;
+const fakeBin = mkdtempSync(join(tmpdir(), "proxy-setup-bin-"));
+
+beforeAll(() => {
+  const curl = join(fakeBin, "curl");
+  writeFileSync(curl, `#!/bin/sh
+if [ -n "\${PP_TEST_MODELS_JSON:-}" ]; then
+  printf '%s' "$PP_TEST_MODELS_JSON"
+else
+  printf '%s' '{"data":[{"id":"coding-auto"},{"id":"economy-auto"},{"id":"fable"}]}'
+fi
+`);
+  chmodSync(curl, 0o755);
+  process.env.PATH = `${fakeBin}:${originalPath ?? ""}`;
+});
+
+afterAll(() => {
+  process.env.PATH = originalPath;
+  rmSync(fakeBin, { recursive: true, force: true });
+});
 
 function testEnv(overrides: NodeJS.ProcessEnv = {}) {
   return {
@@ -36,6 +57,7 @@ describe("buildSetupScript", () => {
     const script = buildSetupScript("https://proxy.example.com");
     expect(script).toContain('PP_BASE_URL="https://proxy.example.com"');
     expect(script).toContain('base_url = "$PP_BASE_URL/v1"');
+    expect(script).toContain('-H "Authorization: Bearer $PP_TOKEN" "$PP_BASE_URL/v1/models"');
   });
 
   it("keeps the idempotency and permission guards", () => {
@@ -98,7 +120,7 @@ env_key = "OLD_PROXY_TOKEN"
 
       expect(result.status).toBe(0);
       const config = readFileSync(join(codexDir, "config.toml"), "utf8");
-      expect(config).toContain('model = "gpt-5.5"');
+      expect(config).toContain('model = "coding-auto"');
       expect(config).toContain('model_provider = "proxy"');
       expect(config).toContain("[features]");
       expect(config).toContain("goals = true");
@@ -233,7 +255,7 @@ env_key = "OLD_PROXY_TOKEN"
       expect(lstatSync(join(codexDir, "config.toml")).isSymbolicLink()).toBe(true);
       expect(lstatSync(join(home, ".zshrc")).isSymbolicLink()).toBe(true);
       const config = readFileSync(managedCodexConfig, "utf8");
-      expect(config).toContain('model = "gpt-5.5"');
+      expect(config).toContain('model = "coding-auto"');
       expect(config).toContain('model_provider = "proxy"');
       expect(config).toContain("[features]");
       expect(config).toContain("goals = true");
@@ -272,7 +294,7 @@ env_key = "OLD_PROXY_TOKEN"
       expect(result.status).toBe(0);
       expect(readFileSync(join(home, ".proxy", "codex.token"), "utf8")).toBe("codex-token\n");
       const config = readFileSync(join(home, ".codex", "config.toml"), "utf8");
-      expect(config).toContain('model = "gpt-5.5"');
+      expect(config).toContain('model = "coding-auto"');
       expect(config).toContain('model_provider = "proxy_codex"');
       expect(config).toContain("[model_providers.proxy_codex]");
       expect(config).toContain('env_key = "PROXY_CODEX_TOKEN"');
@@ -300,7 +322,7 @@ env_key = "OLD_PROXY_TOKEN"
       expect(result.status).toBe(0);
       expect(result.stdout.toString()).toContain(`codex: wrote ${codexHome}/config.toml`);
       const config = readFileSync(join(codexHome, "config.toml"), "utf8");
-      expect(config).toContain('model = "gpt-5.5"');
+      expect(config).toContain('model = "coding-auto"');
       expect(config).toContain('model_provider = "proxy_codex"');
       expect(config).toContain('env_key = "PROXY_CODEX_TOKEN"');
       expect(config).toContain("supports_websockets = false");
@@ -446,7 +468,7 @@ env_key = "OLD_PROXY_TOKEN"
       const config = JSON.parse(readFileSync(join(xdgConfig, "opencode", "opencode.json"), "utf8"));
       expect(config.provider["prompt-chat"].npm).toBe("@ai-sdk/openai-compatible");
       expect(config.provider["prompt-chat"].options.baseURL).toBe("https://proxy.example.com/v1");
-      expect(config.model).toBe("prompt-chat/router-auto");
+      expect(config.model).toBe("prompt-chat/coding-auto");
       const auth = JSON.parse(readFileSync(join(xdgData, "opencode", "auth.json"), "utf8"));
       expect(auth["prompt-chat"]).toEqual({ type: "api", key: "open-token" });
       expect(spawnSync("test", ["!", "-e", join(home, ".codex", "config.toml")]).status).toBe(0);
@@ -548,6 +570,36 @@ env_key = "OLD_PROXY_TOKEN"
       expect(opencodeAuth["prompt-chat"]).toEqual({ type: "api", key: "multi-token" });
       expect(result.stdout.toString()).toContain("Done. Open a new terminal and run one of: claude, codex");
       expect(result.stdout.toString()).not.toContain("run: claude codex");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("configures every harness with a model granted to the API key", () => {
+    const home = mkdtempSync(join(tmpdir(), "proxy-setup-economy-"));
+    const xdgConfig = join(home, "xdg-config");
+    const xdgData = join(home, "xdg-data");
+    try {
+      const result = spawnSync("bash", ["-s", "--", "--harness", "claude-code", "--harness", "codex", "--harness", "opencode", "external-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: {
+          ...process.env,
+          HOME: home,
+          XDG_CONFIG_HOME: xdgConfig,
+          XDG_DATA_HOME: xdgData,
+          PP_TEST_MODELS_JSON: JSON.stringify({ data: [{ id: "economy-auto" }] })
+        }
+      });
+
+      expect(result.status, result.stderr.toString()).toBe(0);
+      const claude = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
+      expect(claude.model).toBe("economy-auto");
+      expect(readFileSync(join(home, ".codex", "config.toml"), "utf8"))
+        .toContain('model = "economy-auto"');
+      const opencode = JSON.parse(readFileSync(join(xdgConfig, "opencode", "opencode.json"), "utf8"));
+      expect(opencode.model).toBe("prompt-chat/economy-auto");
+      expect(opencode.small_model).toBe("prompt-chat/economy-auto");
+      expect(Object.keys(opencode.provider["prompt-chat"].models)).toEqual(["economy-auto"]);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

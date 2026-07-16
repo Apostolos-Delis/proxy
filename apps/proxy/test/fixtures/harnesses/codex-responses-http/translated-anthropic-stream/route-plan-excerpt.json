@@ -3,8 +3,6 @@
   "surface": "openai-responses",
   "provider": "cross-anthropic-responses",
   "selectedModel": "claude-opus-4-8-responses-cross",
-  "reasoningEffort": "high",
-  "guardrailActions": [
-    "translated_request:openai-responses_to_anthropic-messages"
-  ]
+  "egressWireId": "anthropic-messages",
+  "wireAdapterVersion": "1"
 }

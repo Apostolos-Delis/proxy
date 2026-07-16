@@ -39,6 +39,5 @@
   "reasoning": {
     "effort": "high"
   },
-  "max_output_tokens": 444,
-  "store": false
+  "max_output_tokens": 444
 }

@@ -3,6 +3,6 @@
   "surface": "openai-responses",
   "provider": "openai",
   "selectedModel": "gpt-codex-ws-native",
-  "reasoningEffort": "high",
-  "verbosity": "medium"
+  "egressWireId": "openai-responses",
+  "wireAdapterVersion": null
 }

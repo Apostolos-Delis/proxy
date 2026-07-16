@@ -140,6 +140,13 @@ describe("postgres persistence", () => {
   it("persists request lifecycle rows and usage cost from events", async () => {
     const fixture = await persistenceFixture("org_cost");
     const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_cost");
+    await seedDatabase(fixture.db, seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_cost",
+      SEED_USER_ID: "user_cost",
+      PROXY_TOKEN: "token_cost"
+    }));
+    const workspaceId = defaultWorkspaceId("org_cost");
+    const deploymentId = `${workspaceId}:deployment:openai:gpt-5.5`;
 
     await eventService.append({
       scopeType: "request",
@@ -221,6 +228,10 @@ describe("postgres persistence", () => {
         provider: "openai",
         model: "gpt-5.5",
         providerAttemptId: "attempt_cost",
+        deploymentId,
+        providerConnectionId: `${workspaceId}:connection:openai`,
+        egressWireId: "openai-responses",
+        providerAdapterContractVersion: "1",
         routeCandidateId: "candidate_0",
         attemptIndex: 0,
         fallbackIndex: 0
@@ -895,7 +906,7 @@ describe("postgres persistence", () => {
     expect(sessionRows[0]?.id).toBe("org_verbatim:workspace:default:openai-chat:chat-session");
   });
 
-  it("books absent provider/surface as the unknown sentinel on attempts and classifier usage", async () => {
+  it("books absent provider and surface as unknown sentinels on attempts", async () => {
     const fixture = await persistenceFixture("org_absent");
     const eventService = new EventService(undefined, undefined, fixture.persistence.eventSink, "org_absent");
     const append = (eventType: string, payload: Record<string, unknown>) =>
@@ -915,21 +926,15 @@ describe("postgres persistence", () => {
       inputHash: "sha256:input",
       inputChars: 10
     });
-    await append("routing.classification_recorded", {
-      model: "gpt-5-nano",
-      usage: { input_tokens: 5, output_tokens: 1, total_tokens: 6 }
-    });
     await append("provider.request_started", {
       model: "mystery-model",
       providerAttemptId: "attempt_absent"
     });
 
     const attemptRows = await fixture.db.select().from(providerAttempts).where(eq(providerAttempts.id, "attempt_absent"));
-    const classifierRows = await fixture.db.select().from(usageLedger).where(eq(usageLedger.id, "usage_classifier_request_absent"));
 
     expect(attemptRows[0]?.surface).toBe("unknown");
     expect(attemptRows[0]?.provider).toBe("unknown");
-    expect(classifierRows[0]?.provider).toBe("unknown");
   });
 
   it("treats a route context with an unrecognized surface as absent", async () => {
@@ -947,6 +952,26 @@ describe("postgres persistence", () => {
   it("keeps provider terminal state owned by terminal event projection", async () => {
     const fixture = await persistenceFixture("org_terminal_owner");
     await fixture.persistence.requestStates.begin("idem_terminal", "request_terminal", routeContext());
+    const eventService = new EventService(
+      undefined,
+      undefined,
+      fixture.persistence.eventSink,
+      "org_terminal_owner"
+    );
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_terminal",
+      correlationId: "request_terminal",
+      idempotencyKey: "idem_terminal",
+      producer: "test",
+      eventType: "provider.request_started",
+      payload: {
+        surface: "openai-responses",
+        provider: "openai",
+        model: "gpt-test",
+        providerAttemptId: "attempt_terminal"
+      }
+    });
     await fixture.persistence.requestStates.markProviderPending("idem_terminal", "attempt_terminal");
     await fixture.persistence.requestStates.finish("idem_terminal", "completed", {
       providerAttemptId: "attempt_terminal"
@@ -989,7 +1014,7 @@ describe("postgres persistence", () => {
       organizationId: "org_api_key",
       workspaceId: defaultWorkspaceId("org_api_key"),
       userId: undefined,
-      routingConfigId: null
+      accessProfileId: null
     });
     expect(rowsBeforeFlush[0]?.lastUsedAt).toBeNull();
     expect(rows[0]?.lastUsedAt?.toISOString()).toBe("2026-06-08T00:00:04.000Z");
@@ -1036,7 +1061,7 @@ describe("postgres persistence", () => {
     expect(expiredAfterRevoke).toBeUndefined();
   });
 
-  it("resolves api key routing config assignments", async () => {
+  it("does not expose legacy routing config assignments through runtime identity", async () => {
     const fixture = await persistenceFixture("org_assigned_api_key");
     await fixture.db.insert(organizations).values({
       id: "org_assigned_api_key",
@@ -1070,9 +1095,9 @@ describe("postgres persistence", () => {
 
     expect(identity).toEqual(expect.objectContaining({
       apiKeyId: "api_key_assigned",
-      organizationId: "org_assigned_api_key",
-      routingConfigId: "routing_config_assigned"
+      organizationId: "org_assigned_api_key"
     }));
+    expect(identity).not.toHaveProperty("routingConfigId");
   });
 
   it("resolves the seeded local proxy token through the API-key identity store", async () => {
@@ -1089,7 +1114,7 @@ describe("postgres persistence", () => {
       apiKeyId: "org_seed_identity:api-key:default",
       organizationId: "org_seed_identity",
       userId: "seed_identity_user",
-      routingConfigId: "org_seed_identity:routing-config:default"
+      accessProfileId: "org_seed_identity:workspace:default:access-profile:opendoor-engineer"
     }));
   });
 

@@ -91,15 +91,20 @@ describe("API key admin APIs", () => {
 
     const assignedResult = await assignRoutingConfig(fixture, "api_key_assignable", targetConfig.id);
     const assigned = assignedResult.data?.assignApiKeyRoutingConfig;
-    const assignedIdentity = await fixture.persistence.apiKeys.resolve("assignment-token");
+    const [assignedRow] = await fixture.db
+      .select({ routingConfigId: apiKeys.routingConfigId })
+      .from(apiKeys)
+      .where(eq(apiKeys.id, "api_key_assignable"));
 
     const clearedResult = await assignRoutingConfig(fixture, "api_key_assignable", null);
     const cleared = clearedResult.data?.assignApiKeyRoutingConfig;
-    const clearedIdentity = await fixture.persistence.apiKeys.resolve("assignment-token");
+    const [clearedRow] = await fixture.db
+      .select({ routingConfigId: apiKeys.routingConfigId })
+      .from(apiKeys)
+      .where(eq(apiKeys.id, "api_key_assignable"));
     const resolvedAfterClear = await fixture.persistence.routingConfigs.resolve({
       organizationId: "org_api_key_admin_assign",
-      workspaceId: defaultWorkspaceId("org_api_key_admin_assign"),
-      routingConfigId: clearedIdentity?.routingConfigId
+      workspaceId: defaultWorkspaceId("org_api_key_admin_assign")
     });
     const eventRows = await fixture.db
       .select()
@@ -116,14 +121,14 @@ describe("API key admin APIs", () => {
         status: "active"
       })
     }));
-    expect(assignedIdentity?.routingConfigId).toBe(targetConfig.id);
+    expect(assignedRow?.routingConfigId).toBe(targetConfig.id);
     expect(clearedResult.errors).toBeUndefined();
     expect(cleared).toEqual(expect.objectContaining({
       id: "api_key_assignable",
       routingConfigId: null,
       routingConfig: null
     }));
-    expect(clearedIdentity?.routingConfigId).toBeNull();
+    expect(clearedRow?.routingConfigId).toBeNull();
     expect(resolvedAfterClear.configId).toBe("org_api_key_admin_assign:routing-config:default");
     expect(eventRows).toEqual([
       expect.objectContaining({
@@ -159,12 +164,9 @@ describe("API key admin APIs", () => {
 
   it("creates API keys whose secret resolves for proxy auth", async () => {
     const fixture = await setup("org_api_key_admin_create");
-    const targetConfig = await createRoutingConfig(fixture, "org_api_key_admin_create", "Create config");
+    const accessProfileId = engineerAccessProfileId("org_api_key_admin_create");
 
-    const response = await postApiKey(fixture, {
-      name: "Proxy key",
-      routingConfigId: targetConfig.id
-    });
+    const response = await postApiKey(fixture, { name: "Proxy key" });
     const created = response.data?.createApiKey;
     const identity = await fixture.persistence.apiKeys.resolve(created.secret);
     const list = (await adminGql(
@@ -182,13 +184,13 @@ describe("API key admin APIs", () => {
     expect(created.apiKey).toEqual(expect.objectContaining({
       name: "Proxy key",
       userId: "local-user",
-      routingConfigId: targetConfig.id,
+      routingConfigId: null,
       revokedAt: null
     }));
     expect(identity).toEqual(expect.objectContaining({
       apiKeyId: created.apiKey.id,
       organizationId: "org_api_key_admin_create",
-      routingConfigId: targetConfig.id
+      accessProfileId
     }));
     expect(JSON.stringify(list)).not.toContain(created.secret);
     expect(eventRows).toEqual([
@@ -202,9 +204,7 @@ describe("API key admin APIs", () => {
           apiKeyId: created.apiKey.id,
           name: "Proxy key",
           userId: "local-user",
-          routingConfigId: targetConfig.id,
-          routingConfigVersionId: expect.any(String),
-          routingConfigHash: expect.stringMatching(/^[a-f0-9]{64}$/)
+          accessProfileId
         })
       })
     ]);
@@ -212,19 +212,11 @@ describe("API key admin APIs", () => {
 
   it("rejects invalid API key create requests", async () => {
     const fixture = await setup("org_api_key_admin_create_invalid");
-    await fixture.db.insert(routingConfigs).values({
-      id: "org_api_key_admin_create_invalid:routing-config:archived",
-      organizationId: "org_api_key_admin_create_invalid",
-      workspaceId: defaultWorkspaceId("org_api_key_admin_create_invalid"),
-      name: "Archived config",
-      slug: "archived",
-      status: "archived"
-    });
 
     const missingName = await postApiKey(fixture, { name: "" });
-    const archivedConfig = await postApiKey(fixture, {
-      name: "Archived target key",
-      routingConfigId: "org_api_key_admin_create_invalid:routing-config:archived"
+    const missingProfile = await postApiKey(fixture, {
+      name: "Missing profile key",
+      accessProfileId: "missing-profile"
     });
     const keyRows = await fixture.db
       .select()
@@ -233,8 +225,8 @@ describe("API key admin APIs", () => {
 
     expect(missingName.errors?.[0]?.message).toBe("invalid_api_key_request");
     expect(missingName.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
-    expect(archivedConfig.errors?.[0]?.message).toBe("routing_config_archived");
-    expect(archivedConfig.errors?.[0]?.extensions?.code).toBe("CONFLICT");
+    expect(missingProfile.errors?.[0]?.message).toBe("access_profile_not_found");
+    expect(missingProfile.errors?.[0]?.extensions?.code).toBe("NOT_FOUND");
     expect(keyRows.map((row) => row.id)).toEqual(["org_api_key_admin_create_invalid:api-key:default"]);
   });
 
@@ -424,7 +416,12 @@ describe("API key admin APIs", () => {
           secret
         }
       }`,
-      { input }
+      {
+        input: {
+          accessProfileId: engineerAccessProfileId(fixture.config.defaultOrganizationId),
+          ...input
+        }
+      }
     );
   }
 
@@ -439,3 +436,7 @@ describe("API key admin APIs", () => {
     );
   }
 });
+
+function engineerAccessProfileId(organizationId: string) {
+  return `${defaultWorkspaceId(organizationId)}:access-profile:opendoor-engineer`;
+}

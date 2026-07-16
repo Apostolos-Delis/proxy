@@ -130,6 +130,29 @@ describe("gateway resolution evidence persistence", () => {
       .from(routeDecisions)
       .where(eq(routeDecisions.requestId, "request_rollback"))).toEqual([]);
 
+    await appendRequest(eventService, "request_denied", "idem_denied", admissionEvidence);
+    await eventService.append({
+      scopeType: "request",
+      scopeId: "request_denied",
+      correlationId: "request_denied",
+      idempotencyKey: "idem_denied",
+      producer: "test",
+      eventType: "routing.decision_recorded",
+      payload: {
+        outcome: "reject",
+        requestedModel: "fable",
+        error: "model_unavailable",
+        policyVersion: "gateway-v1",
+        ...admissionEvidence
+      }
+    });
+    const [deniedDecision] = await fixture.db
+      .select()
+      .from(routeDecisions)
+      .where(eq(routeDecisions.requestId, "request_denied"));
+    expect(deniedDecision).toMatchObject(admissionEvidence);
+    expect(deniedDecision?.resolvedLogicalModelId).toBeNull();
+
     await appendDecision(eventService, "request_rollback", "idem_rollback", resolutionEvidence);
     await expect(appendProviderStart(
       eventService,
@@ -210,7 +233,7 @@ describe("gateway resolution evidence persistence", () => {
     });
     expect(requestAfterTerminalRollbacks?.status).toBe("provider_pending");
     expect(finalRollbackEvents.map((row) => row.sequence)).toEqual([1, 2, 3]);
-    expect(await fixture.db.select().from(eventOutbox)).toHaveLength(7);
+    expect(await fixture.db.select().from(eventOutbox)).toHaveLength(9);
   });
 });
 

@@ -259,8 +259,8 @@ type CostTotals {
 }
 
 input CreateApiKeyInput {
+  accessProfileId: ID!
   name: String!
-  routingConfigId: ID
 }
 
 type CreateApiKeyResult {
@@ -286,9 +286,16 @@ input CreateGatewayCanonicalModelInput {
   vendor: String!
 }
 
+input CreateGatewayLogicalModelInitialTargetInput {
+  deploymentId: ID!
+  enabled: Boolean!
+  priority: Int!
+}
+
 input CreateGatewayLogicalModelInput {
   description: String
   enabled: Boolean
+  initialTarget: CreateGatewayLogicalModelInitialTargetInput
   name: String!
   resolutionKind: String!
   routerConfig: JSON

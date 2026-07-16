@@ -33,7 +33,7 @@ export function buildOpenAIContext(
   const latestUserText = latestOpenAIUserText(request.input, promptBlockTags);
   const routingInput = routingInputFrom(latestUserText, fullText);
   const tools = Array.isArray(request.tools) ? request.tools : [];
-  const requestedModel = typeof request.model === "string" ? request.model : "router-auto";
+  const requestedModel = typeof request.model === "string" ? request.model : "coding-auto";
 
   return {
     surface,
@@ -82,7 +82,7 @@ export function buildOpenAIChatContext(
   const latestUserText = latestOpenAIChatUserText(request.messages, promptBlockTags);
   const routingInput = routingInputFrom(latestUserText, fullText);
   const tools = Array.isArray(request.tools) ? request.tools : [];
-  const requestedModel = typeof request.model === "string" ? request.model : "router-auto";
+  const requestedModel = typeof request.model === "string" ? request.model : "coding-auto";
 
   return {
     surface,
@@ -132,7 +132,7 @@ export function buildAnthropicContext(
   const latestUserText = latestAnthropicUserText(request.messages, promptBlockTags);
   const routingInput = routingInputFrom(latestUserText, fullText);
   const tools = Array.isArray(request.tools) ? request.tools : [];
-  const requestedModel = typeof request.model === "string" ? request.model : "claude-router-auto";
+  const requestedModel = typeof request.model === "string" ? request.model : "coding-auto";
 
   return {
     surface,

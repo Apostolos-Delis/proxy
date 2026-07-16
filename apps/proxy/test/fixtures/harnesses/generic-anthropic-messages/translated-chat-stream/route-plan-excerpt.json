@@ -3,8 +3,6 @@
   "surface": "anthropic-messages",
   "provider": "cross-chat-openai",
   "selectedModel": "gpt-cross-chat",
-  "reasoningEffort": "high",
-  "guardrailActions": [
-    "translated_request:anthropic-messages_to_openai-chat"
-  ]
+  "egressWireId": "openai-chat",
+  "wireAdapterVersion": "1"
 }

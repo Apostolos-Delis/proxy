@@ -34,7 +34,7 @@ export type ResolvedApiKeyIdentity = {
   organizationId: string;
   workspaceId: string;
   userId?: string;
-  routingConfigId: string | null;
+  accessProfileId: string | null;
 };
 
 export class ApiKeyIdentityStore {
@@ -57,7 +57,15 @@ export class ApiKeyIdentityStore {
     }
 
     const [row] = await this.db
-      .select()
+      .select({
+        id: apiKeys.id,
+        organizationId: apiKeys.organizationId,
+        workspaceId: apiKeys.workspaceId,
+        userId: apiKeys.userId,
+        accessProfileId: apiKeys.accessProfileId,
+        revokedAt: apiKeys.revokedAt,
+        expiresAt: apiKeys.expiresAt
+      })
       .from(apiKeys)
       .where(eq(apiKeys.keyHash, keyHash))
       .limit(1);
@@ -76,7 +84,7 @@ export class ApiKeyIdentityStore {
       organizationId: row.organizationId,
       workspaceId: row.workspaceId,
       userId: row.userId ?? undefined,
-      routingConfigId: row.routingConfigId ?? null
+      accessProfileId: row.accessProfileId ?? null
     };
     this.cache.set(keyHash, { identity, expiresAtMs: nowMs + this.cacheTtlMs() });
     this.recordLastUsed(row.id, now);

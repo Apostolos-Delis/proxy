@@ -55,7 +55,9 @@ describe("admin authorization", () => {
         fixture.proxyUrl,
         headers,
         query,
-        query === createApiKeyMutation ? { input: { name: "member-key" } } : undefined
+        query === createApiKeyMutation
+          ? { input: { name: "member-key", accessProfileId: engineerAccessProfileId("org_admin_authz_denied") } }
+          : undefined
       );
       expect(response.errors?.[0]?.message).toBe("admin_role_required");
       expect(response.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
@@ -67,7 +69,10 @@ describe("admin authorization", () => {
     const headers = await headersForRole(fixture, ORGANIZATION_MEMBER_ROLES.ADMIN);
 
     const response = await adminGql(fixture.proxyUrl, headers, createApiKeyMutation, {
-      input: { name: "admin-key" }
+      input: {
+        name: "admin-key",
+        accessProfileId: engineerAccessProfileId("org_admin_authz_allowed")
+      }
     });
 
     expect(response.errors).toBeUndefined();
@@ -177,6 +182,10 @@ describe("admin authorization", () => {
     return activeFixture;
   }
 });
+
+function engineerAccessProfileId(organizationId: string) {
+  return `${defaultWorkspaceId(organizationId)}:access-profile:opendoor-engineer`;
+}
 
 async function seedRequestDetail(fixture: PromptTestFixture) {
   const organizationId = fixture.config.defaultOrganizationId;

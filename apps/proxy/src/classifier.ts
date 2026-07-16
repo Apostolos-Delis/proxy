@@ -94,7 +94,11 @@ export type LogicalModelClassificationResult = {
 export type LogicalModelClassifier = Pick<LlmClassifier, "classifyLogicalModel">;
 
 export class ClassifierError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly usage?: Record<string, unknown>,
+    readonly attempts = 0
+  ) {
     super(message);
     this.name = "ClassifierError";
   }
@@ -161,13 +165,14 @@ export class LlmClassifier {
   ): Promise<{ output: ClassifierOutput; usage?: Record<string, unknown> }> {
     const view = classifierView(context, settings.allowRedactedExcerpt);
     const json = await this.request(target, classifierRequest(settings, view), signal);
+    const usage = extractUsage(json);
     const parsed = extractStructuredOutput(json);
     const result = classifierOutputSchema.safeParse(parsed);
     if (!result.success) {
-      throw new ClassifierError("Classifier returned invalid structured output.");
+      throw new ClassifierError("Classifier returned invalid structured output.", usage);
     }
 
-    return { output: result.data, usage: extractUsage(json) };
+    return { output: result.data, usage };
   }
 
   private async callLogicalModelClassifier(
@@ -180,11 +185,12 @@ export class LlmClassifier {
       logicalModelClassifierRequest(input),
       signal
     );
+    const usage = extractUsage(json);
     const result = logicalModelClassifierOutputSchema.safeParse(extractStructuredOutput(json));
     if (!result.success || !input.request.candidates.some((candidate) => candidate.targetId === result.data.target_id)) {
-      throw new ClassifierError("Classifier returned an invalid logical model target.");
+      throw new ClassifierError("Classifier returned an invalid logical model target.", usage);
     }
-    return { output: result.data, usage: extractUsage(json) };
+    return { output: result.data, usage };
   }
 
   private async request(target: ClassifierTarget, body: unknown, signal: AbortSignal) {
@@ -216,6 +222,7 @@ export class LlmClassifier {
     call: (signal: AbortSignal) => Promise<{ output: Output; usage?: Record<string, unknown> }>
   ) {
     let lastError: unknown;
+    let aggregateUsage: Record<string, unknown> | undefined;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       const startedAtMs = performance.now();
@@ -229,12 +236,16 @@ export class LlmClassifier {
           }, timeoutMs);
         });
         const { output, usage } = await Promise.race([call(controller.signal), deadline]);
+        aggregateUsage = mergeClassifierUsage(aggregateUsage, usage);
         this.recordClassifierAttempt(settings, startedAtMs, "succeeded", "none");
         this.recordClassifierUsage(settings, usage);
-        return { output, attempts: attempt, usage };
+        return { output, attempts: attempt, usage: aggregateUsage };
       } catch (error) {
         lastError = error;
+        const usage = error instanceof ClassifierError ? error.usage : undefined;
+        aggregateUsage = mergeClassifierUsage(aggregateUsage, usage);
         this.recordClassifierAttempt(settings, startedAtMs, "failed", "classifier");
+        this.recordClassifierUsage(settings, usage);
         if (attempt < maxAttempts) {
           this.metrics.incrementCounter("proxy_classifier_retries_total", {
             provider: settings.providerId,
@@ -248,7 +259,9 @@ export class LlmClassifier {
     }
 
     throw new ClassifierError(
-      lastError instanceof Error ? lastError.message : "Classifier failed."
+      lastError instanceof Error ? lastError.message : "Classifier failed.",
+      aggregateUsage,
+      maxAttempts
     );
   }
 
@@ -294,6 +307,24 @@ export class LlmClassifier {
       cost_kind: "classifier"
     }, cost.totalCostMicros / 1_000_000);
   }
+}
+
+function mergeClassifierUsage(
+  aggregate: Record<string, unknown> | undefined,
+  attempt: Record<string, unknown> | undefined
+) {
+  if (!attempt) return aggregate;
+  if (!aggregate) return attempt;
+  const current = normalizeUsage(aggregate);
+  const next = normalizeUsage(attempt);
+  return {
+    inputTokens: current.inputTokens + next.inputTokens,
+    cachedInputTokens: current.cachedInputTokens + next.cachedInputTokens,
+    cacheCreationInputTokens: current.cacheCreationInputTokens + next.cacheCreationInputTokens,
+    outputTokens: current.outputTokens + next.outputTokens,
+    reasoningTokens: current.reasoningTokens + next.reasoningTokens,
+    totalTokens: current.totalTokens + next.totalTokens
+  };
 }
 
 export function defaultClassifierSettings(config: AppConfig): ClassifierSettings {

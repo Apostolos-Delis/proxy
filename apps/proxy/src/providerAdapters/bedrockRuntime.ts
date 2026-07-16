@@ -238,7 +238,7 @@ export class BedrockRuntimeProviderAdapter {
     }
     const resolved = await resolveBedrockCredentials({
       accountSettings: credential?.providerAccountSettings,
-      providerOrganizationId: provider.organizationId,
+      providerOrganizationId: provider.builtin ? null : provider.organizationId,
       config: bedrockCredentialResolverConfig(this.config)
     });
     if (!resolved) {

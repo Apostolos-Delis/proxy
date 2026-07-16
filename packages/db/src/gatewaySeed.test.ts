@@ -17,7 +17,7 @@ describe("AI gateway seed", () => {
     await client?.close();
   });
 
-  it("seeds bounded logical models and isolated access profiles idempotently", async () => {
+  it("seeds bounded logical models without overwriting operator state on rerun", async () => {
     client = await migratedClient();
     const db = createPgliteDatabase(client);
     const options = seedOptionsFromEnv({
@@ -76,7 +76,7 @@ describe("AI gateway seed", () => {
       router_kind: null,
       upstream_model_id: "claude-fable-5",
       priority: 0,
-      enabled: true
+      enabled: false
     }]);
     expect(codingRows).toHaveLength(8);
     expect(codingRows.every((row) => row.resolution_kind === "router" && row.router_kind === "classifier")).toBe(true);

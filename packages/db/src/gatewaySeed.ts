@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { and, asc, eq, notInArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import {
   GATEWAY_OPERATION_IDS,
@@ -71,7 +71,6 @@ export async function seedGatewayResources(
   snapshot: GatewaySeedSnapshotEntry[]
 ) {
   const classifierRouterConfig = classifierConfig(input);
-  const now = new Date();
   const providerDefinitions = builtinProviderSeedDefinitions(input);
   const models = collectModels(input, snapshot, providerDefinitions);
   validateTargets(input, models);
@@ -81,22 +80,7 @@ export async function seedGatewayResources(
     await db
       .insert(providerConnections)
       .values(row)
-      .onConflictDoUpdate({
-        target: providerConnections.id,
-        set: {
-          name: row.name,
-          authStyle: row.authStyle,
-          baseUrl: row.baseUrl,
-          region: row.region,
-          secretRef: row.secretRef,
-          secretCiphertext: null,
-          secretHint: row.secretHint,
-          adapterConfig: row.adapterConfig,
-          defaultHeaders: row.defaultHeaders,
-          status: "active",
-          updatedAt: now
-        }
-      });
+      .onConflictDoNothing({ target: providerConnections.id });
   }
 
   const connectionIds = new Map(connections.map((row) => [row.provider, row.id]));
@@ -120,14 +104,7 @@ export async function seedGatewayResources(
         capabilities: model.capabilities,
         status: "active"
       })
-      .onConflictDoUpdate({
-        target: canonicalModels.id,
-        set: {
-          name: model.model,
-          status: "active",
-          updatedAt: now
-        }
-      });
+      .onConflictDoNothing({ target: canonicalModels.id });
 
     await db
       .insert(modelDeployments)
@@ -144,17 +121,7 @@ export async function seedGatewayResources(
         pricing: model.pricing,
         status: "active"
       })
-      .onConflictDoUpdate({
-        target: modelDeployments.id,
-        set: {
-          name: model.model,
-          providerConnectionId,
-          upstreamModelId: model.model,
-          pricing: model.pricing,
-          status: "active",
-          updatedAt: now
-        }
-      });
+      .onConflictDoNothing({ target: modelDeployments.id });
 
     for (const surface of model.surfaces) {
       await db
@@ -170,15 +137,7 @@ export async function seedGatewayResources(
           adapterContractVersion: "1",
           enabled: true
         })
-        .onConflictDoUpdate({
-          target: deploymentWireBindings.id,
-          set: {
-            endpointPath: endpointPath(providerDefinitions, model.provider, surface),
-            adapterContractVersion: "1",
-            enabled: true,
-            updatedAt: now
-          }
-        });
+        .onConflictDoNothing({ target: deploymentWireBindings.id });
     }
   }
 
@@ -221,18 +180,7 @@ export async function seedGatewayResources(
         workspaceId: input.workspaceId,
         status: "active"
       })
-      .onConflictDoUpdate({
-        target: logicalModels.id,
-        set: {
-          name: row.name,
-          description: row.description,
-          resolutionKind: row.resolutionKind,
-          routerKind: row.routerKind,
-          routerConfig: row.routerConfig,
-          status: "active",
-          updatedAt: now
-        }
-      });
+      .onConflictDoNothing({ target: logicalModels.id });
   }
 
   const fableTarget = modelDeploymentId(input.workspaceId, "anthropic", "claude-fable-5");
@@ -270,16 +218,7 @@ export async function seedGatewayResources(
         limits: {},
         status: "active"
       })
-      .onConflictDoUpdate({
-        target: accessProfiles.id,
-        set: {
-          name: profile.name,
-          description: profile.description,
-          limits: {},
-          status: "active",
-          updatedAt: now
-        }
-      });
+      .onConflictDoNothing({ target: accessProfiles.id });
   }
 
   await replaceGrants(db, input, "opendoor-engineer", ["fable", "coding-auto", "economy-auto"]);
@@ -316,6 +255,8 @@ function connectionRows(input: GatewaySeedInput, definitions: BuiltinProviderSee
     secretHint: provider.connectionSecretHint,
     adapterConfig: provider.adapterConfig,
     defaultHeaders: provider.defaultHeaders,
+    platformOwned: true,
+    forwardHarnessHeaders: provider.forwardHarnessHeaders,
     status: "active"
   }));
 }
@@ -384,34 +325,26 @@ async function replaceTargets(
     priority,
     enabled: true
   }));
-  const current = await db
-    .select({
-      id: logicalModelTargets.id,
-      deploymentId: logicalModelTargets.deploymentId,
-      priority: logicalModelTargets.priority,
-      enabled: logicalModelTargets.enabled
-    })
+  const [existing] = await db
+    .select({ id: logicalModelTargets.id })
     .from(logicalModelTargets)
     .where(and(
       eq(logicalModelTargets.organizationId, input.organizationId),
       eq(logicalModelTargets.workspaceId, input.workspaceId),
       eq(logicalModelTargets.logicalModelId, modelId)
     ))
-    .orderBy(asc(logicalModelTargets.priority));
+    .limit(1);
+  if (existing) return;
 
-  if (JSON.stringify(current) === JSON.stringify(desired)) return;
-
-  await db.delete(logicalModelTargets).where(and(
-    eq(logicalModelTargets.organizationId, input.organizationId),
-    eq(logicalModelTargets.workspaceId, input.workspaceId),
-    eq(logicalModelTargets.logicalModelId, modelId)
-  ));
-  await db.insert(logicalModelTargets).values(desired.map((target) => ({
-    ...target,
-    organizationId: input.organizationId,
-    workspaceId: input.workspaceId,
-    logicalModelId: modelId
-  })));
+  await db
+    .insert(logicalModelTargets)
+    .values(desired.map((target) => ({
+      ...target,
+      organizationId: input.organizationId,
+      workspaceId: input.workspaceId,
+      logicalModelId: modelId
+    })))
+    .onConflictDoNothing();
 }
 
 async function replaceGrants(
@@ -421,14 +354,16 @@ async function replaceGrants(
   logicalSlugs: string[]
 ) {
   const profileId = accessProfileId(input.workspaceId, profileSlug);
-  const grantIds = logicalSlugs.map((logicalSlug) => `${profileId}:grant:${logicalSlug}`);
-
-  await db.delete(accessProfileModelGrants).where(and(
-    eq(accessProfileModelGrants.organizationId, input.organizationId),
-    eq(accessProfileModelGrants.workspaceId, input.workspaceId),
-    eq(accessProfileModelGrants.accessProfileId, profileId),
-    notInArray(accessProfileModelGrants.id, grantIds)
-  ));
+  const [existing] = await db
+    .select({ id: accessProfileModelGrants.id })
+    .from(accessProfileModelGrants)
+    .where(and(
+      eq(accessProfileModelGrants.organizationId, input.organizationId),
+      eq(accessProfileModelGrants.workspaceId, input.workspaceId),
+      eq(accessProfileModelGrants.accessProfileId, profileId)
+    ))
+    .limit(1);
+  if (existing) return;
 
   for (const logicalSlug of logicalSlugs) {
     const id = `${profileId}:grant:${logicalSlug}`;
@@ -444,15 +379,7 @@ async function replaceGrants(
         parameterCaps: {},
         enabled: true
       })
-      .onConflictDoUpdate({
-        target: accessProfileModelGrants.id,
-        set: {
-          allowedOperations: [...GATEWAY_OPERATION_IDS],
-          parameterCaps: {},
-          enabled: true,
-          updatedAt: new Date()
-        }
-      });
+      .onConflictDoNothing({ target: accessProfileModelGrants.id });
   }
 }
 

@@ -59,10 +59,12 @@ export type ManualStep = {
 export function buildManualSteps({
   apiBase,
   secret,
+  model,
   harnesses = defaultHarnessSetupSelection
 }: {
   apiBase: string;
   secret: string | null;
+  model: string;
   harnesses?: HarnessSetupSelection;
 }): ManualStep[] {
   const key = secret ?? keyPlaceholder;
@@ -70,13 +72,13 @@ export function buildManualSteps({
   const tokenPath = tokenPathForHarnesses(selected);
   const steps: ManualStep[] = [storeKeyStep(key, tokenPath)];
   if (selected.includes("claude-code")) {
-    steps.push(claudeCodeStep(apiBase, tokenPath));
+    steps.push(claudeCodeStep(apiBase, tokenPath, model));
   }
   if (selected.includes("codex")) {
-    steps.push(codexExportStep(selected), codexProviderStep(apiBase, selected));
+    steps.push(codexExportStep(selected), codexProviderStep(apiBase, selected, model));
   }
   if (selected.includes("opencode")) {
-    steps.push(opencodeConfigStep(apiBase), opencodeAuthStep(key));
+    steps.push(opencodeConfigStep(apiBase, model), opencodeAuthStep(key));
   }
   return steps;
 }
@@ -94,13 +96,13 @@ function storeKeyStep(key: string, tokenPath: string): ManualStep {
   };
 }
 
-function claudeCodeStep(apiBase: string, tokenPath: string): ManualStep {
+function claudeCodeStep(apiBase: string, tokenPath: string, model: string): ManualStep {
   return {
     title: "Point Claude Code at the proxy",
     detail: "Merge these settings into ~/.claude/settings.json. The hosted setup script tracks its owned fields in ~/.proxy/claude-code-settings.marker.json and reports unmarked conflicts.",
     snippet: JSON.stringify(
       {
-        model: "claude-router-auto",
+        model,
         env: {
           ANTHROPIC_BASE_URL: apiBase,
           CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
@@ -129,7 +131,7 @@ function codexExportStep(harnesses: HarnessSetupSelection): ManualStep {
   };
 }
 
-function codexProviderStep(apiBase: string, harnesses: HarnessSetupSelection): ManualStep {
+function codexProviderStep(apiBase: string, harnesses: HarnessSetupSelection, model: string): ManualStep {
   const envKey = codexEnvForHarnesses(harnesses);
   const provider = codexProviderForHarnesses(harnesses);
   return {
@@ -137,7 +139,7 @@ function codexProviderStep(apiBase: string, harnesses: HarnessSetupSelection): M
     detail: "Add these Proxy-owned marker blocks to ~/.codex/config.toml. If you already manage model/model_provider or the same provider table outside these markers, keep yours and resolve the conflict manually.",
     snippet: [
       `# >>> prompt codex defaults >>>`,
-      `model = "router-auto"`,
+      `model = "${model}"`,
       `model_provider = "${provider}"`,
       `# <<< prompt codex defaults <<<`,
       "",
@@ -154,7 +156,7 @@ function codexProviderStep(apiBase: string, harnesses: HarnessSetupSelection): M
   };
 }
 
-function opencodeConfigStep(apiBase: string): ManualStep {
+function opencodeConfigStep(apiBase: string, model: string): ManualStep {
   return {
     title: "Register the opencode provider",
     detail: "Merge this into ~/.config/opencode/opencode.json, or into a project opencode.json. The hosted setup script tracks owned opencode provider/auth entries with sidecar markers in ~/.proxy/ and reports unmarked conflicts.",
@@ -169,16 +171,12 @@ function opencodeConfigStep(apiBase: string): ManualStep {
               baseURL: `${apiBase}/v1`
             },
             models: {
-              "router-auto": { name: "Router Auto" },
-              "router-fast": { name: "Router Fast" },
-              "router-balanced": { name: "Router Balanced" },
-              "router-hard": { name: "Router Hard" },
-              "router-deep": { name: "Router Deep" }
+              [model]: { name: model }
             }
           }
         },
-        model: "prompt-chat/router-auto",
-        small_model: "prompt-chat/router-fast"
+        model: `prompt-chat/${model}`,
+        small_model: `prompt-chat/${model}`
       },
       null,
       2

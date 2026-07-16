@@ -357,8 +357,16 @@ export class EventService {
       this.recordCommitted(event, outboxItem);
 
       if (this.filePath) {
-        await mkdir(dirname(this.filePath), { recursive: true });
-        await appendFile(this.filePath, `${JSON.stringify(event)}\n`);
+        try {
+          await mkdir(dirname(this.filePath), { recursive: true });
+          await appendFile(this.filePath, `${JSON.stringify(event)}\n`);
+        } catch (error) {
+          if (!this.persistentSink) throw error;
+          this.metrics.incrementCounter("proxy_event_appends_total", {
+            outcome: "failed",
+            error_class: "mirror"
+          });
+        }
       }
 
       if (!this.persistentSink) this.recordOutboxHealth();

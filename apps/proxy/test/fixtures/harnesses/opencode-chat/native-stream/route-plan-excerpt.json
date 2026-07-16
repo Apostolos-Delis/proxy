@@ -3,5 +3,6 @@
   "surface": "openai-chat",
   "provider": "openai",
   "selectedModel": "gpt-chat-native",
-  "reasoningEffort": "high"
+  "egressWireId": "openai-chat",
+  "wireAdapterVersion": null
 }

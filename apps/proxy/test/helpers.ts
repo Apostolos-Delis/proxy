@@ -61,9 +61,11 @@ export async function startOpenAIMock(
     responsesStreamError?: { message: string; responseId?: string };
     omitResponsesUsage?: boolean;
     wsTerminalEvent?: "response.completed" | "response.incomplete";
+    wsResponseDelayMs?: number;
     wsUpgradeHeaders?: Record<string, string>;
     outputText?: string;
     chatStreamToolCall?: ChatStreamToolCall;
+    respectChatIncludeUsage?: boolean;
     responsesJsonProvider?: boolean;
     redirectProviderTo?: string;
   } = {}
@@ -274,14 +276,16 @@ export async function startOpenAIMock(
           usage: null
         })}\n\n`
       );
-      response.write(
-        `data: ${JSON.stringify({
-          id: "chatcmpl_mock",
-          object: "chat.completion.chunk",
-          choices: [],
-          usage
-        })}\n\n`
-      );
+      if (!options.respectChatIncludeUsage || body.stream_options?.include_usage === true) {
+        response.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl_mock",
+            object: "chat.completion.chunk",
+            choices: [],
+            usage
+          })}\n\n`
+        );
+      }
       response.write("data: [DONE]\n\n");
       response.end();
       return;
@@ -350,7 +354,7 @@ export async function startOpenAIMock(
       return;
     }
     wss.handleUpgrade(request, socket, head, (client) => {
-      client.on("message", (data) => {
+      client.on("message", async (data) => {
         const body = JSON.parse(String(data));
         records.push({ path: request.url ?? "", headers: request.headers, body });
         wsResponseCount += 1;
@@ -359,6 +363,9 @@ export async function startOpenAIMock(
           type: "response.created",
           response: { id, model: body.model }
         }));
+        if (options.wsResponseDelayMs) {
+          await new Promise((resolve) => setTimeout(resolve, options.wsResponseDelayMs));
+        }
         client.send(JSON.stringify({
           type: options.wsTerminalEvent ?? "response.completed",
           response: {

@@ -334,6 +334,31 @@ describe("gateway configuration admin", () => {
     });
   });
 
+  it("preserves trusted connection metadata across control-plane updates", async () => {
+    const fixture = await setup("org_gateway_admin_trusted_connection");
+    client = fixture.client;
+    const connectionId = `${fixture.actor.workspaceId}:connection:openai`;
+
+    await update(fixture, "providerConnection", connectionId, { name: "OpenAI Production" });
+    await enabled(fixture, "providerConnection", connectionId, false);
+    await enabled(fixture, "providerConnection", connectionId, true);
+
+    const [connection] = await fixture.db.select({
+      adapterConfig: providerConnections.adapterConfig,
+      forwardHarnessHeaders: providerConnections.forwardHarnessHeaders,
+      name: providerConnections.name,
+      platformOwned: providerConnections.platformOwned,
+      status: providerConnections.status
+    }).from(providerConnections).where(eq(providerConnections.id, connectionId));
+    expect(connection).toEqual({
+      adapterConfig: {},
+      forwardHarnessHeaders: true,
+      name: "OpenAI Production",
+      platformOwned: true,
+      status: "active"
+    });
+  });
+
   it("requires active classifier dependencies only when a router is activated", async () => {
     const fixture = await setup("org_gateway_admin_router");
     client = fixture.client;

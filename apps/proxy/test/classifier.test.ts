@@ -133,7 +133,8 @@ describe("logical model classifier", () => {
   it("retries invalid output and exposes only eligible target IDs and capabilities", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
-        output_parsed: { target_id: "target_forbidden", reason_codes: ["bad"], confidence: 1 }
+        output_parsed: { target_id: "target_forbidden", reason_codes: ["bad"], confidence: 1 },
+        usage: { input_tokens: 4, output_tokens: 1 }
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         output_parsed: { target_id: "target_economy", reason_codes: ["capability_match"], confidence: 0.8 },
@@ -163,7 +164,14 @@ describe("logical model classifier", () => {
       reasonCodes: ["capability_match"],
       confidence: 0.8,
       attempts: 2,
-      usage: { input_tokens: 10, output_tokens: 3 }
+      usage: {
+        inputTokens: 14,
+        cachedInputTokens: 0,
+        cacheCreationInputTokens: 0,
+        outputTokens: 4,
+        reasoningTokens: 0,
+        totalTokens: 18
+      }
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const init = fetchMock.mock.calls[0]![1] as RequestInit;

@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 
 import {
   defaultWorkspaceId,
+  modelDeployments,
   providerAttempts,
   requests,
   usageLedger,
@@ -12,7 +13,7 @@ import type { ProviderAdapterKind, ProviderAttemptStatus } from "@proxy/schema";
 import { gatewayProviderAttemptEvidenceValue } from "../gatewayEvidence.js";
 import { usageCostMicros } from "../pricing.js";
 import { createId } from "../util.js";
-import { catalogPricingForModel } from "./modelPricing.js";
+import { pricingFromRow } from "./modelPricing.js";
 import { routeForRequest } from "./routeDecision.js";
 import {
   normalizeUsage,
@@ -167,7 +168,12 @@ export async function persistProviderTerminal(tx: ProxyTransaction, event: {
   if (!request) return;
 
   const normalized = normalizeUsage(usage);
-  const modelPricing = await catalogPricingForModel(tx, event.tenantId, attempt.provider, attempt.model);
+  const modelPricing = await deploymentPricing(
+    tx,
+    event.tenantId,
+    event.workspaceId,
+    attempt.deploymentId
+  );
   const costs = usageCostMicros(modelPricing, normalized);
   const route = await routeForRequest(tx, event.scopeId);
 
@@ -210,6 +216,25 @@ export async function persistProviderTerminal(tx: ProxyTransaction, event: {
         usage
       }
     });
+}
+
+async function deploymentPricing(
+  tx: ProxyTransaction,
+  organizationId: string,
+  workspaceId: string,
+  deploymentId: string | null
+) {
+  if (!deploymentId) return undefined;
+  const [deployment] = await tx
+    .select({ pricing: modelDeployments.pricing })
+    .from(modelDeployments)
+    .where(and(
+      eq(modelDeployments.organizationId, organizationId),
+      eq(modelDeployments.workspaceId, workspaceId),
+      eq(modelDeployments.id, deploymentId)
+    ))
+    .limit(1);
+  return pricingFromRow(deployment?.pricing);
 }
 
 function terminalStatus(eventType: string, payloadStatus: unknown): TerminalProviderAttemptStatus {

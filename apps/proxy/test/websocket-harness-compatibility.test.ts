@@ -1,21 +1,11 @@
-import { eq } from "drizzle-orm";
 import WebSocket from "ws";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  apiKeys,
   defaultWorkspaceId,
-  events,
-  hashApiKey,
-  providers,
-  routingConfigs,
-  routingConfigVersions
+  events
 } from "@proxy/db";
-import type {
-  RoutingConfig,
-  RoutingConfigAnthropicDeployment,
-  RoutingConfigOpenAIDeployment
-} from "@proxy/schema";
+import type { Dialect } from "@proxy/schema";
 
 import { buildOpenAIContext } from "../src/features.js";
 import {
@@ -23,6 +13,7 @@ import {
   expectRoutePlanExcerpt,
   loadHarnessFixture
 } from "./harnessFixtures.js";
+import { assignHarnessGatewayTarget } from "./gatewayHarnessFixture.js";
 import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
 let activeFixture: PromptTestFixture | undefined;
@@ -88,10 +79,8 @@ describe("Codex Responses WebSocket native golden fixtures", () => {
     expect(providerCalls[0]?.headers["x-codex-turn-state"]).toBe("golden-ws-turn-state");
     expect(providerCalls[0]?.headers["x-request-id"]).toBe("golden-ws-request-id");
     expect(providerCalls[0]?.headers.session_id).toBeUndefined();
-    expect(decisions.map((decision) => decision.requestedModel)).toEqual(["router-hard", "router-hard"]);
+    expect(decisions.map((decision) => decision.requestedModel)).toEqual(["fable", "fable"]);
     expectRoutePlanExcerpt(decisions[0], fixture.routePlanExcerpt);
-    expect(decisions.flatMap((decision) => decision.guardrailActions ?? []))
-      .not.toContain("translated_request:openai-responses_to_openai-chat");
     expect(planEvents).toHaveLength(2);
     expect(planEvents[0]?.organizationId).toBe(organizationId);
     expect(planEvents[0]?.workspaceId).toBe(defaultWorkspaceId(organizationId));
@@ -131,26 +120,15 @@ describe("Codex Responses WebSocket native golden fixtures", () => {
         ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8"
       }
     });
-    await activeFixture.db.insert(providers).values({
-      id: "00000000-0000-0000-0000-00000000c017",
-      organizationId,
-      slug: "chat-only-openai",
-      displayName: "Chat Only OpenAI",
-      baseUrl: activeFixture.openai.url,
-      authStyle: "none",
-      endpoints: [{ dialect: "openai-chat", path: "/chat/completions" }],
-      defaultHeaders: {},
-      forwardHarnessHeaders: false,
-      enabled: true
-    });
-    await assignRouteConfig(activeFixture, organizationId, {
+    await assignTarget(activeFixture, organizationId, {
       secret: "codex-ws-chat-only-token",
       slug: "codex-ws-chat-only",
-      configHash: "sha256:codex-ws-chat-only",
-      targets: [{
+      target: {
         providerId: "chat-only-openai",
         model: "gpt-chat-only-ws"
-      }]
+      },
+      wires: [{ dialect: "openai-chat", path: "/chat/completions" }],
+      baseUrl: activeFixture.openai.url
     });
 
     const ws = new WebSocket(activeFixture.proxyUrl.replace("http://", "ws://") + "/v1/responses", {
@@ -187,123 +165,68 @@ async function setupCodexWebSocketFixture(
   openAIOptions: { wsUpgradeHeaders?: Record<string, string> } = {}
 ) {
   const fixture = await captureFixture(organizationId, "raw_text", false, { openAIOptions });
-  await assignRouteConfig(fixture, organizationId, {
+  await assignTarget(fixture, organizationId, {
     secret: "codex-native-token",
     slug: "codex-ws-native",
-    configHash: "sha256:codex-ws-native",
-    targets: [{
+    target: {
       providerId: "openai",
       model: "gpt-codex-ws-native",
       effort: "high",
       verbosity: "medium",
       maxOutputTokens: 321
-    }]
+    },
+    wires: [{ dialect: "openai-responses", path: "/responses" }]
   });
   return fixture;
 }
 
-async function assignRouteConfig(
+async function assignTarget(
   fixture: PromptTestFixture,
   organizationId: string,
   input: {
     secret: string;
     slug: string;
-    configHash: string;
-    targets: TargetFixture[];
+    target: TargetFixture;
+    wires: { dialect: Dialect; path: string }[];
+    baseUrl?: string;
   }
 ) {
-  const configId = `${organizationId}:routing-config:${input.slug}`;
-  const versionId = `${configId}:v1`;
-  const [defaultVersion] = await fixture.db
-    .select()
-    .from(routingConfigVersions)
-    .where(eq(routingConfigVersions.id, `${organizationId}:routing-config:default:v1`))
-    .limit(1);
-  const config = withHardTargets(structuredClone(defaultVersion.config as RoutingConfig), input.targets);
-
-  await fixture.db.insert(routingConfigs).values({
-    id: configId,
-    organizationId,
-    workspaceId: defaultWorkspaceId(organizationId),
-    name: "Harness compatibility WebSocket route config",
+  await assignHarnessGatewayTarget(fixture, organizationId, {
+    secret: input.secret,
     slug: input.slug,
-    status: "active"
-  });
-  await fixture.db.insert(routingConfigVersions).values({
-    id: versionId,
-    organizationId,
-    workspaceId: defaultWorkspaceId(organizationId),
-    routingConfigId: configId,
-    version: 1,
-    configHash: input.configHash,
-    config,
-    status: "active",
-    createdByUserId: "local-user",
-    activatedAt: new Date("2026-06-08T00:00:00.000Z")
-  });
-  await fixture.db
-    .update(routingConfigs)
-    .set({ activeVersionId: versionId })
-    .where(eq(routingConfigs.id, configId));
-  await fixture.db.insert(apiKeys).values({
-    id: `api_key_${input.slug}`,
-    organizationId,
-    workspaceId: defaultWorkspaceId(organizationId),
-    keyHash: hashApiKey(input.secret),
-    name: "Harness compatibility WebSocket key",
-    routingConfigId: configId
+    provider: input.target.providerId,
+    model: input.target.model,
+    config: targetConfig(input.target),
+    wires: input.wires,
+    ...(input.baseUrl ? {
+      connection: { baseUrl: input.baseUrl, forwardHarnessHeaders: false }
+    } : {})
   });
 }
-
-type AnthropicEffort = NonNullable<RoutingConfigAnthropicDeployment["output_config"]>["effort"];
-type OpenAIEffort = NonNullable<RoutingConfigOpenAIDeployment["reasoning"]>["effort"];
-type OpenAIVerbosity = NonNullable<RoutingConfigOpenAIDeployment["text"]>["verbosity"];
 
 type TargetFixture = {
   providerId: string;
   model: string;
-  effort?: AnthropicEffort | OpenAIEffort;
-  verbosity?: OpenAIVerbosity;
-  thinking?: RoutingConfigAnthropicDeployment["thinking"];
+  effort?: string;
+  verbosity?: string;
+  thinking?: Record<string, unknown>;
   maxOutputTokens?: number;
 };
 
-function withHardTargets(config: RoutingConfig, targets: TargetFixture[]): RoutingConfig {
-  const openai = targets
-    .filter((target) => !target.providerId.includes("anthropic"))
-    .map((target, index): RoutingConfigOpenAIDeployment => ({
-      provider: target.providerId,
-      model: target.model,
-      order: index,
-      weight: 1,
+function targetConfig(target: TargetFixture) {
+  if (target.providerId.includes("anthropic")) {
+    return {
       timeoutMs: 60000,
-      ...(target.effort ? { reasoning: { effort: target.effort as OpenAIEffort } } : {}),
-      ...(target.verbosity ? { text: { verbosity: target.verbosity } } : {}),
-      ...(target.maxOutputTokens ? { maxOutputTokens: target.maxOutputTokens } : {})
-    }));
-  const anthropic = targets
-    .filter((target) => target.providerId.includes("anthropic"))
-    .map((target, index): RoutingConfigAnthropicDeployment => ({
-      provider: target.providerId,
-      model: target.model,
-      order: index,
-      weight: 1,
-      timeoutMs: 60000,
-      ...(target.effort ? { output_config: { effort: target.effort as AnthropicEffort } } : {}),
+      ...(target.effort ? { output_config: { effort: target.effort } } : {}),
       ...(target.thinking ? { thinking: target.thinking } : {}),
       ...(target.maxOutputTokens ? { maxTokens: target.maxOutputTokens } : {})
-    }));
-
+    };
+  }
   return {
-    ...config,
-    routes: {
-      ...config.routes,
-      hard: {
-        ...config.routes.hard,
-        ...(openai.length > 0 ? { openai: { deployments: openai } } : { openai: undefined }),
-        ...(anthropic.length > 0 ? { anthropic: { deployments: anthropic } } : { anthropic: undefined })
-      }
-    }
+    timeoutMs: 60000,
+    ...(target.effort ? { reasoning: { effort: target.effort } } : {}),
+    ...(target.verbosity ? { text: { verbosity: target.verbosity } } : {}),
+    ...(target.maxOutputTokens ? { maxOutputTokens: target.maxOutputTokens } : {})
   };
 }
 
@@ -312,12 +235,13 @@ async function decisionPayloads(fixture: PromptTestFixture) {
   return eventRows
     .filter((event) => event.eventType === "routing.decision_recorded")
     .map((event) => event.payload as {
-      guardrailActions?: string[];
       outcome?: string;
       surface?: string;
       provider?: string;
       selectedModel?: string;
       requestedModel?: string;
+      egressWireId?: string;
+      wireAdapterVersion?: string | null;
       reasoningEffort?: string;
       verbosity?: string;
       error?: string;

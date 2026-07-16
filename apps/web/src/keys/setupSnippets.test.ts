@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildManualSteps, buildSetupCommand, keyPlaceholder } from "./setupSnippets";
 
 const apiBase = "http://127.0.0.1:8787";
+const model = "economy-auto";
 
 describe("buildSetupCommand", () => {
   it("fetches the hosted script and passes the secret as the argument", () => {
@@ -33,7 +34,7 @@ describe("buildSetupCommand", () => {
 });
 
 describe("buildManualSteps", () => {
-  const steps = buildManualSteps({ apiBase, secret: "pp_abc123" });
+  const steps = buildManualSteps({ apiBase, secret: "pp_abc123", model });
 
   it("mirrors the four things the hosted script does", () => {
     expect(steps.map((step) => step.title)).toEqual([
@@ -52,7 +53,7 @@ describe("buildManualSteps", () => {
   it("renders valid Claude Code settings JSON pointing at the proxy", () => {
     const settings = JSON.parse(steps[1].snippet);
     expect(settings).toEqual({
-      model: "claude-router-auto",
+      model,
       env: {
         ANTHROPIC_BASE_URL: apiBase,
         CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
@@ -69,6 +70,7 @@ describe("buildManualSteps", () => {
     expect(steps[3].snippet).toContain("# >>> prompt codex provider proxy >>>");
     expect(steps[3].snippet).toContain(`base_url = "${apiBase}/v1"`);
     expect(steps[3].snippet).toContain(`env_key = "PROXY_TOKEN"`);
+    expect(steps[3].snippet).toContain(`model = "${model}"`);
   });
 
   it("does not stamp per-request identity headers", () => {
@@ -77,12 +79,12 @@ describe("buildManualSteps", () => {
   });
 
   it("uses the placeholder when there is no secret", () => {
-    const placeholderSteps = buildManualSteps({ apiBase, secret: null });
+    const placeholderSteps = buildManualSteps({ apiBase, secret: null, model });
     expect(placeholderSteps[0].snippet).toContain(keyPlaceholder);
   });
 
   it("builds Codex-specific steps with a separate token and provider", () => {
-    const codexSteps = buildManualSteps({ apiBase, secret: "pp_codex", harnesses: ["codex"] });
+    const codexSteps = buildManualSteps({ apiBase, secret: "pp_codex", model, harnesses: ["codex"] });
     expect(codexSteps.map((step) => step.title)).toEqual([
       "Store the key",
       "Export the key for Codex",
@@ -96,7 +98,7 @@ describe("buildManualSteps", () => {
   });
 
   it("builds Claude Code-specific steps with a separate token", () => {
-    const claudeSteps = buildManualSteps({ apiBase, secret: "pp_claude", harnesses: ["claude-code"] });
+    const claudeSteps = buildManualSteps({ apiBase, secret: "pp_claude", model, harnesses: ["claude-code"] });
     expect(claudeSteps.map((step) => step.title)).toEqual([
       "Store the key",
       "Point Claude Code at the proxy"
@@ -104,10 +106,11 @@ describe("buildManualSteps", () => {
     const settings = JSON.parse(claudeSteps[1].snippet);
     expect(claudeSteps[0].snippet).toContain("~/.proxy/claude-code.token");
     expect(settings.apiKeyHelper).toBe("cat ~/.proxy/claude-code.token");
+    expect(settings.model).toBe(model);
   });
 
   it("builds opencode steps with a custom provider config", () => {
-    const opencodeSteps = buildManualSteps({ apiBase, secret: "pp_open", harnesses: ["opencode"] });
+    const opencodeSteps = buildManualSteps({ apiBase, secret: "pp_open", model, harnesses: ["opencode"] });
     expect(opencodeSteps.map((step) => step.title)).toEqual([
       "Store the key",
       "Register the opencode provider",
@@ -116,13 +119,22 @@ describe("buildManualSteps", () => {
     const config = JSON.parse(opencodeSteps[1].snippet);
     expect(config.provider["prompt-chat"].npm).toBe("@ai-sdk/openai-compatible");
     expect(config.provider["prompt-chat"].options.baseURL).toBe(`${apiBase}/v1`);
-    expect(config.model).toBe("prompt-chat/router-auto");
+    expect(config.provider["prompt-chat"].models).toEqual({
+      [model]: { name: model }
+    });
+    expect(config.model).toBe(`prompt-chat/${model}`);
+    expect(config.small_model).toBe(`prompt-chat/${model}`);
     expect(opencodeSteps[2].snippet).toContain("prompt-chat");
     expect(opencodeSteps[2].snippet).toContain("pp_open");
   });
 
   it("uses the shared token path when multiple harnesses are selected", () => {
-    const multiSteps = buildManualSteps({ apiBase, secret: "pp_multi", harnesses: ["codex", "opencode"] });
+    const multiSteps = buildManualSteps({
+      apiBase,
+      secret: "pp_multi",
+      model,
+      harnesses: ["codex", "opencode"]
+    });
     expect(multiSteps[0].snippet).toContain("~/.proxy/token");
     expect(multiSteps[1].snippet).toContain(`export PROXY_TOKEN="$(cat ~/.proxy/token)"`);
     expect(multiSteps[2].snippet).toContain("[model_providers.proxy]");

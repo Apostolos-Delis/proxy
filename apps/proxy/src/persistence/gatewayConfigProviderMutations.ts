@@ -63,9 +63,10 @@ export async function preflightProviderCommands(
         adapterConfig: body.adapterConfig,
         defaultHeaders: body.defaultHeaders,
         enabled: body.enabled,
+        platformOwned: false,
         ...credential
       };
-      validateConnectionState(next, options, next.enabled || Boolean(body.secretRef));
+      validateConnectionState(next, options, Boolean(body.secretRef));
       await validateConnectionNetwork(baseUrl, options);
       if (command.id) projectedConnections.set(command.id, next);
       continue;
@@ -87,7 +88,7 @@ export async function preflightProviderCommands(
         defaultHeaders: body.defaultHeaders ?? current.defaultHeaders,
         ...credential
       };
-      validateConnectionState(next, options, next.enabled || Boolean(body.secretRef));
+      validateConnectionState(next, options, Boolean(body.secretRef));
       if (body.baseUrl) await validateConnectionNetwork(baseUrl, options);
       projectedConnections.set(command.id, next);
       continue;
@@ -95,7 +96,7 @@ export async function preflightProviderCommands(
     const current = projectedConnections.get(command.id)
       ?? connectionPreflightState(await queries.providerConnectionRecord(input, command.id));
     const next = { ...current, enabled: command.enabled };
-    validateConnectionState(next, options, command.enabled);
+    validateConnectionState(next, options, command.enabled && !current.platformOwned);
     if (command.enabled) await validateConnectionNetwork(next.baseUrl, options);
     projectedConnections.set(command.id, next);
   }
@@ -109,6 +110,7 @@ type ProviderConnectionPreflightState = {
   adapterConfig: Record<string, unknown>;
   defaultHeaders: Record<string, string>;
   enabled: boolean;
+  platformOwned: boolean;
   secretRef: string | null;
   secretCiphertext: string | null;
   secretHint: string | null;
@@ -124,6 +126,7 @@ function connectionPreflightState(row: typeof providerConnections.$inferSelect):
     adapterConfig: row.adapterConfig,
     defaultHeaders: row.defaultHeaders,
     enabled: row.status === "active",
+    platformOwned: row.platformOwned,
     secretRef: row.secretRef,
     secretCiphertext: row.secretCiphertext,
     secretHint: row.secretHint
@@ -207,7 +210,7 @@ export async function updateProviderConnection(
     enabled: current.status === "active",
     ...credentialState
   };
-  validateConnectionState(next, options, next.enabled || Boolean(body.secretRef));
+  validateConnectionState(next, options, Boolean(body.secretRef));
   const now = new Date();
   await tx.update(providerConnections).set({
     name: next.name,
@@ -242,7 +245,7 @@ export async function setProviderConnectionEnabled(
 ) {
   const { tx, actor, options } = context;
   const current = await lockScopedRow(tx, providerConnections, actor, id, "provider_connection_not_found");
-  if (enabled) validateConnectionState({ ...current, enabled }, options);
+  if (enabled) validateConnectionState({ ...current, enabled }, options, !current.platformOwned);
   await setStatus(tx, providerConnections, actor, id, enabled);
   await context.appendEvent("provider_connection", id, enabled ? "enabled" : "disabled", {
     id,

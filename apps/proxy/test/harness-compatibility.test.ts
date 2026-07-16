@@ -2,25 +2,13 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  apiKeys,
-  defaultWorkspaceId,
   events,
-  hashApiKey,
-  providers,
-  routingConfigs,
-  routingConfigVersions,
   usageLedger
 } from "@proxy/db";
-import type {
-  Dialect,
-  RoutingConfig,
-  RoutingConfigAnthropicDeployment,
-  RoutingConfigOpenAIDeployment
-} from "@proxy/schema";
+import type { Dialect } from "@proxy/schema";
 
 import { buildAnthropicContext, buildOpenAIChatContext, buildOpenAIContext } from "../src/features.js";
 import { listHarnessFixtureManifests } from "../src/harnessFixtureCounts.js";
@@ -34,6 +22,7 @@ import {
   listHarnessFixtures,
   loadHarnessFixture
 } from "./harnessFixtures.js";
+import { assignHarnessGatewayTarget } from "./gatewayHarnessFixture.js";
 import { captureFixture, type PromptTestFixture } from "./promptTestFixture.js";
 
 let activeFixture: PromptTestFixture | undefined;
@@ -54,7 +43,7 @@ describe("harness golden fixtures", () => {
       surface: "openai-chat",
       mode: "native"
     });
-    expect(fixture.inboundRequest).toMatchObject({ model: "router-auto" });
+    expect(fixture.inboundRequest).toMatchObject({ model: "fable" });
     expect(fixture.expectedUpstreamRequest).toMatchObject({ model: "gpt-fixture" });
     expect(fixture.upstreamSse).toContain("chat.completion.chunk");
     expect(fixture.expectedClientSse).toContain("chat.completion.chunk");
@@ -129,7 +118,13 @@ describe("harness golden fixtures", () => {
     const fixture = loadHarnessFixture("openai-chat-sdk", "sample-complete");
 
     expectRoutePlanExcerpt(
-      { profileId: "openai-chat-sdk", status: "native", selected: { provider: "openai" } },
+      {
+        profileId: "openai-chat-sdk",
+        status: "native",
+        selected: { provider: "openai" },
+        egressWireId: "openai-chat",
+        wireAdapterVersion: null
+      },
       fixture.routePlanExcerpt
     );
   });
@@ -213,8 +208,6 @@ describe("Codex Responses HTTP native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactJson(body, fixture.expectedClientResponse);
     expect(providerCall?.headers["x-codex-turn-state"]).toBe("golden-turn-state");
@@ -222,7 +215,6 @@ describe("Codex Responses HTTP native golden fixtures", () => {
     expect(providerCall?.headers["openai-beta"]).toBe("responses_http=golden");
     expect(providerCall?.headers["x-codex-session-id"]).toBeUndefined();
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
-    expect(decision?.guardrailActions ?? []).not.toContain("translated_request:openai-responses_to_openai-chat");
     await expectProviderUsage(activeFixture, fixture.usage);
   });
 
@@ -255,8 +247,6 @@ describe("Codex Responses HTTP native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expect(providerCall?.headers["x-codex-turn-state"]).toBe("golden-turn-state");
@@ -264,7 +254,6 @@ describe("Codex Responses HTTP native golden fixtures", () => {
     expect(providerCall?.headers["openai-beta"]).toBe("responses_http=golden");
     expect(providerCall?.headers["x-codex-session-id"]).toBeUndefined();
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
-    expect(decision?.guardrailActions ?? []).not.toContain("translated_request:openai-responses_to_openai-chat");
     await expectProviderUsage(activeFixture, fixture.usage);
   });
 });
@@ -300,7 +289,6 @@ describe("Claude Code Messages native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-proxy-route")).toBe("hard");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactJson(body, fixture.expectedClientResponse);
     expect(providerCall?.headers["x-api-key"]).toBe("anthropic-upstream-key");
@@ -313,7 +301,6 @@ describe("Claude Code Messages native golden fixtures", () => {
     expect(providerCall?.headers["x-not-forwarded"]).toBeUndefined();
     expect(providerCall?.headers["x-claude-code-session-id"]).toBeUndefined();
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
-    expect(decision?.guardrailActions ?? []).not.toContain("translated_request:anthropic-messages_to_openai-chat");
     await expectProviderUsage(activeFixture, fixture.usage, "claude-code-native");
   });
 
@@ -347,7 +334,6 @@ describe("Claude Code Messages native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-proxy-route")).toBe("hard");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectExactSse(body, fixture.upstreamSse ?? "");
@@ -361,7 +347,6 @@ describe("Claude Code Messages native golden fixtures", () => {
     expect(providerCall?.headers["x-not-forwarded"]).toBeUndefined();
     expect(providerCall?.headers["x-claude-code-session-id"]).toBeUndefined();
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
-    expect(decision?.guardrailActions ?? []).not.toContain("translated_request:anthropic-messages_to_openai-chat");
     await expectProviderUsage(activeFixture, fixture.usage, "claude-code-native");
   });
 });
@@ -398,15 +383,12 @@ describe("OpenAI Chat native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactJson(body, fixture.expectedClientResponse);
     expect(providerCall?.headers.authorization).toBe("Bearer openai-upstream-key");
     expect(providerCall?.headers["x-opencode-session-id"]).toBeUndefined();
     expect(providerCall?.headers["x-cursor-session-id"]).toBeUndefined();
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
-    expect(decision?.guardrailActions ?? []).not.toContain("translated_request:openai-chat_to_openai-responses");
     await expectProviderUsage(activeFixture, fixture.usage, "gpt-chat-native");
   });
 
@@ -445,14 +427,11 @@ describe("OpenAI Chat native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expect(providerCall?.headers.authorization).toBe("Bearer openai-upstream-key");
     expect(providerCall?.headers["x-opencode-session-id"]).toBe("opencode-session-golden");
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
-    expect(decision?.guardrailActions ?? []).not.toContain("translated_request:openai-chat_to_openai-responses");
     await expectProviderUsage(activeFixture, fixture.usage, "gpt-chat-native");
   });
 
@@ -491,15 +470,12 @@ describe("OpenAI Chat native golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expect(providerCall?.headers.authorization).toBe("Bearer openai-upstream-key");
     expect(providerCall?.headers["x-cursor-request-id"]).toBe("cursor-request-golden");
     expect(providerCall?.headers["x-cursor-session-id"]).toBeUndefined();
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
-    expect(decision?.guardrailActions ?? []).not.toContain("translated_request:openai-chat_to_openai-responses");
     await expectProviderUsage(activeFixture, fixture.usage, "gpt-chat-native");
   });
 });
@@ -511,7 +487,6 @@ describe("Same-family OpenAI translated golden fixtures", () => {
     activeFixture = await setupTranslatedOpenAIFixture(organizationId, {
       secret: "responses-to-chat-golden-token",
       slug: "responses-to-chat-golden",
-      providerId: "30000000-0000-0000-0000-000000000101",
       providerSlug: "chat-only-openai",
       providerDialect: "openai-chat",
       model: "gpt-chat-only",
@@ -541,12 +516,9 @@ describe("Same-family OpenAI translated golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
-    expect(decision?.guardrailActions ?? []).toContain("translated_request:openai-responses_to_openai-chat");
     await expectProviderUsage(activeFixture, fixture.usage, "gpt-chat-only");
   });
 
@@ -556,7 +528,6 @@ describe("Same-family OpenAI translated golden fixtures", () => {
     activeFixture = await setupTranslatedOpenAIFixture(organizationId, {
       secret: "chat-to-responses-golden-token",
       slug: "chat-to-responses-golden",
-      providerId: "30000000-0000-0000-0000-000000000102",
       providerSlug: "responses-only-openai",
       providerDialect: "openai-responses",
       model: "gpt-responses-only",
@@ -586,12 +557,9 @@ describe("Same-family OpenAI translated golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
-    expect(decision?.guardrailActions ?? []).toContain("translated_request:openai-chat_to_openai-responses");
     await expectProviderUsage(activeFixture, fixture.usage, "gpt-responses-only");
   });
 });
@@ -603,7 +571,6 @@ describe("Cross-family translated golden fixtures", () => {
     activeFixture = await setupTranslatedOpenAIFixture(organizationId, {
       secret: "claude-to-chat-golden-token",
       slug: "claude-to-chat-golden",
-      providerId: "30000000-0000-0000-0000-000000000201",
       providerSlug: "cross-chat-openai",
       providerDialect: "openai-chat",
       model: "gpt-cross-chat",
@@ -639,12 +606,9 @@ describe("Cross-family translated golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
-    expect(decision?.guardrailActions ?? []).toContain("translated_request:anthropic-messages_to_openai-chat");
     await expectProviderUsage(activeFixture, fixture.usage, "gpt-cross-chat");
   });
 
@@ -654,7 +618,6 @@ describe("Cross-family translated golden fixtures", () => {
     activeFixture = await setupTranslatedOpenAIFixture(organizationId, {
       secret: "claude-to-responses-golden-token",
       slug: "claude-to-responses-golden",
-      providerId: "30000000-0000-0000-0000-000000000204",
       providerSlug: "cross-responses-openai",
       providerDialect: "openai-responses",
       model: "gpt-cross-responses",
@@ -685,12 +648,9 @@ describe("Cross-family translated golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
-    expect(decision?.guardrailActions ?? []).toContain("translated_request:anthropic-messages_to_openai-responses");
     await expectProviderUsage(activeFixture, fixture.usage, "gpt-cross-responses");
   });
 
@@ -700,7 +660,6 @@ describe("Cross-family translated golden fixtures", () => {
     activeFixture = await setupTranslatedAnthropicFixture(organizationId, {
       secret: "chat-to-anthropic-golden-token",
       slug: "chat-to-anthropic-golden",
-      providerId: "30000000-0000-0000-0000-000000000202",
       providerSlug: "cross-anthropic-chat",
       model: "claude-opus-4-8-cross-family",
       maxOutputTokens: 111,
@@ -729,12 +688,9 @@ describe("Cross-family translated golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
-    expect(decision?.guardrailActions ?? []).toContain("translated_request:openai-chat_to_anthropic-messages");
     await expectProviderUsage(activeFixture, fixture.usage, "claude-opus-4-8-cross-family");
   });
 
@@ -744,7 +700,6 @@ describe("Cross-family translated golden fixtures", () => {
     activeFixture = await setupTranslatedAnthropicFixture(organizationId, {
       secret: "responses-to-anthropic-golden-token",
       slug: "responses-to-anthropic-golden",
-      providerId: "30000000-0000-0000-0000-000000000203",
       providerSlug: "cross-anthropic-responses",
       model: "claude-opus-4-8-responses-cross",
       maxOutputTokens: 321,
@@ -779,12 +734,9 @@ describe("Cross-family translated golden fixtures", () => {
     const decision = await lastDecisionPayload(activeFixture);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-proxy-route")).toBe("hard");
-    expect(response.headers.get("x-proxy-reasoning-effort")).toBe("high");
     expectExactJson(providerCall?.body, fixture.expectedUpstreamRequest);
     expectExactSse(body, fixture.expectedClientSse ?? "");
     expectRoutePlanExcerpt(decision, fixture.routePlanExcerpt);
-    expect(decision?.guardrailActions ?? []).toContain("translated_request:openai-responses_to_anthropic-messages");
     await expectProviderUsage(activeFixture, fixture.usage, "claude-opus-4-8-responses-cross");
   });
 });
@@ -796,7 +748,6 @@ describe("Unsupported and stateful rejection fixtures", () => {
     activeFixture = await setupTranslatedOpenAIFixture(organizationId, {
       secret: "previous-response-reject-token",
       slug: "previous-response-reject",
-      providerId: "30000000-0000-0000-0000-000000000301",
       providerSlug: "previous-response-chat-only",
       providerDialect: "openai-chat",
       model: "gpt-previous-response-chat",
@@ -834,7 +785,6 @@ describe("Unsupported and stateful rejection fixtures", () => {
     activeFixture = await setupTranslatedAnthropicFixture(organizationId, {
       secret: "encrypted-include-reject-token",
       slug: "encrypted-include-reject",
-      providerId: "30000000-0000-0000-0000-000000000302",
       providerSlug: "encrypted-include-anthropic",
       model: "claude-opus-4-8-encrypted-include",
       maxOutputTokens: 222,
@@ -872,7 +822,6 @@ describe("Unsupported and stateful rejection fixtures", () => {
     activeFixture = await setupUnavailableTargetFixture(organizationId, {
       secret: "missing-endpoint-reject-token",
       slug: "missing-endpoint-reject",
-      providerId: "30000000-0000-0000-0000-000000000303",
       providerSlug: "no-endpoint-provider",
       model: "missing-endpoint-model",
       endpoints: []
@@ -913,7 +862,6 @@ describe("Unsupported and stateful rejection fixtures", () => {
     activeFixture = await setupUnavailableTargetFixture(organizationId, {
       secret: "missing-translator-reject-token",
       slug: "missing-translator-reject",
-      providerId: "30000000-0000-0000-0000-000000000304",
       providerSlug: "missing-translator-provider",
       model: "missing-translator-model",
       endpoints: [{ dialect: "anthropic-messages", path: "/messages" }]
@@ -981,17 +929,17 @@ async function setupCodexNativeFixture(
   openAIOptions: { outputText: string; responsesJsonProvider?: boolean }
 ) {
   const fixture = await captureFixture(organizationId, "raw_text", false, { openAIOptions });
-  await assignRouteConfig(fixture, organizationId, {
+  await assignTarget(fixture, organizationId, {
     secret: "codex-native-token",
     slug: "codex-native",
-    configHash: "sha256:codex-native",
-    targets: [{
+    target: {
       providerId: "openai",
       model: "gpt-codex-native",
       effort: "high",
       verbosity: "medium",
       maxOutputTokens: 321
-    }]
+    },
+    wires: [{ dialect: "openai-responses", path: "/responses" }]
   });
   return fixture;
 }
@@ -1001,15 +949,15 @@ async function setupClaudeNativeFixture(
   anthropicOptions: { outputText: string }
 ) {
   const fixture = await captureFixture(organizationId, "raw_text", false, { anthropicOptions });
-  await assignRouteConfig(fixture, organizationId, {
+  await assignTarget(fixture, organizationId, {
     secret: "claude-native-token",
     slug: "claude-native",
-    configHash: "sha256:claude-native",
-    targets: [{
+    target: {
       providerId: "anthropic",
       model: "claude-code-native",
       maxOutputTokens: 333
-    }]
+    },
+    wires: [{ dialect: "anthropic-messages", path: "/messages" }]
   });
   return fixture;
 }
@@ -1025,16 +973,16 @@ async function setupChatNativeFixture(
   const fixture = await captureFixture(organizationId, "raw_text", false, {
     openAIOptions: { outputText: input.outputText }
   });
-  await assignRouteConfig(fixture, organizationId, {
+  await assignTarget(fixture, organizationId, {
     secret: input.secret,
     slug: input.slug,
-    configHash: `sha256:${input.slug}`,
-    targets: [{
+    target: {
       providerId: "openai",
       model: "gpt-chat-native",
       effort: "high",
       maxOutputTokens: 222
-    }]
+    },
+    wires: [{ dialect: "openai-chat", path: "/chat/completions" }]
   });
   return fixture;
 }
@@ -1044,7 +992,6 @@ async function setupTranslatedOpenAIFixture(
   input: {
     secret: string;
     slug: string;
-    providerId: string;
     providerSlug: string;
     providerDialect: "openai-chat" | "openai-responses";
     model: string;
@@ -1064,32 +1011,18 @@ async function setupTranslatedOpenAIFixture(
       chatStreamToolCall: input.chatStreamToolCall
     }
   });
-  await fixture.db.insert(providers).values({
-    id: input.providerId,
-    organizationId,
-    slug: input.providerSlug,
-    displayName: input.providerSlug,
-    baseUrl: fixture.openai.url,
-    authStyle: "none",
-    endpoints: [{
-      dialect: input.providerDialect,
-      path: input.providerDialect === "openai-chat" ? "/chat/completions" : "/responses"
-    }],
-    defaultHeaders: {},
-    capabilities: { efforts: ["low", "medium", "high", "xhigh"] },
-    forwardHarnessHeaders: false,
-    enabled: true
-  });
-  await assignRouteConfig(fixture, organizationId, {
+  const path = input.providerDialect === "openai-chat" ? "/chat/completions" : "/responses";
+  await assignTarget(fixture, organizationId, {
     secret: input.secret,
     slug: input.slug,
-    configHash: `sha256:${input.slug}`,
-    targets: [{
+    target: {
       providerId: input.providerSlug,
       model: input.model,
       effort: "high",
       maxOutputTokens: input.maxOutputTokens
-    }]
+    },
+    wires: [{ dialect: input.providerDialect, path }],
+    baseUrl: fixture.openai.url
   });
   return fixture;
 }
@@ -1099,7 +1032,6 @@ async function setupUnavailableTargetFixture(
   input: {
     secret: string;
     slug: string;
-    providerId: string;
     providerSlug: string;
     model: string;
     endpoints: { dialect: Dialect; path: string }[];
@@ -1108,29 +1040,17 @@ async function setupUnavailableTargetFixture(
   const fixture = await captureFixture(organizationId, "raw_text", false, {
     envOverrides: { ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8" }
   });
-  await fixture.db.insert(providers).values({
-    id: input.providerId,
-    organizationId,
-    slug: input.providerSlug,
-    displayName: input.providerSlug,
-    baseUrl: fixture.openai.url,
-    authStyle: "none",
-    endpoints: input.endpoints,
-    defaultHeaders: {},
-    capabilities: { efforts: ["low", "medium", "high", "xhigh"] },
-    forwardHarnessHeaders: false,
-    enabled: true
-  });
-  await assignRouteConfig(fixture, organizationId, {
+  await assignTarget(fixture, organizationId, {
     secret: input.secret,
     slug: input.slug,
-    configHash: `sha256:${input.slug}`,
-    targets: [{
+    target: {
       providerId: input.providerSlug,
       model: input.model,
       effort: "high",
       maxOutputTokens: 222
-    }]
+    },
+    wires: input.endpoints,
+    baseUrl: fixture.openai.url
   });
   return fixture;
 }
@@ -1140,7 +1060,6 @@ async function setupTranslatedAnthropicFixture(
   input: {
     secret: string;
     slug: string;
-    providerId: string;
     providerSlug: string;
     model: string;
     maxOutputTokens: number;
@@ -1159,136 +1078,69 @@ async function setupTranslatedAnthropicFixture(
       toolUse: input.toolUse
     }
   });
-  await fixture.db.insert(providers).values({
-    id: input.providerId,
-    organizationId,
-    slug: input.providerSlug,
-    displayName: input.providerSlug,
-    baseUrl: fixture.anthropic.url,
-    authStyle: "none",
-    endpoints: [{ dialect: "anthropic-messages", path: "/messages" }],
-    defaultHeaders: {},
-    capabilities: { efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"] },
-    forwardHarnessHeaders: false,
-    enabled: true
-  });
-  await assignRouteConfig(fixture, organizationId, {
+  await assignTarget(fixture, organizationId, {
     secret: input.secret,
     slug: input.slug,
-    configHash: `sha256:${input.slug}`,
-    targets: [{
+    target: {
       providerId: input.providerSlug,
       model: input.model,
       effort: "high",
       thinking: { type: "adaptive", display: "omitted" },
       maxOutputTokens: input.maxOutputTokens
-    }]
+    },
+    wires: [{ dialect: "anthropic-messages", path: "/messages" }],
+    baseUrl: fixture.anthropic.url
   });
   return fixture;
 }
 
-async function assignRouteConfig(
+async function assignTarget(
   fixture: PromptTestFixture,
   organizationId: string,
   input: {
     secret: string;
     slug: string;
-    configHash: string;
-    targets: TargetFixture[];
+    target: TargetFixture;
+    wires: { dialect: Dialect; path: string }[];
+    baseUrl?: string;
   }
 ) {
-  const configId = `${organizationId}:routing-config:${input.slug}`;
-  const versionId = `${configId}:v1`;
-  const [defaultVersion] = await fixture.db
-    .select()
-    .from(routingConfigVersions)
-    .where(eq(routingConfigVersions.id, `${organizationId}:routing-config:default:v1`))
-    .limit(1);
-  const config = withHardTargets(structuredClone(defaultVersion.config as RoutingConfig), input.targets);
-
-  await fixture.db.insert(routingConfigs).values({
-    id: configId,
-    organizationId,
-    workspaceId: defaultWorkspaceId(organizationId),
-    name: "Harness compatibility route config",
+  await assignHarnessGatewayTarget(fixture, organizationId, {
+    secret: input.secret,
     slug: input.slug,
-    status: "active"
-  });
-  await fixture.db.insert(routingConfigVersions).values({
-    id: versionId,
-    organizationId,
-    workspaceId: defaultWorkspaceId(organizationId),
-    routingConfigId: configId,
-    version: 1,
-    configHash: input.configHash,
-    config,
-    status: "active",
-    createdByUserId: "local-user",
-    activatedAt: new Date("2026-06-08T00:00:00.000Z")
-  });
-  await fixture.db
-    .update(routingConfigs)
-    .set({ activeVersionId: versionId })
-    .where(eq(routingConfigs.id, configId));
-  await fixture.db.insert(apiKeys).values({
-    id: `api_key_${input.slug}`,
-    organizationId,
-    workspaceId: defaultWorkspaceId(organizationId),
-    keyHash: hashApiKey(input.secret),
-    name: "Harness compatibility key",
-    routingConfigId: configId
+    provider: input.target.providerId,
+    model: input.target.model,
+    config: targetConfig(input.target),
+    wires: input.wires,
+    ...(input.baseUrl ? {
+      connection: { baseUrl: input.baseUrl, forwardHarnessHeaders: false }
+    } : {})
   });
 }
-
-type AnthropicEffort = NonNullable<RoutingConfigAnthropicDeployment["output_config"]>["effort"];
-type OpenAIEffort = NonNullable<RoutingConfigOpenAIDeployment["reasoning"]>["effort"];
-type OpenAIVerbosity = NonNullable<RoutingConfigOpenAIDeployment["text"]>["verbosity"];
 
 type TargetFixture = {
   providerId: string;
   model: string;
-  effort?: AnthropicEffort | OpenAIEffort;
-  verbosity?: OpenAIVerbosity;
-  thinking?: RoutingConfigAnthropicDeployment["thinking"];
+  effort?: string;
+  verbosity?: string;
+  thinking?: Record<string, unknown>;
   maxOutputTokens?: number;
 };
 
-function withHardTargets(config: RoutingConfig, targets: TargetFixture[]): RoutingConfig {
-  const openai = targets
-    .filter((target) => !target.providerId.includes("anthropic"))
-    .map((target, index): RoutingConfigOpenAIDeployment => ({
-      provider: target.providerId,
-      model: target.model,
-      order: index,
-      weight: 1,
+function targetConfig(target: TargetFixture) {
+  if (target.providerId.includes("anthropic")) {
+    return {
       timeoutMs: 60000,
-      ...(target.effort ? { reasoning: { effort: target.effort as OpenAIEffort } } : {}),
-      ...(target.verbosity ? { text: { verbosity: target.verbosity } } : {}),
-      ...(target.maxOutputTokens ? { maxOutputTokens: target.maxOutputTokens } : {})
-    }));
-  const anthropic = targets
-    .filter((target) => target.providerId.includes("anthropic"))
-    .map((target, index): RoutingConfigAnthropicDeployment => ({
-      provider: target.providerId,
-      model: target.model,
-      order: index,
-      weight: 1,
-      timeoutMs: 60000,
-      ...(target.effort ? { output_config: { effort: target.effort as AnthropicEffort } } : {}),
+      ...(target.effort ? { output_config: { effort: target.effort } } : {}),
       ...(target.thinking ? { thinking: target.thinking } : {}),
       ...(target.maxOutputTokens ? { maxTokens: target.maxOutputTokens } : {})
-    }));
-
+    };
+  }
   return {
-    ...config,
-    routes: {
-      ...config.routes,
-      hard: {
-        ...config.routes.hard,
-        ...(openai.length > 0 ? { openai: { deployments: openai } } : { openai: undefined }),
-        ...(anthropic.length > 0 ? { anthropic: { deployments: anthropic } } : { anthropic: undefined })
-      }
-    }
+    timeoutMs: 60000,
+    ...(target.effort ? { reasoning: { effort: target.effort } } : {}),
+    ...(target.verbosity ? { text: { verbosity: target.verbosity } } : {}),
+    ...(target.maxOutputTokens ? { maxOutputTokens: target.maxOutputTokens } : {})
   };
 }
 
@@ -1298,11 +1150,12 @@ async function lastDecisionPayload(fixture: PromptTestFixture) {
     .filter((event) => event.eventType === "routing.decision_recorded")
     .at(-1);
   return decision?.payload as {
-    guardrailActions?: string[];
     outcome?: string;
     surface?: string;
     provider?: string;
     selectedModel?: string;
+    egressWireId?: string;
+    wireAdapterVersion?: string | null;
     reasoningEffort?: string;
     verbosity?: string;
   } | undefined;

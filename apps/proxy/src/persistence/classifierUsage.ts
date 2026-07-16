@@ -1,9 +1,15 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
-import { requests, usageLedger, type ProxyTransaction } from "@proxy/db";
+import {
+  modelDeployments,
+  providerConnections,
+  requests,
+  usageLedger,
+  type ProxyTransaction
+} from "@proxy/db";
 
 import { usageCostMicros } from "../pricing.js";
-import { catalogPricingForModel } from "./modelPricing.js";
+import { pricingFromRow } from "./modelPricing.js";
 import { routeForRequest } from "./routeDecision.js";
 import { normalizeUsage, providerValue, recordValue, stringValue } from "./values.js";
 
@@ -22,6 +28,8 @@ export async function persistClassifierUsage(tx: ProxyTransaction, event: {
   const model = stringValue(event.payload.model);
   if (!model) return;
   const provider = providerValue(event.payload.provider) ?? "unknown";
+  const deploymentId = stringValue(event.payload.classifierDeploymentId);
+  if (!deploymentId) throw new Error("Classifier usage is missing its deployment id.");
 
   const [request] = await tx
     .select()
@@ -31,7 +39,24 @@ export async function persistClassifierUsage(tx: ProxyTransaction, event: {
   if (!request) return;
 
   const normalized = normalizeUsage(usage);
-  const modelPricing = await catalogPricingForModel(tx, event.tenantId, provider, model);
+  const [deployment] = await tx
+    .select({ pricing: modelDeployments.pricing })
+    .from(modelDeployments)
+    .innerJoin(providerConnections, and(
+      eq(providerConnections.organizationId, modelDeployments.organizationId),
+      eq(providerConnections.workspaceId, modelDeployments.workspaceId),
+      eq(providerConnections.id, modelDeployments.providerConnectionId)
+    ))
+    .where(and(
+      eq(modelDeployments.organizationId, event.tenantId),
+      eq(modelDeployments.workspaceId, request.workspaceId),
+      eq(modelDeployments.id, deploymentId),
+      eq(modelDeployments.upstreamModelId, model),
+      eq(providerConnections.slug, provider)
+    ))
+    .limit(1);
+  if (!deployment) throw new Error("Classifier usage does not match a scoped deployment.");
+  const modelPricing = pricingFromRow(deployment.pricing);
   const costs = usageCostMicros(modelPricing, normalized);
   const route = await routeForRequest(tx, event.scopeId);
 

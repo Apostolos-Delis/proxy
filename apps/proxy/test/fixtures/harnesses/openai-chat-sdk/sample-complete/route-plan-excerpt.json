@@ -1,4 +1,6 @@
 {
   "profileId": "openai-chat-sdk",
-  "status": "native"
+  "status": "native",
+  "egressWireId": "openai-chat",
+  "wireAdapterVersion": null
 }

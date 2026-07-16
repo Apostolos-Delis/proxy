@@ -25,8 +25,8 @@ export type CostBaselineSettingsInput = {
 };
 
 export type CreateApiKeyInput = {
+  accessProfileId: string | number;
   name: string;
-  routingConfigId?: string | number | null | undefined;
 };
 
 export type CreateInvitationInput = {
@@ -519,6 +519,11 @@ export type CreateApiKeyMutationVariables = Exact<{
 
 
 export type CreateApiKeyMutation = { createApiKey: { secret: string, apiKey: { id: string, name: string } | null } };
+
+export type GatewayAccessProfilesQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type GatewayAccessProfilesQuery = { gatewayAccessProfiles: Array<{ id: string, slug: string, name: string, description: string | null, enabled: boolean }>, gatewayModelGrants: Array<{ accessProfileId: string, logicalModelId: string, allowedOperations: Array<string>, enabled: boolean }>, gatewayLogicalModels: Array<{ id: string, slug: string, enabled: boolean }> };
 
 export type RevokeApiKeyMutationVariables = Exact<{
   apiKeyId: string | number;
@@ -2049,6 +2054,28 @@ export const CreateApiKeyDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<CreateApiKeyMutation, CreateApiKeyMutationVariables>;
+export const GatewayAccessProfilesDocument = new TypedDocumentString(`
+    query GatewayAccessProfiles {
+  gatewayAccessProfiles {
+    id
+    slug
+    name
+    description
+    enabled
+  }
+  gatewayModelGrants {
+    accessProfileId
+    logicalModelId
+    allowedOperations
+    enabled
+  }
+  gatewayLogicalModels {
+    id
+    slug
+    enabled
+  }
+}
+    `) as unknown as TypedDocumentString<GatewayAccessProfilesQuery, GatewayAccessProfilesQueryVariables>;
 export const RevokeApiKeyDocument = new TypedDocumentString(`
     mutation RevokeApiKey($apiKeyId: ID!) {
   revokeApiKey(apiKeyId: $apiKeyId) {

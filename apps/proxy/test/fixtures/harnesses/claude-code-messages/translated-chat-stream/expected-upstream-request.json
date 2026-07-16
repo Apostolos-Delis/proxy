@@ -59,9 +59,9 @@
     }
   },
   "stream": true,
-  "max_completion_tokens": 222,
-  "reasoning_effort": "high",
   "stream_options": {
     "include_usage": true
-  }
+  },
+  "max_completion_tokens": 222,
+  "reasoning_effort": "high"
 }

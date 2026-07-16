@@ -7,6 +7,8 @@ import {
   type GatewayResolutionEvidence
 } from "@proxy/schema";
 
+import type { GatewayExecutionTarget } from "./gatewayRuntime.js";
+
 const requestAdmissionEvidenceKeys = gatewayRequestAdmissionEvidenceSchema.keyof().options;
 const requestResolutionEvidenceKeys = gatewayResolutionEvidenceSchema.keyof().options;
 const requestAdmissionEvidenceKeySet = new Set<string>(requestAdmissionEvidenceKeys);
@@ -33,6 +35,51 @@ export function validateGatewayEventEvidence(eventType: string, payload: Record<
 export function gatewayRequestEvidenceValue(
   payload: Record<string, unknown>
 ): GatewayRequestAdmissionEvidence | GatewayResolutionEvidence | undefined {
+  return gatewayEvidenceValue(payload);
+}
+
+export function gatewayResolutionEvidenceValue(
+  payload: Record<string, unknown>
+): GatewayRequestAdmissionEvidence | GatewayResolutionEvidence | undefined {
+  return gatewayEvidenceValue(payload);
+}
+
+export function gatewayAdmissionEvidence(
+  input: GatewayRequestAdmissionEvidence
+): GatewayRequestAdmissionEvidence {
+  return gatewayRequestAdmissionEvidenceSchema.parse(input);
+}
+
+export function gatewayResolvedEvidence(
+  admission: GatewayRequestAdmissionEvidence,
+  target: GatewayExecutionTarget
+): GatewayResolutionEvidence {
+  return gatewayResolutionEvidenceSchema.parse({
+    ...admission,
+    resolvedLogicalModelId: target.resolution.logicalModelId,
+    accessProfileId: target.resolution.accessProfileId,
+    routerKind: target.resolution.routerKind,
+    deploymentId: target.resolution.deploymentId,
+    providerConnectionId: target.resolution.providerConnectionId,
+    egressWireId: target.resolution.egressWireId,
+    wireAdapterVersion: target.resolution.wireAdapterVersion
+  });
+}
+
+export function gatewayProviderAttemptEvidence(
+  target: GatewayExecutionTarget
+): GatewayProviderAttemptEvidence {
+  return gatewayProviderAttemptEvidenceSchema.parse({
+    deploymentId: target.resolution.deploymentId,
+    providerConnectionId: target.resolution.providerConnectionId,
+    egressWireId: target.resolution.egressWireId,
+    providerAdapterContractVersion: target.resolution.providerAdapterContractVersion
+  });
+}
+
+function gatewayEvidenceValue(
+  payload: Record<string, unknown>
+): GatewayRequestAdmissionEvidence | GatewayResolutionEvidence | undefined {
   const hasAdmissionEvidence = requestAdmissionEvidenceKeys.some((key) => Object.hasOwn(payload, key));
   const hasResolutionEvidence = requestResolutionOnlyEvidenceKeys.some((key) => Object.hasOwn(payload, key));
   if (!hasAdmissionEvidence && !hasResolutionEvidence) return undefined;
@@ -40,15 +87,6 @@ export function gatewayRequestEvidenceValue(
   const keys = hasResolutionEvidence ? requestResolutionEvidenceKeys : requestAdmissionEvidenceKeys;
   const schema = hasResolutionEvidence ? gatewayResolutionEvidenceSchema : gatewayRequestAdmissionEvidenceSchema;
   const result = schema.safeParse(pickPayload(payload, keys));
-  if (!result.success) throw new Error("Invalid gateway resolution evidence payload.");
-  return result.data;
-}
-
-export function gatewayResolutionEvidenceValue(
-  payload: Record<string, unknown>
-): GatewayResolutionEvidence | undefined {
-  if (!requestResolutionEvidenceKeys.some((key) => Object.hasOwn(payload, key))) return undefined;
-  const result = gatewayResolutionEvidenceSchema.safeParse(pickPayload(payload, requestResolutionEvidenceKeys));
   if (!result.success) throw new Error("Invalid gateway resolution evidence payload.");
   return result.data;
 }

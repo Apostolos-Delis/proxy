@@ -19,7 +19,11 @@ import {
 import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
 
 import { loadConfig } from "../src/config.js";
+import { LlmClassifier } from "../src/classifier.js";
+import { NoopMetricsCollector } from "../src/metrics.js";
+import { createEnvironmentSecretReferenceResolver } from "../src/persistence/environmentSecretReferences.js";
 import { createDatabasePersistence } from "../src/persistence/index.js";
+import { ProviderConnectionClassifierTargetResolver } from "../src/persistence/providerConnectionClassifierTarget.js";
 import { buildServer } from "../src/server.js";
 import { listen, startAnthropicMock, startOpenAIMock, type MockServer } from "./helpers.js";
 
@@ -50,6 +54,7 @@ export function testEnv(overrides: NodeJS.ProcessEnv = {}) {
     CLASSIFIER_PROVIDER: "openai",
     CLASSIFIER_MODEL: "route-classifier-cheap",
     MODEL_COSTS_JSON: "",
+    ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8",
     ADMIN_DEV_LOGIN_ENABLED: "true",
     ADMIN_DEV_LOGIN_EMAIL: "local@example.com",
     ADMIN_DEV_LOGIN_PASSWORD: "dev-password",
@@ -90,7 +95,18 @@ export async function captureFixture(
     ANTHROPIC_BASE_URL: anthropic.url,
     LOG_LEVEL: "fatal"
   });
-  const persistence = createDatabasePersistence(db, config, false);
+  const classifierTargets = new ProviderConnectionClassifierTargetResolver(db, {
+    allowedPrivateUpstreamCidrs: config.allowedPrivateUpstreamCidrs,
+    encryptionKey: config.providerSecretEncryptionKey,
+    resolveSecretReference: createEnvironmentSecretReferenceResolver(config)
+  });
+  const persistence = createDatabasePersistence(
+    db,
+    config,
+    false,
+    undefined,
+    new LlmClassifier(config, new NoopMetricsCollector(), classifierTargets)
+  );
   if (failCapture) {
     persistence.promptArtifacts.capture = async () => {
       throw new Error("capture_failed");

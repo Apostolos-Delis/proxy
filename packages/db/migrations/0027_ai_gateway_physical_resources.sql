@@ -13,6 +13,8 @@ CREATE TABLE provider_connections (
   secret_hint text,
   adapter_config jsonb NOT NULL DEFAULT '{}'::jsonb,
   default_headers jsonb NOT NULL DEFAULT '{}'::jsonb,
+  platform_owned boolean NOT NULL DEFAULT false,
+  forward_harness_headers boolean NOT NULL DEFAULT false,
   status text NOT NULL DEFAULT 'active',
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
