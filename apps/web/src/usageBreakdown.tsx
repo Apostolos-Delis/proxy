@@ -167,7 +167,7 @@ function UsageKeyCell({ dimension, group, lookups, canOpenDetails }: {
   if (dimension === "user") return <UserKeyCell userId={group.key} usersById={lookups.usersById} />;
   if (dimension === "api_key") return <ApiKeyCell apiKeyId={group.key} apiKeysById={lookups.apiKeysById} />;
   if (dimension === "session") return <SessionKeyCell sessionId={group.key} canOpenDetails={canOpenDetails} />;
-  return <span className="mono">{group.key}</span>;
+  return <span className="mono usage-raw-key" title={group.key}>{group.key}</span>;
 }
 
 function UserKeyCell({ userId, usersById }: { userId: string; usersById?: Map<string, UsageLookupUser> }) {
