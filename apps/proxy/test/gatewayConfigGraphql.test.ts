@@ -2,8 +2,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
 import {
+  accessProfileModelGrants,
+  accessProfiles,
+  apiKeys,
   defaultWorkspaceId,
   deploymentHealth,
+  eventOutbox,
+  events,
   organizationMembers,
   providerConnectionHealth,
   users
@@ -106,7 +111,7 @@ describe("gateway configuration GraphQL", () => {
         name: "GraphQL Direct",
         resolutionKind: "direct",
         enabled: true,
-        initialTarget: { deploymentId: deployment.id, priority: 0, enabled: true }
+        initialTargets: [{ deploymentId: deployment.id, priority: 0, enabled: true }]
       }
     });
     const scope = {
@@ -144,20 +149,20 @@ enabled = true
         value: createGatewayAccessProfile(input: $input) { id slug limits enabled }
       }
     `, {
-      input: { slug: "graphql-profile", name: "GraphQL Profile", limits: { requests_per_minute: 60 }, enabled: true }
-    });
-    const grant = await mutation(fixture, `
-      mutation Create($input: CreateGatewayModelGrantInput!) {
-        value: createGatewayModelGrant(input: $input) { id accessProfileId logicalModelId allowedOperations enabled }
-      }
-    `, {
       input: {
-        accessProfileId: profile.id,
-        logicalModelId: logicalModel.id,
-        allowedOperations: ["text.generate", "model.list"],
-        enabled: true
+        slug: "graphql-profile",
+        name: "GraphQL Profile",
+        limits: { requests_per_minute: 60 },
+        enabled: true,
+        initialGrants: [{
+          logicalModelId: logicalModel.id,
+          allowedOperations: ["text.generate", "model.list"],
+          enabled: true
+        }]
       }
     });
+    const grant = (await fixture.persistence.gatewayConfigAdmin.modelGrants(scope))
+      .find((row) => row.accessProfileId === profile.id)!;
     const apiKeyId = `${fixture.config.defaultOrganizationId}:api-key:default`;
     const assignment = await mutation(fixture, `mutation Assign($apiKeyId: ID!, $accessProfileId: ID!) {
       value: assignGatewayApiKeyAccessProfile(apiKeyId: $apiKeyId, accessProfileId: $accessProfileId) {
@@ -315,10 +320,45 @@ enabled = true
       ]));
     }
     expect(fields).toContain("assignGatewayApiKeyAccessProfile");
+    expect(fields).toContain("createGatewayApiKeyWithModels");
     expect(fields).toEqual(expect.arrayContaining([
       "resetGatewayProviderConnectionHealth",
       "resetGatewayModelDeploymentHealth"
     ]));
+  });
+
+  it("rolls back the profile graph when atomic key issuance fails", async () => {
+    const fixture = await setup("org_gateway_graphql_atomic_key");
+    const scope = {
+      organizationId: fixture.config.defaultOrganizationId,
+      workspaceId: defaultWorkspaceId(fixture.config.defaultOrganizationId)
+    };
+    const model = (await fixture.persistence.gatewayConfigAdmin.logicalModels(scope))
+      .find((row) => row.slug === "fable")!;
+    const before = {
+      profiles: (await fixture.db.select().from(accessProfiles)).length,
+      grants: (await fixture.db.select().from(accessProfileModelGrants)).length,
+      keys: (await fixture.db.select().from(apiKeys)).length,
+      events: (await fixture.db.select().from(events)).length,
+      outbox: (await fixture.db.select().from(eventOutbox)).length,
+      mirroredEvents: fixture.persistence.eventService.listEvents().length
+    };
+
+    await expect(fixture.persistence.gatewayConfigAdmin.createApiKeyWithModels({
+      ...scope,
+      actorUserId: "missing-user",
+      name: "Rollback key",
+      logicalModelIds: [model.id]
+    })).rejects.toThrow();
+
+    expect({
+      profiles: (await fixture.db.select().from(accessProfiles)).length,
+      grants: (await fixture.db.select().from(accessProfileModelGrants)).length,
+      keys: (await fixture.db.select().from(apiKeys)).length,
+      events: (await fixture.db.select().from(events)).length,
+      outbox: (await fixture.db.select().from(eventOutbox)).length,
+      mirroredEvents: fixture.persistence.eventService.listEvents().length
+    }).toEqual(before);
   });
 });
 

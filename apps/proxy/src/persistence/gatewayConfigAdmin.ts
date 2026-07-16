@@ -3,9 +3,11 @@ import type {
   ProxyTransaction,
   ProxyTransactionalDatabase
 } from "@proxy/db";
+import { GATEWAY_OPERATION_IDS } from "@proxy/schema";
 
 import { type CommittedTransactionEvent, EventService, jsonPayload } from "../events.js";
 import type { JsonObject } from "../types.js";
+import { createApiKeyInTransaction } from "./apiKeyAdmin.js";
 import {
   assignApiKeyAccessProfile,
   createAccessProfile,
@@ -77,7 +79,8 @@ export class GatewayConfigAdminService {
     db: ProxyDatabase,
     private readonly transactional: ProxyTransactionalDatabase,
     private readonly events: EventService,
-    private readonly options: GatewayConfigAdminOptions
+    private readonly options: GatewayConfigAdminOptions,
+    private readonly onApiKeysChanged: () => void = () => {}
   ) {
     this.queries = new GatewayConfigQueryStore(db);
   }
@@ -119,6 +122,71 @@ export class GatewayConfigAdminService {
     }
     await this.events.commitTransactionEvents(pendingEvents);
     return results;
+  }
+
+  async createApiKeyWithModels(input: GatewayConfigActor & {
+    name: string;
+    logicalModelIds: string[];
+  }) {
+    const logicalModelIds = [...new Set(input.logicalModelIds)];
+    if (logicalModelIds.length === 0) {
+      throw new GatewayConfigAdminError("model_grants_required", 400, [{
+        path: "logicalModelIds",
+        message: "Pick at least one logical model."
+      }]);
+    }
+    const profileId = gatewayResourceId("accessProfile");
+    const commands: GatewayConfigCommand[] = [
+      {
+        resource: "accessProfile",
+        action: "create",
+        id: profileId,
+        body: {
+          slug: dedicatedKeyProfileSlug(input.name, profileId),
+          name: input.name,
+          description: `Model access for API key ${input.name.trim()}.`,
+          limits: {},
+          enabled: true
+        }
+      },
+      ...logicalModelIds.map((logicalModelId) => ({
+        resource: "modelGrant" as const,
+        action: "create" as const,
+        id: gatewayResourceId("modelGrant"),
+        body: {
+          accessProfileId: profileId,
+          logicalModelId,
+          allowedOperations: [...GATEWAY_OPERATION_IDS],
+          parameterCaps: {},
+          enabled: true
+        }
+      }))
+    ];
+    await this.preflightCommands({ ...input, commands });
+    const pendingEvents: CommittedTransactionEvent[] = [];
+    let result: Awaited<ReturnType<typeof createApiKeyInTransaction>>;
+    try {
+      result = await this.transactional.transaction(async (tx) => {
+        this.pendingEvents.set(tx, pendingEvents);
+        try {
+          const context = this.mutationContext(tx, input, new Set());
+          for (const command of commands) await this.executeCommand(context, command);
+          return createApiKeyInTransaction(tx, {
+            organizationId: input.organizationId,
+            workspaceId: input.workspaceId,
+            actorUserId: input.actorUserId,
+            body: { name: input.name, accessProfileId: profileId }
+          });
+        } finally {
+          this.pendingEvents.delete(tx);
+        }
+      });
+    } catch (error) {
+      throw mapGatewayConstraintError(error);
+    }
+    await this.events.commitTransactionEvents(pendingEvents);
+    this.onApiKeysChanged();
+    return { ...result, accessProfileId: profileId };
   }
 
   async preflightCommands(input: GatewayConfigScope & { commands: GatewayConfigCommand[] }) {
@@ -311,4 +379,11 @@ export class GatewayConfigAdminService {
       createdAt: createdAt?.toISOString()
     }));
   }
+}
+
+function dedicatedKeyProfileSlug(name: string, profileId: string) {
+  const base = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+    .slice(0, 115).replace(/-+$/g, "");
+  const suffix = profileId.slice(-8);
+  return ["key", base, suffix].filter(Boolean).join("-");
 }

@@ -69,17 +69,19 @@ export function createDatabasePersistence(
     encryptionKey: config.providerSecretEncryptionKey,
     resolveSecretReference
   });
+  const onApiKeysChanged = () => apiKeys.clearCache();
+  const gatewayConfigAdmin = new GatewayConfigAdminService(db, transactional, eventService, {
+    allowedPrivateUpstreamCidrs: config.allowedPrivateUpstreamCidrs,
+    encryptionKey: config.providerSecretEncryptionKey,
+    secretReferenceSupported: gatewaySecretReferenceSupported
+  }, onApiKeysChanged);
   return {
-    apiKeyAdmin: new ApiKeyAdminService(transactional, () => apiKeys.clearCache()),
+    apiKeyAdmin: new ApiKeyAdminService(transactional, onApiKeysChanged),
     apiKeys,
     adminSessions: new AdminSessionStore(db),
     compressionCacheWindows: new CompressionCacheWindowResolver(db),
     compressionRetrieval: new CompressionRetrievalResolver(db),
-    gatewayConfigAdmin: new GatewayConfigAdminService(db, transactional, eventService, {
-      allowedPrivateUpstreamCidrs: config.allowedPrivateUpstreamCidrs,
-      encryptionKey: config.providerSecretEncryptionKey,
-      secretReferenceSupported: gatewaySecretReferenceSupported
-    }),
+    gatewayConfigAdmin,
     eventService,
     eventSink,
     modelResolution: new ModelResolutionService(db, { classifier: classifierRuntime }),

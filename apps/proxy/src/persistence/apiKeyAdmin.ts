@@ -7,6 +7,7 @@ import {
   accessProfiles,
   apiKeys,
   hashApiKey,
+  type ProxyTransaction,
   type ProxyTransactionalDatabase
 } from "@proxy/db";
 
@@ -32,55 +33,7 @@ export class ApiKeyAdminService {
     actorUserId: string;
     body: unknown;
   }) {
-    const body = createApiKeyBodySchema.safeParse(input.body);
-    if (!body.success) throw validationError("invalid_api_key_request", body.error);
-    const secret = `pp_${randomBytes(24).toString("hex")}`;
-    const apiKeyId = createId("api_key");
-    const now = new Date();
-
-    const result = await this.db.transaction(async (tx) => {
-      const [profile] = await tx
-        .select({ id: accessProfiles.id, status: accessProfiles.status })
-        .from(accessProfiles)
-        .where(and(
-          eq(accessProfiles.organizationId, input.organizationId),
-          eq(accessProfiles.workspaceId, input.workspaceId),
-          eq(accessProfiles.id, body.data.accessProfileId)
-        ))
-        .limit(1);
-      if (!profile) throw new ApiKeyAdminError("access_profile_not_found", 404);
-      if (profile.status !== "active") throw new ApiKeyAdminError("access_profile_inactive", 409);
-
-      await tx.insert(apiKeys).values({
-        id: apiKeyId,
-        organizationId: input.organizationId,
-        workspaceId: input.workspaceId,
-        userId: input.actorUserId,
-        keyHash: hashApiKey(secret),
-        name: body.data.name,
-        accessProfileId: profile.id,
-        createdAt: now
-      });
-      await appendAdminAuditEvent(tx, {
-        organizationId: input.organizationId,
-        workspaceId: input.workspaceId,
-        scopeType: "api_key",
-        scopeId: apiKeyId,
-        correlationId: apiKeyId,
-        actorUserId: input.actorUserId,
-        producer: "proxy.admin.api-keys",
-        eventType: "api_key.created",
-        payload: {
-          apiKeyId,
-          name: body.data.name,
-          userId: input.actorUserId,
-          accessProfileId: profile.id
-        },
-        createdAt: now
-      });
-
-      return { apiKeyId, secret };
-    });
+    const result = await this.db.transaction((tx) => createApiKeyInTransaction(tx, input));
     this.onApiKeysChanged();
     return result;
   }
@@ -139,6 +92,59 @@ export class ApiKeyAdminService {
     this.onApiKeysChanged();
     return result;
   }
+}
+
+export async function createApiKeyInTransaction(tx: ProxyTransaction, input: {
+  organizationId: string;
+  workspaceId: string;
+  actorUserId: string;
+  body: unknown;
+}) {
+  const body = createApiKeyBodySchema.safeParse(input.body);
+  if (!body.success) throw validationError("invalid_api_key_request", body.error);
+  const secret = `pp_${randomBytes(24).toString("hex")}`;
+  const apiKeyId = createId("api_key");
+  const now = new Date();
+  const [profile] = await tx
+    .select({ id: accessProfiles.id, status: accessProfiles.status })
+    .from(accessProfiles)
+    .where(and(
+      eq(accessProfiles.organizationId, input.organizationId),
+      eq(accessProfiles.workspaceId, input.workspaceId),
+      eq(accessProfiles.id, body.data.accessProfileId)
+    ))
+    .limit(1);
+  if (!profile) throw new ApiKeyAdminError("access_profile_not_found", 404);
+  if (profile.status !== "active") throw new ApiKeyAdminError("access_profile_inactive", 409);
+
+  await tx.insert(apiKeys).values({
+    id: apiKeyId,
+    organizationId: input.organizationId,
+    workspaceId: input.workspaceId,
+    userId: input.actorUserId,
+    keyHash: hashApiKey(secret),
+    name: body.data.name,
+    accessProfileId: profile.id,
+    createdAt: now
+  });
+  await appendAdminAuditEvent(tx, {
+    organizationId: input.organizationId,
+    workspaceId: input.workspaceId,
+    scopeType: "api_key",
+    scopeId: apiKeyId,
+    correlationId: apiKeyId,
+    actorUserId: input.actorUserId,
+    producer: "proxy.admin.api-keys",
+    eventType: "api_key.created",
+    payload: {
+      apiKeyId,
+      name: body.data.name,
+      userId: input.actorUserId,
+      accessProfileId: profile.id
+    },
+    createdAt: now
+  });
+  return { apiKeyId, secret };
 }
 
 function validationError(message: string, error: z.ZodError) {

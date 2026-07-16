@@ -318,6 +318,15 @@ The resolver does not parse provider response bodies, fetch credentials, send ne
 
 The implemented V1 document shape and operator commands are defined in [TOML.md](TOML.md).
 
+### Slice 4: Console model and key access
+
+- List every model-facing API route and its code-owned operation and wire.
+- Show each logical model's caller-facing slug, direct or classifier resolution, physical targets, routing policy, wires, granting profiles, and status.
+- Create direct logical models or classifier routers from active, wire-bound deployments in one transaction.
+- Start API-key creation with model access rather than harness configuration.
+- Let an administrator atomically issue a key with selected logical models through a dedicated access profile, or assign an existing reusable profile.
+- Keep harness configuration in the post-creation step after the one-time key secret is available.
+
 ## Implementation Tickets
 
 The dependency-ordered, PR-sized implementation breakdown lives in [TICKETS.md](TICKETS.md).

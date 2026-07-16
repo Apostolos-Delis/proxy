@@ -1,44 +1,46 @@
-import { defaultHarnessSetupSelection, type HarnessSetupSelection } from "./setupSnippets";
-
-export type CreateKeyStepId = "configure" | "routing" | "create" | "verify";
+export type CreateKeyStepId = "access" | "create" | "verify";
 
 export const createKeySteps: { id: CreateKeyStepId; label: string }[] = [
-  { id: "configure", label: "Configure" },
-  { id: "routing", label: "Access" },
+  { id: "access", label: "Name & models" },
   { id: "create", label: "Create" },
   { id: "verify", label: "Set up & verify" }
 ];
 
+export type ModelAccessKind = "models" | "profile";
+
 export type CreateKeyDraft = {
   stepId: CreateKeyStepId;
   name: string;
-  harnesses: HarnessSetupSelection;
+  accessKind: ModelAccessKind;
+  modelIds: string[];
   accessProfileId: string;
 };
 
 export type CreatedKeyResult = {
   apiKeyId: string | null;
   keyName: string;
-  harnesses: HarnessSetupSelection;
   secret: string;
   model: string;
 };
 
 export function initialDraft(): CreateKeyDraft {
   return {
-    stepId: "configure",
+    stepId: "access",
     name: "",
-    harnesses: [...defaultHarnessSetupSelection],
+    accessKind: "models",
+    modelIds: [],
     accessProfileId: ""
   };
 }
 
 export function stepBlockerMessage(draft: CreateKeyDraft): string | null {
-  if (draft.stepId === "configure") {
-    if (!draft.name.trim()) return "Enter a key name.";
-    if (draft.harnesses.length === 0) return "Pick at least one harness.";
+  if (draft.stepId !== "access") return null;
+  if (!draft.name.trim()) return "Enter a key name.";
+  if (draft.name.trim().length > 256) return "Key name must be 256 characters or fewer.";
+  if (draft.accessKind === "models" && draft.modelIds.length === 0) {
+    return "Pick at least one model.";
   }
-  if (draft.stepId === "routing" && !draft.accessProfileId) {
+  if (draft.accessKind === "profile" && !draft.accessProfileId) {
     return "Pick an access profile.";
   }
   return null;

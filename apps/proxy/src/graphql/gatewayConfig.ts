@@ -1,4 +1,4 @@
-import type { GraphQLContext } from "./context.js";
+import { scopedQueries, type GraphQLContext } from "./context.js";
 import type { GatewayConfigCommand, GatewayConfigResource } from "../persistence/gatewayConfigAdmin.js";
 import { gatewayResourceId } from "../persistence/gatewayConfigIds.js";
 import { requireAdminRole } from "./authz.js";
@@ -15,6 +15,7 @@ import {
   GatewayProviderConnection,
   GatewayWireBinding
 } from "./types/gatewayConfig.js";
+import { CreateApiKeyResult } from "./types/routing.js";
 
 const CreateGatewayProviderConnectionInput = builder.inputType("CreateGatewayProviderConnectionInput", {
   fields: (t) => ({
@@ -120,6 +121,7 @@ const CreateGatewayLogicalModelInitialTargetInput = builder.inputType(
   "CreateGatewayLogicalModelInitialTargetInput",
   {
     fields: (t) => ({
+      id: t.id(),
       deploymentId: t.id({ required: true }),
       priority: t.int({ required: true }),
       enabled: t.boolean({ required: true })
@@ -135,7 +137,7 @@ const CreateGatewayLogicalModelInput = builder.inputType("CreateGatewayLogicalMo
     resolutionKind: t.string({ required: true }),
     routerConfig: t.field({ type: "JSON" }),
     enabled: t.boolean(),
-    initialTarget: t.field({ type: CreateGatewayLogicalModelInitialTargetInput })
+    initialTargets: t.field({ type: [CreateGatewayLogicalModelInitialTargetInput] })
   })
 });
 
@@ -166,13 +168,34 @@ const UpdateGatewayLogicalModelTargetInput = builder.inputType("UpdateGatewayLog
   })
 });
 
+const CreateGatewayAccessProfileInitialGrantInput = builder.inputType(
+  "CreateGatewayAccessProfileInitialGrantInput",
+  {
+    fields: (t) => ({
+      id: t.id(),
+      logicalModelId: t.id({ required: true }),
+      allowedOperations: t.stringList({ required: true }),
+      parameterCaps: t.field({ type: "JSON" }),
+      enabled: t.boolean({ required: true })
+    })
+  }
+);
+
 const CreateGatewayAccessProfileInput = builder.inputType("CreateGatewayAccessProfileInput", {
   fields: (t) => ({
     slug: t.string({ required: true }),
     name: t.string({ required: true }),
     description: t.string(),
     limits: t.field({ type: "JSON" }),
-    enabled: t.boolean()
+    enabled: t.boolean(),
+    initialGrants: t.field({ type: [CreateGatewayAccessProfileInitialGrantInput] })
+  })
+});
+
+const CreateGatewayApiKeyWithModelsInput = builder.inputType("CreateGatewayApiKeyWithModelsInput", {
+  fields: (t) => ({
+    name: t.string({ required: true }),
+    logicalModelIds: t.idList({ required: true })
   })
 });
 
@@ -287,6 +310,26 @@ builder.queryFields((t) => ({
 }));
 
 builder.mutationFields((t) => ({
+  createGatewayApiKeyWithModels: t.field({
+    type: CreateApiKeyResult,
+    args: { input: t.arg({ type: CreateGatewayApiKeyWithModelsInput, required: true }) },
+    resolve: async (_root, args, context) => {
+      const identity = requireAdminRole(context);
+      try {
+        const created = await gatewayAdmin(context).createApiKeyWithModels({
+          organizationId: identity.organizationId,
+          workspaceId: identity.workspaceId,
+          actorUserId: identity.userId,
+          name: args.input.name,
+          logicalModelIds: args.input.logicalModelIds.map(String)
+        });
+        const detail = await scopedQueries(context)?.apiKeyDetail(created.apiKeyId);
+        return { apiKey: detail?.apiKey ?? null, secret: created.secret };
+      } catch (error) {
+        mapAdminError(error);
+      }
+    }
+  }),
   createGatewayProviderConnection: t.field({
     type: GatewayProviderConnection,
     args: { input: t.arg({ type: CreateGatewayProviderConnectionInput, required: true }) },
@@ -460,22 +503,21 @@ builder.mutationFields((t) => ({
         enabled: args.input.enabled ?? undefined
       });
       let id: string;
-      if (args.input.initialTarget) {
+      if (args.input.initialTargets?.length) {
         id = gatewayResourceId("logicalModel");
-        const targetId = gatewayResourceId("logicalModelTarget");
         await applyGatewayCommands(context, [
           { resource: "logicalModel", action: "create", id, body },
-          {
+          ...args.input.initialTargets.map((target) => ({
             resource: "logicalModelTarget",
             action: "create",
-            id: targetId,
+            id: target.id ? String(target.id) : gatewayResourceId("logicalModelTarget"),
             body: {
               logicalModelId: id,
-              deploymentId: String(args.input.initialTarget.deploymentId),
-              priority: args.input.initialTarget.priority,
-              enabled: args.input.initialTarget.enabled
+              deploymentId: String(target.deploymentId),
+              priority: target.priority,
+              enabled: target.enabled
             }
-          }
+          } as const))
         ]);
       } else {
         id = await applyGatewayCommand(context, { resource: "logicalModel", action: "create", body });
@@ -536,7 +578,27 @@ builder.mutationFields((t) => ({
         limits: args.input.limits ?? undefined,
         enabled: args.input.enabled ?? undefined
       });
-      const id = await applyGatewayCommand(context, { resource: "accessProfile", action: "create", body });
+      let id: string;
+      if (args.input.initialGrants?.length) {
+        id = gatewayResourceId("accessProfile");
+        await applyGatewayCommands(context, [
+          { resource: "accessProfile", action: "create", id, body },
+          ...args.input.initialGrants.map((grant) => ({
+            resource: "modelGrant",
+            action: "create",
+            id: grant.id ? String(grant.id) : gatewayResourceId("modelGrant"),
+            body: defined({
+              accessProfileId: id,
+              logicalModelId: String(grant.logicalModelId),
+              allowedOperations: grant.allowedOperations,
+              parameterCaps: grant.parameterCaps ?? undefined,
+              enabled: grant.enabled
+            })
+          } as const))
+        ]);
+      } else {
+        id = await applyGatewayCommand(context, { resource: "accessProfile", action: "create", body });
+      }
       return requiredResult(await gatewayAdmin(context).accessProfile(gatewayScope(context), id));
     }
   }),

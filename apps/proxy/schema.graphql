@@ -225,12 +225,26 @@ type CreateApiKeyResult {
   secret: String!
 }
 
+input CreateGatewayAccessProfileInitialGrantInput {
+  allowedOperations: [String!]!
+  enabled: Boolean!
+  id: ID
+  logicalModelId: ID!
+  parameterCaps: JSON
+}
+
 input CreateGatewayAccessProfileInput {
   description: String
   enabled: Boolean
+  initialGrants: [CreateGatewayAccessProfileInitialGrantInput!]
   limits: JSON
   name: String!
   slug: String!
+}
+
+input CreateGatewayApiKeyWithModelsInput {
+  logicalModelIds: [ID!]!
+  name: String!
 }
 
 input CreateGatewayCanonicalModelInput {
@@ -246,13 +260,14 @@ input CreateGatewayCanonicalModelInput {
 input CreateGatewayLogicalModelInitialTargetInput {
   deploymentId: ID!
   enabled: Boolean!
+  id: ID
   priority: Int!
 }
 
 input CreateGatewayLogicalModelInput {
   description: String
   enabled: Boolean
-  initialTarget: CreateGatewayLogicalModelInitialTargetInput
+  initialTargets: [CreateGatewayLogicalModelInitialTargetInput!]
   name: String!
   resolutionKind: String!
   routerConfig: JSON
@@ -572,6 +587,7 @@ type Mutation {
   configurePromptCapture(promptCaptureMode: String!, retentionDays: Int!): PromptCaptureConfig!
   createApiKey(input: CreateApiKeyInput!): CreateApiKeyResult!
   createGatewayAccessProfile(input: CreateGatewayAccessProfileInput!): GatewayAccessProfile!
+  createGatewayApiKeyWithModels(input: CreateGatewayApiKeyWithModelsInput!): CreateApiKeyResult!
   createGatewayCanonicalModel(input: CreateGatewayCanonicalModelInput!): GatewayCanonicalModel!
   createGatewayLogicalModel(input: CreateGatewayLogicalModelInput!): GatewayLogicalModel!
   createGatewayLogicalModelTarget(input: CreateGatewayLogicalModelTargetInput!): GatewayLogicalModelTarget!

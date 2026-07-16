@@ -3,6 +3,7 @@ import { GATEWAY_SETUP_MODEL_PREFERENCE } from "@proxy/schema";
 import { graphql } from "../gql";
 import type { GatewayAccessProfilesQuery, GatewayApiKeysQuery } from "../gql/graphql";
 import { gqlFetch } from "../graphql";
+import { fetchGatewayModels, logicalModelSummaries } from "../modelsPageData";
 
 const GatewayApiKeysDocument = graphql(`
   query GatewayApiKeys {
@@ -54,7 +55,22 @@ const GatewayAccessProfilesDocument = graphql(`
     gatewayLogicalModels {
       id
       slug
+      name
+      description
+      resolutionKind
       enabled
+    }
+  }
+`);
+
+const CreateApiKeyWithModelsDocument = graphql(`
+  mutation CreateApiKeyWithModels($input: CreateGatewayApiKeyWithModelsInput!) {
+    createGatewayApiKeyWithModels(input: $input) {
+      apiKey {
+        id
+        name
+      }
+      secret
     }
   }
 `);
@@ -103,6 +119,19 @@ export type AccessProfileSummary = {
 
 export type CreatedApiKey = Awaited<ReturnType<typeof createApiKey>>;
 
+export type LogicalModelOption = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  kind: string;
+};
+
+export type ModelAccessOptions = {
+  profiles: AccessProfileSummary[];
+  models: LogicalModelOption[];
+};
+
 export async function fetchApiKeys() {
   return (await gqlFetch(GatewayApiKeysDocument)).apiKeys;
 }
@@ -115,10 +144,53 @@ export async function fetchAccessProfiles() {
   return accessProfileSummaries(await gqlFetch(GatewayAccessProfilesDocument));
 }
 
-export function accessProfileSummaries(data: GatewayAccessProfilesQuery) {
+export async function fetchModelAccessOptions(): Promise<ModelAccessOptions> {
+  const [data, gatewayModels] = await Promise.all([
+    gqlFetch(GatewayAccessProfilesDocument),
+    fetchGatewayModels()
+  ]);
+  const availableModelIds = new Set(
+    logicalModelSummaries(gatewayModels).filter((model) => model.available).map((model) => model.id)
+  );
+  return {
+    profiles: accessProfileSummaries(data, availableModelIds),
+    models: logicalModelOptions(data, availableModelIds)
+  };
+}
+
+export function logicalModelOptions(
+  data: GatewayAccessProfilesQuery,
+  availableModelIds?: ReadonlySet<string>
+): LogicalModelOption[] {
+  return data.gatewayLogicalModels
+    .filter((model) => model.enabled && (!availableModelIds || availableModelIds.has(model.id)))
+    .map((model) => ({
+      id: model.id,
+      slug: model.slug,
+      name: model.name,
+      description: model.description ?? null,
+      kind: model.resolutionKind
+    }))
+    .sort((left, right) => left.slug.localeCompare(right.slug));
+}
+
+export function setupModelForSlugs(slugs: string[]) {
+  return GATEWAY_SETUP_MODEL_PREFERENCE.find((model) => slugs.includes(model)) ?? slugs[0] ?? null;
+}
+
+export async function createApiKeyWithModels(input: { name: string; modelIds: string[] }) {
+  return (await gqlFetch(CreateApiKeyWithModelsDocument, {
+    input: { name: input.name, logicalModelIds: input.modelIds }
+  })).createGatewayApiKeyWithModels;
+}
+
+export function accessProfileSummaries(
+  data: GatewayAccessProfilesQuery,
+  availableModelIds?: ReadonlySet<string>
+) {
   const models = new Map(
     data.gatewayLogicalModels
-      .filter((model) => model.enabled)
+      .filter((model) => model.enabled && (!availableModelIds || availableModelIds.has(model.id)))
       .map((model) => [model.id, model.slug])
   );
   const profiles: AccessProfileSummary[] = [];

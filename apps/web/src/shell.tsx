@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, CircleDollarSign, Command, CreditCard, Gauge, KeyRound, Layers, Logs, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
+import { BarChart3, Boxes, CircleDollarSign, Command, CreditCard, Gauge, KeyRound, Layers, Logs, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -20,6 +20,7 @@ type NavPath =
   | "/caching"
   | "/logs"
   | "/settings"
+  | "/models"
   | "/api-keys"
   | "/users"
   | "/billing";
@@ -39,6 +40,7 @@ const operationsNav = [
 ] as const;
 
 const manageNav = [
+  { to: "/models", label: "Models", icon: Boxes },
   { to: "/api-keys", label: "API keys", icon: KeyRound },
   { to: "/users", label: "Users", icon: Users },
   { to: "/billing", label: "Billing", icon: CreditCard }
@@ -49,6 +51,7 @@ const titles: Record<string, [string, string | null]> = {
   "/usage": ["Usage", "Token metering by dimension"],
   "/cost": ["Cost", "Spend, savings & attribution"],
   "/caching": ["Caching", "Prompt-cache performance"],
+  "/models": ["Models", "Logical models & endpoints"],
   "/api-keys": ["API keys", "Manage secrets"],
   "/api-keys/new": ["API keys", "Create key"],
   "/users": ["Users", "Team & access"],

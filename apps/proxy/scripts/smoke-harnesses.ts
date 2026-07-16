@@ -197,6 +197,7 @@ async function runCodex(proxyUrl: string) {
 }
 
 async function runClaude(proxyUrl: string) {
+  const claudeConfigDir = await mkdtemp(join(tmpdir(), "proxy-claude-"));
   await runCommand("claude", [
     "-p",
     "--bare",
@@ -211,6 +212,8 @@ async function runClaude(proxyUrl: string) {
   ], {
     ANTHROPIC_BASE_URL: proxyUrl,
     ANTHROPIC_API_KEY: "proxy-token",
+    ANTHROPIC_AUTH_TOKEN: "",
+    CLAUDE_CONFIG_DIR: claudeConfigDir,
     CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"
   });
 }

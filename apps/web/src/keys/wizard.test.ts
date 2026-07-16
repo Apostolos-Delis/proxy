@@ -11,64 +11,63 @@ import {
 } from "./wizard";
 
 function draftAt(stepId: CreateKeyDraft["stepId"], overrides: Partial<CreateKeyDraft> = {}): CreateKeyDraft {
-  return { ...initialDraft(), name: "CI key", stepId, ...overrides };
+  return { ...initialDraft(), name: "CI key", modelIds: ["model_1"], stepId, ...overrides };
 }
 
 describe("initialDraft", () => {
-  it("starts on configure with the default harnesses and no access profile", () => {
+  it("starts on access in pick-models mode with nothing selected", () => {
     const draft = initialDraft();
-    expect(draft.stepId).toBe("configure");
-    expect(draft.harnesses).toEqual(["claude-code", "codex"]);
+    expect(draft.stepId).toBe("access");
+    expect(draft.accessKind).toBe("models");
+    expect(draft.modelIds).toEqual([]);
     expect(draft.accessProfileId).toBe("");
   });
 });
 
 describe("stepBlockerMessage", () => {
-  it("requires a non-blank name on configure", () => {
-    expect(stepBlockerMessage(draftAt("configure", { name: "" }))).toBe("Enter a key name.");
-    expect(stepBlockerMessage(draftAt("configure", { name: "   " }))).toBe("Enter a key name.");
+  it("requires a non-blank name on access", () => {
+    expect(stepBlockerMessage(draftAt("access", { name: "" }))).toBe("Enter a key name.");
+    expect(stepBlockerMessage(draftAt("access", { name: "   " }))).toBe("Enter a key name.");
+    expect(stepBlockerMessage(draftAt("access", { name: "x".repeat(257) }))).toMatch(/256/);
   });
 
-  it("requires at least one harness on configure", () => {
-    expect(stepBlockerMessage(draftAt("configure", { harnesses: [] }))).toBe("Pick at least one harness.");
+  it("requires at least one model in pick-models mode", () => {
+    expect(stepBlockerMessage(draftAt("access", { modelIds: [] }))).toBe("Pick at least one model.");
+    expect(stepBlockerMessage(draftAt("access"))).toBeNull();
   });
 
-  it("requires an access profile on the access step", () => {
-    expect(stepBlockerMessage(draftAt("configure"))).toBeNull();
-    expect(stepBlockerMessage(draftAt("routing"))).toBe("Pick an access profile.");
-    expect(stepBlockerMessage(draftAt("routing", { accessProfileId: "profile_1" }))).toBeNull();
-    expect(stepBlockerMessage(draftAt("create"))).toBeNull();
+  it("requires a profile in existing-profile mode", () => {
+    expect(stepBlockerMessage(draftAt("access", { accessKind: "profile" }))).toBe("Pick an access profile.");
+    expect(stepBlockerMessage(draftAt("access", { accessKind: "profile", accessProfileId: "profile_1" }))).toBeNull();
+    expect(stepBlockerMessage(draftAt("create", { modelIds: [] }))).toBeNull();
   });
 });
 
 describe("step navigation", () => {
   it("walks forward through the steps and stops at the end", () => {
-    expect(nextStepId("configure")).toBe("routing");
-    expect(nextStepId("routing")).toBe("create");
+    expect(nextStepId("access")).toBe("create");
     expect(nextStepId("create")).toBe("verify");
     expect(nextStepId("verify")).toBeNull();
   });
 
   it("walks backward through the steps and stops at the start", () => {
     expect(prevStepId("verify")).toBe("create");
-    expect(prevStepId("routing")).toBe("configure");
-    expect(prevStepId("configure")).toBeNull();
+    expect(prevStepId("create")).toBe("access");
+    expect(prevStepId("access")).toBeNull();
   });
 });
 
 describe("canVisitStep", () => {
   it("allows revisiting earlier steps before the key is created", () => {
     const draft = draftAt("create");
-    expect(canVisitStep("configure", draft, false)).toBe(true);
-    expect(canVisitStep("routing", draft, false)).toBe(true);
+    expect(canVisitStep("access", draft, false)).toBe(true);
     expect(canVisitStep("create", draft, false)).toBe(false);
     expect(canVisitStep("verify", draft, false)).toBe(false);
   });
 
   it("locks every step except verify once the key is created", () => {
     const draft = draftAt("verify");
-    expect(canVisitStep("configure", draft, true)).toBe(false);
-    expect(canVisitStep("routing", draft, true)).toBe(false);
+    expect(canVisitStep("access", draft, true)).toBe(false);
     expect(canVisitStep("create", draft, true)).toBe(false);
     expect(canVisitStep("verify", draft, true)).toBe(true);
   });
@@ -76,13 +75,13 @@ describe("canVisitStep", () => {
 
 describe("stepRailState", () => {
   it("marks the current step and splits the rest into complete and pending", () => {
-    expect(stepRailState("configure", "routing", false)).toBe("complete");
-    expect(stepRailState("routing", "routing", false)).toBe("current");
-    expect(stepRailState("create", "routing", false)).toBe("pending");
+    expect(stepRailState("access", "create", false)).toBe("complete");
+    expect(stepRailState("create", "create", false)).toBe("current");
+    expect(stepRailState("verify", "create", false)).toBe("pending");
   });
 
   it("marks every non-current step complete once the key is created", () => {
-    expect(stepRailState("configure", "verify", true)).toBe("complete");
+    expect(stepRailState("access", "verify", true)).toBe("complete");
     expect(stepRailState("create", "verify", true)).toBe("complete");
     expect(stepRailState("verify", "verify", true)).toBe("current");
   });

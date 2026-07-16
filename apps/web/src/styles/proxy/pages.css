@@ -3435,6 +3435,14 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font-size: 12.5px;
 }
 
+.key-wizard-page .scope-options-label,
+.key-wizard-page .scope-option .faint,
+.key-wizard-page .wizard-step-sub,
+.key-wizard-page .faint,
+.key-wizard-page .inline-form-field > span {
+  color: var(--fg-muted);
+}
+
 .provider-key-mode-options .scope-option {
   align-items: flex-start;
 }
@@ -3645,6 +3653,15 @@ input[type="checkbox"][role="switch"]:focus-visible {
 
 .pricing-model .faint {
   font-size: 11.5px;
+}
+
+.models-page .stat-sub,
+.models-page .faint,
+.models-page .tbl thead th,
+.create-model-modal .scope-options-label,
+.create-model-modal .faint,
+.create-model-modal .inline-form-field > span {
+  color: var(--fg-muted);
 }
 
 .pricing-model-fields {

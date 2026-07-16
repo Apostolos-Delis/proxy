@@ -38,7 +38,7 @@ export function SearchSelect({
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const listboxId = `${useId()}-listbox`;
-  const selected = options.find((option) => option.value === value) ?? options[0];
+  const selected = options.find((option) => option.value === value);
   const filtered = filterSearchOptions(options, query);
 
   const toggle = () => {
@@ -122,7 +122,7 @@ export function SearchSelect({
 }
 
 function OptionText({ option }: { option: SearchSelectOption | undefined }) {
-  if (!option) return <span>Select</span>;
+  if (!option) return <span className="faint">Select…</span>;
   return (
     <span className="search-select-text">
       {option.label}
