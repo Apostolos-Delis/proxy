@@ -60,7 +60,7 @@ export async function startOpenAIMock(
     streamJsonProvider?: boolean;
     responsesStreamError?: { message: string; responseId?: string };
     omitResponsesUsage?: boolean;
-    wsTerminalEvent?: "response.completed" | "response.incomplete";
+    wsTerminalEvent?: "response.completed" | "response.incomplete" | "response.failed";
     wsResponseDelayMs?: number;
     wsUpgradeHeaders?: Record<string, string>;
     outputText?: string;
@@ -358,17 +358,25 @@ export async function startOpenAIMock(
         if (options.wsResponseDelayMs) {
           await new Promise((resolve) => setTimeout(resolve, options.wsResponseDelayMs));
         }
+        const terminalType = options.wsTerminalEvent ?? "response.completed";
+        let terminalStatus = "completed";
+        if (terminalType === "response.incomplete") terminalStatus = "incomplete";
+        if (terminalType === "response.failed") terminalStatus = "failed";
         client.send(JSON.stringify({
-          type: options.wsTerminalEvent ?? "response.completed",
+          type: terminalType,
           response: {
             id,
             model: body.model,
-            status: options.wsTerminalEvent === "response.incomplete" ? "incomplete" : "completed",
-            usage: {
-              input_tokens: 100,
-              output_tokens: 20,
-              output_tokens_details: { reasoning_tokens: 5 }
-            }
+            status: terminalStatus,
+            ...(terminalType === "response.failed"
+              ? { error: { code: "model_not_found", message: "model unavailable" } }
+              : {
+                  usage: {
+                    input_tokens: 100,
+                    output_tokens: 20,
+                    output_tokens_details: { reasoning_tokens: 5 }
+                  }
+                })
           }
         }));
       });

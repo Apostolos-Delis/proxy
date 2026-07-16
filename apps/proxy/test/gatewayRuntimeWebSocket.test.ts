@@ -1,11 +1,13 @@
 import WebSocket from "ws";
 
 import { and, eq } from "drizzle-orm";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   accessProfileModelGrants,
   accessProfiles,
+  defaultWorkspaceId,
+  deploymentHealth,
   logicalModels,
   requests
 } from "@proxy/db";
@@ -203,5 +205,84 @@ describe("logical-model WebSocket runtime", () => {
     ))).toHaveLength(2);
     first.close();
     second.close();
+  });
+
+  it("projects WebSocket failures into deployment health", async () => {
+    const classifierOutput: Record<string, unknown> = {
+      target_id: "pending",
+      reason_codes: ["capability_match"],
+      confidence: 0.91
+    };
+    fixture = await captureFixture("org_gateway_runtime_ws_health_failure", "hash_only", false, {
+      openAIOptions: {
+        classifierOutput,
+        classifierResponsesShape: true,
+        wsTerminalEvent: "response.failed"
+      }
+    });
+    const target = await logicalTarget(fixture, "coding-auto", "openai");
+    classifierOutput.target_id = target.targetId;
+    const socket = new WebSocket(
+      fixture.proxyUrl.replace("http://", "ws://") + "/v1/responses",
+      { headers: { authorization: "Bearer proxy-token" } }
+    );
+    await opened(socket);
+    const failed = nextMessage(socket, (message) => message.includes("response.failed"));
+    socket.send(JSON.stringify({
+      type: "response.create",
+      model: "coding-auto",
+      input: "Fail the selected deployment"
+    }));
+    await failed;
+
+    await vi.waitFor(async () => {
+      const [health] = await fixture!.db.select().from(deploymentHealth)
+        .where(eq(deploymentHealth.deploymentId, target.deploymentId));
+      expect(health).toMatchObject({ lastErrorType: "model_unavailable" });
+    });
+    socket.close();
+  });
+
+  it("clears stream-specific deployment health after a WebSocket success", async () => {
+    const classifierOutput: Record<string, unknown> = {
+      target_id: "pending",
+      reason_codes: ["capability_match"],
+      confidence: 0.91
+    };
+    fixture = await captureFixture("org_gateway_runtime_ws_health_recovery", "hash_only", false, {
+      openAIOptions: { classifierOutput, classifierResponsesShape: true }
+    });
+    const target = await logicalTarget(fixture, "coding-auto", "openai");
+    classifierOutput.target_id = target.targetId;
+    await fixture.db.insert(deploymentHealth).values({
+      id: "deployment_health_ws_recovery",
+      organizationId: fixture.config.defaultOrganizationId,
+      workspaceId: defaultWorkspaceId(fixture.config.defaultOrganizationId),
+      deploymentId: target.deploymentId,
+      providerConnectionId: target.providerConnectionId,
+      status: "healthy",
+      lastErrorType: "stream_permission_denied",
+      lastErrorAt: new Date(),
+      metadata: { bedrockErrorKind: "stream_permission_denied" }
+    });
+    const socket = new WebSocket(
+      fixture.proxyUrl.replace("http://", "ws://") + "/v1/responses",
+      { headers: { authorization: "Bearer proxy-token" } }
+    );
+    await opened(socket);
+    const completed = nextMessage(socket, (message) => message.includes("response.completed"));
+    socket.send(JSON.stringify({
+      type: "response.create",
+      model: "coding-auto",
+      input: "Recover the stream path"
+    }));
+    await completed;
+
+    await vi.waitFor(async () => {
+      const [health] = await fixture!.db.select().from(deploymentHealth)
+        .where(eq(deploymentHealth.deploymentId, target.deploymentId));
+      expect(health).toMatchObject({ status: "healthy", lastErrorType: null, metadata: {} });
+    });
+    socket.close();
   });
 });

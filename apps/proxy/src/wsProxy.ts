@@ -21,7 +21,6 @@ import {
 import {
   type GatewayExecutionTarget
 } from "./gatewayRuntime.js";
-import { gatewayProviderAttemptEvidence } from "./gatewayEvidence.js";
 import {
   GatewayRequestLifecycle,
   GatewayRequestLifecycleError
@@ -34,7 +33,6 @@ import type {
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { providerRequestHeaders } from "./providerAdapters/genericHttp.js";
 import {
-  providerCompressionTerminalTelemetry,
   requestBodyHash
 } from "./toolResultCompression.js";
 import {
@@ -516,64 +514,21 @@ export class WebSocketRoutingProxy {
   ) {
     activeRequest.providerLimitLease.release();
     activeRequest.requestLimitLease.release();
-    const metadataPayload = jsonPayload(metadata) as JsonObject;
-    const error = status === "completed" ? undefined : terminalError(metadataPayload);
-    const payload: JsonObject = {
-      surface: openAIResponsesSurface.surface,
-      provider: activeRequest.target.provider,
-      selectedModel: activeRequest.target.upstreamModelId,
-      providerAttemptId: activeRequest.providerAttemptId,
-      terminalStatus: status,
-      upstreamStatus: status === "completed" ? 200 : 0,
-      usage: usage === undefined ? null : jsonPayload(usage),
-      ...providerCompressionTerminalTelemetry(
-        activeRequest.compressionTelemetry,
-        activeRequest.providerRequestForwarded === true
-      ),
-      ...gatewayProviderAttemptEvidence(activeRequest.target)
-    };
-    if (error) payload.error = error;
-
-    await this.events.append({
-      tenantId: activeRequest.identity.organizationId,
-      workspaceId: activeRequest.identity.workspaceId,
-      scopeType: "request",
-      scopeId: activeRequest.requestId,
-      correlationId: activeRequest.requestId,
-      idempotencyKey: activeRequest.idempotencyKey,
-      actor: actorForIdentity(activeRequest.identity),
-      producer: "proxy.provider",
-      eventType: terminalEventType(status),
-      payload,
-      metadata: metadataPayload
-    });
-    if (usage !== undefined) {
-      await this.events.append({
-        tenantId: activeRequest.identity.organizationId,
-        workspaceId: activeRequest.identity.workspaceId,
-        scopeType: "request",
-        scopeId: activeRequest.requestId,
-        correlationId: activeRequest.requestId,
-        idempotencyKey: activeRequest.idempotencyKey,
-        actor: actorForIdentity(activeRequest.identity),
-        producer: "proxy.usage",
-        eventType: "usage.recorded",
-        payload: {
-          providerAttemptId: activeRequest.providerAttemptId,
-          usage: jsonPayload(usage)
-        }
-      });
-    }
-    this.attempts.update(activeRequest.providerAttemptId, {
-      terminalStatus: status,
-      usage: usage === undefined ? undefined : jsonPayload(usage),
-      error
-    });
-    await this.requestStates.finish(activeRequest.idempotencyKey, status, {
+    await this.lifecycle.finishProviderAttempt({
+      identity: activeRequest.identity,
       requestId: activeRequest.requestId,
+      idempotencyKey: activeRequest.idempotencyKey,
+      surface: openAIResponsesSurface.surface,
+      target: activeRequest.target,
       providerAttemptId: activeRequest.providerAttemptId,
-      usage: usage === undefined ? undefined : jsonPayload(usage),
-      error
+      status,
+      usage,
+      upstreamStatus: status === "completed" ? 200 : 0,
+      stream: true,
+      providerRequestForwarded: activeRequest.providerRequestForwarded === true,
+      metadata,
+      compressionTelemetry: activeRequest.compressionTelemetry,
+      adapterKind: activeRequest.target.providerEntry.adapterKind
     });
   }
 
@@ -618,19 +573,6 @@ function webSocketTargetUrl(
     url: url.toString(),
     lookup: pinnedAddress ? lookupForPinnedAddress(pinnedAddress) : undefined
   };
-}
-
-function terminalEventType(status: "completed" | "failed" | "cancelled") {
-  if (status === "completed") return "provider.response_completed";
-  if (status === "cancelled") return "provider.response_cancelled";
-  return "provider.response_failed";
-}
-
-function terminalError(metadata: JsonObject) {
-  const error = metadata.error;
-  if (typeof error === "string") return error;
-  if (error === undefined || error === null) return undefined;
-  return JSON.stringify(error);
 }
 
 function rejectUpgrade(socket: Duplex, status: number, message: string) {

@@ -3,7 +3,6 @@ import { performance } from "node:perf_hooks";
 
 import { bufferedStreamResponse, collectStreamResponse } from "./bufferedStreamResponse.js";
 import type { AppConfig } from "./config.js";
-import { gatewayProviderAttemptEvidence } from "./gatewayEvidence.js";
 import {
   GatewayRequestLifecycle,
   GatewayRequestLifecycleError,
@@ -11,9 +10,7 @@ import {
 } from "./gatewayRequestLifecycle.js";
 import {
   type EventAppender,
-  jsonPayload,
-  type ProviderAttemptStore,
-  type RequestStateStoreLike
+  type ProviderAttemptStore
 } from "./events.js";
 import {
   type ProviderRegistryEntry
@@ -31,11 +28,9 @@ import type {
   ProviderForwardResult
 } from "./providerAdapters/types.js";
 import { ProviderMetrics } from "./providerMetrics.js";
-import { classifyProviderTerminalHealth } from "./providerHealth.js";
 import { sseObserverForDialect, streamObservationEventMetadata, type StreamObservation } from "./sseObserver.js";
-import { providerCompressionTerminalTelemetry } from "./toolResultCompression.js";
 import type { RequestIdentity } from "./auth.js";
-import type { JsonObject, ProviderAttempt, RouteContext, Surface } from "./types.js";
+import type { ProviderAttempt, RouteContext } from "./types.js";
 import { isRecord } from "./util.js";
 
 type TerminalAdapterMetadata = {
@@ -65,8 +60,7 @@ export class ProviderProxy {
   constructor(
     private readonly config: AppConfig,
     private readonly events: EventAppender,
-    private readonly attempts: ProviderAttemptStore,
-    private readonly requestStates: RequestStateStoreLike,
+    attempts: ProviderAttemptStore,
     private readonly lifecycle: GatewayRequestLifecycle,
     private readonly metrics: MetricsCollector = new NoopMetricsCollector(),
     providerAdapters: { bedrockRuntime?: BedrockRuntimeProviderAdapter } = {}
@@ -213,16 +207,6 @@ export class ProviderProxy {
       await this.appendTerminal(input, attempt.id, aborted ? "cancelled" : "failed", undefined, 0, {
         error: error instanceof Error ? error.message : "Provider request failed."
       }, adapterMetadata);
-      this.attempts.update(attempt.id, {
-        terminalStatus: aborted ? "cancelled" : "failed",
-        ...providerAttemptAdapterPatch(adapterMetadata),
-        error: error instanceof Error ? error.message : "Provider request failed."
-      });
-      await this.requestStates.finish(input.idempotencyKey, aborted ? "cancelled" : "failed", {
-        requestId: input.requestId,
-        providerAttemptId: attempt.id,
-        error: error instanceof Error ? error.message : "Provider request failed."
-      });
       throw error;
     }
     clearTimeout(timeout);
@@ -280,18 +264,6 @@ export class ProviderProxy {
       input.reply.raw.off("close", abortUpstream);
 
       await this.appendTerminal(input, attempt.id, status, usage, upstream.status, error ? { error } : {}, adapterMetadata);
-      this.attempts.update(attempt.id, {
-        terminalStatus: status,
-        ...providerAttemptAdapterPatch(adapterMetadata),
-        usage: usage === undefined ? undefined : jsonPayload(usage),
-        error
-      });
-      await this.requestStates.finish(input.idempotencyKey, status, {
-        requestId: input.requestId,
-        providerAttemptId: attempt.id,
-        usage: usage === undefined ? undefined : jsonPayload(usage),
-        error
-      });
       input.reply.send(text);
       if (status === "completed" && input.onAssistantText) {
         const assistantText = extractResponseText(input.surface, tryParseJson(text));
@@ -338,20 +310,6 @@ export class ProviderProxy {
 
         input.timing?.markStreamCompletion();
         await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, withoutOutputText(observation), adapterMetadata);
-        this.attempts.update(attempt.id, {
-          terminalStatus: status,
-          ...providerAttemptAdapterPatch(adapterMetadata),
-          usage: observation.usage,
-          upstreamRequestId: observation.upstreamResponseId,
-          error: observation.error
-        });
-        await this.requestStates.finish(input.idempotencyKey, status, {
-          requestId: input.requestId,
-          providerAttemptId: attempt.id,
-          usage: observation.usage,
-          upstreamRequestId: observation.upstreamResponseId,
-          error: observation.error
-        });
         if (status === "completed" && collected.outputText && input.onAssistantText) {
           await input.onAssistantText(collected.outputText, false);
         }
@@ -387,18 +345,6 @@ export class ProviderProxy {
           },
           adapterMetadata
         );
-        this.attempts.update(attempt.id, {
-          terminalStatus: aborted ? "cancelled" : "failed",
-          ...providerAttemptAdapterPatch(adapterMetadata),
-          usage: observation.usage,
-          error: message
-        });
-        await this.requestStates.finish(input.idempotencyKey, aborted ? "cancelled" : "failed", {
-          requestId: input.requestId,
-          providerAttemptId: attempt.id,
-          usage: observation.usage,
-          error: message
-        });
         throw error;
       } finally {
         input.reply.raw.off("close", abortUpstream);
@@ -484,18 +430,6 @@ export class ProviderProxy {
           },
           adapterMetadata
         );
-        this.attempts.update(attempt.id, {
-          terminalStatus: status,
-          ...providerAttemptAdapterPatch(adapterMetadata),
-          usage: observation.usage,
-          error: message
-        });
-        await this.requestStates.finish(input.idempotencyKey, status, {
-          requestId: input.requestId,
-          providerAttemptId: attempt.id,
-          usage: observation.usage,
-          error: message
-        });
         throw error;
       }
       this.providerMetrics.recordStreamBytes({
@@ -514,20 +448,6 @@ export class ProviderProxy {
         adapterClassification
       };
       await this.appendTerminal(input, attempt.id, status, observation.usage, upstream.status, withoutOutputText(observation), adapterMetadata);
-      this.attempts.update(attempt.id, {
-        terminalStatus: status,
-        ...providerAttemptAdapterPatch(adapterMetadata),
-        usage: observation.usage,
-        upstreamRequestId: observation.upstreamResponseId,
-        error: observation.error
-      });
-      await this.requestStates.finish(input.idempotencyKey, status, {
-        requestId: input.requestId,
-        providerAttemptId: attempt.id,
-        usage: observation.usage,
-        upstreamRequestId: observation.upstreamResponseId,
-        error: observation.error
-      });
       if (status === "completed" && observation.outputText && input.onAssistantText) {
         await input.onAssistantText(observation.outputText, observation.outputTextTruncated ?? false);
       }
@@ -553,17 +473,7 @@ export class ProviderProxy {
   }
 
   private async appendTerminal(
-    input: {
-      requestId: string;
-      idempotencyKey: string;
-      organizationId: string;
-      workspaceId: string;
-      surface: Surface;
-      target: GatewayProviderAttemptForwardInput["target"];
-      body: unknown;
-      compressionTelemetry?: JsonObject;
-      onTerminal?: ProviderForwardInput["onTerminal"];
-    },
+    input: GatewayProviderAttemptForwardInput,
     providerAttemptId: string,
     status: "completed" | "failed" | "cancelled",
     usage: unknown,
@@ -571,65 +481,23 @@ export class ProviderProxy {
     metadata: unknown = {},
     adapterMetadata: TerminalAdapterMetadata = {}
   ) {
-    const metadataPayload = jsonPayload(metadata) as JsonObject;
-    const payload: JsonObject = {
-      provider: input.target.provider,
-      surface: input.surface,
-      selectedModel: input.target.upstreamModelId,
-      providerAttemptId,
-      terminalStatus: status,
-      upstreamStatus,
-      stream: isRecord(input.body) && input.body.stream === true,
-      usage: usage === undefined ? null : jsonPayload(usage)
-    };
-    if (adapterMetadata.adapterKind) payload.adapterKind = adapterMetadata.adapterKind;
-    if (adapterMetadata.adapterClassification) {
-      payload.adapterClassification = jsonPayload(adapterMetadata.adapterClassification);
-    }
-    Object.assign(payload, providerCompressionTerminalTelemetry(input.compressionTelemetry, upstreamStatus > 0));
-    Object.assign(payload, gatewayProviderAttemptEvidence(input.target));
-    const error = terminalError(metadataPayload);
-    if (error) payload.error = error;
-    const healthClassification = classifyProviderTerminalHealth({
-      provider: input.target.provider,
-      model: input.target.upstreamModelId,
-      terminalStatus: status,
-      statusCode: upstreamStatus,
-      error,
-      adapterClassification: adapterMetadata.adapterClassification,
-      now: new Date()
-    });
-    if (healthClassification) payload.healthClassification = jsonPayload(healthClassification);
-
     try {
-      await this.events.append({
-        tenantId: input.organizationId,
-        workspaceId: input.workspaceId,
-        scopeType: "request",
-        scopeId: input.requestId,
-        correlationId: input.requestId,
+      const terminal = await this.lifecycle.finishProviderAttempt({
+        identity: input.identity,
+        requestId: input.requestId,
         idempotencyKey: input.idempotencyKey,
-        producer: "proxy.provider",
-        eventType: terminalEventType(status),
-        payload,
-        metadata: metadataPayload
+        surface: input.surface,
+        target: input.target,
+        providerAttemptId,
+        status,
+        usage,
+        upstreamStatus,
+        stream: isRecord(input.body) && input.body.stream === true,
+        providerRequestForwarded: upstreamStatus > 0,
+        metadata,
+        compressionTelemetry: input.compressionTelemetry,
+        ...adapterMetadata
       });
-      if (usage !== undefined) {
-        await this.events.append({
-          tenantId: input.organizationId,
-          workspaceId: input.workspaceId,
-          scopeType: "request",
-          scopeId: input.requestId,
-          correlationId: input.requestId,
-          idempotencyKey: input.idempotencyKey,
-          producer: "proxy.usage",
-          eventType: "usage.recorded",
-          payload: {
-            providerAttemptId,
-            usage: jsonPayload(usage)
-          }
-        });
-      }
 
       const errorClass = this.providerMetrics.recordTerminal({
         surface: input.surface,
@@ -639,7 +507,7 @@ export class ProviderProxy {
         status,
         usage,
         upstreamStatus,
-        metadata: metadataPayload
+        metadata: terminal.metadata
       });
       input.onTerminal?.({ status, errorClass });
     } finally {
@@ -654,16 +522,6 @@ export class ProviderProxy {
     adapterMetadata: TerminalAdapterMetadata = {}
   ) {
     await this.appendTerminal(input, providerAttemptId, "failed", undefined, 0, { error }, adapterMetadata);
-    this.attempts.update(providerAttemptId, {
-      terminalStatus: "failed",
-      ...providerAttemptAdapterPatch(adapterMetadata),
-      error
-    });
-    await this.requestStates.finish(input.idempotencyKey, "failed", {
-      requestId: input.requestId,
-      providerAttemptId,
-      error
-    });
     input.reply.code(502).send({ error });
   }
 
@@ -672,19 +530,6 @@ export class ProviderProxy {
     if (provider.adapterKind === "aws-bedrock-converse") return this.bedrockRuntime;
     return undefined;
   }
-}
-
-function terminalEventType(status: "completed" | "failed" | "cancelled") {
-  if (status === "completed") return "provider.response_completed";
-  if (status === "cancelled") return "provider.response_cancelled";
-  return "provider.response_failed";
-}
-
-function terminalError(metadata: JsonObject) {
-  const error = metadata.error;
-  if (typeof error === "string") return error;
-  if (error === undefined || error === null) return undefined;
-  return JSON.stringify(error);
 }
 
 function copyResponseHeaders(upstream: Response, reply: FastifyReply) {
@@ -735,15 +580,6 @@ function streamAdapterClassification(
     });
   }
   return undefined;
-}
-
-function providerAttemptAdapterPatch(adapterMetadata: TerminalAdapterMetadata): Partial<ProviderAttempt> {
-  return {
-    ...(adapterMetadata.adapterKind ? { adapterKind: adapterMetadata.adapterKind } : {}),
-    ...(adapterMetadata.adapterClassification
-      ? { adapterClassification: jsonPayload(adapterMetadata.adapterClassification) as JsonObject }
-      : {})
-  };
 }
 
 // Prefer the provider's structured error message over the raw body so event

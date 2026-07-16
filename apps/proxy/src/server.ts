@@ -176,7 +176,6 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     config,
     events,
     attempts,
-    requestStates,
     gatewayLifecycle,
     metrics
   );
