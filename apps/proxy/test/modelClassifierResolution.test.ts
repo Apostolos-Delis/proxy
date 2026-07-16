@@ -15,6 +15,7 @@ import {
   modelDeployments
 } from "@proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
+import type { GatewayModelCapabilities } from "@proxy/schema";
 import type {
   LogicalModelClassificationInput,
   LogicalModelClassifier
@@ -103,6 +104,89 @@ describe("classifier logical model resolution", () => {
         "tools"
       ].includes(key))
     )).toBe(true);
+  });
+
+  it("filters classifier candidates by explicit capability constraints", async () => {
+    const calls: LogicalModelClassificationInput[] = [];
+    const classifier: LogicalModelClassifier = {
+      async classifyLogicalModel(input) {
+        calls.push(input);
+        return {
+          targetId: input.request.candidates[0]!.targetId,
+          reasonCodes: ["capability_match"],
+          confidence: 1,
+          attempts: 1
+        };
+      }
+    };
+    const fixture = await setup("org_classifier_capabilities", classifier);
+    client = fixture.client;
+    const workspaceId = defaultWorkspaceId(fixture.organizationId);
+    const logicalModelId = `${workspaceId}:logical-model:coding-auto`;
+    const targetRows = await fixture.db
+      .select({
+        targetId: logicalModelTargets.id,
+        deploymentId: modelDeployments.id
+      })
+      .from(logicalModelTargets)
+      .innerJoin(modelDeployments, eq(modelDeployments.id, logicalModelTargets.deploymentId))
+      .where(eq(logicalModelTargets.logicalModelId, logicalModelId));
+    const supportedTarget = targetRows[0]!;
+    const cases: Array<{
+      unsupported: GatewayModelCapabilities;
+      input: Partial<Parameters<ModelResolutionService["resolve"]>[0]>;
+    }> = [
+      {
+        unsupported: { tools: false },
+        input: { classificationFeatures: { hasTools: true } }
+      },
+      {
+        unsupported: { modalities: ["text"] },
+        input: { classificationFeatures: { hasImages: true } }
+      },
+      {
+        unsupported: { contextWindow: 100 },
+        input: { classificationFeatures: { estimatedInputTokens: 150 } }
+      },
+      {
+        unsupported: { maxOutputTokens: 100 },
+        input: { parameters: { max_output_tokens: 150 } }
+      },
+      {
+        unsupported: { streaming: false },
+        input: { isStreaming: true }
+      }
+    ];
+
+    for (const testCase of cases) {
+      for (const target of targetRows) {
+        await fixture.db
+          .update(modelDeployments)
+          .set({
+            capabilities: target.targetId === supportedTarget.targetId
+              ? {}
+              : testCase.unsupported
+          })
+          .where(eq(modelDeployments.id, target.deploymentId));
+      }
+      expect((await fixture.resolver.resolve(resolveInput(fixture.organizationId, testCase.input))).outcome)
+        .toBe("resolved");
+      expect(calls.at(-1)?.request.candidates.map((candidate) => candidate.targetId))
+        .toEqual([supportedTarget.targetId]);
+    }
+
+    for (const target of targetRows) {
+      await fixture.db
+        .update(modelDeployments)
+        .set({ capabilities: {} })
+        .where(eq(modelDeployments.id, target.deploymentId));
+    }
+    expect((await fixture.resolver.resolve(resolveInput(fixture.organizationId, {
+      classificationFeatures: { estimatedInputTokens: 100, hasTools: true, hasImages: true },
+      parameters: { max_output_tokens: 100 },
+      isStreaming: true
+    }))).outcome).toBe("resolved");
+    expect(calls.at(-1)?.request.candidates).toHaveLength(targetRows.length);
   });
 
   it("rejects a classifier selection outside the economy target set", async () => {

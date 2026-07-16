@@ -22,6 +22,7 @@ import {
   workspaces
 } from "@proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
+import type { GatewayModelCapabilities } from "@proxy/schema";
 
 import {
   ModelResolutionService,
@@ -75,6 +76,59 @@ describe("logical model resolution", () => {
       ingressWireId: "openai-responses",
       operationId: "text.count_tokens"
     })), "model_unavailable");
+  });
+
+  it("filters direct targets by explicit capability constraints", async () => {
+    const fixture = await setup("org_resolution_capabilities");
+    client = fixture.client;
+    const workspaceId = defaultWorkspaceId(fixture.organizationId);
+    const deploymentId = `${workspaceId}:deployment:anthropic:claude-fable-5`;
+    const cases: Array<{
+      capabilities: GatewayModelCapabilities;
+      input: Partial<Parameters<ModelResolutionService["resolve"]>[0]>;
+    }> = [
+      {
+        capabilities: { tools: false },
+        input: { classificationFeatures: { hasTools: true } }
+      },
+      {
+        capabilities: { modalities: ["text"] },
+        input: { classificationFeatures: { hasImages: true } }
+      },
+      {
+        capabilities: { contextWindow: 100 },
+        input: { classificationFeatures: { estimatedInputTokens: 101 } }
+      },
+      {
+        capabilities: { maxOutputTokens: 100 },
+        input: { parameters: { max_output_tokens: 101 } }
+      },
+      {
+        capabilities: { streaming: false },
+        input: { isStreaming: true }
+      }
+    ];
+
+    for (const testCase of cases) {
+      await fixture.db
+        .update(modelDeployments)
+        .set({ capabilities: testCase.capabilities })
+        .where(eq(modelDeployments.id, deploymentId));
+      expectDenial(
+        await fixture.resolver.resolve(resolveInput(fixture.organizationId, testCase.input)),
+        "model_unavailable"
+      );
+    }
+
+    await fixture.db
+      .update(modelDeployments)
+      .set({ capabilities: {} })
+      .where(eq(modelDeployments.id, deploymentId));
+    expect((await fixture.resolver.resolve(resolveInput(fixture.organizationId, {
+      classificationFeatures: { estimatedInputTokens: 100, hasTools: true, hasImages: true },
+      parameters: { max_output_tokens: 100 },
+      isStreaming: true
+    }))).outcome).toBe("resolved");
   });
 
   it("returns typed denials for missing grants, disallowed operations, and exceeded caps", async () => {

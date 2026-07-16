@@ -151,6 +151,8 @@ Required fields:
 - capabilities that narrow, but never expand, the canonical model;
 - `status`.
 
+Capability metadata is partial: an absent capability is unknown and does not exclude a deployment. An explicit `false`, a required modality missing from an advertised modality list, or a numeric capacity below the request requirement makes the deployment ineligible before either direct selection or classifier routing.
+
 Pricing can remain attached to the deployment for V1. A separate pricing system is deferred until multiple schedules or contracts require it.
 
 ### `deployment_wire_bindings`
