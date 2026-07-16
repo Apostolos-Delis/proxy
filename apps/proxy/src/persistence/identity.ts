@@ -22,7 +22,7 @@ type ApiKeyIdentityStoreOptions = {
 };
 
 type CachedApiKeyIdentity = {
-  identity?: ResolvedApiKeyIdentity;
+  identity?: AuthenticatedApiKeyIdentity;
   expiresAtMs: number;
 };
 
@@ -37,6 +37,11 @@ export type ResolvedApiKeyIdentity = {
   accessProfileId: string | null;
   accessProfileLimits: GatewayAccessProfileLimits;
 };
+
+type AuthenticatedApiKeyIdentity = Omit<
+  ResolvedApiKeyIdentity,
+  "accessProfileId" | "accessProfileLimits"
+>;
 
 export class ApiKeyIdentityStore {
   private readonly cache = new Map<string, CachedApiKeyIdentity>();
@@ -54,7 +59,7 @@ export class ApiKeyIdentityStore {
     const cached = this.cache.get(keyHash);
     if (cached && cached.expiresAtMs > nowMs) {
       if (cached.identity) this.recordLastUsed(cached.identity.apiKeyId, now);
-      return cached.identity ? cloneIdentity(cached.identity) : undefined;
+      return cached.identity ? this.resolveAccessPolicy(cached.identity) : undefined;
     }
 
     const [row] = await this.db
@@ -63,18 +68,10 @@ export class ApiKeyIdentityStore {
         organizationId: apiKeys.organizationId,
         workspaceId: apiKeys.workspaceId,
         userId: apiKeys.userId,
-        accessProfileId: apiKeys.accessProfileId,
-        accessProfileStatus: accessProfiles.status,
-        accessProfileLimits: accessProfiles.limits,
         revokedAt: apiKeys.revokedAt,
         expiresAt: apiKeys.expiresAt
       })
       .from(apiKeys)
-      .leftJoin(accessProfiles, and(
-        eq(accessProfiles.organizationId, apiKeys.organizationId),
-        eq(accessProfiles.workspaceId, apiKeys.workspaceId),
-        eq(accessProfiles.id, apiKeys.accessProfileId)
-      ))
       .where(eq(apiKeys.keyHash, keyHash))
       .limit(1);
 
@@ -91,15 +88,11 @@ export class ApiKeyIdentityStore {
       apiKeyId: row.id,
       organizationId: row.organizationId,
       workspaceId: row.workspaceId,
-      userId: row.userId ?? undefined,
-      accessProfileId: row.accessProfileId ?? null,
-      accessProfileLimits: row.accessProfileStatus === "active"
-        ? row.accessProfileLimits ?? {}
-        : {}
+      userId: row.userId ?? undefined
     };
     this.cache.set(keyHash, { identity, expiresAtMs: nowMs + this.cacheTtlMs() });
     this.recordLastUsed(row.id, now);
-    return cloneIdentity(identity);
+    return this.resolveAccessPolicy(identity);
   }
 
   clearCache() {
@@ -155,10 +148,35 @@ export class ApiKeyIdentityStore {
   private lastUsedFlushDelayMs() {
     return this.options.lastUsedFlushDelayMs ?? defaultLastUsedFlushDelayMs;
   }
-}
 
-function cloneIdentity(identity: ResolvedApiKeyIdentity): ResolvedApiKeyIdentity {
-  return { ...identity, accessProfileLimits: { ...identity.accessProfileLimits } };
+  private async resolveAccessPolicy(identity: AuthenticatedApiKeyIdentity) {
+    const [row] = await this.db
+      .select({
+        accessProfileId: apiKeys.accessProfileId,
+        accessProfileStatus: accessProfiles.status,
+        accessProfileLimits: accessProfiles.limits
+      })
+      .from(apiKeys)
+      .leftJoin(accessProfiles, and(
+        eq(accessProfiles.organizationId, apiKeys.organizationId),
+        eq(accessProfiles.workspaceId, apiKeys.workspaceId),
+        eq(accessProfiles.id, apiKeys.accessProfileId)
+      ))
+      .where(and(
+        eq(apiKeys.id, identity.apiKeyId),
+        eq(apiKeys.organizationId, identity.organizationId),
+        eq(apiKeys.workspaceId, identity.workspaceId)
+      ))
+      .limit(1);
+    if (!row) return undefined;
+    return {
+      ...identity,
+      accessProfileId: row.accessProfileId ?? null,
+      accessProfileLimits: row.accessProfileStatus === "active"
+        ? row.accessProfileLimits ?? {}
+        : {}
+    } satisfies ResolvedApiKeyIdentity;
+  }
 }
 
 export async function ensureOrganization(tx: ProxyTransaction, organizationId: string) {

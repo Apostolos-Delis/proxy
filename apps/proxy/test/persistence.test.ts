@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  accessProfiles,
   agentSessions,
   apiKeys,
   createPgliteDatabase,
@@ -980,6 +981,73 @@ describe("postgres persistence", () => {
     expect(beforeRevoke?.apiKeyId).toBe("api_key_cache");
     expect(cachedAfterRevoke?.apiKeyId).toBe("api_key_cache");
     expect(expiredAfterRevoke).toBeUndefined();
+  });
+
+  it("refreshes access policy while authentication identity is cached", async () => {
+    const fixture = await persistenceFixture("org_api_key_policy_cache");
+    const organizationId = "org_api_key_policy_cache";
+    const workspaceId = defaultWorkspaceId(organizationId);
+    await fixture.db.insert(organizations).values({
+      id: organizationId,
+      slug: organizationId,
+      name: organizationId
+    }).onConflictDoNothing();
+    await fixture.db.insert(workspaces).values({
+      id: workspaceId,
+      organizationId,
+      slug: "default",
+      name: "Default"
+    }).onConflictDoNothing();
+    await fixture.db.insert(accessProfiles).values([
+      {
+        id: "profile_policy_a",
+        organizationId,
+        workspaceId,
+        slug: "policy-a",
+        name: "Policy A",
+        limits: { requests_per_minute: 10 }
+      },
+      {
+        id: "profile_policy_b",
+        organizationId,
+        workspaceId,
+        slug: "policy-b",
+        name: "Policy B",
+        limits: { requests_per_minute: 2 }
+      }
+    ]);
+    await fixture.db.insert(apiKeys).values({
+      id: "api_key_policy_cache",
+      organizationId,
+      workspaceId,
+      keyHash: hashApiKey("policy-token"),
+      name: "Policy key",
+      accessProfileId: "profile_policy_a"
+    });
+    const store = new ApiKeyIdentityStore(fixture.db, {
+      cacheTtlMs: 60_000,
+      lastUsedFlushDelayMs: 60_000
+    });
+
+    await expect(store.resolve("policy-token")).resolves.toMatchObject({
+      accessProfileId: "profile_policy_a",
+      accessProfileLimits: { requests_per_minute: 10 }
+    });
+    await fixture.db.update(accessProfiles)
+      .set({ limits: { requests_per_minute: 4 } })
+      .where(eq(accessProfiles.id, "profile_policy_a"));
+    await expect(store.resolve("policy-token")).resolves.toMatchObject({
+      accessProfileId: "profile_policy_a",
+      accessProfileLimits: { requests_per_minute: 4 }
+    });
+    await fixture.db.update(apiKeys)
+      .set({ accessProfileId: "profile_policy_b" })
+      .where(eq(apiKeys.id, "api_key_policy_cache"));
+    await expect(store.resolve("policy-token")).resolves.toMatchObject({
+      accessProfileId: "profile_policy_b",
+      accessProfileLimits: { requests_per_minute: 2 }
+    });
+    await store.flushLastUsed();
   });
 
   it("resolves the seeded local proxy token through the API-key identity store", async () => {
