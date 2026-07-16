@@ -3,12 +3,8 @@ import type { AppendEventInput, BoundedEventWriter, EventAppender } from "./even
 type Warn = (error: unknown, message: string) => void;
 
 const asyncEventTypes = new Set([
-  "budget.checked",
-  "budget.warning_emitted",
   "prompt_cache.plan_applied",
-  "routing.classification_failed",
-  "routing.classification_recorded",
-  "routing.context_built"
+  "routing.classification_recorded"
 ]);
 
 export class AsyncObservabilityEventAppender implements EventAppender {
