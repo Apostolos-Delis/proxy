@@ -10,6 +10,7 @@ import {
   countRecord,
   sessionDurationMs,
   sessionLogicalModel,
+  sessionModel,
   sessionModels,
   sessionRows,
   sessionSearchValue,
@@ -104,7 +105,8 @@ function SessionLogsState({ label }: { label: string }) {
 const sessionColumns: ConsoleTableColumn<SessionLogRow>[] = [
   { id: "session", header: "Session", size: 240, accessorFn: (row) => row.session.externalSessionId ?? row.session.sessionId, cell: ({ row }) => <SessionCell row={row.original} /> },
   { id: "user", header: "User", size: 170, accessorFn: (row) => row.userName, cell: ({ row }) => <UserCell name={row.original.userName} detail={row.original.userDetail} size={24} /> },
-  { id: "route", header: "Route", size: 260, accessorFn: (row) => [...sessionModels(row.session), sessionLogicalModel(row.session)].join(" "), cell: ({ row }) => <RouteCell session={row.original.session} /> },
+  { id: "logicalModel", header: "Logical model", size: 155, accessorFn: (row) => sessionLogicalModel(row.session), cell: ({ row }) => <LogicalModelCell session={row.original.session} /> },
+  { id: "model", header: "Model", size: 180, accessorFn: (row) => sessionModel(row.session), cell: ({ row }) => <ModelCell session={row.original.session} /> },
   { id: "status", header: "Status", size: 132, minSize: 120, accessorFn: (row) => sessionStatus(row.session), cell: ({ row }) => <SessionStatusCell session={row.original.session} /> },
   { id: "requests", header: "Reqs", size: 60, minSize: 60, accessorFn: (row) => row.session.requestCount, cell: ({ row }) => <span className="mono muted">{formatCompact(row.original.session.requestCount)}</span> },
   { id: "tokens", header: "Tokens", size: 84, minSize: 84, accessorFn: (row) => row.session.usage.totalTokens, cell: ({ row }) => <span className="mono">{formatCompact(row.original.session.usage.totalTokens)}</span> },
@@ -135,25 +137,39 @@ function SessionCell({ row }: { row: SessionLogRow }) {
   );
 }
 
-function RouteCell({ session }: { session: SessionSummary }) {
+function LogicalModelCell({ session }: { session: SessionSummary }) {
+  const logicalModels = sortedCounts(countRecord(session.logicalModelMix));
+  const logicalModel = logicalModels[0]?.[0];
+  const rest = logicalModels.length - 1;
+  const remainingLogicalModels = logicalModels.slice(1).map(([name, count]) => `${name} (${count})`).join(", ");
+  return (
+    <div className="session-logical-model-cell">
+      <RouteBadge route={logicalModel} />
+      {rest > 0 ? (
+        <span className="mono faint session-cell-extra" title={remainingLogicalModels} aria-label={`${rest} more logical models: ${remainingLogicalModels}`}>
+          +{rest}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function ModelCell({ session }: { session: SessionSummary }) {
   const models = sortedCounts(countRecord(session.modelMix));
   const model = models[0]?.[0];
   const rest = models.length - 1;
   const remainingModels = models.slice(1).map(([name, count]) => `${name} (${count})`).join(", ");
   return (
-    <div className="session-route-cell">
-      <div className="session-route-model">
-        {model ? <span className="model-dot" /> : null}
-        <span className={`mono session-route-model-name${model ? "" : " faint"}`} title={model}>
-          {model ?? "No model"}
+    <div className="session-model-cell">
+      {model ? <span className="model-dot" /> : null}
+      <span className={`mono session-model-name${model ? "" : " faint"}`} title={model}>
+        {model ?? "No model"}
+      </span>
+      {rest > 0 ? (
+        <span className="mono faint session-cell-extra" title={remainingModels} aria-label={`${rest} more models: ${remainingModels}`}>
+          +{rest}
         </span>
-        {rest > 0 ? (
-          <span className="mono faint session-route-model-count" title={remainingModels} aria-label={`${rest} more models: ${remainingModels}`}>
-            +{rest}
-          </span>
-        ) : null}
-      </div>
-      <RouteBadge route={sessionLogicalModel(session)} />
+      ) : null}
     </div>
   );
 }

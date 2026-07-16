@@ -732,33 +732,27 @@
   font-size: 12px;
 }
 
-.session-route-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.session-route-model {
+.session-logical-model-cell,
+.session-model-cell {
   display: flex;
   align-items: center;
   gap: 7px;
   min-width: 0;
 }
 
-.session-route-model-name {
+.session-model-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.session-route-model-count {
+.session-cell-extra {
   flex: none;
 }
 
-.session-route-cell .route-badge {
-  align-self: flex-start;
+.session-logical-model-cell .route-badge {
+  flex: 0 1 auto;
 }
 
 .table-link {

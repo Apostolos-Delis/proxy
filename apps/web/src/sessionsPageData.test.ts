@@ -9,6 +9,8 @@ import {
   dominantRequestStatus,
   sessionDurationMs,
   sessionLogicalModel,
+  sessionLogicalModels,
+  sessionModel,
   sessionUserName,
   sessionWallMs,
   systemSpans,
@@ -281,11 +283,14 @@ describe("transcriptText", () => {
 });
 
 describe("sessionLogicalModel", () => {
-  it("returns the dominant logical model in the mix", () => {
+  it("returns dominant and searchable model values from session mixes", () => {
     const session = {
-      logicalModelMix: { "logical-model-economy-auto": 1, "logical-model-coding-auto": 9 }
+      logicalModelMix: { "economy-auto": 1, "coding-auto": 9 },
+      modelMix: { "claude-haiku": 1, "claude-fable": 9 }
     } as unknown as SessionSummary;
-    expect(sessionLogicalModel(session)).toBe("logical-model-coding-auto");
+    expect(sessionLogicalModel(session)).toBe("coding-auto");
+    expect(sessionLogicalModels(session)).toEqual(["economy-auto", "coding-auto"]);
+    expect(sessionModel(session)).toBe("claude-fable");
   });
 });
 

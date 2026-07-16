@@ -223,8 +223,8 @@ describe("session replay admin APIs", () => {
         logicalModelChanges: 1,
         modelMix: { "gpt-5.4-mini": 1, "gpt-5.5": 1 },
         logicalModelMix: {
-          [`${defaultWorkspaceId("org_users_sessions")}:logical-model:economy-auto`]: 1,
-          [`${defaultWorkspaceId("org_users_sessions")}:logical-model:coding-auto`]: 1
+          "economy-auto": 1,
+          "coding-auto": 1
         },
         deploymentMix: {
           [`${defaultWorkspaceId("org_users_sessions")}:deployment:openai:gpt-5.4-mini`]: 1,

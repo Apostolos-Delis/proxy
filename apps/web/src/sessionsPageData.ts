@@ -37,6 +37,14 @@ export function sessionModels(session: SessionSummary) {
   return Object.keys(countRecord(session.modelMix));
 }
 
+export function sessionModel(session: SessionSummary) {
+  return dominantKey(countRecord(session.modelMix));
+}
+
+export function sessionLogicalModels(session: SessionSummary) {
+  return Object.keys(countRecord(session.logicalModelMix));
+}
+
 export function sessionStatuses(session: SessionSummary) {
   return Object.keys(countRecord(session.terminalStatusSummary));
 }
@@ -74,7 +82,7 @@ export function sessionSearchValue(row: SessionLogRow) {
     row.userName,
     session.userId,
     session.surface,
-    sessionLogicalModel(session),
+    ...sessionLogicalModels(session),
     ...sessionModels(session),
     ...sessionStatuses(session)
   ].filter((value): value is string => Boolean(value));
