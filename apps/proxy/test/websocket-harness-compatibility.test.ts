@@ -194,7 +194,8 @@ async function assignTarget(
   await assignHarnessGatewayTarget(fixture, organizationId, {
     secret: input.secret,
     slug: input.slug,
-    provider: input.target.providerId,
+    provider: input.target.providerId.includes("anthropic") ? "anthropic" : "openai",
+    connectionSlug: input.target.providerId,
     model: input.target.model,
     config: targetConfig(input.target),
     wires: input.wires,

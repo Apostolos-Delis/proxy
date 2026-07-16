@@ -20,6 +20,7 @@ export type HarnessGatewayTarget = {
   secret: string;
   slug: string;
   provider: string;
+  connectionSlug: string;
   model: string;
   config: Record<string, unknown>;
   wires: { dialect: Dialect; path: string }[];
@@ -41,18 +42,19 @@ export async function assignHarnessGatewayTarget(
     .where(and(
       eq(providerConnections.organizationId, organizationId),
       eq(providerConnections.workspaceId, workspaceId),
-      eq(providerConnections.slug, input.provider)
+      eq(providerConnections.slug, input.connectionSlug)
     ))
     .limit(1);
   if (!connection) {
-    if (!input.connection) throw new Error(`Missing fixture provider connection: ${input.provider}`);
-    const id = `${workspaceId}:connection:${input.provider}`;
+    if (!input.connection) throw new Error(`Missing fixture provider connection: ${input.connectionSlug}`);
+    const id = `${workspaceId}:connection:${input.connectionSlug}`;
     await fixture.db.insert(providerConnections).values({
       id,
       organizationId,
       workspaceId,
-      slug: input.provider,
-      name: input.provider,
+      provider: input.provider,
+      slug: input.connectionSlug,
+      name: input.connectionSlug,
       adapterKind: "generic-http-json",
       authStyle: "none",
       baseUrl: input.connection.baseUrl,

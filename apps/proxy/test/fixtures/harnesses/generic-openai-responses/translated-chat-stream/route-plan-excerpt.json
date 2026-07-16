@@ -1,7 +1,7 @@
 {
   "outcome": "route",
   "surface": "openai-responses",
-  "provider": "chat-only-openai",
+  "provider": "openai",
   "selectedModel": "gpt-chat-only",
   "egressWireId": "openai-chat",
   "wireAdapterVersion": "1"
