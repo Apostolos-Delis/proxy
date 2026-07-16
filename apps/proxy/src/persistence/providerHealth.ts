@@ -259,3 +259,8 @@ export function isStreamPermissionHealth(
 ) {
   return errorType === "stream_permission_denied" || metadata?.bedrockErrorKind === "stream_permission_denied";
 }
+
+export function healthStatusUnavailable(status: string | null, until: Date | null, now: Date) {
+  if (status === "terminal" || status === "locked_out") return !until || until > now;
+  return status === "cooldown" && (!until || until > now);
+}

@@ -12,6 +12,7 @@ import {
 
 import type { LogicalModelClassifierDeployment } from "../classifier.js";
 import { pricingFromRow } from "./modelPricing.js";
+import { healthStatusUnavailable } from "./providerHealth.js";
 import { workspaceScope } from "./scope.js";
 
 export async function activeClassifierDeployment(
@@ -28,11 +29,11 @@ export async function activeClassifierDeployment(
       provider: providerConnections.provider,
       connectionId: providerConnections.id,
       bindingId: deploymentWireBindings.id,
-      endpointPath: deploymentWireBindings.endpointPath
-      ,connectionHealthStatus: providerConnectionHealth.status
-      ,connectionCooldownUntil: providerConnectionHealth.cooldownUntil
-      ,deploymentHealthStatus: deploymentHealth.status
-      ,deploymentLockoutUntil: deploymentHealth.lockoutUntil
+      endpointPath: deploymentWireBindings.endpointPath,
+      connectionHealthStatus: providerConnectionHealth.status,
+      connectionCooldownUntil: providerConnectionHealth.cooldownUntil,
+      deploymentHealthStatus: deploymentHealth.status,
+      deploymentLockoutUntil: deploymentHealth.lockoutUntil
     })
     .from(modelDeployments)
     .innerJoin(canonicalModels, and(
@@ -78,8 +79,8 @@ export async function activeClassifierDeployment(
     .limit(1);
   if (!row?.endpointPath) return undefined;
   const now = new Date();
-  if (healthUnavailable(row.connectionHealthStatus, row.connectionCooldownUntil, now)) return undefined;
-  if (healthUnavailable(row.deploymentHealthStatus, row.deploymentLockoutUntil, now)) return undefined;
+  if (healthStatusUnavailable(row.connectionHealthStatus, row.connectionCooldownUntil, now)) return undefined;
+  if (healthStatusUnavailable(row.deploymentHealthStatus, row.deploymentLockoutUntil, now)) return undefined;
   return {
     deploymentId: row.deploymentId,
     organizationId,
@@ -90,9 +91,4 @@ export async function activeClassifierDeployment(
     bindingId: row.bindingId,
     pricing: pricingFromRow(row.pricing)
   };
-}
-
-function healthUnavailable(status: string | null, until: Date | null, now: Date) {
-  if (status === "terminal" || status === "locked_out") return !until || until > now;
-  return status === "cooldown" && (!until || until > now);
 }

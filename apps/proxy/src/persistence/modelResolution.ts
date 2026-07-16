@@ -40,7 +40,7 @@ import {
 import { effectiveGatewayParameters } from "../gatewayRequestConfig.js";
 import { resolveWireCompatibility } from "../wireCompatibility.js";
 import { activeClassifierDeployment } from "./classifierDeployment.js";
-import { isStreamPermissionHealth } from "./providerHealth.js";
+import { healthStatusUnavailable, isStreamPermissionHealth } from "./providerHealth.js";
 import { workspaceScope } from "./scope.js";
 
 export type ResolveModelInput = {
@@ -473,9 +473,9 @@ export class ModelResolutionService {
     const now = this.options.now?.() ?? new Date();
     const bindingsByTarget = new Map<string, typeof rows>();
     for (const row of rows) {
-      if (healthUnavailable(row.connectionHealthStatus, row.connectionCooldownUntil, now)) continue;
+      if (healthStatusUnavailable(row.connectionHealthStatus, row.connectionCooldownUntil, now)) continue;
       if (
-        healthUnavailable(row.deploymentHealthStatus, row.deploymentLockoutUntil, now) &&
+        healthStatusUnavailable(row.deploymentHealthStatus, row.deploymentLockoutUntil, now) &&
         (input.isStreaming || !isStreamPermissionHealth(row.deploymentLastErrorType, row.deploymentHealthMetadata))
       ) continue;
       const bindings = bindingsByTarget.get(row.targetId) ?? [];
@@ -578,11 +578,6 @@ function hasFalseCapability(capabilities: GatewayModelCapabilities, ...keys: str
 function maximumParameterValue(parameters: GatewayParameterCaps) {
   const values = Object.values(parameters).filter((value): value is number => typeof value === "number");
   return values.length > 0 ? Math.max(...values) : undefined;
-}
-
-function healthUnavailable(status: string | null, until: Date | null, now: Date) {
-  if (status === "terminal" || status === "locked_out") return !until || until > now;
-  return status === "cooldown" && (!until || until > now);
 }
 
 function resolvedTarget(
