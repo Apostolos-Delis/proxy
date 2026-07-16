@@ -5,6 +5,7 @@ packages/*/dist/
 infra/cdk/cdk.out/
 .vite/
 .proxy/
+.prompt-proxy/
 .env
 .env.*
 !.env.example

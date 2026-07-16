@@ -124,6 +124,7 @@ export const MODEL_RESOLUTION_DENIAL_CODES = [
   "classifier_unavailable",
   "classifier_failed",
   "local_operation_not_resolvable",
+  "context_overflow",
   "model_unavailable",
   "direct_target_count_invalid"
 ] as const;
@@ -242,19 +243,22 @@ export class ModelResolutionService {
         return denial(input, "parameter_cap_exceeded");
       }
     }
-    const eligibleTargets = await this.eligibleTargets(input, logicalModel.id);
+    const eligibility = await this.eligibleTargets(input, logicalModel.id);
     let parameterCapRejected = false;
     const targets = input.operationId === "text.generate"
-      ? eligibleTargets.filter((target) => {
+      ? eligibility.targets.filter((target) => {
           const parameters = gatewayParameterCapsSchema.safeParse(target.effectiveParameters);
           if (!parameters.success) return false;
           const exceeded = exceedsParameterCap(grant.parameterCaps, parameters.data);
           if (exceeded) parameterCapRejected = true;
           return !exceeded;
         })
-      : eligibleTargets;
+      : eligibility.targets;
     if (targets.length === 0 && parameterCapRejected) {
       return denial(input, "parameter_cap_exceeded");
+    }
+    if (targets.length === 0 && eligibility.contextOverflowRejected) {
+      return denial(input, "context_overflow");
     }
     if (targets.length === 0) return denial(input, "model_unavailable");
     if (logicalModel.resolutionKind === "direct") {
@@ -484,6 +488,7 @@ export class ModelResolutionService {
     }
 
     const targets = new Map<string, EligibleTarget>();
+    let contextOverflowRejected = false;
     for (const [targetId, bindings] of bindingsByTarget) {
       const compatibility = resolveWireCompatibility({
         ingressWireId: input.ingressWireId,
@@ -514,10 +519,17 @@ export class ModelResolutionService {
           requestConfig: binding.requestConfig
         })
       };
-      if (!capabilitiesSatisfyRequest(target.capabilities, input, target.effectiveParameters)) continue;
+      const capabilityDenial = capabilityDenialCode(target.capabilities, input, target.effectiveParameters);
+      if (capabilityDenial) {
+        if (capabilityDenial === "context_overflow") contextOverflowRejected = true;
+        continue;
+      }
       targets.set(targetId, target);
     }
-    return [...targets.values()].sort((left, right) => left.priority - right.priority);
+    return {
+      targets: [...targets.values()].sort((left, right) => left.priority - right.priority),
+      contextOverflowRejected
+    };
   }
 
   private async classifierTarget(
@@ -539,36 +551,36 @@ export class ModelResolutionService {
   }
 }
 
-function capabilitiesSatisfyRequest(
+function capabilityDenialCode(
   capabilities: GatewayModelCapabilities,
   input: ResolveModelInput,
   parameters: GatewayParameterCaps
 ) {
   const modalities = capabilities.modalities;
-  if (Array.isArray(modalities) && !modalities.includes("text")) return false;
+  if (Array.isArray(modalities) && !modalities.includes("text")) return "model_unavailable";
   if (input.classificationFeatures?.hasTools && hasFalseCapability(capabilities, "tools", "toolCall")) {
-    return false;
+    return "model_unavailable";
   }
   if (input.classificationFeatures?.hasImages) {
-    if (hasFalseCapability(capabilities, "images", "image")) return false;
-    if (Array.isArray(modalities) && !modalities.includes("image")) return false;
+    if (hasFalseCapability(capabilities, "images", "image")) return "model_unavailable";
+    if (Array.isArray(modalities) && !modalities.includes("image")) return "model_unavailable";
   }
-  if (input.isStreaming && capabilities.streaming === false) return false;
+  if (input.isStreaming && capabilities.streaming === false) return "model_unavailable";
 
   const outputTokens = maximumParameterValue(parameters);
   if (
     outputTokens !== undefined &&
     typeof capabilities.maxOutputTokens === "number" &&
     outputTokens > capabilities.maxOutputTokens
-  ) return false;
+  ) return "model_unavailable";
 
   const inputTokens = input.classificationFeatures?.estimatedInputTokens ?? 0;
   if (
     typeof capabilities.contextWindow === "number" &&
     inputTokens + (outputTokens ?? 0) > capabilities.contextWindow
-  ) return false;
+  ) return "context_overflow";
 
-  return true;
+  return undefined;
 }
 
 function hasFalseCapability(capabilities: GatewayModelCapabilities, ...keys: string[]) {
