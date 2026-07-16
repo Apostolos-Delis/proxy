@@ -171,6 +171,31 @@ describe("gateway configuration admin", () => {
     expect(await fixture.service.providerConnection(fixture.actor, connectionId)).toMatchObject({ status: "disabled" });
   });
 
+  it("keeps catalog-managed deployment metadata catalog-owned", async () => {
+    const fixture = await setup("org_gateway_catalog_managed");
+    client = fixture.client;
+    const deployments = await fixture.service.modelDeployments(fixture.actor);
+    const fable = deployments.find((deployment) => deployment.upstreamModelId === "claude-fable-5");
+    expect(fable).toMatchObject({
+      provider: "anthropic",
+      catalogEntryId: expect.any(String),
+      catalogMetadataSource: {
+        type: "models.dev-snapshot",
+        locator: "https://models.dev/api.json",
+        verifiedAt: "2026-07-16T15:18:35Z"
+      },
+      catalogPricingSource: {
+        type: "models.dev-snapshot",
+        locator: "https://models.dev/api.json"
+      }
+    });
+    if (!fable) throw new Error("Missing seeded Fable deployment.");
+
+    await expect(update(fixture, "modelDeployment", fable.id, {
+      pricing: { inputCostPerMtok: 1, outputCostPerMtok: 2 }
+    })).rejects.toThrow("catalog_managed_deployment_metadata");
+  });
+
   it("rejects invalid code-owned identifiers and expanding deployment capabilities", async () => {
     const fixture = await setup("org_gateway_admin_validation");
     client = fixture.client;

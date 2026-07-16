@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, type PgTableExtraConfigValue } from "drizzle-orm/pg-core";
+import { boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, type PgTableExtraConfigValue } from "drizzle-orm/pg-core";
 
 import type {
   Dialect,
@@ -12,6 +12,7 @@ import type {
   InvitationStatus,
   LogicalModelResolutionKind,
   LogicalModelRouterKind,
+  ModelCatalogSource,
   OrganizationMemberRole,
   OrganizationMemberStatus,
   PromptCaptureMode,
@@ -258,6 +259,52 @@ export const providerConnections = pgTable(
   ]
 );
 
+export const modelCatalogEntries = pgTable(
+  "model_catalog_entries",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    provider: text("provider").$type<Provider>().notNull(),
+    upstreamModelId: text("upstream_model_id").notNull(),
+    canonicalKey: text("canonical_key").notNull(),
+    canonicalSlug: text("canonical_slug").notNull(),
+    canonicalName: text("canonical_name").notNull(),
+    vendor: text("vendor").notNull(),
+    family: text("family").notNull(),
+    release: text("release"),
+    region: text("region"),
+    dialects: jsonb("dialects").$type<Dialect[]>().notNull(),
+    canonicalCapabilities: jsonb("canonical_capabilities").$type<GatewayModelCapabilities>().notNull().default({}),
+    deploymentCapabilities: jsonb("deployment_capabilities").$type<GatewayModelCapabilities>().notNull().default({}),
+    pricing: jsonb("pricing").$type<Record<string, unknown>>().notNull(),
+    metadataSource: jsonb("metadata_source").$type<ModelCatalogSource>().notNull(),
+    pricingSource: jsonb("pricing_source").$type<ModelCatalogSource>().notNull(),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table): PgTableExtraConfigValue[] => [
+    uniqueIndex("model_catalog_entries_org_workspace_id_idx").on(table.organizationId, table.workspaceId, table.id),
+    unique("model_catalog_entries_org_workspace_provider_model_region_unique")
+      .on(table.organizationId, table.workspaceId, table.provider, table.upstreamModelId, table.region)
+      .nullsNotDistinct(),
+    index("model_catalog_entries_org_workspace_provider_idx").on(table.organizationId, table.workspaceId, table.provider),
+    index("model_catalog_entries_org_workspace_canonical_idx").on(table.organizationId, table.workspaceId, table.canonicalKey),
+    foreignKey({
+      name: "model_catalog_entries_workspace_fk",
+      columns: [table.organizationId, table.workspaceId],
+      foreignColumns: [workspaces.organizationId, workspaces.id]
+    }).onDelete("cascade"),
+    check("model_catalog_entries_status_chk", sql`${table.status} in ('active', 'disabled')`),
+    check("model_catalog_entries_dialects_chk", sql`jsonb_typeof(${table.dialects}) = 'array' and jsonb_array_length(${table.dialects}) > 0`),
+    check("model_catalog_entries_metadata_source_chk", sql`jsonb_typeof(${table.metadataSource}) = 'object'`),
+    check("model_catalog_entries_pricing_source_chk", sql`jsonb_typeof(${table.pricingSource}) = 'object'`)
+  ]
+);
+
 export const canonicalModels = pgTable(
   "canonical_models",
   {
@@ -300,6 +347,7 @@ export const modelDeployments = pgTable(
     workspaceId: text("workspace_id").notNull(),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
+    catalogEntryId: text("catalog_entry_id"),
     canonicalModelId: text("canonical_model_id").notNull(),
     providerConnectionId: text("provider_connection_id").notNull(),
     upstreamModelId: text("upstream_model_id").notNull(),
@@ -328,6 +376,11 @@ export const modelDeployments = pgTable(
       columns: [table.organizationId, table.workspaceId],
       foreignColumns: [workspaces.organizationId, workspaces.id]
     }).onDelete("cascade"),
+    foreignKey({
+      name: "model_deployments_catalog_entry_fk",
+      columns: [table.organizationId, table.workspaceId, table.catalogEntryId],
+      foreignColumns: [modelCatalogEntries.organizationId, modelCatalogEntries.workspaceId, modelCatalogEntries.id]
+    }),
     foreignKey({
       name: "model_deployments_canonical_model_fk",
       columns: [table.organizationId, table.workspaceId, table.canonicalModelId],

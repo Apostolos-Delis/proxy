@@ -94,7 +94,8 @@ api_keys
        -> access_profile_model_grants
             -> logical_models
                  -> logical_model_targets
-                      -> model_deployments
+                 -> model_deployments
+                      -> model_catalog_entries
                            -> canonical_models
                            -> provider_connections
                            -> deployment_wire_bindings
@@ -110,9 +111,17 @@ Network policy is applied before a connection is persisted or invoked. Secrets a
 
 `canonical_models` describes model identity: vendor, family, release, lifecycle status, and published capabilities. It does not contain endpoint or credential details.
 
+The identity is provider-independent. Anthropic and Bedrock deployments for the same Claude release reference one canonical row even though their upstream model IDs, regions, dialects, and prices differ.
+
+### Model catalog entries
+
+`model_catalog_entries` is the sourced provider-model registry. Each row records one provider-specific upstream model ID and optional region, its canonical identity, native dialects, capability overlays, pricing, and separate metadata and pricing provenance. Source records include a locator and may include version, fetch, effective, and verification timestamps. Missing verification remains visible as unverified; it is never inferred from the presence of a price.
+
+Seeded deployments must resolve through a validated catalog entry. Configured models missing from the catalog fail seeding, and entries that disagree on one canonical identity fail catalog validation. Manual deployments remain possible but have no catalog provenance and are presented as manual and unverified.
+
 ### Model deployments
 
-`model_deployments` makes a canonical model callable through one provider connection. It owns the exact upstream model ID, region/configuration overrides, narrowed capabilities, and V1 pricing. Health is keyed by deployment, not by a caller-facing model string.
+`model_deployments` makes a canonical model callable through one provider connection. It references its catalog entry when catalog-managed and owns the exact upstream model ID, region/configuration overrides, narrowed capabilities, and materialized V1 pricing. Catalog-managed identity, capabilities, and pricing are updated through the catalog rather than deployment mutations. Health is keyed by deployment, not by a caller-facing model string.
 
 ### Deployment wire bindings
 

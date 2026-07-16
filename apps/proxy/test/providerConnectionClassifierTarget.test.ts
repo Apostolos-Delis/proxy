@@ -192,7 +192,7 @@ async function setup(organizationId: string) {
   }));
   const workspaceId = defaultWorkspaceId(organizationId);
   const connectionId = `${workspaceId}:connection:openai`;
-  const deploymentId = `${workspaceId}:deployment:openai:gpt-5-nano-2025-08-07`;
+  const deploymentId = `${workspaceId}:deployment:openai:gpt-5-nano`;
   return {
     client,
     db,
@@ -204,7 +204,7 @@ async function setup(organizationId: string) {
       provider: "openai",
       providerConnectionId: connectionId,
       bindingId: `${deploymentId}:wire:openai-responses`,
-      model: "gpt-5-nano-2025-08-07"
+      model: "gpt-5-nano"
     } satisfies LogicalModelClassifierDeployment
   };
 }

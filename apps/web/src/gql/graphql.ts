@@ -164,7 +164,7 @@ export type CompressionPreviewPanelQuery = { compressionPreview: { contentAvaila
 export type DeploymentPricingCardQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type DeploymentPricingCardQuery = { gatewayModelDeployments: Array<{ id: string, name: string, upstreamModelId: string, providerConnectionId: string, pricing: unknown, enabled: boolean }> };
+export type DeploymentPricingCardQuery = { gatewayModelDeployments: Array<{ id: string, name: string, provider: string, upstreamModelId: string, providerConnectionId: string, pricing: unknown, catalogMetadataSource: unknown, catalogPricingSource: unknown, enabled: boolean }> };
 
 export type InvitationsListQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -254,6 +254,11 @@ export type ApiKeyVerificationQueryVariables = Exact<{
 
 
 export type ApiKeyVerificationQuery = { apiKey: { id: string, lastUsedAt: string | null } | null };
+
+export type ModelCatalogCardQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type ModelCatalogCardQuery = { gatewayModelCatalogEntries: Array<{ id: string, provider: string, upstreamModelId: string, canonicalName: string, canonicalKey: string, region: string | null, canonicalCapabilities: unknown, pricing: unknown, metadataSource: unknown, pricingSource: unknown, enabled: boolean }> };
 
 export type OverviewPageQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -838,9 +843,12 @@ export const DeploymentPricingCardDocument = new TypedDocumentString(`
   gatewayModelDeployments {
     id
     name
+    provider
     upstreamModelId
     providerConnectionId
     pricing
+    catalogMetadataSource
+    catalogPricingSource
     enabled
   }
 }
@@ -1015,6 +1023,23 @@ export const ApiKeyVerificationDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<ApiKeyVerificationQuery, ApiKeyVerificationQueryVariables>;
+export const ModelCatalogCardDocument = new TypedDocumentString(`
+    query ModelCatalogCard {
+  gatewayModelCatalogEntries {
+    id
+    provider
+    upstreamModelId
+    canonicalName
+    canonicalKey
+    region
+    canonicalCapabilities
+    pricing
+    metadataSource
+    pricingSource
+    enabled
+  }
+}
+    `) as unknown as TypedDocumentString<ModelCatalogCardQuery, ModelCatalogCardQueryVariables>;
 export const OverviewPageDocument = new TypedDocumentString(`
     query OverviewPage {
   overviewDashboard {

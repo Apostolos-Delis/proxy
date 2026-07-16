@@ -83,6 +83,18 @@ export async function updateModelDeployment(context: GatewayConfigMutationContex
   const { tx, actor } = context;
   const body = parseGatewayBody(modelDeploymentUpdateSchema, input, "invalid_model_deployment");
   const current = await lockScopedRow(tx, modelDeployments, actor, id, "model_deployment_not_found");
+  if (current.catalogEntryId && (
+    body.upstreamModelId !== undefined ||
+    body.region !== undefined ||
+    body.capabilities !== undefined ||
+    body.pricing !== undefined
+  )) {
+    throw fieldError(
+      "catalog_managed_deployment_metadata",
+      "catalogEntryId",
+      "Catalog-managed deployment identity, capabilities, and pricing must be updated through the model catalog."
+    );
+  }
   const canonical = await requireScopedRow(tx, canonicalModels, actor, current.canonicalModelId, "canonical_model_not_found");
   const capabilities = body.capabilities ?? current.capabilities;
   assertCapabilitiesWithin(canonical.capabilities, capabilities);

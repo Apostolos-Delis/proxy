@@ -1,11 +1,18 @@
 import type { Dialect, Provider, Surface } from "./types.js";
 import { unreachable } from "./util.js";
 
-export type ModelPricing = {
+export type ModelPricingRates = {
   readonly inputCostPerMtok: number;
   readonly outputCostPerMtok: number;
   readonly cacheReadCostPerMtok: number;
   readonly cacheWriteCostPerMtok: number;
+};
+
+export type ModelPricing = ModelPricingRates & {
+  readonly largeContext?: {
+    readonly thresholdInputTokens: number;
+    readonly rates: ModelPricingRates;
+  };
 };
 
 export type ModelPricingInput = {
@@ -13,6 +20,13 @@ export type ModelPricingInput = {
   outputCostPerMtok?: number;
   cacheReadCostPerMtok?: number;
   cacheWriteCostPerMtok?: number;
+  largeContext?: {
+    thresholdInputTokens: number;
+    inputCostPerMtok: number;
+    outputCostPerMtok: number;
+    cacheReadCostPerMtok?: number;
+    cacheWriteCostPerMtok?: number;
+  };
 };
 
 export type ModelPricingTable = Readonly<Record<string, ModelPricing>>;
@@ -71,6 +85,19 @@ export function providerForDialect(dialect: Dialect): Provider {
 }
 
 export function completeModelPricing(input: ModelPricingInput): ModelPricing {
+  const rates = completeModelPricingRates(input);
+  return {
+    ...rates,
+    ...(input.largeContext ? {
+      largeContext: {
+        thresholdInputTokens: input.largeContext.thresholdInputTokens,
+        rates: completeModelPricingRates(input.largeContext)
+      }
+    } : {})
+  };
+}
+
+function completeModelPricingRates(input: ModelPricingInput): ModelPricingRates {
   const inputCostPerMtok = input.inputCostPerMtok ?? 0;
   return {
     inputCostPerMtok,
@@ -195,16 +222,19 @@ export function usageCostMicros(pricing: ModelPricing | undefined, usage: UsageT
       totalCostMicros: 0
     };
   }
+  const rates = pricing.largeContext && usage.inputTokens > pricing.largeContext.thresholdInputTokens
+    ? pricing.largeContext.rates
+    : pricing;
   const uncachedInputTokens = Math.max(
     0,
     usage.inputTokens - usage.cachedInputTokens - usage.cacheCreationInputTokens
   );
   const inputCostMicros = Math.round(
-    uncachedInputTokens * pricing.inputCostPerMtok +
-    usage.cachedInputTokens * pricing.cacheReadCostPerMtok +
-    usage.cacheCreationInputTokens * pricing.cacheWriteCostPerMtok
+    uncachedInputTokens * rates.inputCostPerMtok +
+    usage.cachedInputTokens * rates.cacheReadCostPerMtok +
+    usage.cacheCreationInputTokens * rates.cacheWriteCostPerMtok
   );
-  const outputCostMicros = Math.round(usage.outputTokens * pricing.outputCostPerMtok);
+  const outputCostMicros = Math.round(usage.outputTokens * rates.outputCostPerMtok);
   return {
     inputCostMicros,
     outputCostMicros,

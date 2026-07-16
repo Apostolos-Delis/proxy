@@ -28,6 +28,13 @@ export const GATEWAY_SETUP_MODEL_PREFERENCE = ["coding-auto", "economy-auto", "f
 
 export const BUILTIN_PROVIDER_NAMES = ["openai", "anthropic", "amazon-bedrock"] as const;
 
+export const MODEL_CATALOG_SOURCE_TYPES = [
+  "models.dev-snapshot",
+  "provider-documentation",
+  "provider-discovery",
+  "manual"
+] as const;
+
 export const PROVIDERS = {
   OPENAI: BUILTIN_PROVIDER_NAMES[0],
   ANTHROPIC: BUILTIN_PROVIDER_NAMES[1],
@@ -497,6 +504,93 @@ export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() => z.union([
   z.array(jsonValueSchema),
   z.record(z.string(), jsonValueSchema)
 ]));
+
+export const modelCatalogSourceSchema = z.strictObject({
+  type: z.enum(MODEL_CATALOG_SOURCE_TYPES),
+  locator: z.string().trim().min(1).max(2_048),
+  version: z.string().trim().min(1).max(256).optional(),
+  fetchedAt: z.string().datetime({ offset: true }).optional(),
+  effectiveAt: z.string().datetime({ offset: true }).optional(),
+  verifiedAt: z.string().datetime({ offset: true }).optional()
+});
+
+export const providerModelCatalogEntrySchema = z.strictObject({
+  provider: builtinProviderSchema,
+  upstreamModelId: z.string().trim().min(1).max(1_024),
+  canonical: z.strictObject({
+    key: z.string().trim().min(1).max(1_024),
+    slug: z.string().trim().min(1).max(128).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    name: z.string().trim().min(1).max(256),
+    vendor: z.string().trim().min(1).max(128),
+    family: z.string().trim().min(1).max(256),
+    release: z.string().trim().min(1).max(256).nullable().optional(),
+    capabilities: gatewayModelCapabilitiesSchema
+  }),
+  region: z.string().trim().min(1).max(256).nullable().optional(),
+  dialects: z.array(dialectSchema).min(1),
+  capabilities: gatewayModelCapabilitiesSchema,
+  pricing: z.union([
+    z.object({
+      inputCostPerMtok: z.number().finite().nonnegative(),
+      outputCostPerMtok: z.number().finite().nonnegative(),
+      cacheReadCostPerMtok: z.number().finite().nonnegative().optional(),
+      cacheWriteCostPerMtok: z.number().finite().nonnegative().optional(),
+      largeContext: z.strictObject({
+        thresholdInputTokens: z.number().int().positive(),
+        inputCostPerMtok: z.number().finite().nonnegative(),
+        outputCostPerMtok: z.number().finite().nonnegative(),
+        cacheReadCostPerMtok: z.number().finite().nonnegative().optional(),
+        cacheWriteCostPerMtok: z.number().finite().nonnegative().optional()
+      }).optional()
+    }).strict(),
+    z.object({ status: z.literal("unpriced") }).strict()
+  ]),
+  metadataSourceId: z.string().trim().min(1).max(256),
+  pricingSourceId: z.string().trim().min(1).max(256)
+});
+
+export const providerModelCatalogSchema = z.strictObject({
+  sources: z.record(z.string().trim().min(1).max(256), modelCatalogSourceSchema),
+  entries: z.array(providerModelCatalogEntrySchema)
+}).superRefine((catalog, context) => {
+  const keys = new Set<string>();
+  const canonicals = new Map<string, string>();
+  for (const [index, entry] of catalog.entries.entries()) {
+    const key = `${entry.provider}:${entry.upstreamModelId}:${entry.region ?? ""}`;
+    if (keys.has(key)) {
+      context.addIssue({
+        code: "custom",
+        path: ["entries", index],
+        message: `Duplicate provider model catalog entry ${key}.`
+      });
+    }
+    keys.add(key);
+    const canonicalKey = `${entry.canonical.vendor}:${entry.canonical.key}`;
+    const canonical = JSON.stringify(entry.canonical);
+    const existingCanonical = canonicals.get(canonicalKey);
+    if (existingCanonical && existingCanonical !== canonical) {
+      context.addIssue({
+        code: "custom",
+        path: ["entries", index, "canonical"],
+        message: `Conflicting canonical model metadata for ${canonicalKey}.`
+      });
+    }
+    canonicals.set(canonicalKey, canonical);
+    for (const field of ["metadataSourceId", "pricingSourceId"] as const) {
+      if (!catalog.sources[entry[field]]) {
+        context.addIssue({
+          code: "custom",
+          path: ["entries", index, field],
+          message: `Unknown model catalog source ${entry[field]}.`
+        });
+      }
+    }
+  }
+});
+
+export type ModelCatalogSource = z.infer<typeof modelCatalogSourceSchema>;
+export type ProviderModelCatalogEntry = z.infer<typeof providerModelCatalogEntrySchema>;
+export type ProviderModelCatalog = z.infer<typeof providerModelCatalogSchema>;
 
 export const jsonObjectSchema: z.ZodType<JsonObject> = z.record(z.string(), jsonValueSchema);
 

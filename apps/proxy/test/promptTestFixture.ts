@@ -16,7 +16,7 @@ import {
   users,
   workspaces
 } from "@proxy/db";
-import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
+import { defaultProviderModelCatalog, seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
 
 import { loadConfig } from "../src/config.js";
 import { LlmClassifier } from "../src/classifier.js";
@@ -125,14 +125,41 @@ export async function captureFixture(
     organizationId,
     promptCaptureMode
   });
-  await seedDatabase(db, seedOptionsFromEnv({
+  const seedOptions = seedOptionsFromEnv({
     ...env,
     DEFAULT_ORGANIZATION_ID: organizationId,
     OPENAI_BASE_URL: openai.url,
     ANTHROPIC_BASE_URL: anthropic.url,
     PROXY_TOKEN: env.PROXY_TOKEN,
     SEED_USER_ID: "local-user"
-  }));
+  });
+  if (!seedOptions.modelCatalog.entries.some((entry) =>
+    entry.provider === "openai" && entry.upstreamModelId === seedOptions.classifierModel
+  )) {
+    seedOptions.modelCatalog = structuredClone(defaultProviderModelCatalog);
+    seedOptions.modelCatalog.sources["test-classifier"] = {
+      type: "manual",
+      locator: "test:prompt-fixture"
+    };
+    seedOptions.modelCatalog.entries.push({
+      provider: "openai",
+      upstreamModelId: seedOptions.classifierModel,
+      canonical: {
+        key: seedOptions.classifierModel,
+        slug: seedOptions.classifierModel.replaceAll(/[^a-z0-9]+/g, "-").replaceAll(/^-|-$/g, ""),
+        name: seedOptions.classifierModel,
+        vendor: "openai",
+        family: seedOptions.classifierModel,
+        capabilities: {}
+      },
+      dialects: ["openai-responses"],
+      capabilities: {},
+      pricing: { status: "unpriced" },
+      metadataSourceId: "test-classifier",
+      pricingSourceId: "test-classifier"
+    });
+  }
+  await seedDatabase(db, seedOptions);
   await db
     .update(organizationSettings)
     .set({ promptCaptureMode })

@@ -3,6 +3,7 @@ import { builder } from "../builder.js";
 
 type Connection = Awaited<ReturnType<GatewayConfigAdminService["providerConnections"]>>[number];
 type CanonicalModel = Awaited<ReturnType<GatewayConfigAdminService["canonicalModels"]>>[number];
+type CatalogEntry = Awaited<ReturnType<GatewayConfigAdminService["modelCatalogEntries"]>>[number];
 type Deployment = Awaited<ReturnType<GatewayConfigAdminService["modelDeployments"]>>[number];
 type WireBinding = Awaited<ReturnType<GatewayConfigAdminService["wireBindings"]>>[number];
 type LogicalModel = Awaited<ReturnType<GatewayConfigAdminService["logicalModels"]>>[number];
@@ -53,6 +54,33 @@ export const GatewayCanonicalModel = builder.objectRef<CanonicalModel>("GatewayC
   })
 });
 
+export const GatewayModelCatalogEntry = builder.objectRef<CatalogEntry>("GatewayModelCatalogEntry").implement({
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    organizationId: t.exposeID("organizationId"),
+    workspaceId: t.exposeID("workspaceId"),
+    provider: t.exposeString("provider"),
+    upstreamModelId: t.exposeString("upstreamModelId"),
+    canonicalKey: t.exposeString("canonicalKey"),
+    canonicalSlug: t.exposeString("canonicalSlug"),
+    canonicalName: t.exposeString("canonicalName"),
+    vendor: t.exposeString("vendor"),
+    family: t.exposeString("family"),
+    release: t.exposeString("release", { nullable: true }),
+    region: t.exposeString("region", { nullable: true }),
+    dialects: t.field({ type: "JSON", resolve: (row) => row.dialects }),
+    canonicalCapabilities: t.field({ type: "JSON", resolve: (row) => row.canonicalCapabilities }),
+    deploymentCapabilities: t.field({ type: "JSON", resolve: (row) => row.deploymentCapabilities }),
+    pricing: t.field({ type: "JSON", resolve: (row) => row.pricing }),
+    metadataSource: t.field({ type: "JSON", resolve: (row) => row.metadataSource }),
+    pricingSource: t.field({ type: "JSON", resolve: (row) => row.pricingSource }),
+    status: t.exposeString("status"),
+    enabled: t.boolean({ resolve: (row) => row.status === "active" }),
+    createdAt: t.exposeString("createdAt"),
+    updatedAt: t.exposeString("updatedAt")
+  })
+});
+
 export const GatewayModelDeployment = builder.objectRef<Deployment>("GatewayModelDeployment").implement({
   fields: (t) => ({
     id: t.exposeID("id"),
@@ -60,6 +88,8 @@ export const GatewayModelDeployment = builder.objectRef<Deployment>("GatewayMode
     workspaceId: t.exposeID("workspaceId"),
     slug: t.exposeString("slug"),
     name: t.exposeString("name"),
+    provider: t.exposeString("provider"),
+    catalogEntryId: t.exposeID("catalogEntryId", { nullable: true }),
     canonicalModelId: t.exposeID("canonicalModelId"),
     providerConnectionId: t.exposeID("providerConnectionId"),
     upstreamModelId: t.exposeString("upstreamModelId"),
@@ -67,6 +97,8 @@ export const GatewayModelDeployment = builder.objectRef<Deployment>("GatewayMode
     config: t.field({ type: "JSON", resolve: (row) => row.config }),
     capabilities: t.field({ type: "JSON", resolve: (row) => row.capabilities }),
     pricing: t.field({ type: "JSON", resolve: (row) => row.pricing }),
+    catalogMetadataSource: t.field({ type: "JSON", nullable: true, resolve: (row) => row.catalogMetadataSource }),
+    catalogPricingSource: t.field({ type: "JSON", nullable: true, resolve: (row) => row.catalogPricingSource }),
     status: t.exposeString("status"),
     enabled: t.boolean({ resolve: (row) => row.status === "active" }),
     createdAt: t.exposeString("createdAt"),

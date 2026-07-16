@@ -57,6 +57,7 @@ API keys store only `key_hash`; the plaintext secret is returned once at creatio
 
 ```text
 provider_connections
+model_catalog_entries
 canonical_models
 model_deployments
 deployment_wire_bindings
@@ -71,12 +72,13 @@ The normalized ownership model is:
 ```text
 API key -> access profile -> logical-model grant
 logical model -> eligible deployment targets
-deployment -> canonical model + provider connection + native wire bindings
+deployment -> catalog entry + canonical model + provider connection + native wire bindings
 ```
 
 - `provider_connections` own an operator-facing connection identity, a stable provider behavior ID, endpoint configuration, adapter kind, and credential reference or encrypted credential material.
+- `model_catalog_entries` own provider-specific upstream IDs, regions, dialects, capabilities, pricing, and independently sourced metadata and pricing provenance.
 - `canonical_models` identify model families and releases independently of a provider endpoint.
-- `model_deployments` identify one callable upstream model through one connection. Capabilities narrow canonical capabilities; pricing is a complete per-million-token rate object or absent.
+- `model_deployments` identify one callable upstream model through one connection. Catalog-managed deployments reference their source entry; capabilities narrow canonical capabilities, and pricing is either a complete per-million-token rate object or explicitly unpriced.
 - `deployment_wire_bindings` map a deployment to a code-owned API wire, endpoint path or operation, adapter contract version, and non-secret request configuration.
 - `logical_models` expose stable caller-facing slugs. V1 supports `direct` and classifier-backed `router` resolution.
 - `logical_model_targets` define the only deployments a logical model may select.
@@ -165,6 +167,7 @@ HTTP and WebSocket transports share `GatewayRequestLifecycle` for preparation, a
 `POST /admin/graphql` exposes organization/workspace-scoped queries and mutations for:
 
 - provider connections;
+- provider model catalog entries and provenance;
 - canonical models;
 - model deployments and deployment pricing;
 - deployment wire bindings;

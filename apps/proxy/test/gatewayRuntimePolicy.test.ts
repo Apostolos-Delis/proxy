@@ -118,7 +118,7 @@ describe("logical-model gateway policy", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       type: "error",
-      error: { type: "invalid_request_error", message: "model_unavailable" }
+      error: { type: "invalid_request_error", message: "context_overflow" }
     });
     expect(fixture.anthropic.records).toHaveLength(0);
   });

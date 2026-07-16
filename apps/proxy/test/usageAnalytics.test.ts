@@ -559,10 +559,10 @@ describe("usage analytics admin APIs", () => {
     expect([...bySurface.keys()].sort()).toEqual(["openai-chat", "openai-responses"]);
     expect(bySurface.get("openai-responses")?.requestCount).toBe(1);
     expect(bySurface.get("openai-chat")?.requestCount).toBe(1);
-    expect(bySurface.get("openai-responses")?.cost.baseline).toBeCloseTo(0.00225);
-    expect(bySurface.get("openai-chat")?.cost.baseline).toBeCloseTo(0.00045);
+    expect(bySurface.get("openai-responses")?.cost.baseline).toBeCloseTo(0.008);
+    expect(bySurface.get("openai-chat")?.cost.baseline).toBeCloseTo(0.0012);
     expect(usage.totals.requestCount).toBe(2);
-    expect(usage.totals.cost.baseline).toBeCloseTo(0.0027);
+    expect(usage.totals.cost.baseline).toBeCloseTo(0.0092);
   });
 
   it("keeps concurrent root fields consistent when they share request scans", async () => {

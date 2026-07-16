@@ -404,9 +404,37 @@ type GatewayLogicalModelTarget {
   workspaceId: ID!
 }
 
+type GatewayModelCatalogEntry {
+  canonicalCapabilities: JSON!
+  canonicalKey: String!
+  canonicalName: String!
+  canonicalSlug: String!
+  createdAt: String!
+  deploymentCapabilities: JSON!
+  dialects: JSON!
+  enabled: Boolean!
+  family: String!
+  id: ID!
+  metadataSource: JSON!
+  organizationId: ID!
+  pricing: JSON!
+  pricingSource: JSON!
+  provider: String!
+  region: String
+  release: String
+  status: String!
+  updatedAt: String!
+  upstreamModelId: String!
+  vendor: String!
+  workspaceId: ID!
+}
+
 type GatewayModelDeployment {
   canonicalModelId: ID!
   capabilities: JSON!
+  catalogEntryId: ID
+  catalogMetadataSource: JSON
+  catalogPricingSource: JSON
   config: JSON!
   createdAt: String!
   enabled: Boolean!
@@ -414,6 +442,7 @@ type GatewayModelDeployment {
   name: String!
   organizationId: ID!
   pricing: JSON!
+  provider: String!
   providerConnectionId: ID!
   region: String
   slug: String!
@@ -938,6 +967,8 @@ type Query {
   gatewayLogicalModelTarget(id: ID!): GatewayLogicalModelTarget
   gatewayLogicalModelTargets: [GatewayLogicalModelTarget!]!
   gatewayLogicalModels: [GatewayLogicalModel!]!
+  gatewayModelCatalogEntries: [GatewayModelCatalogEntry!]!
+  gatewayModelCatalogEntry(id: ID!): GatewayModelCatalogEntry
   gatewayModelDeployment(id: ID!): GatewayModelDeployment
   gatewayModelDeployments: [GatewayModelDeployment!]!
   gatewayModelGrant(id: ID!): GatewayModelGrant

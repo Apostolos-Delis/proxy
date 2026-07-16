@@ -4,10 +4,12 @@ import { and, eq } from "drizzle-orm";
 
 import {
   GATEWAY_OPERATION_IDS,
+  providerModelCatalogSchema,
   logicalModelClassifierConfigSchema,
   type BuiltinProvider,
   type Dialect,
-  type GatewayModelCapabilities
+  type ProviderModelCatalog,
+  type ProviderModelCatalogEntry
 } from "@proxy/schema";
 
 import { builtinProviderSeedDefinitions, type BuiltinProviderSeedDefinition } from "./builtinProviderSeed.js";
@@ -19,16 +21,10 @@ import {
   deploymentWireBindings,
   logicalModels,
   logicalModelTargets,
+  modelCatalogEntries,
   modelDeployments,
   providerConnections
 } from "./schema.js";
-
-export type GatewaySeedSnapshotEntry = {
-  provider: BuiltinProvider;
-  model: string;
-  capabilities: GatewayModelCapabilities;
-  pricing: Record<string, unknown>;
-};
 
 export type GatewaySeedInput = {
   organizationId: string;
@@ -41,7 +37,8 @@ export type GatewaySeedInput = {
   models: {
     provider: BuiltinProvider;
     model: string;
-    surface: "openai-responses" | "openai-chat" | "anthropic-messages";
+    region?: string;
+    surface: Dialect;
   }[];
   codingTargets: GatewaySeedTarget[];
   economyTargets: GatewaySeedTarget[];
@@ -50,6 +47,7 @@ export type GatewaySeedInput = {
 export type GatewaySeedTarget = {
   provider: BuiltinProvider;
   model: string;
+  region?: string;
 };
 
 const DEFAULT_CLASSIFIER_INSTRUCTIONS = [
@@ -58,21 +56,18 @@ const DEFAULT_CLASSIFIER_INSTRUCTIONS = [
 ].join(" ");
 
 type SeedModel = {
-  provider: BuiltinProvider;
-  model: string;
+  catalogEntry: ProviderModelCatalogEntry;
   surfaces: Dialect[];
-  capabilities: GatewayModelCapabilities;
-  pricing: Record<string, unknown>;
 };
 
 export async function seedGatewayResources(
   db: ProxyDbSession,
   input: GatewaySeedInput,
-  snapshot: GatewaySeedSnapshotEntry[]
+  catalog: ProviderModelCatalog
 ) {
   const classifierRouterConfig = classifierConfig(input);
   const providerDefinitions = builtinProviderSeedDefinitions(input);
-  const models = collectModels(input, snapshot, providerDefinitions);
+  const models = collectModels(input, await catalogWithStoredEntries(db, input, catalog), providerDefinitions);
   validateTargets(input, models);
   const connections = connectionRows(input, providerDefinitions);
 
@@ -84,12 +79,16 @@ export async function seedGatewayResources(
   }
 
   const connectionIds = new Map(connections.map((row) => [row.provider, row.id]));
+  await seedCatalogEntries(db, input, catalog);
 
   for (const model of models.values()) {
-    const canonicalId = canonicalModelId(input.workspaceId, model.provider, model.model);
-    const deploymentId = modelDeploymentId(input.workspaceId, model.provider, model.model);
-    const providerConnectionId = requiredConnectionId(connectionIds, model.provider);
-    const slug = physicalModelSlug(model.provider, model.model);
+    const entry = model.catalogEntry;
+    const catalogEntryId = modelCatalogEntryId(input.workspaceId, entry.provider, entry.upstreamModelId, entry.region);
+    const canonicalId = canonicalModelId(input.workspaceId, entry.canonical.vendor, entry.canonical.key);
+    const deploymentId = modelDeploymentId(input.workspaceId, entry.provider, entry.upstreamModelId, entry.region);
+    const providerConnectionId = requiredConnectionId(connectionIds, entry.provider);
+    const canonicalSlug = physicalModelSlug(entry.canonical.vendor, entry.canonical.slug);
+    const deploymentSlug = physicalModelSlug(entry.provider, entry.upstreamModelId, entry.region);
 
     await db
       .insert(canonicalModels)
@@ -97,14 +96,25 @@ export async function seedGatewayResources(
         id: canonicalId,
         organizationId: input.organizationId,
         workspaceId: input.workspaceId,
-        slug,
-        name: model.model,
-        vendor: model.provider,
-        family: model.model,
-        capabilities: model.capabilities,
+        slug: canonicalSlug,
+        name: entry.canonical.name,
+        vendor: entry.canonical.vendor,
+        family: entry.canonical.family,
+        release: entry.canonical.release ?? null,
+        capabilities: entry.canonical.capabilities,
         status: "active"
       })
-      .onConflictDoNothing({ target: canonicalModels.id });
+      .onConflictDoUpdate({
+        target: canonicalModels.id,
+        set: {
+          name: entry.canonical.name,
+          vendor: entry.canonical.vendor,
+          family: entry.canonical.family,
+          release: entry.canonical.release ?? null,
+          capabilities: entry.canonical.capabilities,
+          updatedAt: new Date()
+        }
+      });
 
     await db
       .insert(modelDeployments)
@@ -112,16 +122,31 @@ export async function seedGatewayResources(
         id: deploymentId,
         organizationId: input.organizationId,
         workspaceId: input.workspaceId,
-        slug,
-        name: model.model,
+        slug: deploymentSlug,
+        name: entry.upstreamModelId,
+        catalogEntryId,
         canonicalModelId: canonicalId,
         providerConnectionId,
-        upstreamModelId: model.model,
-        capabilities: {},
-        pricing: model.pricing,
+        upstreamModelId: entry.upstreamModelId,
+        region: entry.region ?? null,
+        capabilities: entry.capabilities,
+        pricing: entry.pricing,
         status: "active"
       })
-      .onConflictDoNothing({ target: modelDeployments.id });
+      .onConflictDoUpdate({
+        target: modelDeployments.id,
+        set: {
+          name: entry.upstreamModelId,
+          catalogEntryId,
+          canonicalModelId: canonicalId,
+          providerConnectionId,
+          upstreamModelId: entry.upstreamModelId,
+          region: entry.region ?? null,
+          capabilities: entry.capabilities,
+          pricing: entry.pricing,
+          updatedAt: new Date()
+        }
+      });
 
     for (const surface of model.surfaces) {
       await db
@@ -133,7 +158,7 @@ export async function seedGatewayResources(
           deploymentId,
           providerConnectionId,
           apiWireId: surface,
-          endpointPath: endpointPath(providerDefinitions, model.provider, surface),
+          endpointPath: endpointPath(providerDefinitions, entry.provider, surface),
           adapterContractVersion: "1",
           enabled: true
         })
@@ -185,9 +210,9 @@ export async function seedGatewayResources(
 
   const fableTarget = modelDeploymentId(input.workspaceId, "anthropic", "claude-fable-5");
   const codingTargets = uniqueModelKeys(input.codingTargets)
-    .map(({ provider, model }) => modelDeploymentId(input.workspaceId, provider, model));
+    .map(({ provider, model, region }) => modelDeploymentId(input.workspaceId, provider, model, region));
   const economyTargets = uniqueModelKeys(input.economyTargets)
-    .map(({ provider, model }) => modelDeploymentId(input.workspaceId, provider, model));
+    .map(({ provider, model, region }) => modelDeploymentId(input.workspaceId, provider, model, region));
 
   await replaceTargets(db, input, "fable", [fableTarget]);
   await replaceTargets(db, input, "coding-auto", codingTargets);
@@ -262,34 +287,143 @@ function connectionRows(input: GatewaySeedInput, definitions: BuiltinProviderSee
   }));
 }
 
+async function seedCatalogEntries(
+  db: ProxyDbSession,
+  input: GatewaySeedInput,
+  catalog: ProviderModelCatalog
+) {
+  for (const entry of catalog.entries) {
+    const metadataSource = catalog.sources[entry.metadataSourceId];
+    const pricingSource = catalog.sources[entry.pricingSourceId];
+    if (!metadataSource || !pricingSource) {
+      throw new Error(`Catalog entry ${entry.provider}:${entry.upstreamModelId} references an unknown source.`);
+    }
+    await db
+      .insert(modelCatalogEntries)
+      .values({
+        id: modelCatalogEntryId(input.workspaceId, entry.provider, entry.upstreamModelId, entry.region),
+        organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
+        provider: entry.provider,
+        upstreamModelId: entry.upstreamModelId,
+        canonicalKey: entry.canonical.key,
+        canonicalSlug: entry.canonical.slug,
+        canonicalName: entry.canonical.name,
+        vendor: entry.canonical.vendor,
+        family: entry.canonical.family,
+        release: entry.canonical.release ?? null,
+        region: entry.region ?? null,
+        dialects: entry.dialects,
+        canonicalCapabilities: entry.canonical.capabilities,
+        deploymentCapabilities: entry.capabilities,
+        pricing: entry.pricing,
+        metadataSource,
+        pricingSource,
+        status: "active"
+      })
+      .onConflictDoUpdate({
+        target: modelCatalogEntries.id,
+        set: {
+          canonicalKey: entry.canonical.key,
+          canonicalSlug: entry.canonical.slug,
+          canonicalName: entry.canonical.name,
+          vendor: entry.canonical.vendor,
+          family: entry.canonical.family,
+          release: entry.canonical.release ?? null,
+          dialects: entry.dialects,
+          canonicalCapabilities: entry.canonical.capabilities,
+          deploymentCapabilities: entry.capabilities,
+          pricing: entry.pricing,
+          metadataSource,
+          pricingSource,
+          status: "active",
+          updatedAt: new Date()
+        }
+      });
+  }
+}
+
+async function catalogWithStoredEntries(
+  db: ProxyDbSession,
+  input: GatewaySeedInput,
+  catalog: ProviderModelCatalog
+) {
+  const stored = await db
+    .select()
+    .from(modelCatalogEntries)
+    .where(and(
+      eq(modelCatalogEntries.organizationId, input.organizationId),
+      eq(modelCatalogEntries.workspaceId, input.workspaceId),
+      eq(modelCatalogEntries.status, "active")
+    ));
+  const sources = { ...catalog.sources };
+  const entries = new Map(catalog.entries.map((entry) => [
+    modelKey(entry.provider, entry.upstreamModelId, entry.region),
+    entry
+  ]));
+  for (const row of stored) {
+    if (row.provider !== "openai" && row.provider !== "anthropic" && row.provider !== "amazon-bedrock") continue;
+    if (row.metadataSource.type !== "manual") continue;
+    const key = modelKey(row.provider, row.upstreamModelId, row.region);
+    if (entries.has(key)) continue;
+    const metadataSourceId = `stored:${row.id}:metadata`;
+    const pricingSourceId = `stored:${row.id}:pricing`;
+    sources[metadataSourceId] = row.metadataSource;
+    sources[pricingSourceId] = row.pricingSource;
+    entries.set(key, {
+      provider: row.provider,
+      upstreamModelId: row.upstreamModelId,
+      canonical: {
+        key: row.canonicalKey,
+        slug: row.canonicalSlug,
+        name: row.canonicalName,
+        vendor: row.vendor,
+        family: row.family,
+        release: row.release,
+        capabilities: row.canonicalCapabilities
+      },
+      region: row.region,
+      dialects: row.dialects,
+      capabilities: row.deploymentCapabilities,
+      pricing: row.pricing as ProviderModelCatalogEntry["pricing"],
+      metadataSourceId,
+      pricingSourceId
+    });
+  }
+  return providerModelCatalogSchema.parse({ sources, entries: [...entries.values()] });
+}
+
 function collectModels(
   input: GatewaySeedInput,
-  snapshot: GatewaySeedSnapshotEntry[],
+  catalog: ProviderModelCatalog,
   definitions: BuiltinProviderSeedDefinition[]
 ) {
-  const snapshotByModel = new Map(snapshot.map((entry) => [modelKey(entry.provider, entry.model), entry]));
+  const catalogByModel = new Map(catalog.entries.map((entry) => [
+    modelKey(entry.provider, entry.upstreamModelId, entry.region),
+    entry
+  ]));
   const models = new Map<string, SeedModel>();
 
-  const add = (provider: BuiltinProvider, model: string, surface: Dialect) => {
+  const add = (provider: BuiltinProvider, model: string, surface: Dialect, region?: string) => {
     endpointPath(definitions, provider, surface);
-    const key = modelKey(provider, model);
+    const key = modelKey(provider, model, region);
     const existing = models.get(key);
     if (existing) {
       if (!existing.surfaces.includes(surface)) existing.surfaces.push(surface);
       return;
     }
-    const snapshotEntry = snapshotByModel.get(key);
+    const catalogEntry = catalogByModel.get(key);
+    if (!catalogEntry) throw new Error(`No catalog entry for configured model ${key}.`);
+    if (!catalogEntry.dialects.includes(surface)) {
+      throw new Error(`API wire ${surface} is not cataloged for model ${key}.`);
+    }
     models.set(key, {
-      provider,
-      model,
-      surfaces: [surface],
-      capabilities: snapshotEntry?.capabilities ?? {},
-      pricing: snapshotEntry?.pricing ?? { source: "env" }
+      catalogEntry,
+      surfaces: [surface]
     });
   };
 
-  for (const model of input.models) add(model.provider, model.model, model.surface);
-  add("anthropic", "claude-fable-5", "anthropic-messages");
+  for (const model of input.models) add(model.provider, model.model, model.surface, model.region);
   add("openai", input.classifierModel, "openai-responses");
 
   return models;
@@ -302,8 +436,8 @@ function validateTargets(input: GatewaySeedInput, models: Map<string, SeedModel>
   ] as const) {
     if (targets.length === 0) throw new Error(`Seeded logical model ${logicalSlug} requires at least one target.`);
     for (const target of targets) {
-      if (!models.has(modelKey(target.provider, target.model))) {
-        throw new Error(`Seeded logical model ${logicalSlug} references unconfigured model ${target.provider}:${target.model}.`);
+      if (!models.has(modelKey(target.provider, target.model, target.region))) {
+        throw new Error(`Seeded logical model ${logicalSlug} references unconfigured model ${modelKey(target.provider, target.model, target.region)}.`);
       }
     }
   }
@@ -401,16 +535,21 @@ function endpointPath(
   return "path" in endpoint ? endpoint.path : null;
 }
 
-function uniqueModelKeys(models: { provider: BuiltinProvider; model: string }[]) {
-  return [...new Map(models.map((model) => [modelKey(model.provider, model.model), model])).values()];
+function uniqueModelKeys(models: GatewaySeedTarget[]) {
+  return [...new Map(models.map((model) => [modelKey(model.provider, model.model, model.region), model])).values()];
 }
 
-function canonicalModelId(workspaceId: string, provider: BuiltinProvider, model: string) {
-  return `${workspaceId}:canonical:${provider}:${model}`;
+function modelCatalogEntryId(workspaceId: string, provider: BuiltinProvider, model: string, region?: string | null) {
+  return `${workspaceId}:catalog:${provider}:${model}:${region ?? "default"}`;
 }
 
-function modelDeploymentId(workspaceId: string, provider: BuiltinProvider, model: string) {
-  return `${workspaceId}:deployment:${provider}:${model}`;
+function canonicalModelId(workspaceId: string, vendor: string, canonicalSlug: string) {
+  return `${workspaceId}:canonical:${vendor}:${canonicalSlug}`;
+}
+
+function modelDeploymentId(workspaceId: string, provider: BuiltinProvider, model: string, region?: string | null) {
+  const regionSuffix = region ? `:${region}` : "";
+  return `${workspaceId}:deployment:${provider}:${model}${regionSuffix}`;
 }
 
 function logicalModelId(workspaceId: string, logicalSlug: string) {
@@ -421,13 +560,14 @@ function accessProfileId(workspaceId: string, profileSlug: string) {
   return `${workspaceId}:access-profile:${profileSlug}`;
 }
 
-function modelKey(provider: BuiltinProvider, model: string) {
-  return `${provider}:${model}`;
+function modelKey(provider: BuiltinProvider, model: string, region?: string | null) {
+  return `${provider}:${model}:${region ?? "default"}`;
 }
 
-function physicalModelSlug(provider: BuiltinProvider, model: string) {
-  const suffix = sha256(modelKey(provider, model)).slice(0, 8);
-  const prefix = slug(`${provider}-${model}`).slice(0, 119).replace(/-+$/g, "") || "model";
+function physicalModelSlug(provider: string, model: string, region?: string | null) {
+  const identity = `${provider}:${model}:${region ?? "default"}`;
+  const suffix = sha256(identity).slice(0, 8);
+  const prefix = slug(`${provider}-${model}-${region ?? ""}`).slice(0, 119).replace(/-+$/g, "") || "model";
   return `${prefix}-${suffix}`;
 }
 
