@@ -72,7 +72,7 @@ Join against `usage.recorded` per session to compute:
 ```text
 cache hit rate           cache_read / (cache_read + cache_creation + input)
 cache bust events        cache_read collapses to ~0 mid-session; attribute cause
-$ per session            priced via model catalog
+$ per session            priced via deployment-local rates
 output tokens per route  feeds Workstream 5
 top offenders            by tool name, MCP server, org
 ```
