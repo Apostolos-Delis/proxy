@@ -212,6 +212,8 @@ The web app is a dense internal operations console. Current routes cover:
 
 The normalized gateway CRUD API exists in GraphQL and TOML. A complete browser editor for every gateway resource is intentionally separate UI work; the console must not recreate the removed routing-config or provider-account model.
 
+The Logs session list keeps caller intent and physical supply distinct: the logical-model column shows the requested public slug, while the model column shows the selected upstream model. Internal logical-model IDs remain resolution evidence rather than list-view labels.
+
 ## Security Rules
 
 - API keys are hashed and never recoverable.

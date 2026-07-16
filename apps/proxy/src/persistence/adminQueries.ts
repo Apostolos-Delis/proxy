@@ -1907,7 +1907,7 @@ function sessionSummary(session: SessionRow, allRequests: RequestSummary[]) {
     requestCount: requests.length,
     logicalModelChanges: logicalModelChangeCount(requests),
     modelMix: countBy(requests, (request) => request.selectedModel ?? (request.rejected ? "rejected" : "unknown")),
-    logicalModelMix: countBy(requests, (request) => request.resolvedLogicalModelId ?? "unknown"),
+    logicalModelMix: countBy(requests, (request) => request.requestedLogicalModel ?? "unknown"),
     deploymentMix: countBy(requests, (request) => request.deploymentId ?? "unknown"),
     terminalStatusSummary: countBy(requests, (request) => request.terminalStatus),
     usage: usageTotals(requests),
@@ -1982,9 +1982,9 @@ function logicalModelChangeCount(requests: RequestSummary[]) {
   for (const request of [...requests].sort((left, right) =>
     timestampFromIso(left.createdAt) - timestampFromIso(right.createdAt)
   )) {
-    if (!request.resolvedLogicalModelId) continue;
-    if (previousModel && previousModel !== request.resolvedLogicalModelId) changes += 1;
-    previousModel = request.resolvedLogicalModelId;
+    if (!request.requestedLogicalModel) continue;
+    if (previousModel && previousModel !== request.requestedLogicalModel) changes += 1;
+    previousModel = request.requestedLogicalModel;
   }
   return changes;
 }
