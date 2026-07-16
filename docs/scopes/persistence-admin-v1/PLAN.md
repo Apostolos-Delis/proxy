@@ -185,7 +185,7 @@ pnpm --filter @proxy/proxy gateway-config plan ./gateway.toml
 pnpm --filter @proxy/proxy gateway-config apply ./gateway.toml --actor-user-id user_123
 ```
 
-`plan` validates the complete document, scoped references, provider semantics, endpoints, capabilities, pricing, direct-model cardinality, and secret-reference support without mutation. `apply` executes the same transactional mutation plan as GraphQL and rejects a stale plan if the scoped configuration changed concurrently.
+`plan` validates the complete document, scoped references, provider semantics, endpoints, capabilities, pricing, direct-model cardinality, and secret-reference support without mutation. `apply` executes the same transactional mutation plan as GraphQL. Database constraints and the transaction prevent partial or internally inconsistent state; versioned optimistic publication is deferred beyond V1.
 
 TOML is an import format, not a second runtime store. There is no bidirectional file/database synchronization, filesystem watcher, or precedence merge. After apply succeeds, runtime reads only Postgres.
 
