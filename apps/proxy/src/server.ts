@@ -222,7 +222,6 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     };
   };
   const wsProxy = new WebSocketRoutingProxy(
-    config,
     auth,
     gatewayLifecycle,
     events,
