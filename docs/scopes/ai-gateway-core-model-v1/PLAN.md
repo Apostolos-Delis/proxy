@@ -75,24 +75,23 @@ These are executable behavior and remain versioned in code, not editable databas
 
 ### Provider adapter kinds
 
-Examples:
+Initial adapter kind IDs:
 
-- `openai`
-- `anthropic`
-- `bedrock`
-- `openai_compatible`
+- `generic-http-json`
+- `aws-bedrock-converse`
 
-A connection selects an installed adapter kind. Adding a provider that needs new signing, streaming, or error behavior requires code and conformance tests. A custom OpenAI-compatible endpoint reuses `openai_compatible` with different connection data.
+A connection selects an installed adapter kind. Provider slugs such as `openai`, `anthropic`, and `amazon-bedrock` identify connection data; they are not adapter kinds. Adding a provider that needs new signing, streaming, or error behavior requires code and conformance tests. A custom OpenAI-compatible endpoint reuses `generic-http-json` with different connection data.
 
 ### API wires
 
 Initial wire IDs:
 
-- `openai.responses.v1`
-- `openai.chat_completions.v1`
-- `anthropic.messages.v1`
+- `openai-responses`
+- `openai-chat`
+- `anthropic-messages`
+- `bedrock-converse`
 
-Each wire definition owns its route, request validation, stream framing, error rendering, and model-discovery behavior.
+Adapter contract versions are stored separately rather than embedded in a wire ID. HTTP ingress wires own their route, request validation, stream framing, error rendering, and model-discovery behavior. `bedrock-converse` is initially an egress wire.
 
 ### Operations
 
