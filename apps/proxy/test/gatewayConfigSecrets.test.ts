@@ -226,14 +226,14 @@ describe("gateway configuration secret boundaries", () => {
       providerConnectionId,
       upstreamModelId: "deployment-pricing-secret",
       pricing: { apiKey: "sk-deployment-pricing-create-leak" }
-    })).rejects.toThrow("gateway_config_secret_forbidden");
+    })).rejects.toThrow("invalid_model_deployment");
 
     await expect(update(fixture, "modelDeployment", deploymentId, {
       config: { privateKey: "sk-deployment-update-leak" }
     })).rejects.toThrow("gateway_config_secret_forbidden");
     await expect(update(fixture, "modelDeployment", deploymentId, {
       pricing: { authKey: "sk-deployment-pricing-update-leak" }
-    })).rejects.toThrow("gateway_config_secret_forbidden");
+    })).rejects.toThrow("invalid_model_deployment");
     expect(await fixture.service.modelDeployment(fixture.actor, deploymentId)).toMatchObject({ config: metadata, pricing: {} });
 
     await expect(create(fixture, "wireBinding", {

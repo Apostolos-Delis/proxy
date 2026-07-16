@@ -89,6 +89,19 @@ auth_style = "bearer"
 base_url = "https://api.example.com"
 secret_ref = "https://user:raw-password@secrets.example.com/item"
 `)).toThrow("invalid_gateway_config_document");
+    expect(() => parseGatewayConfigDocument(`
+version = 1
+[scope]
+organization_id = "org_cli_invalid"
+workspace_id = "workspace_cli_invalid"
+[[model_deployments]]
+slug = "partial-price"
+name = "Partial price"
+canonical_model = "canonical"
+provider_connection = "connection"
+upstream_model_id = "model"
+pricing = { inputCostPerMtok = 1 }
+`)).toThrow("invalid_gateway_config_document");
 
     await expect(runGatewayConfigCli(["plan", "gateway.toml"], {
       readFile: async () => `
@@ -269,6 +282,7 @@ enabled = true
     const fixture = await setupGatewayConfig("org_gateway_toml_rollback", () => true);
     client = fixture.client;
     const connectionId = await createGatewayConfig(fixture, "providerConnection", {
+      provider: "openai",
       slug: "rollback-provider",
       name: "Original Name",
       adapterKind: "generic-http-json",
@@ -584,7 +598,7 @@ canonical_model = "acme-model"
 provider_connection = "acme-openai"
 upstream_model_id = "acme-model-2026-07"
 capabilities = { tools = false, contextWindow = 128000, modalities = ["text"] }
-pricing = { inputCostPerMtok = 1 }
+pricing = { inputCostPerMtok = 1, outputCostPerMtok = 4 }
 enabled = true
 
 [[wire_bindings]]

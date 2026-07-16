@@ -17,6 +17,7 @@ import {
 } from "@proxy/schema";
 
 import { GatewayConfigAdminError } from "./gatewayConfigTypes.js";
+import { modelPricingConfigSchema } from "./modelPricing.js";
 import { assertSafeNonSecretConfig, NonSecretConfigError } from "./nonSecretConfig.js";
 import { providerRegionSchema } from "../providerAdapters/config.js";
 
@@ -101,7 +102,7 @@ export const modelDeploymentCreateSchema = z.strictObject({
   region: providerRegionSchema.nullable().optional(),
   config: jsonObjectSchema.default({}),
   capabilities: capabilitiesSchema.default({}),
-  pricing: jsonObjectSchema.default({}),
+  pricing: modelPricingConfigSchema.default({}),
   enabled: z.boolean().default(false)
 });
 export const modelDeploymentUpdateSchema = z.strictObject({
@@ -110,7 +111,7 @@ export const modelDeploymentUpdateSchema = z.strictObject({
   region: providerRegionSchema.nullable().optional(),
   config: jsonObjectSchema.optional(),
   capabilities: capabilitiesSchema.optional(),
-  pricing: jsonObjectSchema.optional()
+  pricing: modelPricingConfigSchema.optional()
 }).refine(hasDefinedField, "At least one field is required.");
 
 export const wireBindingCreateSchema = z.strictObject({
