@@ -133,6 +133,7 @@ describe("gateway configuration secret boundaries", () => {
     await expect(create(fixture, "providerConnection", providerInput("unnormalized-bedrock-config", {
       adapterKind: "aws-bedrock-converse",
       authStyle: "aws-sdk",
+      secret: "bedrock-test-credential",
       adapterConfig: { defaultRegion: " us-east-1 " }
     }))).rejects.toThrow("provider_adapter_config_invalid");
 

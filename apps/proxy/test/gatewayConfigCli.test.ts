@@ -111,6 +111,32 @@ adapter_config = { api_key = "must-not-enter-the-plan" }
     expect(opened).toBe(false);
   });
 
+  it("rejects active credentialless non-platform Bedrock plans", async () => {
+    const fixture = await setupGatewayConfig("org_gateway_cli_bedrock_credentials");
+    client = fixture.client;
+    const source = `
+version = 1
+
+[scope]
+organization_id = "${fixture.actor.organizationId}"
+workspace_id = "${fixture.actor.workspaceId}"
+
+[[provider_connections]]
+slug = "private-bedrock"
+name = "Private Bedrock"
+adapter_kind = "aws-bedrock-converse"
+auth_style = "aws-sdk"
+base_url = "http://10.1.2.3:8000"
+region = "us-east-1"
+enabled = true
+`;
+
+    await expect(planGatewayConfig(
+      fixture.service,
+      parseGatewayConfigDocument(source)
+    )).rejects.toThrow("gateway_config_projected_state_invalid");
+  });
+
   it("plans without writes, applies through model resolution, and is idempotent", async () => {
     const fixture = await setupGatewayConfig("org_gateway_toml", () => true);
     client = fixture.client;

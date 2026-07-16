@@ -253,6 +253,59 @@ describe("gateway configuration admin", () => {
     })).rejects.toMatchObject({ message: "invalid_model_deployment", statusCode: 400 });
   });
 
+  it("requires credentials for non-platform Bedrock connections", async () => {
+    const fixture = await setup("org_gateway_admin_bedrock_credentials");
+    client = fixture.client;
+    const connection = {
+      name: "Private Bedrock",
+      adapterKind: "aws-bedrock-converse",
+      authStyle: "aws-sdk",
+      baseUrl: "http://10.1.2.3:8000",
+      region: "us-east-1"
+    };
+
+    await expect(create(fixture, "providerConnection", {
+      ...connection,
+      slug: "private-bedrock-active",
+      enabled: true
+    })).rejects.toThrow("provider_connection_credential_missing");
+
+    const disabledId = await create(fixture, "providerConnection", {
+      ...connection,
+      slug: "private-bedrock-disabled",
+      enabled: false
+    });
+    await expect(enabled(fixture, "providerConnection", disabledId, true))
+      .rejects.toThrow("provider_connection_credential_missing");
+
+    const credentialedId = await create(fixture, "providerConnection", {
+      ...connection,
+      slug: "private-bedrock-credentialed",
+      secret: "bedrock-credential-material",
+      enabled: true
+    });
+    expect(await fixture.service.providerConnection(fixture.actor, credentialedId))
+      .toMatchObject({ status: "active", credentialConfigured: true });
+
+    const platformId = `${fixture.actor.workspaceId}:connection:platform-bedrock`;
+    await fixture.db.insert(providerConnections).values({
+      id: platformId,
+      organizationId: fixture.actor.organizationId,
+      workspaceId: fixture.actor.workspaceId,
+      slug: "platform-bedrock",
+      name: "Platform Bedrock",
+      adapterKind: "aws-bedrock-converse",
+      authStyle: "aws-sdk",
+      baseUrl: "http://10.1.2.3:8000",
+      region: "us-east-1",
+      platformOwned: true,
+      status: "disabled"
+    });
+    await enabled(fixture, "providerConnection", platformId, true);
+    expect(await fixture.service.providerConnection(fixture.actor, platformId))
+      .toMatchObject({ status: "active", credentialConfigured: false, platformOwned: true });
+  });
+
   it("applies ordered provider updates against transaction-local state", async () => {
     const fixture = await setup("org_gateway_admin_ordered_provider_updates");
     client = fixture.client;
