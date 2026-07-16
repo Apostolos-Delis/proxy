@@ -18,6 +18,7 @@ import {
   scopedIdempotencyKey,
   type RequestIdentity
 } from "./auth.js";
+import { sendGatewayError } from "./apiWireErrors.js";
 import { loadConfig, type AppConfig } from "./config.js";
 import { EmailService } from "./email.js";
 import {
@@ -583,37 +584,6 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
 
 function requestWantsStream(body: unknown) {
   return isRecord(body) && body.stream === true;
-}
-
-function sendGatewayError(
-  surface: Surface,
-  reply: FastifyReply,
-  status: number,
-  code: string
-) {
-  if (surface === "anthropic-messages") {
-    reply.code(status).send({
-      type: "error",
-      error: {
-        type: gatewayErrorType(status),
-        message: code
-      }
-    });
-    return;
-  }
-  reply.code(status).send({
-    error: {
-      message: code,
-      type: gatewayErrorType(status),
-      code
-    }
-  });
-}
-
-function gatewayErrorType(status: number) {
-  if (status === 401) return "authentication_error";
-  if (status === 403) return "permission_error";
-  return "invalid_request_error";
 }
 
 async function acquireTrafficLimitOrReject(input: {

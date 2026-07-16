@@ -2,6 +2,7 @@ import type { FastifyReply } from "fastify";
 import { performance } from "node:perf_hooks";
 
 import { bufferedStreamResponse, collectStreamResponse } from "./bufferedStreamResponse.js";
+import { sendGatewayError } from "./apiWireErrors.js";
 import type { AppConfig } from "./config.js";
 import {
   GatewayRequestLifecycle,
@@ -87,7 +88,7 @@ export class ProviderProxy {
         });
       } catch (error) {
         if (!(error instanceof GatewayRequestLifecycleError)) throw error;
-        input.reply.code(error.statusCode).send({ error: error.message });
+        sendGatewayError(input.surface, input.reply, error.statusCode, error.message);
         return "rejected";
       }
       await this.forwardProviderAttempt(input, attempt);
@@ -207,7 +208,10 @@ export class ProviderProxy {
       await this.appendTerminal(input, attempt.id, aborted ? "cancelled" : "failed", undefined, 0, {
         error: error instanceof Error ? error.message : "Provider request failed."
       }, adapterMetadata);
-      throw error;
+      if (!aborted) {
+        sendGatewayError(input.surface, input.reply, 502, "provider_request_failed", "Provider request failed.");
+      }
+      return;
     }
     clearTimeout(timeout);
     input.timing?.markFirstByte();
@@ -221,10 +225,8 @@ export class ProviderProxy {
 
     const contentType = upstream.headers.get("content-type") ?? "";
     const isJson = contentType.includes("application/json");
-    const isSse = contentType.includes("text/event-stream") || (
-      upstream.ok &&
-      providerStream &&
-      !isJson
+    const isSse = upstream.ok && (
+      contentType.includes("text/event-stream") || (providerStream && !isJson)
     );
 
     copyResponseHeaders(upstream, input.reply);
@@ -242,30 +244,58 @@ export class ProviderProxy {
         });
       }
       const upstreamText = await upstream.text();
-      const text = upstream.ok
-        ? providerAdapter.translateResponseText(upstreamText, responseTranslation)
-        : upstreamText;
-      const status = upstream.ok ? "completed" : "failed";
+      if (!upstream.ok) {
+        const error = errorExcerpt(upstreamText) ?? "Provider request failed.";
+        const adapterClassification = providerAdapter.classifyResponse({
+          status: upstream.status,
+          headers: upstream.headers,
+          bodyText: upstreamText,
+          response: upstream
+        });
+        streamCompleted = true;
+        input.reply.raw.off("close", abortUpstream);
+        await this.appendTerminal(input, attempt.id, "failed", undefined, upstream.status, { error }, {
+          adapterKind: resolvedProvider.adapterKind,
+          adapterClassification
+        });
+        sendGatewayError(
+          input.surface,
+          input.reply,
+          upstream.status,
+          adapterClassification?.errorType ?? "provider_error",
+          error
+        );
+        return;
+      }
+
+      let text: string;
+      try {
+        text = providerAdapter.translateResponseText(upstreamText, responseTranslation);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Malformed upstream response.";
+        const adapterClassification = providerAdapter.classifyMalformedResponse({ message, response: upstream });
+        streamCompleted = true;
+        input.reply.raw.off("close", abortUpstream);
+        await this.appendTerminal(input, attempt.id, "failed", undefined, upstream.status, { error: message }, {
+          adapterKind: resolvedProvider.adapterKind,
+          adapterClassification
+        });
+        sendGatewayError(
+          input.surface,
+          input.reply,
+          502,
+          "malformed_upstream_response",
+          "Provider returned a malformed response."
+        );
+        return;
+      }
+
       const usage = tryExtractUsage(text);
-      const error = upstream.ok ? undefined : errorExcerpt(text);
-      const adapterClassification = status === "failed"
-        ? providerAdapter.classifyResponse({
-            status: upstream.status,
-            headers: upstream.headers,
-            bodyText: upstreamText,
-            response: upstream
-          })
-        : undefined;
-      const adapterMetadata = {
-        adapterKind: resolvedProvider.adapterKind,
-        adapterClassification
-      };
       streamCompleted = true;
       input.reply.raw.off("close", abortUpstream);
-
-      await this.appendTerminal(input, attempt.id, status, usage, upstream.status, error ? { error } : {}, adapterMetadata);
+      await this.appendTerminal(input, attempt.id, "completed", usage, upstream.status);
       input.reply.send(text);
-      if (status === "completed" && input.onAssistantText) {
+      if (input.onAssistantText) {
         const assistantText = extractResponseText(input.surface, tryParseJson(text));
         if (assistantText) await input.onAssistantText(assistantText, false);
       }
@@ -522,7 +552,7 @@ export class ProviderProxy {
     adapterMetadata: TerminalAdapterMetadata = {}
   ) {
     await this.appendTerminal(input, providerAttemptId, "failed", undefined, 0, { error }, adapterMetadata);
-    input.reply.code(502).send({ error });
+    sendGatewayError(input.surface, input.reply, 502, error);
   }
 
   private providerAdapterFor(provider: ProviderRegistryEntry) {
