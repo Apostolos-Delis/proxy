@@ -120,6 +120,17 @@ describe("gateway configuration GraphQL", () => {
     };
     const target = (await fixture.persistence.gatewayConfigAdmin.logicalModelTargets(scope))
       .find((row) => row.logicalModelId === logicalModel.id)!;
+    const activeReadiness = await modelReadiness(fixture);
+    expect(activeReadiness.deployments.find((row) => row.deploymentId === deployment.id)).toMatchObject({
+      available: true,
+      classifierCapable: true,
+      reasonCodes: [],
+      classifierReasonCodes: []
+    });
+    expect(activeReadiness.logicalModels.find((row) => row.logicalModelId === logicalModel.id)).toMatchObject({
+      available: true,
+      reasonCodes: []
+    });
     const graphqlLifecycle = fixture.persistence.eventService.listEvents().slice(logicalEventOffset);
     const tomlEventOffset = fixture.persistence.eventService.listEvents().length;
     await applyGatewayConfig(
@@ -197,6 +208,17 @@ enabled = true
       status: "terminal",
       lastErrorType: "model_access_denied"
     });
+    const unhealthyReadiness = await modelReadiness(fixture);
+    expect(unhealthyReadiness.deployments.find((row) => row.deploymentId === deployment.id)).toMatchObject({
+      available: false,
+      classifierCapable: false,
+      reasonCodes: ["provider_connection_unhealthy", "deployment_unhealthy"],
+      classifierReasonCodes: ["provider_connection_unhealthy", "deployment_unhealthy"]
+    });
+    expect(unhealthyReadiness.logicalModels.find((row) => row.logicalModelId === logicalModel.id)).toMatchObject({
+      available: false,
+      reasonCodes: ["target_unavailable"]
+    });
     const resetEventOffset = fixture.persistence.eventService.listEvents().length;
     await mutation(fixture, `mutation Reset($id: ID!) {
       value: resetGatewayProviderConnectionHealth(id: $id) { id }
@@ -208,6 +230,8 @@ enabled = true
       .where(eq(providerConnectionHealth.providerConnectionId, connection.id))).toEqual([]);
     expect(await fixture.db.select().from(deploymentHealth)
       .where(eq(deploymentHealth.deploymentId, deployment.id))).toEqual([]);
+    expect((await modelReadiness(fixture)).deployments.find((row) => row.deploymentId === deployment.id))
+      .toMatchObject({ available: true, classifierCapable: true });
     expect(fixture.persistence.eventService.listEvents().slice(resetEventOffset).map((event) => event.eventType)).toEqual([
       "gateway_config.provider_connection.health_reset",
       "gateway_config.model_deployment.health_reset"
@@ -397,6 +421,26 @@ async function headersForMember(fixture: PromptTestFixture) {
     ttlSeconds: 3_600
   });
   return { cookie: `${fixture.config.adminSessionCookieName}=${encodeURIComponent(session!.token)}` };
+}
+
+async function modelReadiness(fixture: PromptTestFixture) {
+  const response = await adminGql(fixture.proxyUrl, fixture.adminHeaders, `query {
+    gatewayModelReadiness {
+      deployments { deploymentId available classifierCapable reasonCodes classifierReasonCodes }
+      logicalModels { logicalModelId available reasonCodes }
+    }
+  }`);
+  expect(response.errors).toBeUndefined();
+  return response.data!.gatewayModelReadiness as {
+    deployments: Array<{
+      deploymentId: string;
+      available: boolean;
+      classifierCapable: boolean;
+      reasonCodes: string[];
+      classifierReasonCodes: string[];
+    }>;
+    logicalModels: Array<{ logicalModelId: string; available: boolean; reasonCodes: string[] }>;
+  };
 }
 
 function normalizeLogicalLifecycle(events: ProxyEvent[]) {

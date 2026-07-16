@@ -3,7 +3,6 @@ import { GATEWAY_SETUP_MODEL_PREFERENCE } from "@proxy/schema";
 import { graphql } from "../gql";
 import type { GatewayAccessProfilesQuery, GatewayApiKeysQuery } from "../gql/graphql";
 import { gqlFetch } from "../graphql";
-import { fetchGatewayModels, logicalModelSummaries } from "../modelsPageData";
 
 const GatewayApiKeysDocument = graphql(`
   query GatewayApiKeys {
@@ -59,6 +58,38 @@ const GatewayAccessProfilesDocument = graphql(`
       description
       resolutionKind
       enabled
+    }
+  }
+`);
+
+const GatewayModelAccessOptionsDocument = graphql(`
+  query GatewayModelAccessOptions {
+    gatewayAccessProfiles {
+      id
+      slug
+      name
+      description
+      enabled
+    }
+    gatewayModelGrants {
+      accessProfileId
+      logicalModelId
+      allowedOperations
+      enabled
+    }
+    gatewayLogicalModels {
+      id
+      slug
+      name
+      description
+      resolutionKind
+      enabled
+    }
+    gatewayModelReadiness {
+      logicalModels {
+        logicalModelId
+        available
+      }
     }
   }
 `);
@@ -145,12 +176,11 @@ export async function fetchAccessProfiles() {
 }
 
 export async function fetchModelAccessOptions(): Promise<ModelAccessOptions> {
-  const [data, gatewayModels] = await Promise.all([
-    gqlFetch(GatewayAccessProfilesDocument),
-    fetchGatewayModels()
-  ]);
+  const data = await gqlFetch(GatewayModelAccessOptionsDocument);
   const availableModelIds = new Set(
-    logicalModelSummaries(gatewayModels).filter((model) => model.available).map((model) => model.id)
+    data.gatewayModelReadiness.logicalModels
+      .filter((model) => model.available)
+      .map((model) => model.logicalModelId)
   );
   return {
     profiles: accessProfileSummaries(data, availableModelIds),

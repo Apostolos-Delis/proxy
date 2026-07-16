@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Boxes, Network, Plus } from "lucide-react";
 import { useState } from "react";
+import { GATEWAY_MODEL_ENDPOINTS, type GatewayModelEndpoint } from "@proxy/schema";
 
 import { apiBase } from "./graphql";
 import { CreateModelModal } from "./models/createModelModal";
@@ -13,14 +14,14 @@ import {
 } from "./modelsPageData";
 import { Badge, GlassCard, PageState, PageTitle, StatusIndicator } from "./ui";
 
-const wireEndpoints = [
-  { method: "GET", path: "/v1/models", operation: "model.list", wire: "gateway catalog", clients: "Models granted to the calling key" },
-  { method: "POST", path: "/v1/responses", operation: "text.generate", wire: "openai-responses", clients: "OpenAI SDK, Codex" },
-  { method: "WS", path: "/v1/responses", operation: "text.generate", wire: "openai-responses", clients: "Realtime Responses; native targets only" },
-  { method: "POST", path: "/v1/chat/completions", operation: "text.generate", wire: "openai-chat", clients: "OpenAI-compatible SDKs, opencode" },
-  { method: "POST", path: "/v1/messages", operation: "text.generate", wire: "anthropic-messages", clients: "Anthropic SDK, Claude Code" },
-  { method: "POST", path: "/v1/messages/count_tokens", operation: "text.count_tokens", wire: "anthropic-messages", clients: "Anthropic token counting; native targets only" }
-] as const;
+const endpointClients: Record<GatewayModelEndpoint["id"], string> = {
+  "models": "Models granted to the calling key",
+  "responses-http": "OpenAI SDK, Codex",
+  "responses-websocket": "Realtime Responses; native targets only",
+  "chat-completions": "OpenAI-compatible SDKs, opencode",
+  "messages": "Anthropic SDK, Claude Code",
+  "count-tokens": "Anthropic token counting; native targets only"
+};
 
 export function ModelsPage() {
   const [showCreate, setShowCreate] = useState(false);
@@ -78,12 +79,12 @@ function EndpointsCard() {
           </tr>
         </thead>
         <tbody>
-          {wireEndpoints.map((endpoint) => (
-            <tr key={`${endpoint.method}:${endpoint.path}`}>
+          {Object.values(GATEWAY_MODEL_ENDPOINTS).map((endpoint) => (
+            <tr key={endpoint.id}>
               <td><span className="mono">{endpoint.method} {endpoint.path}</span></td>
-              <td><span className="mono">{endpoint.operation}</span></td>
-              <td><Badge>{endpoint.wire}</Badge></td>
-              <td><span className="faint">{endpoint.clients}</span></td>
+              <td><span className="mono">{endpoint.operationId}</span></td>
+              <td><Badge>{endpoint.wireId ?? "gateway catalog"}</Badge></td>
+              <td><span className="faint">{endpointClients[endpoint.id]}</span></td>
             </tr>
           ))}
         </tbody>
@@ -151,7 +152,12 @@ function ModelRow({ model }: { model: LogicalModelSummary }) {
             </span>
           ))}
           {model.classifierDeployment ? (
-            <span className="faint">Classifier: {model.classifierDeployment}</span>
+            <span className="faint">
+              Classifier: {model.classifierDeployment}
+              {model.classifierReasonCodes.length > 0
+                ? ` (${readinessReasonLabel(model.classifierReasonCodes)})`
+                : ""}
+            </span>
           ) : null}
           {model.routingPolicy ? (
             <span className="faint">Classifier instructions: {model.routingPolicy}</span>
@@ -169,7 +175,14 @@ function ModelRow({ model }: { model: LogicalModelSummary }) {
           ? <span className="faint">No access profiles</span>
           : <span>{model.profiles.join(", ")}</span>}
       </td>
-      <td><StatusIndicator status={logicalModelStatus(model)} /></td>
+      <td>
+        <div className="pricing-model">
+          <StatusIndicator status={logicalModelStatus(model)} />
+          {!model.available && model.reasonCodes.length > 0
+            ? <span className="faint">{readinessReasonLabel(model.reasonCodes)}</span>
+            : null}
+        </div>
+      </td>
     </tr>
   );
 }
@@ -181,6 +194,9 @@ function logicalModelStatus(model: LogicalModelSummary) {
 
 function targetAvailabilityLabel(target: LogicalModelSummary["targets"][number]) {
   if (target.available) return "";
-  if (target.enabled) return " (unavailable)";
-  return " (disabled)";
+  return ` (${readinessReasonLabel(target.reasonCodes)})`;
+}
+
+function readinessReasonLabel(reasonCodes: string[]) {
+  return reasonCodes.map((reason) => reason.replaceAll("_", " ")).join(", ");
 }

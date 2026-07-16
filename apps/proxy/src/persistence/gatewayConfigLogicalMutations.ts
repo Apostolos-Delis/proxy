@@ -7,7 +7,10 @@ import {
   modelDeployments,
   providerConnections
 } from "@proxy/db";
-import { logicalModelClassifierConfigSchema } from "@proxy/schema";
+import {
+  LOGICAL_MODEL_CLASSIFIER_MAX_CANDIDATES,
+  logicalModelClassifierConfigSchema
+} from "@proxy/schema";
 
 import { activeClassifierDeployment } from "./classifierDeployment.js";
 import {
@@ -86,7 +89,7 @@ export async function assertCreatedLogicalModelReady(
     model.routerConfig,
     model.status === "active"
   );
-  await assertDirectModelTargetCount(context, logicalModelId);
+  await assertLogicalModelTargetCount(context, logicalModelId);
 }
 
 export async function updateLogicalModel(context: GatewayConfigMutationContext, id: string, input: unknown) {
@@ -105,7 +108,7 @@ export async function updateLogicalModel(context: GatewayConfigMutationContext, 
     routerConfig
   };
   await tx.update(logicalModels).set({ ...next, updatedAt: now }).where(scopedId(logicalModels, actor, id));
-  if (current.status === "active") await assertDirectModelTargetCount(context, id);
+  await assertLogicalModelTargetCount(context, id);
   await context.appendEvent("logical_model", id, "updated", {
     id,
     slug: current.slug,
@@ -126,7 +129,7 @@ export async function setLogicalModelEnabled(
     await validateLogicalModelDefinition(context, current.resolutionKind, current.routerConfig, true);
   }
   await setStatus(tx, logicalModels, actor, id, enabled);
-  if (enabled) await assertDirectModelTargetCount(context, id);
+  if (enabled) await assertLogicalModelTargetCount(context, id);
   await context.appendEvent("logical_model", id, enabled ? "enabled" : "disabled", {
     id,
     slug: current.slug,
@@ -277,10 +280,9 @@ async function validateLogicalModelDefinition(
   }
 }
 
-async function assertDirectModelTargetCount(context: GatewayConfigMutationContext, logicalModelId: string) {
+async function assertLogicalModelTargetCount(context: GatewayConfigMutationContext, logicalModelId: string) {
   const { tx, actor } = context;
   const model = await requireScopedRow(tx, logicalModels, actor, logicalModelId, "logical_model_not_found");
-  if (model.status !== "active" || model.resolutionKind !== "direct") return;
   const [row] = await tx.select({ count: sql<number>`count(*)::int` })
     .from(logicalModelTargets)
     .where(and(
@@ -288,17 +290,27 @@ async function assertDirectModelTargetCount(context: GatewayConfigMutationContex
       eq(logicalModelTargets.logicalModelId, logicalModelId),
       eq(logicalModelTargets.enabled, true)
     ));
-  if (Number(row?.count ?? 0) !== 1) {
+  const count = Number(row?.count ?? 0);
+  if (model.resolutionKind === "direct" && model.status === "active" && count !== 1) {
     throw new GatewayConfigAdminError("direct_logical_model_target_count_invalid", 400, [{
       path: "enabled",
       message: "An active direct logical model requires exactly one enabled target."
+    }]);
+  }
+  if (
+    model.resolutionKind === "router" &&
+    (count > LOGICAL_MODEL_CLASSIFIER_MAX_CANDIDATES || (model.status === "active" && count < 1))
+  ) {
+    throw new GatewayConfigAdminError("router_logical_model_target_count_invalid", 400, [{
+      path: "enabled",
+      message: `An active router requires between 1 and ${LOGICAL_MODEL_CLASSIFIER_MAX_CANDIDATES} enabled targets.`
     }]);
   }
 }
 
 function assertTargetMutationReady(context: GatewayConfigMutationContext, logicalModelId: string) {
   if (context.deferredLogicalModelIds.has(logicalModelId)) return;
-  return assertDirectModelTargetCount(context, logicalModelId);
+  return assertLogicalModelTargetCount(context, logicalModelId);
 }
 
 async function lockLogicalModel(context: GatewayConfigMutationContext, logicalModelId: string) {

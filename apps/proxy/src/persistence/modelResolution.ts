@@ -18,8 +18,10 @@ import {
 } from "@proxy/db";
 import {
   gatewayParameterCapsSchema,
+  gatewayModelSupportsText,
   logicalModelClassificationRequestSchema,
   logicalModelClassifierConfigSchema,
+  mergeGatewayModelCapabilities,
   projectLogicalModelClassifierCapabilities,
   type Dialect,
   type GatewayModelCapabilities,
@@ -505,10 +507,10 @@ export class ModelResolutionService {
       if (!binding) continue;
       const target = {
         ...binding,
-        capabilities: {
-          ...binding.canonicalCapabilities,
-          ...binding.deploymentCapabilities
-        },
+        capabilities: mergeGatewayModelCapabilities(
+          binding.canonicalCapabilities,
+          binding.deploymentCapabilities
+        ),
         wireAdapterId: compatibility.wireAdapterId,
         wireAdapterVersion: compatibility.wireAdapterVersion,
         effectiveParameters: effectiveGatewayParameters({
@@ -557,7 +559,7 @@ function capabilityDenialCode(
   parameters: GatewayParameterCaps
 ) {
   const modalities = capabilities.modalities;
-  if (Array.isArray(modalities) && !modalities.includes("text")) return "model_unavailable";
+  if (!gatewayModelSupportsText(capabilities)) return "model_unavailable";
   if (input.classificationFeatures?.hasTools && hasFalseCapability(capabilities, "tools", "toolCall")) {
     return "model_unavailable";
   }

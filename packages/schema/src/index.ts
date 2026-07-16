@@ -19,11 +19,27 @@ export const DIALECTS = {
 } as const;
 
 export const GATEWAY_OPERATION_IDS = ["text.generate", "text.count_tokens", "model.list"] as const;
+export const GATEWAY_MODEL_ENDPOINTS = {
+  models: { id: "models", method: "GET", path: "/v1/models", operationId: "model.list", wireId: null, transport: "http" },
+  responsesHttp: { id: "responses-http", method: "POST", path: "/v1/responses", operationId: "text.generate", wireId: "openai-responses", transport: "http" },
+  responsesWebsocket: { id: "responses-websocket", method: "WS", path: "/v1/responses", operationId: "text.generate", wireId: "openai-responses", transport: "websocket" },
+  chatCompletions: { id: "chat-completions", method: "POST", path: "/v1/chat/completions", operationId: "text.generate", wireId: "openai-chat", transport: "http" },
+  messages: { id: "messages", method: "POST", path: "/v1/messages", operationId: "text.generate", wireId: "anthropic-messages", transport: "http" },
+  countTokens: { id: "count-tokens", method: "POST", path: "/v1/messages/count_tokens", operationId: "text.count_tokens", wireId: "anthropic-messages", transport: "http" }
+} as const satisfies Record<string, {
+  id: string;
+  method: "GET" | "POST" | "WS";
+  path: string;
+  operationId: (typeof GATEWAY_OPERATION_IDS)[number];
+  wireId: (typeof DIALECT_NAMES)[number] | null;
+  transport: "http" | "websocket";
+}>;
 export const GATEWAY_PARAMETER_CAP_IDS = ["max_tokens", "max_output_tokens", "max_completion_tokens"] as const;
 export const GATEWAY_ACCESS_PROFILE_LIMIT_IDS = ["concurrent_requests", "requests_per_minute", "tokens_per_minute"] as const;
 export const GATEWAY_RESOURCE_STATUSES = ["active", "disabled"] as const;
 export const LOGICAL_MODEL_RESOLUTION_KINDS = ["direct", "router"] as const;
 export const LOGICAL_MODEL_ROUTER_KINDS = ["classifier"] as const;
+export const LOGICAL_MODEL_CLASSIFIER_MAX_CANDIDATES = 64;
 export const GATEWAY_SETUP_MODEL_PREFERENCE = ["coding-auto", "economy-auto", "fable"] as const;
 
 export const BUILTIN_PROVIDER_NAMES = ["openai", "anthropic", "amazon-bedrock"] as const;
@@ -199,6 +215,7 @@ export type ClassificationHintName = typeof CLASSIFICATION_HINT_NAMES[number];
 export type Surface = typeof SURFACE_NAMES[number];
 export type Dialect = typeof DIALECT_NAMES[number];
 export type GatewayOperationId = typeof GATEWAY_OPERATION_IDS[number];
+export type GatewayModelEndpoint = typeof GATEWAY_MODEL_ENDPOINTS[keyof typeof GATEWAY_MODEL_ENDPOINTS];
 export type GatewayParameterCapId = typeof GATEWAY_PARAMETER_CAP_IDS[number];
 export type GatewayAccessProfileLimitId = typeof GATEWAY_ACCESS_PROFILE_LIMIT_IDS[number];
 export type GatewayResourceStatus = typeof GATEWAY_RESOURCE_STATUSES[number];
@@ -391,7 +408,7 @@ export const logicalModelClassifierCandidateSchema = z.strictObject({
 export type LogicalModelClassifierCandidate = z.infer<typeof logicalModelClassifierCandidateSchema>;
 export const logicalModelClassificationRequestSchema = z.strictObject({
   context: logicalModelClassificationContextSchema,
-  candidates: z.array(logicalModelClassifierCandidateSchema).min(1).max(64)
+  candidates: z.array(logicalModelClassifierCandidateSchema).min(1).max(LOGICAL_MODEL_CLASSIFIER_MAX_CANDIDATES)
 }).superRefine((request, context) => {
   if (new Set(request.candidates.map((candidate) => candidate.targetId)).size !== request.candidates.length) {
     context.addIssue({
@@ -415,6 +432,17 @@ const LOGICAL_MODEL_CLASSIFIER_CAPABILITY_KEYS = [
   "reasoning",
   "streaming"
 ] as const;
+
+export function mergeGatewayModelCapabilities(
+  canonical: GatewayModelCapabilities,
+  deployment: GatewayModelCapabilities
+): GatewayModelCapabilities {
+  return { ...canonical, ...deployment };
+}
+
+export function gatewayModelSupportsText(capabilities: GatewayModelCapabilities) {
+  return !Array.isArray(capabilities.modalities) || capabilities.modalities.includes("text");
+}
 
 export function projectLogicalModelClassifierCapabilities(
   capabilities: GatewayModelCapabilities

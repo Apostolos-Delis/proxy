@@ -1,3 +1,5 @@
+import { LOGICAL_MODEL_CLASSIFIER_MAX_CANDIDATES } from "@proxy/schema";
+
 import { graphql } from "./gql";
 import type { GatewayModelsQuery } from "./gql/graphql";
 import { gqlFetch } from "./graphql";
@@ -24,20 +26,12 @@ const GatewayModelsDocument = graphql(`
       id
       name
       upstreamModelId
-      canonicalModelId
       providerConnectionId
-      enabled
-    }
-    gatewayCanonicalModels {
-      id
-      enabled
     }
     gatewayProviderConnections {
       id
       name
       provider
-      adapterKind
-      enabled
     }
     gatewayWireBindings {
       deploymentId
@@ -53,6 +47,20 @@ const GatewayModelsDocument = graphql(`
       accessProfileId
       logicalModelId
       enabled
+    }
+    gatewayModelReadiness {
+      deployments {
+        deploymentId
+        available
+        classifierCapable
+        reasonCodes
+        classifierReasonCodes
+      }
+      logicalModels {
+        logicalModelId
+        available
+        reasonCodes
+      }
     }
   }
 `);
@@ -71,6 +79,7 @@ export type ModelTargetSummary = {
   priority: number;
   enabled: boolean;
   available: boolean;
+  reasonCodes: string[];
   deploymentName: string;
   upstreamModelId: string;
   provider: string;
@@ -85,7 +94,9 @@ export type LogicalModelSummary = {
   kind: string;
   enabled: boolean;
   available: boolean;
+  reasonCodes: string[];
   classifierDeployment: string | null;
+  classifierReasonCodes: string[];
   routingPolicy: string | null;
   targets: ModelTargetSummary[];
   wires: string[];
@@ -113,7 +124,12 @@ function routerConfigView(value: unknown) {
 export function logicalModelSummaries(data: GatewayModelsQuery): LogicalModelSummary[] {
   const deployments = new Map(data.gatewayModelDeployments.map((deployment) => [deployment.id, deployment]));
   const connections = new Map(data.gatewayProviderConnections.map((connection) => [connection.id, connection]));
-  const readiness = deploymentReadiness(data);
+  const deploymentReadiness = new Map(
+    data.gatewayModelReadiness.deployments.map((row) => [row.deploymentId, row])
+  );
+  const logicalReadiness = new Map(
+    data.gatewayModelReadiness.logicalModels.map((row) => [row.logicalModelId, row])
+  );
   const profileNames = new Map(
     data.gatewayAccessProfiles.filter((profile) => profile.enabled).map((profile) => [profile.id, profile.name])
   );
@@ -136,11 +152,13 @@ export function logicalModelSummaries(data: GatewayModelsQuery): LogicalModelSum
           const deployment = deployments.get(target.deploymentId);
           const connection = deployment ? connections.get(deployment.providerConnectionId) : undefined;
           const wires = wiresByDeployment.get(target.deploymentId) ?? [];
+          const readiness = deploymentReadiness.get(target.deploymentId);
           return {
             targetId: target.id,
             priority: target.priority,
             enabled: target.enabled,
-            available: target.enabled && readiness.available.has(target.deploymentId),
+            available: target.enabled && readiness?.available === true,
+            reasonCodes: target.enabled ? readiness?.reasonCodes ?? ["deployment_not_found"] : ["target_disabled"],
             deploymentName: deployment?.name ?? target.deploymentId,
             upstreamModelId: deployment?.upstreamModelId ?? "unknown",
             provider: connection?.provider ?? "unknown",
@@ -150,12 +168,10 @@ export function logicalModelSummaries(data: GatewayModelsQuery): LogicalModelSum
       const classifierDeployment = config.classifierDeploymentId
         ? deployments.get(config.classifierDeploymentId)?.name ?? config.classifierDeploymentId
         : null;
-      const availableTargets = targets.filter((target) => target.available).length;
-      const available = model.enabled && (
-        model.resolutionKind === "direct"
-          ? availableTargets === 1
-          : availableTargets > 0 && readiness.classifierCapable.has(config.classifierDeploymentId ?? "")
-      );
+      const classifierReadiness = config.classifierDeploymentId
+        ? deploymentReadiness.get(config.classifierDeploymentId)
+        : undefined;
+      const readiness = logicalReadiness.get(model.id);
       return {
         id: model.id,
         slug: model.slug,
@@ -163,8 +179,12 @@ export function logicalModelSummaries(data: GatewayModelsQuery): LogicalModelSum
         description: model.description ?? null,
         kind: model.resolutionKind,
         enabled: model.enabled,
-        available,
+        available: readiness?.available === true,
+        reasonCodes: readiness?.reasonCodes ?? ["readiness_not_found"],
         classifierDeployment: model.resolutionKind === "router" ? classifierDeployment : null,
+        classifierReasonCodes: model.resolutionKind === "router"
+          ? classifierReadiness?.classifierReasonCodes ?? ["classifier_deployment_not_found"]
+          : [],
         routingPolicy: model.resolutionKind === "router" ? config.instructions : null,
         targets,
         wires: [...new Set(targets.flatMap((target) => (target.available ? target.wires : [])))].sort(),
@@ -186,48 +206,21 @@ export type DeploymentOption = {
 
 export function deploymentOptions(data: GatewayModelsQuery): DeploymentOption[] {
   const connections = new Map(data.gatewayProviderConnections.map((connection) => [connection.id, connection]));
-  const readiness = deploymentReadiness(data);
+  const readiness = new Map(
+    data.gatewayModelReadiness.deployments.map((row) => [row.deploymentId, row])
+  );
   return data.gatewayModelDeployments
-    .filter((deployment) => readiness.available.has(deployment.id))
+    .filter((deployment) => readiness.get(deployment.id)?.available)
     .map((deployment) => {
       const connection = connections.get(deployment.providerConnectionId)!;
       return {
         id: deployment.id,
         label: deployment.name,
         hint: `${deployment.upstreamModelId} · ${connection.provider}`,
-        classifierCapable: readiness.classifierCapable.has(deployment.id)
+        classifierCapable: readiness.get(deployment.id)?.classifierCapable === true
       };
     })
     .sort((left, right) => left.label.localeCompare(right.label));
-}
-
-function deploymentReadiness(data: GatewayModelsQuery) {
-  const canonicals = new Map(data.gatewayCanonicalModels.map((model) => [model.id, model]));
-  const connections = new Map(data.gatewayProviderConnections.map((connection) => [connection.id, connection]));
-  const wires = new Map<string, Set<string>>();
-  for (const binding of data.gatewayWireBindings) {
-    if (!binding.enabled) continue;
-    const deploymentWires = wires.get(binding.deploymentId) ?? new Set<string>();
-    deploymentWires.add(binding.apiWireId);
-    wires.set(binding.deploymentId, deploymentWires);
-  }
-  const available = new Set<string>();
-  const classifierCapable = new Set<string>();
-  for (const deployment of data.gatewayModelDeployments) {
-    const connection = connections.get(deployment.providerConnectionId);
-    const deploymentWires = wires.get(deployment.id);
-    if (
-      !deployment.enabled ||
-      !canonicals.get(deployment.canonicalModelId)?.enabled ||
-      !connection?.enabled ||
-      !deploymentWires?.size
-    ) continue;
-    available.add(deployment.id);
-    if (connection.adapterKind === "generic-http-json" && deploymentWires.has("openai-responses")) {
-      classifierCapable.add(deployment.id);
-    }
-  }
-  return { available, classifierCapable };
 }
 
 export type RouterDefaults = {
@@ -320,7 +313,7 @@ export function logicalModelCreateInput(
     enabled: true
   }));
   if (draft.kind === "direct") {
-    return { ...base, resolutionKind: "direct", initialTargets };
+    return { ...base, resolutionKind: "direct" as const, initialTargets };
   }
 
   const labels = new Map(deployments.map((option) => [option.id, `${option.label} (${option.hint})`]));
@@ -334,7 +327,7 @@ export function logicalModelCreateInput(
     timeoutMs: defaults.timeoutMs,
     maxAttempts: defaults.maxAttempts
   };
-  return { ...base, resolutionKind: "router", routerConfig, initialTargets };
+  return { ...base, resolutionKind: "router" as const, routerConfig, initialTargets };
 }
 
 export function slugify(value: string) {
@@ -355,6 +348,9 @@ export function createModelBlocker(draft: CreateLogicalModelDraft): string | nul
   }
   if (draft.kind === "router") {
     if (draft.deploymentIds.length < 2) return "Pick at least two deployments to route between.";
+    if (draft.deploymentIds.length > LOGICAL_MODEL_CLASSIFIER_MAX_CANDIDATES) {
+      return `Pick no more than ${LOGICAL_MODEL_CLASSIFIER_MAX_CANDIDATES} route targets.`;
+    }
     if (!draft.policy.trim()) return "Describe the routing policy.";
     if (draft.policy.length > 20_000) return "Routing policy must be 20,000 characters or fewer.";
     if (!draft.classifierDeploymentId) return "Pick a classifier deployment.";

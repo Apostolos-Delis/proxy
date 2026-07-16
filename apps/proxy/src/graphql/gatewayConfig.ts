@@ -12,6 +12,7 @@ import {
   GatewayLogicalModelTarget,
   GatewayModelDeployment,
   GatewayModelGrant,
+  GatewayModelReadiness,
   GatewayProviderConnection,
   GatewayWireBinding
 } from "./types/gatewayConfig.js";
@@ -306,6 +307,10 @@ builder.queryFields((t) => ({
     nullable: true,
     args: { id: t.arg.id({ required: true }) },
     resolve: (_root, args, context) => gatewayAdmin(context).modelGrant(gatewayScope(context), String(args.id))
+  }),
+  gatewayModelReadiness: t.field({
+    type: GatewayModelReadiness,
+    resolve: (_root, _args, context) => gatewayAdmin(context).modelReadiness(gatewayScope(context))
   })
 }));
 

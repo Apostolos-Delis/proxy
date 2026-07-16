@@ -255,6 +255,11 @@ export type GatewayAccessProfilesQueryVariables = Exact<{ [key: string]: never; 
 
 export type GatewayAccessProfilesQuery = { gatewayAccessProfiles: Array<{ id: string, slug: string, name: string, description: string | null, enabled: boolean }>, gatewayModelGrants: Array<{ accessProfileId: string, logicalModelId: string, allowedOperations: Array<string>, enabled: boolean }>, gatewayLogicalModels: Array<{ id: string, slug: string, name: string, description: string | null, resolutionKind: string, enabled: boolean }> };
 
+export type GatewayModelAccessOptionsQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type GatewayModelAccessOptionsQuery = { gatewayAccessProfiles: Array<{ id: string, slug: string, name: string, description: string | null, enabled: boolean }>, gatewayModelGrants: Array<{ accessProfileId: string, logicalModelId: string, allowedOperations: Array<string>, enabled: boolean }>, gatewayLogicalModels: Array<{ id: string, slug: string, name: string, description: string | null, resolutionKind: string, enabled: boolean }>, gatewayModelReadiness: { logicalModels: Array<{ logicalModelId: string, available: boolean }> } };
+
 export type CreateApiKeyWithModelsMutationVariables = Exact<{
   input: CreateGatewayApiKeyWithModelsInput;
 }>;
@@ -287,7 +292,7 @@ export type ApiKeyVerificationQuery = { apiKey: { id: string, lastUsedAt: string
 export type GatewayModelsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type GatewayModelsQuery = { gatewayLogicalModels: Array<{ id: string, slug: string, name: string, description: string | null, resolutionKind: string, routerConfig: unknown, enabled: boolean }>, gatewayLogicalModelTargets: Array<{ id: string, logicalModelId: string, deploymentId: string, priority: number, enabled: boolean }>, gatewayModelDeployments: Array<{ id: string, name: string, upstreamModelId: string, canonicalModelId: string, providerConnectionId: string, enabled: boolean }>, gatewayCanonicalModels: Array<{ id: string, enabled: boolean }>, gatewayProviderConnections: Array<{ id: string, name: string, provider: string, adapterKind: string, enabled: boolean }>, gatewayWireBindings: Array<{ deploymentId: string, apiWireId: string, enabled: boolean }>, gatewayAccessProfiles: Array<{ id: string, name: string, enabled: boolean }>, gatewayModelGrants: Array<{ accessProfileId: string, logicalModelId: string, enabled: boolean }> };
+export type GatewayModelsQuery = { gatewayLogicalModels: Array<{ id: string, slug: string, name: string, description: string | null, resolutionKind: string, routerConfig: unknown, enabled: boolean }>, gatewayLogicalModelTargets: Array<{ id: string, logicalModelId: string, deploymentId: string, priority: number, enabled: boolean }>, gatewayModelDeployments: Array<{ id: string, name: string, upstreamModelId: string, providerConnectionId: string }>, gatewayProviderConnections: Array<{ id: string, name: string, provider: string }>, gatewayWireBindings: Array<{ deploymentId: string, apiWireId: string, enabled: boolean }>, gatewayAccessProfiles: Array<{ id: string, name: string, enabled: boolean }>, gatewayModelGrants: Array<{ accessProfileId: string, logicalModelId: string, enabled: boolean }>, gatewayModelReadiness: { deployments: Array<{ deploymentId: string, available: boolean, classifierCapable: boolean, reasonCodes: Array<string>, classifierReasonCodes: Array<string> }>, logicalModels: Array<{ logicalModelId: string, available: boolean, reasonCodes: Array<string> }> } };
 
 export type CreateLogicalModelMutationVariables = Exact<{
   input: CreateGatewayLogicalModelInput;
@@ -1032,6 +1037,37 @@ export const GatewayAccessProfilesDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<GatewayAccessProfilesQuery, GatewayAccessProfilesQueryVariables>;
+export const GatewayModelAccessOptionsDocument = new TypedDocumentString(`
+    query GatewayModelAccessOptions {
+  gatewayAccessProfiles {
+    id
+    slug
+    name
+    description
+    enabled
+  }
+  gatewayModelGrants {
+    accessProfileId
+    logicalModelId
+    allowedOperations
+    enabled
+  }
+  gatewayLogicalModels {
+    id
+    slug
+    name
+    description
+    resolutionKind
+    enabled
+  }
+  gatewayModelReadiness {
+    logicalModels {
+      logicalModelId
+      available
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<GatewayModelAccessOptionsQuery, GatewayModelAccessOptionsQueryVariables>;
 export const CreateApiKeyWithModelsDocument = new TypedDocumentString(`
     mutation CreateApiKeyWithModels($input: CreateGatewayApiKeyWithModelsInput!) {
   createGatewayApiKeyWithModels(input: $input) {
@@ -1092,20 +1128,12 @@ export const GatewayModelsDocument = new TypedDocumentString(`
     id
     name
     upstreamModelId
-    canonicalModelId
     providerConnectionId
-    enabled
-  }
-  gatewayCanonicalModels {
-    id
-    enabled
   }
   gatewayProviderConnections {
     id
     name
     provider
-    adapterKind
-    enabled
   }
   gatewayWireBindings {
     deploymentId
@@ -1121,6 +1149,20 @@ export const GatewayModelsDocument = new TypedDocumentString(`
     accessProfileId
     logicalModelId
     enabled
+  }
+  gatewayModelReadiness {
+    deployments {
+      deploymentId
+      available
+      classifierCapable
+      reasonCodes
+      classifierReasonCodes
+    }
+    logicalModels {
+      logicalModelId
+      available
+      reasonCodes
+    }
   }
 }
     `) as unknown as TypedDocumentString<GatewayModelsQuery, GatewayModelsQueryVariables>;

@@ -326,6 +326,8 @@ The implemented V1 document shape and operator commands are defined in [TOML.md]
 - Start API-key creation with model access rather than harness configuration.
 - Let an administrator atomically issue a key with selected logical models through a dedicated access profile, or assign an existing reusable profile.
 - Keep harness configuration in the post-creation step after the one-time key secret is available.
+- Compute deployment, classifier, and logical-model readiness on the server with reason codes; keep the console presentation-only.
+- Source model-facing route registration and the console endpoint inventory from one shared endpoint contract.
 
 ## Implementation Tickets
 

@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import {
   canonicalModels,
@@ -9,6 +9,7 @@ import {
   providerConnections,
   type ProxyDbSession
 } from "@proxy/db";
+import { gatewayModelSupportsText, mergeGatewayModelCapabilities } from "@proxy/schema";
 
 import type { LogicalModelClassifierDeployment } from "../classifier.js";
 import { pricingFromRow } from "./modelPricing.js";
@@ -21,10 +22,28 @@ export async function activeClassifierDeployment(
   workspaceId: string,
   classifierDeploymentId: string
 ): Promise<LogicalModelClassifierDeployment | undefined> {
-  const [row] = await db
+  return (await activeClassifierDeployments(
+    db,
+    organizationId,
+    workspaceId,
+    [classifierDeploymentId]
+  ))[0];
+}
+
+export async function activeClassifierDeployments(
+  db: ProxyDbSession,
+  organizationId: string,
+  workspaceId: string,
+  classifierDeploymentIds: readonly string[]
+): Promise<LogicalModelClassifierDeployment[]> {
+  const ids = [...new Set(classifierDeploymentIds)];
+  if (ids.length === 0) return [];
+  const rows = await db
     .select({
       deploymentId: modelDeployments.id,
       model: modelDeployments.upstreamModelId,
+      canonicalCapabilities: canonicalModels.capabilities,
+      deploymentCapabilities: modelDeployments.capabilities,
       pricing: modelDeployments.pricing,
       provider: providerConnections.provider,
       connectionId: providerConnections.id,
@@ -68,27 +87,31 @@ export async function activeClassifierDeployment(
       workspaceScope(canonicalModels, organizationId, workspaceId),
       workspaceScope(providerConnections, organizationId, workspaceId),
       workspaceScope(deploymentWireBindings, organizationId, workspaceId),
-      eq(modelDeployments.id, classifierDeploymentId),
       eq(modelDeployments.status, "active"),
       eq(canonicalModels.status, "active"),
       eq(providerConnections.status, "active"),
       eq(providerConnections.adapterKind, "generic-http-json"),
-      eq(deploymentWireBindings.enabled, true)
-    ))
-    .orderBy(asc(deploymentWireBindings.id))
-    .limit(1);
-  if (!row?.endpointPath) return undefined;
+      eq(deploymentWireBindings.enabled, true),
+      inArray(modelDeployments.id, ids)
+    ));
   const now = new Date();
-  if (healthStatusUnavailable(row.connectionHealthStatus, row.connectionCooldownUntil, now)) return undefined;
-  if (healthStatusUnavailable(row.deploymentHealthStatus, row.deploymentLockoutUntil, now)) return undefined;
-  return {
-    deploymentId: row.deploymentId,
-    organizationId,
-    workspaceId,
-    model: row.model,
-    provider: row.provider,
-    providerConnectionId: row.connectionId,
-    bindingId: row.bindingId,
-    pricing: pricingFromRow(row.pricing)
-  };
+  return rows.flatMap((row) => {
+    if (!row.endpointPath) return [];
+    if (healthStatusUnavailable(row.connectionHealthStatus, row.connectionCooldownUntil, now)) return [];
+    if (healthStatusUnavailable(row.deploymentHealthStatus, row.deploymentLockoutUntil, now)) return [];
+    if (!gatewayModelSupportsText(mergeGatewayModelCapabilities(
+      row.canonicalCapabilities,
+      row.deploymentCapabilities
+    ))) return [];
+    return [{
+      deploymentId: row.deploymentId,
+      organizationId,
+      workspaceId,
+      model: row.model,
+      provider: row.provider,
+      providerConnectionId: row.connectionId,
+      bindingId: row.bindingId,
+      pricing: pricingFromRow(row.pricing)
+    }];
+  });
 }

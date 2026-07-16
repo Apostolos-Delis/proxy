@@ -50,6 +50,7 @@ import {
   mapGatewayConstraintError
 } from "./gatewayConfigStore.js";
 import { gatewayResourceId } from "./gatewayConfigIds.js";
+import { gatewayModelReadiness } from "./gatewayModelReadiness.js";
 import {
   GatewayConfigAdminError,
   type GatewayConfigActor,
@@ -76,7 +77,7 @@ export class GatewayConfigAdminService {
   private readonly queries: GatewayConfigQueryStore;
 
   constructor(
-    db: ProxyDatabase,
+    private readonly db: ProxyDatabase,
     private readonly transactional: ProxyTransactionalDatabase,
     private readonly events: EventService,
     private readonly options: GatewayConfigAdminOptions,
@@ -88,40 +89,26 @@ export class GatewayConfigAdminService {
   async applyCommands(input: GatewayConfigActor & { commands: GatewayConfigCommand[] }) {
     if (input.commands.length === 0) return [];
     await this.preflightCommands(input);
-    const pendingEvents: CommittedTransactionEvent[] = [];
     const deferredLogicalModelIds = new Set(input.commands.flatMap((command) => (
       command.resource === "logicalModel" && command.action === "create" && command.id
         ? [command.id]
         : []
     )));
-    let results: GatewayConfigCommandResult[];
-    try {
-      results = await this.transactional.transaction(async (tx) => {
-        this.pendingEvents.set(tx, pendingEvents);
-        try {
-          const context = this.mutationContext(tx, input, deferredLogicalModelIds);
-          const commandResults: GatewayConfigCommandResult[] = [];
-          const createdLogicalModelIds: string[] = [];
-          for (const command of input.commands) {
-            const result = await this.executeCommand(context, command);
-            commandResults.push(result);
-            if (command.resource === "logicalModel" && command.action === "create") {
-              createdLogicalModelIds.push(result.id);
-            }
-          }
-          for (const id of createdLogicalModelIds) {
-            await assertCreatedLogicalModelReady(context, id);
-          }
-          return commandResults;
-        } finally {
-          this.pendingEvents.delete(tx);
+    return this.runMutationTransaction(input, deferredLogicalModelIds, async (context) => {
+      const commandResults: GatewayConfigCommandResult[] = [];
+      const createdLogicalModelIds: string[] = [];
+      for (const command of input.commands) {
+        const result = await this.executeCommand(context, command);
+        commandResults.push(result);
+        if (command.resource === "logicalModel" && command.action === "create") {
+          createdLogicalModelIds.push(result.id);
         }
-      });
-    } catch (error) {
-      throw mapGatewayConstraintError(error);
-    }
-    await this.events.commitTransactionEvents(pendingEvents);
-    return results;
+      }
+      for (const id of createdLogicalModelIds) {
+        await assertCreatedLogicalModelReady(context, id);
+      }
+      return commandResults;
+    });
   }
 
   async createApiKeyWithModels(input: GatewayConfigActor & {
@@ -163,28 +150,15 @@ export class GatewayConfigAdminService {
       }))
     ];
     await this.preflightCommands({ ...input, commands });
-    const pendingEvents: CommittedTransactionEvent[] = [];
-    let result: Awaited<ReturnType<typeof createApiKeyInTransaction>>;
-    try {
-      result = await this.transactional.transaction(async (tx) => {
-        this.pendingEvents.set(tx, pendingEvents);
-        try {
-          const context = this.mutationContext(tx, input, new Set());
-          for (const command of commands) await this.executeCommand(context, command);
-          return createApiKeyInTransaction(tx, {
-            organizationId: input.organizationId,
-            workspaceId: input.workspaceId,
-            actorUserId: input.actorUserId,
-            body: { name: input.name, accessProfileId: profileId }
-          });
-        } finally {
-          this.pendingEvents.delete(tx);
-        }
+    const result = await this.runMutationTransaction(input, new Set(), async (context) => {
+      for (const command of commands) await this.executeCommand(context, command);
+      return createApiKeyInTransaction(context.tx, {
+        organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
+        actorUserId: input.actorUserId,
+        body: { name: input.name, accessProfileId: profileId }
       });
-    } catch (error) {
-      throw mapGatewayConstraintError(error);
-    }
-    await this.events.commitTransactionEvents(pendingEvents);
+    });
     this.onApiKeysChanged();
     return { ...result, accessProfileId: profileId };
   }
@@ -269,6 +243,10 @@ export class GatewayConfigAdminService {
     return this.queries.apiKeyAccessProfiles(scope, ids);
   }
 
+  modelReadiness(scope: GatewayConfigScope) {
+    return gatewayModelReadiness(this.db, scope);
+  }
+
   private mutationContext(
     tx: ProxyTransaction,
     actor: GatewayConfigActor,
@@ -282,6 +260,29 @@ export class GatewayConfigAdminService {
       appendEvent: (scopeType, scopeId, action, payload, createdAt) =>
         this.appendGatewayEvent(tx, actor, scopeType, scopeId, action, payload, createdAt)
     };
+  }
+
+  private async runMutationTransaction<T>(
+    actor: GatewayConfigActor,
+    deferredLogicalModelIds: ReadonlySet<string>,
+    run: (context: GatewayConfigMutationContext) => Promise<T>
+  ) {
+    const pendingEvents: CommittedTransactionEvent[] = [];
+    let result: T;
+    try {
+      result = await this.transactional.transaction(async (tx) => {
+        this.pendingEvents.set(tx, pendingEvents);
+        try {
+          return await run(this.mutationContext(tx, actor, deferredLogicalModelIds));
+        } finally {
+          this.pendingEvents.delete(tx);
+        }
+      });
+    } catch (error) {
+      throw mapGatewayConstraintError(error);
+    }
+    await this.events.commitTransactionEvents(pendingEvents);
+    return result;
   }
 
   private async executeCommand(

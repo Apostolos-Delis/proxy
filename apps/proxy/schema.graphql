@@ -391,6 +391,14 @@ type GatewayCanonicalModel {
   workspaceId: ID!
 }
 
+type GatewayDeploymentReadiness {
+  available: Boolean!
+  classifierCapable: Boolean!
+  classifierReasonCodes: [String!]!
+  deploymentId: ID!
+  reasonCodes: [String!]!
+}
+
 type GatewayLogicalModel {
   createdAt: String!
   description: String
@@ -405,6 +413,12 @@ type GatewayLogicalModel {
   status: String!
   updatedAt: String!
   workspaceId: ID!
+}
+
+type GatewayLogicalModelReadiness {
+  available: Boolean!
+  logicalModelId: ID!
+  reasonCodes: [String!]!
 }
 
 type GatewayLogicalModelTarget {
@@ -449,6 +463,11 @@ type GatewayModelGrant {
   parameterCaps: JSON!
   updatedAt: String!
   workspaceId: ID!
+}
+
+type GatewayModelReadiness {
+  deployments: [GatewayDeploymentReadiness!]!
+  logicalModels: [GatewayLogicalModelReadiness!]!
 }
 
 type GatewayProviderConnection {
@@ -958,6 +977,7 @@ type Query {
   gatewayModelDeployments: [GatewayModelDeployment!]!
   gatewayModelGrant(id: ID!): GatewayModelGrant
   gatewayModelGrants: [GatewayModelGrant!]!
+  gatewayModelReadiness: GatewayModelReadiness!
   gatewayProviderConnection(id: ID!): GatewayProviderConnection
   gatewayProviderConnections: [GatewayProviderConnection!]!
   gatewayWireBinding(id: ID!): GatewayWireBinding
