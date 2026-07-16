@@ -26,6 +26,7 @@ import {
   slugSchema
 } from "./gatewayConfigSchemas.js";
 import { GatewayConfigAdminError } from "./gatewayConfigTypes.js";
+import { modelPricingConfigSchema } from "./modelPricing.js";
 
 const MAX_DOCUMENT_BYTES = 1_048_576;
 const MAX_RESOURCES = 1_000;
@@ -78,7 +79,7 @@ const modelDeploymentSchema = z.strictObject({
   region: z.string().trim().min(1).max(128).optional(),
   config: nonSecretJsonObjectSchema.default({}),
   capabilities: nonSecretCapabilitiesSchema.default({}),
-  pricing: nonSecretJsonObjectSchema.default({}),
+  pricing: modelPricingConfigSchema.default({}),
   enabled: z.boolean().default(false)
 });
 

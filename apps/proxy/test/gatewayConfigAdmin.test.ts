@@ -70,7 +70,7 @@ describe("gateway configuration admin", () => {
       providerConnectionId: connectionId,
       upstreamModelId: "acme-model-2026-07",
       capabilities: { tools: false, contextWindow: 128_000, modalities: ["text"] },
-      pricing: { inputCostPerMtok: 1 },
+      pricing: { inputCostPerMtok: 1, outputCostPerMtok: 4 },
       enabled: true
     });
     const bindingId = await create(fixture, "wireBinding", {
@@ -113,7 +113,10 @@ describe("gateway configuration admin", () => {
 
     await update(fixture, "providerConnection", connectionId, { name: "Acme OpenAI Production" });
     await update(fixture, "canonicalModel", canonicalModelId, { name: "Acme Model 1" });
-    await update(fixture, "modelDeployment", deploymentId, { name: "Primary", pricing: { inputCostPerMtok: 0.9 } });
+    await update(fixture, "modelDeployment", deploymentId, {
+      name: "Primary",
+      pricing: { inputCostPerMtok: 0.9, outputCostPerMtok: 3.6 }
+    });
     await update(fixture, "wireBinding", bindingId, { requestConfig: { store: false } });
     await update(fixture, "logicalModel", logicalModelId, { name: "Acme Direct 1" });
     await update(fixture, "logicalModelTarget", targetId, { priority: 2 });
@@ -124,7 +127,10 @@ describe("gateway configuration admin", () => {
       expect.objectContaining({ id: connectionId, name: "Acme OpenAI Production" })
     ]));
     expect(await fixture.service.canonicalModel(fixture.actor, canonicalModelId)).toMatchObject({ name: "Acme Model 1" });
-    expect(await fixture.service.modelDeployment(fixture.actor, deploymentId)).toMatchObject({ name: "Primary" });
+    expect(await fixture.service.modelDeployment(fixture.actor, deploymentId)).toMatchObject({
+      name: "Primary",
+      pricing: { inputCostPerMtok: 0.9, outputCostPerMtok: 3.6 }
+    });
     expect(await fixture.service.wireBinding(fixture.actor, bindingId)).toMatchObject({ requestConfig: { store: false } });
     expect(await fixture.service.logicalModel(fixture.actor, logicalModelId)).toMatchObject({ status: "active" });
     expect(await fixture.service.logicalModelTarget(fixture.actor, targetId)).toMatchObject({ priority: 2 });
@@ -203,6 +209,21 @@ describe("gateway configuration admin", () => {
       upstreamModelId: "expanding",
       capabilities: { contextWindow: 999_999_999 }
     })).rejects.toThrow("model_deployment_capabilities_expand_canonical");
+
+    for (const [slug, pricing] of [
+      ["incomplete-pricing", { inputCostPerMtok: 1 }],
+      ["negative-pricing", { inputCostPerMtok: -1, outputCostPerMtok: 2 }],
+      ["unknown-pricing-field", { inputCostPerMtok: 1, outputCostPerMtok: 2, source: "manual" }]
+    ] as const) {
+      await expect(create(fixture, "modelDeployment", {
+        slug,
+        name: slug,
+        canonicalModelId,
+        providerConnectionId: connectionId,
+        upstreamModelId: slug,
+        pricing
+      }), slug).rejects.toThrow("invalid_model_deployment");
+    }
 
     for (const [slug, config] of [
       ["undefined-json", { value: undefined }],
