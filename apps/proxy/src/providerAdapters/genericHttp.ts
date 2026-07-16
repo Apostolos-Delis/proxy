@@ -43,6 +43,7 @@ export type GenericHttpResponseTranslation =
   | { kind: "native" }
   | {
       kind: "translated";
+      sourceDialect: ProviderRegistryHttpEndpoint["dialect"];
       response(body: unknown): unknown;
       sseTransform(chunks: AsyncIterable<Uint8Array>): AsyncIterable<Uint8Array>;
     }
@@ -170,6 +171,7 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
     if (!translator) return { kind: "unsupported" };
     return {
       kind: "translated",
+      sourceDialect: input.endpoint.dialect,
       response: translator.response,
       sseTransform: translator.sseTransform
     };
@@ -178,8 +180,10 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
   translateResponseText(text: string, translation: GenericHttpResponseTranslation) {
     if (translation.kind !== "translated") return text;
     const parsed = tryParseJson(text);
-    if (parsed === undefined) return text;
-    return JSON.stringify(translation.response(parsed));
+    assertProviderResponseEnvelope(translation.sourceDialect, parsed);
+    const translated = translation.response(parsed);
+    if (!isRecord(translated)) throw new Error("Translated provider response is not a JSON object.");
+    return JSON.stringify(translated);
   }
 
   transformResponseStream(body: AsyncIterable<Uint8Array>, translation: GenericHttpResponseTranslation) {
@@ -198,6 +202,18 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
   classifyMalformedResponse(input: { message?: string }) {
     return classifyGenericHttpMalformedResponse(input);
   }
+}
+
+function assertProviderResponseEnvelope(
+  dialect: ProviderRegistryHttpEndpoint["dialect"],
+  body: unknown
+): asserts body is Record<string, unknown> {
+  if (!isRecord(body)) throw new Error(`Malformed ${dialect} provider response.`);
+  let valid: boolean;
+  if (dialect === "anthropic-messages") valid = Array.isArray(body.content);
+  else if (dialect === "openai-chat") valid = Array.isArray(body.choices);
+  else valid = Array.isArray(body.output);
+  if (!valid) throw new Error(`Malformed ${dialect} provider response.`);
 }
 
 export function classifyGenericHttpResponse(input: {

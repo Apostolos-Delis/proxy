@@ -52,6 +52,7 @@ export async function startOpenAIMock(
     failStreamAfterChunk?: boolean;
     failStreamAfterFirstByte?: boolean;
     failStreamProvider?: boolean;
+    malformedJsonProvider?: boolean;
     rateLimitProviderOnce?: RateLimitMock;
     stallProviderBeforeFirstByte?: boolean;
     slowProvider?: boolean;
@@ -143,6 +144,11 @@ export async function startOpenAIMock(
     if (options.failStreamProvider && body.stream === true) {
       response.writeHead(500, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: { message: "mock stream unavailable" } }));
+      return;
+    }
+
+    if (options.malformedJsonProvider) {
+      sendJson(response, { unexpected: true });
       return;
     }
 
@@ -424,6 +430,8 @@ export async function startAnthropicMock(options: {
   outputText?: string;
   toolUse?: AnthropicStreamToolUse;
   rateLimitProviderOnce?: RateLimitMock;
+  failProviderModels?: Record<string, number>;
+  malformedJsonProvider?: boolean;
 } = {}): Promise<MockServer> {
   const records: RecordedRequest[] = [];
   let providerRateLimited = false;
@@ -436,6 +444,16 @@ export async function startAnthropicMock(options: {
       return;
     }
 
+    const modelFailureStatus = typeof body.model === "string" ? options.failProviderModels?.[body.model] : undefined;
+    if (modelFailureStatus) {
+      response.writeHead(modelFailureStatus, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        type: "error",
+        error: { type: "api_error", message: "mock anthropic provider unavailable" }
+      }));
+      return;
+    }
+
     if (options.rateLimitProviderOnce && !providerRateLimited) {
       providerRateLimited = true;
       response.writeHead(429, {
@@ -445,6 +463,11 @@ export async function startAnthropicMock(options: {
       response.end(JSON.stringify(
         options.rateLimitProviderOnce.body ?? { error: { message: "mock rate limit", type: "rate_limit_error" } }
       ));
+      return;
+    }
+
+    if (options.malformedJsonProvider) {
+      sendJson(response, { unexpected: true });
       return;
     }
 
