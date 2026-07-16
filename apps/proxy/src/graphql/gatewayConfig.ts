@@ -10,6 +10,7 @@ import {
   GatewayCanonicalModel,
   GatewayLogicalModel,
   GatewayLogicalModelTarget,
+  GatewayModelCatalogEntry,
   GatewayModelDeployment,
   GatewayModelGrant,
   GatewayProviderConnection,
@@ -227,6 +228,16 @@ builder.queryFields((t) => ({
   gatewayModelDeployments: t.field({
     type: [GatewayModelDeployment],
     resolve: (_root, _args, context) => gatewayAdmin(context).modelDeployments(gatewayScope(context))
+  }),
+  gatewayModelCatalogEntries: t.field({
+    type: [GatewayModelCatalogEntry],
+    resolve: (_root, _args, context) => gatewayAdmin(context).modelCatalogEntries(gatewayScope(context))
+  }),
+  gatewayModelCatalogEntry: t.field({
+    type: GatewayModelCatalogEntry,
+    nullable: true,
+    args: { id: t.arg.id({ required: true }) },
+    resolve: (_root, args, context) => gatewayAdmin(context).modelCatalogEntry(gatewayScope(context), String(args.id))
   }),
   gatewayModelDeployment: t.field({
     type: GatewayModelDeployment,

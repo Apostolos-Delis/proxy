@@ -217,6 +217,9 @@ describe("database migrations", () => {
     expect(deploymentHealth.rows).toEqual([{ status: "healthy", metadata: { source: "selected" } }]);
     expect(await columns(client, "provider_connections")).not.toContain("legacy_provider_account_id");
 
+    await applyMigration(client, "0032_update_fable_context_window.sql");
+    await applyMigration(client, "0033_source_backed_model_catalog.sql");
+
     const beforeSeed = await migratedGatewaySnapshot(client);
     await seedDatabase(createPgliteDatabase(client), seedOptionsFromEnv({
       DEFAULT_ORGANIZATION_ID: "legacy_org",

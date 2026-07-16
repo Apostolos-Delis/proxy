@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { DeploymentPricingCard } from "./deploymentPricingCard";
+import { ModelCatalogCard } from "./modelCatalogCard";
 import { formatInteger, formatMoney } from "./format";
 import { graphql } from "./gql";
 import { gqlFetch } from "./graphql";
@@ -55,6 +56,7 @@ export function BillingPage() {
         </GlassCard>
       </div>
       <DeploymentPricingCard />
+      <ModelCatalogCard />
     </div>
   );
 }

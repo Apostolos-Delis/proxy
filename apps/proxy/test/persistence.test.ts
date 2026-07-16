@@ -290,7 +290,7 @@ describe("postgres persistence", () => {
       providerAdapterContractVersion: "1"
     });
     expect(usageRows[0]?.totalTokens).toBe(120);
-    expect(usageRows[0]?.totalCostMicros).toBe(325);
+    expect(usageRows[0]?.totalCostMicros).toBe(1_100);
     expect(eventRows.map((row) => row.sequence)).toEqual([1, 2, 3, 4, 5]);
   });
 

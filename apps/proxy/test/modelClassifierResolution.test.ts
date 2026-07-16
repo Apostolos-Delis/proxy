@@ -276,7 +276,7 @@ describe("classifier logical model resolution", () => {
     client = fixture.client;
     const workspaceId = defaultWorkspaceId(fixture.organizationId);
     const logicalModelId = `${workspaceId}:logical-model:coding-auto`;
-    const classifierDeploymentId = `${workspaceId}:deployment:openai:gpt-5-nano-2025-08-07`;
+    const classifierDeploymentId = `${workspaceId}:deployment:openai:gpt-5-nano`;
 
     await fixture.db
       .update(modelDeployments)
@@ -314,7 +314,7 @@ describe("classifier logical model resolution", () => {
     await fixture.db
       .update(logicalModels)
       .set({
-        routerConfig: classifierConfig(`${defaultWorkspaceId("org_classifier_other")}:deployment:openai:gpt-5-nano-2025-08-07`)
+        routerConfig: classifierConfig(`${defaultWorkspaceId("org_classifier_other")}:deployment:openai:gpt-5-nano`)
       })
       .where(eq(logicalModels.id, logicalModelId));
     expectDenial(await fixture.resolver.resolve(resolveInput(fixture.organizationId, {

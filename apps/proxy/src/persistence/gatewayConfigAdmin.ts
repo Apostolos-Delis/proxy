@@ -157,6 +157,14 @@ export class GatewayConfigAdminService {
     return this.queries.modelDeployment(scope, id);
   }
 
+  modelCatalogEntries(scope: GatewayConfigScope) {
+    return this.queries.modelCatalogEntries(scope);
+  }
+
+  modelCatalogEntry(scope: GatewayConfigScope, id: string) {
+    return this.queries.modelCatalogEntry(scope, id);
+  }
+
   wireBindings(scope: GatewayConfigScope) {
     return this.queries.wireBindings(scope);
   }

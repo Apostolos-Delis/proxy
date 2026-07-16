@@ -1,0 +1,463 @@
+{
+  "sources": {
+    "models-dev-2026-07-16": {
+      "type": "models.dev-snapshot",
+      "locator": "https://models.dev/api.json",
+      "fetchedAt": "2026-07-16T15:18:35Z",
+      "verifiedAt": "2026-07-16T15:18:35Z"
+    }
+  },
+  "entries": [
+    {
+      "provider": "openai",
+      "upstreamModelId": "gpt-5-nano",
+      "canonical": {
+        "key": "gpt-5-nano",
+        "slug": "gpt-5-nano",
+        "name": "GPT-5 Nano",
+        "vendor": "openai",
+        "family": "gpt-nano",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image"],
+          "efforts": ["minimal", "low", "medium", "high"],
+          "contextWindow": 400000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["openai-responses", "openai-chat"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 0.05, "outputCostPerMtok": 0.4, "cacheReadCostPerMtok": 0.005 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "openai",
+      "upstreamModelId": "gpt-5.4-mini",
+      "canonical": {
+        "key": "gpt-5.4-mini",
+        "slug": "gpt-5-4-mini",
+        "name": "GPT-5.4 mini",
+        "vendor": "openai",
+        "family": "gpt-mini",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image"],
+          "efforts": ["none", "low", "medium", "high", "xhigh"],
+          "contextWindow": 400000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["openai-responses", "openai-chat"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 0.75, "outputCostPerMtok": 4.5, "cacheReadCostPerMtok": 0.075 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "openai",
+      "upstreamModelId": "gpt-5.4",
+      "canonical": {
+        "key": "gpt-5.4",
+        "slug": "gpt-5-4",
+        "name": "GPT-5.4",
+        "vendor": "openai",
+        "family": "gpt",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "efforts": ["none", "low", "medium", "high", "xhigh"],
+          "contextWindow": 1050000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["openai-responses", "openai-chat"],
+      "capabilities": {},
+      "pricing": {
+        "inputCostPerMtok": 2.5,
+        "outputCostPerMtok": 15,
+        "cacheReadCostPerMtok": 0.25,
+        "largeContext": {
+          "thresholdInputTokens": 272000,
+          "inputCostPerMtok": 5,
+          "outputCostPerMtok": 22.5,
+          "cacheReadCostPerMtok": 0.5
+        }
+      },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "openai",
+      "upstreamModelId": "gpt-5.5",
+      "canonical": {
+        "key": "gpt-5.5",
+        "slug": "gpt-5-5",
+        "name": "GPT-5.5",
+        "vendor": "openai",
+        "family": "gpt",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "efforts": ["none", "low", "medium", "high", "xhigh"],
+          "contextWindow": 1050000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["openai-responses", "openai-chat"],
+      "capabilities": {},
+      "pricing": {
+        "inputCostPerMtok": 5,
+        "outputCostPerMtok": 30,
+        "cacheReadCostPerMtok": 0.5,
+        "largeContext": {
+          "thresholdInputTokens": 272000,
+          "inputCostPerMtok": 10,
+          "outputCostPerMtok": 45,
+          "cacheReadCostPerMtok": 1
+        }
+      },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "openai",
+      "upstreamModelId": "gpt-5.5-pro",
+      "canonical": {
+        "key": "gpt-5.5-pro",
+        "slug": "gpt-5-5-pro",
+        "name": "GPT-5.5 Pro",
+        "vendor": "openai",
+        "family": "gpt-pro",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "efforts": ["medium", "high", "xhigh"],
+          "contextWindow": 1050000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["openai-responses", "openai-chat"],
+      "capabilities": {},
+      "pricing": {
+        "inputCostPerMtok": 30,
+        "outputCostPerMtok": 180,
+        "largeContext": {
+          "thresholdInputTokens": 272000,
+          "inputCostPerMtok": 60,
+          "outputCostPerMtok": 270
+        }
+      },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "anthropic",
+      "upstreamModelId": "claude-fable-5",
+      "canonical": {
+        "key": "claude-fable-5",
+        "slug": "claude-fable-5",
+        "name": "Claude Fable 5",
+        "vendor": "anthropic",
+        "family": "claude-fable",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "efforts": ["low", "medium", "high", "xhigh", "max"],
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["anthropic-messages"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 10, "outputCostPerMtok": 50, "cacheReadCostPerMtok": 1, "cacheWriteCostPerMtok": 12.5 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "anthropic",
+      "upstreamModelId": "claude-haiku-4-5",
+      "canonical": {
+        "key": "claude-haiku-4-5",
+        "slug": "claude-haiku-4-5",
+        "name": "Claude Haiku 4.5 (latest)",
+        "vendor": "anthropic",
+        "family": "claude-haiku",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "contextWindow": 200000,
+          "maxOutputTokens": 64000
+        }
+      },
+      "dialects": ["anthropic-messages"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 1, "outputCostPerMtok": 5, "cacheReadCostPerMtok": 0.1, "cacheWriteCostPerMtok": 1.25 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "anthropic",
+      "upstreamModelId": "claude-sonnet-4-5",
+      "canonical": {
+        "key": "claude-sonnet-4-5",
+        "slug": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5 (latest)",
+        "vendor": "anthropic",
+        "family": "claude-sonnet",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "contextWindow": 1000000,
+          "maxOutputTokens": 64000
+        }
+      },
+      "dialects": ["anthropic-messages"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 3, "outputCostPerMtok": 15, "cacheReadCostPerMtok": 0.3, "cacheWriteCostPerMtok": 3.75 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "anthropic",
+      "upstreamModelId": "claude-sonnet-4-6",
+      "canonical": {
+        "key": "claude-sonnet-4-6",
+        "slug": "claude-sonnet-4-6",
+        "name": "Claude Sonnet 4.6",
+        "vendor": "anthropic",
+        "family": "claude-sonnet",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "efforts": ["low", "medium", "high", "max"],
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["anthropic-messages"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 3, "outputCostPerMtok": 15, "cacheReadCostPerMtok": 0.3, "cacheWriteCostPerMtok": 3.75 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "anthropic",
+      "upstreamModelId": "claude-opus-4-5",
+      "canonical": {
+        "key": "claude-opus-4-5",
+        "slug": "claude-opus-4-5",
+        "name": "Claude Opus 4.5 (latest)",
+        "vendor": "anthropic",
+        "family": "claude-opus",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "efforts": ["low", "medium", "high"],
+          "contextWindow": 200000,
+          "maxOutputTokens": 64000
+        }
+      },
+      "dialects": ["anthropic-messages"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 5, "outputCostPerMtok": 25, "cacheReadCostPerMtok": 0.5, "cacheWriteCostPerMtok": 6.25 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "anthropic",
+      "upstreamModelId": "claude-opus-4-6",
+      "canonical": {
+        "key": "claude-opus-4-6",
+        "slug": "claude-opus-4-6",
+        "name": "Claude Opus 4.6",
+        "vendor": "anthropic",
+        "family": "claude-opus",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "efforts": ["low", "medium", "high", "max"],
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["anthropic-messages"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 5, "outputCostPerMtok": 25, "cacheReadCostPerMtok": 0.5, "cacheWriteCostPerMtok": 6.25 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "anthropic",
+      "upstreamModelId": "claude-opus-4-7",
+      "canonical": {
+        "key": "claude-opus-4-7",
+        "slug": "claude-opus-4-7",
+        "name": "Claude Opus 4.7",
+        "vendor": "anthropic",
+        "family": "claude-opus",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "efforts": ["low", "medium", "high", "xhigh", "max"],
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["anthropic-messages"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 5, "outputCostPerMtok": 25, "cacheReadCostPerMtok": 0.5, "cacheWriteCostPerMtok": 6.25 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "anthropic",
+      "upstreamModelId": "claude-opus-4-8",
+      "canonical": {
+        "key": "claude-opus-4-8",
+        "slug": "claude-opus-4-8",
+        "name": "Claude Opus 4.8",
+        "vendor": "anthropic",
+        "family": "claude-opus",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "efforts": ["low", "medium", "high", "xhigh", "max"],
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["anthropic-messages"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 5, "outputCostPerMtok": 25, "cacheReadCostPerMtok": 0.5, "cacheWriteCostPerMtok": 6.25 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "amazon-bedrock",
+      "upstreamModelId": "anthropic.claude-fable-5",
+      "canonical": {
+        "key": "claude-fable-5",
+        "slug": "claude-fable-5",
+        "name": "Claude Fable 5",
+        "vendor": "anthropic",
+        "family": "claude-fable",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "efforts": ["low", "medium", "high", "xhigh", "max"],
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["bedrock-converse"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 10, "outputCostPerMtok": 50, "cacheReadCostPerMtok": 1, "cacheWriteCostPerMtok": 12.5 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "amazon-bedrock",
+      "upstreamModelId": "us.anthropic.claude-fable-5",
+      "canonical": {
+        "key": "claude-fable-5",
+        "slug": "claude-fable-5",
+        "name": "Claude Fable 5",
+        "vendor": "anthropic",
+        "family": "claude-fable",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "efforts": ["low", "medium", "high", "xhigh", "max"],
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["bedrock-converse"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 10, "outputCostPerMtok": 50, "cacheReadCostPerMtok": 1, "cacheWriteCostPerMtok": 12.5 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "amazon-bedrock",
+      "upstreamModelId": "global.anthropic.claude-fable-5",
+      "canonical": {
+        "key": "claude-fable-5",
+        "slug": "claude-fable-5",
+        "name": "Claude Fable 5",
+        "vendor": "anthropic",
+        "family": "claude-fable",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "efforts": ["low", "medium", "high", "xhigh", "max"],
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["bedrock-converse"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 10, "outputCostPerMtok": 50, "cacheReadCostPerMtok": 1, "cacheWriteCostPerMtok": 12.5 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    },
+    {
+      "provider": "amazon-bedrock",
+      "upstreamModelId": "eu.anthropic.claude-fable-5",
+      "canonical": {
+        "key": "claude-fable-5",
+        "slug": "claude-fable-5",
+        "name": "Claude Fable 5",
+        "vendor": "anthropic",
+        "family": "claude-fable",
+        "capabilities": {
+          "tools": true,
+          "reasoning": true,
+          "structuredOutput": true,
+          "modalities": ["text", "image", "pdf"],
+          "efforts": ["low", "medium", "high", "xhigh", "max"],
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000
+        }
+      },
+      "dialects": ["bedrock-converse"],
+      "capabilities": {},
+      "pricing": { "inputCostPerMtok": 11, "outputCostPerMtok": 55, "cacheReadCostPerMtok": 1.1, "cacheWriteCostPerMtok": 13.75 },
+      "metadataSourceId": "models-dev-2026-07-16",
+      "pricingSourceId": "models-dev-2026-07-16"
+    }
+  ]
+}

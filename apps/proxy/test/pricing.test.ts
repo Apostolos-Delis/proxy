@@ -114,6 +114,31 @@ describe("usageCostMicros", () => {
     expect(costs.totalCostMicros).toBe(7000);
   });
 
+  it("uses the large-context rate after the provider threshold", () => {
+    const pricing = completeModelPricing({
+      inputCostPerMtok: 2.5,
+      outputCostPerMtok: 15,
+      cacheReadCostPerMtok: 0.25,
+      largeContext: {
+        thresholdInputTokens: 272_000,
+        inputCostPerMtok: 5,
+        outputCostPerMtok: 22.5,
+        cacheReadCostPerMtok: 0.5
+      }
+    });
+
+    expect(usageCostMicros(pricing, {
+      inputTokens: 300_000,
+      cachedInputTokens: 100_000,
+      cacheCreationInputTokens: 0,
+      outputTokens: 10_000
+    })).toEqual({
+      inputCostMicros: 1_050_000,
+      outputCostMicros: 225_000,
+      totalCostMicros: 1_275_000
+    });
+  });
+
   it("never bills negative uncached input when subsets exceed the total", () => {
     const pricing = completeModelPricing({ inputCostPerMtok: 100, outputCostPerMtok: 1 });
 

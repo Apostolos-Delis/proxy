@@ -3,10 +3,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
+import { providerModelCatalogSchema, type ProviderModelCatalog } from "@proxy/schema";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createPgliteDatabase } from "./client.js";
-import { seedGatewayResources } from "./gatewaySeed.js";
+import { seedGatewayResources, type GatewaySeedInput } from "./gatewaySeed.js";
 import { seedDatabase, seedOptionsFromEnv } from "./seed.js";
 import { defaultWorkspaceId } from "./workspace.js";
 
@@ -42,6 +43,7 @@ describe("AI gateway seed", () => {
     expect(secondCounts).toEqual(firstCounts);
     expect(secondCounts).toEqual({
       connections: 3,
+      catalogEntries: 17,
       canonicalModels: 8,
       deployments: 8,
       bindings: 11,
@@ -95,6 +97,21 @@ describe("AI gateway seed", () => {
         and md.upstream_model_id = 'claude-fable-5'
     `)).rows;
     expect(fableCapabilities?.capabilities.contextWindow).toBe(1_000_000);
+
+    const fableCatalog = await client.query<{ provider: string; upstream_model_id: string }>(`
+      select provider, upstream_model_id
+      from model_catalog_entries
+      where workspace_id = '${defaultWorkspaceId(options.organizationId)}'
+        and canonical_key = 'claude-fable-5'
+      order by provider, upstream_model_id
+    `);
+    expect(fableCatalog.rows).toEqual([
+      { provider: "amazon-bedrock", upstream_model_id: "anthropic.claude-fable-5" },
+      { provider: "amazon-bedrock", upstream_model_id: "eu.anthropic.claude-fable-5" },
+      { provider: "amazon-bedrock", upstream_model_id: "global.anthropic.claude-fable-5" },
+      { provider: "amazon-bedrock", upstream_model_id: "us.anthropic.claude-fable-5" },
+      { provider: "anthropic", upstream_model_id: "claude-fable-5" }
+    ]);
 
     const routerConfigs = await client.query<{ slug: string; router_config: Record<string, unknown> }>(`
       select slug, router_config
@@ -192,12 +209,17 @@ describe("AI gateway seed", () => {
       where cm.workspace_id = '${defaultWorkspaceId(options.organizationId)}'
         and md.upstream_model_id = 'gpt-5.4-mini'
     `)).rows;
-    await seedGatewayResources(db, gatewayInput(options, defaultWorkspaceId(options.organizationId)), [{
-      provider: "openai",
-      model: "gpt-5.4-mini",
-      capabilities: { contextWindow: 1 },
-      pricing: { source: "changed-test-snapshot" }
-    }]);
+    const changedCatalog = structuredClone(await catalogFixture());
+    const changedEntry = changedCatalog.entries.find((entry) =>
+      entry.provider === "openai" && entry.upstreamModelId === "gpt-5.4-mini"
+    );
+    if (!changedEntry) throw new Error("Missing gpt-5.4-mini catalog fixture.");
+    changedEntry.canonical.capabilities = { contextWindow: 1 };
+    await seedGatewayResources(
+      db,
+      gatewayInput(options, defaultWorkspaceId(options.organizationId)),
+      changedCatalog
+    );
     const [afterCapabilities] = (await client.query<{ capabilities: Record<string, unknown> }>(`
       select cm.capabilities
       from canonical_models cm
@@ -205,7 +227,30 @@ describe("AI gateway seed", () => {
       where cm.workspace_id = '${defaultWorkspaceId(options.organizationId)}'
         and md.upstream_model_id = 'gpt-5.4-mini'
     `)).rows;
-    expect(afterCapabilities).toEqual(beforeCapabilities);
+    expect(beforeCapabilities?.capabilities.contextWindow).toBe(400_000);
+    expect(afterCapabilities?.capabilities.contextWindow).toBe(1);
+  });
+
+  it("does not reuse removed source-backed entries from stored catalog rows", async () => {
+    client = await migratedClient();
+    const db = createPgliteDatabase(client);
+    const options = seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_gateway_removed_catalog_entry",
+      SEED_USER_ID: "user_gateway_removed_catalog_entry",
+      PROXY_TOKEN: "gateway-removed-catalog-entry-token"
+    });
+    await seedDatabase(db, options);
+
+    const catalog = structuredClone(await catalogFixture());
+    catalog.entries = catalog.entries.filter((entry) => !(
+      entry.provider === "openai" && entry.upstreamModelId === "gpt-5.4-mini"
+    ));
+
+    await expect(seedGatewayResources(
+      db,
+      gatewayInput(options, defaultWorkspaceId(options.organizationId)),
+      providerModelCatalogSchema.parse(catalog)
+    )).rejects.toThrow("No catalog entry for configured model openai:gpt-5.4-mini:default.");
   });
 
   it("keeps economy targets independent from additional coding models", async () => {
@@ -247,6 +292,113 @@ describe("AI gateway seed", () => {
     expect(codingTargets).toContain("claude-fable-5");
   });
 
+  it("materializes provider-specific deployments under one canonical model", async () => {
+    client = await migratedClient();
+    const db = createPgliteDatabase(client);
+    const options = seedOptionsFromEnv({
+      DEFAULT_ORGANIZATION_ID: "org_gateway_multi_provider",
+      SEED_USER_ID: "user_gateway_multi_provider",
+      PROXY_TOKEN: "gateway-multi-provider-token"
+    });
+    await seedDatabase(db, options);
+
+    const catalog = structuredClone(await catalogFixture());
+    const anthropicFable = catalog.entries.find((entry) =>
+      entry.provider === "anthropic" && entry.upstreamModelId === "claude-fable-5"
+    );
+    if (!anthropicFable) throw new Error("Missing Anthropic Fable catalog fixture.");
+    catalog.sources["bedrock-test"] = {
+      type: "provider-documentation",
+      locator: "https://provider.test/catalog/fable-5",
+      verifiedAt: "2026-07-16T00:00:00.000Z"
+    };
+    catalog.entries.push({
+      provider: "amazon-bedrock",
+      upstreamModelId: "anthropic.claude-fable-5-v1:0",
+      canonical: structuredClone(anthropicFable.canonical),
+      region: "us-east-1",
+      dialects: ["bedrock-converse"],
+      capabilities: { contextWindow: 200_000 },
+      pricing: { inputCostPerMtok: 12, outputCostPerMtok: 60 },
+      metadataSourceId: "bedrock-test",
+      pricingSourceId: "bedrock-test"
+    });
+    const workspaceId = defaultWorkspaceId(options.organizationId);
+    const input = gatewayInput(options, workspaceId);
+    input.models.push({
+      provider: "amazon-bedrock",
+      model: "anthropic.claude-fable-5-v1:0",
+      region: "us-east-1",
+      surface: "bedrock-converse"
+    });
+    input.codingTargets.push({
+      provider: "amazon-bedrock",
+      model: "anthropic.claude-fable-5-v1:0",
+      region: "us-east-1"
+    });
+
+    await seedGatewayResources(db, input, providerModelCatalogSchema.parse(catalog));
+
+    const deployments = await client.query<{
+      canonical_model_id: string;
+      provider: string;
+      upstream_model_id: string;
+      region: string | null;
+      dialects: string[];
+      metadata_source: { verifiedAt?: string };
+      pricing_source: { verifiedAt?: string };
+    }>(`
+      select md.canonical_model_id, pc.provider, md.upstream_model_id, md.region,
+        catalog.dialects, catalog.metadata_source, catalog.pricing_source
+      from model_deployments md
+      join canonical_models cm on cm.id = md.canonical_model_id
+      join provider_connections pc on pc.id = md.provider_connection_id
+      join model_catalog_entries catalog on catalog.id = md.catalog_entry_id
+      where md.workspace_id = '${workspaceId}'
+        and cm.id = '${workspaceId}:canonical:anthropic:claude-fable-5'
+      order by pc.provider
+    `);
+    expect(new Set(deployments.rows.map((row) => row.canonical_model_id)).size).toBe(1);
+    expect(deployments.rows).toEqual([
+      {
+        canonical_model_id: `${workspaceId}:canonical:anthropic:claude-fable-5`,
+        provider: "amazon-bedrock",
+        upstream_model_id: "anthropic.claude-fable-5-v1:0",
+        region: "us-east-1",
+        dialects: ["bedrock-converse"],
+        metadata_source: {
+          type: "provider-documentation",
+          locator: "https://provider.test/catalog/fable-5",
+          verifiedAt: "2026-07-16T00:00:00.000Z"
+        },
+        pricing_source: {
+          type: "provider-documentation",
+          locator: "https://provider.test/catalog/fable-5",
+          verifiedAt: "2026-07-16T00:00:00.000Z"
+        }
+      },
+      {
+        canonical_model_id: `${workspaceId}:canonical:anthropic:claude-fable-5`,
+        provider: "anthropic",
+        upstream_model_id: "claude-fable-5",
+        region: null,
+        dialects: ["anthropic-messages"],
+        metadata_source: {
+          type: "models.dev-snapshot",
+          locator: "https://models.dev/api.json",
+          fetchedAt: "2026-07-16T15:18:35Z",
+          verifiedAt: "2026-07-16T15:18:35Z"
+        },
+        pricing_source: {
+          type: "models.dev-snapshot",
+          locator: "https://models.dev/api.json",
+          fetchedAt: "2026-07-16T15:18:35Z",
+          verifiedAt: "2026-07-16T15:18:35Z"
+        }
+      }
+    ]);
+  });
+
   it("uses distinct deterministic IDs for two workspaces in one organization", async () => {
     client = await migratedClient();
     const db = createPgliteDatabase(client);
@@ -261,7 +413,11 @@ describe("AI gateway seed", () => {
       values ('workspace_gateway_secondary', '${options.organizationId}', 'secondary', 'Secondary')
     `);
 
-    await seedGatewayResources(db, gatewayInput(options, "workspace_gateway_secondary"), []);
+    await seedGatewayResources(
+      db,
+      gatewayInput(options, "workspace_gateway_secondary"),
+      await catalogFixture()
+    );
 
     const rows = await client.query<{
       workspace_id: string;
@@ -315,6 +471,7 @@ async function migratedClient() {
 async function resourceCounts(client: PGlite, organizationId: string) {
   const result = await client.query<{
     connections: number;
+    catalog_entries: number;
     canonical_models: number;
     deployments: number;
     bindings: number;
@@ -325,6 +482,7 @@ async function resourceCounts(client: PGlite, organizationId: string) {
   }>(`
     select
       (select count(*) from provider_connections where organization_id = '${organizationId}')::int as connections,
+      (select count(*) from model_catalog_entries where organization_id = '${organizationId}')::int as catalog_entries,
       (select count(*) from canonical_models where organization_id = '${organizationId}')::int as canonical_models,
       (select count(*) from model_deployments where organization_id = '${organizationId}')::int as deployments,
       (select count(*) from deployment_wire_bindings where organization_id = '${organizationId}')::int as bindings,
@@ -337,6 +495,7 @@ async function resourceCounts(client: PGlite, organizationId: string) {
   if (!row) throw new Error("Gateway resource count query returned no rows.");
   return {
     connections: row.connections,
+    catalogEntries: row.catalog_entries,
     canonicalModels: row.canonical_models,
     deployments: row.deployments,
     bindings: row.bindings,
@@ -347,7 +506,7 @@ async function resourceCounts(client: PGlite, organizationId: string) {
   };
 }
 
-function gatewayInput(options: ReturnType<typeof seedOptionsFromEnv>, workspaceId: string) {
+function gatewayInput(options: ReturnType<typeof seedOptionsFromEnv>, workspaceId: string): GatewaySeedInput {
   const economyModels = [
     { provider: "openai" as const, model: "gpt-5.4-mini", surface: "openai-responses" as const },
     { provider: "openai" as const, model: "gpt-5.4-mini", surface: "openai-chat" as const },
@@ -362,7 +521,7 @@ function gatewayInput(options: ReturnType<typeof seedOptionsFromEnv>, workspaceI
     openaiBaseUrl: options.openaiBaseUrl,
     anthropicBaseUrl: options.anthropicBaseUrl,
     models: [
-      ...options.models.map(({ provider, model, surface }) => ({ provider, model, surface })),
+      ...options.models.map(({ provider, model, region, surface }) => ({ provider, model, region, surface })),
       ...economyModels
     ],
     codingTargets: uniqueTargets([
@@ -375,4 +534,10 @@ function gatewayInput(options: ReturnType<typeof seedOptionsFromEnv>, workspaceI
 
 function uniqueTargets<T extends { provider: string; model: string }>(targets: T[]) {
   return [...new Map(targets.map((target) => [`${target.provider}:${target.model}`, target])).values()];
+}
+
+async function catalogFixture(): Promise<ProviderModelCatalog> {
+  return providerModelCatalogSchema.parse(JSON.parse(
+    await readFile(new URL("../data/provider-model-catalog.json", import.meta.url), "utf8")
+  ));
 }

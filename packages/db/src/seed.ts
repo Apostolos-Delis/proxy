@@ -4,11 +4,16 @@ import { eq } from "drizzle-orm";
 import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import type { BuiltinProvider } from "@proxy/schema";
+import {
+  providerModelCatalogSchema,
+  type BuiltinProvider,
+  type Dialect,
+  type ProviderModelCatalog
+} from "@proxy/schema";
 
 import { hashApiKey } from "./apiKeyHash.js";
 import type { ProxyDbSession } from "./client.js";
-import { seedGatewayResources, type GatewaySeedSnapshotEntry } from "./gatewaySeed.js";
+import { seedGatewayResources } from "./gatewaySeed.js";
 import * as schema from "./schema.js";
 import {
   apiKeys,
@@ -33,13 +38,15 @@ export type SeedOptions = {
   anthropicBaseUrl: string;
   proxyToken: string;
   externalEconomyToken?: string;
+  modelCatalog: ProviderModelCatalog;
   models: SeedModel[];
 };
 
 export type SeedModel = {
   provider: BuiltinProvider;
   model: string;
-  surface: "openai-responses" | "openai-chat" | "anthropic-messages";
+  region?: string;
+  surface: Dialect;
 };
 
 const ECONOMY_SEED_MODELS: SeedModel[] = [
@@ -54,13 +61,14 @@ const DEFAULT_SEED_MODELS: SeedModel[] = [
   { provider: "openai", model: "gpt-5.4", surface: "openai-chat" },
   { provider: "openai", model: "gpt-5.5", surface: "openai-responses" },
   { provider: "openai", model: "gpt-5.5", surface: "openai-chat" },
+  { provider: "anthropic", model: "claude-fable-5", surface: "anthropic-messages" },
   { provider: "anthropic", model: "claude-sonnet-4-5", surface: "anthropic-messages" },
   { provider: "anthropic", model: "claude-opus-4-5", surface: "anthropic-messages" }
 ];
 
-const modelsDevSnapshot = JSON.parse(
-  readFileSync(new URL("../data/models-dev-snapshot.json", import.meta.url), "utf8")
-) as GatewaySeedSnapshotEntry[];
+export const defaultProviderModelCatalog = providerModelCatalogSchema.parse(JSON.parse(
+  readFileSync(new URL("../data/provider-model-catalog.json", import.meta.url), "utf8")
+));
 
 export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
   const now = new Date();
@@ -133,12 +141,9 @@ export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
     openaiBaseUrl: options.openaiBaseUrl,
     anthropicBaseUrl: options.anthropicBaseUrl,
     models,
-    codingTargets: uniqueGatewayTargets([
-      ...models.map(({ provider, model }) => ({ provider, model })),
-      { provider: "anthropic", model: "claude-fable-5" }
-    ]),
+    codingTargets: uniqueGatewayTargets(models),
     economyTargets: uniqueGatewayTargets(ECONOMY_SEED_MODELS)
-  }, modelsDevSnapshot);
+  }, options.modelCatalog);
 
   await db.insert(apiKeys).values({
     id: defaultApiKeyId,
@@ -237,26 +242,30 @@ export function seedOptionsFromEnv(env: NodeJS.ProcessEnv): SeedOptions {
     userId: env.SEED_USER_ID ?? "local-user",
     userEmail: env.SEED_USER_EMAIL ?? "local@example.com",
     userName: env.SEED_USER_NAME ?? "Local User",
-    classifierModel: env.GATEWAY_SEED_CLASSIFIER_MODEL ?? "gpt-5-nano-2025-08-07",
+    classifierModel: env.GATEWAY_SEED_CLASSIFIER_MODEL ?? "gpt-5-nano",
     classifierTimeoutMs: positiveIntegerEnv(env.GATEWAY_SEED_CLASSIFIER_TIMEOUT_MS, 30_000),
     classifierMaxAttempts: positiveIntegerEnv(env.GATEWAY_SEED_CLASSIFIER_MAX_ATTEMPTS, 2),
     openaiBaseUrl: env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
     anthropicBaseUrl: env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1",
     proxyToken: env.PROXY_TOKEN ?? "dev-token",
     externalEconomyToken: env.SEED_EXTERNAL_ECONOMY_TOKEN,
+    modelCatalog: defaultProviderModelCatalog,
     models: DEFAULT_SEED_MODELS
   };
 }
 
 function uniqueSeedModels(models: SeedModel[]) {
   return [...new Map(models.map((model) => [
-    `${model.provider}:${model.model}:${model.surface}`,
+    `${model.provider}:${model.model}:${model.region ?? "default"}:${model.surface}`,
     model
   ])).values()];
 }
 
-function uniqueGatewayTargets(models: { provider: BuiltinProvider; model: string }[]) {
-  return [...new Map(models.map((model) => [`${model.provider}:${model.model}`, model])).values()];
+function uniqueGatewayTargets(models: { provider: BuiltinProvider; model: string; region?: string }[]) {
+  return [...new Map(models.map((model) => [
+    `${model.provider}:${model.model}:${model.region ?? "default"}`,
+    { provider: model.provider, model: model.model, region: model.region }
+  ])).values()];
 }
 
 function positiveIntegerEnv(value: string | undefined, fallback: number) {

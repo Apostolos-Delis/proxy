@@ -3647,6 +3647,39 @@ input[type="checkbox"][role="switch"]:focus-visible {
   font-size: 11.5px;
 }
 
+.catalog-sources > span {
+  display: flex;
+  gap: 6px;
+  font-size: 11.5px;
+}
+
+.catalog-source-cell {
+  font-size: 11.5px;
+}
+
+.catalog-source-cell > span {
+  display: flex;
+  gap: 6px;
+}
+
+.catalog-verified {
+  color: var(--success);
+}
+
+.catalog-unverified {
+  color: var(--warn);
+}
+
+.pricing-rate {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pricing-rate .faint {
+  font-size: 11.5px;
+}
+
 .pricing-model-fields {
   flex-direction: row;
   align-items: center;

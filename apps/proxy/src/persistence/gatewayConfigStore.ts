@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 
 import {
   accessProfileModelGrants,
@@ -8,6 +8,7 @@ import {
   deploymentWireBindings,
   logicalModels,
   logicalModelTargets,
+  modelCatalogEntries,
   modelDeployments,
   providerConnections,
   type ProxyDatabase,
@@ -49,6 +50,14 @@ export class GatewayConfigQueryStore {
 
   modelDeployments(scope: GatewayConfigScope) {
     return this.deploymentRows(scope);
+  }
+
+  modelCatalogEntries(scope: GatewayConfigScope) {
+    return this.catalogEntryRows(scope);
+  }
+
+  async modelCatalogEntry(scope: GatewayConfigScope, id: string) {
+    return (await this.catalogEntryRows(scope, id))[0] ?? null;
   }
 
   async modelDeployment(scope: GatewayConfigScope, id: string) {
@@ -147,8 +156,30 @@ export class GatewayConfigQueryStore {
   }
 
   private async deploymentRows(scope: GatewayConfigScope, id?: string) {
-    const rows = await this.db.select().from(modelDeployments)
+    const rows = await this.db.select({
+      ...getTableColumns(modelDeployments),
+      provider: providerConnections.provider,
+      catalogMetadataSource: modelCatalogEntries.metadataSource,
+      catalogPricingSource: modelCatalogEntries.pricingSource
+    }).from(modelDeployments)
+      .innerJoin(providerConnections, and(
+        eq(providerConnections.organizationId, modelDeployments.organizationId),
+        eq(providerConnections.workspaceId, modelDeployments.workspaceId),
+        eq(providerConnections.id, modelDeployments.providerConnectionId)
+      ))
+      .leftJoin(modelCatalogEntries, and(
+        eq(modelCatalogEntries.organizationId, modelDeployments.organizationId),
+        eq(modelCatalogEntries.workspaceId, modelDeployments.workspaceId),
+        eq(modelCatalogEntries.id, modelDeployments.catalogEntryId)
+      ))
       .where(resourceCondition(modelDeployments, scope, id)).orderBy(asc(modelDeployments.slug));
+    return rows.map(timestamps);
+  }
+
+  private async catalogEntryRows(scope: GatewayConfigScope, id?: string) {
+    const rows = await this.db.select().from(modelCatalogEntries)
+      .where(resourceCondition(modelCatalogEntries, scope, id))
+      .orderBy(asc(modelCatalogEntries.provider), asc(modelCatalogEntries.upstreamModelId));
     return rows.map(timestamps);
   }
 
@@ -189,6 +220,7 @@ export class GatewayConfigQueryStore {
 export type ScopedTable =
   | typeof providerConnections
   | typeof canonicalModels
+  | typeof modelCatalogEntries
   | typeof modelDeployments
   | typeof deploymentWireBindings
   | typeof logicalModels

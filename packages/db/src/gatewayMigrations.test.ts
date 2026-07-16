@@ -169,7 +169,13 @@ describe("AI gateway physical resource migration", () => {
       update canonical_models
       set capabilities = '{"tools":true,"contextWindow":100000}'
       where id = 'canonical_gateway_a';
-    `)).rejects.toThrow("canonical model capabilities are immutable");
+    `)).rejects.toThrow("canonical model capabilities must contain linked deployment capabilities");
+
+    await client.exec(`
+      update canonical_models
+      set capabilities = '{"tools":true,"contextWindow":256000}'
+      where id = 'canonical_gateway_a';
+    `);
 
     await expect(client.exec(`
       update provider_connections
