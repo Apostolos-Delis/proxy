@@ -992,7 +992,7 @@ export class AdminQueryService {
     return this.cached("model-pricing", async () => {
       const rows = await this.db
         .select({
-          provider: providerConnections.slug,
+          provider: providerConnections.provider,
           model: modelDeployments.upstreamModelId,
           pricing: modelDeployments.pricing
         })

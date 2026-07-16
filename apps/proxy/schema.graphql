@@ -292,9 +292,11 @@ input CreateGatewayProviderConnectionInput {
   adapterKind: String!
   authStyle: String!
   baseUrl: String!
+  capabilities: JSON
   defaultHeaders: JSON
   enabled: Boolean
   name: String!
+  provider: String!
   region: String
   secret: String
   secretRef: String
@@ -439,6 +441,7 @@ type GatewayProviderConnection {
   adapterKind: String!
   authStyle: String!
   baseUrl: String!
+  capabilities: JSON!
   createdAt: String!
   credentialConfigured: Boolean!
   defaultHeaders: JSON!
@@ -446,6 +449,7 @@ type GatewayProviderConnection {
   id: ID!
   name: String!
   organizationId: ID!
+  provider: String!
   region: String
   secretHint: String
   secretRef: String
@@ -1239,6 +1243,7 @@ input UpdateGatewayProviderConnectionInput {
   adapterConfig: JSON
   authStyle: String
   baseUrl: String
+  capabilities: JSON
   clearSecret: Boolean
   defaultHeaders: JSON
   id: ID!

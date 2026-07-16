@@ -21,6 +21,7 @@ import {
   nonSecretJsonObjectSchema,
   optionalTextSchema,
   parseGatewayBody,
+  providerCapabilitiesConfigSchema,
   secretReferenceSchema,
   slugSchema
 } from "./gatewayConfigSchemas.js";
@@ -35,6 +36,7 @@ const defaultHeadersSchema = z.record(
 ).refine((headers) => Object.keys(headers).length <= 64, "At most 64 default headers are allowed.");
 
 const providerConnectionSchema = z.strictObject({
+  provider: slugSchema,
   slug: slugSchema,
   name: nameSchema,
   adapter_kind: z.enum(PROVIDER_ADAPTER_KINDS),
@@ -45,6 +47,7 @@ const providerConnectionSchema = z.strictObject({
   clear_secret: z.boolean().default(false),
   adapter_config: nonSecretJsonObjectSchema.default({}),
   default_headers: defaultHeadersSchema.default({}),
+  capabilities: providerCapabilitiesConfigSchema.default({}),
   enabled: z.boolean().default(false)
 }).superRefine((value, context) => {
   if (value.secret_ref && value.clear_secret) {

@@ -8,6 +8,7 @@ import type { ProviderRegistryEntry } from "../src/persistence/providers.js";
 const bedrockProvider: ProviderRegistryEntry = {
   id: "provider_amazon_bedrock",
   organizationId: null,
+  provider: "amazon-bedrock",
   slug: "amazon-bedrock",
   baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com",
   adapterKind: "aws-bedrock-converse",

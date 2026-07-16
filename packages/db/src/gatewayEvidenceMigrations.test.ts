@@ -206,11 +206,11 @@ async function seedFixtures(client: PGlite) {
       ('workspace_evidence', 'org_evidence', 'default', 'Default'),
       ('workspace_evidence_secondary', 'org_evidence', 'secondary', 'Secondary');
     insert into provider_connections (
-      id, organization_id, workspace_id, slug, name, adapter_kind, auth_style, base_url
+      id, organization_id, workspace_id, provider, slug, name, adapter_kind, auth_style, base_url
     ) values
-      ('connection_evidence', 'org_evidence', 'workspace_evidence', 'anthropic',
+      ('connection_evidence', 'org_evidence', 'workspace_evidence', 'anthropic', 'anthropic',
         'Anthropic', 'generic-http-json', 'x-api-key', 'https://api.anthropic.com/v1'),
-      ('connection_secondary', 'org_evidence', 'workspace_evidence_secondary', 'anthropic',
+      ('connection_secondary', 'org_evidence', 'workspace_evidence_secondary', 'anthropic', 'anthropic',
         'Anthropic', 'generic-http-json', 'x-api-key', 'https://api.anthropic.com/v1');
     insert into canonical_models (
       id, organization_id, workspace_id, slug, name, vendor, family

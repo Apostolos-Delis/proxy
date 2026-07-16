@@ -136,8 +136,10 @@ describe("provider connection classifier target", () => {
     await fixture.db
       .update(providerConnections)
       .set({
+        slug: "openai-production",
         baseUrl: "http://10.1.2.3:8000/v1/",
-        secretRef: "env:CLASSIFIER_TEST_TOKEN"
+        secretRef: "env:CLASSIFIER_TEST_TOKEN",
+        capabilities: { efforts: ["low", "medium", "high"] }
       })
       .where(eq(providerConnections.id, fixture.connectionId));
 
@@ -162,8 +164,16 @@ describe("provider connection classifier target", () => {
       family: 4
     });
     expect(target.provider.baseUrl).toBe("http://10.1.2.3:8000/v1");
-    expect(target.credential).toEqual(expect.objectContaining({
+    expect(target.provider).toMatchObject({
       provider: "openai",
+      slug: "openai-production",
+      capabilities: {
+        efforts: ["low", "medium", "high"],
+        promptCaching: expect.objectContaining({ usageShape: "openai" })
+      }
+    });
+    expect(target.credential).toEqual(expect.objectContaining({
+      provider: "openai-production",
       token: "classifier-token",
       providerConnectionId: fixture.connectionId,
       baseUrl: "http://10.1.2.3:8000/v1",

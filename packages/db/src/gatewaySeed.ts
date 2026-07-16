@@ -255,6 +255,7 @@ function connectionRows(input: GatewaySeedInput, definitions: BuiltinProviderSee
     secretHint: provider.connectionSecretHint,
     adapterConfig: provider.adapterConfig,
     defaultHeaders: provider.defaultHeaders,
+    capabilities: provider.capabilities,
     platformOwned: true,
     forwardHarnessHeaders: provider.forwardHarnessHeaders,
     status: "active"

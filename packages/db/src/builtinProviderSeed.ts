@@ -4,6 +4,7 @@ import {
   type BuiltinProvider,
   type ProviderAdapterKind,
   type ProviderAuthStyle,
+  type ProviderCapabilities,
   type ProviderRegistryEndpoint
 } from "@proxy/schema";
 
@@ -16,7 +17,7 @@ export type BuiltinProviderSeedDefinition = {
   authStyle: ProviderAuthStyle;
   endpoints: ProviderRegistryEndpoint[];
   defaultHeaders: Record<string, string>;
-  capabilities: Record<string, unknown>;
+  capabilities: ProviderCapabilities;
   forwardHarnessHeaders: boolean;
   connectionRegion: string | null;
   connectionSecretRef: string | null;

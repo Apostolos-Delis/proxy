@@ -23,22 +23,22 @@ describe("AI gateway physical resource migration", () => {
         ('workspace_gateway_a_secondary', 'org_gateway_a', 'secondary', 'Secondary'),
         ('workspace_gateway_b', 'org_gateway_b', 'default', 'Default');
       insert into provider_connections (
-        id, organization_id, workspace_id, slug, name, adapter_kind, auth_style, base_url, secret_ref
+        id, organization_id, workspace_id, provider, slug, name, adapter_kind, auth_style, base_url, secret_ref
       ) values
         (
-          'connection_gateway_a', 'org_gateway_a', 'workspace_gateway_a', 'openai', 'OpenAI',
+          'connection_gateway_a', 'org_gateway_a', 'workspace_gateway_a', 'openai', 'openai', 'OpenAI',
           'generic-http-json', 'bearer', 'https://api.openai.com', 'op://openai/key'
         ),
         (
-          'connection_gateway_a_alt', 'org_gateway_a', 'workspace_gateway_a', 'anthropic', 'Anthropic',
+          'connection_gateway_a_alt', 'org_gateway_a', 'workspace_gateway_a', 'anthropic', 'anthropic', 'Anthropic',
           'generic-http-json', 'x-api-key', 'https://api.anthropic.com', 'op://anthropic/key'
         ),
         (
-          'connection_gateway_a_bedrock', 'org_gateway_a', 'workspace_gateway_a', 'bedrock', 'Bedrock',
+          'connection_gateway_a_bedrock', 'org_gateway_a', 'workspace_gateway_a', 'amazon-bedrock', 'bedrock', 'Bedrock',
           'aws-bedrock-converse', 'aws-sdk', 'https://bedrock-runtime.us-east-1.amazonaws.com', null
         ),
         (
-          'connection_gateway_a_secondary', 'org_gateway_a', 'workspace_gateway_a_secondary', 'openai', 'OpenAI',
+          'connection_gateway_a_secondary', 'org_gateway_a', 'workspace_gateway_a_secondary', 'openai', 'openai', 'OpenAI',
           'generic-http-json', 'bearer', 'https://api.openai.com', 'op://openai/key'
         );
       insert into canonical_models (
@@ -111,28 +111,28 @@ describe("AI gateway physical resource migration", () => {
 
     await expect(client.exec(`
       insert into provider_connections (
-        id, organization_id, workspace_id, slug, name, adapter_kind, auth_style, base_url,
+        id, organization_id, workspace_id, provider, slug, name, adapter_kind, auth_style, base_url,
         secret_ref, secret_ciphertext
       ) values (
-        'connection_invalid_secret', 'org_gateway_a', 'workspace_gateway_a', 'invalid-secret', 'Invalid secret',
+        'connection_invalid_secret', 'org_gateway_a', 'workspace_gateway_a', 'custom', 'invalid-secret', 'Invalid secret',
         'generic-http-json', 'bearer', 'https://example.com', 'op://secret', 'ciphertext'
       );
     `)).rejects.toThrow();
 
     await expect(client.exec(`
       insert into provider_connections (
-        id, organization_id, workspace_id, slug, name, adapter_kind, auth_style, base_url
+        id, organization_id, workspace_id, provider, slug, name, adapter_kind, auth_style, base_url
       ) values (
-        'connection_unknown_adapter', 'org_gateway_a', 'workspace_gateway_a', 'unknown-adapter',
+        'connection_unknown_adapter', 'org_gateway_a', 'workspace_gateway_a', 'custom', 'unknown-adapter',
         'Unknown adapter', 'unknown', 'bearer', 'https://example.com'
       );
     `)).rejects.toThrow();
 
     await expect(client.exec(`
       insert into provider_connections (
-        id, organization_id, workspace_id, slug, name, adapter_kind, auth_style, base_url
+        id, organization_id, workspace_id, provider, slug, name, adapter_kind, auth_style, base_url
       ) values (
-        'connection_invalid_auth', 'org_gateway_a', 'workspace_gateway_a', 'invalid-auth',
+        'connection_invalid_auth', 'org_gateway_a', 'workspace_gateway_a', 'custom', 'invalid-auth',
         'Invalid auth', 'aws-bedrock-converse', 'bearer', 'https://example.com'
       );
     `)).rejects.toThrow();

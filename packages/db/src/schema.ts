@@ -15,12 +15,14 @@ import type {
   OrganizationMemberRole,
   OrganizationMemberStatus,
   PromptCaptureMode,
+  Provider,
   ProviderAdapterContractVersion,
   ProviderAdapterKind,
   ProviderAttemptStatus,
   ProviderHealthErrorType,
   ProviderHealthStatus,
   ProviderAuthStyle,
+  ProviderCapabilities,
   RequestStatus,
   UsageLedgerKind
 } from "@proxy/schema";
@@ -219,6 +221,7 @@ export const providerConnections = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     workspaceId: text("workspace_id").notNull(),
+    provider: text("provider").$type<Provider>().notNull(),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
     adapterKind: text("adapter_kind").$type<ProviderAdapterKind>().notNull(),
@@ -230,6 +233,7 @@ export const providerConnections = pgTable(
     secretHint: text("secret_hint"),
     adapterConfig: jsonb("adapter_config").$type<Record<string, unknown>>().notNull().default({}),
     defaultHeaders: jsonb("default_headers").$type<Record<string, string>>().notNull().default({}),
+    capabilities: jsonb("capabilities").$type<ProviderCapabilities>().notNull().default({}),
     platformOwned: boolean("platform_owned").notNull().default(false),
     forwardHarnessHeaders: boolean("forward_harness_headers").notNull().default(false),
     status: text("status").notNull().default("active"),

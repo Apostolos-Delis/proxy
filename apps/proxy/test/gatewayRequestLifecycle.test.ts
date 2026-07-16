@@ -325,6 +325,7 @@ function executionTarget(input?: {
       id: providerConnectionId,
       organizationId,
       workspaceId,
+      provider: input ? "anthropic" : "openai",
       slug: input ? "anthropic" : "openai",
       baseUrl: input ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1",
       adapterKind: "generic-http-json",

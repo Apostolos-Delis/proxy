@@ -22,7 +22,8 @@ export type ProviderRegistryEndpoint = SchemaProviderRegistryEndpoint;
 export type ProviderRegistryEntry = {
   id: string;
   organizationId: string | null;
-  slug: Provider;
+  provider: Provider;
+  slug: string;
   baseUrl: string;
   adapterKind: ProviderAdapterKind;
   adapterConfig: Record<string, unknown>;

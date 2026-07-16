@@ -28,22 +28,26 @@ describe("gateway configuration GraphQL", () => {
     const connection = await mutation(fixture, `
       mutation Create($input: CreateGatewayProviderConnectionInput!) {
         value: createGatewayProviderConnection(input: $input) {
-          id slug name baseUrl secretRef secretHint credentialConfigured enabled
+          id provider slug name baseUrl capabilities secretRef secretHint credentialConfigured enabled
         }
       }
     `, {
       input: {
+        provider: "openai",
         slug: "graphql-openai",
         name: "GraphQL OpenAI",
         adapterKind: "generic-http-json",
         authStyle: "bearer",
         baseUrl: fixture.openai.url,
         secret: "sk-graphql-openai-key",
+        capabilities: { efforts: ["low", "medium", "high"] },
         enabled: true
       }
     });
     expect(connection).toMatchObject({
+      provider: "openai",
       slug: "graphql-openai",
+      capabilities: { efforts: ["low", "medium", "high"] },
       secretRef: null,
       secretHint: "••••-key",
       credentialConfigured: true,

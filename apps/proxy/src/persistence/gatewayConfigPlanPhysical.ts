@@ -38,6 +38,7 @@ function planProviderConnections(
     if (!row) {
       const id = gatewayResourceId("providerConnection");
       builder.create("providerConnection", id, resource.slug, {
+        provider: resource.provider,
         slug: resource.slug,
         name: resource.name,
         adapterKind: resource.adapter_kind,
@@ -47,14 +48,17 @@ function planProviderConnections(
         ...(resource.secret_ref ? { secretRef: resource.secret_ref } : {}),
         adapterConfig: resource.adapter_config,
         defaultHeaders: resource.default_headers,
+        capabilities: resource.capabilities,
         enabled: resource.enabled
       });
       const created = {
         id,
+        provider: resource.provider,
         slug: resource.slug,
         adapterKind: resource.adapter_kind,
         authStyle: resource.auth_style,
         baseUrl,
+        capabilities: resource.capabilities,
         credentialConfigured: Boolean(resource.secret_ref),
         platformOwned: false,
         status: projectedStatus(resource.enabled)
@@ -64,13 +68,15 @@ function planProviderConnections(
       continue;
     }
     assertImmutable(row.adapterKind, resource.adapter_kind, `provider_connections.${resource.slug}.adapter_kind`);
+    assertImmutable(row.provider, resource.provider, `provider_connections.${resource.slug}.provider`);
     const desired = {
       name: resource.name,
       authStyle: resource.auth_style,
       baseUrl,
       region: resource.region ?? null,
       adapterConfig: resource.adapter_config,
-      defaultHeaders: resource.default_headers
+      defaultHeaders: resource.default_headers,
+      capabilities: resource.capabilities
     };
     const fields = changedFields(row, desired);
     const body: Record<string, unknown> = Object.fromEntries(fields.map((field) => [field, desired[field as keyof typeof desired]]));
@@ -94,10 +100,12 @@ function planProviderConnections(
     if (resource.secret_ref) credentialConfigured = true;
     const next = {
       id: row.id,
+      provider: row.provider,
       slug: row.slug,
       adapterKind: row.adapterKind,
       authStyle: resource.auth_style,
       baseUrl,
+      capabilities: resource.capabilities,
       credentialConfigured,
       platformOwned: row.platformOwned,
       status: projectedStatus(resource.enabled)

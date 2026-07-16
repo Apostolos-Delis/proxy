@@ -41,6 +41,7 @@ describe("provider event scoping", () => {
       const provider: ProviderRegistryEntry = {
         id: "connection_target",
         organizationId: "org_target",
+        provider: "openai",
         slug: "openai",
         baseUrl: upstream.url,
         adapterKind: "generic-http-json",
