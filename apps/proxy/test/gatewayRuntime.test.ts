@@ -88,6 +88,12 @@ describe("logical-model gateway runtime", () => {
       "claude-fable-5",
       "claude-fable-5"
     ]);
+    expect(fixture.anthropic.records.map((record) => record.body.max_tokens)).toEqual([
+      4096,
+      4096,
+      256,
+      undefined
+    ]);
     const persisted = await fixture.db
       .select({
         requestedLogicalModel: requests.requestedLogicalModel,

@@ -236,7 +236,10 @@ export class ModelResolutionService {
     if (input.operationId === "text.generate") {
       const parameters = gatewayParameterCapsSchema.safeParse(input.parameters ?? {});
       if (!parameters.success) return denial(input, "invalid_parameters");
-      if (exceedsParameterCap(grant.parameterCaps, parameters.data)) {
+      if (
+        maximumParameterValue(parameters.data) !== undefined &&
+        exceedsParameterCap(grant.parameterCaps, parameters.data)
+      ) {
         return denial(input, "parameter_cap_exceeded");
       }
     }

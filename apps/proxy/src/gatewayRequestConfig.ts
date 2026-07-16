@@ -3,6 +3,8 @@ import type { Dialect, GatewayOperationId, GatewayParameterCaps } from "@proxy/s
 import { resolveBedrockConverseModelId } from "./providerAdapters/bedrockModelIds.js";
 import { isRecord } from "./util.js";
 
+const DEFAULT_ANTHROPIC_MAX_TOKENS = 4096;
+
 export function gatewayParameters(body: unknown): GatewayParameterCaps {
   if (!isRecord(body)) return {};
   const parameters: GatewayParameterCaps = {};
@@ -116,6 +118,20 @@ export function applyRequestConfig(
   }
 }
 
+export function applyGatewayParameterDefaults(
+  request: Record<string, unknown>,
+  operationId: GatewayOperationId,
+  egressWireId: Dialect
+) {
+  if (
+    operationId === "text.generate" &&
+    egressWireId === "anthropic-messages" &&
+    request.max_tokens === undefined
+  ) {
+    request.max_tokens = DEFAULT_ANTHROPIC_MAX_TOKENS;
+  }
+}
+
 export function effectiveGatewayParameters(input: {
   parameters?: GatewayParameterCaps;
   operationId: GatewayOperationId;
@@ -137,6 +153,7 @@ export function effectiveGatewayParameters(input: {
   }
   applyRequestConfig(request, deploymentRequestConfig(input.egressWireId, input.deploymentConfig));
   applyRequestConfig(request, input.requestConfig);
+  applyGatewayParameterDefaults(request, input.operationId, input.egressWireId);
   return gatewayParameters(request);
 }
 
