@@ -18,7 +18,6 @@ export type WireCompatibilityInput = {
   statefulResponses?: boolean;
   hasPreviousResponseId?: boolean;
   unsupportedFields?: readonly string[];
-  bedrockSettingsOnNonBedrockTarget?: boolean;
 };
 
 export type WireCompatibilityResult =
@@ -47,7 +46,6 @@ export function resolveWireCompatibility(input: WireCompatibilityInput): WireCom
     statefulResponses: input.statefulResponses,
     hasPreviousResponseId: input.hasPreviousResponseId,
     unsupportedFields: input.unsupportedFields,
-    bedrockSettingsOnNonBedrockTarget: input.bedrockSettingsOnNonBedrockTarget,
     targetDialects: operationWires,
     availableTranslators: translators.availablePairs()
   });

@@ -358,11 +358,6 @@ describe("logical model resolution", () => {
       ingressWireId: "openai-responses",
       unsupportedFields: ["previous_response_id"]
     })), "model_unavailable");
-    expectDenial(await fixture.resolver.resolve(resolveInput(fixture.organizationId, {
-      ingressWireId: "openai-responses",
-      bedrockSettingsOnNonBedrockTarget: true
-    })), "model_unavailable");
-
     const workspaceId = defaultWorkspaceId(fixture.organizationId);
     const [openaiDeployment] = await fixture.db
       .select({ id: modelDeployments.id })
