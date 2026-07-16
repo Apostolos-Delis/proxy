@@ -145,6 +145,10 @@ describe("classifier logical model resolution", () => {
         input: { classificationFeatures: { hasImages: true } }
       },
       {
+        unsupported: { modalities: ["image"] },
+        input: {}
+      },
+      {
         unsupported: { contextWindow: 100 },
         input: { classificationFeatures: { estimatedInputTokens: 150 } }
       },

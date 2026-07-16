@@ -543,12 +543,13 @@ function capabilitiesSatisfyRequest(
   input: ResolveModelInput,
   parameters: GatewayParameterCaps
 ) {
+  const modalities = capabilities.modalities;
+  if (Array.isArray(modalities) && !modalities.includes("text")) return false;
   if (input.classificationFeatures?.hasTools && hasFalseCapability(capabilities, "tools", "toolCall")) {
     return false;
   }
   if (input.classificationFeatures?.hasImages) {
     if (hasFalseCapability(capabilities, "images", "image")) return false;
-    const modalities = capabilities.modalities;
     if (Array.isArray(modalities) && !modalities.includes("image")) return false;
   }
   if (input.isStreaming && capabilities.streaming === false) return false;

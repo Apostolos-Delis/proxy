@@ -96,6 +96,10 @@ describe("logical model resolution", () => {
         input: { classificationFeatures: { hasImages: true } }
       },
       {
+        capabilities: { modalities: ["image"] },
+        input: {}
+      },
+      {
         capabilities: { contextWindow: 100 },
         input: { classificationFeatures: { estimatedInputTokens: 101 } }
       },
