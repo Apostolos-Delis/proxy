@@ -1,5 +1,5 @@
 import { defaultWorkspaceId, events as eventRows } from "@proxy/db";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BoundedEventWriter } from "../src/events.js";
 import { AsyncObservabilityEventAppender } from "../src/observability.js";
@@ -104,6 +104,15 @@ describe("prompt cache plan observability", () => {
     await response.text();
 
     expect(response.status).toBe(200);
+    await vi.waitFor(async () => {
+      const writer = await fetch(`${fixture!.proxyUrl}/_debug/event-writer`, {
+        headers: { authorization: "Bearer proxy-token" }
+      });
+      expect(writer.status).toBe(200);
+      await expect(writer.json()).resolves.toMatchObject({
+        lastFlushLatencyMs: expect.any(Number)
+      });
+    });
     const plan = await persistedPromptCachePlan(fixture);
 
     expect(plan?.organizationId).toBe(organizationId);

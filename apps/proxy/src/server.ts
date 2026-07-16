@@ -38,6 +38,7 @@ import {
   metricTerminalStatusFor,
   type MetricsCollector
 } from "./metrics.js";
+import { AsyncObservabilityEventAppender } from "./observability.js";
 import { createPostgresPersistence } from "./persistence/index.js";
 import type {
   CompressionRetrievalFailureReason,
@@ -149,9 +150,20 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     maxAttempts: persistence ? persistentProviderAttemptMirrorLimit : undefined
   });
   const requestStates = persistence?.requestStates ?? new RequestStateStore();
+  const observabilityWriter = new BoundedEventWriter(events, {
+    maxEntries: config.eventWriterMaxEntries,
+    maxBytes: config.eventWriterMaxBytes,
+    batchSize: config.eventWriterBatchSize,
+    onDrop: (input, reason) => app.log.warn({ eventType: input.eventType, reason }, "observability event dropped"),
+    onFlushFailure: (err, input, attempt) => app.log.warn(
+      { err, eventType: input.eventType, attempt },
+      "observability event flush failed"
+    )
+  });
+  const observabilityEvents = new AsyncObservabilityEventAppender(events, observabilityWriter);
   const gatewayLifecycle = new GatewayRequestLifecycle(
     gatewayRuntime,
-    events,
+    observabilityEvents,
     attempts,
     requestStates,
     metrics,
@@ -163,16 +175,6 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       warn: (error, message) => app.log.warn({ err: error }, message)
     }
   );
-  const observabilityWriter = new BoundedEventWriter(events, {
-    maxEntries: config.eventWriterMaxEntries,
-    maxBytes: config.eventWriterMaxBytes,
-    batchSize: config.eventWriterBatchSize,
-    onDrop: (input, reason) => app.log.warn({ eventType: input.eventType, reason }, "observability event dropped"),
-    onFlushFailure: (err, input, attempt) => app.log.warn(
-      { err, eventType: input.eventType, attempt },
-      "observability event flush failed"
-    )
-  });
   app.addHook("onClose", async () => {
     const stats = await observabilityWriter.drain(config.eventWriterShutdownTimeoutMs);
     if (stats.depth > 0) {
@@ -182,7 +184,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   const trafficLimits = new TrafficLimitStore(config.trafficLimits);
   const proxy = new ProviderProxy(
     config,
-    events,
+    observabilityEvents,
     attempts,
     gatewayLifecycle,
     metrics
