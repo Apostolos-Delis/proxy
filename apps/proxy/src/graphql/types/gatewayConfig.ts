@@ -9,6 +9,9 @@ type LogicalModel = Awaited<ReturnType<GatewayConfigAdminService["logicalModels"
 type LogicalTarget = Awaited<ReturnType<GatewayConfigAdminService["logicalModelTargets"]>>[number];
 type AccessProfile = Awaited<ReturnType<GatewayConfigAdminService["accessProfiles"]>>[number];
 type ModelGrant = Awaited<ReturnType<GatewayConfigAdminService["modelGrants"]>>[number];
+type ModelReadiness = Awaited<ReturnType<GatewayConfigAdminService["modelReadiness"]>>;
+type DeploymentReadiness = ModelReadiness["deployments"][number];
+type LogicalModelReadiness = ModelReadiness["logicalModels"][number];
 
 export const GatewayProviderConnection = builder.objectRef<Connection>("GatewayProviderConnection").implement({
   fields: (t) => ({
@@ -151,6 +154,35 @@ export const GatewayModelGrant = builder.objectRef<ModelGrant>("GatewayModelGran
     enabled: t.exposeBoolean("enabled"),
     createdAt: t.exposeString("createdAt"),
     updatedAt: t.exposeString("updatedAt")
+  })
+});
+
+export const GatewayDeploymentReadiness = builder
+  .objectRef<DeploymentReadiness>("GatewayDeploymentReadiness")
+  .implement({
+    fields: (t) => ({
+      deploymentId: t.exposeID("deploymentId"),
+      available: t.exposeBoolean("available"),
+      classifierCapable: t.exposeBoolean("classifierCapable"),
+      reasonCodes: t.exposeStringList("reasonCodes"),
+      classifierReasonCodes: t.exposeStringList("classifierReasonCodes")
+    })
+  });
+
+export const GatewayLogicalModelReadiness = builder
+  .objectRef<LogicalModelReadiness>("GatewayLogicalModelReadiness")
+  .implement({
+    fields: (t) => ({
+      logicalModelId: t.exposeID("logicalModelId"),
+      available: t.exposeBoolean("available"),
+      reasonCodes: t.exposeStringList("reasonCodes")
+    })
+  });
+
+export const GatewayModelReadiness = builder.objectRef<ModelReadiness>("GatewayModelReadiness").implement({
+  fields: (t) => ({
+    deployments: t.field({ type: [GatewayDeploymentReadiness], resolve: (row) => row.deployments }),
+    logicalModels: t.field({ type: [GatewayLogicalModelReadiness], resolve: (row) => row.logicalModels })
   })
 });
 

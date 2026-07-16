@@ -506,6 +506,93 @@ describe("logical-model gateway runtime", () => {
     expect(fixture.anthropic.records).toHaveLength(0);
   });
 
+  it("limits a key to one direct model and one two-target router", async () => {
+    const classifierOutput: Record<string, unknown> = {
+      target_id: "pending",
+      reason_codes: ["complexity_policy"],
+      confidence: 0.96
+    };
+    fixture = await captureFixture("org_gateway_runtime_two_model_key", "hash_only", false, {
+      openAIOptions: { classifierOutput, classifierResponsesShape: true }
+    });
+    const deployments = await fixture.db.select({
+      id: modelDeployments.id,
+      upstreamModelId: modelDeployments.upstreamModelId
+    }).from(modelDeployments);
+    const deploymentId = (upstreamModelId: string) => deployments.find(
+      (deployment) => deployment.upstreamModelId === upstreamModelId
+    )!.id;
+    const [seedRouter] = await fixture.db.select({ routerConfig: logicalModels.routerConfig })
+      .from(logicalModels)
+      .where(eq(logicalModels.slug, "coding-auto"))
+      .limit(1);
+
+    const frontier = await createLogicalModelViaGraphql(fixture, {
+      slug: "chat-frontier",
+      name: "Chat Frontier",
+      resolutionKind: "direct",
+      enabled: true,
+      initialTargets: [{
+        deploymentId: deploymentId("claude-fable-5"),
+        priority: 0,
+        enabled: true
+      }]
+    });
+    const auto = await createLogicalModelViaGraphql(fixture, {
+      slug: "chat-auto",
+      name: "Chat Auto",
+      resolutionKind: "router",
+      routerConfig: seedRouter!.routerConfig,
+      enabled: true,
+      initialTargets: [
+        { deploymentId: deploymentId("claude-opus-4-5"), priority: 0, enabled: true },
+        { deploymentId: deploymentId("gpt-5.5"), priority: 1, enabled: true }
+      ]
+    });
+    const created = await adminGql(
+      fixture.proxyUrl,
+      fixture.adminHeaders,
+      `mutation CreateKey($input: CreateGatewayApiKeyWithModelsInput!) {
+        createGatewayApiKeyWithModels(input: $input) { secret apiKey { id name } }
+      }`,
+      { input: { name: "Scoped application key", logicalModelIds: [frontier.id, auto.id] } }
+    );
+    expect(created.errors).toBeUndefined();
+    const headers = gatewayHeaders(created.data!.createGatewayApiKeyWithModels.secret as string);
+
+    const models = await fetch(`${fixture.proxyUrl}/v1/models`, { headers });
+    expect(models.status).toBe(200);
+    await expect(models.json()).resolves.toMatchObject({
+      data: [{ id: "chat-auto" }, { id: "chat-frontier" }]
+    });
+
+    const direct = await postJson(`${fixture.proxyUrl}/v1/messages`, headers, {
+      model: "chat-frontier",
+      max_tokens: 64,
+      messages: [{ role: "user", content: "Use the direct frontier model" }]
+    });
+    expect(direct.status).toBe(200);
+    expect(fixture.anthropic.records.some((record) => record.body.model === "claude-fable-5")).toBe(true);
+
+    const selectedTarget = await logicalTarget(fixture, "chat-auto", "openai");
+    classifierOutput.target_id = selectedTarget.targetId;
+    const routed = await postJson(`${fixture.proxyUrl}/v1/responses`, headers, {
+      model: "chat-auto",
+      input: "Solve a complex multi-step task"
+    });
+    expect(routed.status).toBe(200);
+    expect(fixture.openai.records.some((record) => record.body.model === selectedTarget.upstreamModelId)).toBe(true);
+
+    const callsBefore = fixture.openai.records.length + fixture.anthropic.records.length;
+    const denied = await postJson(`${fixture.proxyUrl}/v1/responses`, headers, {
+      model: "economy-auto",
+      input: "This model is not granted"
+    });
+    expect(denied.status).toBe(403);
+    await expect(denied.json()).resolves.toMatchObject({ error: { message: "model_access_denied" } });
+    expect(fixture.openai.records.length + fixture.anthropic.records.length).toBe(callsBefore);
+  });
+
   it("lists only granted models and denies fable before provider spend for an external key", async () => {
     const classifierOutput: Record<string, unknown> = {
       target_id: "pending",
@@ -567,3 +654,16 @@ describe("logical-model gateway runtime", () => {
 
 
 });
+
+async function createLogicalModelViaGraphql(fixture: PromptTestFixture, input: Record<string, unknown>) {
+  const result = await adminGql(
+    fixture.proxyUrl,
+    fixture.adminHeaders,
+    `mutation CreateModel($input: CreateGatewayLogicalModelInput!) {
+      createGatewayLogicalModel(input: $input) { id slug }
+    }`,
+    { input }
+  );
+  expect(result.errors).toBeUndefined();
+  return result.data!.createGatewayLogicalModel as { id: string; slug: string };
+}

@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   GATEWAY_ACCESS_PROFILE_LIMIT_IDS,
+  GATEWAY_MODEL_ENDPOINTS,
   GATEWAY_OPERATION_IDS,
   GATEWAY_PARAMETER_CAP_IDS,
   GATEWAY_RESOURCE_STATUSES,
+  LOGICAL_MODEL_CLASSIFIER_MAX_CANDIDATES,
   LOGICAL_MODEL_RESOLUTION_KINDS,
   LOGICAL_MODEL_ROUTER_KINDS,
   PROVIDER_ADAPTER_CONTRACT_VERSIONS,
+  gatewayModelSupportsText,
   gatewayModelCapabilitiesSchema,
   gatewayOperationIdSchema,
   gatewayAccessProfileLimitsSchema,
@@ -15,6 +18,7 @@ import {
   logicalModelClassificationContextSchema,
   logicalModelClassificationFeaturesSchema,
   logicalModelClassificationRequestSchema,
+  mergeGatewayModelCapabilities,
   projectLogicalModelClassifierCapabilities,
   logicalModelClassifierConfigSchema
 } from "./index.js";
@@ -25,6 +29,22 @@ describe("gateway model contracts", () => {
     expect(PROVIDER_ADAPTER_CONTRACT_VERSIONS).toEqual(["1"]);
     expect(gatewayOperationIdSchema.parse("text.generate")).toBe("text.generate");
     expect(gatewayOperationIdSchema.safeParse("embeddings.create").success).toBe(false);
+  });
+
+  it("owns the model-facing API endpoint contract", () => {
+    expect(Object.values(GATEWAY_MODEL_ENDPOINTS).map(({ method, path, operationId, wireId }) => ({
+      method,
+      path,
+      operationId,
+      wireId
+    }))).toEqual([
+      { method: "GET", path: "/v1/models", operationId: "model.list", wireId: null },
+      { method: "POST", path: "/v1/responses", operationId: "text.generate", wireId: "openai-responses" },
+      { method: "WS", path: "/v1/responses", operationId: "text.generate", wireId: "openai-responses" },
+      { method: "POST", path: "/v1/chat/completions", operationId: "text.generate", wireId: "openai-chat" },
+      { method: "POST", path: "/v1/messages", operationId: "text.generate", wireId: "anthropic-messages" },
+      { method: "POST", path: "/v1/messages/count_tokens", operationId: "text.count_tokens", wireId: "anthropic-messages" }
+    ]);
   });
 
   it("defines the initial logical model variants", () => {
@@ -46,6 +66,16 @@ describe("gateway model contracts", () => {
       modalities: ["text", "image"]
     });
     expect(gatewayModelCapabilitiesSchema.safeParse({ nested: { enabled: true } }).success).toBe(false);
+  });
+
+  it("shares effective text capability semantics across runtime and readiness", () => {
+    expect(mergeGatewayModelCapabilities(
+      { modalities: ["text", "image"], streaming: true },
+      { modalities: ["image"] }
+    )).toEqual({ modalities: ["image"], streaming: true });
+    expect(gatewayModelSupportsText({ modalities: ["text"] })).toBe(true);
+    expect(gatewayModelSupportsText({ modalities: ["image"] })).toBe(false);
+    expect(gatewayModelSupportsText({})).toBe(true);
   });
 
   it("accepts only nonnegative numeric parameter caps", () => {
@@ -84,6 +114,25 @@ describe("gateway model contracts", () => {
     expect(logicalModelClassifierConfigSchema.safeParse({ ...config, timeoutMs: 30_001 }).success).toBe(false);
     expect(logicalModelClassifierConfigSchema.safeParse({ ...config, maxAttempts: 6 }).success).toBe(false);
     expect(logicalModelClassifierConfigSchema.safeParse({ ...config, fallbackTargetId: "target_a" }).success).toBe(false);
+  });
+
+  it("caps classifier candidates at the configured router target limit", () => {
+    const candidate = { targetId: "target", capabilities: {} };
+    const context = { requestedModel: "chat-auto", operationId: "text.generate" as const };
+    expect(logicalModelClassificationRequestSchema.safeParse({
+      context,
+      candidates: Array.from({ length: LOGICAL_MODEL_CLASSIFIER_MAX_CANDIDATES }, (_, index) => ({
+        ...candidate,
+        targetId: `target-${index}`
+      }))
+    }).success).toBe(true);
+    expect(logicalModelClassificationRequestSchema.safeParse({
+      context,
+      candidates: Array.from({ length: LOGICAL_MODEL_CLASSIFIER_MAX_CANDIDATES + 1 }, (_, index) => ({
+        ...candidate,
+        targetId: `target-${index}`
+      }))
+    }).success).toBe(false);
   });
 
   it("bounds and redacts classifier request features", () => {

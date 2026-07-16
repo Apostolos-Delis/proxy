@@ -1,6 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { accessProfileSummaries } from "./data";
+import { accessProfileSummaries, logicalModelOptions, setupModelForSlugs } from "./data";
+
+const logicalModels = [
+  {
+    id: "economy-model",
+    slug: "economy-auto",
+    name: "Economy Auto",
+    description: "Cheapest routing",
+    resolutionKind: "router",
+    enabled: true
+  },
+  {
+    id: "frontier-model",
+    slug: "chat-frontier",
+    name: "Chat Frontier",
+    description: null,
+    resolutionKind: "direct",
+    enabled: false
+  }
+];
 
 describe("access profile setup summaries", () => {
   it("excludes profiles that cannot list the model used by generated setup", () => {
@@ -35,9 +54,7 @@ describe("access profile setup summaries", () => {
           enabled: true
         }
       ],
-      gatewayLogicalModels: [
-        { id: "economy-model", slug: "economy-auto", enabled: true }
-      ]
+      gatewayLogicalModels: logicalModels
     });
 
     expect(profiles).toEqual([{
@@ -47,5 +64,39 @@ describe("access profile setup summaries", () => {
       description: null,
       setupModel: "economy-auto"
     }]);
+  });
+});
+
+describe("logicalModelOptions", () => {
+  it("returns enabled models sorted by slug", () => {
+    const options = logicalModelOptions({
+      gatewayAccessProfiles: [],
+      gatewayModelGrants: [],
+      gatewayLogicalModels: logicalModels
+    });
+    expect(options).toEqual([{
+      id: "economy-model",
+      slug: "economy-auto",
+      name: "Economy Auto",
+      description: "Cheapest routing",
+      kind: "router"
+    }]);
+  });
+
+  it("omits models without a statically available route", () => {
+    const options = logicalModelOptions({
+      gatewayAccessProfiles: [],
+      gatewayModelGrants: [],
+      gatewayLogicalModels: logicalModels
+    }, new Set());
+    expect(options).toEqual([]);
+  });
+});
+
+describe("setupModelForSlugs", () => {
+  it("prefers the well-known setup models, then falls back to the first grant", () => {
+    expect(setupModelForSlugs(["fable", "coding-auto"])).toBe("coding-auto");
+    expect(setupModelForSlugs(["chat-frontier", "chat-auto"])).toBe("chat-frontier");
+    expect(setupModelForSlugs([])).toBeNull();
   });
 });

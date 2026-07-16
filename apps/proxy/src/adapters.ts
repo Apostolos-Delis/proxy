@@ -1,3 +1,5 @@
+import { GATEWAY_MODEL_ENDPOINTS } from "@proxy/schema";
+
 import { buildAnthropicContext, buildOpenAIChatContext, buildOpenAIContext } from "./features.js";
 import type { Dialect, RouteContext, Surface } from "./types.js";
 
@@ -14,22 +16,22 @@ export type SurfaceAdapter = {
 };
 
 export const openAIResponsesSurface: SurfaceAdapter = {
-  surface: "openai-responses",
-  dialect: "openai-responses",
+  surface: GATEWAY_MODEL_ENDPOINTS.responsesHttp.wireId,
+  dialect: GATEWAY_MODEL_ENDPOINTS.responsesHttp.wireId,
   createOperation: "openai-responses:create",
   buildContext: buildOpenAIContext
 };
 
 export const openAIChatSurface: SurfaceAdapter = {
-  surface: "openai-chat",
-  dialect: "openai-chat",
+  surface: GATEWAY_MODEL_ENDPOINTS.chatCompletions.wireId,
+  dialect: GATEWAY_MODEL_ENDPOINTS.chatCompletions.wireId,
   createOperation: "openai-chat:create",
   buildContext: buildOpenAIChatContext
 };
 
 export const anthropicMessagesSurface: SurfaceAdapter = {
-  surface: "anthropic-messages",
-  dialect: "anthropic-messages",
+  surface: GATEWAY_MODEL_ENDPOINTS.messages.wireId,
+  dialect: GATEWAY_MODEL_ENDPOINTS.messages.wireId,
   createOperation: "anthropic-messages:create",
   countTokensOperation: "anthropic-messages:count_tokens",
   buildContext: buildAnthropicContext

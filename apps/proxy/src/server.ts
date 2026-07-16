@@ -57,11 +57,21 @@ import {
   GatewayRuntime,
   type GatewayExecutionTarget
 } from "./gatewayRuntime.js";
-import type { GatewayOperationId } from "@proxy/schema";
+import {
+  GATEWAY_MODEL_ENDPOINTS,
+  type GatewayModelEndpoint,
+  type GatewayOperationId
+} from "@proxy/schema";
 
 type AppPersistence = ReturnType<typeof createPostgresPersistence>;
+type HttpGatewayModelEndpoint = Extract<GatewayModelEndpoint, { transport: "http" }>;
 
 const persistentProviderAttemptMirrorLimit = 10_000;
+const modelsEndpoint = httpGatewayModelEndpoint(GATEWAY_MODEL_ENDPOINTS.models);
+const responsesEndpoint = httpGatewayModelEndpoint(GATEWAY_MODEL_ENDPOINTS.responsesHttp);
+const chatCompletionsEndpoint = httpGatewayModelEndpoint(GATEWAY_MODEL_ENDPOINTS.chatCompletions);
+const messagesEndpoint = httpGatewayModelEndpoint(GATEWAY_MODEL_ENDPOINTS.messages);
+const countTokensEndpoint = httpGatewayModelEndpoint(GATEWAY_MODEL_ENDPOINTS.countTokens);
 
 export function buildServer(config: AppConfig = loadConfig(), options: { persistence?: AppPersistence; metrics?: MetricsCollector } = {}) {
   const app = Fastify({
@@ -267,22 +277,26 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     return buildSetupScript(`${proto}://${host}`);
   });
 
-  app.get("/v1/models", async (request, reply) => {
-    const identity = await auth.resolve(request.headers);
-    if (!gatewayRuntime) {
-      reply.code(503).send({ error: "gateway_runtime_unavailable" });
-      return;
+  app.route({
+    method: modelsEndpoint.method,
+    url: modelsEndpoint.path,
+    handler: async (request, reply) => {
+      const identity = await auth.resolve(request.headers);
+      if (!gatewayRuntime) {
+        reply.code(503).send({ error: "gateway_runtime_unavailable" });
+        return;
+      }
+      const models = await gatewayRuntime.listModels(identity);
+      return {
+        object: "list",
+        data: models.map((model) => ({
+          id: model.slug,
+          object: "model",
+          created: Math.floor(model.createdAt.getTime() / 1000),
+          owned_by: "proxy"
+        }))
+      };
     }
-    const models = await gatewayRuntime.listModels(identity);
-    return {
-      object: "list",
-      data: models.map((model) => ({
-        id: model.slug,
-        object: "model",
-        created: Math.floor(model.createdAt.getTime() / 1000),
-        owned_by: "proxy"
-      }))
-    };
   });
 
   app.post("/v1/compression/retrieve", async (request, reply) => {
@@ -558,36 +572,59 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     }
   };
 
-  app.post("/v1/responses", (request, reply) => handleGatewayTextRequest({
-    request,
-    reply,
-    surface: openAIResponsesSurface,
-    operationId: "text.generate"
-  }));
+  app.route({
+    method: responsesEndpoint.method,
+    url: responsesEndpoint.path,
+    handler: (request, reply) => handleGatewayTextRequest({
+      request,
+      reply,
+      surface: openAIResponsesSurface,
+      operationId: responsesEndpoint.operationId
+    })
+  });
 
-  app.post("/v1/chat/completions", (request, reply) => handleGatewayTextRequest({
-    request,
-    reply,
-    surface: openAIChatSurface,
-    operationId: "text.generate"
-  }));
+  app.route({
+    method: chatCompletionsEndpoint.method,
+    url: chatCompletionsEndpoint.path,
+    handler: (request, reply) => handleGatewayTextRequest({
+      request,
+      reply,
+      surface: openAIChatSurface,
+      operationId: chatCompletionsEndpoint.operationId
+    })
+  });
 
-  app.post("/v1/messages", (request, reply) => handleGatewayTextRequest({
-    request,
-    reply,
-    surface: anthropicMessagesSurface,
-    operationId: "text.generate"
-  }));
+  app.route({
+    method: messagesEndpoint.method,
+    url: messagesEndpoint.path,
+    handler: (request, reply) => handleGatewayTextRequest({
+      request,
+      reply,
+      surface: anthropicMessagesSurface,
+      operationId: messagesEndpoint.operationId
+    })
+  });
 
-  app.post("/v1/messages/count_tokens", (request, reply) => handleGatewayTextRequest({
-    request,
-    reply,
-    surface: anthropicMessagesSurface,
-    operationId: "text.count_tokens",
-    upstreamPath: "/messages/count_tokens"
-  }));
+  app.route({
+    method: countTokensEndpoint.method,
+    url: countTokensEndpoint.path,
+    handler: (request, reply) => handleGatewayTextRequest({
+      request,
+      reply,
+      surface: anthropicMessagesSurface,
+      operationId: countTokensEndpoint.operationId,
+      upstreamPath: "/messages/count_tokens"
+    })
+  });
 
   return app;
+}
+
+function httpGatewayModelEndpoint(endpoint: GatewayModelEndpoint): HttpGatewayModelEndpoint {
+  if (endpoint.transport !== "http" || !["GET", "POST"].includes(endpoint.method)) {
+    throw new Error(`invalid_http_gateway_model_endpoint:${endpoint.id}`);
+  }
+  return endpoint;
 }
 
 
@@ -827,15 +864,19 @@ function routeFamilyForPath(config: AppConfig, path: string) {
   if (path === "/admin/graphql") return "graphql";
   if (path.startsWith("/admin") || path.startsWith("/api") || path.startsWith("/_debug") || path === "/setup.sh") return "admin";
   if (path === "/v1/compression/retrieve") return "compression";
-  if (path === "/v1/messages" || path === "/v1/messages/count_tokens") return "anthropic";
+  if (path === GATEWAY_MODEL_ENDPOINTS.messages.path || path === GATEWAY_MODEL_ENDPOINTS.countTokens.path) {
+    return "anthropic";
+  }
   if (path.startsWith("/v1/")) return "openai";
   return "unknown";
 }
 
 function modelSurfaceForPath(path: string): Surface | undefined {
-  if (path === "/v1/responses") return openAIResponsesSurface.surface;
-  if (path === "/v1/chat/completions") return openAIChatSurface.surface;
-  if (path === "/v1/messages" || path === "/v1/messages/count_tokens") return anthropicMessagesSurface.surface;
+  if (path === GATEWAY_MODEL_ENDPOINTS.responsesHttp.path) return openAIResponsesSurface.surface;
+  if (path === GATEWAY_MODEL_ENDPOINTS.chatCompletions.path) return openAIChatSurface.surface;
+  if (path === GATEWAY_MODEL_ENDPOINTS.messages.path || path === GATEWAY_MODEL_ENDPOINTS.countTokens.path) {
+    return anthropicMessagesSurface.surface;
+  }
   return undefined;
 }
 

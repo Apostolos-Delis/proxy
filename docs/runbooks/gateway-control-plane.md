@@ -88,7 +88,7 @@ A direct model must have exactly one enabled eligible target.
 6. Grant the logical model and required operations to an access profile.
 7. Confirm the model appears in `/v1/models` for a key assigned to that profile.
 
-Creating the logical model and its first target can be atomic through `CreateGatewayLogicalModelInput.initialTarget`.
+Create the logical model and its target atomically through `CreateGatewayLogicalModelInput.initialTargets`.
 
 ## Create A Classifier Logical Model
 
@@ -102,6 +102,12 @@ A classifier model has `resolutionKind: "router"` and typed router configuration
   "maxAttempts": 2
 }
 ```
+
+Create the router and all of its initial targets atomically through `CreateGatewayLogicalModelInput.initialTargets`. Access profiles can likewise include `initialGrants` so a selected model set never becomes partially visible.
+
+The console's pick-models key flow uses `createGatewayApiKeyWithModels` to create the dedicated profile, grants, hashed API key, audit events, and outbox records in one database transaction. Existing reusable profiles continue to use `createApiKey` directly.
+
+The Models page and key wizard consume server-computed `gatewayModelReadiness`. Deployment, health, endpoint, classifier, target, and logical-model checks stay in the persistence layer and include reason codes; the browser only maps that result for display. Model-facing route metadata comes from the shared `GATEWAY_MODEL_ENDPOINTS` contract used by both route registration and the console inventory.
 
 The classifier deployment must have an active `openai-responses` binding through a `generic-http-json` connection. Add target rows in stable priority order. The runtime filters disabled, unhealthy, unauthorized, and wire-incompatible targets before the classifier call. A returned deployment outside that eligible set is rejected.
 

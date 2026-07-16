@@ -1,7 +1,8 @@
-import { GATEWAY_SETUP_MODEL_PREFERENCE } from "@proxy/schema";
+import { GATEWAY_MODEL_ENDPOINTS, GATEWAY_SETUP_MODEL_PREFERENCE } from "@proxy/schema";
 
 const heredocDelimiter = "PP_CODEX_EOF";
 const setupModelPreference = JSON.stringify(GATEWAY_SETUP_MODEL_PREFERENCE);
+const modelsPath = GATEWAY_MODEL_ENDPOINTS.models.path;
 
 function escapeDoubleQuoted(value: string) {
   return value.replace(/[\\"$`]/g, (char) => `\\${char}`);
@@ -117,8 +118,8 @@ if [ -z "$PP_TOKEN" ]; then
   exit 1
 fi
 
-if ! PP_MODELS_JSON="$(curl -fsS -H "Authorization: Bearer $PP_TOKEN" "$PP_BASE_URL/v1/models")"; then
-  echo "Could not load the models granted to this API key from $PP_BASE_URL/v1/models." >&2
+if ! PP_MODELS_JSON="$(curl -fsS -H "Authorization: Bearer $PP_TOKEN" "$PP_BASE_URL${modelsPath}")"; then
+  echo "Could not load the models granted to this API key from $PP_BASE_URL${modelsPath}." >&2
   exit 1
 fi
 PP_MODEL=""

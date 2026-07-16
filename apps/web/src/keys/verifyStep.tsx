@@ -1,14 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { fetchApiKeyVerification } from "./data";
 import { GlassCard, StatusIndicator } from "../ui";
 import { formatDateTime } from "../format";
 import { HarnessSetupGuide } from "../harnessSetupCard";
 import { CopySecret } from "./copySecret";
+import {
+  defaultHarnessSetupSelection,
+  harnessSetupOptions,
+  type HarnessSetupSelection
+} from "./setupSnippets";
 import { WizardStepHead } from "./stepHead";
 import type { CreatedKeyResult } from "./wizard";
 
 export function VerifyStep({ created }: { created: CreatedKeyResult }) {
+  const [harnesses, setHarnesses] = useState<HarnessSetupSelection>([...defaultHarnessSetupSelection]);
   return (
     <>
       <GlassCard>
@@ -21,9 +28,25 @@ export function VerifyStep({ created }: { created: CreatedKeyResult }) {
         </div>
       </GlassCard>
       <GlassCard>
+        <div className="scope-options" role="group" aria-label="Harness setup">
+          <span className="scope-options-label">Generate setup for</span>
+          {harnessSetupOptions.map((target) => (
+            <label key={target.value} className="scope-option">
+              <input
+                type="checkbox"
+                checked={harnesses.includes(target.value)}
+                onChange={(event) => setHarnesses(harnessSetupOptions
+                  .map((option) => option.value)
+                  .filter((value) => value === target.value ? event.target.checked : harnesses.includes(value)))}
+              />
+              <span>{target.label}</span>
+              <span className="faint">{target.description}</span>
+            </label>
+          ))}
+        </div>
         <HarnessSetupGuide
           secret={created.secret}
-          harnesses={created.harnesses}
+          harnesses={harnesses}
           model={created.model}
           showKeyContextSteps={false}
         />

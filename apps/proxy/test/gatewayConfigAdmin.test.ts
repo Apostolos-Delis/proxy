@@ -8,6 +8,7 @@ import {
   eventOutbox,
   events,
   logicalModelTargets,
+  modelDeployments,
   providerConnections
 } from "@proxy/db";
 import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
@@ -458,11 +459,59 @@ describe("gateway configuration admin", () => {
       },
       enabled: false
     });
+    await create(fixture, "logicalModelTarget", {
+      logicalModelId,
+      deploymentId: classifierDeploymentId,
+      priority: 0,
+      enabled: true
+    });
     await expect(enabled(fixture, "logicalModel", logicalModelId, true))
       .rejects.toThrow("classifier_deployment_inactive");
     await enabled(fixture, "wireBinding", classifierBindingId, true);
     await enabled(fixture, "logicalModel", logicalModelId, true);
     expect(await fixture.service.logicalModel(fixture.actor, logicalModelId)).toMatchObject({ status: "active" });
+  });
+
+  it("marks deployments without effective text support unavailable", async () => {
+    const fixture = await setup("org_gateway_admin_text_readiness");
+    client = fixture.client;
+    const workspaceId = fixture.actor.workspaceId;
+    const [template] = await fixture.db.select({
+      providerConnectionId: modelDeployments.providerConnectionId
+    }).from(modelDeployments).where(eq(
+      modelDeployments.id,
+      `${workspaceId}:deployment:openai:gpt-5.4-mini`
+    ));
+    const canonicalModelId = await create(fixture, "canonicalModel", {
+      slug: "image-only",
+      name: "Image Only",
+      vendor: "acme",
+      family: "image-only",
+      capabilities: { modalities: ["image"] },
+      enabled: true
+    });
+    const deploymentId = await create(fixture, "modelDeployment", {
+      slug: "image-only",
+      name: "Image Only",
+      canonicalModelId,
+      providerConnectionId: template!.providerConnectionId,
+      upstreamModelId: "image-only",
+      capabilities: {},
+      enabled: true
+    });
+    await create(fixture, "wireBinding", {
+      deploymentId,
+      apiWireId: "openai-responses",
+      endpointPath: "/responses",
+      enabled: true
+    });
+
+    expect((await fixture.service.modelReadiness(fixture.actor)).deployments
+      .find((row) => row.deploymentId === deploymentId)).toMatchObject({
+        available: false,
+        classifierCapable: false,
+        reasonCodes: expect.arrayContaining(["text_modality_unavailable"])
+      });
   });
 
   it("maps natural-key conflicts to stable control-plane errors", async () => {
@@ -536,6 +585,128 @@ describe("gateway configuration admin", () => {
     await expect(enabled(fixture, "logicalModel", emptyDirectId, true))
       .rejects.toThrow("direct_logical_model_target_count_invalid");
     expect(await fixture.service.logicalModel(fixture.actor, emptyDirectId)).toMatchObject({ status: "disabled" });
+  });
+
+  it("rejects a 65th router target and reports legacy overflow as unavailable", async () => {
+    const fixture = await setup("org_gateway_admin_router_target_limit");
+    client = fixture.client;
+    const workspaceId = fixture.actor.workspaceId;
+    const classifierDeploymentId = `${workspaceId}:deployment:openai:gpt-5.4-mini`;
+    const [template] = await fixture.db.select({
+      canonicalModelId: modelDeployments.canonicalModelId,
+      providerConnectionId: modelDeployments.providerConnectionId
+    }).from(modelDeployments).where(eq(modelDeployments.id, classifierDeploymentId));
+    const deploymentIds = Array.from({ length: 65 }, () => gatewayResourceId("modelDeployment"));
+    await fixture.db.insert(modelDeployments).values(deploymentIds.map((id, index) => ({
+      id,
+      organizationId: fixture.actor.organizationId,
+      workspaceId,
+      slug: `router-limit-${index}`,
+      name: `Router Limit ${index}`,
+      canonicalModelId: template!.canonicalModelId,
+      providerConnectionId: template!.providerConnectionId,
+      upstreamModelId: `router-limit-${index}`,
+      status: "active"
+    })));
+    const logicalModelId = await create(fixture, "logicalModel", {
+      slug: "router-target-limit",
+      name: "Router Target Limit",
+      resolutionKind: "router",
+      routerConfig: {
+        classifierDeploymentId,
+        instructions: "Choose one eligible target.",
+        timeoutMs: 5_000,
+        maxAttempts: 2
+      },
+      enabled: false
+    });
+    await fixture.service.applyCommands({
+      ...fixture.actor,
+      commands: deploymentIds.slice(0, 64).map((deploymentId, priority) => ({
+        resource: "logicalModelTarget" as const,
+        action: "create" as const,
+        id: gatewayResourceId("logicalModelTarget"),
+        body: { logicalModelId, deploymentId, priority, enabled: true }
+      }))
+    });
+    const overflowTargetId = gatewayResourceId("logicalModelTarget");
+    await expect(fixture.service.applyCommands({
+      ...fixture.actor,
+      commands: [{
+        resource: "logicalModelTarget",
+        action: "create",
+        id: overflowTargetId,
+        body: {
+          logicalModelId,
+          deploymentId: deploymentIds[64],
+          priority: 64,
+          enabled: true
+        }
+      }]
+    })).rejects.toThrow("router_logical_model_target_count_invalid");
+    expect(await fixture.service.logicalModelTarget(fixture.actor, overflowTargetId)).toBeNull();
+
+    await enabled(fixture, "logicalModel", logicalModelId, true);
+    await expect(fixture.service.applyCommands({
+      ...fixture.actor,
+      commands: [{
+        resource: "logicalModelTarget",
+        action: "create",
+        id: overflowTargetId,
+        body: {
+          logicalModelId,
+          deploymentId: deploymentIds[64],
+          priority: 64,
+          enabled: true
+        }
+      }]
+    })).rejects.toThrow("router_logical_model_target_count_invalid");
+    expect(await fixture.service.logicalModelTarget(fixture.actor, overflowTargetId)).toBeNull();
+
+    await fixture.db.insert(logicalModelTargets).values({
+      id: overflowTargetId,
+      organizationId: fixture.actor.organizationId,
+      workspaceId,
+      logicalModelId,
+      deploymentId: deploymentIds[64]!,
+      priority: 64,
+      enabled: true
+    });
+    expect((await fixture.service.modelReadiness(fixture.actor)).logicalModels
+      .find((model) => model.logicalModelId === logicalModelId)).toMatchObject({
+        available: false,
+        reasonCodes: expect.arrayContaining(["router_target_count_invalid"])
+      });
+    await enabled(fixture, "logicalModel", logicalModelId, false);
+    await expect(enabled(fixture, "logicalModel", logicalModelId, true))
+      .rejects.toThrow("router_logical_model_target_count_invalid");
+
+    const transitionModelId = await create(fixture, "logicalModel", {
+      slug: "router-target-transition-limit",
+      name: "Router Target Transition Limit",
+      resolutionKind: "direct",
+      enabled: false
+    });
+    await fixture.db.insert(logicalModelTargets).values(deploymentIds.map((deploymentId, priority) => ({
+      id: gatewayResourceId("logicalModelTarget"),
+      organizationId: fixture.actor.organizationId,
+      workspaceId,
+      logicalModelId: transitionModelId,
+      deploymentId,
+      priority,
+      enabled: true
+    })));
+    await expect(update(fixture, "logicalModel", transitionModelId, {
+      resolutionKind: "router",
+      routerConfig: {
+        classifierDeploymentId,
+        instructions: "Choose one eligible target.",
+        timeoutMs: 5_000,
+        maxAttempts: 2
+      }
+    })).rejects.toThrow("router_logical_model_target_count_invalid");
+    expect(await fixture.service.logicalModel(fixture.actor, transitionModelId))
+      .toMatchObject({ resolutionKind: "direct" });
   });
 
   it("rolls back a deferred direct-model batch when final target cardinality is invalid", async () => {

@@ -7,6 +7,7 @@ import { InvitePage } from "./invitePage";
 import { CreateApiKeyPage } from "./keys/createKeyPage";
 import { KeysPage } from "./keysPage";
 import { LogsPage } from "./logsPage";
+import { ModelsPage } from "./modelsPage";
 import { OverviewPage } from "./overviewPage";
 import { PromptDetailPage } from "./promptDetailPage";
 import { PromptsPage } from "./promptsPage";
@@ -96,6 +97,13 @@ const logDetailRoute = createRoute({
   component: LogDetailRoutePage
 });
 
+const modelsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/models",
+  beforeLoad: requireAdmin,
+  component: ModelsPage
+});
+
 const keysRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/api-keys",
@@ -143,6 +151,7 @@ const routeTree = rootRoute.addChildren([
   sessionDetailRoute,
   logsRoute,
   logDetailRoute,
+  modelsRoute,
   keysRoute,
   keysCreateRoute,
   usersRoute,

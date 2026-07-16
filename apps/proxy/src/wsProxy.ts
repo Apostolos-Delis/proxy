@@ -4,6 +4,8 @@ import type { Duplex } from "node:stream";
 
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
+import { GATEWAY_MODEL_ENDPOINTS, type GatewayModelEndpoint } from "@proxy/schema";
+
 import { openAIResponsesSurface } from "./adapters.js";
 import {
   actorForIdentity,
@@ -61,6 +63,10 @@ type ActiveRequest = {
   providerRequestForwarded?: boolean;
 };
 
+type WebSocketGatewayModelEndpoint = Extract<GatewayModelEndpoint, { transport: "websocket" }>;
+
+const responsesEndpoint = websocketGatewayModelEndpoint(GATEWAY_MODEL_ENDPOINTS.responsesWebsocket);
+
 export class WebSocketRoutingProxy {
   constructor(
     private readonly auth: ProxyAuthService,
@@ -79,7 +85,7 @@ export class WebSocketRoutingProxy {
 
   private async handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer) {
     const pathname = new URL(request.url ?? "/", "http://proxy.local").pathname;
-    if (pathname !== "/v1/responses") {
+    if (pathname !== responsesEndpoint.path) {
       rejectUpgrade(socket, 404, "Not Found");
       return;
     }
@@ -537,6 +543,13 @@ export class WebSocketRoutingProxy {
       upstream.once("error", onError);
     });
   }
+}
+
+function websocketGatewayModelEndpoint(endpoint: GatewayModelEndpoint): WebSocketGatewayModelEndpoint {
+  if (endpoint.transport !== "websocket" || !["WS"].includes(endpoint.method)) {
+    throw new Error(`invalid_websocket_gateway_model_endpoint:${endpoint.id}`);
+  }
+  return endpoint;
 }
 
 type WebSocketUpstreamTarget = {

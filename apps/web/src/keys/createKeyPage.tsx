@@ -6,13 +6,13 @@ import { createPortal } from "react-dom";
 
 import {
   createApiKey,
-  fetchAccessProfiles,
-  type CreateApiKeyInput
+  createApiKeyWithModels,
+  fetchModelAccessOptions,
+  setupModelForSlugs
 } from "./data";
 import { PageState, PageTitle } from "../ui";
-import { ConfigureStep } from "./configureStep";
+import { AccessStep } from "./accessStep";
 import { ReviewStep } from "./reviewStep";
-import { RoutingStep } from "./routingStep";
 import { StepRail } from "./stepRail";
 import { VerifyStep } from "./verifyStep";
 import {
@@ -29,23 +29,19 @@ export function CreateApiKeyPage() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<CreateKeyDraft>(initialDraft);
   const leaveApprovedRef = useRef(false);
-  const profilesQuery = useQuery({
-    queryKey: ["gateway-access-profiles"],
-    queryFn: fetchAccessProfiles
+  const accessQuery = useQuery({
+    queryKey: ["gateway-model-access"],
+    queryFn: fetchModelAccessOptions
   });
 
   const createMutation = useMutation({
-    mutationFn: async (input: {
-      create: CreateApiKeyInput;
-      harnesses: CreatedKeyResult["harnesses"];
-      model: string;
-    }) => {
-      const result = await createApiKey(input.create);
-      const apiKeyId = result.apiKey?.id ?? null;
+    mutationFn: async (input: { create: CreateKeyDraft; model: string }) => {
+      const result = input.create.accessKind === "models"
+        ? await createApiKeyWithModels({ name: input.create.name.trim(), modelIds: input.create.modelIds })
+        : await createApiKey({ name: input.create.name.trim(), accessProfileId: input.create.accessProfileId });
       return {
-        apiKeyId,
-        keyName: result.apiKey?.name ?? input.create.name,
-        harnesses: input.harnesses,
+        apiKeyId: result.apiKey?.id ?? null,
+        keyName: result.apiKey?.name ?? input.create.name.trim(),
         secret: result.secret,
         model: input.model
       } satisfies CreatedKeyResult;
@@ -53,6 +49,8 @@ export function CreateApiKeyPage() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
       queryClient.invalidateQueries({ queryKey: ["gateway-access-profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["gateway-model-access"] });
+      queryClient.invalidateQueries({ queryKey: ["gateway-models"] });
     },
     onSuccess: () => setDraft((value) => ({ ...value, stepId: "verify" }))
   });
@@ -70,14 +68,17 @@ export function CreateApiKeyPage() {
     withResolver: true
   });
 
-  if (profilesQuery.isLoading) {
-    return <PageState title="Create API key" label="Loading access profiles" />;
+  if (accessQuery.isLoading) {
+    return <PageState title="Create API key" label="Loading model access" />;
   }
-  const loadError = profilesQuery.error;
+  const loadError = accessQuery.error;
   if (loadError) return <PageState title="Create API key" label={loadError.message} />;
 
-  const profiles = profilesQuery.data ?? [];
+  const { models, profiles } = accessQuery.data ?? { models: [], profiles: [] };
   const blocker = stepBlockerMessage(draft);
+  const setupModel = draft.accessKind === "models"
+    ? setupModelForSlugs(models.filter((model) => draft.modelIds.includes(model.id)).map((model) => model.slug))
+    : profiles.find((profile) => profile.id === draft.accessProfileId)?.setupModel ?? null;
 
   const goNext = () => {
     const next = nextStepId(draft.stepId);
@@ -88,16 +89,8 @@ export function CreateApiKeyPage() {
     if (previous) setDraft((value) => ({ ...value, stepId: previous }));
   };
   const submit = () => {
-    const model = profiles.find((profile) => profile.id === draft.accessProfileId)?.setupModel;
-    if (!model) return;
-    createMutation.mutate({
-      create: {
-        name: draft.name.trim(),
-        accessProfileId: draft.accessProfileId
-      },
-      harnesses: draft.harnesses,
-      model
-    });
+    if (!setupModel) return;
+    createMutation.mutate({ create: draft, model: setupModel });
   };
   const finish = () => {
     leaveApprovedRef.current = true;
@@ -108,7 +101,7 @@ export function CreateApiKeyPage() {
     <div className="page page-enter key-wizard-page">
       <PageTitle
         title="Create API key"
-        subtitle="Configure the key, assign its model access, then copy the secret and verify traffic."
+        subtitle="Name the key, choose its model access, then copy the secret and verify traffic."
         actions={<Link to="/api-keys" className="btn"><ArrowLeft />All keys</Link>}
       />
       <div className="key-wizard">
@@ -118,16 +111,11 @@ export function CreateApiKeyPage() {
           onVisit={(stepId) => setDraft((value) => ({ ...value, stepId }))}
         />
         <div className="wizard-panels">
-          {draft.stepId === "configure" ? <ConfigureStep draft={draft} onChange={setDraft} /> : null}
-          {draft.stepId === "routing" ? (
-            <RoutingStep
-              draft={draft}
-              profiles={profiles}
-              onChange={setDraft}
-            />
+          {draft.stepId === "access" ? (
+            <AccessStep draft={draft} models={models} profiles={profiles} onChange={setDraft} />
           ) : null}
           {draft.stepId === "create" ? (
-            <ReviewStep draft={draft} profiles={profiles} />
+            <ReviewStep draft={draft} models={models} profiles={profiles} />
           ) : null}
           {draft.stepId === "verify" && created ? <VerifyStep created={created} /> : null}
           <WizardActions
@@ -188,7 +176,7 @@ function WizardActions({ draft, created, pending, blocker, error, onBack, onNext
   onCreate: () => void;
   onFinish: () => void;
 }) {
-  const showBack = draft.stepId !== "configure" && !created;
+  const showBack = draft.stepId !== "access" && !created;
   return (
     <div className="wizard-actions">
       <div className="wizard-actions-status">

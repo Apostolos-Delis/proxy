@@ -1,16 +1,17 @@
 import { ClipboardCheck } from "lucide-react";
 
-import type { AccessProfileSummary } from "./data";
+import type { AccessProfileSummary, LogicalModelOption } from "./data";
 import { GlassCard } from "../ui";
-import { harnessSetupLabel } from "./setupSnippets";
 import { WizardStepHead } from "./stepHead";
 import type { CreateKeyDraft } from "./wizard";
 
-export function ReviewStep({ draft, profiles }: {
+export function ReviewStep({ draft, models, profiles }: {
   draft: CreateKeyDraft;
+  models: LogicalModelOption[];
   profiles: AccessProfileSummary[];
 }) {
   const accessProfile = profiles.find((profile) => profile.id === draft.accessProfileId);
+  const selectedModels = models.filter((model) => draft.modelIds.includes(model.id));
   return (
     <GlassCard>
       <WizardStepHead
@@ -24,16 +25,12 @@ export function ReviewStep({ draft, profiles }: {
           <dd>{draft.name.trim()}</dd>
         </div>
         <div>
-          <dt>Harness setup</dt>
-          <dd>{harnessSetupLabel(draft.harnesses)}</dd>
-        </div>
-        <div>
-          <dt>Access profile</dt>
-          <dd>{accessProfile?.name ?? draft.accessProfileId}</dd>
-        </div>
-        <div>
-          <dt>Setup model</dt>
-          <dd>{accessProfile?.setupModel ?? "Unavailable"}</dd>
+          <dt>Model access</dt>
+          <dd>
+            {draft.accessKind === "models"
+              ? selectedModels.map((model) => model.slug).join(", ")
+              : `${accessProfile?.name ?? draft.accessProfileId} (existing profile)`}
+          </dd>
         </div>
       </dl>
     </GlassCard>

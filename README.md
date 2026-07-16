@@ -150,7 +150,7 @@ The database is the only runtime configuration source. There are no model aliase
 
 ## Configure The Gateway
 
-The admin GraphQL API manages provider connections, canonical models, deployments, wire bindings, logical models, targets, access profiles, grants, and API-key assignments. Mutations write the audit event, outbox row, and current-state mutation in one transaction.
+The admin GraphQL API manages provider connections, canonical models, deployments, wire bindings, logical models, targets, access profiles, grants, and API-key assignments. Logical models can be created with their initial targets, and access profiles with their initial grants, as one transaction. Mutations write the audit event, outbox row, and current-state mutation in the same transaction.
 
 For declarative configuration:
 
@@ -172,7 +172,8 @@ The console is a dense, workspace-scoped operational surface:
 | Caching | Prompt-cache behavior, cache busts, and compression savings |
 | Logs / Sessions | Request resolution evidence, attempts, usage, and replay timelines |
 | Prompts | Captured prompt artifacts and access audit |
-| API keys | Key issuance, access-profile assignment, revocation, and harness setup |
+| Models | Model-facing API endpoints, logical-model definitions, targets, wires, grants, and direct/router creation |
+| API keys | Atomic key/profile/grant issuance for per-key model selection, reusable profile assignment, revocation, and post-creation harness setup |
 | Users | Invitations, roles, activation, and deactivation |
 | Settings / Billing | Runtime optimization settings and deployment pricing |
 
