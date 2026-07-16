@@ -5,7 +5,12 @@
     {
       "type": "message",
       "role": "user",
-      "content": [{ "type": "input_text", "text": "list files" }]
+      "content": [
+        {
+          "type": "input_text",
+          "text": "list files"
+        }
+      ]
     },
     {
       "type": "function_call",
@@ -24,12 +29,19 @@
       "type": "function",
       "name": "shell",
       "description": "Run shell",
-      "parameters": { "type": "object" }
+      "parameters": {
+        "type": "object"
+      }
     }
   ],
-  "reasoning": { "effort": "high", "summary": "auto" },
-  "stream": true,
+  "reasoning": {
+    "effort": "high",
+    "summary": "auto"
+  },
   "store": false,
-  "text": { "verbosity": "medium" },
+  "stream": true,
+  "text": {
+    "verbosity": "medium"
+  },
   "max_output_tokens": 321
 }

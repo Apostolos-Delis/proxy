@@ -1,5 +1,5 @@
 {
-  "model": "router-hard",
+  "model": "fable",
   "input": "explain the cached reasoning state",
   "include": [
     "reasoning.encrypted_content"

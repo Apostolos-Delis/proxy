@@ -1,12 +1,10 @@
-import type { ProviderName } from "../providers/data";
-import { PROVIDER_ORDER } from "../providers";
 import { defaultHarnessSetupSelection, type HarnessSetupSelection } from "./setupSnippets";
 
 export type CreateKeyStepId = "configure" | "routing" | "create" | "verify";
 
 export const createKeySteps: { id: CreateKeyStepId; label: string }[] = [
   { id: "configure", label: "Configure" },
-  { id: "routing", label: "Routing" },
+  { id: "routing", label: "Access" },
   { id: "create", label: "Create" },
   { id: "verify", label: "Set up & verify" }
 ];
@@ -15,9 +13,7 @@ export type CreateKeyDraft = {
   stepId: CreateKeyStepId;
   name: string;
   harnesses: HarnessSetupSelection;
-  routingConfigId: string | null;
-  linkProviderKeys: boolean;
-  providerBindings: Record<ProviderName, string | null>;
+  accessProfileId: string;
 };
 
 export type CreatedKeyResult = {
@@ -25,7 +21,7 @@ export type CreatedKeyResult = {
   keyName: string;
   harnesses: HarnessSetupSelection;
   secret: string;
-  bindingFailures: string[];
+  model: string;
 };
 
 export function initialDraft(): CreateKeyDraft {
@@ -33,46 +29,18 @@ export function initialDraft(): CreateKeyDraft {
     stepId: "configure",
     name: "",
     harnesses: [...defaultHarnessSetupSelection],
-    routingConfigId: null,
-    linkProviderKeys: false,
-    providerBindings: emptyProviderBindings()
+    accessProfileId: ""
   };
 }
 
-function emptyProviderBindings() {
-  return Object.fromEntries(
-    PROVIDER_ORDER.map((provider) => [provider, null])
-  ) as Record<ProviderName, string | null>;
-}
-
-// Switching back to the platform keys clears any per-provider picks so the
-// submit payload can never carry bindings the user deselected.
-export function withProviderKeyMode(draft: CreateKeyDraft, linkProviderKeys: boolean): CreateKeyDraft {
-  if (linkProviderKeys) return { ...draft, linkProviderKeys };
-  return { ...draft, linkProviderKeys, providerBindings: emptyProviderBindings() };
-}
-
-// A key created mid-wizard flips the draft to own-keys mode and binds itself,
-// leaving the other providers' picks untouched.
-export function withCreatedProviderKey(
-  draft: CreateKeyDraft,
-  provider: ProviderName,
-  providerAccountId: string
-): CreateKeyDraft {
-  const next = withProviderKeyMode(draft, true);
-  return { ...next, providerBindings: { ...next.providerBindings, [provider]: providerAccountId } };
-}
-
-// A null routingConfigId resolves server-side to the seeded default config,
-// so surface its real name instead of an opaque "Organization default".
-export function orgDefaultConfigLabel(defaultConfig: { name: string } | null): string {
-  return defaultConfig ? `${defaultConfig.name} (organization default)` : "Organization default";
-}
-
 export function stepBlockerMessage(draft: CreateKeyDraft): string | null {
-  if (draft.stepId !== "configure") return null;
-  if (!draft.name.trim()) return "Enter a key name.";
-  if (draft.harnesses.length === 0) return "Pick at least one harness.";
+  if (draft.stepId === "configure") {
+    if (!draft.name.trim()) return "Enter a key name.";
+    if (draft.harnesses.length === 0) return "Pick at least one harness.";
+  }
+  if (draft.stepId === "routing" && !draft.accessProfileId) {
+    return "Pick an access profile.";
+  }
   return null;
 }
 

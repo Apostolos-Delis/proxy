@@ -1,8 +1,8 @@
 {
   "type": "error",
-  "status": 500,
+  "status": 400,
   "error": {
     "code": "proxy_error",
-    "message": "route_not_available_for_surface"
+    "message": "model_unavailable"
   }
 }

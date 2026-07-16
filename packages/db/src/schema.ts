@@ -419,6 +419,8 @@ export const providerConnections = pgTable(
     secretHint: text("secret_hint"),
     adapterConfig: jsonb("adapter_config").$type<Record<string, unknown>>().notNull().default({}),
     defaultHeaders: jsonb("default_headers").$type<Record<string, string>>().notNull().default({}),
+    platformOwned: boolean("platform_owned").notNull().default(false),
+    forwardHarnessHeaders: boolean("forward_harness_headers").notNull().default(false),
     status: text("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()

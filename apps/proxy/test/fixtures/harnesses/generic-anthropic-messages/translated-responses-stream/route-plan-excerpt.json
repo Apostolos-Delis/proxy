@@ -3,8 +3,6 @@
   "surface": "anthropic-messages",
   "provider": "cross-responses-openai",
   "selectedModel": "gpt-cross-responses",
-  "reasoningEffort": "high",
-  "guardrailActions": [
-    "translated_request:anthropic-messages_to_openai-responses"
-  ]
+  "egressWireId": "openai-responses",
+  "wireAdapterVersion": "1"
 }

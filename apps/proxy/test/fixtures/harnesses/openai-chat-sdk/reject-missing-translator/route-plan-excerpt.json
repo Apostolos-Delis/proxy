@@ -1,8 +1,5 @@
 {
   "outcome": "reject",
   "surface": "openai-chat",
-  "error": "route_not_available_for_surface",
-  "guardrailActions": [
-    "target_skipped_translator_unavailable:missing-translator-provider"
-  ]
+  "error": "model_unavailable"
 }

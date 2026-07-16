@@ -1,6 +1,6 @@
 {
   "type": "response.create",
-  "model": "gpt-5.5",
+  "model": "fable",
   "previous_response_id": "resp_ws_1",
   "input": "git status",
   "tools": [

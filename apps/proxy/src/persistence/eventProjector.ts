@@ -5,7 +5,11 @@ import { persistClassifierUsage } from "./classifierUsage.js";
 import { persistCompressionReceipts } from "./compressionReceipts.js";
 import { persistProviderStarted, persistProviderTerminal, persistStreamStarted } from "./providerAttempt.js";
 import { projectProviderHealthProbe, projectProviderHealthTerminal } from "./providerHealth.js";
-import { persistRequestReceived, persistRoutingContext } from "./requestState.js";
+import {
+  persistProviderRequestStartFailed,
+  persistRequestReceived,
+  persistRoutingContext
+} from "./requestState.js";
 import { persistRouteDecision } from "./routeDecision.js";
 import { persistSessionRoute } from "./sessionRoute.js";
 
@@ -32,6 +36,10 @@ export async function projectEvent(tx: ProxyTransaction, event: ProxyEvent) {
   }
   if (event.eventType === "provider.request_started") {
     await persistProviderStarted(tx, event);
+    return;
+  }
+  if (event.eventType === "provider.request_start_failed") {
+    await persistProviderRequestStartFailed(tx, event);
     return;
   }
   if (event.eventType === "provider.stream_started") {

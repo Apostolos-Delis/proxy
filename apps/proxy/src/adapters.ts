@@ -242,7 +242,7 @@ function rewriteTokenCountRequestBase(
   return request;
 }
 
-function applyPromptCachePlan(
+export function applyPromptCachePlan(
   request: unknown,
   plan: PromptCachePlan | undefined,
   allowAutomaticCaching: boolean

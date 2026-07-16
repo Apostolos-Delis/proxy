@@ -1,5 +1,5 @@
 {
-  "model": "router-hard",
+  "model": "fable",
   "input": "continue the previous response",
   "previous_response_id": "resp_previous_golden",
   "stream": true

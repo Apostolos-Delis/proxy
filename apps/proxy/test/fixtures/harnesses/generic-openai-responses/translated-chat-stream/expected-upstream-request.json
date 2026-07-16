@@ -13,6 +13,9 @@
     }
   ],
   "stream": true,
+  "stream_options": {
+    "include_usage": true
+  },
   "messages": [
     {
       "role": "system",
@@ -48,8 +51,5 @@
     }
   ],
   "reasoning_effort": "high",
-  "max_completion_tokens": 321,
-  "stream_options": {
-    "include_usage": true
-  }
+  "max_completion_tokens": 321
 }

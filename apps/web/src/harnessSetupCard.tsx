@@ -15,9 +15,10 @@ import {
 import { highlightSnippet } from "./keys/snippetHighlight";
 import { WizardStepHead } from "./keys/stepHead";
 
-export function HarnessSetupGuide({ secret, harnesses, showKeyContextSteps = true }: {
+export function HarnessSetupGuide({ secret, harnesses, model, showKeyContextSteps = true }: {
   secret: string | null;
   harnesses?: HarnessSetupSelection;
+  model?: string;
   showKeyContextSteps?: boolean;
 }) {
   const selected = harnesses && harnesses.length > 0 ? harnesses : defaultHarnessSetupSelection;
@@ -27,7 +28,7 @@ export function HarnessSetupGuide({ secret, harnesses, showKeyContextSteps = tru
       <WizardStepHead
         icon={<TerminalSquare />}
         title={`Route ${label} through the proxy`}
-        sub="The harness authenticates with this API key, and the proxy picks models from the routing config assigned to that key."
+        sub="The harness authenticates with this API key and can use the logical models granted by its access profile."
       />
       <ol className="setup-steps">
         {showKeyContextSteps ? (
@@ -46,31 +47,32 @@ export function HarnessSetupGuide({ secret, harnesses, showKeyContextSteps = tru
           </div>
         </li>
         <li>
-          {launchInstruction(selected)}
+          {launchInstruction(selected, model)}
         </li>
         {showKeyContextSteps ? (
           <li>
-            Assign a routing config to the key (or leave it on the organization default) to control which models each
-            route tier uses.
+            Assign an access profile to control which logical models and operations the key can use.
           </li>
         ) : null}
       </ol>
-      <details className="setup-manual">
-        <summary>Prefer to set it up by hand? Follow these steps — they do exactly what the script does.</summary>
-        <ol className="setup-steps">
-          {buildManualSteps({ apiBase, secret, harnesses: selected }).map((step) => (
-            <li key={step.title}>
-              <span className="setup-manual-title">{step.title}.</span> {step.detail}
-              <Snippet text={step.snippet} language={step.language} />
-            </li>
-          ))}
-        </ol>
-      </details>
+      {model ? (
+        <details className="setup-manual">
+          <summary>Prefer to set it up by hand? Follow these steps — they do exactly what the script does.</summary>
+          <ol className="setup-steps">
+            {buildManualSteps({ apiBase, secret, model, harnesses: selected }).map((step) => (
+              <li key={step.title}>
+                <span className="setup-manual-title">{step.title}.</span> {step.detail}
+                <Snippet text={step.snippet} language={step.language} />
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
     </>
   );
 }
 
-function launchInstruction(harnesses: HarnessSetupSelection) {
+function launchInstruction(harnesses: HarnessSetupSelection, model?: string) {
   if (harnesses.length === 1 && harnesses[0] === "claude-code") {
     return <>Open a new terminal and run <span className="code-pill">claude</span>.</>;
   }
@@ -78,7 +80,7 @@ function launchInstruction(harnesses: HarnessSetupSelection) {
     return <>Open a new terminal and run <span className="code-pill">codex</span>.</>;
   }
   if (harnesses.length === 1 && harnesses[0] === "opencode") {
-    return <>Open opencode, run <span className="code-pill">/models</span>, and select <span className="code-pill">prompt-chat/router-auto</span>.</>;
+    return <OpenCodeLaunch model={model} />;
   }
   const terminalCommands: string[] = [];
   if (harnesses.includes("claude-code")) terminalCommands.push("claude");
@@ -98,8 +100,21 @@ function launchInstruction(harnesses: HarnessSetupSelection) {
         </>
       ) : null}
       {harnesses.includes("opencode") ? (
-        <> Open opencode, run <span className="code-pill">/models</span>, and select <span className="code-pill">prompt-chat/router-auto</span>.</>
+        <> <OpenCodeLaunch model={model} /></>
       ) : null}
+    </>
+  );
+}
+
+function OpenCodeLaunch({ model }: { model?: string }) {
+  return (
+    <>
+      Open opencode, run <span className="code-pill">/models</span>, and select{" "}
+      {model ? (
+        <span className="code-pill">prompt-chat/{model}</span>
+      ) : (
+        "a logical model granted to the key"
+      )}.
     </>
   );
 }

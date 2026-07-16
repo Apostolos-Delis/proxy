@@ -3,8 +3,6 @@
   "surface": "openai-chat",
   "provider": "responses-only-openai",
   "selectedModel": "gpt-responses-only",
-  "reasoningEffort": "high",
-  "guardrailActions": [
-    "translated_request:openai-chat_to_openai-responses"
-  ]
+  "egressWireId": "openai-responses",
+  "wireAdapterVersion": "1"
 }

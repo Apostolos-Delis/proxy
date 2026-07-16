@@ -1,206 +1,39 @@
-import { GitBranch, KeyRound, Plus } from "lucide-react";
-import { useState } from "react";
+import { ShieldCheck } from "lucide-react";
 
-import { CreateProviderKeyModal } from "../createProviderKeyModal";
-import type { ProviderAccountSummary, ProviderName } from "../providers/data";
-import type { RoutingConfigSummary } from "../routing/data";
+import type { AccessProfileSummary } from "../routing/data";
 import { SearchSelect } from "../table/SearchSelect";
 import { GlassCard } from "../ui";
-import { providerCredentialHint, providerIdsForRoutingConfig, providerOptionsForAccounts } from "./providerOptions";
 import { WizardStepHead } from "./stepHead";
-import { orgDefaultConfigLabel, withCreatedProviderKey, withProviderKeyMode, type CreateKeyDraft } from "./wizard";
+import type { CreateKeyDraft } from "./wizard";
 
-export function RoutingStep({ draft, configs, defaultConfig, providerAccounts, onChange }: {
+export function RoutingStep({ draft, profiles, onChange }: {
   draft: CreateKeyDraft;
-  configs: RoutingConfigSummary[];
-  defaultConfig: RoutingConfigSummary | null;
-  providerAccounts: ProviderAccountSummary[];
+  profiles: AccessProfileSummary[];
   onChange: (draft: CreateKeyDraft) => void;
 }) {
-  const [showAddKey, setShowAddKey] = useState(false);
-  const activeAccounts = providerAccounts.filter((account) => account.status === "active");
-  const selectedConfig = selectedRoutingConfig(draft.routingConfigId, configs, defaultConfig);
-  const routingProviders = providerIdsForRoutingConfig(selectedConfig);
-  const providerOptions = providerOptionsForAccounts(activeAccounts, draft.providerBindings, routingProviders);
-  const routedProviderOptions = providerOptions.filter((provider) => routingProviders.includes(provider.value));
-  const boundRoutingProviderCount = routingProviders.filter((provider) => draft.providerBindings[provider]).length;
-  const hasProviderBindings = Object.values(draft.providerBindings).some(Boolean);
-  const showProviderKeyControls = activeAccounts.length > 0 || draft.linkProviderKeys || hasProviderBindings;
   return (
-    <>
-      <GlassCard>
-        <WizardStepHead
-          icon={<GitBranch />}
-          title="Routing config"
-          sub="Controls which models each route tier uses for traffic on this key."
-        />
-        <div className="wizard-step-body">
-          {/* A <label> here would re-trigger the select button when the
-              popover backdrop (a label descendant) is clicked. */}
-          <div className="routing-create-field wizard-name-field">
-            <span>Routing config</span>
-            <SearchSelect
-              value={draft.routingConfigId ?? ""}
-              options={[
-                { value: "", label: orgDefaultConfigLabel(defaultConfig) },
-                ...configs.map((config) => ({
-                  value: config.id,
-                  label: config.name,
-                  hint: `v${config.activeVersion?.version ?? "?"}`
-                }))
-              ]}
-              ariaLabel="Routing config"
-              placeholder="Search routing configs…"
-              onChange={(routingConfigId) => onChange({ ...draft, routingConfigId: routingConfigId || null })}
-            />
-          </div>
-        </div>
-      </GlassCard>
-      <GlassCard>
-        <WizardStepHead
-          icon={<KeyRound />}
-          title="Provider credentials"
-          sub="Bill this key's upstream traffic to your own provider credentials instead of the platform key."
-        />
-        {!showProviderKeyControls ? (
-          <div className="wizard-step-body">
-            <ProviderCoverageSummary providers={routedProviderOptions} />
-            <div className="wizard-provider-note">
-              <span className="faint">No provider credentials linked yet — this key's upstream traffic uses the platform keys.</span>
-              <button type="button" className="btn btn-sm" onClick={() => setShowAddKey(true)}>
-                <Plus />Add credential
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="wizard-step-body">
-            <ProviderCoverageSummary
-              providers={routedProviderOptions}
-              boundCount={draft.linkProviderKeys ? boundRoutingProviderCount : undefined}
-            />
-            <div className="scope-options provider-key-mode-options" role="radiogroup" aria-label="Provider credential mode">
-              <label className="scope-option">
-                <input
-                  type="radio"
-                  name="provider-key-mode"
-                  checked={!draft.linkProviderKeys}
-                  onChange={() => onChange(withProviderKeyMode(draft, false))}
-                />
-                <span className="provider-key-mode-copy">
-                  <span>Company default</span>
-                  <span className="faint">Use the platform provider credentials.</span>
-                </span>
-              </label>
-              <label className="scope-option">
-                <input
-                  type="radio"
-                  name="provider-key-mode"
-                  checked={draft.linkProviderKeys}
-                  onChange={() => onChange(withProviderKeyMode(draft, true))}
-                />
-                <span className="provider-key-mode-copy">
-                  <span>Use my own credentials</span>
-                  <span className="faint">Bind each routed provider to a saved credential.</span>
-                </span>
-              </label>
-            </div>
-            {draft.linkProviderKeys ? (
-              <>
-                <div className="wizard-provider-grid">
-                  {providerOptions.map((provider) => (
-                    <ProviderBindingField
-                      key={provider.value}
-                      provider={provider}
-                      accounts={activeAccounts.filter((account) => account.provider === provider.value)}
-                      value={draft.providerBindings[provider.value]}
-                      onChange={(providerAccountId) => onChange({
-                        ...draft,
-                        providerBindings: { ...draft.providerBindings, [provider.value]: providerAccountId }
-                      })}
-                    />
-                  ))}
-                </div>
-                <div>
-                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowAddKey(true)}>
-                    <Plus />Add credential
-                  </button>
-                </div>
-              </>
-            ) : null}
-          </div>
-        )}
-      </GlassCard>
-      {showAddKey ? (
-        <CreateProviderKeyModal
-          onClose={() => setShowAddKey(false)}
-          onCreated={({ id, provider }) => onChange(withCreatedProviderKey(draft, provider, id))}
-        />
-      ) : null}
-    </>
-  );
-}
-
-function selectedRoutingConfig(
-  routingConfigId: string | null,
-  configs: RoutingConfigSummary[],
-  defaultConfig: RoutingConfigSummary | null
-) {
-  if (!routingConfigId) return defaultConfig;
-  return configs.find((config) => config.id === routingConfigId) ?? null;
-}
-
-function ProviderCoverageSummary({ providers, boundCount }: {
-  providers: { value: ProviderName; label: string }[];
-  boundCount?: number;
-}) {
-  if (providers.length === 0) return null;
-  return (
-    <div className="wizard-provider-summary">
-      <span>Routing config can use <strong>{providerListLabel(providers)}</strong>.</span>
-      {boundCount === undefined ? null : (
-        <span className="faint">{boundCount} of {providers.length} provider credentials selected.</span>
-      )}
-    </div>
-  );
-}
-
-function providerListLabel(providers: { label: string }[]) {
-  const labels = providers.map((provider) => provider.label);
-  if (labels.length <= 2) return labels.join(" and ");
-  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
-}
-
-function ProviderBindingField({ provider, accounts, value, onChange }: {
-  provider: { value: ProviderName; label: string };
-  accounts: ProviderAccountSummary[];
-  value: string | null;
-  onChange: (providerAccountId: string | null) => void;
-}) {
-  const accountOptions = accounts.map((account) => ({
-    value: account.id,
-    label: account.name,
-    hint: providerCredentialHint(account)
-  }));
-  return (
-    <div className="routing-create-field">
-      <span>{provider.label}</span>
-      <SearchSelect
-        value={value ?? ""}
-        options={[
-          { value: "", label: "Company default" },
-          ...accountOptions,
-          ...pendingSelectedOption(value, accountOptions)
-        ]}
-        ariaLabel={`${provider.label} provider credential`}
-        placeholder="Search credentials…"
-        onChange={(providerAccountId) => onChange(providerAccountId || null)}
+    <GlassCard>
+      <WizardStepHead
+        icon={<ShieldCheck />}
+        title="Access profile"
+        sub="Controls which logical models and operations this key can use."
       />
-      {accounts.length === 0 && !value ? <p className="routing-field-note">No {provider.label} credentials added. This provider will use the platform key.</p> : null}
-    </div>
+      <div className="wizard-step-body">
+        <div className="routing-create-field wizard-name-field">
+          <span>Access profile</span>
+          <SearchSelect
+            value={draft.accessProfileId}
+            options={profiles.map((profile) => ({
+              value: profile.id,
+              label: profile.name,
+              hint: profile.description ?? `${profile.slug} · ${profile.setupModel}`
+            }))}
+            ariaLabel="Access profile"
+            placeholder="Search access profiles..."
+            onChange={(accessProfileId) => onChange({ ...draft, accessProfileId })}
+          />
+        </div>
+      </div>
+    </GlassCard>
   );
-}
-
-function pendingSelectedOption(value: string | null, options: { value: string }[]) {
-  if (!value || options.some((option) => option.value === value)) return [];
-  return [{ value, label: "Selected provider credential", hint: "refreshing" }];
 }

@@ -34,7 +34,7 @@ import {
   shellCommandFromInput,
   shellCommandSummaryRule
 } from "./compressionRules/shellCommandSummary.js";
-import type { EventService } from "./events.js";
+import type { EventAppender } from "./events.js";
 import type { HarnessProfile } from "./harness.js";
 import type { JsonObject, Surface } from "./types.js";
 import { isRecord, roughTokenEstimate, stableJson, stringField, unreachable } from "./util.js";
@@ -113,7 +113,7 @@ export type CompressionRecord = {
 
 export type CompressionResult = { body: unknown; records: CompressionRecord[]; transformedBody?: unknown };
 export type CompressionForwardInput = {
-  events: EventService;
+  events: EventAppender;
   tenantId: string;
   workspaceId: string;
   requestId: string;
@@ -523,7 +523,7 @@ export async function compressForForwardWithResult(input: CompressionForwardInpu
         redactionState: "not_applicable",
         payload
       });
-      compressionEventId = event.eventId;
+      compressionEventId = eventId(event);
     } else {
       const event = await input.events.append({
         tenantId: input.tenantId,
@@ -538,7 +538,7 @@ export async function compressForForwardWithResult(input: CompressionForwardInpu
         redactionState: "not_applicable",
         payload
       });
-      compressionEventId = event.eventId;
+      compressionEventId = eventId(event);
     }
   } catch (error) {
     eventEmitFailed = true;
@@ -558,7 +558,7 @@ export async function compressForForwardWithResult(input: CompressionForwardInpu
 }
 
 export async function appendCompressionEvidence(input: {
-  events: EventService;
+  events: EventAppender;
   tenantId: string;
   workspaceId: string;
   requestId: string;
@@ -674,6 +674,10 @@ function compressionReceiptIds(eventId: string, records: CompressionRecord[]) {
 
 export function requestBodyHash(body: unknown) {
   return `sha256:${createHash("sha256").update(stableJson(body)).digest("hex")}`;
+}
+
+function eventId(event: unknown) {
+  return isRecord(event) && typeof event.eventId === "string" ? event.eventId : undefined;
 }
 
 // Both walkers rebuild only the spine that leads to a rewritten block —

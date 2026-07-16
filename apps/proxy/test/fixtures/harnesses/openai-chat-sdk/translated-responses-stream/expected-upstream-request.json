@@ -11,6 +11,7 @@
     }
   ],
   "stream": true,
+  "store": false,
   "instructions": "Use tools carefully.\n\nPrefer concise output.",
   "input": [
     {
@@ -39,6 +40,5 @@
   "reasoning": {
     "effort": "high"
   },
-  "max_output_tokens": 444,
-  "store": false
+  "max_output_tokens": 444
 }

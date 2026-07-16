@@ -27,6 +27,7 @@ import { ProviderCredentialAdminService } from "./providerCredentialAdmin.js";
 import { ProviderCredentialOAuthService } from "./providerCredentialOAuth.js";
 import { ProviderCredentialStore, type ProviderCredentialOptions } from "./providerCredentials.js";
 import { ProviderConnectionClassifierTargetResolver } from "./providerConnectionClassifierTarget.js";
+import { ProviderConnectionRuntimeTargetResolver } from "./providerConnectionRuntimeTarget.js";
 import { ProviderHealthStore } from "./providerHealth.js";
 import { ProviderRegistryAdminService } from "./providerRegistryAdmin.js";
 import { ProviderRegistryStore } from "./providers.js";
@@ -116,6 +117,11 @@ export function createDatabasePersistence(
   const gatewaySecretReferenceSupported = secretReferenceSupported ?? ((input) => (
     Boolean(resolveSecretReference(input))
   ));
+  const providerConnectionRuntimeTargets = new ProviderConnectionRuntimeTargetResolver(db, {
+    allowedPrivateUpstreamCidrs: config.allowedPrivateUpstreamCidrs,
+    encryptionKey: config.providerSecretEncryptionKey,
+    resolveSecretReference
+  });
   return {
     apiKeyAdmin: new ApiKeyAdminService(transactional, () => apiKeys.clearCache()),
     apiKeys,
@@ -141,6 +147,7 @@ export function createDatabasePersistence(
     bedrockModelDiscovery: new BedrockModelDiscoveryJob(transactional, providerCredentials, config),
     modelCatalogAdmin: new ModelCatalogAdminService(transactional),
     modelResolution: new ModelResolutionService(db, { classifier }),
+    providerConnectionRuntimeTargets,
     modelDiscovery: new ModelDiscoveryStore(db),
     modelPricingAdmin: new ModelPricingAdminService(transactional),
     organizationSettings: new OrganizationSettingsStore(db, clearRoutingConfigCache),

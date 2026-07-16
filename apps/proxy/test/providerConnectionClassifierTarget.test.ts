@@ -14,6 +14,8 @@ import {
 import { seedDatabase, seedOptionsFromEnv } from "@proxy/db/seed";
 import type { LogicalModelClassifierDeployment } from "../src/classifier.js";
 import { ProviderConnectionClassifierTargetResolver } from "../src/persistence/providerConnectionClassifierTarget.js";
+import { ProviderConnectionRuntimeTargetResolver } from "../src/persistence/providerConnectionRuntimeTarget.js";
+import type { ResolvedModelTarget } from "../src/persistence/modelResolution.js";
 
 describe("provider connection classifier target", () => {
   let client: PGlite | undefined;
@@ -70,6 +72,62 @@ describe("provider connection classifier target", () => {
     }).resolve(fixture.deployment)).rejects.toMatchObject({
       code: "provider_default_header_forbidden"
     });
+  });
+
+  it("rejects malformed persisted adapter config for classifier and runtime targets", async () => {
+    const fixture = await setup("org_classifier_adapter_config");
+    client = fixture.client;
+    await fixture.db
+      .update(providerConnections)
+      .set({ adapterConfig: { unexpected: true } })
+      .where(eq(providerConnections.id, fixture.connectionId));
+
+    await expect(new ProviderConnectionClassifierTargetResolver(fixture.db, {
+      allowedPrivateUpstreamCidrs: [],
+      resolveSecretReference: () => "classifier-token"
+    }).resolve(fixture.deployment)).rejects.toMatchObject({
+      code: "provider_adapter_config_invalid"
+    });
+    await expect(new ProviderConnectionRuntimeTargetResolver(fixture.db, {
+      allowedPrivateUpstreamCidrs: [],
+      resolveSecretReference: () => "runtime-token"
+    }).resolve(
+      fixture.deployment.organizationId,
+      fixture.deployment.workspaceId,
+      runtimeResolution(fixture.deployment)
+    )).rejects.toMatchObject({
+      code: "provider_adapter_config_invalid"
+    });
+  });
+
+  it("rejects a malformed persisted region before resolving credentials", async () => {
+    const fixture = await setup("org_classifier_region");
+    client = fixture.client;
+    await fixture.db
+      .update(providerConnections)
+      .set({ region: "US East 1!" })
+      .where(eq(providerConnections.id, fixture.connectionId));
+    const classifierSecret = vi.fn(() => "classifier-token");
+    const runtimeSecret = vi.fn(() => "runtime-token");
+
+    await expect(new ProviderConnectionClassifierTargetResolver(fixture.db, {
+      allowedPrivateUpstreamCidrs: [],
+      resolveSecretReference: classifierSecret
+    }).resolve(fixture.deployment)).rejects.toMatchObject({
+      code: "provider_adapter_config_invalid"
+    });
+    await expect(new ProviderConnectionRuntimeTargetResolver(fixture.db, {
+      allowedPrivateUpstreamCidrs: [],
+      resolveSecretReference: runtimeSecret
+    }).resolve(
+      fixture.deployment.organizationId,
+      fixture.deployment.workspaceId,
+      runtimeResolution(fixture.deployment)
+    )).rejects.toMatchObject({
+      code: "provider_adapter_config_invalid"
+    });
+    expect(classifierSecret).not.toHaveBeenCalled();
+    expect(runtimeSecret).not.toHaveBeenCalled();
   });
 
   it("pins the validated address and resolves the configured secret reference", async () => {
@@ -138,6 +196,29 @@ async function setup(organizationId: string) {
       bindingId: `${deploymentId}:wire:openai-responses`,
       model: "gpt-5-nano-2025-08-07"
     } satisfies LogicalModelClassifierDeployment
+  };
+}
+
+function runtimeResolution(deployment: LogicalModelClassifierDeployment): ResolvedModelTarget {
+  return {
+    outcome: "resolved",
+    accessProfileId: "profile_adapter_config",
+    logicalModelId: "logical_model_adapter_config",
+    logicalModelSlug: "coding-auto",
+    routerKind: null,
+    deploymentId: deployment.deploymentId,
+    upstreamModelId: deployment.model,
+    providerConnectionId: deployment.providerConnectionId,
+    bindingId: deployment.bindingId,
+    egressWireId: "openai-responses",
+    endpointPath: "/responses",
+    providerAdapterKind: "generic-http-json",
+    providerAdapterContractVersion: "1",
+    wireAdapterId: null,
+    wireAdapterVersion: null,
+    routerDecisionId: null,
+    routerDecision: null,
+    parameterCaps: {}
   };
 }
 

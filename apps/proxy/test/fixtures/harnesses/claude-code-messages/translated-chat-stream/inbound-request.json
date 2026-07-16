@@ -1,5 +1,5 @@
 {
-  "model": "claude-router-hard",
+  "model": "fable",
   "system": [
     {
       "type": "text",

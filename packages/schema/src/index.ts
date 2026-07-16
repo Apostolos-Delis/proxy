@@ -33,6 +33,7 @@ export const GATEWAY_ACCESS_PROFILE_LIMIT_IDS = ["concurrent_requests", "request
 export const GATEWAY_RESOURCE_STATUSES = ["active", "disabled"] as const;
 export const LOGICAL_MODEL_RESOLUTION_KINDS = ["direct", "router"] as const;
 export const LOGICAL_MODEL_ROUTER_KINDS = ["classifier"] as const;
+export const GATEWAY_SETUP_MODEL_PREFERENCE = ["coding-auto", "economy-auto", "fable"] as const;
 
 export const BUILTIN_PROVIDER_NAMES = ["openai", "anthropic", "amazon-bedrock"] as const;
 

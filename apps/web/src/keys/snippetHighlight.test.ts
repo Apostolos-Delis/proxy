@@ -24,7 +24,7 @@ describe("highlightSnippet", () => {
     for (const secret of ["pp_abc123", `pp_a'b"c`, "''", "", null]) {
       const command = buildSetupCommand({ apiBase, secret });
       expect(plainText(highlightSnippet(command, "shell"))).toBe(command);
-      for (const step of buildManualSteps({ apiBase, secret })) {
+      for (const step of buildManualSteps({ apiBase, secret, model: "economy-auto" })) {
         expect(plainText(highlightSnippet(step.snippet, step.language))).toBe(step.snippet);
       }
     }

@@ -92,6 +92,9 @@ export function builtinProviderSeedDefinitions(input: {
         service: "bedrock-runtime",
         controlPlaneService: "bedrock",
         defaultRegion: "us-east-1",
+        credentialMode: "aws_default_chain",
+        region: "us-east-1",
+        discoveryRegions: ["us-east-1"],
         supportsBearerToken: true,
         supportsInferenceProfiles: true
       },

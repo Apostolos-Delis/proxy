@@ -10,7 +10,7 @@ export type RequestIdentity = {
   workspaceId: string;
   userId?: string;
   apiKeyId?: string;
-  routingConfigId: string | null;
+  accessProfileId: string | null;
   source: "api_key" | "dev_proxy_token";
 };
 
@@ -37,7 +37,7 @@ export class ProxyAuthService {
         // real person instead of "Unknown user"; harness identity headers stay
         // available only as raw request context.
         userId: this.config.seedUserId,
-        routingConfigId: null,
+        accessProfileId: null,
         source: "dev_proxy_token"
       };
     }
@@ -88,7 +88,6 @@ export function requestReceivedPayload(
     authSource: identity.source,
     apiKeyId: identity.apiKeyId ?? null,
     workspaceId: identity.workspaceId,
-    routingConfigId: identity.routingConfigId,
     requestedModel: context.requestedModel,
     inputHash: context.inputHash,
     inputChars: context.inputChars
@@ -101,7 +100,7 @@ function apiKeyIdentity(identity: ResolvedApiKeyIdentity): RequestIdentity {
     workspaceId: identity.workspaceId,
     userId: identity.userId,
     apiKeyId: identity.apiKeyId,
-    routingConfigId: identity.routingConfigId,
+    accessProfileId: identity.accessProfileId,
     source: "api_key"
   };
 }

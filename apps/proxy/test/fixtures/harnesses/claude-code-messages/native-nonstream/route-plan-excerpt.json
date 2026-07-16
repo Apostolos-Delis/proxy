@@ -2,5 +2,7 @@
   "outcome": "route",
   "surface": "anthropic-messages",
   "provider": "anthropic",
-  "selectedModel": "claude-code-native"
+  "selectedModel": "claude-code-native",
+  "egressWireId": "anthropic-messages",
+  "wireAdapterVersion": null
 }

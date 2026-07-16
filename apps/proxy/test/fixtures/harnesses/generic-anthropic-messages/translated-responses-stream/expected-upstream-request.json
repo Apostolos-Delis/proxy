@@ -1,6 +1,7 @@
 {
   "model": "gpt-cross-responses",
   "stream": true,
+  "store": false,
   "max_output_tokens": 222,
   "tools": [
     {
@@ -59,6 +60,5 @@
   ],
   "reasoning": {
     "effort": "high"
-  },
-  "store": false
+  }
 }

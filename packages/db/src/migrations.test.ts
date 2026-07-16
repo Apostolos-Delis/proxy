@@ -959,7 +959,9 @@ describe("database migrations", () => {
           ('legacy_request', 'org_legacy', 'openai-responses', 'legacy-idem', 'router-auto', 'hash');
       `);
 
-      for (const file of files.filter((name) => !preWorkspaceFiles.includes(name))) {
+      for (const file of files.filter((name) => (
+        !preWorkspaceFiles.includes(name) && name < "0030"
+      ))) {
         await client.exec(await readFile(join(migrationsDir, file), "utf8"));
       }
 

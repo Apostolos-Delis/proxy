@@ -262,15 +262,7 @@ export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
     await db
       .insert(providerAccounts)
       .values(row)
-      .onConflictDoUpdate({
-        target: providerAccounts.id,
-        set: {
-          secretRef: row.secretRef,
-          settings: row.settings,
-          status: "active",
-          updatedAt: now
-        }
-      });
+      .onConflictDoNothing();
   }
 
   // Conflict target is the natural key because the admin console also creates
@@ -398,16 +390,7 @@ export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
       routingConfigId,
       accessProfileId: gatewayResources.engineerAccessProfileId
     })
-    .onConflictDoUpdate({
-      target: apiKeys.id,
-      set: {
-        userId: options.userId,
-        keyHash: proxyTokenHash,
-        name: "Default local API key",
-        routingConfigId,
-        accessProfileId: gatewayResources.engineerAccessProfileId
-      }
-    });
+    .onConflictDoNothing({ target: apiKeys.id });
 
   if (externalEconomyTokenHash) {
     await db
@@ -421,16 +404,7 @@ export async function seedDatabase(db: ProxyDbSession, options: SeedOptions) {
         accessProfileId: gatewayResources.externalEconomyAccessProfileId,
         revokedAt: now
       })
-      .onConflictDoUpdate({
-        target: apiKeys.id,
-        set: {
-          keyHash: externalEconomyTokenHash,
-          name: "External economy seed key",
-          routingConfigId: null,
-          accessProfileId: gatewayResources.externalEconomyAccessProfileId,
-          revokedAt: now
-        }
-      });
+      .onConflictDoNothing({ target: apiKeys.id });
   }
 
   await db

@@ -19,15 +19,14 @@ export function VerifyStep({ created }: { created: CreatedKeyResult }) {
           </div>
           <CopySecret secret={created.secret} />
         </div>
-        {created.bindingFailures.length > 0 ? (
-          <div className="action-error">
-            The key was created, but binding provider credentials failed: {created.bindingFailures.join("; ")}.
-            Bind them from the API keys table.
-          </div>
-        ) : null}
       </GlassCard>
       <GlassCard>
-        <HarnessSetupGuide secret={created.secret} harnesses={created.harnesses} showKeyContextSteps={false} />
+        <HarnessSetupGuide
+          secret={created.secret}
+          harnesses={created.harnesses}
+          model={created.model}
+          showKeyContextSteps={false}
+        />
       </GlassCard>
       {created.apiKeyId ? <VerificationCard apiKeyId={created.apiKeyId} /> : null}
     </>

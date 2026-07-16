@@ -1,4 +1,7 @@
 {
-  "error": "route_not_available_for_surface",
-  "message": "route_not_available_for_surface"
+  "error": {
+    "message": "model_unavailable",
+    "type": "invalid_request_error",
+    "code": "model_unavailable"
+  }
 }

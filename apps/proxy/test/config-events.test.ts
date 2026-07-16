@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { loadConfig } from "../src/config.js";
@@ -124,6 +128,34 @@ describe("config and events", () => {
     expect(persisted.listOutbox()).toHaveLength(2);
     expect(local.mirrorIsBounded()).toBe(false);
     expect(local.listEvents()).toHaveLength(3);
+  });
+
+  it("does not reject a durable append when the optional file mirror fails", async () => {
+    const eventStoreDirectory = await mkdtemp(join(tmpdir(), "proxy-event-mirror-failure-"));
+    const persistedEventIds: string[] = [];
+    try {
+      const events = new EventService(eventStoreDirectory, undefined, {
+        append: async (event) => {
+          persistedEventIds.push(event.eventId);
+          return { sequence: 1 };
+        }
+      });
+
+      const event = await events.append({
+        scopeType: "request",
+        scopeId: "request-mirror-failure",
+        producer: "test",
+        eventType: "test.event"
+      });
+
+      expect(persistedEventIds).toEqual([event.eventId]);
+      expect(events.listEvents()).toEqual([event]);
+      expect(events.listOutbox()).toEqual([
+        expect.objectContaining({ eventId: event.eventId, status: "queued" })
+      ]);
+    } finally {
+      await rm(eventStoreDirectory, { recursive: true, force: true });
+    }
   });
 
   it("uses persistent sequences when scope state is evicted", async () => {

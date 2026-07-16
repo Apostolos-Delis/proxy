@@ -17,6 +17,7 @@ import {
 
 import { GatewayConfigAdminError } from "./gatewayConfigTypes.js";
 import { assertSafeNonSecretConfig, NonSecretConfigError } from "./nonSecretConfig.js";
+import { providerRegionSchema } from "../providerAdapters/config.js";
 
 export const idSchema = z.string().trim().min(1).max(1_024);
 export const slugSchema = z.string().trim().min(1).max(128).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
@@ -48,7 +49,7 @@ export const providerConnectionCreateSchema = z.strictObject({
   adapterKind: z.enum(PROVIDER_ADAPTER_KINDS),
   authStyle: z.enum(PROVIDER_AUTH_STYLES),
   baseUrl: z.string().trim().url().max(2_048),
-  region: z.string().trim().min(1).max(128).nullable().optional(),
+  region: providerRegionSchema.nullable().optional(),
   secretRef: secretReferenceSchema.optional(),
   secret: z.string().min(1).max(65_536).optional(),
   adapterConfig: jsonObjectSchema.default({}),
@@ -60,7 +61,7 @@ export const providerConnectionUpdateSchema = z.strictObject({
   name: nameSchema.optional(),
   authStyle: z.enum(PROVIDER_AUTH_STYLES).optional(),
   baseUrl: z.string().trim().url().max(2_048).optional(),
-  region: z.string().trim().min(1).max(128).nullable().optional(),
+  region: providerRegionSchema.nullable().optional(),
   secretRef: secretReferenceSchema.optional(),
   secret: z.string().min(1).max(65_536).optional(),
   clearSecret: z.boolean().optional(),
@@ -88,7 +89,7 @@ export const modelDeploymentCreateSchema = z.strictObject({
   canonicalModelId: idSchema,
   providerConnectionId: idSchema,
   upstreamModelId: z.string().trim().min(1).max(512),
-  region: z.string().trim().min(1).max(128).nullable().optional(),
+  region: providerRegionSchema.nullable().optional(),
   config: jsonObjectSchema.default({}),
   capabilities: capabilitiesSchema.default({}),
   pricing: jsonObjectSchema.default({}),
@@ -97,7 +98,7 @@ export const modelDeploymentCreateSchema = z.strictObject({
 export const modelDeploymentUpdateSchema = z.strictObject({
   name: nameSchema.optional(),
   upstreamModelId: z.string().trim().min(1).max(512).optional(),
-  region: z.string().trim().min(1).max(128).nullable().optional(),
+  region: providerRegionSchema.nullable().optional(),
   config: jsonObjectSchema.optional(),
   capabilities: capabilitiesSchema.optional(),
   pricing: jsonObjectSchema.optional()
@@ -181,6 +182,7 @@ type ConnectionCredentialInput = {
   secretRef?: string;
   secret?: string;
   clearSecret?: boolean;
+  adapterConfig?: Record<string, unknown>;
 };
 
 function connectionCredentialIssues(body: ConnectionCredentialInput, context: z.RefinementCtx) {
@@ -191,6 +193,19 @@ function connectionCredentialIssues(body: ConnectionCredentialInput, context: z.
       code: "custom",
       path: ["secret"],
       message: "Set only one of secretRef, secret, or clearSecret."
+    });
+  }
+  if (
+    "adapterConfig" in body &&
+    body.adapterConfig &&
+    typeof body.adapterConfig === "object" &&
+    !Array.isArray(body.adapterConfig) &&
+    "platformProvider" in body.adapterConfig
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["adapterConfig", "platformProvider"],
+      message: "platformProvider is reserved for operator-managed connections."
     });
   }
 }

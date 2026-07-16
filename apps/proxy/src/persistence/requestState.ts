@@ -115,14 +115,10 @@ export class PersistentRequestStateStore implements RequestStateStoreLike {
   async markProviderPending(idempotencyKey: string, providerAttemptId: string, requestId?: string) {
     const request = await this.findRequest(idempotencyKey, undefined, undefined, requestId);
     if (!request) return undefined;
-    await this.readDb
-      .update(requests)
-      .set({ status: "provider_pending" })
-      .where(eq(requests.id, request.id));
     return {
       idempotencyKey,
       requestId: request.id,
-      status: "provider_pending" as const,
+      status: requestStateStatus(request.status),
       providerAttemptId
     };
   }
@@ -270,6 +266,24 @@ export async function persistRoutingContext(tx: ProxyTransaction, event: {
       metadata: payload
     })
     .where(eq(requests.id, event.scopeId));
+}
+
+export async function persistProviderRequestStartFailed(tx: ProxyTransaction, event: {
+  tenantId: string;
+  workspaceId?: string;
+  scopeId: string;
+  createdAt: string;
+}) {
+  const workspaceId = event.workspaceId ?? defaultWorkspaceId(event.tenantId);
+  await tx
+    .update(requests)
+    .set({ status: "failed", completedAt: new Date(event.createdAt) })
+    .where(and(
+      eq(requests.id, event.scopeId),
+      eq(requests.organizationId, event.tenantId),
+      eq(requests.workspaceId, workspaceId),
+      inArray(requests.status, ["received", "classifying"])
+    ));
 }
 
 function requestStateStatus(status: string): RequestState["status"] {

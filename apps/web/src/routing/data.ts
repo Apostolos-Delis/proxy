@@ -1,5 +1,12 @@
+import { GATEWAY_SETUP_MODEL_PREFERENCE } from "@proxy/schema";
+
 import { graphql } from "../gql";
-import type { RoutingApiKeysQuery, RoutingConfigDetailViewQuery, RoutingConfigsListQuery } from "../gql/graphql";
+import type {
+  GatewayAccessProfilesQuery,
+  RoutingApiKeysQuery,
+  RoutingConfigDetailViewQuery,
+  RoutingConfigsListQuery
+} from "../gql/graphql";
 import { gqlFetch } from "../graphql";
 import type { RoutingConfigDocument, RoutingEditorCatalog } from "../routingConfigEditor";
 
@@ -174,6 +181,29 @@ const CreateApiKeyDocument = graphql(`
   }
 `);
 
+const GatewayAccessProfilesDocument = graphql(`
+  query GatewayAccessProfiles {
+    gatewayAccessProfiles {
+      id
+      slug
+      name
+      description
+      enabled
+    }
+    gatewayModelGrants {
+      accessProfileId
+      logicalModelId
+      allowedOperations
+      enabled
+    }
+    gatewayLogicalModels {
+      id
+      slug
+      enabled
+    }
+  }
+`);
+
 const RevokeApiKeyDocument = graphql(`
   mutation RevokeApiKey($apiKeyId: ID!) {
     revokeApiKey(apiKeyId: $apiKeyId) {
@@ -312,13 +342,57 @@ export async function assignApiKeyRoutingConfig(apiKeyId: string, routingConfigI
 
 export type CreateApiKeyInput = {
   name: string;
-  routingConfigId: string | null;
+  accessProfileId: string;
+};
+
+export type AccessProfileSummary = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  setupModel: string;
 };
 
 export type CreatedApiKey = Awaited<ReturnType<typeof createApiKey>>;
 
 export async function createApiKey(input: CreateApiKeyInput) {
   return (await gqlFetch(CreateApiKeyDocument, { input })).createApiKey;
+}
+
+export async function fetchAccessProfiles() {
+  const data = await gqlFetch(GatewayAccessProfilesDocument, {});
+  return accessProfileSummaries(data);
+}
+
+export function accessProfileSummaries(data: GatewayAccessProfilesQuery) {
+  const models = new Map(
+    data.gatewayLogicalModels
+      .filter((model) => model.enabled)
+      .map((model) => [model.id, model.slug])
+  );
+  const profiles: AccessProfileSummary[] = [];
+  for (const profile of data.gatewayAccessProfiles) {
+    if (!profile.enabled) continue;
+    const grantedModels = data.gatewayModelGrants
+      .filter((grant) => (
+        grant.enabled &&
+        grant.accessProfileId === profile.id &&
+        grant.allowedOperations.includes("text.generate") &&
+        grant.allowedOperations.includes("model.list")
+      ))
+      .map((grant) => models.get(grant.logicalModelId))
+      .filter((model): model is string => Boolean(model));
+    const setupModel = GATEWAY_SETUP_MODEL_PREFERENCE.find((model) => grantedModels.includes(model)) ?? grantedModels[0];
+    if (!setupModel) continue;
+    profiles.push({
+      id: profile.id,
+      slug: profile.slug,
+      name: profile.name,
+      description: profile.description,
+      setupModel
+    });
+  }
+  return profiles;
 }
 
 export async function revokeApiKey(apiKeyId: string) {

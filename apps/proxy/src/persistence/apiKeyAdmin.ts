@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import {
+  accessProfiles,
   apiKeys,
   hashApiKey,
   type ProxyTransactionalDatabase
@@ -12,14 +13,9 @@ import {
 import { createId } from "../util.js";
 import { AdminMutationError } from "./adminErrors.js";
 import { appendAdminAuditEvent } from "./adminAudit.js";
-import {
-  routingConfigForAssignment,
-  type RoutingConfigAssignmentTarget
-} from "./routingConfigAdmin.js";
-
 const createApiKeyBodySchema = z.object({
   name: z.string().trim().min(1),
-  routingConfigId: z.string().trim().min(1).nullable().optional()
+  accessProfileId: z.string().trim().min(1)
 }).strict();
 
 export class ApiKeyAdminError extends AdminMutationError {}
@@ -38,25 +34,22 @@ export class ApiKeyAdminService {
   }) {
     const body = createApiKeyBodySchema.safeParse(input.body);
     if (!body.success) throw validationError("invalid_api_key_request", body.error);
-    const routingConfigId = body.data.routingConfigId ?? null;
     const secret = `pp_${randomBytes(24).toString("hex")}`;
     const apiKeyId = createId("api_key");
     const now = new Date();
 
-    return this.db.transaction(async (tx) => {
-      let targetConfig: RoutingConfigAssignmentTarget | null = null;
-      if (routingConfigId) {
-        targetConfig = await routingConfigForAssignment(tx, input.organizationId, input.workspaceId, routingConfigId);
-        if (!targetConfig) throw new ApiKeyAdminError("routing_config_not_found", 404);
-        if (targetConfig.status === "archived") throw new ApiKeyAdminError("routing_config_archived", 409);
-        if (targetConfig.status !== "active") throw new ApiKeyAdminError("routing_config_inactive", 409);
-        if (!targetConfig.activeVersionId) {
-          throw new ApiKeyAdminError("routing_config_active_version_missing", 409);
-        }
-        if (!targetConfig.activeVersionHash) {
-          throw new ApiKeyAdminError("routing_config_active_version_not_found", 409);
-        }
-      }
+    const result = await this.db.transaction(async (tx) => {
+      const [profile] = await tx
+        .select({ id: accessProfiles.id, status: accessProfiles.status })
+        .from(accessProfiles)
+        .where(and(
+          eq(accessProfiles.organizationId, input.organizationId),
+          eq(accessProfiles.workspaceId, input.workspaceId),
+          eq(accessProfiles.id, body.data.accessProfileId)
+        ))
+        .limit(1);
+      if (!profile) throw new ApiKeyAdminError("access_profile_not_found", 404);
+      if (profile.status !== "active") throw new ApiKeyAdminError("access_profile_inactive", 409);
 
       await tx.insert(apiKeys).values({
         id: apiKeyId,
@@ -65,7 +58,7 @@ export class ApiKeyAdminService {
         userId: input.actorUserId,
         keyHash: hashApiKey(secret),
         name: body.data.name,
-        routingConfigId,
+        accessProfileId: profile.id,
         createdAt: now
       });
       await appendAdminAuditEvent(tx, {
@@ -81,15 +74,15 @@ export class ApiKeyAdminService {
           apiKeyId,
           name: body.data.name,
           userId: input.actorUserId,
-          routingConfigId,
-          routingConfigVersionId: targetConfig?.activeVersionId ?? null,
-          routingConfigHash: targetConfig?.activeVersionHash ?? null
+          accessProfileId: profile.id
         },
         createdAt: now
       });
 
       return { apiKeyId, secret };
     });
+    this.onApiKeysChanged();
+    return result;
   }
 
   async revokeApiKey(input: {

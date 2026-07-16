@@ -10,25 +10,16 @@ import {
   openAIChatSurface,
   openAIResponsesSurface,
   type ProviderForwardAttemptInput,
-  rewriteSurfaceRequestWithPromptCachePlan,
-  rewriteTokenCountRequestWithPromptCachePlan
+  type SurfaceAdapter
 } from "./adapters.js";
 import {
   actorForIdentity,
   contextForIdentity,
   ProxyAuthService,
-  requestReceivedPayload,
   scopedIdempotencyKey,
   type RequestIdentity
 } from "./auth.js";
 import { loadConfig, type AppConfig } from "./config.js";
-import {
-  compressionCacheWindowEventPayload,
-  noCompressionCacheWindow,
-  type CompressionCacheWindow
-} from "./compressionCacheWindow.js";
-import { DefaultRoutingConfigResolver } from "./defaultRoutingConfig.js";
-import { LlmClassifier } from "./classifier.js";
 import { EmailService } from "./email.js";
 import {
   BoundedEventWriter,
@@ -39,8 +30,7 @@ import {
   type RequestStateStoreLike
 } from "./events.js";
 import { registerAdminGraphQL } from "./graphql/route.js";
-import { harnessProfileByName } from "./harness.js";
-import { scheduleDailyModelCatalogRefresh } from "./jobs/modelCatalogRefresh.js";
+import { GatewayRequestLifecycle } from "./gatewayRequestLifecycle.js";
 import {
   createMetricsCollector,
   metricErrorClassForStatus,
@@ -48,34 +38,26 @@ import {
   metricTerminalStatusFor,
   type MetricsCollector
 } from "./metrics.js";
-import { AsyncObservabilityEventAppender } from "./observability.js";
 import { SessionRouteStore } from "./policy.js";
 import { createPostgresPersistence } from "./persistence/index.js";
 import type {
   CompressionRetrievalFailureReason,
   CompressionRetrievalMetadata
 } from "./persistence/compressionReceipts.js";
-import { ConfigProviderRegistry } from "./persistence/providers.js";
-import { resolveRoutingSelection, type RoutingConfigResolverLike } from "./persistence/routingConfig.js";
-import { modelDiscoveryResponse } from "./modelDiscovery.js";
 import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { ProjectionService } from "./projections.js";
-import { appendTokensAttributed } from "./tokenAttribution.js";
-import {
-  appendCompressionEvidence,
-  compressionForwardTelemetry,
-  compressForForwardWithResult,
-  compressOrFallback
-} from "./toolResultCompression.js";
 import { ProviderProxy } from "./proxy.js";
 import { ProviderDeploymentHealthStore } from "./providerDeploymentHealth.js";
 import { RequestTiming, requestBodySizeBytes } from "./requestTiming.js";
-import { RoutingService } from "./router.js";
 import { buildSetupScript } from "./setupScript.js";
 import { TrafficLimitStore, type TrafficLimitDenied, type TrafficLimitLease } from "./trafficLimits.js";
-import type { Provider, RouteContext, RouteDecision, RouteProviderAttempt, Surface } from "./types.js";
+import type { RouteContext, Surface } from "./types.js";
 import { createId, headerValue, idempotencyFrom, isRecord, lowerHeaders } from "./util.js";
 import { WebSocketRoutingProxy } from "./wsProxy.js";
+import {
+  GatewayRuntime
+} from "./gatewayRuntime.js";
+import type { GatewayOperationId } from "@proxy/schema";
 
 type AppPersistence = ReturnType<typeof createPostgresPersistence>;
 
@@ -145,8 +127,10 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   const persistence = options.persistence ?? (config.databaseUrl
     ? createPostgresPersistence(config.databaseUrl, config, metrics)
     : undefined);
+  const gatewayRuntime = persistence
+    ? new GatewayRuntime(persistence.modelResolution, persistence.providerConnectionRuntimeTargets)
+    : undefined;
   metrics.setGauge("proxy_persistence_enabled", persistence ? 1 : 0);
-  const routingConfigs = persistence?.routingConfigs ?? new DefaultRoutingConfigResolver(config);
   const events = persistence?.eventService ?? new EventService(
     config.eventStorePath,
     undefined,
@@ -160,12 +144,24 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     maxAttempts: persistence ? persistentProviderAttemptMirrorLimit : undefined
   });
   const requestStates = persistence?.requestStates ?? new RequestStateStore();
+  const gatewayLifecycle = new GatewayRequestLifecycle(
+    gatewayRuntime,
+    events,
+    attempts,
+    requestStates,
+    metrics,
+    {
+      promptArtifacts: persistence?.promptArtifacts,
+      organizationSettings: persistence?.organizationSettings,
+      sessionPrompts: persistence?.sessionPrompts,
+      compressionCacheWindows: persistence?.compressionCacheWindows,
+      warn: (error, message) => app.log.warn({ err: error }, message)
+    }
+  );
   const sessions = new SessionRouteStore(
     persistence?.sessionPins,
     persistence ? persistentSessionMirrorLimit : Number.POSITIVE_INFINITY
   );
-  const classifier = new LlmClassifier(config, metrics);
-  const providerRegistry = persistence?.providerRegistry ?? new ConfigProviderRegistry(config);
   const observabilityWriter = new BoundedEventWriter(events, {
     maxEntries: config.eventWriterMaxEntries,
     maxBytes: config.eventWriterMaxBytes,
@@ -182,40 +178,17 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       app.log.warn({ stats }, "observability event writer shutdown drain timed out");
     }
   });
-  const observabilityEvents = new AsyncObservabilityEventAppender(events, observabilityWriter);
   const deploymentHealth = new ProviderDeploymentHealthStore();
   const trafficLimits = new TrafficLimitStore(config.trafficLimits);
-  const routing = new RoutingService(
+  const proxy = new ProviderProxy(
     config,
-    classifier,
-    observabilityEvents,
-    sessions,
-    providerRegistry,
-    persistence?.providerCredentials,
-    persistence?.providerHealth,
-    persistence?.modelDiscovery,
+    events,
+    attempts,
+    requestStates,
+    gatewayLifecycle,
     metrics,
     deploymentHealth
   );
-  const proxy = new ProviderProxy(
-    config,
-    observabilityEvents,
-    attempts,
-    requestStates,
-    providerRegistry,
-    metrics,
-    deploymentHealth,
-    (error, message) => app.log.warn({ err: error }, message)
-  );
-  const captureRequestArtifacts = async (input: Parameters<AppPersistence["promptArtifacts"]["capture"]>[0]) => {
-    if (!persistence) return [];
-    try {
-      return await persistence.promptArtifacts.capture(input);
-    } catch (error) {
-      app.log.warn({ err: error, requestId: input.requestId }, "prompt artifact capture failed");
-      return [];
-    }
-  };
   const assistantResponseCapture = (input: {
     identity: RequestIdentity;
     requestId: string;
@@ -260,17 +233,11 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
   const wsProxy = new WebSocketRoutingProxy(
     config,
     auth,
-    routing,
+    gatewayLifecycle,
     events,
     attempts,
     requestStates,
-    providerRegistry,
-    persistence?.providerCredentials,
     persistence?.promptArtifacts,
-    routingConfigs,
-    persistence?.sessionPrompts,
-    persistence?.compressionCacheWindows,
-    metrics,
     app.log
   );
   const projections = new ProjectionService(config);
@@ -302,10 +269,22 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     return buildSetupScript(`${proto}://${host}`);
   });
 
-  app.get("/v1/models", async (request) => {
-    const identity = await optionalIdentity(auth, request.headers);
-    const catalogModels = await persistence?.modelDiscovery.catalogModels(identity?.organizationId) ?? [];
-    return modelDiscoveryResponse(catalogModels);
+  app.get("/v1/models", async (request, reply) => {
+    const identity = await auth.resolve(request.headers);
+    if (!gatewayRuntime) {
+      reply.code(503).send({ error: "gateway_runtime_unavailable" });
+      return;
+    }
+    const models = await gatewayRuntime.listModels(identity);
+    return {
+      object: "list",
+      data: models.map((model) => ({
+        id: model.slug,
+        object: "model",
+        created: Math.floor(model.createdAt.getTime() / 1000),
+        owned_by: "proxy"
+      }))
+    };
   });
 
   app.post("/v1/compression/retrieve", async (request, reply) => {
@@ -422,24 +401,51 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       return projections.routeQuality(events.listEvents());
     });
   }
-  app.post("/v1/responses", async (request, reply) => {
+  const handleGatewayTextRequest = async (input: {
+    request: FastifyRequest;
+    reply: FastifyReply;
+    surface: SurfaceAdapter;
+    operationId: GatewayOperationId;
+    upstreamPath?: string;
+  }) => {
     const timing = new RequestTiming(app.log, {
-      surface: openAIResponsesSurface.surface,
-      requestBodyBytes: requestBodySizeBytes(headerValue(request.headers, "content-length"), request.body)
+      surface: input.surface.surface,
+      requestBodyBytes: requestBodySizeBytes(
+        headerValue(input.request.headers, "content-length"),
+        input.request.body
+      )
     });
     timing.sampleEventLoopLag();
-    const identity = await timing.measure("auth", () => auth.resolve(request.headers));
-    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
-      openAIResponsesSurface.createOperation,
-      request.body,
-      request.headers
-    ));
-    const rawContext = openAIResponsesSurface.buildContext(request.body, lowerHeaders(request.headers));
-    markModelStream(metrics, modelRequestsInFlight, requestMetrics, request, requestWantsStream(request.body));
+    const identity = await timing.measure("auth", () => auth.resolve(input.request.headers));
+    const rawContext = input.surface.buildContext(
+      input.request.body,
+      lowerHeaders(input.request.headers)
+    );
     const context = contextForIdentity(rawContext, identity);
+    const idempotencyKey = scopedIdempotencyKey(
+      identity.organizationId,
+      identity.workspaceId,
+      idempotencyFrom(
+        input.operationId === "text.count_tokens"
+          ? input.surface.countTokensOperation ?? input.surface.createOperation
+          : input.surface.createOperation,
+        input.request.body,
+        input.request.headers
+      )
+    );
+    markModelStream(
+      metrics,
+      modelRequestsInFlight,
+      requestMetrics,
+      input.request,
+      input.operationId === "text.generate" && requestWantsStream(input.request.body)
+    );
     const proposedRequestId = createId("request");
-    const gate = await timing.measure("idempotency_claim", () => requestStates.begin(idempotencyKey, proposedRequestId, context));
-    if (sendDuplicateRequest(gate, reply)) {
+    const gate = await timing.measure(
+      "idempotency_claim",
+      () => requestStates.begin(idempotencyKey, proposedRequestId, context)
+    );
+    if (sendDuplicateRequest(gate, input.reply)) {
       timing.log("duplicate");
       return;
     }
@@ -455,849 +461,173 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       requestLimitLease = await acquireTrafficLimitOrReject({
         trafficLimits,
         requestStates,
-        reply,
+        reply: input.reply,
         idempotencyKey,
         identity,
         context
       });
       if (!requestLimitLease) {
-        markModelErrorClass(requestMetrics, request, "traffic_limit");
+        markModelErrorClass(requestMetrics, input.request, "traffic_limit");
         return;
       }
-      await events.append({
-        tenantId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        scopeType: "request",
-        scopeId: requestId,
-        correlationId: requestId,
-        idempotencyKey,
-        actor: actorForIdentity(identity),
-        producer: "proxy.surface.openai-responses",
-        eventType: "proxy.request_received",
-        payload: requestReceivedPayload("openai-responses", context, rawContext, identity)
-      });
-      const capturedArtifacts = await captureRequestArtifacts({
-        organizationId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        requestId,
-        surface: openAIResponsesSurface.surface,
-        body: request.body,
-        transport: context.transport,
-        harness: context.harness,
-        harnessProfileId: context.harnessProfileId
-      });
-      await appendPromptCaptureEvent({
-        events,
+      const prepared = await timing.measure("gateway_prepare", () => gatewayLifecycle.prepare({
         identity,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: openAIResponsesSurface.surface,
-        transport: context.transport,
-        harness: context.harness,
-        harnessProfileId: context.harnessProfileId,
-        artifacts: capturedArtifacts
-      });
-
-      const resolved = await resolveRoutingConfig(routingConfigs, identity);
-      const systemPrompt = await effectiveSystemPrompt(
-        persistence,
-        identity,
-        openAIResponsesSurface.surface,
-        context.sessionId,
-        resolved.systemPrompt
-      );
-      await appendTokensAttributed({
-        events,
-        identity,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: openAIResponsesSurface.surface,
-        body: request.body,
-        orgSystemPrompt: systemPrompt,
-        warn: (err, message) => app.log.warn({ err, requestId }, message)
-      });
-      const decision = await routing.decide({
-        requestId,
+        rawContext,
         context,
-        body: request.body,
+        requestId,
         idempotencyKey,
-        routingConfig: resolved.routingConfig
-      });
-      timing.recordDecision(decision);
-      if (decision.outcome === "reject") {
-        await requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
-        markModelErrorClass(requestMetrics, request, "routing");
-        sendRejectedDecision(decision, reply);
+        surface: input.surface,
+        operationId: input.operationId,
+        body: input.request.body
+      }));
+      if (prepared.outcome === "denied") {
+        markModelErrorClass(requestMetrics, input.request, "model_resolution");
+        sendGatewayError(
+          input.surface.surface,
+          input.reply,
+          prepared.status,
+          prepared.code
+        );
+        timing.log("rejected");
         return;
       }
-      await pinSystemPrompt(persistence, identity, openAIResponsesSurface.surface, requestId, context.sessionId, systemPrompt);
-      const compressionCacheWindow = await appendCompressionCacheWindowResolved({
-        persistence,
-        events,
-        identity,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: openAIResponsesSurface.surface,
-        provider: routedProvider(decision),
-        model: decision.selectedModel ?? "unknown",
-        body: request.body,
-        warn: (err, message) => app.log.warn({ err, requestId }, message)
-      });
 
-      const compression = await compressForForwardWithResult({
-        events,
-        tenantId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: openAIResponsesSurface.surface,
-        body: request.body,
-        policy: resolved.toolResultCompressionPolicy,
-        deduplicateToolResults: resolved.duplicateToolResultReferences,
-        frozenPrefixItems: compressionCacheWindow.frozenPrefixItems,
-        profile: harnessProfileByName(context.harness),
-        artifactStore: persistence?.promptArtifacts,
-        warn: (err, message) => app.log.warn({ err, requestId }, message)
-      });
-      const cacheSettings = { automaticCaching: resolved.automaticCaching, cacheTtlUpgrade: resolved.cacheTtlUpgrade };
-      const providerAttempts = await buildProviderForwardAttempts({
-        persistence,
-        identity,
-        decision,
-        rewrite: (attemptDecision, candidate) => rewriteSurfaceRequestWithPromptCachePlan(
-          compression.body,
-          attemptDecision,
-          systemPrompt,
-          { context, capabilities: candidate.providerCachingCapabilities, settings: cacheSettings }
-        )
-      });
-      const forwardedBody = providerAttempts[0]?.body ?? rewriteSurfaceRequestWithPromptCachePlan(
-        compression.body,
-        decision,
-        systemPrompt,
-        { context, settings: cacheSettings }
-      ).body;
-      await appendCompressionEvidence({
-        events,
-        tenantId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: openAIResponsesSurface.surface,
-        policy: resolved.toolResultCompressionPolicy,
-        originalBody: request.body,
-        compressedBody: compression.body,
-        forwardedBody,
-        result: compression,
-        warn: (err, message) => app.log.warn({ err, requestId }, message)
-      });
+      const { decision } = prepared;
+      timing.recordDecision(decision);
       const forwardResult = await proxy.forward({
         requestId,
         idempotencyKey,
         organizationId: identity.organizationId,
         workspaceId: identity.workspaceId,
         sessionId: context.sessionId,
-        surface: openAIResponsesSurface.surface,
-        provider: routedProvider(decision),
+        surface: input.surface.surface,
         harnessProfileId: context.harnessProfileId,
-        body: forwardedBody,
-        responseStream: requestWantsStream(request.body),
-        headers: lowerHeaders(request.headers),
-        decision,
-        reply,
-        attempts: providerAttempts,
-        retryPolicy: decision.retryPolicy,
-        acquireProviderLimit: (providerAttempt) => acquireTrafficLimitOrReject({
-          trafficLimits,
-          requestStates,
-          reply,
-          idempotencyKey,
-          identity,
-          context,
-          providerAttempt
-        }),
-        timing,
-        credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
-        compressionTelemetry: compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy),
-        onAssistantText: assistantResponseCapture({
-          identity,
-          requestId,
-          idempotencyKey,
-          sessionId: context.sessionId,
-          surface: openAIResponsesSurface.surface,
-          transport: context.transport,
-          harness: context.harness,
-          harnessProfileId: context.harnessProfileId
-        }),
-        onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
-      });
-      if (forwardResult === "rejected") {
-        timing.log("rejected");
-        return;
-      }
-      timing.log("completed");
-    } catch (error) {
-      timing.log("failed", { error: errorMessage(error) });
-      await requestStates.finish(idempotencyKey, "failed", {
-        requestId,
-        error: error instanceof Error ? error.message : "Request failed."
-      });
-      throw error;
-    } finally {
-      requestLimitLease?.release();
-    }
-  });
-
-  app.post("/v1/chat/completions", async (request, reply) => {
-    const timing = new RequestTiming(app.log, {
-      surface: openAIChatSurface.surface,
-      requestBodyBytes: requestBodySizeBytes(headerValue(request.headers, "content-length"), request.body)
-    });
-    timing.sampleEventLoopLag();
-    const identity = await timing.measure("auth", () => auth.resolve(request.headers));
-    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
-      openAIChatSurface.createOperation,
-      request.body,
-      request.headers
-    ));
-    const rawContext = openAIChatSurface.buildContext(request.body, lowerHeaders(request.headers));
-    markModelStream(metrics, modelRequestsInFlight, requestMetrics, request, requestWantsStream(request.body));
-    const context = contextForIdentity(rawContext, identity);
-    const proposedRequestId = createId("request");
-    const gate = await timing.measure("idempotency_claim", () => requestStates.begin(idempotencyKey, proposedRequestId, context));
-    if (sendDuplicateRequest(gate, reply)) {
-      timing.log("duplicate");
-      return;
-    }
-    const requestId = gate.state.requestId ?? proposedRequestId;
-    timing.addMetadata({
-      requestId,
-      organizationId: identity.organizationId,
-      workspaceId: identity.workspaceId
-    });
-
-    let requestLimitLease: TrafficLimitLease | undefined;
-    try {
-      requestLimitLease = await acquireTrafficLimitOrReject({
-        trafficLimits,
-        requestStates,
-        reply,
-        idempotencyKey,
+        responseStream: input.operationId === "text.generate" &&
+          requestWantsStream(input.request.body),
+        headers: lowerHeaders(input.request.headers),
+        reply: input.reply,
+        path: input.upstreamPath,
+        prepared,
         identity,
-        context
-      });
-      if (!requestLimitLease) {
-        markModelErrorClass(requestMetrics, request, "traffic_limit");
-        return;
-      }
-      await events.append({
-        tenantId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        scopeType: "request",
-        scopeId: requestId,
-        correlationId: requestId,
-        idempotencyKey,
-        actor: actorForIdentity(identity),
-        producer: "proxy.surface.openai-chat",
-        eventType: "proxy.request_received",
-        payload: requestReceivedPayload(openAIChatSurface.surface, context, rawContext, identity)
-      });
-      const capturedArtifacts = await captureRequestArtifacts({
-        organizationId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        requestId,
-        surface: openAIChatSurface.surface,
-        body: request.body,
-        transport: context.transport,
-        harness: context.harness,
-        harnessProfileId: context.harnessProfileId
-      });
-      await appendPromptCaptureEvent({
-        events,
-        identity,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: openAIChatSurface.surface,
-        transport: context.transport,
-        harness: context.harness,
-        harnessProfileId: context.harnessProfileId,
-        artifacts: capturedArtifacts
-      });
-
-      const resolved = await resolveRoutingConfig(routingConfigs, identity);
-      await appendTokensAttributed({
-        events,
-        identity,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: openAIChatSurface.surface,
-        body: request.body,
-        orgSystemPrompt: resolved.systemPrompt,
-        warn: (err, message) => app.log.warn({ err, requestId }, message)
-      });
-      const decision = await routing.decide({
-        requestId,
         context,
-        body: request.body,
-        idempotencyKey,
-        routingConfig: resolved.routingConfig
-      });
-      timing.recordDecision(decision);
-      if (decision.outcome === "reject") {
-        await requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
-        markModelErrorClass(requestMetrics, request, "routing");
-        sendRejectedDecision(decision, reply);
-        return;
-      }
-      const compressionCacheWindow = await appendCompressionCacheWindowResolved({
-        persistence,
-        events,
-        identity,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: openAIChatSurface.surface,
-        provider: routedProvider(decision),
-        model: decision.selectedModel ?? "unknown",
-        body: request.body,
-        warn: (err, message) => app.log.warn({ err, requestId }, message)
-      });
-
-      const compression = await compressForForwardWithResult({
-        events,
-        tenantId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: openAIChatSurface.surface,
-        body: request.body,
-        policy: resolved.toolResultCompressionPolicy,
-        deduplicateToolResults: resolved.duplicateToolResultReferences,
-        frozenPrefixItems: compressionCacheWindow.frozenPrefixItems,
-        profile: harnessProfileByName(context.harness),
-        artifactStore: persistence?.promptArtifacts,
-        warn: (err, message) => app.log.warn({ err, requestId }, message)
-      });
-      const cacheSettings = { automaticCaching: resolved.automaticCaching, cacheTtlUpgrade: resolved.cacheTtlUpgrade };
-      const providerAttempts = await buildProviderForwardAttempts({
-        persistence,
-        identity,
-        decision,
-        rewrite: (attemptDecision, candidate) => rewriteSurfaceRequestWithPromptCachePlan(
-          compression.body,
-          attemptDecision,
-          resolved.systemPrompt,
-          { context, capabilities: candidate.providerCachingCapabilities, settings: cacheSettings }
-        )
-      });
-      const forwardedBody = providerAttempts[0]?.body ?? rewriteSurfaceRequestWithPromptCachePlan(
-        compression.body,
-        decision,
-        resolved.systemPrompt,
-        { context, settings: cacheSettings }
-      ).body;
-      await appendCompressionEvidence({
-        events,
-        tenantId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: openAIChatSurface.surface,
-        policy: resolved.toolResultCompressionPolicy,
-        originalBody: request.body,
-        compressedBody: compression.body,
-        forwardedBody,
-        result: compression,
-        warn: (err, message) => app.log.warn({ err, requestId }, message)
-      });
-      const forwardResult = await proxy.forward({
-        requestId,
-        idempotencyKey,
-        organizationId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        sessionId: context.sessionId,
-        surface: openAIChatSurface.surface,
-        provider: routedProvider(decision),
-        harnessProfileId: context.harnessProfileId,
-        body: forwardedBody,
-        responseStream: requestWantsStream(request.body),
-        headers: lowerHeaders(request.headers),
-        decision,
-        reply,
-        attempts: providerAttempts,
-        retryPolicy: decision.retryPolicy,
         acquireProviderLimit: (providerAttempt) => acquireTrafficLimitOrReject({
           trafficLimits,
           requestStates,
-          reply,
+          reply: input.reply,
           idempotencyKey,
           identity,
           context,
           providerAttempt
         }),
+        onAssistantText: input.operationId === "text.generate"
+          ? assistantResponseCapture({
+              identity,
+              requestId,
+              idempotencyKey,
+              sessionId: context.sessionId,
+              surface: input.surface.surface,
+              transport: context.transport,
+              harness: context.harness,
+              harnessProfileId: context.harnessProfileId
+            })
+          : undefined,
         timing,
-        credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
-        compressionTelemetry: compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy),
-        onAssistantText: assistantResponseCapture({
-          identity,
-          requestId,
-          idempotencyKey,
-          sessionId: context.sessionId,
-          surface: openAIChatSurface.surface,
-          transport: context.transport,
-          harness: context.harness,
-          harnessProfileId: context.harnessProfileId
-        }),
-        onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
+        onTerminal: (terminal) => markModelTerminal(
+          metrics,
+          modelRequestsInFlight,
+          requestMetrics,
+          input.request,
+          terminal.status,
+          terminal.errorClass
+        )
       });
-      if (forwardResult === "rejected") {
-        timing.log("rejected");
-        return;
-      }
-      timing.log("completed");
+      timing.log(forwardResult === "rejected" ? "rejected" : "completed");
     } catch (error) {
       timing.log("failed", { error: errorMessage(error) });
       await requestStates.finish(idempotencyKey, "failed", {
         requestId,
         error: error instanceof Error ? error.message : "Request failed."
       });
-      throw error;
+      if (!input.reply.sent) {
+        markModelErrorClass(requestMetrics, input.request, "gateway");
+        sendGatewayError(
+          input.surface.surface,
+          input.reply,
+          502,
+          error instanceof Error ? error.message : "gateway_request_failed"
+        );
+      }
     } finally {
       requestLimitLease?.release();
     }
-  });
+  };
 
-  app.post("/v1/messages", async (request, reply) => {
-    const timing = new RequestTiming(app.log, {
-      surface: anthropicMessagesSurface.surface,
-      requestBodyBytes: requestBodySizeBytes(headerValue(request.headers, "content-length"), request.body)
-    });
-    timing.sampleEventLoopLag();
-    const identity = await timing.measure("auth", () => auth.resolve(request.headers));
-    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
-      anthropicMessagesSurface.createOperation,
-      request.body,
-      request.headers
-    ));
-    const rawContext = anthropicMessagesSurface.buildContext(request.body, lowerHeaders(request.headers));
-    markModelStream(metrics, modelRequestsInFlight, requestMetrics, request, requestWantsStream(request.body));
-    const context = contextForIdentity(rawContext, identity);
-    const proposedRequestId = createId("request");
-    const gate = await timing.measure("idempotency_claim", () => requestStates.begin(idempotencyKey, proposedRequestId, context));
-    if (sendDuplicateRequest(gate, reply)) {
-      timing.log("duplicate");
-      return;
-    }
-    const requestId = gate.state.requestId ?? proposedRequestId;
-    timing.addMetadata({
-      requestId,
-      organizationId: identity.organizationId,
-      workspaceId: identity.workspaceId
-    });
+  app.post("/v1/responses", (request, reply) => handleGatewayTextRequest({
+    request,
+    reply,
+    surface: openAIResponsesSurface,
+    operationId: "text.generate"
+  }));
 
-    let requestLimitLease: TrafficLimitLease | undefined;
-    try {
-      requestLimitLease = await acquireTrafficLimitOrReject({
-        trafficLimits,
-        requestStates,
-        reply,
-        idempotencyKey,
-        identity,
-        context
-      });
-      if (!requestLimitLease) {
-        markModelErrorClass(requestMetrics, request, "traffic_limit");
-        return;
-      }
-      await events.append({
-        tenantId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        scopeType: "request",
-        scopeId: requestId,
-        sessionId: context.sessionId,
-        correlationId: requestId,
-        idempotencyKey,
-        actor: actorForIdentity(identity),
-        producer: "proxy.surface.anthropic-messages",
-        eventType: "proxy.request_received",
-        payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
-      });
-      const capturedArtifacts = await captureRequestArtifacts({
-        organizationId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        requestId,
-        surface: anthropicMessagesSurface.surface,
-        body: request.body,
-        transport: context.transport,
-        harness: context.harness,
-        harnessProfileId: context.harnessProfileId
-      });
-      await appendPromptCaptureEvent({
-        events,
-        identity,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: anthropicMessagesSurface.surface,
-        transport: context.transport,
-        harness: context.harness,
-        harnessProfileId: context.harnessProfileId,
-        artifacts: capturedArtifacts
-      });
+  app.post("/v1/chat/completions", (request, reply) => handleGatewayTextRequest({
+    request,
+    reply,
+    surface: openAIChatSurface,
+    operationId: "text.generate"
+  }));
 
-      const resolved = await resolveRoutingConfig(routingConfigs, identity);
-      const systemPrompt = await effectiveSystemPrompt(
-        persistence,
-        identity,
-        anthropicMessagesSurface.surface,
-        context.sessionId,
-        resolved.systemPrompt
-      );
-      await appendTokensAttributed({
-        events,
-        identity,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: anthropicMessagesSurface.surface,
-        body: request.body,
-        orgSystemPrompt: systemPrompt,
-        warn: (err, message) => app.log.warn({ err, requestId }, message)
-      });
-      const decision = await routing.decide({
-        requestId,
-        context,
-        body: request.body,
-        idempotencyKey,
-        routingConfig: resolved.routingConfig
-      });
-      timing.recordDecision(decision);
-      if (decision.outcome === "reject") {
-        await requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
-        markModelErrorClass(requestMetrics, request, "routing");
-        sendRejectedDecision(decision, reply);
-        return;
-      }
-      await pinSystemPrompt(persistence, identity, anthropicMessagesSurface.surface, requestId, context.sessionId, systemPrompt);
-      const compressionCacheWindow = await appendCompressionCacheWindowResolved({
-        persistence,
-        events,
-        identity,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: anthropicMessagesSurface.surface,
-        provider: routedProvider(decision),
-        model: decision.selectedModel ?? "unknown",
-        body: request.body,
-        warn: (err, message) => app.log.warn({ err, requestId }, message)
-      });
+  app.post("/v1/messages", (request, reply) => handleGatewayTextRequest({
+    request,
+    reply,
+    surface: anthropicMessagesSurface,
+    operationId: "text.generate"
+  }));
 
-      const compression = await compressForForwardWithResult({
-        events,
-        tenantId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: anthropicMessagesSurface.surface,
-        body: request.body,
-        policy: resolved.toolResultCompressionPolicy,
-        deduplicateToolResults: resolved.duplicateToolResultReferences,
-        frozenPrefixItems: compressionCacheWindow.frozenPrefixItems,
-        profile: harnessProfileByName(context.harness),
-        artifactStore: persistence?.promptArtifacts,
-        warn: (err, message) => app.log.warn({ err, requestId }, message)
-      });
-      const cacheSettings = { automaticCaching: resolved.automaticCaching, cacheTtlUpgrade: resolved.cacheTtlUpgrade };
-      const providerAttempts = await buildProviderForwardAttempts({
-        persistence,
-        identity,
-        decision,
-        rewrite: (attemptDecision, candidate) => rewriteSurfaceRequestWithPromptCachePlan(
-          compression.body,
-          attemptDecision,
-          systemPrompt,
-          { context, capabilities: candidate.providerCachingCapabilities, settings: cacheSettings }
-        )
-      });
-      const forwardedBody = providerAttempts[0]?.body ?? rewriteSurfaceRequestWithPromptCachePlan(
-        compression.body,
-        decision,
-        systemPrompt,
-        { context, settings: cacheSettings }
-      ).body;
-      await appendCompressionEvidence({
-        events,
-        tenantId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: anthropicMessagesSurface.surface,
-        policy: resolved.toolResultCompressionPolicy,
-        originalBody: request.body,
-        compressedBody: compression.body,
-        forwardedBody,
-        result: compression,
-        warn: (err, message) => app.log.warn({ err, requestId }, message)
-      });
-      const forwardResult = await proxy.forward({
-        requestId,
-        idempotencyKey,
-        organizationId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        sessionId: context.sessionId,
-        surface: anthropicMessagesSurface.surface,
-        provider: routedProvider(decision),
-        harnessProfileId: context.harnessProfileId,
-        body: forwardedBody,
-        responseStream: requestWantsStream(request.body),
-        headers: lowerHeaders(request.headers),
-        decision,
-        reply,
-        attempts: providerAttempts,
-        retryPolicy: decision.retryPolicy,
-        acquireProviderLimit: (providerAttempt) => acquireTrafficLimitOrReject({
-          trafficLimits,
-          requestStates,
-          reply,
-          idempotencyKey,
-          identity,
-          context,
-          providerAttempt
-        }),
-        timing,
-        credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
-        compressionTelemetry: compressionForwardTelemetry(compression, resolved.toolResultCompressionPolicy),
-        onAssistantText: assistantResponseCapture({
-          identity,
-          requestId,
-          idempotencyKey,
-          sessionId: context.sessionId,
-          surface: anthropicMessagesSurface.surface,
-          transport: context.transport,
-          harness: context.harness,
-          harnessProfileId: context.harnessProfileId
-        }),
-        onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
-      });
-      if (forwardResult === "rejected") {
-        timing.log("rejected");
-        return;
-      }
-      timing.log("completed");
-    } catch (error) {
-      timing.log("failed", { error: errorMessage(error) });
-      await requestStates.finish(idempotencyKey, "failed", {
-        requestId,
-        error: error instanceof Error ? error.message : "Request failed."
-      });
-      throw error;
-    } finally {
-      requestLimitLease?.release();
-    }
-  });
-
-  app.post("/v1/messages/count_tokens", async (request, reply) => {
-    const timing = new RequestTiming(app.log, {
-      surface: anthropicMessagesSurface.surface,
-      requestBodyBytes: requestBodySizeBytes(headerValue(request.headers, "content-length"), request.body)
-    });
-    timing.sampleEventLoopLag();
-    const identity = await timing.measure("auth", () => auth.resolve(request.headers));
-    const idempotencyKey = scopedIdempotencyKey(identity.organizationId, identity.workspaceId, idempotencyFrom(
-      anthropicMessagesSurface.countTokensOperation ?? anthropicMessagesSurface.createOperation,
-      request.body,
-      request.headers
-    ));
-    const rawContext = anthropicMessagesSurface.buildContext(request.body, lowerHeaders(request.headers));
-    markModelStream(metrics, modelRequestsInFlight, requestMetrics, request, false);
-    const context = contextForIdentity(rawContext, identity);
-    const proposedRequestId = createId("request");
-    const gate = await timing.measure("idempotency_claim", () => requestStates.begin(idempotencyKey, proposedRequestId, context));
-    if (sendDuplicateRequest(gate, reply)) {
-      timing.log("duplicate");
-      return;
-    }
-    const requestId = gate.state.requestId ?? proposedRequestId;
-    timing.addMetadata({
-      requestId,
-      organizationId: identity.organizationId,
-      workspaceId: identity.workspaceId
-    });
-    let requestLimitLease: TrafficLimitLease | undefined;
-    try {
-      requestLimitLease = await acquireTrafficLimitOrReject({
-        trafficLimits,
-        requestStates,
-        reply,
-        idempotencyKey,
-        identity,
-        context
-      });
-      if (!requestLimitLease) {
-        markModelErrorClass(requestMetrics, request, "traffic_limit");
-        return;
-      }
-      await events.append({
-        tenantId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        scopeType: "request",
-        scopeId: requestId,
-        sessionId: context.sessionId,
-        correlationId: requestId,
-        idempotencyKey,
-        actor: actorForIdentity(identity),
-        producer: "proxy.surface.anthropic-messages",
-        eventType: "proxy.request_received",
-        payload: requestReceivedPayload("anthropic-messages", context, rawContext, identity)
-      });
-      const resolved = await resolveRoutingConfig(routingConfigs, identity);
-      const systemPrompt = await effectiveSystemPrompt(
-        persistence,
-        identity,
-        anthropicMessagesSurface.surface,
-        context.sessionId,
-        resolved.systemPrompt
-      );
-      const decision = await routing.tokenCountDecision(context, resolved.routingConfig);
-      timing.recordDecision(decision);
-      if (decision.outcome === "reject") {
-        await requestStates.finish(idempotencyKey, "failed", { requestId, error: decision.error });
-        markModelErrorClass(requestMetrics, request, "routing");
-        sendRejectedDecision(decision, reply);
-        return;
-      }
-
-      // count_tokens applies the identical compression so the harness's token
-      // count reflects what it will actually send — through the same guarded
-      // path as /v1/messages so a throwing filter degrades identically — but
-      // does not emit a compression.recorded event (that would double-count
-      // against the paired /v1/messages call).
-      let compressionFailed = false;
-      const countCompression = compressOrFallback(
-        anthropicMessagesSurface.surface,
-        request.body,
-        resolved.toolResultCompressionPolicy,
-        (err, message) => {
-          if (message === "tool result compression failed") compressionFailed = true;
-          app.log.warn({ err, requestId }, message);
-        },
-        {
-          deduplicateToolResults: resolved.duplicateToolResultReferences,
-          profile: harnessProfileByName(context.harness)
-        }
-      );
-      const cacheSettings = { automaticCaching: false, cacheTtlUpgrade: resolved.cacheTtlUpgrade };
-      const providerAttempts = await buildProviderForwardAttempts({
-        persistence,
-        identity,
-        decision,
-        rewrite: (attemptDecision, candidate) => rewriteTokenCountRequestWithPromptCachePlan(
-          countCompression.body,
-          attemptDecision,
-          systemPrompt,
-          { context, capabilities: candidate.providerCachingCapabilities, settings: cacheSettings }
-        )
-      });
-      const forwardedBody = providerAttempts[0]?.body ?? rewriteTokenCountRequestWithPromptCachePlan(
-        countCompression.body,
-        decision,
-        systemPrompt,
-        { context, settings: cacheSettings }
-      ).body;
-      await appendCompressionEvidence({
-        events,
-        tenantId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        requestId,
-        idempotencyKey,
-        sessionId: context.sessionId,
-        surface: anthropicMessagesSurface.surface,
-        policy: resolved.toolResultCompressionPolicy,
-        originalBody: request.body,
-        compressedBody: countCompression.body,
-        forwardedBody,
-        result: {
-          ...countCompression,
-          receiptIds: [],
-          eventEmitFailed: false,
-          compressionFailed
-        },
-        warn: (err, message) => app.log.warn({ err, requestId }, message)
-      });
-      const forwardResult = await proxy.forward({
-        requestId,
-        idempotencyKey,
-        organizationId: identity.organizationId,
-        workspaceId: identity.workspaceId,
-        sessionId: context.sessionId,
-        surface: anthropicMessagesSurface.surface,
-        provider: routedProvider(decision),
-        harnessProfileId: context.harnessProfileId,
-        body: forwardedBody,
-        headers: lowerHeaders(request.headers),
-        decision,
-        reply,
-        path: "/messages/count_tokens",
-        attempts: providerAttempts,
-        retryPolicy: decision.retryPolicy,
-        acquireProviderLimit: (providerAttempt) => acquireTrafficLimitOrReject({
-          trafficLimits,
-          requestStates,
-          reply,
-          idempotencyKey,
-          identity,
-          context,
-          providerAttempt
-        }),
-        timing,
-        credential: await resolveUpstreamCredential(persistence, identity, routedProvider(decision)),
-        compressionTelemetry: compressionForwardTelemetry({
-          ...countCompression,
-          receiptIds: [],
-          eventEmitFailed: false,
-          compressionFailed
-        }, resolved.toolResultCompressionPolicy),
-        onTerminal: (terminal) => markModelTerminal(metrics, modelRequestsInFlight, requestMetrics, request, terminal.status, terminal.errorClass)
-      });
-      if (forwardResult === "rejected") {
-        timing.log("rejected");
-        return;
-      }
-      timing.log("completed");
-    } catch (error) {
-      timing.log("failed", { error: errorMessage(error) });
-      await requestStates.finish(idempotencyKey, "failed", {
-        requestId,
-        error: error instanceof Error ? error.message : "Request failed."
-      });
-      throw error;
-    } finally {
-      requestLimitLease?.release();
-    }
-  });
+  app.post("/v1/messages/count_tokens", (request, reply) => handleGatewayTextRequest({
+    request,
+    reply,
+    surface: anthropicMessagesSurface,
+    operationId: "text.count_tokens",
+    upstreamPath: "/messages/count_tokens"
+  }));
 
   return app;
 }
 
-function routedProvider(decision: { provider?: Provider }) {
-  if (!decision.provider) throw new Error("Missing routed provider.");
-  return decision.provider;
-}
 
 function requestWantsStream(body: unknown) {
   return isRecord(body) && body.stream === true;
+}
+
+function sendGatewayError(
+  surface: Surface,
+  reply: FastifyReply,
+  status: number,
+  code: string
+) {
+  if (surface === "anthropic-messages") {
+    reply.code(status).send({
+      type: "error",
+      error: {
+        type: gatewayErrorType(status),
+        message: code
+      }
+    });
+    return;
+  }
+  reply.code(status).send({
+    error: {
+      message: code,
+      type: gatewayErrorType(status),
+      code
+    }
+  });
+}
+
+function gatewayErrorType(status: number) {
+  if (status === 401) return "authentication_error";
+  if (status === 403) return "permission_error";
+  return "invalid_request_error";
 }
 
 async function acquireTrafficLimitOrReject(input: {
@@ -1336,223 +666,6 @@ function sendTrafficLimitDenied(reply: FastifyReply, result: TrafficLimitDenied)
     limit: result.limit,
     current: result.current
   });
-}
-
-async function buildProviderForwardAttempts(input: {
-  persistence: AppPersistence | undefined;
-  identity: RequestIdentity;
-  decision: RouteDecision;
-  rewrite: (decision: RouteDecision, candidate: RouteProviderAttempt) => Pick<ProviderForwardAttemptInput, "body" | "promptCachePlan">;
-}): Promise<ProviderForwardAttemptInput[]> {
-  const maxAttempts = Math.max(1, input.decision.retryPolicy?.maxAttempts ?? 1);
-  const attempts: ProviderForwardAttemptInput[] = [];
-  let skippedUnavailableAccount = false;
-
-  for (const candidate of candidateProviderAttempts(input.decision)) {
-    const credential = await resolveUpstreamCredential(
-      input.persistence,
-      input.identity,
-      candidate.provider,
-      candidate.deployment.providerAccountId
-    );
-    if (candidate.deployment.providerAccountId && !credential) {
-      skippedUnavailableAccount = true;
-      continue;
-    }
-
-    const attemptDecision = decisionForProviderAttempt(input.decision, candidate);
-    const rewritten = input.rewrite(attemptDecision, candidate);
-    attempts.push({
-      route: candidate.route,
-      routeCandidateId: candidate.routeCandidateId,
-      selectedModel: candidate.selectedModel,
-      provider: candidate.provider,
-      adapterKind: candidate.adapterKind,
-      deployment: candidate.deployment,
-      reasoningEffort: candidate.reasoningEffort,
-      body: rewritten.body,
-      credential,
-      providerSettings: candidate.providerSettings,
-      promptCachePlan: rewritten.promptCachePlan
-    });
-  }
-
-  const scopedAttempts = attempts.some((attempt) => attempt.credential)
-    ? attempts.filter((attempt) => attempt.credential)
-    : attempts;
-  if (attempts.length === 0 && skippedUnavailableAccount) {
-    throw new Error("deployment_provider_account_unavailable");
-  }
-  return scopedAttempts.slice(0, maxAttempts);
-}
-
-function candidateProviderAttempts(decision: RouteDecision): RouteProviderAttempt[] {
-  if (decision.providerAttempts?.length) return decision.providerAttempts;
-  if (
-    !decision.finalRoute ||
-    !decision.selectedModel ||
-    !decision.provider ||
-    !decision.deployment ||
-    !decision.providerSettings
-  ) {
-    return [];
-  }
-  return [{
-    route: decision.finalRoute,
-    routeCandidateId: decision.routeExecutionPlan?.selected?.candidateId,
-    selectedModel: decision.selectedModel,
-    provider: decision.provider,
-    adapterKind: decision.selectedAdapterKind,
-    deployment: decision.deployment,
-    reasoningEffort: decision.reasoningEffort,
-    verbosity: decision.verbosity,
-    providerSettings: decision.providerSettings
-  }];
-}
-
-function decisionForProviderAttempt(decision: RouteDecision, attempt: RouteProviderAttempt): RouteDecision {
-  return {
-    ...decision,
-    finalRoute: attempt.route,
-    selectedModel: attempt.selectedModel,
-    provider: attempt.provider,
-    deployment: attempt.deployment,
-    reasoningEffort: attempt.reasoningEffort,
-    verbosity: attempt.verbosity,
-    providerSettings: attempt.providerSettings
-  };
-}
-
-function resolveUpstreamCredential(
-  persistence: AppPersistence | undefined,
-  identity: RequestIdentity,
-  provider: Provider,
-  providerAccountId?: string
-) {
-  if (!persistence) return undefined;
-  if (providerAccountId) {
-    return persistence.providerCredentials.resolveAccount({
-      organizationId: identity.organizationId,
-      provider,
-      providerAccountId
-    });
-  }
-  return persistence.providerCredentials.resolveForRequest({
-    organizationId: identity.organizationId,
-    workspaceId: identity.workspaceId,
-    apiKeyId: identity.apiKeyId,
-    provider
-  });
-}
-
-async function optionalIdentity(
-  auth: ProxyAuthService,
-  headers: Record<string, unknown>
-) {
-  try {
-    return await auth.resolve(headers);
-  } catch {
-    return undefined;
-  }
-}
-
-async function resolveRoutingConfig(
-  routingConfigs: RoutingConfigResolverLike,
-  identity: RequestIdentity
-) {
-  return resolveRoutingSelection(routingConfigs, {
-    organizationId: identity.organizationId,
-    workspaceId: identity.workspaceId,
-    routingConfigId: identity.routingConfigId
-  });
-}
-
-async function effectiveSystemPrompt(
-  persistence: AppPersistence | undefined,
-  identity: RequestIdentity,
-  surface: Surface,
-  sessionId: string | undefined,
-  systemPrompt: string | undefined
-) {
-  const pinned = await persistence?.sessionPrompts.resolve({
-    organizationId: identity.organizationId,
-    workspaceId: identity.workspaceId,
-    surface,
-    sessionId
-  });
-  return pinned?.pinned ? pinned.systemPrompt : systemPrompt;
-}
-
-async function pinSystemPrompt(
-  persistence: AppPersistence | undefined,
-  identity: RequestIdentity,
-  surface: Surface,
-  requestId: string,
-  sessionId: string | undefined,
-  systemPrompt: string | undefined
-) {
-  await persistence?.sessionPrompts.pin({
-    organizationId: identity.organizationId,
-    workspaceId: identity.workspaceId,
-    surface,
-    requestId,
-    sessionId,
-    systemPrompt
-  });
-}
-
-async function appendCompressionCacheWindowResolved(input: {
-  persistence: AppPersistence | undefined;
-  events: EventService;
-  identity: RequestIdentity;
-  requestId: string;
-  idempotencyKey: string;
-  sessionId: string | undefined;
-  surface: Surface;
-  provider: Provider;
-  model: string;
-  body: unknown;
-  warn: (err: unknown, message: string) => void;
-}): Promise<CompressionCacheWindow> {
-  let window: CompressionCacheWindow;
-  try {
-    window = await input.persistence?.compressionCacheWindows.resolve({
-      organizationId: input.identity.organizationId,
-      workspaceId: input.identity.workspaceId,
-      sessionId: input.sessionId,
-      surface: input.surface,
-      provider: input.provider,
-      model: input.model,
-      body: input.body
-    }) ?? noCompressionCacheWindow();
-  } catch (error) {
-    input.warn(error, "compression cache window resolution failed");
-    return noCompressionCacheWindow();
-  }
-
-  try {
-    await input.events.append({
-      tenantId: input.identity.organizationId,
-      workspaceId: input.identity.workspaceId,
-      scopeType: "request",
-      scopeId: input.requestId,
-      sessionId: input.sessionId,
-      correlationId: input.requestId,
-      idempotencyKey: input.idempotencyKey,
-      actor: actorForIdentity(input.identity),
-      producer: "proxy.compression",
-      eventType: "compression.cache_window_resolved",
-      payload: {
-        surface: input.surface,
-        provider: input.provider,
-        model: input.model,
-        ...compressionCacheWindowEventPayload(window)
-      }
-    });
-  } catch (error) {
-    input.warn(error, "compression cache window event emit failed");
-  }
-  return window;
 }
 
 function requireAuth(headers: Record<string, unknown>, token: string) {
@@ -1640,14 +753,6 @@ function sendDuplicateRequest(
     status: gate.state.status
   });
   return true;
-}
-
-function sendRejectedDecision(decision: RouteDecision, reply: FastifyReply) {
-  reply.code(decision.errorStatus ?? 400).send({
-    error: decision.error,
-    message: decision.errorMessage ?? decision.error,
-    details: decision.errorDetails ?? undefined
-  });
 }
 
 type RequestMetricsState = {
@@ -1806,7 +911,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // counts into input/total, then reprice rows that booked $0 before their
   // model's rate existed — in that order, so repricing sees healed tokens.
   if (persistence) {
-    scheduleDailyModelCatalogRefresh(persistence.modelCatalogRefresh, app.log);
     void persistence
       .normalizeLegacyCachedUsage()
       .then(

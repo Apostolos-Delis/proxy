@@ -1,36 +1,22 @@
 import { ClipboardCheck } from "lucide-react";
 
-import type { ProviderAccountSummary } from "../providers/data";
-import type { RoutingConfigSummary } from "../routing/data";
+import type { AccessProfileSummary } from "../routing/data";
 import { GlassCard } from "../ui";
-import { providerCredentialHint, providerIdsForRoutingConfig, providerOptionsForAccounts } from "./providerOptions";
 import { harnessSetupLabel } from "./setupSnippets";
 import { WizardStepHead } from "./stepHead";
-import { orgDefaultConfigLabel, type CreateKeyDraft } from "./wizard";
+import type { CreateKeyDraft } from "./wizard";
 
-export function ReviewStep({ draft, configs, defaultConfig, providerAccounts }: {
+export function ReviewStep({ draft, profiles }: {
   draft: CreateKeyDraft;
-  configs: RoutingConfigSummary[];
-  defaultConfig: RoutingConfigSummary | null;
-  providerAccounts: ProviderAccountSummary[];
+  profiles: AccessProfileSummary[];
 }) {
-  const routingConfigName = draft.routingConfigId
-    ? configs.find((config) => config.id === draft.routingConfigId)?.name ?? draft.routingConfigId
-    : orgDefaultConfigLabel(defaultConfig);
-  const selectedConfig = draft.routingConfigId
-    ? configs.find((config) => config.id === draft.routingConfigId) ?? null
-    : defaultConfig;
-  const providerOptions = providerOptionsForAccounts(
-    providerAccounts,
-    draft.providerBindings,
-    providerIdsForRoutingConfig(selectedConfig)
-  );
+  const accessProfile = profiles.find((profile) => profile.id === draft.accessProfileId);
   return (
     <GlassCard>
       <WizardStepHead
         icon={<ClipboardCheck />}
         title="Review & create"
-        sub="The key secret is generated once and stored as a hash — copy it right away."
+        sub="The key secret is generated once and stored as a hash."
       />
       <dl className="wizard-review">
         <div>
@@ -42,29 +28,14 @@ export function ReviewStep({ draft, configs, defaultConfig, providerAccounts }: 
           <dd>{harnessSetupLabel(draft.harnesses)}</dd>
         </div>
         <div>
-          <dt>Routing config</dt>
-          <dd>{routingConfigName}</dd>
+          <dt>Access profile</dt>
+          <dd>{accessProfile?.name ?? draft.accessProfileId}</dd>
         </div>
-        {draft.linkProviderKeys ? (
-          providerOptions.map((provider) => (
-            <div key={provider.value}>
-              <dt>{provider.label} credential</dt>
-              <dd>{bindingLabel(draft.providerBindings[provider.value], providerAccounts)}</dd>
-            </div>
-          ))
-        ) : (
-          <div>
-            <dt>Provider credentials</dt>
-            <dd>Company default (platform keys)</dd>
-          </div>
-        )}
+        <div>
+          <dt>Setup model</dt>
+          <dd>{accessProfile?.setupModel ?? "Unavailable"}</dd>
+        </div>
       </dl>
     </GlassCard>
   );
-}
-
-function bindingLabel(providerAccountId: string | null, providerAccounts: ProviderAccountSummary[]) {
-  if (!providerAccountId) return "Company default";
-  const account = providerAccounts.find((candidate) => candidate.id === providerAccountId);
-  return account ? `${account.name} (${providerCredentialHint(account)})` : providerAccountId;
 }
