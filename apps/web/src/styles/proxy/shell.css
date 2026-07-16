@@ -54,7 +54,7 @@
   background: transparent;
   color: var(--fg-faint);
   cursor: pointer;
-  transition: background .13s var(--ease), border-color .13s var(--ease), color .13s var(--ease);
+  transition: background .13s var(--ease), border-color .13s var(--ease), color .13s var(--ease), opacity .13s var(--ease);
 }
 .sidebar-toggle:hover {
   background: var(--glass-hover);
@@ -69,10 +69,37 @@
   justify-content: center;
   padding-inline: 0;
 }
+.collapsed-brand-control {
+  display: grid;
+  width: 32px;
+  height: 32px;
+}
+.collapsed-brand-control > * {
+  grid-area: 1 / 1;
+}
+.collapsed-brand-control .brand-mark {
+  width: 32px;
+  height: 32px;
+  transition: opacity .13s var(--ease);
+}
 .app.collapsed .sidebar-toggle {
   background: var(--glass-2);
   border-color: var(--border);
-  color: var(--accent);
+  color: var(--fg-muted);
+  opacity: 0;
+}
+.collapsed-brand-control:hover .brand-mark,
+.collapsed-brand-control:focus-within .brand-mark {
+  opacity: 0;
+}
+.collapsed-brand-control:hover .sidebar-toggle,
+.collapsed-brand-control:focus-within .sidebar-toggle {
+  color: var(--fg);
+  opacity: 1;
+}
+.sidebar-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
 }
 
 .nav-group-label {
@@ -326,4 +353,11 @@
 .logout-button svg {
   width: 15px;
   height: 15px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collapsed-brand-control .brand-mark,
+  .collapsed-brand-control .sidebar-toggle {
+    transition: none;
+  }
 }
