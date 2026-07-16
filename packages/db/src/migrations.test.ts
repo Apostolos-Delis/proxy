@@ -194,6 +194,29 @@ describe("database migrations", () => {
     await client.close();
   });
 
+  it("normalizes migrated model slugs for declarative management", async () => {
+    const client = await migratedClient("0029_ai_gateway_resolution_evidence.sql");
+    const model = `anthropic.claude-3-5-sonnet-20241022-v2:0-${"x".repeat(160)}`;
+    await seedLegacyGatewayConfig(client, { model });
+
+    await applyMigration(client, "0030_ai_gateway_runtime_materialization.sql");
+    const resources = await client.query<{ canonical_slug: string; deployment_slug: string }>(`
+      select canonical.slug as canonical_slug, deployment.slug as deployment_slug
+      from model_deployments deployment
+      join canonical_models canonical
+        on canonical.organization_id = deployment.organization_id
+       and canonical.workspace_id = deployment.workspace_id
+       and canonical.id = deployment.canonical_model_id
+      where deployment.upstream_model_id = '${model}'
+    `);
+
+    expect(resources.rows).toHaveLength(1);
+    expect(resources.rows[0]?.canonical_slug).toBe(resources.rows[0]?.deployment_slug);
+    expect(resources.rows[0]?.canonical_slug).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*-[a-f0-9]{8}$/);
+    expect(resources.rows[0]?.canonical_slug.length).toBeLessThanOrEqual(128);
+    await client.close();
+  });
+
   it("fails closed when legacy routes conflict for one provider model", async () => {
     const client = await migratedClient("0029_ai_gateway_resolution_evidence.sql");
     await seedLegacyGatewayConfig(client, { conflictingSettings: true });
@@ -397,12 +420,14 @@ async function seedLegacyGatewayConfig(
   options: {
     conflictingSettings?: boolean;
     deploymentBaseUrl?: string;
+    model?: string;
     providerAccountId?: string | null;
   } = {}
 ) {
   const providerAccountId = options.providerAccountId === undefined
     ? "account_selected"
     : options.providerAccountId;
+  const model = options.model ?? "claude-health";
   const config = {
     schemaVersion: 3,
     displayName: "Legacy router",
@@ -413,14 +438,15 @@ async function seedLegacyGatewayConfig(
       maxAttempts: 2
     },
     routes: {
-      fast: legacyAnthropicRoute(60000, options.deploymentBaseUrl, providerAccountId),
+      fast: legacyAnthropicRoute(60000, options.deploymentBaseUrl, providerAccountId, model),
       balanced: legacyAnthropicRoute(
         options.conflictingSettings ? 61000 : 60000,
         options.deploymentBaseUrl,
-        providerAccountId
+        providerAccountId,
+        model
       ),
-      hard: legacyAnthropicRoute(60000, options.deploymentBaseUrl, providerAccountId),
-      deep: legacyAnthropicRoute(60000, options.deploymentBaseUrl, providerAccountId)
+      hard: legacyAnthropicRoute(60000, options.deploymentBaseUrl, providerAccountId, model),
+      deep: legacyAnthropicRoute(60000, options.deploymentBaseUrl, providerAccountId, model)
     }
   };
   await client.exec(`
@@ -448,7 +474,7 @@ async function seedLegacyGatewayConfig(
       id, organization_id, provider_id, model, capabilities, pricing
     ) values (
       'legacy_catalog', 'legacy_org', '00000000-0000-0000-0000-000000000002',
-      'claude-health', '{"tools":true,"contextWindow":100000}',
+      '${model}', '{"tools":true,"contextWindow":100000}',
       '{"inputCostPerMtok":1,"outputCostPerMtok":2}'
     );
     insert into routing_configs (
@@ -495,12 +521,12 @@ async function seedLegacyGatewayConfig(
       (
         'model_health_selected', 'legacy_org', 'legacy_org:workspace:default',
         '00000000-0000-0000-0000-000000000002', 'account_selected',
-        'claude-health', 'healthy', '2025-01-01T00:00:00Z', '{"source":"selected"}'
+        '${model}', 'healthy', '2025-01-01T00:00:00Z', '{"source":"selected"}'
       ),
       (
         'model_health_unrelated', 'legacy_org', 'legacy_org:workspace:default',
         '00000000-0000-0000-0000-000000000002', 'account_unrelated',
-        'claude-health', 'locked_out', '2026-01-01T00:00:00Z', '{"source":"unrelated"}'
+        '${model}', 'locked_out', '2026-01-01T00:00:00Z', '{"source":"unrelated"}'
       );
   `);
 }
@@ -508,14 +534,15 @@ async function seedLegacyGatewayConfig(
 function legacyAnthropicRoute(
   timeoutMs: number,
   baseUrl: string | undefined,
-  providerAccountId: string | null
+  providerAccountId: string | null,
+  model: string
 ) {
   return {
     retry: { maxAttempts: 1, retryableStatusCodes: [429, 500] },
     anthropic: {
       deployments: [{
         provider: "anthropic",
-        model: "claude-health",
+        model,
         ...(providerAccountId ? { providerAccountId } : {}),
         ...(baseUrl ? { baseUrl } : {}),
         order: 0,

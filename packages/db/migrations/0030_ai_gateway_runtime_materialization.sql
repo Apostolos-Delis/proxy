@@ -211,6 +211,14 @@ SELECT DISTINCT ON (d.organization_id, d.workspace_id, d.provider, d.model)
   d.routing_config_id,
   d.provider,
   d.model,
+  rtrim(
+    left(
+      trim(both '-' from regexp_replace(lower(d.provider || '-' || d.model), '[^a-z0-9]+', '-', 'g')),
+      119
+    ),
+    '-'
+  ) || '-' || left(encode(sha256(convert_to(d.provider || ':' || d.model, 'UTF8')), 'hex'), 8)
+    AS resource_slug,
   d.requested_provider_account_id,
   d.deployment,
   NULLIF(d.deployment ->> 'baseUrl', '') AS deployment_base_url,
@@ -509,7 +517,7 @@ SELECT
   workspace_id || ':canonical:' || provider || ':' || model,
   organization_id,
   workspace_id,
-  provider || '--' || model,
+  resource_slug,
   model,
   provider,
   model,
@@ -537,7 +545,7 @@ SELECT
   workspace_id || ':deployment:' || provider || ':' || model,
   organization_id,
   workspace_id,
-  provider || '--' || model,
+  resource_slug,
   model,
   workspace_id || ':canonical:' || provider || ':' || model,
   workspace_id || ':connection:' || provider,
@@ -764,7 +772,7 @@ BEGIN
      AND m.workspace_id = d.workspace_id
      AND m.id = d.workspace_id || ':canonical:' || d.provider || ':' || d.model
     WHERE m.id IS NULL
-       OR m.slug <> d.provider || '--' || d.model
+       OR m.slug <> d.resource_slug
        OR m.name <> d.model
        OR m.vendor <> d.provider
        OR m.family <> d.model
@@ -782,7 +790,7 @@ BEGIN
      AND m.workspace_id = d.workspace_id
      AND m.id = d.workspace_id || ':deployment:' || d.provider || ':' || d.model
     WHERE m.id IS NULL
-       OR m.slug <> d.provider || '--' || d.model
+       OR m.slug <> d.resource_slug
        OR m.name <> d.model
        OR m.canonical_model_id <> d.workspace_id || ':canonical:' || d.provider || ':' || d.model
        OR m.provider_connection_id <> d.workspace_id || ':connection:' || d.provider
