@@ -2,7 +2,6 @@ import type { LookupFunction } from "node:net";
 
 import { Agent, fetch as undiciFetch, type Dispatcher } from "undici";
 
-import type { AppConfig } from "./config.js";
 import type { ProviderRegistryEndpoint, ProviderRegistryEntry } from "./persistence/providers.js";
 import type { PinnedUpstreamAddress, UpstreamCredential } from "./types.js";
 
@@ -12,7 +11,6 @@ export function providerRequestUrl(input: {
   provider: ProviderRegistryEntry;
   endpoint: ProviderRegistryEndpoint;
   path?: string;
-  config: AppConfig;
   credential?: UpstreamCredential;
 }) {
   return `${providerRequestBaseUrl(input)}${input.path ?? providerEndpointPath(input.endpoint)}`;
@@ -20,7 +18,6 @@ export function providerRequestUrl(input: {
 
 export function providerRequestPinnedAddress(input: {
   provider: ProviderRegistryEntry;
-  config: AppConfig;
   credential?: UpstreamCredential;
 }) {
   const credential = credentialForProvider(input.provider, input.credential);
@@ -57,7 +54,6 @@ export function lookupForPinnedAddress(pinnedAddress: PinnedUpstreamAddress): Lo
 
 function providerRequestBaseUrl(input: {
   provider: ProviderRegistryEntry;
-  config: AppConfig;
   credential?: UpstreamCredential;
 }) {
   const credential = credentialForProvider(input.provider, input.credential);

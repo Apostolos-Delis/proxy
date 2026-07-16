@@ -78,11 +78,7 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
     const maxAttempts = this.config.providerRateLimitMaxAttempts;
 
     for (let upstreamAttempt = 1; upstreamAttempt <= maxAttempts; upstreamAttempt += 1) {
-      const body = providerRequestBody({
-        provider,
-        body: input.body,
-        credential: input.target.credential
-      });
+      const body = input.body;
       await this.events.append({
         tenantId: input.organizationId,
         workspaceId: input.workspaceId,
@@ -108,12 +104,10 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
         provider,
         endpoint,
         path: input.path,
-        config: this.config,
         credential: input.target.credential
       }), {
         method: "POST",
         headers: providerRequestHeaders({
-          config: this.config,
           provider,
           endpoint,
           surface: input.surface,
@@ -127,7 +121,6 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
         signal
       }, providerRequestPinnedAddress({
         provider,
-        config: this.config,
         credential: input.target.credential
       }));
 
@@ -390,16 +383,7 @@ function unknownTransient(statusCode: number) {
     statusCode === 425;
 }
 
-export function providerRequestBody(input: {
-  provider: ProviderRegistryEntry;
-  body: unknown;
-  credential?: UpstreamCredential;
-}) {
-  return input.body;
-}
-
 export function providerRequestHeaders(input: {
-  config: AppConfig;
   provider: ProviderRegistryEntry;
   endpoint: ProviderRegistryHttpEndpoint;
   surface: Surface;

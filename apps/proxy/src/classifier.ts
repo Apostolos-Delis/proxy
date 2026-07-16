@@ -142,7 +142,6 @@ export class LlmClassifier {
     const response = await fetchWithPinnedAddress(providerRequestUrl({
       provider: target.provider,
       endpoint: target.endpoint,
-      config: this.config,
       credential: target.credential
     }), {
       method: "POST",
@@ -152,7 +151,6 @@ export class LlmClassifier {
       signal
     }, providerRequestPinnedAddress({
       provider: target.provider,
-      config: this.config,
       credential: target.credential
     }));
 

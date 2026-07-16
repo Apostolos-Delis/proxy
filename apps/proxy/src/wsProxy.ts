@@ -12,7 +12,6 @@ import {
   scopedIdempotencyKey,
   type RequestIdentity
 } from "./auth.js";
-import type { AppConfig } from "./config.js";
 import {
   type EventService,
   jsonPayload,
@@ -70,7 +69,6 @@ type WsLogger = { warn: (obj: unknown, msg?: string) => void };
 
 export class WebSocketRoutingProxy {
   constructor(
-    private readonly config: AppConfig,
     private readonly auth: ProxyAuthService,
     private readonly lifecycle: GatewayRequestLifecycle,
     private readonly events: EventService,
@@ -411,11 +409,9 @@ export class WebSocketRoutingProxy {
       ...webSocketTargetUrl(
         target.providerEntry,
         target.endpoint,
-        this.config,
         target.credential
       ),
       headers: providerRequestHeaders({
-        config: this.config,
         provider: target.providerEntry,
         endpoint: target.endpoint,
         surface: openAIResponsesSurface.surface,
@@ -612,11 +608,10 @@ type WebSocketUpstreamTarget = {
 function webSocketTargetUrl(
   provider: ProviderRegistryEntry,
   endpoint: ProviderRegistryEndpoint,
-  config: AppConfig,
   credential?: UpstreamCredential
 ) {
-  const pinnedAddress = providerRequestPinnedAddress({ provider, config, credential });
-  const url = new URL(providerRequestUrl({ provider, endpoint, config, credential }));
+  const pinnedAddress = providerRequestPinnedAddress({ provider, credential });
+  const url = new URL(providerRequestUrl({ provider, endpoint, credential }));
   if (url.protocol === "http:") url.protocol = "ws:";
   if (url.protocol === "https:") url.protocol = "wss:";
   return {
