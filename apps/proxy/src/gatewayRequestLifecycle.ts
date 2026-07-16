@@ -48,12 +48,15 @@ import { appendPromptCaptureEvent } from "./promptCaptureEvents.js";
 import { observePromptCachePlan } from "./promptCacheObservability.js";
 import { applyPromptCachePlan, computePromptCachePlan } from "./promptCachePlan.js";
 import type { PromptCachePlan } from "./promptCachePlan.js";
+import type { ProviderAdapterFailureClassification } from "./providerAdapters/types.js";
+import { classifyProviderTerminalHealth } from "./providerHealth.js";
 import { appendTokensAttributed } from "./tokenAttribution.js";
 import {
   appendCompressionEvidence,
   compressForForwardWithResult,
   compressionForwardTelemetry,
   compressOrFallback,
+  providerCompressionTerminalTelemetry,
   requestBodyHash,
   type CompressionForwardResult
 } from "./toolResultCompression.js";
@@ -94,6 +97,24 @@ type GatewayProviderAttemptInput = {
   surface: Surface;
   prepared: PreparedGatewayRequest;
   transport?: "http" | "websocket";
+};
+
+export type GatewayProviderTerminalInput = {
+  identity: RequestIdentity;
+  requestId: string;
+  idempotencyKey: string;
+  surface: Surface;
+  target: GatewayExecutionTarget;
+  providerAttemptId: string;
+  status: "completed" | "failed" | "cancelled";
+  usage?: unknown;
+  upstreamStatus: number;
+  stream: boolean;
+  providerRequestForwarded: boolean;
+  metadata?: unknown;
+  compressionTelemetry?: JsonObject;
+  adapterKind?: GatewayExecutionTarget["providerEntry"]["adapterKind"];
+  adapterClassification?: ProviderAdapterFailureClassification;
 };
 
 type GatewayRequestLifecycleOptions = {
@@ -332,6 +353,94 @@ export class GatewayRequestLifecycle {
       this.warn(error, "provider attempt in-memory pending mirror failed");
     }
     return attempt;
+  }
+
+  async finishProviderAttempt(input: GatewayProviderTerminalInput) {
+    const metadata = jsonPayload(input.metadata ?? {}) as JsonObject;
+    const error = terminalError(metadata);
+    const payload: JsonObject = {
+      provider: input.target.provider,
+      surface: input.surface,
+      selectedModel: input.target.upstreamModelId,
+      providerAttemptId: input.providerAttemptId,
+      terminalStatus: input.status,
+      upstreamStatus: input.upstreamStatus,
+      stream: input.stream,
+      usage: input.usage === undefined ? null : jsonPayload(input.usage),
+      ...providerCompressionTerminalTelemetry(
+        input.compressionTelemetry,
+        input.providerRequestForwarded
+      ),
+      ...gatewayProviderAttemptEvidence(input.target)
+    };
+    if (input.adapterKind) payload.adapterKind = input.adapterKind;
+    if (input.adapterClassification) {
+      payload.adapterClassification = jsonPayload(input.adapterClassification);
+    }
+    if (error) payload.error = error;
+    const healthClassification = classifyProviderTerminalHealth({
+      provider: input.target.provider,
+      model: input.target.upstreamModelId,
+      terminalStatus: input.status,
+      statusCode: input.upstreamStatus,
+      error,
+      adapterClassification: input.adapterClassification,
+      now: new Date()
+    });
+    if (healthClassification) payload.healthClassification = jsonPayload(healthClassification);
+
+    await this.events.append({
+      tenantId: input.identity.organizationId,
+      workspaceId: input.identity.workspaceId,
+      scopeType: "request",
+      scopeId: input.requestId,
+      correlationId: input.requestId,
+      idempotencyKey: input.idempotencyKey,
+      actor: actorForIdentity(input.identity),
+      producer: "proxy.provider",
+      eventType: terminalEventType(input.status),
+      payload,
+      metadata
+    });
+    if (input.usage !== undefined) {
+      await this.events.append({
+        tenantId: input.identity.organizationId,
+        workspaceId: input.identity.workspaceId,
+        scopeType: "request",
+        scopeId: input.requestId,
+        correlationId: input.requestId,
+        idempotencyKey: input.idempotencyKey,
+        actor: actorForIdentity(input.identity),
+        producer: "proxy.usage",
+        eventType: "usage.recorded",
+        payload: {
+          providerAttemptId: input.providerAttemptId,
+          usage: jsonPayload(input.usage)
+        }
+      });
+    }
+
+    const upstreamRequestId = typeof metadata.upstreamResponseId === "string"
+      ? metadata.upstreamResponseId
+      : undefined;
+    this.attempts.update(input.providerAttemptId, {
+      terminalStatus: input.status,
+      ...(input.adapterKind ? { adapterKind: input.adapterKind } : {}),
+      ...(input.adapterClassification
+        ? { adapterClassification: jsonPayload(input.adapterClassification) as JsonObject }
+        : {}),
+      usage: input.usage === undefined ? undefined : jsonPayload(input.usage),
+      upstreamRequestId,
+      error
+    });
+    await this.requestStates.finish(input.idempotencyKey, input.status, {
+      requestId: input.requestId,
+      providerAttemptId: input.providerAttemptId,
+      usage: input.usage === undefined ? undefined : jsonPayload(input.usage),
+      upstreamRequestId,
+      error
+    });
+    return { metadata, error };
   }
 
   private async recordProviderAttemptStartFailure(
@@ -605,4 +714,17 @@ export class GatewayRequestLifecycleError extends Error {
   constructor(readonly statusCode: number, message: string) {
     super(message);
   }
+}
+
+function terminalEventType(status: "completed" | "failed" | "cancelled") {
+  if (status === "completed") return "provider.response_completed";
+  if (status === "cancelled") return "provider.response_cancelled";
+  return "provider.response_failed";
+}
+
+function terminalError(metadata: JsonObject) {
+  const error = metadata.error;
+  if (typeof error === "string") return error;
+  if (error === undefined || error === null) return undefined;
+  return JSON.stringify(error);
 }
