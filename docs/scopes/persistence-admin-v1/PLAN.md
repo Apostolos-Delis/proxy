@@ -1,193 +1,245 @@
 # Persistence And Admin Console V1
 
+- **Status:** Current after the AI gateway hard cutover
+- **Scope:** Durable gateway configuration, request evidence, usage, events, and the internal operations console
+- **Gateway model:** [AI Gateway Core Data Model V1](../ai-gateway-core-model-v1/PLAN.md)
+- **Operator workflow:** [Gateway control-plane runbook](../../runbooks/gateway-control-plane.md)
+
 ## Goal
 
-Add a durable Postgres-backed persistence layer and an internal web console for inspecting model routing behavior, usage, and configuration.
+Persist the gateway's configuration and request lifecycle in Postgres while keeping provider behavior and API-wire adapters in code. Operators can author the same normalized resources through GraphQL or a declarative TOML import. The database is the only runtime source of truth.
 
-## Architecture
+This document describes the post-cutover system. The removed routing-config, provider-account, provider-registry, and model-catalog APIs are not compatibility surfaces.
 
-The repo now uses a pnpm workspace:
+## Repository Boundaries
 
 ```text
-apps/proxy/        Fastify-compatible OpenAI/Anthropic routing proxy
+apps/proxy/        Fastify gateway, GraphQL control plane, runtime services
 apps/web/          TanStack operations console
-packages/db/       Drizzle schema, SQL migrations, database client
-packages/schema/   shared constants and cross-package types
+packages/db/       Drizzle schema, SQL migrations, database helpers and seeds
+packages/schema/   code-owned IDs, validation schemas, shared types
+docs/              architecture, operator runbooks, and scope history
 ```
 
-Persistence follows the current-state plus event-log pattern:
+Transport handlers authenticate, parse an ingress envelope, and delegate. Model authorization and selection live in the gateway runtime. Provider-specific request, response, streaming, retry, and signing behavior stays behind provider adapters.
 
-```text
-proxy request
-  -> EventService append
-  -> Postgres event sink
-  -> current-state row mutation
-  -> events row
-  -> event_outbox row
-```
+## Ownership And Scope
 
-The proxy still keeps in-memory mirrors for existing debug endpoints and tests. When `DATABASE_URL` is set, each appended event also writes to Postgres.
+Organizations own workspaces. Identity and membership are organization-scoped; traffic configuration and request data are workspace-scoped.
 
-The request path keeps correctness-critical work synchronous: authentication, idempotency/request state, routing decision computation, provider credential resolution, provider forwarding, and terminal request state. Observability writes such as prompt artifacts, token attribution, classifier/routing telemetry events, compression measurements, and assistant response capture are scheduled asynchronously. Admin request timelines, prompt search, token-attribution reports, and route-quality projections are therefore eventually consistent; a newly completed request can be visible before those observability rows finish flushing. Async observability failures are logged and must not change the provider status, response body, or forwarded bytes.
+- Organization-scoped: users, memberships, invitations, organization settings, user settings, and admin sessions.
+- Workspace-scoped: API keys, provider connections, canonical models, deployments, wire bindings, logical models, targets, access profiles, grants, sessions, requests, decisions, attempts, usage, prompts, and compression evidence.
+- Events always carry `organization_id`; traffic and workspace-resource events also carry `workspace_id`.
+- Every organization has a deterministic default workspace from `defaultWorkspaceId()`.
+- Runtime identity comes from the API key's organization, workspace, user, and access profile. Harness identity headers are context only.
 
-Async observability event appends go through a bounded writer that still calls `EventService.append`, preserving the durable event/outbox/current-state transaction when a queued event flushes. Queue capacity is controlled by `EVENT_WRITER_MAX_ENTRIES` and `EVENT_WRITER_MAX_BYTES`; overflow and exhausted retries drop observability events with warning logs and counters, while correctness events stay synchronous and fail closed. `/_debug/event-writer` exposes queue depth, queued bytes, dropped count, flush failures, last flush latency, oldest event age, and flush state. Fastify shutdown drains the queue for `EVENT_WRITER_SHUTDOWN_TIMEOUT_MS` before giving up.
+Scoped foreign keys include the organization and workspace columns. A globally valid ID cannot be substituted across tenants or workspaces.
 
 ## Durable Tables
 
-Initial Drizzle schema includes:
+### Identity And Administration
 
 ```text
 organizations
-workspaces                  one organization -> many workspaces; traffic-scoped resources hang off a workspace
+workspaces
 users
 organization_members
 invitations
+user_sessions
 api_keys
-api_key_provider_accounts   binds an API key to a BYOK provider credential, one row per (key, provider)
 organization_settings
 user_settings
-providers                    provider registry rows with endpoints, auth style, and capability JSON
-provider_accounts            company env-backed rows plus customer BYOK credentials (encrypted secret + owner)
-provider_account_health       current health/cooldown state for a provider credential
-provider_model_health         current health/lockout state for a provider credential + model
-model_catalog                seeded route models plus per-organization model pricing overrides (pricing jsonb)
-routing_configs
-routing_config_versions
+```
+
+API keys store only `key_hash`; the plaintext secret is returned once at creation. Each active key points to one workspace access profile. Revocation and expiration are enforced during identity resolution.
+
+### Gateway Configuration
+
+```text
+provider_connections
+canonical_models
+model_deployments
+deployment_wire_bindings
+logical_models
+logical_model_targets
+access_profiles
+access_profile_model_grants
+```
+
+The normalized ownership model is:
+
+```text
+API key -> access profile -> logical-model grant
+logical model -> eligible deployment targets
+deployment -> canonical model + provider connection + native wire bindings
+```
+
+- `provider_connections` own an operator-facing connection identity, a stable provider behavior ID, endpoint configuration, adapter kind, and credential reference or encrypted credential material.
+- `canonical_models` identify model families and releases independently of a provider endpoint.
+- `model_deployments` identify one callable upstream model through one connection. Capabilities narrow canonical capabilities; pricing is a complete per-million-token rate object or absent.
+- `deployment_wire_bindings` map a deployment to a code-owned API wire, endpoint path or operation, adapter contract version, and non-secret request configuration.
+- `logical_models` expose stable caller-facing slugs. V1 supports `direct` and classifier-backed `router` resolution.
+- `logical_model_targets` define the only deployments a logical model may select.
+- `access_profiles` carry reusable entitlements and coarse traffic limits.
+- `access_profile_model_grants` authorize logical-model and operation pairs with optional parameter caps.
+
+Code owns provider adapter kinds, provider behavior semantics, API-wire IDs, operation IDs, and wire-adapter implementations. Database rows select installed behavior; they do not define executable adapters.
+
+### Health And Runtime Evidence
+
+```text
+provider_connection_health
+deployment_health
 agent_sessions
 turns
 requests
 route_decisions
 provider_attempts
 usage_ledger
+```
+
+The retained `agent_sessions` name is historical storage terminology, not a routing requirement. HTTP and WebSocket traffic use the same gateway request lifecycle and terminal projector.
+
+Each request can record:
+
+- ingress wire and operation;
+- requested and resolved logical model;
+- access profile and authorization outcome;
+- router kind and classifier decision evidence;
+- selected deployment and provider connection;
+- egress wire and wire-adapter version.
+
+Each provider attempt records the exact deployment, connection, egress wire, adapter contract, outcome, usage, and cost. Health projection consumes classified terminal events. Provider connection failures and deployment/model failures remain separate so one bad model does not disable an otherwise healthy connection.
+
+### Prompt And Compression Evidence
+
+```text
 prompt_artifacts
 compression_receipts
 prompt_access_audit
-user_sessions
+```
+
+Raw prompt or assistant text is stored only in `prompt_artifacts.raw_text`, subject to the configured capture mode and retention policy. Events contain hashes, sizes, resource IDs, bounded classifications, and other non-prompt evidence. They must not contain full prompts, tool arguments, provider response bodies, or secrets.
+
+Prompt artifact access is audited. Compression receipts retain hashes and measurements, with references to separately governed artifacts when original or compressed text is stored.
+
+### Event Backbone
+
+```text
 events
 event_outbox
 projection_cursors
 ```
 
-Every durable operational row is scoped by `organization_id`. Event rows use the existing proxy `tenantId` field as the organization identifier.
+Events are the audit and projection backbone; current-state tables exist for constraints and efficient reads. A persisted mutation writes its event, outbox row, and matching current-state change in one database transaction.
 
-### Workspaces
+`EventService` is the only application append path. Transport handlers and control-plane resolvers do not insert event rows directly.
 
-Organizations contain workspaces (modeled on the Anthropic Console / OpenAI Platform hierarchy): identity and membership stay at the organization, traffic and traffic configuration live in a workspace.
-
-- Workspace-scoped (`workspace_id NOT NULL`): `api_keys`, `routing_configs`, `routing_config_versions`, `api_key_provider_accounts`, `agent_sessions`, `turns`, `requests`, `route_decisions`, `provider_attempts`, `usage_ledger`, `prompt_artifacts`, `compression_receipts`, `prompt_access_audit`.
-- Org-scoped (unchanged): `users`, `organization_members`, `invitations`, `organization_settings` (prompt capture + retention), `user_settings`, `provider_accounts` (BYOK credentials are shared infrastructure; only the key→credential bindings are workspace rows), `model_catalog`, `projection_cursors`.
-- `events.workspace_id` is nullable: traffic and workspace-entity events carry it; org-level events (members, invitations, provider accounts) leave it null.
-- Every organization has a default workspace with the deterministic id `${organizationId}:workspace:default` (`defaultWorkspaceId()` in `@proxy/db`); migration `0006_workspaces.sql` backfills all pre-workspace rows into it.
-- The proxy resolves the request workspace from the API key (`api_keys.workspace_id`); the dev proxy token maps to the default workspace. Request idempotency keys are hashed per workspace.
-- Each workspace owns its default routing config (`workspaces.default_routing_config_id`, replaces the old `organization_settings.default_routing_config_id`). Composite FKs enforce that routing config versions, key→config assignments, and workspace defaults stay within one workspace.
-- Admin sessions track an active workspace (`user_sessions.workspace_id`, null = default). `switchWorkspace` repoints the session; `switchOrganization` still issues a fresh session. All workspace-scoped admin queries read the session's active workspace; members, invitations, settings, and provider credentials remain org-wide.
-
-### Prompt artifact capture
-
-Each request captures every conversation message it carries as a `prompt_artifacts` row with a `kind` describing the source: `system` / `instructions` (system prompts), `user_message` (typed user text), `injected_context` (harness-injected `<system-reminder>` blocks), `tool_use` (assistant tool calls), `tool_result` (tool output returned as user-role messages), `assistant_response` (assistant text, streamed or replayed in history), `tool_schema_metadata` (hash-only tool schema summary), and policy-gated compression artifacts for original/compressed tool-result blocks. Because agent harnesses resend the full conversation on every request, capture dedupes by the unique key `(organization_id, workspace_id, session_id, kind, content_hash)` and uses idempotent inserts instead of loading prior session artifacts. Each message is stored once, attributed to the request that first carried it, and the session view reconstructs the full conversation from those rows. Session identity comes from harness headers, falling back to the Claude Code `metadata.user_id` session suffix or the Codex `prompt_cache_key`, then to a per-request session.
-
-## Admin Console
-
-The first web app is an operations console, not a customer-facing product surface.
-
-Routes:
+## Request Lifecycle
 
 ```text
-/                    overview
-/requests            request table
-/requests/:requestId request detail and event timeline
-/settings            searchable persistent runtime settings
-/routing-configs     routing config cards: route matrix, system prompt, key counts
-/routing-configs/new create flow: clone source, prompt editors, immediate API key attachment
-/routing-configs/:id prompt and tier-model editor, API key assignment, version history
+authenticate key
+  -> claim idempotency key
+  -> enforce request traffic limits
+  -> append request admission evidence
+  -> resolve request policy
+  -> authorize and resolve logical model
+  -> persist routing decision
+  -> materialize provider connection and credential
+  -> start provider attempt transactionally
+  -> enforce provider/model traffic limit
+  -> forward through provider adapter
+  -> append terminal, health, usage, and cost evidence
 ```
 
-The web app currently reads the proxy admin endpoints:
+Correctness-critical writes are synchronous. If admission, resolution, provider-attempt start, or terminal persistence fails, the request fails closed or is reconciled through its explicit terminal path.
 
-```text
-GET /api/auth/me
-POST /api/auth/login
-POST /api/auth/logout
+Prompt capture, classifier telemetry, compression measurements, and other non-critical observability can use the bounded event writer. Queue overflow or exhausted retries are logged and counted without changing bytes already returned by the provider. `/_debug/event-writer` exposes queue depth, bytes, drops, failures, latency, age, and drain state when debug endpoints are enabled.
 
-GET /admin/overview
-GET /admin/requests
-GET /admin/requests/:requestId
-GET /admin/settings
-PATCH /admin/settings
-GET /admin/routing-configs
-GET /admin/routing-configs/:configId
-POST /admin/routing-configs
-POST /admin/routing-configs/:configId/versions
-POST /admin/routing-configs/:configId/versions/:versionId/activate
-POST /admin/routing-configs/:configId/archive
-GET /admin/api-keys
-POST /admin/api-keys
-GET /admin/api-keys/:apiKeyId
-PATCH /admin/api-keys/:apiKeyId/routing-config
-POST /admin/api-keys/:apiKeyId/revoke
-GET /admin/invitations
-POST /admin/invitations
-POST /admin/invitations/:invitationId/resend
-POST /admin/invitations/:invitationId/revoke
-PATCH /admin/users/:userId/role
-POST /admin/users/:userId/deactivate
-POST /admin/users/:userId/reactivate
-```
+HTTP and WebSocket transports share `GatewayRequestLifecycle` for preparation, attempt start, and terminal persistence. Ingress wires own validation and error rendering, so an OpenAI caller receives OpenAI-shaped errors and an Anthropic caller receives Anthropic-shaped errors even when the selected provider speaks another wire.
 
-The routing config list summary includes the active version's `systemPrompt` so the console can surface injected prompts without per-config detail fetches.
+## Control Plane
 
-Route execution plan evidence is stored on `route_decisions.route_execution_plan`, with `selected_candidate_id`, `translated`, and `translator_id` as queryable summary fields. `provider_attempts` links back to planned candidates through `route_candidate_id`, `attempt_index`, `fallback_index`, and `skip_reason`. Admin GraphQL request and prompt detail responses expose full route decisions plus linked provider attempts; lower-privilege users receive sanitized summaries without route internals. The web console renders the route plan on prompt detail and keeps request lists lightweight by filtering on summary fields instead of fetching the full JSON plan.
+### GraphQL
 
-Migration `0029_ai_gateway_resolution_evidence.sql` adds the AI gateway cutover evidence to the existing request lifecycle. Requests and route decisions can now record ingress wire, gateway operation, requested and resolved logical models, access profile, router kind, deployment, provider connection, egress wire, and wire-adapter version. Provider attempts record the exact deployment/connection pair, egress wire, and provider-adapter contract version. Composite foreign keys keep every identity in the request's organization and workspace, and completeness checks reject partial evidence groups. These columns remain nullable for historical rows and for the legacy runtime until AGDM-008 switches all text traffic to logical-model resolution.
+`POST /admin/graphql` exposes organization/workspace-scoped queries and mutations for:
 
-Gateway evidence is validated as a complete event payload group before projection. The event sink still projects current state and appends the matching event and outbox row in one database transaction; a scope or physical-target violation rolls back all three. Evidence payloads contain resource identities and versions only. Raw prompt text remains confined to `prompt_artifacts.raw_text`.
+- provider connections;
+- canonical models;
+- model deployments and deployment pricing;
+- deployment wire bindings;
+- logical models and targets;
+- access profiles and model grants;
+- API-key access-profile assignment;
+- connection and deployment health reset;
+- API keys, members, invitations, settings, requests, prompts, usage, and analytics.
 
-Provider dispatch starts with `provider.request_started`, which transactionally creates the pending provider attempt and projects the request to pending. If that append fails before dispatch, `provider.request_start_failed` transactionally projects the request to failed and records the matching event and outbox row. In-memory request state is only a mirror of these durable lifecycle events.
+Gateway resource mutations use the shared transactional admin service. Secret input is write-only. Query payloads expose a reference or configured state, never plaintext credential material.
 
-`EVENT_STORE_PATH` is an optional local mirror when Postgres persistence is enabled. A mirror write failure is reported through event metrics but does not reject an append that already committed its event, outbox row, and current-state projection.
+### Declarative TOML
 
-API key lifecycle is managed from the `/api-keys` console page. `POST /admin/api-keys` generates the secret server-side (`pp_` + 48 hex chars), binds the key to the creating user, stores only `key_hash`, and returns the secret exactly once in the create response; the console pairs it with copyable setup snippets for the selected Claude Code, Codex, and opencode harnesses. Proxy requests always attribute to `api_keys.user_id`; harness user headers remain raw request context only. `POST /admin/api-keys/:apiKeyId/revoke` sets `revoked_at`, which proxy auth already rejects. Mutations append audit events with producer `proxy.admin.api-keys`: `api_key.created`, `api_key.revoked`, plus the existing `routing_config.api_key_assignment_changed`.
-
-Model pricing is managed from the `/billing` console page. Spend is computed locally (providers return token counts only): `usage_ledger` rows price uncached input, cache reads, cache writes (`cache_creation_input_tokens` column), and output at per-MTok rates resolved from built-in defaults, then `MODEL_COSTS_JSON`, then per-organization `model_catalog.pricing` overrides. Anthropic usage is normalized so `input_tokens` always means total input presented to the model (provider responses exclude cache reads/writes from it). The `modelPricing` GraphQL query lists effective rates with their source (`default`/`env`/`custom`/`unpriced`) and flags models seen in traffic; `setModelPricing`/`clearModelPricing` upsert the override and append audit events with producer `proxy.admin.model-pricing`: `model_pricing.updated`, `model_pricing.cleared`. Re-seeding preserves operator-set pricing.
-
-Customer-supplied provider keys (BYOK) are managed from the `/providers` console page. `POST /admin/provider-accounts` encrypts the secret with `PROVIDER_SECRET_ENCRYPTION_KEY` (AES-256-GCM) into `provider_accounts.secret_ciphertext`, records a masked `secret_hint` and the creating user, and never returns the plaintext. `PATCH /admin/api-keys/:apiKeyId/provider-account` writes the `api_key_provider_accounts` binding (one per key+provider); `POST /admin/provider-accounts/:id/revoke` disables the credential and drops its bindings. On each proxied request the proxy resolves the binding for the request's provider and forwards with the customer key, falling back to the company env key when unbound. Mutations append audit events with producer `proxy.admin.provider-accounts`: `provider_account.created`, `provider_account.revoked`, plus `provider_account.api_key_assignment_changed` (producer `proxy.admin.api-keys`). Provider terminal events and manual probes project into `provider_account_health` and `provider_model_health`; active cooldowns, terminal account state, and active model lockouts are skipped before provider spend and exposed in request health-skip evidence. Subscription credentials use the same provider-account storage with `auth_type = 'oauth'`; see the subscription auth runbook for token-specific guardrails.
-
-Provider registry rows carry a `capabilities` JSON object for provider-owned runtime options. The routing editor and router use `capabilities.efforts` to show and resolve provider-specific effort levels for OpenAI-compatible targets. Anthropic Messages targets additionally require adaptive thinking and gate effort by selected model: unsupported models send provider defaults, Opus 4.5 clamps at high, and newer supported models can expose max or xhigh-compatible ultracode resolution.
-
-## User Management
-
-Organization membership is managed from the `/users` console page, which lists organization members only:
-
-- Invitations are durable `invitations` rows. Raw invite tokens are never stored; only `token_hash` plus a display `token_prefix`, matching the API key and admin session hash rule. Tokens rotate on resend.
-- Invitation emails are delivered through the Resend API (`RESEND_API_KEY`, `EMAIL_FROM`); without a key the proxy logs the message and admins copy the invite link from the console instead.
-- Accepting an invite (`POST /api/invitations/resolve` / `POST /api/invitations/accept`, public token-authenticated endpoints) creates or reuses the `users` row by email and upserts the `organization_members` row with the invited role.
-- Members are never deleted. Deactivation sets `organization_members.status = 'deactivated'`, which admin session resolution already rejects; API keys and usage history stay intact.
-- Guards: pending duplicate invites and already-active members are rejected, the last active owner cannot be demoted or deactivated, and admins cannot deactivate themselves.
-- Mutations append audit events with producer `proxy.admin.users`: `user.invitation_created`, `user.invitation_resent`, `user.invitation_revoked`, `user.invitation_accepted`, `user.role_changed`, `user.deactivated`, `user.reactivated`.
-
-## Environment
+The TOML shape is defined in [TOML.md](../ai-gateway-core-model-v1/TOML.md). Operators use:
 
 ```bash
-DATABASE_URL=postgres://proxy:proxy@localhost:5432/proxy
-DEFAULT_ORGANIZATION_ID=local
-ADMIN_CORS_ORIGIN=http://127.0.0.1:5173,http://localhost:5173
-VITE_PROXY_API_BASE=http://127.0.0.1:8787
-ADMIN_DEV_LOGIN_ENABLED=true
-ADMIN_DEV_LOGIN_EMAIL=local@example.com
-ADMIN_DEV_LOGIN_PASSWORD=dev-password
-PROXY_SETTINGS_PATH=.proxy/settings.json
+pnpm --filter @proxy/proxy gateway-config plan ./gateway.toml
+pnpm --filter @proxy/proxy gateway-config apply ./gateway.toml --actor-user-id user_123
 ```
 
-Editable runtime settings are stored as JSON because the repo already uses JSON package/config conventions and does not carry a YAML parser dependency. The file defaults to `.proxy/settings.json`; environment variables continue to override file values. Classifier, budget, and route-quality edits are persisted for the next proxy restart, while prompt-capture edits are also applied to `organization_settings` when database persistence is enabled.
+`plan` validates the complete document, scoped references, provider semantics, endpoints, capabilities, pricing, direct-model cardinality, and secret-reference support without mutation. `apply` executes the same transactional mutation plan as GraphQL and rejects a stale plan if the scoped configuration changed concurrently.
 
-## Follow-Up Tickets
+TOML is an import format, not a second runtime store. There is no bidirectional file/database synchronization, filesystem watcher, or precedence merge. After apply succeeds, runtime reads only Postgres.
 
-1. Add a Docker Compose Postgres service for local development.
-2. Add API-key-backed org/user resolution instead of relying on `DEFAULT_ORGANIZATION_ID`.
-3. Move admin endpoints from in-memory projections to direct Postgres queries.
-4. Add API key management UI.
-5. Add provider/model catalog mutation UI.
-6. Add usage analytics by user, provider, model, route, and session.
-7. Add prompt artifact retention and redaction policies.
-8. Add durable outbox worker processing.
-9. Add held-out eval/prompt optimization tables after the prompt artifact model stabilizes.
+## Operations Console
+
+The web app is a dense internal operations console. Current routes cover:
+
+```text
+/                         overview
+/usage                    token and model usage
+/cost                     spend and attribution
+/caching                  prompt-cache analytics
+/logs                     request/session stream
+/logs/:artifactId         request detail
+/prompts                   governed prompt artifacts
+/prompts/:artifactId       prompt detail and evidence
+/sessions/:sessionId       session detail
+/api-keys                  API keys and access profiles
+/api-keys/new              key creation and harness setup
+/users                     members and invitations
+/billing                   deployment pricing
+/settings                  runtime and capture settings
+```
+
+The normalized gateway CRUD API exists in GraphQL and TOML. A complete browser editor for every gateway resource is intentionally separate UI work; the console must not recreate the removed routing-config or provider-account model.
+
+## Security Rules
+
+- API keys are hashed and never recoverable.
+- Provider credentials are secret references or encrypted material, never plaintext rows or event payloads.
+- Non-secret headers are validated separately from authorization material.
+- Raw prompts are confined to `prompt_artifacts.raw_text`.
+- Provider error persistence is bounded and structured; arbitrary upstream bodies and WebSocket events are not durable metadata.
+- Tenant and workspace scope are enforced in SQL constraints and service queries.
+- Admin authorization is checked before query or mutation execution.
+
+## Migrations And Cutover
+
+Migrations `0027` through `0031` establish the physical resources, logical/access resources, resolution evidence, runtime materialization, and final removal of the coding-tier schema.
+
+The cutover is complete:
+
+- there is no `routing_configs` runtime;
+- there are no provider-account or API-key/provider-account bindings;
+- there is no mixed `model_catalog` identity/deployment row;
+- API keys select access profiles, not routing configs;
+- all supported text traffic resolves a logical model before provider I/O.
+
+Historical nullable evidence remains valid for rows created before the migrations. New gateway requests write the complete gateway evidence group.
+
+## Current Limits
+
+- Postgres is required for the normalized gateway runtime and control plane.
+- Configuration publication is immediate after a successful transaction; immutable snapshot activation is deferred.
+- V1 routing supports direct selection and the structured-output classifier only.
+- Pricing is deployment-local and does not yet model contracts or effective-date schedules.
+- Generalized non-agent session affinity and modalities beyond the existing text paths are deferred.
