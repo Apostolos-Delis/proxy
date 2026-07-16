@@ -325,6 +325,8 @@ export class ProviderProxy {
     }
 
     await this.events.append({
+      tenantId: input.organizationId,
+      workspaceId: input.workspaceId,
       scopeType: "request",
       scopeId: input.requestId,
       correlationId: input.requestId,
@@ -426,6 +428,8 @@ export class ProviderProxy {
         input.reply.raw.off("close", abortUpstream);
         if (!completed && !abortController.signal.aborted) {
           await this.events.append({
+            tenantId: input.organizationId,
+            workspaceId: input.workspaceId,
             scopeType: "request",
             scopeId: input.requestId,
             correlationId: input.requestId,
@@ -561,6 +565,8 @@ export class ProviderProxy {
       input.reply.raw.end();
       if (!completed && !abortController.signal.aborted) {
         await this.events.append({
+          tenantId: input.organizationId,
+          workspaceId: input.workspaceId,
           scopeType: "request",
           scopeId: input.requestId,
           correlationId: input.requestId,
@@ -629,6 +635,8 @@ export class ProviderProxy {
 
     try {
       await this.events.append({
+        tenantId: input.organizationId,
+        workspaceId: input.workspaceId,
         scopeType: "request",
         scopeId: input.requestId,
         correlationId: input.requestId,
@@ -640,6 +648,8 @@ export class ProviderProxy {
       });
       if (usage !== undefined) {
         await this.events.append({
+          tenantId: input.organizationId,
+          workspaceId: input.workspaceId,
           scopeType: "request",
           scopeId: input.requestId,
           correlationId: input.requestId,

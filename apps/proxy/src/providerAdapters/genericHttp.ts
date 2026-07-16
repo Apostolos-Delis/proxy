@@ -82,6 +82,8 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
         credential: input.credential
       });
       await this.events.append({
+        tenantId: input.organizationId,
+        workspaceId: input.workspaceId,
         scopeType: "request",
         scopeId: input.requestId,
         correlationId: input.requestId,
@@ -136,6 +138,8 @@ export class GenericHttpProviderAdapter implements GenericHttpProviderAdapterCon
 
       await discardBody(upstream);
       await this.events.append({
+        tenantId: input.organizationId,
+        workspaceId: input.workspaceId,
         scopeType: "request",
         scopeId: input.requestId,
         correlationId: input.requestId,
