@@ -275,4 +275,4 @@ After a clean canary:
 - [Analytics and spend](../user-guide/analytics.md)
 - [Gateway control-plane runbook](gateway-control-plane.md)
 - [Proxy metrics runbook](proxy-metrics.md)
-- [Provider prompt caching expansion](../future/provider-prompt-caching.md)
+- [Archived provider prompt-caching research](../research/provider-prompt-caching.md)

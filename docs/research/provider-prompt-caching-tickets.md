@@ -1,6 +1,8 @@
 # Provider Prompt Caching Expansion Tickets
 
-Use these as issue-tracker tickets for [Provider Prompt Caching Expansion](provider-prompt-caching.md). They are ordered so current behavior is aligned first, observe-only planning lands before new request mutation, and provider-specific controls remain opt-in until cache-hit and spend data prove value.
+> **Status: archived research.** These tickets target the pre-gateway runtime and must not be implemented against the current codebase. Re-scope any surviving product requirement from the [AI gateway core data model](../scopes/ai-gateway-core-model-v1/PLAN.md) and current provider capabilities.
+
+These were the issue-tracker tickets for [Provider Prompt Caching Expansion](provider-prompt-caching.md). Their ordering records the original delivery rationale; it is not the current gateway backlog.
 
 ## Milestones
 
@@ -60,7 +62,7 @@ Likely files:
 - `apps/proxy/src/adapters.ts`
 - `apps/proxy/src/translators/openai.ts`
 - `apps/proxy/test/automaticCaching.test.ts`
-- `docs/future/provider-prompt-caching.md`
+- `docs/research/provider-prompt-caching.md`
 
 Validation:
 
@@ -343,8 +345,8 @@ Acceptance criteria:
 
 Likely files:
 
-- `docs/future/provider-prompt-caching.md`
-- `docs/future/provider-prompt-caching-tickets.md`
+- `docs/research/provider-prompt-caching.md`
+- `docs/research/provider-prompt-caching-tickets.md`
 - optional test fixtures under `apps/proxy/test/fixtures/*`
 
 Validation:
@@ -448,7 +450,7 @@ Likely files:
 - `apps/proxy/src/persistence/values.ts`
 - `apps/proxy/test/usageNormalization.test.ts`
 - `apps/proxy/test/usageAnalytics.test.ts`
-- `docs/future/provider-prompt-caching.md`
+- `docs/research/provider-prompt-caching.md`
 
 Validation:
 
@@ -516,7 +518,7 @@ Acceptance criteria:
 
 Likely files:
 
-- `docs/future/provider-prompt-caching.md`
+- `docs/research/provider-prompt-caching.md`
 - `packages/db/src/schema.ts` if a schema is needed
 - `packages/db/migrations/*` if a schema is needed
 - `apps/proxy/src/persistence/*`
@@ -626,7 +628,7 @@ Likely files:
 - `docs/runbooks/prompt-caching.md` (new)
 - `docs/index.md`
 - `docs/user-guide/analytics.md`
-- `docs/future/provider-prompt-caching.md`
+- `docs/research/provider-prompt-caching.md`
 
 Validation:
 
