@@ -1,5 +1,10 @@
 # Harness Model Translation V1
 
+> Status: implementation record. Its wire-translation compatibility rules remain
+> authoritative; its routing-config and tier terminology was superseded by the
+> logical-model, router-target, deployment, and wire-binding model in
+> [AI Gateway Core Model V1](../ai-gateway-core-model-v1/PLAN.md).
+
 ## Goal
 
 Let each routing tier choose the best provider/model once, then let the proxy translate between the caller's harness protocol and the selected upstream dialect when that is safe.
@@ -227,7 +232,10 @@ Caching should follow the upstream dialect, not the inbound harness:
 - Cache annotations from one dialect should not be blindly copied into the other dialect.
 - Cache changes must be byte-stable across turns for Claude Code history replay.
 
-This means request translation happens before provider-dialect rewrite and caching injection, as it already does in `rewriteSurfaceRequest`.
+Request translation and provider request configuration are centralized in
+`gatewayRequestBody`, which `GatewayRequestLifecycle.prepareResolvedBody` calls
+before system-prompt application and prompt-cache planning. HTTP and WebSocket
+traffic use that same preparation path.
 
 ### Audit
 
