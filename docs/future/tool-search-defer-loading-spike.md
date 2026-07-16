@@ -27,12 +27,14 @@ rewrite.** Findings below; no production code shipped for this ticket by design.
 
 ## Why the proxy cannot do this transparently
 
-The request rewrite is the easy half and already has a home: `adapters.ts`
-`rewriteAnthropicMessagesRequest` / `rewriteOpenAIResponsesRequest` already
-`structuredClone` and mutate the body, so injecting the search tool and setting
-`defer_loading` on MCP tools (`name` starts with `mcp__`) is a small, pure
-addition. The proxy also forwards `anthropic-beta` headers verbatim
-(`proxy.ts:313`), so the beta opt-in survives.
+The request mutation is the easy half and has one canonical home:
+`GatewayRequestLifecycle.prepareResolvedBody`. That stage translates and clones
+the provider-bound request through `gatewayRequestBody`, applies the gateway
+system prompt, and computes the prompt-cache plan. A future tool-search transform
+would run after `gatewayRequestBody` and before prompt-cache planning, so it sees
+the egress dialect and remains shared by HTTP and WebSocket traffic. The generic
+HTTP adapter preserves supported dialect headers, including `anthropic-beta`, so
+the beta opt-in survives.
 
 The blocker is the **response round-trip**:
 
@@ -105,10 +107,11 @@ drift in how the harness orders or names tools turns into a position-0 bust.
 
 ## Where the code would go, when justified
 
-- Request rewrite: extend `rewriteAnthropicMessagesRequest` (and the OpenAI
-  equivalent) to inject the search tool and set `defer_loading` on `mcp__*`
-  tools, gated on a resolved per-org flag threaded exactly like
-  `cacheTtlUpgrade` (`routingConfig.ts` → `server.ts`/`wsProxy.ts`).
+- Request preparation: add one egress-dialect transform inside
+  `GatewayRequestLifecycle.prepareResolvedBody`, immediately after
+  `gatewayRequestBody`, to inject the search tool and set `defer_loading` on
+  `mcp__*` tools. Resolve its per-organization flag with the other lifecycle
+  policy settings; do not add separate HTTP and WebSocket implementations.
 - Determinism: the deferral decision must be a pure function of the incoming
   `tools` (key on tool name; never on request-time state).
 - Measurement: reuse the `tokens.attributed` tool-schema bucket (T1) to show
