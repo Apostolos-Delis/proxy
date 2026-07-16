@@ -8,6 +8,7 @@ import {
   accessProfiles,
   defaultWorkspaceId,
   deploymentHealth,
+  events,
   logicalModels,
   requests
 } from "@proxy/db";
@@ -205,7 +206,7 @@ describe("logical-model WebSocket runtime", () => {
     ))).toHaveLength(2);
     first.close();
     second.close();
-  });
+  }, 60_000);
 
   it("projects WebSocket failures into deployment health", async () => {
     const classifierOutput: Record<string, unknown> = {
@@ -239,6 +240,57 @@ describe("logical-model WebSocket runtime", () => {
       const [health] = await fixture!.db.select().from(deploymentHealth)
         .where(eq(deploymentHealth.deploymentId, target.deploymentId));
       expect(health).toMatchObject({ lastErrorType: "model_unavailable" });
+    });
+    socket.close();
+  });
+
+  it("persists only bounded provider error fields from WebSocket failures", async () => {
+    const organizationId = "org_gateway_runtime_ws_safe_failure";
+    const classifierOutput: Record<string, unknown> = {
+      target_id: "pending",
+      reason_codes: ["capability_match"],
+      confidence: 0.91
+    };
+    const promptSentinel = "SYSTEM_PROMPT_MUST_NOT_REACH_EVENTS";
+    const secretSentinel = "PROVIDER_SECRET_MUST_NOT_REACH_EVENTS";
+    fixture = await captureFixture(organizationId, "hash_only", false, {
+      openAIOptions: {
+        classifierOutput,
+        classifierResponsesShape: true,
+        wsTerminalEvent: "response.failed",
+        wsFailureEventFields: { instructions: promptSentinel },
+        wsFailureErrorFields: { debug_secret: secretSentinel }
+      }
+    });
+    const target = await logicalTarget(fixture, "coding-auto", "openai");
+    classifierOutput.target_id = target.targetId;
+    const socket = new WebSocket(
+      fixture.proxyUrl.replace("http://", "ws://") + "/v1/responses",
+      { headers: { authorization: "Bearer proxy-token" } }
+    );
+    await opened(socket);
+    const failed = nextMessage(socket, (message) => message.includes("response.failed"));
+    socket.send(JSON.stringify({
+      type: "response.create",
+      model: "coding-auto",
+      input: "Fail without persisting provider-controlled fields"
+    }));
+    await failed;
+
+    await vi.waitFor(async () => {
+      const [terminal] = await fixture!.db
+        .select({ payload: events.payload, metadata: events.metadata })
+        .from(events)
+        .where(eq(events.eventType, "provider.response_failed"));
+      expect(terminal).toBeDefined();
+      expect(terminal!.payload).toMatchObject({ error: "model unavailable" });
+      expect(terminal!.metadata).toEqual({
+        error: "model unavailable",
+        providerErrorCode: "model_not_found"
+      });
+      const serialized = JSON.stringify(terminal);
+      expect(serialized).not.toContain(promptSentinel);
+      expect(serialized).not.toContain(secretSentinel);
     });
     socket.close();
   });

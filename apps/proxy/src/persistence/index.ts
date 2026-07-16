@@ -54,7 +54,6 @@ export function createDatabasePersistence(
   );
   const resolveSecretReference = createEnvironmentSecretReferenceResolver(config);
   const classifierRuntime = classifier ?? new LlmClassifier(
-    config,
     metrics,
     new ProviderConnectionClassifierTargetResolver(db, {
       allowedPrivateUpstreamCidrs: config.allowedPrivateUpstreamCidrs,

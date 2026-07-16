@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { usageLedger } from "@proxy/db";
+import { logicalModelTargets, modelDeployments, usageLedger } from "@proxy/db";
 
 import {
   gatewayHeaders,
@@ -94,6 +94,75 @@ describe("logical-model gateway policy", () => {
     expect(countCall?.body.system).toBe(
       "Updated organization policy.\n\nYou are Claude Code."
     );
+  });
+
+  it("rejects a direct target when the injected system prompt exceeds its context window", async () => {
+    const organizationId = "org_gateway_runtime_direct_prompt_capacity";
+    fixture = await captureFixture(organizationId, "hash_only");
+    const target = await logicalTarget(fixture, "fable", "anthropic");
+    await fixture.db
+      .update(modelDeployments)
+      .set({ capabilities: { contextWindow: 100 } })
+      .where(eq(modelDeployments.id, target.deploymentId));
+    await fixture.persistence.organizationSettings.setSystemPrompt(
+      organizationId,
+      "P".repeat(400)
+    );
+
+    const response = await postJson(`${fixture.proxyUrl}/v1/messages`, gatewayHeaders("proxy-token"), {
+      model: "fable",
+      messages: [{ role: "user", content: "Hi" }],
+      max_tokens: 1
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      type: "error",
+      error: { type: "invalid_request_error", message: "model_unavailable" }
+    });
+    expect(fixture.anthropic.records).toHaveLength(0);
+  });
+
+  it("excludes routed targets that only overflow after policy injection", async () => {
+    const organizationId = "org_gateway_runtime_router_prompt_capacity";
+    fixture = await captureFixture(organizationId, "hash_only", false, {
+      anthropicOptions: { outputText: "large target selected" }
+    });
+    const small = await logicalTarget(fixture, "coding-auto", "openai");
+    const large = await logicalTarget(fixture, "coding-auto", "anthropic");
+    await fixture.db
+      .update(modelDeployments)
+      .set({ capabilities: { contextWindow: 100 } })
+      .where(eq(modelDeployments.id, small.deploymentId));
+    await fixture.db
+      .update(modelDeployments)
+      .set({ capabilities: { contextWindow: 10_000 } })
+      .where(eq(modelDeployments.id, large.deploymentId));
+    await fixture.db
+      .update(logicalModelTargets)
+      .set({ priority: 0 })
+      .where(eq(logicalModelTargets.id, small.targetId));
+    await fixture.db
+      .update(logicalModelTargets)
+      .set({ priority: 1 })
+      .where(eq(logicalModelTargets.id, large.targetId));
+    await fixture.persistence.organizationSettings.setSystemPrompt(
+      organizationId,
+      "P".repeat(400)
+    );
+
+    const response = await postJson(`${fixture.proxyUrl}/v1/responses`, gatewayHeaders("proxy-token"), {
+      model: "coding-auto",
+      input: "Hi",
+      max_output_tokens: 1
+    });
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(fixture.openai.records.some((record) => record.body.model === small.upstreamModelId))
+      .toBe(false);
+    expect(fixture.anthropic.records.some((record) => record.body.model === large.upstreamModelId))
+      .toBe(true);
   });
 
   it("applies organization prompt-cache settings to generation but not token counting", async () => {

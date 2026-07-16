@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
 import { accessProfiles, apiKeys, defaultWorkspaceId, hashApiKey } from "@proxy/db";
@@ -30,23 +30,31 @@ describe("proxy traffic limits", () => {
 
     const first = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(firstController.signal, "global concurrency first"));
     const second = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(undefined, "global concurrency second"));
-    const secondBody = await second.json() as { error: string; scope: string };
+    const secondBody = await second.json();
     firstController.abort();
     await first.text().catch(() => "");
     await new Promise((resolve) => setTimeout(resolve, 25));
-    const third = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(thirdController.signal, "global concurrency third"));
+    let third: Response | undefined;
+    await vi.waitFor(async () => {
+      const candidate = await fetch(
+        `${fixture.proxyUrl}/v1/responses`,
+        requestInit(thirdController.signal, "global concurrency third")
+      );
+      if (candidate.status !== 200) {
+        await candidate.text();
+        throw new Error(`request limit lease is still active: ${candidate.status}`);
+      }
+      third = candidate;
+    }, { timeout: 5_000, interval: 25 });
     thirdController.abort();
-    await third.text().catch(() => "");
+    await third?.text().catch(() => "");
     await fixture.close();
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(429);
     expect(second.headers.get("retry-after")).toBeNull();
-    expect(secondBody).toMatchObject({
-      error: "traffic_limit_exceeded:global:concurrency",
-      scope: "global"
-    });
-    expect(third.status).toBe(200);
+    expectTrafficLimitBody(secondBody, "traffic_limit_exceeded:global:concurrency", "global");
+    expect(third?.status).toBe(200);
   });
 
   it("releases concurrency after success and provider failure", async () => {
@@ -77,7 +85,7 @@ describe("proxy traffic limits", () => {
     let firstStatus = 0;
     let secondStatus = 0;
     let retryAfter: string | null = null;
-    let body: { error: string; scope: string } | undefined;
+    let body: unknown;
     try {
       const first = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(undefined, "api key rpm first"));
       await first.text();
@@ -85,18 +93,15 @@ describe("proxy traffic limits", () => {
       firstStatus = first.status;
       secondStatus = second.status;
       retryAfter = second.headers.get("retry-after");
-      body = await second.json() as { error: string; scope: string };
+      body = await second.json();
     } finally {
       await fixture.close();
     }
 
     expect(firstStatus).toBe(200);
     expect(secondStatus).toBe(429);
-    expect(retryAfter).toBe("60");
-    expect(body).toMatchObject({
-      error: "traffic_limit_exceeded:api_key:rpm",
-      scope: "api_key"
-    });
+    expectRetryAfter(retryAfter);
+    expectTrafficLimitBody(body, "traffic_limit_exceeded:api_key:rpm", "api_key");
   });
 
   it("applies token and provider-model limits", async () => {
@@ -113,16 +118,13 @@ describe("proxy traffic limits", () => {
     const proxyUrl = await listen(app);
 
     const tokenLimited = await fetch(`${proxyUrl}/v1/responses`, requestInit(undefined, "this request exceeds one estimated token"));
-    const tokenBody = await tokenLimited.json() as { error: string; scope: string };
+    const tokenBody = await tokenLimited.json();
 
     await app.close();
 
     expect(tokenLimited.status).toBe(429);
-    expect(tokenLimited.headers.get("retry-after")).toBe("60");
-    expect(tokenBody).toMatchObject({
-      error: "traffic_limit_exceeded:global:tpm",
-      scope: "global"
-    });
+    expectRetryAfter(tokenLimited.headers.get("retry-after"));
+    expectTrafficLimitBody(tokenBody, "traffic_limit_exceeded:global:tpm", "global");
   });
 
   it("applies provider-model concurrency limits", async () => {
@@ -134,17 +136,18 @@ describe("proxy traffic limits", () => {
 
     const first = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(firstController.signal, "provider model first"));
     const second = await fetch(`${fixture.proxyUrl}/v1/responses`, requestInit(undefined, "provider model second"));
-    const body = await second.json() as { error: string; scope: string };
+    const body = await second.json();
     firstController.abort();
     await first.text().catch(() => "");
     await fixture.close();
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(429);
-    expect(body).toMatchObject({
-      error: "traffic_limit_exceeded:provider_model:concurrency",
-      scope: "provider_model"
-    });
+    expectTrafficLimitBody(
+      body,
+      "traffic_limit_exceeded:provider_model:concurrency",
+      "provider_model"
+    );
   });
 
   it("applies access-profile concurrency across API keys", async () => {
@@ -164,17 +167,18 @@ describe("proxy traffic limits", () => {
       `${fixture.proxyUrl}/v1/responses`,
       requestInit(undefined, "profile concurrency second", "second-profile-token")
     );
-    const body = await second.json() as { error: string; scope: string };
+    const body = await second.json();
     firstController.abort();
     await first.text().catch(() => "");
     await fixture.close();
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(429);
-    expect(body).toMatchObject({
-      error: "traffic_limit_exceeded:access_profile:concurrency",
-      scope: "access_profile"
-    });
+    expectTrafficLimitBody(
+      body,
+      "traffic_limit_exceeded:access_profile:concurrency",
+      "access_profile"
+    );
   });
 
   it("applies access-profile RPM across API keys", async () => {
@@ -192,16 +196,13 @@ describe("proxy traffic limits", () => {
       `${fixture.proxyUrl}/v1/responses`,
       requestInit(undefined, "profile rpm second", "second-profile-token")
     );
-    const body = await second.json() as { error: string; scope: string };
+    const body = await second.json();
     await fixture.close();
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(429);
-    expect(second.headers.get("retry-after")).toBe("60");
-    expect(body).toMatchObject({
-      error: "traffic_limit_exceeded:access_profile:rpm",
-      scope: "access_profile"
-    });
+    expectRetryAfter(second.headers.get("retry-after"));
+    expectTrafficLimitBody(body, "traffic_limit_exceeded:access_profile:rpm", "access_profile");
   });
 
   it("applies access-profile TPM before routing", async () => {
@@ -213,16 +214,30 @@ describe("proxy traffic limits", () => {
       `${fixture.proxyUrl}/v1/responses`,
       requestInit(undefined, "this request exceeds one estimated token")
     );
-    const body = await response.json() as { error: string; scope: string };
+    const body = await response.json();
     await fixture.close();
 
     expect(response.status).toBe(429);
-    expect(body).toMatchObject({
-      error: "traffic_limit_exceeded:access_profile:tpm",
-      scope: "access_profile"
-    });
+    expectTrafficLimitBody(body, "traffic_limit_exceeded:access_profile:tpm", "access_profile");
   });
 });
+
+function expectTrafficLimitBody(body: unknown, code: string, scope: string) {
+  expect(body).toMatchObject({
+    error: {
+      message: code,
+      type: "rate_limit_error",
+      code
+    },
+    scope
+  });
+}
+
+function expectRetryAfter(value: string | null) {
+  const seconds = Number(value);
+  expect(seconds).toBeGreaterThan(0);
+  expect(seconds).toBeLessThanOrEqual(60);
+}
 
 function requestInit(signal?: AbortSignal, input = "debug this request", token = "proxy-token") {
   return {

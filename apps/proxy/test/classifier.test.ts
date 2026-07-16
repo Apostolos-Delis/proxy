@@ -6,13 +6,6 @@ import {
   type LogicalModelClassifierDeployment,
   type LogicalModelClassifierTargetResolver
 } from "../src/classifier.js";
-import type { AppConfig } from "../src/config.js";
-
-const config = {
-  openaiBaseUrl: "https://openai.test/v1",
-  openaiApiKey: "test-key",
-  modelCosts: {}
-} as AppConfig;
 
 const classifierTarget: ClassifierTarget = {
   provider: {
@@ -70,7 +63,7 @@ describe("logical model classifier", () => {
       }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await new LlmClassifier(config, undefined, logicalTargetResolver).classifyLogicalModel({
+    const result = await new LlmClassifier(undefined, logicalTargetResolver).classifyLogicalModel({
       config: {
         classifierDeploymentId: "deployment_classifier",
         instructions: "Choose one eligible target.",
@@ -123,7 +116,7 @@ describe("logical model classifier", () => {
     }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(new LlmClassifier(config, undefined, logicalTargetResolver).classifyLogicalModel({
+    await expect(new LlmClassifier(undefined, logicalTargetResolver).classifyLogicalModel({
       config: {
         classifierDeploymentId: "deployment_classifier",
         instructions: "Choose one eligible target.",
@@ -150,7 +143,7 @@ describe("logical model classifier", () => {
     }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await new LlmClassifier(config, undefined, resolver).classifyLogicalModel({
+    const result = await new LlmClassifier(undefined, resolver).classifyLogicalModel({
       config: {
         classifierDeploymentId: "deployment_classifier",
         instructions: "Choose one eligible target.",
@@ -177,7 +170,7 @@ describe("logical model classifier", () => {
     vi.stubGlobal("fetch", fetchMock);
     const startedAt = performance.now();
 
-    await expect(new LlmClassifier(config, undefined, resolver).classifyLogicalModel({
+    await expect(new LlmClassifier(undefined, resolver).classifyLogicalModel({
       config: {
         classifierDeploymentId: "deployment_classifier",
         instructions: "Choose one eligible target.",

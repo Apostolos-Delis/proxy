@@ -67,12 +67,19 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     logger: { level: config.logLevel },
     bodyLimit: config.requestBodyLimitBytes
   });
-  app.setErrorHandler((error, _request, reply) => {
-    if (isBodyLimitError(error)) {
-      reply.code(413).send({
-        error: "Request body exceeds proxy limit.",
-        limitBytes: config.requestBodyLimitBytes
-      });
+  app.setErrorHandler((error, request, reply) => {
+    const surface = modelSurfaceForPath(requestPath(request.url));
+    if (surface) {
+      const bodyLimit = isBodyLimitError(error);
+      const status = bodyLimit ? 413 : errorStatusCode(error);
+      sendGatewayError(
+        surface,
+        reply,
+        status,
+        gatewayTransportErrorCode(status, bodyLimit),
+        gatewayTransportErrorMessage(error, status, bodyLimit),
+        bodyLimit ? { limitBytes: config.requestBodyLimitBytes } : undefined
+      );
       return;
     }
     reply.send(error);
@@ -225,11 +232,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     auth,
     gatewayLifecycle,
     events,
-    attempts,
     requestStates,
     trafficLimits,
-    persistence?.promptArtifacts,
-    app.log
+    persistence?.promptArtifacts
   );
   const projections = new ProjectionService();
   const emailService = new EmailService(config, app.log);
@@ -432,7 +437,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
       "idempotency_claim",
       () => requestStates.begin(idempotencyKey, proposedRequestId, context)
     );
-    if (sendDuplicateRequest(gate, input.reply)) {
+    if (sendDuplicateRequest(gate, input.reply, input.surface.surface)) {
       timing.log("duplicate");
       return;
     }
@@ -449,6 +454,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
         trafficLimits,
         requestStates,
         reply: input.reply,
+        surface: input.surface.surface,
         idempotencyKey,
         identity,
         context
@@ -501,6 +507,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           trafficLimits,
           requestStates,
           reply: input.reply,
+          surface: input.surface.surface,
           idempotencyKey,
           identity,
           context,
@@ -590,6 +597,7 @@ async function acquireTrafficLimitOrReject(input: {
   trafficLimits: TrafficLimitStore;
   requestStates: RequestStateStoreLike;
   reply: FastifyReply;
+  surface: Surface;
   idempotencyKey: string;
   identity: RequestIdentity;
   context: RouteContext;
@@ -610,16 +618,15 @@ async function acquireTrafficLimitOrReject(input: {
   if (result.allowed) return result.lease;
 
   await input.requestStates.finish(input.idempotencyKey, "failed", { error: result.error });
-  sendTrafficLimitDenied(input.reply, result);
+  sendTrafficLimitDenied(input.reply, input.surface, result);
   return undefined;
 }
 
-function sendTrafficLimitDenied(reply: FastifyReply, result: TrafficLimitDenied) {
+function sendTrafficLimitDenied(reply: FastifyReply, surface: Surface, result: TrafficLimitDenied) {
   if (result.retryAfterSeconds !== undefined) {
     reply.header("retry-after", String(result.retryAfterSeconds));
   }
-  reply.code(429).send({
-    error: result.error,
+  sendGatewayError(surface, reply, 429, result.error, result.error, {
     scope: result.scope,
     limit: result.limit,
     current: result.current
@@ -702,15 +709,42 @@ function compressionRetrievalEventPayload(
 
 function sendDuplicateRequest(
   gate: RequestStateGate,
-  reply: FastifyReply
+  reply: FastifyReply,
+  surface: Surface
 ) {
   if (!gate.duplicate) return false;
 
-  reply.code(409).send({
-    error: "Duplicate request is still active.",
-    status: gate.state.status
-  });
+  sendGatewayError(
+    surface,
+    reply,
+    409,
+    "duplicate_request_active",
+    "Duplicate request is still active.",
+    { status: gate.state.status }
+  );
   return true;
+}
+
+function errorStatusCode(error: unknown) {
+  const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
+  return typeof statusCode === "number" && statusCode >= 400 && statusCode <= 599
+    ? statusCode
+    : 500;
+}
+
+function gatewayTransportErrorCode(status: number, bodyLimit: boolean) {
+  if (bodyLimit) return "request_body_too_large";
+  if (status === 401) return "unauthorized";
+  if (status >= 500) return "gateway_request_failed";
+  return "invalid_request";
+}
+
+function gatewayTransportErrorMessage(error: unknown, status: number, bodyLimit: boolean) {
+  if (bodyLimit) return "Request body exceeds gateway limit.";
+  if (status >= 500) return "Gateway request failed.";
+  return error instanceof Error && error.message
+    ? error.message
+    : gatewayTransportErrorCode(status, bodyLimit);
 }
 
 type RequestMetricsState = {

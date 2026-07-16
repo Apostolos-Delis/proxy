@@ -7,10 +7,14 @@ export function sendGatewayError(
   reply: FastifyReply,
   status: number,
   code: string,
-  message = code
+  message = code,
+  details: Record<string, unknown> = {}
 ) {
   reply.header("content-type", "application/json; charset=utf-8");
-  reply.code(status).send(gatewayErrorBody(surface, status, code, message));
+  reply.code(status).send({
+    ...gatewayErrorBody(surface, status, code, message),
+    ...details
+  });
 }
 
 export function gatewayErrorBody(

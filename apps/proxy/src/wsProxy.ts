@@ -14,8 +14,6 @@ import {
 } from "./auth.js";
 import {
   type EventService,
-  jsonPayload,
-  type ProviderAttemptStore,
   type RequestStateStoreLike
 } from "./events.js";
 import {
@@ -63,18 +61,14 @@ type ActiveRequest = {
   providerRequestForwarded?: boolean;
 };
 
-type WsLogger = { warn: (obj: unknown, msg?: string) => void };
-
 export class WebSocketRoutingProxy {
   constructor(
     private readonly auth: ProxyAuthService,
     private readonly lifecycle: GatewayRequestLifecycle,
     private readonly events: EventService,
-    private readonly attempts: ProviderAttemptStore,
     private readonly requestStates: RequestStateStoreLike,
     private readonly trafficLimits: TrafficLimitStore,
-    private readonly promptArtifacts?: PromptArtifactStore,
-    private readonly log?: WsLogger
+    private readonly promptArtifacts?: PromptArtifactStore
   ) {}
 
   register(server: Server) {
@@ -264,7 +258,6 @@ export class WebSocketRoutingProxy {
     }
 
     let activeRequestForFailure: ActiveRequest | undefined;
-    let providerStarted = false;
     let requestTerminalized = false;
     let requestLimitLease: TrafficLimitLease | undefined;
     let providerLimitLease: TrafficLimitLease | undefined;
@@ -343,7 +336,6 @@ export class WebSocketRoutingProxy {
         providerLimitLease
       };
       activeRequestForFailure = activeRequest;
-      providerStarted = true;
       const upstreamTarget = this.resolveWebSocketUpstream(
         headers,
         forwardedBody,
@@ -357,15 +349,9 @@ export class WebSocketRoutingProxy {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "websocket_gateway_failed";
-      if (activeRequestForFailure && providerStarted) {
+      if (activeRequestForFailure) {
         await this.finishActiveRequest(activeRequestForFailure, "failed", undefined, { error: message });
       } else if (!requestTerminalized) {
-        if (activeRequestForFailure) {
-          this.attempts.update(activeRequestForFailure.providerAttemptId, {
-            terminalStatus: "failed",
-            error: message
-          });
-        }
         await this.requestStates.finish(idempotencyKey, "failed", { requestId, error: message });
       }
       providerLimitLease?.release();
@@ -467,7 +453,7 @@ export class WebSocketRoutingProxy {
     }
     if (event.type === "response.failed" || event.type === "error") {
       await this.finishActiveRequest(activeRequest, "failed", undefined, {
-        error: jsonPayload(event)
+        ...webSocketProviderError(event)
       });
       return true;
     }
@@ -510,7 +496,7 @@ export class WebSocketRoutingProxy {
     activeRequest: ActiveRequest,
     status: "completed" | "failed" | "cancelled",
     usage: unknown,
-    metadata: unknown
+    metadata: WebSocketTerminalMetadata
   ) {
     activeRequest.providerLimitLease.release();
     activeRequest.requestLimitLease.release();
@@ -558,6 +544,14 @@ type WebSocketUpstreamTarget = {
   url: string;
   headers: Record<string, string>;
   lookup?: LookupFunction;
+};
+
+type WebSocketTerminalMetadata = {
+  error?: string;
+  providerErrorCode?: string;
+  upstreamResponseId?: string;
+  upstreamResponseStatus?: string;
+  websocket?: string;
 };
 
 function webSocketTargetUrl(
@@ -626,4 +620,30 @@ function isTerminalWebSocketMessage(text: string) {
   } catch {
     return false;
   }
+}
+
+function webSocketProviderError(event: Record<string, unknown>): WebSocketTerminalMetadata {
+  const response = isRecord(event.response) ? event.response : undefined;
+  const candidate = response?.error ?? event.error;
+  const error = isRecord(candidate) ? candidate : undefined;
+  const message = boundedProviderValue(
+    typeof candidate === "string" ? candidate : error?.message,
+    500
+  ) ?? "Provider WebSocket request failed.";
+  const providerErrorCode = boundedProviderCode(error?.code);
+  return {
+    error: message,
+    ...(providerErrorCode ? { providerErrorCode } : {})
+  };
+}
+
+function boundedProviderValue(value: unknown, maxLength: number) {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, maxLength) : undefined;
+}
+
+function boundedProviderCode(value: unknown) {
+  const code = boundedProviderValue(value, 120);
+  return code && /^[A-Za-z0-9_.:-]+$/.test(code) ? code : undefined;
 }

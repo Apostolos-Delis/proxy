@@ -5,7 +5,6 @@ import {
   type LogicalModelClassifierConfig
 } from "@proxy/schema";
 
-import type { AppConfig } from "./config.js";
 import {
   type MetricsCollector,
   NoopMetricsCollector
@@ -81,7 +80,6 @@ export class ClassifierError extends Error {
 
 export class LlmClassifier {
   constructor(
-    private readonly config: AppConfig,
     private readonly metrics: MetricsCollector = new NoopMetricsCollector(),
     private readonly logicalModelTargets?: LogicalModelClassifierTargetResolver
   ) {}

@@ -59,7 +59,7 @@ export class ProviderProxy {
   private readonly bedrockRuntime: BedrockRuntimeProviderAdapter;
 
   constructor(
-    private readonly config: AppConfig,
+    config: AppConfig,
     private readonly events: EventAppender,
     attempts: ProviderAttemptStore,
     private readonly lifecycle: GatewayRequestLifecycle,
