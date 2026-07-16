@@ -96,6 +96,8 @@ export class BedrockRuntimeProviderAdapter {
       });
 
       await this.events.append({
+        tenantId: input.input.organizationId,
+        workspaceId: input.input.workspaceId,
         scopeType: "request",
         scopeId: input.input.requestId,
         correlationId: input.input.requestId,
