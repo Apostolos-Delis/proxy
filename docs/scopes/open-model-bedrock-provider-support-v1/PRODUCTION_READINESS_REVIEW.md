@@ -102,7 +102,6 @@ The fail-closed cases are explicit:
 | Stateful OpenAI Responses to Bedrock | Target unavailable with `target_unavailable_stateful_translation`; no silent fallback across provider state. |
 | OpenAI encrypted reasoning include to Bedrock | Target unavailable with `target_unavailable_encrypted_reasoning`. |
 | Anthropic signed thinking to Bedrock | Target unavailable with `target_unavailable_signed_reasoning`. |
-| Bedrock-only settings on non-Bedrock target | Target unavailable with `bedrock_settings_on_non_bedrock_target` evidence. |
 
 Fallback remains allowed only for explicitly configured retryable provider failures. It must not cross request-state boundaries that the compatibility layer marks unavailable.
 

@@ -110,7 +110,6 @@ function compatibilitySupport(
     reason === "websocket_native_only" ||
     reason === "encrypted_reasoning_unavailable" ||
     reason === "signed_reasoning_unavailable" ||
-    reason === "bedrock_settings_on_non_bedrock_target" ||
     reason === "unsupported_field"
   ) {
     return "blocked";

@@ -30,7 +30,6 @@ export type TranslationCompatibilityReason =
   | "websocket_native_only"
   | "encrypted_reasoning_unavailable"
   | "signed_reasoning_unavailable"
-  | "bedrock_settings_on_non_bedrock_target"
   | "unsupported_field";
 
 export type TranslationCompatibilityResult = {
@@ -62,7 +61,6 @@ export type HarnessCompatibilityProfile = {
   statefulResponses?: boolean;
   hasPreviousResponseId?: boolean;
   unsupportedFields?: readonly string[];
-  bedrockSettingsOnNonBedrockTarget?: boolean;
 };
 
 export type HarnessCompatibilityResult = TranslationCompatibilityResult & {
@@ -83,7 +81,6 @@ export function translationCompatibilityForDialects(input: {
   statefulResponses?: boolean;
   hasPreviousResponseId?: boolean;
   unsupportedFields?: readonly string[];
-  bedrockSettingsOnNonBedrockTarget?: boolean;
   availableTranslators?: readonly TranslationPair[];
 }): TranslationCompatibilityResult {
   const result = harnessCompatibilityForTarget({
@@ -94,7 +91,6 @@ export function translationCompatibilityForDialects(input: {
     statefulResponses: input.statefulResponses,
     hasPreviousResponseId: input.hasPreviousResponseId,
     unsupportedFields: input.unsupportedFields,
-    bedrockSettingsOnNonBedrockTarget: input.bedrockSettingsOnNonBedrockTarget,
     availableTranslators: input.availableTranslators
   });
 
@@ -124,9 +120,6 @@ export function harnessCompatibilityForTarget(input: HarnessCompatibilityProfile
   }
   if (input.targetDialects.length === 0) {
     return unavailableResult(input, "dialect_unavailable");
-  }
-  if (input.bedrockSettingsOnNonBedrockTarget && !input.targetDialects.includes("bedrock-converse")) {
-    return unavailableResult(input, "bedrock_settings_on_non_bedrock_target", input.targetDialects[0]);
   }
   if (input.transport === "websocket") {
     return unavailableResult(input, "websocket_native_only");

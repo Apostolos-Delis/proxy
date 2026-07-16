@@ -238,18 +238,4 @@ describe("translation compatibility", () => {
       unsupportedFields: ["thinking.signature"]
     });
   });
-
-  it("rejects Bedrock-only deployment settings on non-Bedrock targets", () => {
-    expect(harnessCompatibilityForTarget({
-      profileId: "openai-chat-sdk",
-      surface: "openai-chat",
-      transport: "http",
-      targetDialects: ["openai-responses"],
-      bedrockSettingsOnNonBedrockTarget: true
-    })).toMatchObject({
-      status: "unavailable",
-      reason: "bedrock_settings_on_non_bedrock_target",
-      to: "openai-responses"
-    });
-  });
 });

@@ -56,7 +56,6 @@ export type ResolveModelInput = {
   statefulResponses?: boolean;
   hasPreviousResponseId?: boolean;
   unsupportedFields?: readonly string[];
-  bedrockSettingsOnNonBedrockTarget?: boolean;
   isStreaming?: boolean;
   classificationFeatures?: LogicalModelClassificationFeatures;
 };
@@ -494,8 +493,7 @@ export class ModelResolutionService {
         transport: input.transport,
         statefulResponses: input.statefulResponses,
         hasPreviousResponseId: input.hasPreviousResponseId,
-        unsupportedFields: input.unsupportedFields,
-        bedrockSettingsOnNonBedrockTarget: input.bedrockSettingsOnNonBedrockTarget
+        unsupportedFields: input.unsupportedFields
       });
       if (compatibility.outcome === "unsupported") continue;
       const binding = bindings.find((row) => row.egressWireId === compatibility.egressWireId);
