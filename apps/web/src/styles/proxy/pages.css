@@ -676,11 +676,6 @@
   min-width: 320px;
 }
 
-.logs-table-card .tbl tbody td {
-  padding-top: 18px;
-  padding-bottom: 18px;
-}
-
 .proxy-cell {
   max-width: 420px;
 }
@@ -695,10 +690,16 @@
   align-items: center;
   justify-content: flex-start;
   gap: 6px;
+  min-width: 0;
+}
+
+.status-cell .status-indicator {
+  flex: 1 1 auto;
 }
 
 .status-extra {
   position: relative;
+  flex: none;
   cursor: help;
 }
 
@@ -724,21 +725,33 @@
   font-size: 12px;
 }
 
-.models-cell {
+.session-route-cell {
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
 }
 
-.models-cell .row {
+.session-route-model {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   min-width: 0;
 }
 
-.models-cell .mono {
+.session-route-model-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.session-route-model-count {
+  flex: none;
+}
+
+.session-route-cell .route-badge {
+  align-self: flex-start;
 }
 
 .table-link {

@@ -74,17 +74,22 @@
 .badge-danger { color: var(--danger); background: var(--danger-bg); border-color: transparent; }
 .badge-warn { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
 .badge-accent { color: var(--accent-2); background: var(--accent-soft); border-color: transparent; }
+.route-badge { max-width: 100%; min-width: 0; }
+.route-badge > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 .status-indicator {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  min-width: 0;
+  max-width: 100%;
   color: var(--fg-muted);
   font-size: 13px;
   font-weight: 650;
   line-height: 1.2;
   white-space: nowrap;
 }
+.status-indicator-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .status-indicator-dot {
   width: 7px;
   height: 7px;
