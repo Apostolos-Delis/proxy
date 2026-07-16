@@ -228,6 +228,7 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
     events,
     attempts,
     requestStates,
+    trafficLimits,
     persistence?.promptArtifacts,
     app.log
   );

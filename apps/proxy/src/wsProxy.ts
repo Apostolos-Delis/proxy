@@ -38,6 +38,10 @@ import {
   providerCompressionTerminalTelemetry,
   requestBodyHash
 } from "./toolResultCompression.js";
+import {
+  TrafficLimitStore,
+  type TrafficLimitLease
+} from "./trafficLimits.js";
 import type { JsonObject, RouteContext, UpstreamCredential } from "./types.js";
 import {
   lookupForPinnedAddress,
@@ -57,6 +61,8 @@ type ActiveRequest = {
   harnessProfileId?: RouteContext["harnessProfileId"];
   transport?: RouteContext["transport"];
   compressionTelemetry: JsonObject;
+  requestLimitLease: TrafficLimitLease;
+  providerLimitLease: TrafficLimitLease;
   providerRequestForwarded?: boolean;
 };
 
@@ -70,6 +76,7 @@ export class WebSocketRoutingProxy {
     private readonly events: EventService,
     private readonly attempts: ProviderAttemptStore,
     private readonly requestStates: RequestStateStoreLike,
+    private readonly trafficLimits: TrafficLimitStore,
     private readonly promptArtifacts?: PromptArtifactStore,
     private readonly log?: WsLogger
   ) {}
@@ -138,7 +145,14 @@ export class WebSocketRoutingProxy {
         }
       });
       socket.once("error", (error) => {
+        const request = activeRequest;
+        activeRequest = undefined;
         sendError(client, 502, error instanceof Error ? error.message : "upstream_websocket_failed");
+        if (request) {
+          void this.finishActiveRequest(request, "failed", undefined, {
+            error: error instanceof Error ? error.message : "upstream_websocket_failed"
+          });
+        }
       });
     };
 
@@ -236,6 +250,15 @@ export class WebSocketRoutingProxy {
       transport: "websocket" as const
     };
     if (!context.sessionId) context.sessionId = fallbackSessionId;
+    const trafficLimitInput = {
+      organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId,
+      apiKeyId: identity.apiKeyId,
+      userId: context.userId,
+      accessProfileId: identity.accessProfileId ?? undefined,
+      accessProfileLimits: identity.accessProfileLimits,
+      estimatedTokens: context.estimatedInputTokens
+    };
     const gate = await this.requestStates.begin(idempotencyKey, requestId, context);
     if (gate.duplicate && (
       gate.state.status === "classifying" ||
@@ -247,65 +270,95 @@ export class WebSocketRoutingProxy {
     let activeRequestForFailure: ActiveRequest | undefined;
     let providerStarted = false;
     let requestTerminalized = false;
+    let requestLimitLease: TrafficLimitLease | undefined;
+    let providerLimitLease: TrafficLimitLease | undefined;
     try {
-    const prepared = await this.lifecycle.prepare({
-      identity,
-      rawContext,
-      context,
-      requestId,
-      idempotencyKey,
-      surface: openAIResponsesSurface,
-      operationId: "text.generate",
-      body,
-      transport: "websocket"
-    });
-    if (prepared.outcome === "denied") {
-      requestTerminalized = true;
-      throw new WebSocketGatewayError(prepared.status, prepared.code);
-    }
-    const target = prepared.target;
-    if (
-      target.resolution.egressWireId !== openAIResponsesSurface.dialect ||
-      target.providerEntry.adapterKind !== "generic-http-json"
-    ) {
-      throw new WebSocketGatewayError(503, "websocket_native_target_required");
-    }
+      const requestLimit = this.trafficLimits.acquire(trafficLimitInput);
+      if (!requestLimit.allowed) {
+        requestTerminalized = true;
+        await this.requestStates.finish(idempotencyKey, "failed", {
+          requestId,
+          error: requestLimit.error
+        });
+        throw new WebSocketGatewayError(429, requestLimit.error);
+      }
+      requestLimitLease = requestLimit.lease;
 
-    const forwardedBody = prepared.body;
-    const attempt = await this.lifecycle.startProviderAttempt({
-      identity,
-      context,
-      requestId,
-      idempotencyKey,
-      surface: openAIResponsesSurface.surface,
-      prepared,
-      transport: "websocket"
-    });
-    const activeRequest: ActiveRequest = {
-      requestId,
-      idempotencyKey,
-      providerAttemptId: attempt.id,
-      identity,
-      target,
-      sessionId: context.sessionId,
-      harness: context.harness,
-      harnessProfileId: context.harnessProfileId,
-      transport: context.transport,
-      compressionTelemetry: prepared.compressionTelemetry
-    };
-    activeRequestForFailure = activeRequest;
-    providerStarted = true;
-    const upstreamTarget = this.resolveWebSocketUpstream(
-      headers,
-      forwardedBody,
-      context.harnessProfileId,
-      target
-    );
-    return {
-      body: forwardedBody,
-      activeRequest,
-      upstreamTarget
-    };
+      const prepared = await this.lifecycle.prepare({
+        identity,
+        rawContext,
+        context,
+        requestId,
+        idempotencyKey,
+        surface: openAIResponsesSurface,
+        operationId: "text.generate",
+        body,
+        transport: "websocket"
+      });
+      if (prepared.outcome === "denied") {
+        requestTerminalized = true;
+        throw new WebSocketGatewayError(prepared.status, prepared.code);
+      }
+      const target = prepared.target;
+      if (
+        target.resolution.egressWireId !== openAIResponsesSurface.dialect ||
+        target.providerEntry.adapterKind !== "generic-http-json"
+      ) {
+        throw new WebSocketGatewayError(503, "websocket_native_target_required");
+      }
+
+      const providerLimit = this.trafficLimits.acquire({
+        ...trafficLimitInput,
+        provider: target.provider,
+        model: target.upstreamModelId
+      }, "provider_model");
+      if (!providerLimit.allowed) {
+        requestTerminalized = true;
+        await this.requestStates.finish(idempotencyKey, "failed", {
+          requestId,
+          error: providerLimit.error
+        });
+        throw new WebSocketGatewayError(429, providerLimit.error);
+      }
+      providerLimitLease = providerLimit.lease;
+
+      const forwardedBody = prepared.body;
+      const attempt = await this.lifecycle.startProviderAttempt({
+        identity,
+        context,
+        requestId,
+        idempotencyKey,
+        surface: openAIResponsesSurface.surface,
+        prepared,
+        transport: "websocket"
+      });
+      const activeRequest: ActiveRequest = {
+        requestId,
+        idempotencyKey,
+        providerAttemptId: attempt.id,
+        identity,
+        target,
+        sessionId: context.sessionId,
+        harness: context.harness,
+        harnessProfileId: context.harnessProfileId,
+        transport: context.transport,
+        compressionTelemetry: prepared.compressionTelemetry,
+        requestLimitLease,
+        providerLimitLease
+      };
+      activeRequestForFailure = activeRequest;
+      providerStarted = true;
+      const upstreamTarget = this.resolveWebSocketUpstream(
+        headers,
+        forwardedBody,
+        context.harnessProfileId,
+        target
+      );
+      return {
+        body: forwardedBody,
+        activeRequest,
+        upstreamTarget
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : "websocket_gateway_failed";
       if (activeRequestForFailure && providerStarted) {
@@ -319,6 +372,8 @@ export class WebSocketRoutingProxy {
         }
         await this.requestStates.finish(idempotencyKey, "failed", { requestId, error: message });
       }
+      providerLimitLease?.release();
+      requestLimitLease?.release();
       throw error;
     }
   }
@@ -463,6 +518,8 @@ export class WebSocketRoutingProxy {
     usage: unknown,
     metadata: unknown
   ) {
+    activeRequest.providerLimitLease.release();
+    activeRequest.requestLimitLease.release();
     const metadataPayload = jsonPayload(metadata) as JsonObject;
     const error = status === "completed" ? undefined : terminalError(metadataPayload);
     const payload: JsonObject = {

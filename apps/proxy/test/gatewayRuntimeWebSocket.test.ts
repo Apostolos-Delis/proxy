@@ -126,4 +126,82 @@ describe("logical-model WebSocket runtime", () => {
     expect(requestRows).toEqual([{ status: "completed" }]);
     socket.close();
   });
+
+  it.each([
+    [
+      "request",
+      { GATEWAY_GLOBAL_CONCURRENCY_LIMIT: "1" },
+      "traffic_limit_exceeded:global:concurrency"
+    ],
+    [
+      "provider/model",
+      { GATEWAY_PROVIDER_MODEL_CONCURRENCY_LIMIT: "1" },
+      "traffic_limit_exceeded:provider_model:concurrency"
+    ]
+  ])("enforces %s concurrency limits and releases them after terminal events", async (
+    _stage,
+    envOverrides,
+    expectedError
+  ) => {
+    const classifierOutput: Record<string, unknown> = {
+      target_id: "pending",
+      reason_codes: ["capability_match"],
+      confidence: 0.91
+    };
+    fixture = await captureFixture(`org_gateway_runtime_ws_${_stage.replace("/", "_")}`, "hash_only", false, {
+      envOverrides,
+      openAIOptions: {
+        classifierOutput,
+        classifierResponsesShape: true,
+        wsResponseDelayMs: 150
+      }
+    });
+    const target = await logicalTarget(fixture, "coding-auto", "openai");
+    classifierOutput.target_id = target.targetId;
+    const first = new WebSocket(
+      fixture.proxyUrl.replace("http://", "ws://") + "/v1/responses",
+      { headers: { authorization: "Bearer proxy-token" } }
+    );
+    const second = new WebSocket(
+      fixture.proxyUrl.replace("http://", "ws://") + "/v1/responses",
+      { headers: { authorization: "Bearer proxy-token" } }
+    );
+    await Promise.all([opened(first), opened(second)]);
+
+    const firstCreated = nextMessage(first, (message) => message.includes("response.created"));
+    const firstCompleted = nextMessage(first, (message) => message.includes("response.completed"));
+    first.send(JSON.stringify({
+      type: "response.create",
+      model: "coding-auto",
+      input: "Hold the first limited request"
+    }));
+    await firstCreated;
+
+    const rejected = nextMessage(second, (message) => message.includes(expectedError));
+    second.send(JSON.stringify({
+      type: "response.create",
+      model: "coding-auto",
+      input: "Reject this concurrent request"
+    }));
+    expect(JSON.parse(await rejected)).toMatchObject({
+      type: "error",
+      status: 429,
+      error: { message: expectedError }
+    });
+
+    await firstCompleted;
+    const recovered = nextMessage(second, (message) => message.includes("response.completed"));
+    second.send(JSON.stringify({
+      type: "response.create",
+      model: "coding-auto",
+      input: "Run after the first request releases its leases"
+    }));
+    expect(await recovered).toContain("response.completed");
+
+    expect(fixture.openai.records.filter((record) => (
+      record.path === "/responses" && record.body.type === "response.create"
+    ))).toHaveLength(2);
+    first.close();
+    second.close();
+  });
 });
