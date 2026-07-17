@@ -74,7 +74,9 @@ async function smokeHealth() {
 }
 
 async function smokeModels() {
-  const models = await fetchJson(`${baseUrl}/v1/models`);
+  const models = await fetchJson(`${baseUrl}/v1/models`, {
+    headers: { authorization: `Bearer ${apiKey}` }
+  });
   const data = recordArray(models, "data");
   const ids = data.map((item) => recordString(item, "id")).filter(Boolean);
   for (const id of ["coding-auto", "economy-auto", "fable"]) {
