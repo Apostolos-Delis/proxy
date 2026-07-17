@@ -1,8 +1,9 @@
 import { KeyRound } from "lucide-react";
 
 import type { AccessProfileSummary, LogicalModelOption } from "./data";
+import { SearchMultiSelect } from "../table/SearchMultiSelect";
 import { SearchSelect } from "../table/SearchSelect";
-import { Badge, GlassCard, Segmented } from "../ui";
+import { GlassCard, Segmented } from "../ui";
 import { WizardStepHead } from "./stepHead";
 import type { CreateKeyDraft } from "./wizard";
 
@@ -42,30 +43,24 @@ export function AccessStep({ draft, models, profiles, onChange }: {
           />
         </div>
         {draft.accessKind === "models" ? (
-          <div className="scope-options" role="group" aria-label="Models">
+          <div className="scope-options model-access-picker">
             <span className="scope-options-label">
               The key can request only the models checked here; a matching access profile is created with it.
             </span>
-            {models.map((model) => (
-              <label key={model.id} className="scope-option">
-                <input
-                  type="checkbox"
-                  checked={draft.modelIds.includes(model.id)}
-                  onChange={(event) => onChange({
-                    ...draft,
-                    modelIds: event.target.checked
-                      ? [...draft.modelIds, model.id]
-                      : draft.modelIds.filter((id) => id !== model.id)
-                  })}
-                />
-                <span className="mono">{model.slug}</span>
-                <Badge variant={model.kind === "router" ? "accent" : undefined}>
-                  {model.kind === "router" ? "auto-router" : "direct"}
-                </Badge>
-                <span className="faint">{model.description ?? model.name}</span>
-              </label>
-            ))}
-            {models.length === 0 ? <span className="faint">No logical models configured.</span> : null}
+            <SearchMultiSelect
+              value={draft.modelIds}
+              options={models.map((model) => ({
+                value: model.id,
+                label: model.slug,
+                hint: model.description ?? model.name,
+                badge: model.kind === "router" ? "auto-router" : "direct",
+                badgeAccent: model.kind === "router"
+              }))}
+              ariaLabel="Logical models"
+              placeholder="Search logical models…"
+              emptyLabel={models.length === 0 ? "No logical models configured." : "No matching models."}
+              onChange={(modelIds) => onChange({ ...draft, modelIds })}
+            />
           </div>
         ) : (
           <div className="inline-form-field wizard-name-field">

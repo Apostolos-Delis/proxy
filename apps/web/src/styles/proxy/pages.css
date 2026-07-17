@@ -2967,6 +2967,10 @@ input[type="checkbox"][role="switch"]:focus-visible {
   max-width: 420px;
 }
 
+.model-access-picker {
+  max-width: 520px;
+}
+
 .wizard-step-head {
   display: grid;
   gap: 5px;
