@@ -37,7 +37,7 @@ In the console:
 2. Record cache read ratio, cached input tokens, cache creation tokens, estimated cache savings, idle gaps, and cache miss tokens.
 3. Check **Prompt-cache plans** for applied and skipped controls.
 4. Check **Cache miss tokens** by cause. Treat `org_prompt_edit`, `tool_schema_churn`, `translator_change`, `compression_policy_change`, and `logical_model_change` as operator-controlled churn.
-5. Check **OpenAI cache effectiveness** for session/key hit rates when OpenAI traffic is in scope.
+5. Check **Cache read ratio by model** for model-level read ratios across providers.
 6. Check **Prewarm jobs** only if a prewarm adapter and trigger are explicitly enabled.
 
 In **Usage / Cost**:

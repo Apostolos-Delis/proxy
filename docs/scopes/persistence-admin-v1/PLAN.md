@@ -197,7 +197,7 @@ The web app is a dense internal operations console. Current routes cover:
 /                         overview
 /usage                    token and model usage
 /cost                     spend and attribution
-/caching                  prompt-cache analytics
+/caching                  prompt-cache analytics by model, API key, and miss cause
 /logs                     request/session stream
 /logs/:artifactId         request detail
 /prompts                   governed prompt artifacts

@@ -3,7 +3,6 @@ import type {
   CacheBustsViewQuery,
   CompressionSavingsViewQuery,
   IdleGapsViewQuery,
-  OpenAiCacheAnalyticsViewQuery,
   PromptCachePlansViewQuery,
   PromptCachePrewarmsViewQuery,
   TokenAttributionViewQuery
@@ -158,45 +157,6 @@ const PromptCachePrewarmsViewDocument = graphql(`
   }
 `);
 
-const OpenAICacheAnalyticsViewDocument = graphql(`
-  query OpenAICacheAnalyticsView($start: String, $end: String, $interval: UsageInterval) {
-    openAICacheAnalytics(start: $start, end: $end, interval: $interval) {
-      interval
-      totals {
-        requestCount
-        cachedRequests
-        inputTokens
-        cachedInputTokens
-        cacheHitRate
-        requestHitRate
-      }
-      groups {
-        surface
-        provider
-        model
-        logicalModel
-        cacheGroupSource
-        cacheGroupKey
-        requestCount
-        cachedRequests
-        inputTokens
-        cachedInputTokens
-        cacheHitRate
-        requestHitRate
-      }
-      trends {
-        ts
-        requestCount
-        cachedRequests
-        inputTokens
-        cachedInputTokens
-        cacheHitRate
-        requestHitRate
-      }
-    }
-  }
-`);
-
 const CacheDeploymentPricingDocument = graphql(`
   query CacheDeploymentPricing {
     gatewayModelDeployments {
@@ -217,8 +177,6 @@ export type CompressionSavingsRow = CompressionSavingsReport["rows"][number];
 export type PromptCachePlanReport = PromptCachePlansViewQuery["promptCachePlans"];
 export type PromptCachePlanControl = PromptCachePlanReport["controls"][number];
 export type PromptCachePrewarmReport = PromptCachePrewarmsViewQuery["promptCachePrewarms"];
-export type OpenAICacheAnalyticsReport = OpenAiCacheAnalyticsViewQuery["openAICacheAnalytics"];
-export type OpenAICacheAnalyticsGroup = OpenAICacheAnalyticsReport["groups"][number];
 export type CachePricingRate = {
   model: string;
   inputCostPerMtok: number | null;
@@ -244,10 +202,6 @@ export async function fetchPromptCachePlans(filters: UsageRangeFilters = {}) {
 
 export async function fetchPromptCachePrewarms(filters: UsageRangeFilters = {}) {
   return (await gqlFetch(PromptCachePrewarmsViewDocument, { ...filters })).promptCachePrewarms;
-}
-
-export async function fetchOpenAICacheAnalytics(filters: UsageRangeFilters & { interval?: "hour" | "day" } = {}) {
-  return (await gqlFetch(OpenAICacheAnalyticsViewDocument, { ...filters })).openAICacheAnalytics;
 }
 
 export function promptCacheControlRows(report: PromptCachePlanReport | undefined, limit = 8) {
@@ -314,19 +268,6 @@ export type ModelBustRow = {
   droppedTokens: number;
   tokensByCause: Record<string, number>;
 };
-
-export function openAICacheGroupLabel(group: Pick<OpenAICacheAnalyticsGroup, "cacheGroupSource" | "cacheGroupKey">) {
-  if (group.cacheGroupSource === "prompt_cache_key") return `Key ${shortCacheGroupKey(group.cacheGroupKey)}`;
-  if (group.cacheGroupSource === "session") return `Session ${shortCacheGroupKey(group.cacheGroupKey)}`;
-  return "Unknown group";
-}
-
-function shortCacheGroupKey(key: string) {
-  const hashPrefix = "sha256:";
-  if (key.startsWith(hashPrefix)) return key.slice(hashPrefix.length, hashPrefix.length + 12);
-  if (key.length <= 18) return key;
-  return `${key.slice(0, 8)}...${key.slice(-6)}`;
-}
 
 /** Busts rolled up per model, largest token loss first — the miss table rows. */
 export function bustsByModel(busts: Pick<CacheBust, "model" | "cause" | "droppedCacheReadTokens">[]): ModelBustRow[] {

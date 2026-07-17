@@ -480,7 +480,7 @@
   flex-direction: column;
 }
 
-.caching-grid > .card > .caching-key-list {
+.caching-grid > .card > .cache-hit-list {
   flex: 1;
 }
 
@@ -540,13 +540,14 @@
   transition: opacity 0.14s ease;
 }
 
-.caching-key-list {
+.cache-hit-list {
   gap: 14px;
 }
 
-.caching-key-hint {
-  color: var(--fg-faint);
-  font-size: 10.5px;
+.cache-hit-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
