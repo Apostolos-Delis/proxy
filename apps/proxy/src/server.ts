@@ -293,7 +293,9 @@ export function buildServer(config: AppConfig = loadConfig(), options: { persist
           id: model.slug,
           object: "model",
           created: Math.floor(model.createdAt.getTime() / 1000),
-          owned_by: "proxy"
+          owned_by: "proxy",
+          display_name: model.name,
+          description: model.description
         }))
       };
     }

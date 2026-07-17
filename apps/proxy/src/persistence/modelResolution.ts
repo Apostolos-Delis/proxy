@@ -107,6 +107,7 @@ export type GrantedLogicalModel = {
   id: string;
   slug: string;
   name: string;
+  description: string | null;
   createdAt: Date;
 };
 
@@ -368,6 +369,7 @@ export class ModelResolutionService {
         id: logicalModels.id,
         slug: logicalModels.slug,
         name: logicalModels.name,
+        description: logicalModels.description,
         createdAt: logicalModels.createdAt,
         profileStatus: accessProfiles.status,
         enabled: accessProfileModelGrants.enabled,
@@ -399,7 +401,7 @@ export class ModelResolutionService {
         row.enabled &&
         row.allowedOperations.includes("model.list")
       ))
-      .map(({ id, slug, name, createdAt }) => ({ id, slug, name, createdAt }));
+      .map(({ id, slug, name, description, createdAt }) => ({ id, slug, name, description, createdAt }));
   }
 
   private async eligibleTargets(input: ResolveModelInput, logicalModelId: string) {

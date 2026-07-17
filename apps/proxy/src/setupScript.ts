@@ -122,31 +122,35 @@ if ! PP_MODELS_JSON="$(curl -fsS -H "Authorization: Bearer $PP_TOKEN" "$PP_BASE_
   echo "Could not load the models granted to this API key from $PP_BASE_URL${modelsPath}." >&2
   exit 1
 fi
+PP_MODELS_FILE="$(mktemp)"
+printf '%s' "$PP_MODELS_JSON" > "$PP_MODELS_FILE"
+trap 'rm -f "$PP_MODELS_FILE"' EXIT
 PP_MODEL=""
 if command -v node >/dev/null 2>&1; then
-  PP_MODEL="$(printf '%s' "$PP_MODELS_JSON" | node -e '
+  PP_MODEL="$(node -e '
 const fs = require("fs");
 try {
-  const response = JSON.parse(fs.readFileSync(0, "utf8"));
+  const response = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
   const ids = Array.isArray(response.data)
     ? response.data.map((entry) => entry && entry.id).filter((id) => typeof id === "string" && id.length > 0)
     : [];
   const preferred = ${setupModelPreference}.find((id) => ids.includes(id));
   if (preferred || ids[0]) process.stdout.write(preferred || ids[0]);
 } catch {}
-' 2>/dev/null || true)"
+' "$PP_MODELS_FILE" 2>/dev/null || true)"
 elif command -v python3 >/dev/null 2>&1; then
-  PP_MODEL="$(printf '%s' "$PP_MODELS_JSON" | python3 -c '
+  PP_MODEL="$(python3 -c '
 import json, sys
 try:
-    response = json.load(sys.stdin)
+    with open(sys.argv[1]) as source:
+        response = json.load(source)
     ids = [entry.get("id") for entry in response.get("data", []) if isinstance(entry, dict) and isinstance(entry.get("id"), str) and entry.get("id")]
     preferred = next((model for model in ${setupModelPreference} if model in ids), None)
     if preferred or ids:
         sys.stdout.write(preferred or ids[0])
 except Exception:
     pass
-' 2>/dev/null || true)"
+' "$PP_MODELS_FILE" 2>/dev/null || true)"
 else
   echo "Model discovery requires node or python3." >&2
   exit 1
@@ -287,6 +291,25 @@ pp_toml_has_top_key() {
   ' "$write_path"
 }
 
+pp_toml_has_top_key_outside_marker() {
+  local dest_file="$1"
+  local key="$2"
+  local begin_marker="$3"
+  local end_marker="$4"
+  local write_path
+  write_path="$(pp_resolved_write_path "$dest_file")"
+  [ -f "$write_path" ] || return 1
+  awk -v key="$key" -v begin="$begin_marker" -v end="$end_marker" '
+    BEGIN { status = 1 }
+    $0 == begin { skipping = 1; next }
+    $0 == end && skipping { skipping = 0; next }
+    skipping { next }
+    /^[[:space:]]*\\[/ { exit }
+    $0 ~ "^[[:space:]]*" key "[[:space:]]*=" { status = 0; exit }
+    END { exit status }
+  ' "$write_path"
+}
+
 pp_toml_has_table() {
   local dest_file="$1"
   local table="$2"
@@ -323,11 +346,22 @@ const file = process.env.HOME + "/.claude/settings.json";
 const markerFile = process.argv[3];
 let settings = {};
 let marker = {};
+let catalog = {};
 try { settings = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
 try { marker = JSON.parse(fs.readFileSync(markerFile, "utf8")); } catch {}
+try { catalog = JSON.parse(fs.readFileSync(process.argv[5], "utf8")); } catch {}
 const managed = new Set(Array.isArray(marker.fields) ? marker.fields : []);
 const nextManaged = [];
 const conflicts = [];
+const selected = Array.isArray(catalog.data)
+  ? catalog.data.find((entry) => entry && entry.id === process.argv[4])
+  : undefined;
+const selectedName = typeof selected?.display_name === "string" && selected.display_name.trim()
+  ? selected.display_name
+  : process.argv[4];
+const selectedDescription = typeof selected?.description === "string" && selected.description.trim()
+  ? selected.description
+  : "Prompt Proxy logical model.";
 function isObject(value) {
   return value && typeof value === "object" && !Array.isArray(value);
 }
@@ -360,6 +394,19 @@ if (!isObject(settings.env)) {
 if (isObject(settings.env)) {
   setEnv("ANTHROPIC_BASE_URL", process.argv[1]);
   setEnv("CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY", "1");
+  const customModel = [
+    ["ANTHROPIC_CUSTOM_MODEL_OPTION", process.argv[4]],
+    ["ANTHROPIC_CUSTOM_MODEL_OPTION_NAME", selectedName],
+    ["ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION", selectedDescription]
+  ];
+  const customModelConflict = customModel.some(([key]) => (
+    settings.env[key] !== undefined && !managed.has("env." + key)
+  ));
+  if (customModelConflict) {
+    conflicts.push("env.ANTHROPIC_CUSTOM_MODEL_OPTION fields");
+  } else {
+    for (const [key, value] of customModel) setEnv(key, value);
+  }
 }
 setTopLevel("apiKeyHelper", "cat " + process.argv[2]);
 if (isObject(settings.env) && typeof settings.env.ANTHROPIC_CUSTOM_HEADERS === "string") {
@@ -381,7 +428,7 @@ if (nextManaged.length > 0) {
   fs.chmodSync(markerFile, 0o600);
 }
 fs.writeFileSync(file, JSON.stringify(settings, null, 2) + "\\n");
-' "$PP_BASE_URL" "$PP_TOKEN_PATH_DISPLAY" "$PP_CLAUDE_MARKER_FILE" "$PP_MODEL"
+' "$PP_BASE_URL" "$PP_TOKEN_PATH_DISPLAY" "$PP_CLAUDE_MARKER_FILE" "$PP_MODEL" "$PP_MODELS_FILE"
     echo "claude: configured ~/.claude/settings.json"
   else
     echo "claude: node not found - set model/env/apiKeyHelper in ~/.claude/settings.json by hand" >&2
@@ -420,10 +467,227 @@ if [ "$PP_SETUP_CODEX" -eq 1 ]; then
   PP_CODEX_DEFAULTS_END="# <<< proxy codex defaults <<<"
   PP_CODEX_PROVIDER_BEGIN="# >>> proxy codex provider $PP_CODEX_PROVIDER >>>"
   PP_CODEX_PROVIDER_END="# <<< proxy codex provider $PP_CODEX_PROVIDER <<<"
+  codex_provider_conflict=0
+  if ! pp_has_marker "$codex_config" "$PP_CODEX_PROVIDER_BEGIN" && pp_toml_has_table "$codex_config" "[model_providers.$PP_CODEX_PROVIDER]"; then
+    codex_provider_conflict=1
+  fi
+  codex_defaults_conflict=0
+  if pp_toml_has_top_key "$codex_config" "model" || pp_toml_has_top_key "$codex_config" "model_provider" || pp_toml_has_top_key "$codex_config" "model_catalog_json"; then
+    codex_defaults_conflict=1
+  fi
+  codex_defaults_managed=0
+  pp_has_marker "$codex_config" "$PP_CODEX_DEFAULTS_BEGIN" && codex_defaults_managed=1
+  codex_catalog_conflict=0
+  if pp_toml_has_top_key_outside_marker "$codex_config" "model_catalog_json" "$PP_CODEX_DEFAULTS_BEGIN" "$PP_CODEX_DEFAULTS_END"; then
+    codex_catalog_conflict=1
+    if [ "$codex_defaults_managed" -eq 1 ]; then
+      echo "codex: found unmarked top-level model_catalog_json in $PP_CODEX_CONFIG_DISPLAY; leaving it unchanged" >&2
+    fi
+  fi
+  codex_defaults_writable=0
+  if [ "$codex_defaults_managed" -eq 1 ] || { [ "$codex_provider_conflict" -eq 0 ] && [ "$codex_defaults_conflict" -eq 0 ]; }; then
+    codex_defaults_writable=1
+  fi
+  codex_catalog="$PP_CODEX_HOME/proxy-models.json"
+  if command -v node >/dev/null 2>&1; then
+    codex_catalog_value="$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$codex_catalog")"
+  else
+    codex_catalog_value="$(python3 -c 'import json, sys; sys.stdout.write(json.dumps(sys.argv[1]))' "$codex_catalog")"
+  fi
+  codex_catalog_setting="model_catalog_json = $codex_catalog_value"
+  codex_catalog_owned=0
+  if [ "$codex_defaults_managed" -eq 1 ] && [ ! -L "$codex_catalog" ] && { [ ! -e "$codex_catalog" ] || [ -f "$codex_catalog" ]; } && PP_CODEX_CATALOG_SETTING="$codex_catalog_setting" awk \
+    -v begin="$PP_CODEX_DEFAULTS_BEGIN" \
+    -v end="$PP_CODEX_DEFAULTS_END" \
+    '
+      BEGIN { expected = ENVIRON["PP_CODEX_CATALOG_SETTING"] }
+      $0 == begin { inside = 1; next }
+      $0 == end { inside = 0 }
+      inside && $0 == expected { found = 1 }
+      END { exit found ? 0 : 1 }
+  ' "$(pp_resolved_write_path "$codex_config")"; then
+    codex_catalog_owned=1
+  fi
+  codex_catalog_line=""
+  [ "$codex_catalog_owned" -eq 1 ] && codex_catalog_line="$codex_catalog_setting"
+  if { [ -e "$codex_catalog" ] || [ -L "$codex_catalog" ]; } && [ "$codex_catalog_owned" -eq 0 ]; then
+    echo "codex: found unmarked $codex_catalog; leaving the model catalogue unchanged" >&2
+  elif [ "$codex_defaults_writable" -eq 0 ] || [ "$codex_catalog_conflict" -eq 1 ]; then
+    :
+  elif command -v codex >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+    tmp_codex_bundled="$(mktemp)"
+    tmp_codex_catalog="$(mktemp "$PP_CODEX_HOME/.proxy-models.XXXXXX")"
+    if codex debug models --bundled > "$tmp_codex_bundled" 2>/dev/null && node -e '
+const fs = require("fs");
+const source = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const response = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const sourceModels = Array.isArray(source.models) ? source.models : [];
+const template = sourceModels.find((model) => model && model.visibility === "list") || sourceModels[0];
+if (!template) process.exit(1);
+const sourceBySlug = new Map(sourceModels.filter((model) => model && typeof model.slug === "string").map((model) => [model.slug, model]));
+const entries = Array.isArray(response.data)
+  ? response.data.filter((entry) => entry && typeof entry.id === "string" && entry.id.length > 0)
+  : [];
+const models = entries.map((entry, priority) => {
+  const known = sourceBySlug.get(entry.id);
+  const displayName = typeof entry.display_name === "string" && entry.display_name.trim() ? entry.display_name : entry.id;
+  const description = typeof entry.description === "string" && entry.description.trim()
+    ? entry.description
+    : "Prompt Proxy logical model.";
+  if (known) {
+    return {
+      ...known,
+      display_name: displayName,
+      description,
+      visibility: "list",
+      supported_in_api: true,
+      priority,
+      availability_nux: null,
+      upgrade: null
+    };
+  }
+  const model = {
+    slug: entry.id,
+    display_name: displayName,
+    description,
+    supported_reasoning_levels: [],
+    shell_type: "default",
+    visibility: "list",
+    supported_in_api: true,
+    priority,
+    additional_speed_tiers: [],
+    service_tiers: [],
+    availability_nux: null,
+    upgrade: null,
+    base_instructions: template.base_instructions || "",
+    include_skills_usage_instructions: template.include_skills_usage_instructions || false,
+    supports_reasoning_summaries: false,
+    default_reasoning_summary: "auto",
+    support_verbosity: false,
+    default_verbosity: null,
+    apply_patch_tool_type: null,
+    web_search_tool_type: "text",
+    truncation_policy: { mode: "bytes", limit: 10000 },
+    supports_parallel_tool_calls: false,
+    supports_image_detail_original: false,
+    context_window: 200000,
+    max_context_window: 200000,
+    auto_compact_token_limit: null,
+    experimental_supported_tools: [],
+    input_modalities: ["text", "image"],
+    supports_search_tool: false,
+    use_responses_lite: false,
+    tool_mode: null,
+    multi_agent_version: null
+  };
+  if (template.model_messages !== undefined) model.model_messages = template.model_messages;
+  return model;
+});
+fs.writeFileSync(process.argv[3], JSON.stringify({ models }, null, 2) + "\\n");
+' "$tmp_codex_bundled" "$PP_MODELS_FILE" "$tmp_codex_catalog"; then
+      mv "$tmp_codex_catalog" "$codex_catalog"
+      codex_catalog_line="$codex_catalog_setting"
+    elif [ "$codex_catalog_owned" -eq 1 ]; then
+      echo "codex: could not refresh the Proxy model catalogue; keeping the previous catalogue" >&2
+    else
+      echo "codex: could not generate the Proxy model catalogue; /model will use Codex defaults" >&2
+    fi
+    rm -f "$tmp_codex_bundled" "$tmp_codex_catalog"
+  elif command -v codex >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+    tmp_codex_bundled="$(mktemp)"
+    tmp_codex_catalog="$(mktemp "$PP_CODEX_HOME/.proxy-models.XXXXXX")"
+    if codex debug models --bundled > "$tmp_codex_bundled" 2>/dev/null && python3 - "$tmp_codex_bundled" "$PP_MODELS_FILE" "$tmp_codex_catalog" <<'PP_PY'
+import json
+import sys
+
+with open(sys.argv[1]) as source_file:
+    source = json.load(source_file)
+with open(sys.argv[2]) as response_file:
+    response = json.load(response_file)
+
+source_models = source.get("models", [])
+template = next((model for model in source_models if model.get("visibility") == "list"), source_models[0] if source_models else None)
+if template is None:
+    raise SystemExit(1)
+source_by_slug = {model.get("slug"): model for model in source_models if model.get("slug")}
+models = []
+for priority, entry in enumerate(response.get("data", [])):
+    if not isinstance(entry, dict) or not isinstance(entry.get("id"), str) or not entry["id"]:
+        continue
+    display_name = entry.get("display_name") if isinstance(entry.get("display_name"), str) and entry["display_name"].strip() else entry["id"]
+    description = entry.get("description") if isinstance(entry.get("description"), str) and entry["description"].strip() else "Prompt Proxy logical model."
+    if entry["id"] in source_by_slug:
+        model = dict(source_by_slug[entry["id"]])
+        model.update({
+            "display_name": display_name,
+            "description": description,
+            "visibility": "list",
+            "supported_in_api": True,
+            "priority": priority,
+            "availability_nux": None,
+            "upgrade": None,
+        })
+        models.append(model)
+        continue
+    model = {
+        "slug": entry["id"],
+        "display_name": display_name,
+        "description": description,
+        "supported_reasoning_levels": [],
+        "shell_type": "default",
+        "visibility": "list",
+        "supported_in_api": True,
+        "priority": priority,
+        "additional_speed_tiers": [],
+        "service_tiers": [],
+        "availability_nux": None,
+        "upgrade": None,
+        "base_instructions": template.get("base_instructions", ""),
+        "include_skills_usage_instructions": template.get("include_skills_usage_instructions", False),
+        "supports_reasoning_summaries": False,
+        "default_reasoning_summary": "auto",
+        "support_verbosity": False,
+        "default_verbosity": None,
+        "apply_patch_tool_type": None,
+        "web_search_tool_type": "text",
+        "truncation_policy": {"mode": "bytes", "limit": 10000},
+        "supports_parallel_tool_calls": False,
+        "supports_image_detail_original": False,
+        "context_window": 200000,
+        "max_context_window": 200000,
+        "auto_compact_token_limit": None,
+        "experimental_supported_tools": [],
+        "input_modalities": ["text", "image"],
+        "supports_search_tool": False,
+        "use_responses_lite": False,
+        "tool_mode": None,
+        "multi_agent_version": None,
+    }
+    if "model_messages" in template:
+        model["model_messages"] = template["model_messages"]
+    models.append(model)
+
+with open(sys.argv[3], "w") as catalog_file:
+    json.dump({"models": models}, catalog_file, indent=2)
+    catalog_file.write("\\n")
+PP_PY
+    then
+      mv "$tmp_codex_catalog" "$codex_catalog"
+      codex_catalog_line="$codex_catalog_setting"
+    elif [ "$codex_catalog_owned" -eq 1 ]; then
+      echo "codex: could not refresh the Proxy model catalogue; keeping the previous catalogue" >&2
+    else
+      echo "codex: could not generate the Proxy model catalogue; /model will use Codex defaults" >&2
+    fi
+    rm -f "$tmp_codex_bundled" "$tmp_codex_catalog"
+  else
+    echo "codex: codex and node or python3 are required to generate the Proxy model catalogue" >&2
+  fi
   tmp_codex_defaults="$(mktemp)"
   cat > "$tmp_codex_defaults" <<${heredocDelimiter}
 model = "$PP_MODEL"
 model_provider = "$PP_CODEX_PROVIDER"
+$codex_catalog_line
 ${heredocDelimiter}
   tmp_codex_provider="$(mktemp)"
   cat > "$tmp_codex_provider" <<${heredocDelimiter}
@@ -436,24 +700,15 @@ wire_api = "responses"
 supports_websockets = false
 ${heredocDelimiter}
 
-  codex_provider_conflict=0
-  if ! pp_has_marker "$codex_config" "$PP_CODEX_PROVIDER_BEGIN" && pp_toml_has_table "$codex_config" "[model_providers.$PP_CODEX_PROVIDER]"; then
-    codex_provider_conflict=1
-  fi
-  codex_defaults_conflict=0
-  if pp_toml_has_top_key "$codex_config" "model" || pp_toml_has_top_key "$codex_config" "model_provider"; then
-    codex_defaults_conflict=1
-  fi
-
   if pp_has_marker "$codex_config" "$PP_CODEX_DEFAULTS_BEGIN"; then
     pp_write_marked_block "$codex_config" "$PP_CODEX_DEFAULTS_BEGIN" "$PP_CODEX_DEFAULTS_END" "$tmp_codex_defaults" prepend
   elif [ "$codex_provider_conflict" -eq 1 ]; then
     if [ "$codex_defaults_conflict" -eq 1 ]; then
-      echo "codex: found unmarked top-level model/model_provider in $PP_CODEX_CONFIG_DISPLAY; leaving defaults unchanged" >&2
+      echo "codex: found unmarked top-level model/model_provider/model_catalog_json in $PP_CODEX_CONFIG_DISPLAY; leaving defaults unchanged" >&2
     fi
     :
   elif [ "$codex_defaults_conflict" -eq 1 ]; then
-    echo "codex: found unmarked top-level model/model_provider in $PP_CODEX_CONFIG_DISPLAY; leaving defaults unchanged" >&2
+    echo "codex: found unmarked top-level model/model_provider/model_catalog_json in $PP_CODEX_CONFIG_DISPLAY; leaving defaults unchanged" >&2
   else
     pp_write_marked_block "$codex_config" "$PP_CODEX_DEFAULTS_BEGIN" "$PP_CODEX_DEFAULTS_END" "$tmp_codex_defaults" prepend
   fi
@@ -491,6 +746,7 @@ const tokenFile = process.argv[4];
 const configMarkerFile = process.argv[5];
 const authMarkerFile = process.argv[6];
 const model = process.argv[7];
+const catalogFile = process.argv[8];
 const providerId = "prompt-chat";
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return {}; }
@@ -503,6 +759,19 @@ function readToken(file) {
 }
 const config = readJson(configFile);
 const configMarker = readJson(configMarkerFile);
+const catalog = readJson(catalogFile);
+const models = Object.fromEntries(
+  (Array.isArray(catalog.data) ? catalog.data : [])
+    .filter((entry) => entry && typeof entry.id === "string" && entry.id.length > 0)
+    .map((entry) => [
+      entry.id,
+      {
+        name: typeof entry.display_name === "string" && entry.display_name.trim()
+          ? entry.display_name
+          : entry.id
+      }
+    ])
+);
 const managedConfig = new Set(Array.isArray(configMarker.fields) ? configMarker.fields : []);
 const nextManagedConfig = [];
 const conflicts = [];
@@ -515,12 +784,10 @@ if (isObject(config.provider)) {
   if (existingProvider === undefined || managedConfig.has("provider." + providerId)) {
     config.provider = Object.assign({}, config.provider, {
       [providerId]: Object.assign({}, isObject(existingProvider) ? existingProvider : {}, {
-    npm: "@ai-sdk/openai-compatible",
-    name: "Proxy Chat",
+        npm: "@ai-sdk/openai-compatible",
+        name: "Proxy Chat",
         options: Object.assign({}, isObject(existingProvider?.options) ? existingProvider.options : {}, { baseURL: baseUrl + "/v1" }),
-        models: Object.assign({}, isObject(existingProvider?.models) ? existingProvider.models : {}, {
-          [model]: { name: model }
-        })
+        models
   })
     });
     nextManagedConfig.push("provider." + providerId);
@@ -556,7 +823,7 @@ if (conflicts.length > 0) {
 }
 fs.writeFileSync(authFile, JSON.stringify(auth, null, 2) + "\\n", { mode: 0o600 });
 fs.chmodSync(authFile, 0o600);
-' "$PP_OPENCODE_CONFIG_FILE" "$PP_OPENCODE_AUTH_FILE" "$PP_BASE_URL" "$PP_TOKEN_PATH" "$PP_OPENCODE_CONFIG_MARKER_FILE" "$PP_OPENCODE_AUTH_MARKER_FILE" "$PP_MODEL"
+' "$PP_OPENCODE_CONFIG_FILE" "$PP_OPENCODE_AUTH_FILE" "$PP_BASE_URL" "$PP_TOKEN_PATH" "$PP_OPENCODE_CONFIG_MARKER_FILE" "$PP_OPENCODE_AUTH_MARKER_FILE" "$PP_MODEL" "$PP_MODELS_FILE"
     echo "opencode: configured ~/.config/opencode/opencode.json"
     echo "opencode: stored credential in ~/.local/share/opencode/auth.json"
   else

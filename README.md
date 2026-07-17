@@ -97,6 +97,8 @@ The hosted setup script configures Claude Code, Codex, and opencode without chan
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- <api-key>
 ```
 
+Setup reads the key-filtered `GET /v1/models` response and installs the granted catalogue in Codex and opencode. Codex entries include display names and descriptions; opencode entries include display names. Claude Code receives the selected default as a named custom model option; its gateway discovery additionally shows returned IDs that start with `claude` or `anthropic`. Re-run setup after changing a key's model grants to refresh local catalogues.
+
 Use separate keys when harnesses need different access profiles:
 
 ```shell
