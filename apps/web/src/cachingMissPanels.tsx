@@ -23,7 +23,7 @@ export function MissTable({ report }: { report: CacheBustReport | undefined }) {
   if (!report) {
     return (
       <GlassCard>
-        <div className="card-title"><TriangleAlert />Cache miss tokens</div>
+        <div className="card-title"><TriangleAlert />Detected cache busts</div>
         <div className="inline-skeleton skeleton-pulse" style={{ height: 200 }} />
       </GlassCard>
     );
@@ -39,10 +39,10 @@ export function MissTable({ report }: { report: CacheBustReport | undefined }) {
     <GlassCard>
       <div className="card-head">
         <div className="card-title">
-          <TriangleAlert />Cache miss tokens
+          <TriangleAlert />Detected cache busts
           <span className="usage-scope-note">why warm prefixes broke</span>
         </div>
-        <span className="mono faint caching-miss-total">{formatCompact(totalDropped)} dropped</span>
+        <span className="mono faint caching-miss-total">{formatCompact(totalDropped)} tokens dropped</span>
       </div>
       {rows.length === 0 ? (
         <div className="empty compact-empty">
