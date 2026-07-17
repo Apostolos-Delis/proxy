@@ -211,7 +211,7 @@ function namedAlarmProps(props: AlarmProps & {
 export function runtimeEnvironment(config: ProxyEnvironmentConfig) {
   return {
     ADMIN_CORS_ORIGIN: "",
-    ADMIN_DEV_LOGIN_ENABLED: config.envName === "prod" ? "false" : "true",
+    ADMIN_DEV_LOGIN_ENABLED: "true",
     ADMIN_GRAPHIQL_ENABLED: config.envName === "prod" ? "false" : "true",
     ADMIN_SESSION_COOKIE_SECURE: "true",
     ADMIN_SESSION_COOKIE_NAME: "proxy_session",
