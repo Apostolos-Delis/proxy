@@ -34,9 +34,9 @@ Use at least one cache TTL window for fast checks and at least 24 hours for roll
 In the console:
 
 1. Open **Caching**.
-2. Record cache read ratio, cached input tokens, cache creation tokens, estimated cache savings, idle gaps, and cache miss tokens.
+2. Record cache read ratio, cached input tokens, cache creation tokens, estimated cache savings, idle gaps, and detected cache busts.
 3. Check **Prompt-cache plans** for applied and skipped controls.
-4. Check **Cache miss tokens** by cause. Treat `org_prompt_edit`, `tool_schema_churn`, `translator_change`, `compression_policy_change`, and `logical_model_change` as operator-controlled churn.
+4. Check **Detected cache busts** by cause. Treat `org_prompt_edit`, `tool_schema_churn`, `translator_change`, `compression_policy_change`, and `logical_model_change` as operator-controlled churn.
 5. Check **Cache read ratio by model** for model-level read ratios across providers.
 6. Check **Prewarm jobs** only if a prewarm adapter and trigger are explicitly enabled.
 
