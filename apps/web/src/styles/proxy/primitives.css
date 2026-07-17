@@ -287,6 +287,9 @@
 }
 .drawer-resize:hover::after, .drawer-resize[data-resizing="true"]::after { background: var(--accent); }
 @keyframes slideIn { from { transform: translateX(28px); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .drawer { animation: none; }
+}
 .drawer-head {
   display: flex; align-items: flex-start; gap: 16px; margin-bottom: 8px;
 }

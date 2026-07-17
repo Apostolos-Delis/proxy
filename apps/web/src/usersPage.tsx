@@ -12,7 +12,7 @@ import { InviteUserPanel } from "./inviteUserPanel";
 import { ConsoleTable } from "./table";
 import { UserInspector } from "./userInspector";
 import { userAdvancedFields, userColumns, userFilters } from "./usersColumns";
-import { userSearchValue, userStatus } from "./usersPageData";
+import { adjacentUserId, userSearchValue, userStatus } from "./usersPageData";
 import { PageState, PageTitle } from "./ui";
 
 const UsersListDocument = graphql(`
@@ -78,7 +78,7 @@ export function UsersPage() {
 
   const users = queryData?.users ?? [];
   const activeCount = users.filter((user) => userStatus(user) === "active").length;
-  const selectedUser = users.find((user) => user.userId === selectedUserId) ?? users[0];
+  const selectedUser = users.find((user) => user.userId === selectedUserId);
   const currentUserId = meQueryData?.user.userId;
   return (
     <div className="page page-enter">
@@ -108,11 +108,27 @@ export function UsersPage() {
         filters={userFilters}
         advancedFields={userAdvancedFields}
         emptyLabel="No users match these filters."
-        actions={({ visibleData }) => (
-          <button className="btn" type="button" onClick={() => downloadJson("proxy-users.json", { users: visibleData, selectedUser })}>
-            <Download />Export
-          </button>
-        )}
+        actions={({ visibleData }) => {
+          const selectedIndex = selectedUser ? visibleData.findIndex((user) => user.userId === selectedUser.userId) : -1;
+          return (
+            <>
+              <button className="btn" type="button" onClick={() => downloadJson("proxy-users.json", { users: visibleData, selectedUser })}>
+                <Download />Export
+              </button>
+              {selectedUser ? (
+                <UserInspector
+                  user={selectedUser}
+                  currentUserId={currentUserId}
+                  position={selectedIndex}
+                  total={visibleData.length}
+                  onPrevious={() => setSelectedUserId(adjacentUserId(visibleData, selectedUser.userId, -1))}
+                  onNext={() => setSelectedUserId(adjacentUserId(visibleData, selectedUser.userId, 1))}
+                  onClose={() => setSelectedUserId(null)}
+                />
+              ) : null}
+            </>
+          );
+        }}
         getRowProps={(user) => ({
           className: selectedUser?.userId === user.userId ? "selectable-row selected" : "selectable-row",
           tabIndex: 0,
@@ -126,7 +142,6 @@ export function UsersPage() {
         })}
       />
       <InvitationsCard />
-      {selectedUser ? <UserInspector user={selectedUser} currentUserId={currentUserId} /> : null}
     </div>
   );
 }

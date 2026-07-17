@@ -3772,6 +3772,59 @@ input[type="checkbox"][role="switch"]:focus-visible {
   justify-items: end;
 }
 
+.user-panel .dashboard-inspector {
+  margin-top: 0;
+}
+
+.user-panel-nav,
+.user-api-key-head,
+.user-api-key-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.user-panel-nav {
+  min-height: 32px;
+}
+
+.user-api-key-list {
+  display: grid;
+  gap: 8px;
+}
+
+.user-api-key-row {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+}
+
+.user-api-key-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.user-api-key-head > div > strong,
+.user-api-key-head > div > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-api-key-meta {
+  margin-top: 9px;
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+
+.user-account-card .key-panel-facts {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .key-panel {
   display: flex;
   flex-direction: column;

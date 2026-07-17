@@ -174,7 +174,7 @@ The console is a dense, workspace-scoped operational surface:
 | Prompts | Captured prompt artifacts and access audit |
 | Models | Model-facing API endpoints, logical-model definitions, targets, wires, grants, and direct/router creation |
 | API keys | Atomic key/profile/grant issuance for per-key model selection, reusable profile assignment, revocation, and post-creation harness setup |
-| Users | Invitations, roles, activation, and deactivation |
+| Users | Invitations, roles, activation, deactivation, and a slideout with per-user usage and API keys |
 | Settings / Billing | Runtime optimization settings and deployment pricing |
 
 ## Data And Security

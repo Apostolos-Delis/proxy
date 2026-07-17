@@ -245,6 +245,16 @@
     padding-bottom: 0;
   }
 
+  .user-account-card .key-panel-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .user-api-key-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
   .logs-search {
     min-width: 100%;
   }
