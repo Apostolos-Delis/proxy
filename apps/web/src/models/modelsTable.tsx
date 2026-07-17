@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 
 import {
   logicalModelProviders,
+  logicalModelResolution,
   logicalModelSearchValue,
   logicalModelStatus,
   logicalModelTargetStatus,
@@ -75,10 +76,10 @@ function modelColumns(expandedModelId: string | null, onToggle: (modelId: string
       id: "resolution",
       header: "Resolution",
       size: 130,
-      accessorFn: (model) => model.kind,
+      accessorFn: logicalModelResolution,
       cell: ({ row }) => (
         <Badge variant={row.original.kind === "router" ? "accent" : undefined}>
-          {row.original.kind === "router" ? "auto-router" : "direct"}
+          {logicalModelResolution(row.original)}
         </Badge>
       )
     },
@@ -211,7 +212,7 @@ const modelAdvancedFields: ConsoleTableAdvancedField<LogicalModelSummary>[] = [
   { id: "name", label: "Name", getValue: (model) => model.name },
   { id: "slug", label: "Slug", getValue: (model) => model.slug },
   { id: "description", label: "Description", getValue: (model) => model.description },
-  { id: "resolution", label: "Resolution", getValue: (model) => model.kind },
+  { id: "resolution", label: "Resolution", getValue: logicalModelResolution },
   { id: "status", label: "Status", getValue: logicalModelStatus },
   { id: "provider", label: "Provider", getValue: logicalModelProviders },
   { id: "target", label: "Target model", getValue: (model) => model.targets.flatMap((target) => [target.deploymentName, target.upstreamModelId]) },
@@ -222,7 +223,7 @@ const modelAdvancedFields: ConsoleTableAdvancedField<LogicalModelSummary>[] = [
 function modelFilters(models: LogicalModelSummary[]): ConsoleTableFilter<LogicalModelSummary>[] {
   return [
     { id: "status", label: "Status", allLabel: "All statuses", options: optionItems(models.map(logicalModelStatus)), getValue: logicalModelStatus },
-    { id: "resolution", label: "Resolution", allLabel: "All resolutions", options: optionItems(models.map((model) => model.kind)), getValue: (model) => model.kind },
+    { id: "resolution", label: "Resolution", allLabel: "All resolutions", options: optionItems(models.map(logicalModelResolution)), getValue: logicalModelResolution },
     { id: "provider", label: "Provider", allLabel: "All providers", options: optionItems(models.flatMap(logicalModelProviders)), getValue: logicalModelProviders }
   ];
 }

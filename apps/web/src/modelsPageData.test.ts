@@ -7,6 +7,7 @@ import {
   deploymentOptions,
   logicalModelCreateInput,
   logicalModelProviders,
+  logicalModelResolution,
   logicalModelSearchValue,
   logicalModelStatus,
   logicalModelSummaries,
@@ -160,6 +161,7 @@ describe("logicalModelSummaries", () => {
   it("exposes model details to table search and filters", () => {
     const [model] = logicalModelSummaries(data);
     expect(logicalModelStatus(model!)).toBe("active");
+    expect(logicalModelResolution(model!)).toBe("auto-router");
     expect(logicalModelProviders(model!)).toEqual(["anthropic", "openai"]);
     const searchValues = logicalModelSearchValue({
       ...model!,
@@ -172,6 +174,7 @@ describe("logicalModelSummaries", () => {
       "Engineers",
       "classifier_wire_unavailable",
       "classifier wire unavailable",
+      "auto-router",
       "disabled",
       "claude-opus-4-8",
       "gpt-5.6-terra",

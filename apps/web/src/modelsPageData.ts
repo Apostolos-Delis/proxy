@@ -108,6 +108,10 @@ export function logicalModelStatus(model: LogicalModelSummary) {
   return model.available ? "active" : "unavailable";
 }
 
+export function logicalModelResolution(model: LogicalModelSummary) {
+  return model.kind === "router" ? "auto-router" : "direct";
+}
+
 export function logicalModelTargetStatus(target: ModelTargetSummary) {
   if (!target.enabled) return "disabled";
   return target.available ? "active" : "unavailable";
@@ -127,7 +131,7 @@ export function logicalModelSearchValue(model: LogicalModelSummary) {
     model.slug,
     model.name,
     model.description ?? "",
-    model.kind,
+    logicalModelResolution(model),
     logicalModelStatus(model),
     model.classifierDeployment ?? "",
     model.routingPolicy ?? "",
