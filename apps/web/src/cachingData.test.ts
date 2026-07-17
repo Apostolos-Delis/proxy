@@ -5,7 +5,6 @@ import {
   bustCauses,
   bustsByModel,
   cacheSavings,
-  openAICacheGroupLabel,
   promptCacheControlRows,
   type PromptCachePlanReport
 } from "./cachingData";
@@ -131,19 +130,6 @@ describe("promptCacheControlRows", () => {
       "retention_preserved"
     ]);
     expect(promptCacheControlRows(report, 2)).toHaveLength(2);
-  });
-});
-
-describe("openAICacheGroupLabel", () => {
-  it("uses a short hash label for prompt cache keys and session fallback labels otherwise", () => {
-    expect(openAICacheGroupLabel({
-      cacheGroupSource: "prompt_cache_key",
-      cacheGroupKey: "sha256:1234567890abcdef"
-    })).toBe("Key 1234567890ab");
-    expect(openAICacheGroupLabel({
-      cacheGroupSource: "session",
-      cacheGroupKey: "session_abc"
-    })).toBe("Session session_abc");
   });
 });
 
