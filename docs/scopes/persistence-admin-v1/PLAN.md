@@ -205,7 +205,7 @@ The web app is a dense internal operations console. Current routes cover:
 /sessions/:sessionId       session detail
 /api-keys                  API keys and access profiles
 /api-keys/new              key creation and harness setup
-/users                     members and invitations
+/users                     members, invitations, and per-user usage/API-key inspection
 /billing                   deployment pricing
 /settings                  runtime and capture settings
 ```

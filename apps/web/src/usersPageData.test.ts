@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { labelForStatusAction, userRole, userSearchValue, userStatus, type UserSummary } from "./usersPageData";
+import { adjacentUserId, labelForStatusAction, userRole, userSearchValue, userStatus, type UserSummary } from "./usersPageData";
 
 function user(overrides: Partial<UserSummary> = {}): UserSummary {
   return {
@@ -45,6 +45,17 @@ describe("userSearchValue", () => {
       "admin",
       "active"
     ]);
+  });
+});
+
+describe("adjacentUserId", () => {
+  const users = [user({ userId: "u1" }), user({ userId: "u2" }), user({ userId: "u3" })];
+
+  it("moves within the visible user order and stops at either end", () => {
+    expect(adjacentUserId(users, "u2", -1)).toBe("u1");
+    expect(adjacentUserId(users, "u2", 1)).toBe("u3");
+    expect(adjacentUserId(users, "u1", -1)).toBe("u1");
+    expect(adjacentUserId(users, "u3", 1)).toBe("u3");
   });
 });
 

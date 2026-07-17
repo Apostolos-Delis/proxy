@@ -56,9 +56,10 @@ function RoleMenu({ user, open, pending, onOpenChange, onRoleChange }: {
   return (
     <div
       className="assignment-menu"
+      onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
-        if (event.key !== "Escape" || !open) return;
         event.stopPropagation();
+        if (event.key !== "Escape" || !open) return;
         onOpenChange(false);
       }}
     >

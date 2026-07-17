@@ -15,6 +15,12 @@ export function userSearchValue(user: UserSummary) {
     .filter((value): value is string => Boolean(value));
 }
 
+export function adjacentUserId(users: UserSummary[], currentUserId: string, direction: -1 | 1) {
+  const currentIndex = users.findIndex((user) => user.userId === currentUserId);
+  if (currentIndex < 0) return currentUserId;
+  return users[currentIndex + direction]?.userId ?? currentUserId;
+}
+
 export function labelForStatusAction(deactivated: boolean, pending: boolean) {
   if (pending) return deactivated ? "Reactivating" : "Deactivating";
   return deactivated ? "Reactivate" : "Deactivate";
