@@ -124,8 +124,9 @@ jobs:
           distribution_domain="$(stack_output "proxy-${PROXY_DEPLOY_ENV}-edge" CloudFrontDomainName)"
           cluster_name="$(stack_output "proxy-${PROXY_DEPLOY_ENV}-service" ClusterName)"
           service_name="$(stack_output "proxy-${PROXY_DEPLOY_ENV}-service" ProxyServiceName)"
+          proxy_token_secret_arn="$(stack_output "proxy-${PROXY_DEPLOY_ENV}-runtime-secrets" ProxyTokenSecretArn)"
           proxy_token="$(aws secretsmanager get-secret-value \
-            --secret-id "proxy-${PROXY_DEPLOY_ENV}-token" \
+            --secret-id "${proxy_token_secret_arn}" \
             --query SecretString \
             --output text)"
 
