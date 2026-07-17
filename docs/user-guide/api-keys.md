@@ -95,6 +95,8 @@ curl -fsSL https://proxy.example.com/setup.sh | bash -s -- --harness claude-code
 
 The script stores the key with mode `0600`, updates only Proxy-owned marker blocks, and reports conflicts with user-managed settings instead of overwriting them.
 
+It also reads the key-filtered model list: Codex and opencode receive the complete granted catalogue, while Claude Code receives the selected default as a named custom model option. Re-run setup after changing the key's grants to refresh those local entries.
+
 Use separate keys when harnesses need different profiles, attribution, rate limits, environments, or revocation boundaries.
 
 ## Manual Claude Code Setup

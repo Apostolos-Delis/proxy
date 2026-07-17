@@ -18,10 +18,22 @@ beforeAll(() => {
 if [ -n "\${PP_TEST_MODELS_JSON:-}" ]; then
   printf '%s' "$PP_TEST_MODELS_JSON"
 else
-  printf '%s' '{"data":[{"id":"coding-auto"},{"id":"economy-auto"},{"id":"fable"}]}'
+  printf '%s' '{"data":[{"id":"coding-auto","display_name":"Coding Auto","description":"Classifier-routed coding access."},{"id":"economy-auto","display_name":"Economy Auto","description":"Economy-only routed access."},{"id":"fable","display_name":"Fable","description":"Direct Claude access."}]}'
 fi
 `);
   chmodSync(curl, 0o755);
+  const codex = join(fakeBin, "codex");
+  writeFileSync(codex, `#!/bin/sh
+if [ -n "\${PP_TEST_CODEX_FAIL:-}" ]; then
+  exit 1
+fi
+if [ "$1" = "debug" ] && [ "$2" = "models" ] && [ "$3" = "--bundled" ]; then
+  printf '%s' '{"models":[{"slug":"gpt-test","visibility":"list","base_instructions":"Bundled Codex instructions","include_skills_usage_instructions":true,"default_reasoning_level":"xhigh","comp_hash":"bundled-only"}]}'
+  exit 0
+fi
+exit 1
+`);
+  chmodSync(codex, 0o755);
   process.env.PATH = `${fakeBin}:${originalPath ?? ""}`;
 });
 
@@ -122,6 +134,7 @@ env_key = "OLD_PROXY_TOKEN"
       const config = readFileSync(join(codexDir, "config.toml"), "utf8");
       expect(config).toContain('model = "coding-auto"');
       expect(config).toContain('model_provider = "proxy"');
+      expect(config).toContain(`model_catalog_json = "${join(codexDir, "proxy-models.json")}"`);
       expect(config).toContain("[features]");
       expect(config).toContain("goals = true");
       expect(config).toContain('base_url = "https://proxy.example.com/v1"');
@@ -132,19 +145,61 @@ env_key = "OLD_PROXY_TOKEN"
       expect(config).not.toContain("http_headers");
       expect(config).not.toContain("http://old/v1");
       expect(config).not.toContain("OLD_PROXY_TOKEN");
+      const catalog = JSON.parse(readFileSync(join(codexDir, "proxy-models.json"), "utf8"));
+      expect(catalog.models.map((model: { slug: string }) => model.slug)).toEqual([
+        "coding-auto",
+        "economy-auto",
+        "fable"
+      ]);
+      expect(catalog.models[0]).toMatchObject({
+        display_name: "Coding Auto",
+        description: "Classifier-routed coding access.",
+        base_instructions: "Bundled Codex instructions"
+      });
+      expect(catalog.models[0]).not.toHaveProperty("default_reasoning_level");
+      expect(catalog.models[0]).not.toHaveProperty("comp_hash");
       const zshrc = readFileSync(join(home, ".zshrc"), "utf8");
       expect(zshrc).toContain("# >>> proxy codex PROXY_TOKEN >>>");
       expect(zshrc).toContain('export PROXY_TOKEN="$(cat ~/.proxy/token)"');
       expect(zshrc).not.toContain("old-token");
 
+      const failedRefresh = spawnSync("bash", ["-s", "--", "proxy-token-2"], {
+        input: buildSetupScript("https://proxy2.example.com"),
+        env: {
+          ...process.env,
+          HOME: home,
+          PP_TEST_CODEX_FAIL: "1",
+          PP_TEST_MODELS_JSON: '{"data":[{"id":"economy-auto","display_name":"Economy Auto"}]}',
+          USER: "dev"
+        }
+      });
+      expect(failedRefresh.status).toBe(0);
+      expect(failedRefresh.stderr.toString()).toContain("keeping the previous catalogue");
+      const failedConfig = readFileSync(join(codexDir, "config.toml"), "utf8");
+      expect(failedConfig).toContain(`model_catalog_json = "${join(codexDir, "proxy-models.json")}"`);
+      const failedCatalog = JSON.parse(readFileSync(join(codexDir, "proxy-models.json"), "utf8"));
+      expect(failedCatalog.models.map((model: { slug: string }) => model.slug)).toEqual([
+        "coding-auto",
+        "economy-auto",
+        "fable"
+      ]);
+
       const secondResult = spawnSync("bash", ["-s", "--", "proxy-token-2"], {
         input: buildSetupScript("https://proxy2.example.com"),
-        env: { ...process.env, HOME: home, USER: "dev" }
+        env: {
+          ...process.env,
+          HOME: home,
+          PP_TEST_MODELS_JSON: '{"data":[{"id":"economy-auto","display_name":"Economy Auto"}]}',
+          USER: "dev"
+        }
       });
       expect(secondResult.status).toBe(0);
       const secondConfig = readFileSync(join(codexDir, "config.toml"), "utf8");
+      expect(secondConfig).toContain('model = "economy-auto"');
       expect(secondConfig).toContain('base_url = "https://proxy2.example.com/v1"');
       expect(secondConfig.match(/# >>> proxy codex provider proxy >>>/g)).toHaveLength(1);
+      const secondCatalog = JSON.parse(readFileSync(join(codexDir, "proxy-models.json"), "utf8"));
+      expect(secondCatalog.models.map((model: { slug: string }) => model.slug)).toEqual(["economy-auto"]);
       const secondZshrc = readFileSync(join(home, ".zshrc"), "utf8");
       expect(secondZshrc.match(/# >>> proxy codex PROXY_TOKEN >>>/g)).toHaveLength(1);
     } finally {
@@ -165,6 +220,7 @@ name = "User Proxy"
 base_url = "http://user-managed/v1"
 env_key = "USER_TOKEN"
 `);
+      writeFileSync(join(codexDir, "proxy-models.json"), '{"models":[{"slug":"user-model"}]}\n');
       writeFileSync(join(home, ".zshrc"), 'export PROXY_TOKEN="user-token"\n');
 
       const result = spawnSync("bash", ["-s", "--", "proxy-token"], {
@@ -176,10 +232,86 @@ env_key = "USER_TOKEN"
       expect(result.stderr.toString()).toContain("found unmarked PROXY_TOKEN");
       expect(result.stderr.toString()).toContain("found unmarked top-level model/model_provider");
       expect(result.stderr.toString()).toContain("found unmarked [model_providers.proxy]");
+      expect(result.stderr.toString()).toContain("found unmarked");
+      expect(result.stderr.toString()).toContain("proxy-models.json");
       const config = readFileSync(join(codexDir, "config.toml"), "utf8");
       expect(config).toContain('base_url = "http://user-managed/v1"');
       expect(config).not.toContain("https://proxy.example.com/v1");
+      expect(readFileSync(join(codexDir, "proxy-models.json"), "utf8")).toBe('{"models":[{"slug":"user-model"}]}\n');
       expect(readFileSync(join(home, ".zshrc"), "utf8")).toBe('export PROXY_TOKEN="user-token"\n');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("does not claim a catalogue added beside an older Proxy defaults block", () => {
+    const home = mkdtempSync(join(tmpdir(), "proxy-setup-codex-upgrade-"));
+    try {
+      const codexDir = join(home, ".codex");
+      mkdirSync(codexDir, { recursive: true });
+      writeFileSync(join(codexDir, "config.toml"), `# >>> proxy codex defaults >>>
+model = "coding-auto"
+model_provider = "proxy_codex"
+# <<< proxy codex defaults <<<
+
+# >>> proxy codex provider proxy_codex >>>
+[model_providers.proxy_codex]
+name = "Proxy"
+base_url = "https://old.example.com/v1"
+env_key = "PROXY_CODEX_TOKEN"
+# <<< proxy codex provider proxy_codex <<<
+`);
+      writeFileSync(join(codexDir, "proxy-models.json"), '{"models":[{"slug":"user-model"}]}\n');
+
+      const result = spawnSync("bash", ["-s", "--", "--harness", "codex", "codex-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: { ...process.env, HOME: home }
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stderr.toString()).toContain("found unmarked");
+      expect(result.stderr.toString()).toContain("proxy-models.json");
+      expect(readFileSync(join(codexDir, "proxy-models.json"), "utf8")).toBe('{"models":[{"slug":"user-model"}]}\n');
+      expect(readFileSync(join(codexDir, "config.toml"), "utf8")).not.toContain("model_catalog_json");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves an unmarked catalogue setting beside Proxy defaults", () => {
+    const home = mkdtempSync(join(tmpdir(), "proxy-setup-codex-catalog-conflict-"));
+    try {
+      const codexDir = join(home, ".codex");
+      const customCatalog = join(home, "custom-models.json");
+      mkdirSync(codexDir, { recursive: true });
+      writeFileSync(join(codexDir, "config.toml"), `model_catalog_json = ${JSON.stringify(customCatalog)}
+
+# >>> proxy codex defaults >>>
+model = "coding-auto"
+model_provider = "proxy_codex"
+# <<< proxy codex defaults <<<
+
+# >>> proxy codex provider proxy_codex >>>
+[model_providers.proxy_codex]
+name = "Proxy"
+base_url = "https://old.example.com/v1"
+env_key = "PROXY_CODEX_TOKEN"
+# <<< proxy codex provider proxy_codex <<<
+`);
+      writeFileSync(customCatalog, '{"models":[{"slug":"user-model"}]}\n');
+
+      const result = spawnSync("bash", ["-s", "--", "--harness", "codex", "codex-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: { ...process.env, HOME: home }
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stderr.toString()).toContain("found unmarked top-level model_catalog_json");
+      const config = readFileSync(join(codexDir, "config.toml"), "utf8");
+      expect(config.match(/model_catalog_json/g)).toHaveLength(1);
+      expect(config).toContain(`model_catalog_json = ${JSON.stringify(customCatalog)}`);
+      expect(spawnSync("test", ["!", "-e", join(codexDir, "proxy-models.json")]).status).toBe(0);
+      expect(readFileSync(customCatalog, "utf8")).toBe('{"models":[{"slug":"user-model"}]}\n');
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -207,6 +339,17 @@ env_key = "USER_TOKEN"
       expect(config).not.toContain('model_provider = "proxy_codex"');
       expect(config).toContain('base_url = "http://user-managed/v1"');
       expect(config).not.toContain("https://proxy.example.com/v1");
+      expect(spawnSync("test", ["!", "-e", join(codexDir, "proxy-models.json")]).status).toBe(0);
+
+      writeFileSync(join(codexDir, "config.toml"), "");
+      const recovered = spawnSync("bash", ["-s", "--", "--harness", "codex", "codex-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: { ...process.env, HOME: home }
+      });
+      expect(recovered.status).toBe(0);
+      const recoveredConfig = readFileSync(join(codexDir, "config.toml"), "utf8");
+      expect(recoveredConfig).toContain("model_catalog_json");
+      expect(JSON.parse(readFileSync(join(codexDir, "proxy-models.json"), "utf8")).models).toHaveLength(3);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -312,7 +455,7 @@ env_key = "OLD_PROXY_TOKEN"
 
   it("writes Codex config under CODEX_HOME when set", () => {
     const home = mkdtempSync(join(tmpdir(), "proxy-setup-codex-home-"));
-    const codexHome = join(home, "custom-codex");
+    const codexHome = join(home, 'custom-codex\\"home');
     try {
       const result = spawnSync("bash", ["-s", "--", "--harness", "codex", "codex-token"], {
         input: buildSetupScript("https://proxy.example.com"),
@@ -324,9 +467,61 @@ env_key = "OLD_PROXY_TOKEN"
       const config = readFileSync(join(codexHome, "config.toml"), "utf8");
       expect(config).toContain('model = "coding-auto"');
       expect(config).toContain('model_provider = "proxy_codex"');
+      expect(config).toContain(`model_catalog_json = ${JSON.stringify(join(codexHome, "proxy-models.json"))}`);
       expect(config).toContain('env_key = "PROXY_CODEX_TOKEN"');
       expect(config).toContain("supports_websockets = false");
       expect(spawnSync("test", ["!", "-e", join(home, ".codex", "config.toml")]).status).toBe(0);
+
+      const secondResult = spawnSync("bash", ["-s", "--", "--harness", "codex", "codex-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: {
+          ...process.env,
+          CODEX_HOME: codexHome,
+          HOME: home,
+          PP_TEST_MODELS_JSON: '{"data":[{"id":"economy-auto","display_name":"Economy Auto"}]}'
+        }
+      });
+      expect(secondResult.status).toBe(0);
+      const secondConfig = readFileSync(join(codexHome, "config.toml"), "utf8");
+      expect(secondConfig).toContain(`model_catalog_json = ${JSON.stringify(join(codexHome, "proxy-models.json"))}`);
+      const secondCatalog = JSON.parse(readFileSync(join(codexHome, "proxy-models.json"), "utf8"));
+      expect(secondCatalog.models.map((model: { slug: string }) => model.slug)).toEqual(["economy-auto"]);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("generates the Codex catalogue with python3 when node is unavailable", () => {
+    const home = mkdtempSync(join(tmpdir(), "proxy-setup-codex-python-"));
+    try {
+      const result = spawnSync("bash", ["-s", "--", "--harness", "codex", "codex-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: {
+          ...process.env,
+          HOME: home,
+          PATH: `${fakeBin}:/usr/bin:/bin`
+        }
+      });
+
+      expect(result.status).toBe(0);
+      const config = readFileSync(join(home, ".codex", "config.toml"), "utf8");
+      expect(config).toContain(`model_catalog_json = "${join(home, ".codex", "proxy-models.json")}"`);
+      const catalog = JSON.parse(readFileSync(join(home, ".codex", "proxy-models.json"), "utf8"));
+      expect(catalog.models.map((model: { slug: string }) => model.slug)).toEqual([
+        "coding-auto",
+        "economy-auto",
+        "fable"
+      ]);
+      expect(catalog.models[0]).not.toHaveProperty("default_reasoning_level");
+      expect(catalog.models[0]).not.toHaveProperty("comp_hash");
+
+      const nodeResult = spawnSync("bash", ["-s", "--", "--harness", "codex", "codex-token"], {
+        input: buildSetupScript("https://proxy.example.com"),
+        env: { ...process.env, HOME: home }
+      });
+      expect(nodeResult.status).toBe(0);
+      const nodeCatalog = JSON.parse(readFileSync(join(home, ".codex", "proxy-models.json"), "utf8"));
+      expect(nodeCatalog).toEqual(catalog);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -350,6 +545,9 @@ env_key = "OLD_PROXY_TOKEN"
       const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
       expect(settings.apiKeyHelper).toBe("cat ~/.proxy/claude-code.token");
       expect(settings.env.ANTHROPIC_BASE_URL).toBe("https://proxy.example.com");
+      expect(settings.env.ANTHROPIC_CUSTOM_MODEL_OPTION).toBe("coding-auto");
+      expect(settings.env.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME).toBe("Coding Auto");
+      expect(settings.env.ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION).toBe("Classifier-routed coding access.");
       expect(settings.env.ANTHROPIC_CUSTOM_HEADERS).toBeUndefined();
       expect(spawnSync("test", ["!", "-e", join(home, ".codex", "config.toml")]).status).toBe(0);
     } finally {
@@ -363,7 +561,10 @@ env_key = "OLD_PROXY_TOKEN"
       mkdirSync(join(home, ".claude"), { recursive: true });
       writeFileSync(join(home, ".claude", "settings.json"), JSON.stringify({
         model: "user-claude-model",
-        env: { ANTHROPIC_BASE_URL: "https://anthropic.example.com" },
+        env: {
+          ANTHROPIC_BASE_URL: "https://anthropic.example.com",
+          ANTHROPIC_CUSTOM_MODEL_OPTION: "user-custom-model"
+        },
         apiKeyHelper: "cat ~/.anthropic/key"
       }));
 
@@ -377,6 +578,9 @@ env_key = "OLD_PROXY_TOKEN"
       expect(result.stderr.toString()).toContain("user-managed settings outside Proxy marker");
       expect(settings.model).toBe("user-claude-model");
       expect(settings.env.ANTHROPIC_BASE_URL).toBe("https://anthropic.example.com");
+      expect(settings.env.ANTHROPIC_CUSTOM_MODEL_OPTION).toBe("user-custom-model");
+      expect(settings.env.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME).toBeUndefined();
+      expect(settings.env.ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION).toBeUndefined();
       expect(settings.apiKeyHelper).toBe("cat ~/.anthropic/key");
       expect(settings.env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY).toBe("1");
     } finally {
@@ -468,6 +672,11 @@ env_key = "OLD_PROXY_TOKEN"
       const config = JSON.parse(readFileSync(join(xdgConfig, "opencode", "opencode.json"), "utf8"));
       expect(config.provider["prompt-chat"].npm).toBe("@ai-sdk/openai-compatible");
       expect(config.provider["prompt-chat"].options.baseURL).toBe("https://proxy.example.com/v1");
+      expect(config.provider["prompt-chat"].models).toEqual({
+        "coding-auto": { name: "Coding Auto" },
+        "economy-auto": { name: "Economy Auto" },
+        fable: { name: "Fable" }
+      });
       expect(config.model).toBe("prompt-chat/coding-auto");
       const auth = JSON.parse(readFileSync(join(xdgData, "opencode", "auth.json"), "utf8"));
       expect(auth["prompt-chat"]).toEqual({ type: "api", key: "open-token" });
@@ -481,6 +690,7 @@ env_key = "OLD_PROXY_TOKEN"
         env: {
           ...process.env,
           HOME: home,
+          PP_TEST_MODELS_JSON: '{"data":[{"id":"economy-auto","display_name":"Economy Auto"}]}',
           XDG_CONFIG_HOME: xdgConfig,
           XDG_DATA_HOME: xdgData,
           USER: "dev"
@@ -490,6 +700,10 @@ env_key = "OLD_PROXY_TOKEN"
       const secondConfig = JSON.parse(readFileSync(join(xdgConfig, "opencode", "opencode.json"), "utf8"));
       expect(secondConfig.provider["other-provider"].options.baseURL).toBe("http://other");
       expect(secondConfig.provider["prompt-chat"].options.baseURL).toBe("https://proxy2.example.com/v1");
+      expect(secondConfig.provider["prompt-chat"].models).toEqual({
+        "economy-auto": { name: "Economy Auto" }
+      });
+      expect(secondConfig.model).toBe("prompt-chat/economy-auto");
       const secondAuth = JSON.parse(readFileSync(join(xdgData, "opencode", "auth.json"), "utf8"));
       expect(secondAuth["prompt-chat"]).toEqual({ type: "api", key: "open-token-2" });
     } finally {

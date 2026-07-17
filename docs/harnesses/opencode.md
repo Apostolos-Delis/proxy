@@ -16,7 +16,7 @@ Provider credentials stay on Proxy provider connections. opencode receives only 
 curl -fsSL http://127.0.0.1:8787/setup.sh | bash -s -- --harness opencode <api-key>
 ```
 
-The script authenticates `GET /v1/models`, chooses a granted logical model, stores the key at `~/.proxy/opencode.token`, writes the `prompt-chat` provider to `~/.config/opencode/opencode.json`, and stores the credential in `~/.local/share/opencode/auth.json`. Marker files under `~/.proxy/` protect unmarked user-managed entries.
+The script authenticates `GET /v1/models`, chooses a granted logical model, stores the key at `~/.proxy/opencode.token`, writes every granted model and its display name to the `prompt-chat` provider in `~/.config/opencode/opencode.json`, and stores the credential in `~/.local/share/opencode/auth.json`. Marker files under `~/.proxy/` protect unmarked user-managed entries. Re-run setup after changing the key's grants to replace the installed catalogue.
 
 ## Discover Model IDs
 
@@ -42,7 +42,9 @@ This path calls `POST /v1/chat/completions`:
         "baseURL": "http://127.0.0.1:8787/v1"
       },
       "models": {
-        "coding-auto": { "name": "coding-auto" }
+        "coding-auto": { "name": "Coding Auto" },
+        "economy-auto": { "name": "Economy Auto" },
+        "fable": { "name": "Fable" }
       }
     }
   },
@@ -71,6 +73,6 @@ Use `@ai-sdk/anthropic` with the same `/v1` base URL when the integration is int
 ## Troubleshooting
 
 - `401`: the opencode credential must be the Proxy API key.
-- Model not found or denied: configure exactly one of the IDs returned by authenticated `GET /v1/models`.
+- Model not found or denied: select an ID returned by authenticated `GET /v1/models` and re-run setup if the key's grants changed.
 - Wrong inbound wire: check the provider package and keep the base URL at `/v1`, not at a concrete operation path.
 - Translated target rejected: inspect the recorded compatibility reason; stateful features can require a native target.

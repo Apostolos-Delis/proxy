@@ -39,13 +39,34 @@ describe("logical-model gateway runtime", () => {
     });
     const headers = gatewayHeaders("proxy-token");
 
-    const modelsResponse = await fetch(`${fixture.proxyUrl}/v1/models`, { headers });
+    const modelsResponse = await fetch(`${fixture.proxyUrl}/v1/models?limit=1000`, {
+      headers: { "x-api-key": "proxy-token" }
+    });
     expect(modelsResponse.status).toBe(200);
-    const models = await modelsResponse.json() as { data: { id: string }[] };
+    const models = await modelsResponse.json() as {
+      data: { id: string; display_name: string; description: string | null }[];
+    };
     expect(models.data.map((model) => model.id)).toEqual([
       "coding-auto",
       "economy-auto",
       "fable"
+    ]);
+    expect(models.data).toMatchObject([
+      {
+        id: "coding-auto",
+        display_name: "Coding Auto",
+        description: "Classifier-routed access to the configured coding model set."
+      },
+      {
+        id: "economy-auto",
+        display_name: "Economy Auto",
+        description: "Classifier-routed access limited to economy deployments."
+      },
+      {
+        id: "fable",
+        display_name: "Fable",
+        description: "Direct access to Claude Fable 5."
+      }
     ]);
 
     const responses = await postJson(`${fixture.proxyUrl}/v1/responses`, headers, {
