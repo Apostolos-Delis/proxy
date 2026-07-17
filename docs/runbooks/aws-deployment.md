@@ -41,9 +41,9 @@ pnpm --filter @proxy/infra-cdk cdk deploy \
 Build and push the proxy image.
 
 ```shell
-export PROXY_REPOSITORY_URI="$(aws ecr describe-repositories \
-  --repository-names "proxy-${PROXY_DEPLOY_ENV}" \
-  --query 'repositories[0].repositoryUri' \
+export PROXY_REPOSITORY_URI="$(aws cloudformation describe-stacks \
+  --stack-name "proxy-${PROXY_DEPLOY_ENV}-foundation" \
+  --query "Stacks[0].Outputs[?OutputKey=='ProxyRepositoryUri'].OutputValue" \
   --output text)"
 
 aws ecr get-login-password | docker login \

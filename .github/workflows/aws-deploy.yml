@@ -59,17 +59,20 @@ jobs:
       - name: Resolve ECR repository
         id: ecr
         run: |
-          repo_uri="$(aws ecr describe-repositories \
-            --repository-names "proxy-${PROXY_DEPLOY_ENV}" \
-            --query 'repositories[0].repositoryUri' \
+          repo_uri="$(aws cloudformation describe-stacks \
+            --stack-name "proxy-${PROXY_DEPLOY_ENV}-foundation" \
+            --query "Stacks[0].Outputs[?OutputKey=='ProxyRepositoryUri'].OutputValue" \
             --output text)"
-          echo "repo_uri=${repo_uri}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "repo_name=${repo_uri##*/}"
+            echo "repo_uri=${repo_uri}"
+          } >> "${GITHUB_OUTPUT}"
       - uses: aws-actions/amazon-ecr-login@v2
       - name: Check proxy image tag
         id: proxy-image
         run: |
           if aws ecr describe-images \
-            --repository-name "proxy-${PROXY_DEPLOY_ENV}" \
+            --repository-name "${{ steps.ecr.outputs.repo_name }}" \
             --image-ids "imageTag=${IMAGE_TAG}" >/dev/null 2>&1; then
             echo "exists=true" >> "${GITHUB_OUTPUT}"
           else
