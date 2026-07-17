@@ -63,7 +63,7 @@ const titles: Record<string, [string, string | null]> = {
 export function AppShell() {
   const location = useLocation();
   const search = useSearch({ strict: false }) as { view?: unknown };
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => window.matchMedia("(max-width: 1180px)").matches);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [searchOpen, setSearchOpen] = useState(false);
   useSearchShortcut(() => setSearchOpen((value) => !value));
