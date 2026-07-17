@@ -6,6 +6,9 @@ import {
   createModelBlocker,
   deploymentOptions,
   logicalModelCreateInput,
+  logicalModelProviders,
+  logicalModelSearchValue,
+  logicalModelStatus,
   logicalModelSummaries,
   routerDefaults,
   slugify
@@ -152,6 +155,30 @@ describe("logicalModelSummaries", () => {
       ))
     };
     expect(logicalModelSummaries(instructionData)[0]?.routingPolicy).toBe(instructions);
+  });
+
+  it("exposes model details to table search and filters", () => {
+    const [model] = logicalModelSummaries(data);
+    expect(logicalModelStatus(model!)).toBe("active");
+    expect(logicalModelProviders(model!)).toEqual(["anthropic", "openai"]);
+    const searchValues = logicalModelSearchValue({
+      ...model!,
+      classifierReasonCodes: ["classifier_wire_unavailable"]
+    });
+    expect(searchValues).toEqual(expect.arrayContaining([
+      "chat-auto",
+      "Nano",
+      "policy",
+      "Engineers",
+      "classifier_wire_unavailable",
+      "classifier wire unavailable",
+      "disabled",
+      "claude-opus-4-8",
+      "gpt-5.6-terra",
+      "anthropic",
+      "openai"
+    ]));
+    expect(logicalModelStatus({ ...model!, enabled: false })).toBe("disabled");
   });
 });
 

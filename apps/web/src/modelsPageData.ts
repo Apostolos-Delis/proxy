@@ -103,6 +103,54 @@ export type LogicalModelSummary = {
   profiles: string[];
 };
 
+export function logicalModelStatus(model: LogicalModelSummary) {
+  if (!model.enabled) return "disabled";
+  return model.available ? "active" : "unavailable";
+}
+
+export function logicalModelTargetStatus(target: ModelTargetSummary) {
+  if (!target.enabled) return "disabled";
+  return target.available ? "active" : "unavailable";
+}
+
+export function readinessReasonLabel(reasonCodes: string[]) {
+  return reasonCodes.map((reason) => reason.replaceAll("_", " ")).join(", ");
+}
+
+export function logicalModelProviders(model: LogicalModelSummary) {
+  return [...new Set(model.targets.map((target) => target.provider))].sort();
+}
+
+export function logicalModelSearchValue(model: LogicalModelSummary) {
+  return [
+    model.id,
+    model.slug,
+    model.name,
+    model.description ?? "",
+    model.kind,
+    logicalModelStatus(model),
+    model.classifierDeployment ?? "",
+    model.routingPolicy ?? "",
+    ...searchableReasonCodes(model.reasonCodes),
+    ...searchableReasonCodes(model.classifierReasonCodes),
+    ...model.wires,
+    ...model.profiles,
+    ...model.targets.flatMap((target) => [
+      target.targetId,
+      target.deploymentName,
+      target.upstreamModelId,
+      target.provider,
+      logicalModelTargetStatus(target),
+      ...target.wires,
+      ...searchableReasonCodes(target.reasonCodes)
+    ])
+  ];
+}
+
+function searchableReasonCodes(reasonCodes: string[]) {
+  return reasonCodes.flatMap((reason) => [reason, readinessReasonLabel([reason])]);
+}
+
 export async function fetchGatewayModels() {
   return gqlFetch(GatewayModelsDocument);
 }

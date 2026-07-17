@@ -1,6 +1,6 @@
 import { flexRender, type Table } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import type { CSSProperties } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 
 import { ConsoleTableEmptyState } from "./ConsoleTableEmptyState";
 import type { ConsoleTableRowProps } from "./types";
@@ -11,10 +11,11 @@ type ConsoleTableFrameProps<TData> = {
   emptyLabel: string;
   filtered: boolean;
   getRowProps?: (row: TData) => ConsoleTableRowProps;
+  renderExpandedRow?: (row: TData) => ReactNode;
   onClear: () => void;
 };
 
-export function ConsoleTableFrame<TData>({ table, tableWidth, emptyLabel, filtered, getRowProps, onClear }: ConsoleTableFrameProps<TData>) {
+export function ConsoleTableFrame<TData>({ table, tableWidth, emptyLabel, filtered, getRowProps, renderExpandedRow, onClear }: ConsoleTableFrameProps<TData>) {
   const rows = table.getRowModel().rows;
   const colSpan = table.getVisibleLeafColumns().length || 1;
   // When empty, fit the container instead of the configured column widths so the empty
@@ -60,14 +61,22 @@ export function ConsoleTableFrame<TData>({ table, tableWidth, emptyLabel, filter
         <tbody>
           {rows.length > 0 ? rows.map((row, rowIndex) => {
             const rowProps = getRowProps?.(row.original);
+            const expandedContent = renderExpandedRow?.(row.original);
             return (
-              <tr key={row.id} {...rowProps} className={rowProps?.className} style={{ "--row-i": Math.min(rowIndex, 9) } as CSSProperties}>
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} style={{ width: cell.column.getSize() }}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
+              <Fragment key={row.id}>
+                <tr {...rowProps} className={rowProps?.className} style={{ "--row-i": Math.min(rowIndex, 9) } as CSSProperties}>
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} style={{ width: cell.column.getSize() }}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+                {expandedContent != null ? (
+                  <tr className="console-table-expanded-row">
+                    <td colSpan={colSpan}>{expandedContent}</td>
+                  </tr>
+                ) : null}
+              </Fragment>
             );
           }) : (
             <tr className="console-table-empty-row">

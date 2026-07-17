@@ -130,6 +130,26 @@
     flex-direction: column;
   }
 
+  .models-section-head {
+    align-items: flex-start;
+  }
+
+  .model-expanded-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .model-target-row {
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 7px 12px;
+    padding-block: 12px;
+  }
+
+  .model-target-provider,
+  .model-target-wires,
+  .model-target-status {
+    grid-column: 2;
+  }
+
   .usage-primary .card-head {
     flex-direction: column;
     gap: 14px;
