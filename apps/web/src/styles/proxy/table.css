@@ -294,6 +294,15 @@
   animation-delay: calc(var(--row-i, 0) * 12ms);
 }
 
+.console-table tbody tr.console-table-expanded-row {
+  animation: none;
+  background: transparent;
+}
+
+.console-table-expanded-row > td {
+  padding: 0;
+}
+
 @keyframes console-row-in {
   from {
     opacity: 0;

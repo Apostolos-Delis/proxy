@@ -42,6 +42,7 @@ type ConsoleTableProps<TData> = {
   urlState?: boolean | string;
   actions?: (context: ConsoleTableActionContext<TData>) => ReactNode;
   getRowProps?: (row: TData) => ConsoleTableRowProps;
+  renderExpandedRow?: (row: TData) => ReactNode;
 };
 
 export function ConsoleTable<TData>({
@@ -58,7 +59,8 @@ export function ConsoleTable<TData>({
   stateKey,
   urlState,
   actions,
-  getRowProps
+  getRowProps,
+  renderExpandedRow
 }: ConsoleTableProps<TData>) {
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const state = useConsoleTableState({
@@ -136,7 +138,15 @@ export function ConsoleTable<TData>({
         onSortingChange={(nextSorting) => state.updateSorting(nextSorting)}
         onClear={state.clear}
       />
-      <ConsoleTableFrame table={table} tableWidth={tableWidth} emptyLabel={emptyLabel} filtered={hasFilterControls} getRowProps={getRowProps} onClear={state.clear} />
+      <ConsoleTableFrame
+        table={table}
+        tableWidth={tableWidth}
+        emptyLabel={emptyLabel}
+        filtered={hasFilterControls}
+        getRowProps={getRowProps}
+        renderExpandedRow={renderExpandedRow}
+        onClear={state.clear}
+      />
       <ConsoleTablePagination
         pageIndex={pagination.pageIndex}
         pageSize={pagination.pageSize}
