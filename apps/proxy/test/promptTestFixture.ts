@@ -42,6 +42,7 @@ export function testEnv(overrides: NodeJS.ProcessEnv = {}) {
     OPENAI_BASE_URL: "http://127.0.0.1",
     ANTHROPIC_API_KEY: "anthropic-upstream-key",
     ANTHROPIC_BASE_URL: "http://127.0.0.1",
+    PROVIDER_SECRET_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
     GATEWAY_SEED_CLASSIFIER_MODEL: "route-classifier-cheap",
     ALLOWED_PRIVATE_UPSTREAM_CIDRS: "127.0.0.0/8",
     ADMIN_DEV_LOGIN_ENABLED: "true",
