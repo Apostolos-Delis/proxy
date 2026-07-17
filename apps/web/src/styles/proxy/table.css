@@ -861,7 +861,7 @@
   color: var(--fg);
 }
 
-.menu-select-popover button.active svg {
+.menu-select-popover button.active > svg {
   color: var(--accent);
 }
 
@@ -921,6 +921,119 @@
 
 .search-select-text .faint {
   font-size: 12px;
+}
+
+.search-multi-select-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.search-multi-select-summary > span:first-child {
+  flex: none;
+  font-weight: 600;
+}
+
+.search-multi-select-summary .faint {
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+}
+
+.search-multi-select-popover {
+  width: min(520px, calc(100vw - 32px));
+  max-width: none;
+  padding-top: 0;
+}
+
+.search-multi-select-list {
+  max-height: 300px;
+  overflow: auto;
+}
+
+.search-multi-select-list > button {
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 9px 8px;
+}
+
+.search-multi-select-check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+}
+
+.search-multi-select-check.checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.search-multi-select-check svg {
+  width: 12px;
+  height: 12px;
+  color: var(--bg);
+  stroke-width: 3;
+}
+
+.search-multi-select-option {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.search-multi-select-option > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-multi-select-option .faint {
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-multi-select-option .badge {
+  padding: 2px 7px;
+  font-size: 10.5px;
+}
+
+.search-multi-select-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px -6px -6px;
+  padding: 7px 8px 7px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-faint);
+  font-size: 11.5px;
+}
+
+.search-multi-select-footer > div {
+  display: flex;
+  gap: 2px;
+}
+
+.search-multi-select-footer button {
+  width: auto;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.search-multi-select-footer .search-multi-select-done {
+  color: var(--accent);
+  font-weight: 650;
 }
 
 @media (max-width: 900px) {
