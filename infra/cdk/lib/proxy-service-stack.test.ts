@@ -163,7 +163,7 @@ describe("ProxyServiceStack", () => {
     expect(stagingEnvironment.ADMIN_GRAPHIQL_ENABLED).toBe("true");
     expect(stagingEnvironment.ADMIN_SESSION_COOKIE_SECURE).toBe("true");
     expect(stagingEnvironment.DEBUG_ENDPOINTS_ENABLED).toBe("false");
-    expect(prodEnvironment.ADMIN_DEV_LOGIN_ENABLED).toBe("false");
+    expect(prodEnvironment.ADMIN_DEV_LOGIN_ENABLED).toBe("true");
     expect(prodEnvironment.ADMIN_GRAPHIQL_ENABLED).toBe("false");
     expect(prodEnvironment.ADMIN_SESSION_COOKIE_SECURE).toBe("true");
     expect(prodEnvironment.DEBUG_ENDPOINTS_ENABLED).toBe("false");

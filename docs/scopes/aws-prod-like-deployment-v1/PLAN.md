@@ -200,7 +200,7 @@ Runtime service:
 - `MODEL_COSTS_JSON`
 - `DEBUG_ENDPOINTS_ENABLED=false`
 - `ADMIN_CORS_ORIGIN` only if the console and API are not same-origin
-- `ADMIN_DEV_LOGIN_ENABLED=false` for true production; for first internal staging, use a strong temporary password and restrict access
+- `ADMIN_DEV_LOGIN_ENABLED=true` for the seeded internal admin; credentials come from Secrets Manager
 - `ADMIN_GRAPHIQL_ENABLED=false` for true production
 - `ADMIN_SESSION_COOKIE_SECURE=true` when the console is served over HTTPS (the proxy also derives this from `ADMIN_CONSOLE_URL=https://...`)
 - `LOG_LEVEL=info`
