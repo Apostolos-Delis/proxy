@@ -15,16 +15,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .key-wizard {
-    grid-template-columns: 1fr;
-  }
-
-  .wizard-rail {
-    position: static;
-    grid-auto-flow: column;
-    grid-auto-columns: 1fr;
-  }
-
   .usage-side-rail,
   .usage-kpi-grid,
   .billing-kpis {
