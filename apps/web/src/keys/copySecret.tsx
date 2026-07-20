@@ -7,7 +7,7 @@ export function CopySecret({ secret }: { secret: string }) {
     <div className="key-secret-copy">
       <span className="mono key-secret-value">{secret}</span>
       <button
-        className="btn btn-sm"
+        className="btn btn-primary"
         type="button"
         onClick={() => {
           void navigator.clipboard.writeText(secret);

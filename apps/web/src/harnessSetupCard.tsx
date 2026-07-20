@@ -15,30 +15,36 @@ import {
 import { highlightSnippet } from "./keys/snippetHighlight";
 import { WizardStepHead } from "./keys/stepHead";
 
-export function HarnessSetupGuide({ secret, harnesses, model, showKeyContextSteps = true }: {
+export function HarnessSetupGuide({ secret, harnesses, model, standalone = true }: {
   secret: string | null;
   harnesses?: HarnessSetupSelection;
   model?: string;
-  showKeyContextSteps?: boolean;
+  standalone?: boolean;
 }) {
   const selected = harnesses && harnesses.length > 0 ? harnesses : defaultHarnessSetupSelection;
   const label = harnessSetupLabel(selected);
   return (
     <>
-      <WizardStepHead
-        icon={<TerminalSquare />}
-        title={`Route ${label} through the proxy`}
-        sub="The harness authenticates with this API key and can use the logical models granted by its access profile."
-      />
+      {standalone ? (
+        <WizardStepHead
+          icon={<TerminalSquare />}
+          title={`Route ${label} through the proxy`}
+          sub="The harness authenticates with this API key and can use the logical models granted by its access profile."
+        />
+      ) : null}
       <ol className="setup-steps">
-        {showKeyContextSteps ? (
+        {standalone ? (
           <li>
-            Create an API key.
-            {secret ? null : <span className="faint"> Then replace {keyPlaceholder} below with the key secret.</span>}
+            <strong className="setup-step-title">Create an API key</strong>
+            <p>
+              Create a key for the workload.
+              {secret ? null : <span className="faint"> Then replace {keyPlaceholder} below with the key secret.</span>}
+            </p>
           </li>
         ) : null}
         <li>
-          Run this on your machine, or paste it into an agent and let it run it for you:
+          <strong className="setup-step-title">Run the installer</strong>
+          <p>Paste this into your terminal, or give it to an agent running on your machine.</p>
           <Snippet text={buildSetupCommand({ apiBase, secret, harnesses: selected })} language="shell" />
           <div className="faint setup-explainer">
             It fetches the <a href={`${apiBase}/setup.sh`} target="_blank" rel="noreferrer">setup script</a> from
@@ -47,17 +53,19 @@ export function HarnessSetupGuide({ secret, harnesses, model, showKeyContextStep
           </div>
         </li>
         <li>
-          {launchInstruction(selected, model)}
+          <strong className="setup-step-title">Start routing traffic</strong>
+          <p>{launchInstruction(selected, model)}</p>
         </li>
-        {showKeyContextSteps ? (
+        {standalone ? (
           <li>
-            Assign an access profile to control which logical models and operations the key can use.
+            <strong className="setup-step-title">Control access</strong>
+            <p>Assign an access profile to control which logical models and operations the key can use.</p>
           </li>
         ) : null}
       </ol>
       {model ? (
         <details className="setup-manual">
-          <summary>Prefer to set it up by hand? Follow these steps — they do exactly what the script does.</summary>
+          <summary><strong>Manual setup</strong><span>View the individual configuration steps</span></summary>
           <ol className="setup-steps">
             {buildManualSteps({ apiBase, secret, model, harnesses: selected }).map((step) => (
               <li key={step.title}>
