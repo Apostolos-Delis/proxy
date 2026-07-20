@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { requireAuth } from "./auth";
 import { TypedDocumentString } from "./gql/graphql";
-import { bumpGraphQLCacheEpoch, gqlFetch, setGraphQLCacheScope } from "./graphql";
+import { bumpGraphQLCacheEpoch, gqlFetch, resolveApiBase, setGraphQLCacheScope } from "./graphql";
 import { stopLiveUpdates } from "./liveUpdates";
 import type { AuthMe } from "./session";
 
@@ -33,6 +33,12 @@ class FakeEventSource {
     this.readyState = 2;
   }
 }
+
+it("uses the browser origin for same-origin production builds", () => {
+  expect(resolveApiBase("", true, "https://proxy.example.com")).toBe("https://proxy.example.com");
+  expect(resolveApiBase("https://api.example.com", true, "https://proxy.example.com")).toBe("https://api.example.com");
+  expect(resolveApiBase(undefined, false, "http://127.0.0.1:5173")).toBe("http://127.0.0.1:8787");
+});
 
 describe("gqlFetch", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
