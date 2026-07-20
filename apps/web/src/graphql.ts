@@ -1,6 +1,10 @@
 import type { TypedDocumentString } from "./gql/graphql";
 
-export const apiBase = import.meta.env.VITE_PROXY_API_BASE ?? "http://127.0.0.1:8787";
+export const apiBase = resolveApiBase(
+  import.meta.env.VITE_PROXY_API_BASE,
+  import.meta.env.PROD,
+  typeof window === "undefined" ? "" : window.location.origin
+);
 export const adminApiBase = import.meta.env.DEV ? "" : apiBase;
 const GRAPHQL_CACHE_SCOPE_PARAM = "gqlCacheScope";
 const GRAPHQL_CACHE_EPOCH_PARAM = "gqlCacheEpoch";
@@ -11,6 +15,11 @@ type GraphQLOperationType = "query" | "mutation" | "subscription" | "unknown";
 let graphQLCacheScope: string | null = null;
 let graphQLCacheScopeIdentity: string | null = null;
 let graphQLCacheEpoch = readStoredCacheEpoch();
+
+export function resolveApiBase(configuredBase: string | undefined, isProduction: boolean, origin: string) {
+  if (configuredBase) return configuredBase;
+  return isProduction ? origin : "http://127.0.0.1:8787";
+}
 
 type GraphQLErrorPayload = {
   message: string;
