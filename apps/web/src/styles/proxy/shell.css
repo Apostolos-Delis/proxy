@@ -127,14 +127,14 @@
 }
 .nav-item.active svg { color: var(--accent); }
 .nav-item svg { width: 18px; height: 18px; flex: none; }
-.app.collapsed .nav-item span, .app.collapsed .nav-group-label,
-.app.collapsed .brand-text, .app.collapsed .sidebar-foot-text { display: none; }
-.app.collapsed .nav-item {
+.app.collapsed .sidebar .nav-item span, .app.collapsed .sidebar .nav-group-label,
+.app.collapsed .sidebar .brand-text, .app.collapsed .sidebar .sidebar-foot-text { display: none; }
+.app.collapsed .sidebar .nav-item {
   justify-content: center;
   padding-inline: 0;
   height: 38px;
 }
-.app.collapsed .nav-item.active::before {
+.app.collapsed .sidebar .nav-item.active::before {
   left: -10px;
 }
 .nav-group[data-collapsed="true"] {
