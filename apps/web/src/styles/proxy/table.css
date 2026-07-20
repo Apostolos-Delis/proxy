@@ -218,8 +218,15 @@
   z-index: 45;
 }
 
-.cell-popover .assignment-popover {
+.cell-popover .assignment-popover,
+.cell-popover .menu-select-popover {
   position: static;
+}
+
+.cell-popover .menu-select-popover {
+  width: 100%;
+  max-width: none;
+  font-size: 13px;
 }
 
 .table-filter-popover {

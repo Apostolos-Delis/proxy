@@ -24,10 +24,11 @@ const popoverMaxHeight = 320;
 const popoverGap = 6;
 const viewportPadding = 8;
 
-// Popovers anchored inside .console-table-scroll get clipped by its
-// overflow, so this portals them to the body at a fixed position.
-export function AnchoredPopover({ anchorRef, onDismiss, children }: PopoverShellProps & {
+// Popovers anchored inside scroll containers get clipped by their
+// overflow, so this portals them to an unclipped fixed layer.
+export function AnchoredPopover({ anchorRef, matchAnchorWidth = false, onDismiss, children }: PopoverShellProps & {
   anchorRef: RefObject<HTMLElement | null>;
+  matchAnchorWidth?: boolean;
 }) {
   const popoverRef = useRef<HTMLDivElement | null>(null);
   useMountEffect(() => {
@@ -49,6 +50,7 @@ export function AnchoredPopover({ anchorRef, onDismiss, children }: PopoverShell
     const anchor = anchorRef.current;
     if (!node || !anchor) return;
     const rect = anchor.getBoundingClientRect();
+    if (matchAnchorWidth) node.style.width = `${rect.width}px`;
     const width = node.offsetWidth || popoverWidth;
     const height = node.offsetHeight || popoverMaxHeight;
     const left = Math.max(viewportPadding, Math.min(rect.left, window.innerWidth - width - viewportPadding));
@@ -68,6 +70,6 @@ export function AnchoredPopover({ anchorRef, onDismiss, children }: PopoverShell
       <div className="popover-backdrop" onClick={onDismiss} />
       <div ref={place} className="cell-popover">{children}</div>
     </>,
-    document.body
+    anchorRef.current?.closest(".modal") ?? document.querySelector(".app") ?? document.body
   );
 }

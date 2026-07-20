@@ -1,7 +1,7 @@
 import { Check, ChevronDown, Search } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 
-import { PopoverShell } from "./PopoverShell";
+import { AnchoredPopover } from "./PopoverShell";
 
 export type SearchSelectOption = {
   value: string;
@@ -37,6 +37,7 @@ export function SearchSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxId = `${useId()}-listbox`;
   const selected = options.find((option) => option.value === value);
   const filtered = filterSearchOptions(options, query);
@@ -60,12 +61,12 @@ export function SearchSelect({
         setOpen(false);
       }}
     >
-      <button type="button" aria-label={ariaLabel} aria-expanded={open} onClick={toggle}>
+      <button ref={triggerRef} type="button" aria-label={ariaLabel} aria-expanded={open} onClick={toggle}>
         <OptionText option={selected} />
         <ChevronDown />
       </button>
       {open ? (
-        <PopoverShell onDismiss={() => setOpen(false)}>
+        <AnchoredPopover anchorRef={triggerRef} matchAnchorWidth onDismiss={() => setOpen(false)}>
           <div className="menu-select-popover search-select-popover">
             <div className="search-select-input">
               <Search />
@@ -83,6 +84,12 @@ export function SearchSelect({
                   setActiveIndex(0);
                 }}
                 onKeyDown={(event) => {
+                  if (event.key === "Tab") {
+                    event.preventDefault();
+                    setOpen(false);
+                    triggerRef.current?.focus();
+                    return;
+                  }
                   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                     event.preventDefault();
                     const delta = event.key === "ArrowDown" ? 1 : -1;
@@ -115,7 +122,7 @@ export function SearchSelect({
               {filtered.length === 0 ? <div className="search-select-empty">{emptyLabel}</div> : null}
             </div>
           </div>
-        </PopoverShell>
+        </AnchoredPopover>
       ) : null}
     </div>
   );
